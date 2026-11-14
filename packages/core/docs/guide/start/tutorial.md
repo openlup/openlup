@@ -3,8 +3,6 @@
 Save a subscription cycle in PostgreSQL, process its paid event, and read back
 the processed row and an application receipt.
 
-**Development preview.** Read the [guide](../README.md) before choosing OpenLup.
-
 ## Prerequisites
 
 Use Node.js 24, npm 11.19.0, Bash, and an empty directory. Supply a reachable,
@@ -161,6 +159,29 @@ packages. Installing the full platform schema also needs a provisioned host
 profile; this tutorial installs only the shipped Outbox SQL. Rerunning the
 application needs another empty database because its schema creation is
 unconditional.
+
+## Calculate a retry time
+
+For a calculation that needs no database, import `nextRetryAttemptAt` from the
+installed Core package and supply your application's retry policy:
+
+```ts
+import { nextRetryAttemptAt } from "@openlup/core/subscription";
+
+const failedAt = "2026-01-10T09:00:00.000Z";
+const cadence = { backoffHours: [24, 72] };
+
+nextRetryAttemptAt(failedAt, 1, cadence); // "2026-01-11T09:00:00.000Z"
+nextRetryAttemptAt(failedAt, 2, cadence); // "2026-01-13T09:00:00.000Z"
+nextRetryAttemptAt(failedAt, 3, cadence); // null: the retry budget is exhausted
+```
+
+The attempt number selects an offset in `backoffHours`, measured from
+`failedAt`; an attempt beyond that array returns `null`. This pure function
+calculates a time without scheduling a job, persisting state or charging a
+payment method. See the [subscription engine](../concepts/subscription-engine.md#the-retry-ladder-terminates)
+for retry and lifecycle rules, and the
+[architecture guide](../concepts/architecture-and-ownership.md) for host composition.
 
 ## Next steps
 

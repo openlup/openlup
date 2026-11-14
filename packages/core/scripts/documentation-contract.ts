@@ -412,6 +412,24 @@ export function planGuideUpdates(repositoryRoot: string, packageRoot: string, ve
   return { writes, violations };
 }
 
+/** Plan package entry points separately so guide-only regeneration keeps its existing scope. */
+export function planPackageDocumentationUpdates(repositoryRoot: string, version: string): Array<[string, string]> {
+  const config = readJson<{ packages: Array<{ directory: string; publish: boolean }> }>(repositoryRoot, "config/openlup-packages.json");
+  const writes: Array<[string, string]> = [], violations: string[] = [];
+  for (const { directory } of config.packages.filter(({ publish }) => publish)) {
+    for (const file of ["AGENTS.md", "README.md"]) {
+      const path = resolve(repositoryRoot, directory, file);
+      if (!existsSync(path)) continue;
+      const original = readFileSync(path, "utf8");
+      const source = syncGeneratedRegions(original, `${directory}/${file}`, repositoryRoot, true, violations, version)
+        .replace(/(https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/openlup-[a-z0-9-]+-v)[0-9A-Za-z.+-]+\//g, (_match, prefix: string) => `${prefix}${version}/`);
+      if (source !== original) writes.push([path, source]);
+    }
+  }
+  assert(violations.length === 0, `package documentation planning violations:\n${violations.join("\n")}`);
+  return writes;
+}
+
 /**
  * Checks (and with `write`, regenerates) the guide under `docs/guide/`. Returns its Markdown files
  * so the package-wide rules and the fence compiler read the same pages.
@@ -435,10 +453,30 @@ export function assertGuideContract(packageRoot: string, repositoryRoot: string 
     const original = readFileSync(file, "utf8");
     const source = write ? updates.get(resolve(file)) ?? original : syncGeneratedRegions(original, label, repositoryRoot, false, violations, version);
     if (write && source !== original) writeFileSync(file, source);
+    assertGuideTitle(label, source, violations);
     assertGuideLinks(guideRoot, file, label, source, repositoryRoot, tag, violations);
     assertReaderLanguage(label, source, allowed, violations);
   }
   return files;
+}
+
+function assertGuideTitle(label: string, source: string, violations: string[]): void {
+  let headings = 0;
+  let closingFence: RegExp | undefined;
+  for (const line of source.split(/\r?\n/)) {
+    if (closingFence) {
+      if (closingFence.test(line)) closingFence = undefined;
+      continue;
+    }
+    const fence = /^ {0,3}(`{3,})([^`]*$)|^ {0,3}(~{3,})/.exec(line);
+    if (fence) {
+      const marker = fence[1] ?? fence[3]!;
+      closingFence = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`);
+      continue;
+    }
+    if (/^ {0,3}#(?:[ \t]|$)/.test(line)) headings++;
+  }
+  if (headings !== 1) violations.push(`${label}: a guide page has exactly one level-one heading, its title (found ${headings})`);
 }
 
 function readGuideAllowList(repositoryRoot: string, violations: string[]): Set<string> {
@@ -648,6 +686,22 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
       });
     });
     return `${markdownTable(["Package", "Section", "Field", "Value"], rows)}\n${link(".github/VERSIONING_AND_EOL.md", "Versioning and end-of-life policy")}\n`;
+  }
+  if (name === "compatibility-policies") {
+    // Read the validator's mapping, not a second list inferred from today's exports.
+    const path = "packages/core/scripts/public-api-config.ts";
+    const source = ts.createSourceFile(path, readFileSync(join(repositoryRoot, path), "utf8"), ts.ScriptTarget.Latest, true);
+    const mapping = source.statements.flatMap((statement) => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [])
+      .find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "compatibilityByMaturity")?.initializer;
+    const error = `${path}: expected a nonempty static compatibilityByMaturity object with literal policies`;
+    if (!mapping || !ts.isObjectLiteralExpression(mapping) || mapping.properties.length === 0) throw new Error(error);
+    const rows = mapping.properties.map((property) => {
+      if (!ts.isPropertyAssignment(property) || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) || !ts.isStringLiteralLike(property.initializer)) {
+        throw new Error(error);
+      }
+      return [codeLiteral(property.name.text), codeLiteral(property.initializer.text)];
+    }).sort(([left], [right]) => left!.localeCompare(right!));
+    return `${markdownTable(["Maturity", "Compatibility policy"], rows)}\n${link(path, "Compatibility policy mapping")}\n`;
   }
   if (name === "refusal-codes" || name === "refusal-codes-open") {
     const types = collectRefusalTypes(repositoryRoot);
@@ -1016,6 +1070,7 @@ if (invokedPath === import.meta.url) {
       pending.set(file, source);
     }
     const planned = planGuideUpdates(repositoryRoot, packageRoot, version, pending);
+    planned.writes.push(...planPackageDocumentationUpdates(repositoryRoot, version));
     const updates = new Map(planned.writes), pageViolations: Record<string, string[]> = {};
     if (pending.size > 0) {
       const allowed = readGuideAllowList(repositoryRoot, planned.violations);

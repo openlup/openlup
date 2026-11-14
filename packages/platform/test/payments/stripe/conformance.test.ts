@@ -1,89 +1,60 @@
-import { createHash, createHmac } from "node:crypto";
-import { expect, it, vi } from "vitest";
-import { runPaymentAdapterConformance } from "../../../src/payments/index.js";
-import { createStripePaymentAdapter, type StripePaymentAdapterConfig } from "../../../src/payments/stripe/index.js";
-import type { VerifiedPaymentEvidence } from "../../../src/payments/contracts/index.js";
+import { paymentTestingDefects } from "../testingDefects.testFixtures.js";
+import { expect, it } from "vitest";
+import { runPaymentAdapterConformance } from "../../../src/payments/testing/index.js";
+import { createStripeConformanceFixture, stripeSafetyFixture } from "./conformance.testFixtures.js";
 
-type Subject = Parameters<typeof runPaymentAdapterConformance>[0][number];
-const timestamp = 1_800_000_000;
-const occurredAt = new Date(timestamp * 1000).toISOString();
-const signingKey = "conformance-fixture";
-
-it("conforms across two distinct attempts with replay, changed outcomes, refunds and verification refusals", async () => {
-  const fixtures = [
-    { intentRef: "intent-a", attemptRef: "attempt-a", remote: "pi_a", amountMinor: 2599, currency: "EUR" },
-    { intentRef: "intent-b", attemptRef: "attempt-b", remote: "pi_b", amountMinor: 7300, currency: "USD" },
-  ];
-  const intent = (fixture: typeof fixtures[number]) => ({ id: fixture.remote, status: "requires_action", amount: fixture.amountMinor,
-    currency: fixture.currency.toLowerCase(), client_secret: `transient_${fixture.remote}` });
-  const client: StripePaymentAdapterConfig["client"] = {
-    createPaymentIntent: vi.fn(async input => {
-      const fixture = fixtures.find(row => row.intentRef === input.metadata?.paymentIntentId);
-      if (!fixture) throw new Error("unexpected execution subject");
-      expect(input).toMatchObject({ amount: fixture.amountMinor, currency: fixture.currency.toLowerCase() });
-      return intent(fixture);
-    }),
-    retrievePaymentIntent: vi.fn(async reference => {
-      const fixture = fixtures.find(row => row.remote === reference);
-      if (!fixture) throw new Error("unexpected readback subject");
-      return intent(fixture);
-    }),
-  };
-  const adapter = createStripePaymentAdapter({ client, mode: "test", supportedCurrencies: ["EUR", "USD"],
-    webhookSigningSecrets: [signingKey], clock: () => timestamp });
-  const subjects: Subject[] = fixtures.map(fixture => {
-    const money = { amountMinor: fixture.amountMinor, currency: fixture.currency };
-    const identity = { provider: "stripe", providerPaymentRef: fixture.remote, intentRef: fixture.intentRef, attemptRef: fixture.attemptRef };
-    function verification(sourceType: string, outcome: VerifiedPaymentEvidence["outcome"], object: Record<string, unknown> = {}) {
-      const eventId = `evt_${fixture.remote}_${outcome}`;
-      const rawBody = Buffer.from(JSON.stringify({ id: eventId, type: sourceType, created: timestamp, data: { object: {
-        id: fixture.remote, amount: money.amountMinor, currency: money.currency.toLowerCase(),
-        metadata: { paymentIntentId: fixture.intentRef }, client_secret: `transient_${fixture.remote}`, ...object,
-      } } }));
-      const digest = createHmac("sha256", signingKey).update(`${timestamp}.`).update(rawBody).digest("hex");
-      const input = { rawBody, headers: { "stripe-signature": `t=${timestamp},v1=${digest}` }, receivedAt: occurredAt };
-      const normalized: Omit<VerifiedPaymentEvidence, "fingerprint" | "providerAuditPayload"> = {
-        provider: "stripe", providerEventId: eventId, providerOccurredAt: occurredAt, kind: "money",
-        providerPaymentRef: fixture.remote, intentRef: fixture.intentRef, attemptRef: null, outcome, money,
-        ...(outcome === "refunded" ? { refund: { kind: "cumulative-snapshot", operationId: `ch_${fixture.remote}`,
-          originalPaymentMoney: money, refundedMoney: { amountMinor: 500, currency: money.currency } } } : {}),
-      };
-      const expected: VerifiedPaymentEvidence = { ...normalized,
-        fingerprint: createHash("sha256").update(JSON.stringify(normalized)).digest("hex"),
-        providerAuditPayload: { provider: "stripe", eventId, eventType: sourceType, providerPaymentId: fixture.remote,
-          amountMinor: money.amountMinor, currency: money.currency,
-          ...(outcome === "refunded" ? { stripeRefundSnapshot: { chargeId: `ch_${fixture.remote}`, amountRefundedMinor: 500 } } : {}),
-        },
-      };
-      return { input, expected };
-    }
-    const pending = verification("payment_intent.requires_action", "pending");
-    const missingRefund = verification("charge.refunded", "refunded", { id: `ch_${fixture.remote}`, payment_intent: fixture.remote });
-    return { subjectId: fixture.attemptRef, adapter,
-      executionInput: { intentRef: fixture.intentRef, attemptRef: fixture.attemptRef,
-        fingerprint: `fingerprint_${fixture.attemptRef}`, providerIdempotencyKey: `key_${fixture.attemptRef}`,
-        money, mode: "test", purpose: "initial" },
-      readbackInput: { identity, expectedMoney: money, purpose: "active_checkout" },
-      verification: [pending, { ...pending, input: { ...pending.input, receivedAt: "2027-01-15T08:01:00.000Z" } },
-        verification("payment_intent.succeeded", "succeeded"),
-        verification("charge.dispute.created", "disputed", { id: `dp_${fixture.remote}`, payment_intent: fixture.remote }),
-        verification("charge.refunded", "refunded", { id: `ch_${fixture.remote}`, payment_intent: fixture.remote, amount_refunded: 500 }),
-        { input: { ...pending.input, headers: {} }, expected: { kind: "refusal", reason: "signature" } },
-        { input: missingRefund.input, expected: { kind: "refusal", reason: "malformed" } },
-      ],
-    };
-  });
-  const evidence = await runPaymentAdapterConformance(subjects);
-  expect(evidence.subjects.map(row => row.subjectId)).toEqual(["attempt-a", "attempt-b"]);
-  expect(evidence.cases).toHaveLength(2);
-  for (const [index, subject] of evidence.subjects.entries()) {
-    expect(subject.execution).toMatchObject({ dispatch: { kind: "dispatched", providerPaymentRef: fixtures[index].remote } });
-    expect(subject.readback).toMatchObject({ kind: "failed", identity: subjects[index].readbackInput.identity,
-      observedMoney: subjects[index].readbackInput.expectedMoney });
+it("passes every named safety case with the extracted scripted client across two currencies and attempts", async () => {
+  const fixture = stripeSafetyFixture();
+  expect(fixture.subjects[0].adapter.capabilities).toMatchObject({ unattendedChargeFlow: "off_session_payment",
+    payerContext: { requiresPayerBlock: false, customerRefFallsBackToContactEmail: false },
+    methodHealth: { requiresCustomerRef: true, requiredMethodKind: null, requiresPayerContact: false },
+    terminalOutcomeReporting: { kind: "status_field", silenceBecomesSuspectAfterMinutes: 360 },
+    mandateUpsertIsSubscriptionScoped: false });
+  const report = await runPaymentAdapterConformance(fixture.subjects);
+  expect(report.subjects.map(row => row.subjectId)).toEqual(["attempt-a", "attempt-b"]);
+  expect(report.cases.filter(row => row.name.includes("capability:"))).toHaveLength(26);
+  expect(report.cases.filter(row => row.name.startsWith("host-consumed declaration:"))).toHaveLength(10);
+  expect(report.cases.filter(row => row.name.includes("never settles"))).toHaveLength(6);
+  expect(report.cases.every(row => row.passed)).toBe(true);
+  expect(report.subjects.map(row => row.execution.dispatch)).toEqual([{"kind": "dispatched", "providerPaymentRef": "pi_a"}, {"kind": "dispatched", "providerPaymentRef": "pi_b"}]);
+  for (const [index, subject] of report.subjects.entries()) {
+    expect(subject.execution.dispatch.kind).toBe("dispatched");
+    expect(subject.readback).toMatchObject({ kind: "failed", identity: fixture.subjects[index].readbackInput.identity,
+      observedMoney: fixture.subjects[index].readbackInput.expectedMoney });
     expect(subject.execution).not.toHaveProperty("handoff");
-    expect(evidence.cases[index].passed).toBe(true);
-    expect(JSON.stringify(evidence)).not.toContain(`transient_${fixtures[index].remote}`);
+    expect(JSON.stringify(report)).not.toContain("transient_");
   }
-  expect(client.createPaymentIntent).toHaveBeenCalledTimes(2);
-  expect(client.retrievePaymentIntent).toHaveBeenCalledTimes(2);
+  expect(fixture.unattendedRequests.length).toBeGreaterThan(0);
+  fixture.fake.assertDrained();
 });
+
+it("retains exactly two create and read calls for the baseline subjects", async () => {
+  const fixture = createStripeConformanceFixture();
+  const report = await runPaymentAdapterConformance(fixture.subjects);
+  expect(report.cases).toHaveLength(2);
+  expect(fixture.client.createPaymentIntent).toHaveBeenCalledTimes(2);
+  expect(fixture.client.retrievePaymentIntent).toHaveBeenCalledTimes(2);
+});
+
+it("demonstrates two handoffs for the same family regardless of declaration order", async () => {
+  const fixture = stripeSafetyFixture();
+  const subject = fixture.subjects[0];
+  const { execute } = subject.adapter.attemptPort;
+  subject.adapter = { ...subject.adapter, capabilities: { ...subject.adapter.capabilities,
+    captureFlows: [{ kind: "redirect-card", handoff: "redirect", methodFamilies: ["card"] }, ...subject.adapter.capabilities.captureFlows] },
+  attemptPort: { ...subject.adapter.attemptPort, execute: async input => {
+    const result = await execute(input);
+    return input.methodSelection?.family === "card" && input.money.currency === "EUR"
+      ? { ...result, handoff: { kind: "redirect", url: "https://example.test/authorize" } } : result;
+  } } };
+  await expect(runPaymentAdapterConformance(fixture.subjects)).resolves.toBeDefined();
+});
+
+it("rejects a declared flow family with no capability execution", async () => {
+  const fixture = stripeSafetyFixture();
+  const subject = fixture.subjects[0];
+  subject.safety!.capabilityInputs = subject.safety!.capabilityInputs.filter(input => input.methodSelection?.family !== "wallet");
+  await expect(runPaymentAdapterConformance(fixture.subjects)).rejects.toThrow("capture flow card_payment:client-confirmed:wallet");
+});
+
+paymentTestingDefects("stripe", stripeSafetyFixture);

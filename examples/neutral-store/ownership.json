@@ -159,7 +159,8 @@
     "browser/dev-loop.proof.ts"
   ],
   "sourceMappings": {
-    "AGENTS.md": "AGENTS.template.md"
+    "AGENTS.md": "AGENTS.template.md",
+    "README.md": "README.template.md"
   },
   "generated": [
     ".git/",
@@ -197,6 +198,7 @@
   "pageCopyRule": "Move a copied page from managed to owned and update its imports. The adopter then owns security, accessibility, compatibility, tests and manual porting of later fixes. Package engines remain installed dependencies. For a new route, create an owned page and take ownership of client/main.ts and shared/routes.ts before updating dispatch, navigation and localized paths.",
   "sourceOnly": [
     "AGENTS.template.md",
+    "README.template.md",
     "extract.mjs",
     "test/extract.test.ts",
     "test/editor-contracts.test.ts",

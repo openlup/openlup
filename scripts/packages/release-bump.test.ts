@@ -289,6 +289,49 @@ describe("release:bump", () => {
     expect(git(root, "diff", "--cached", "--", guide)).toBe("");
   });
 
+  it("re-pins and stages package entry points in a set bump, then passes the package documentation check", () => {
+    const { root } = setFixture(), agents = "packages/outbox/AGENTS.md", readme = "packages/outbox/README.md";
+    const source = [
+      "# Package", "", "## Purpose and kind", "Kind: `rail`.", "", "## Subpath maturity",
+      "| Export | Role | Maturity |", "| --- | --- | --- |", "", "## Wiring example",
+      "```ts", "export const wired = 1;", "```", "", "## Sources and declarations",
+      "[Core](https://github.com/openlup/openlup/blob/openlup-core-v0.7.0/README.md)",
+      "[Package](https://github.com/openlup/openlup/tree/openlup-outbox-v0.7.0/packages/outbox)",
+      "", "## Readiness codes", "None.", "", "## Using this package in an application", "Import the package.", "",
+    ].join("\n");
+    writeFileSync(join(root, agents), source);
+    writeFileSync(join(root, readme), source);
+    writeFileSync(join(root, "packages/outbox/release-gates.json"), '{"kind":"rail","packageSurface":{}}\n');
+    git(root, "add", "."); git(root, "commit", "-qm", "package documentation fixture");
+    const expected = source.replaceAll("-v0.7.0/", "-v0.9.0/");
+    const planned = docs.planReleaseGuide(root, "0.9.0");
+    for (const file of [agents, readme]) {
+      expect(planned.writes).toContainEqual([join(root, file), expected]);
+      expect(readFileSync(join(root, file), "utf8")).toBe(source);
+    }
+    const paths = bumpSet(root, "0.9.0");
+    for (const file of [agents, readme]) {
+      expect(paths).toContain(file);
+      expect(readFileSync(join(root, file), "utf8")).toBe(expected);
+      expect(git(root, "diff", "--cached", "--name-only")).toContain(file);
+    }
+    const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("packages/core/scripts/documentation-contract.ts"), "--package", join(root, "packages/outbox")], { cwd: root, encoding: "utf8", stdio: "pipe" });
+    expect(output.trim()).toBe("package documentation contract ok (outbox)");
+    expect(docs.planReleaseGuide(root, "0.9.0").writes).toEqual([]);
+  }, 30_000);
+
+  it("writes nothing and consumes no fragments if any package entry point has a malformed region", () => {
+    const { root, files } = setFixture();
+    const agents = "packages/outbox/AGENTS.md", source = "# Package\n\n<!-- generated:maturity:outbox -->\n";
+    writeFileSync(join(root, agents), source);
+    const before = git(root, "status", "--porcelain");
+    expect(() => bumpSet(root, "0.9.0")).toThrow("package documentation planning violations");
+    expect(read(root, files)).toEqual(files);
+    expect(readFileSync(join(root, agents), "utf8")).toBe(source);
+    expect(existsSync(join(root, page))).toBe(false);
+    expect(git(root, "status", "--porcelain")).toBe(before);
+  });
+
   it("keeps all files and fragments intact if guide planning fails", () => {
     const { root, files } = setFixture(), guide = "packages/core/docs/guide/README.md";
     const source = "# Guide\n\n<!-- generated:configuration-keys -->\nold body\n<!-- /generated:configuration-keys -->\n";
@@ -301,7 +344,7 @@ describe("release:bump", () => {
     expect(git(root, "status", "--porcelain")).toBe(before);
   });
 
-  it("re-pins the real guide in a minimal temporary repository and passes the owning guide check", () => {
+  it("re-pins the real guide and package entry points in a minimal temporary repository", () => {
     const { root } = setFixture(), core = join(root, "packages/core");
     // Every repository path the real guide links to at a release tag, derived from its pages, plus the region inputs.
     const guidePages = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
@@ -313,7 +356,10 @@ describe("release:bump", () => {
     // reports (exports, refusal codes), SQL manifests, the platform manifest and the neutrality scanner.
     const regionInputs = ["core", "outbox", "platform"].flatMap((name) => ["release-gates.json", "src", "api", "sql"].map((part) => `packages/${name}/${part}`))
       .filter((path) => existsSync(resolve(path)));
-    for (const path of ["packages/core/docs/guide", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/core/package.json", "packages/outbox/package.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked]) {
+    const entryPoints = ["core", "outbox", "platform"].flatMap((name) => ["AGENTS.md", "README.md"].map((file) => `packages/${name}/${file}`));
+    const copyPaths = [...new Set(["packages/core/docs/guide", "config/openlup-packages.json", "config/documentation-guide-allowlist.json", "config/environment-variables.json", "packages/core/package.json", "packages/outbox/package.json", "packages/platform/package.json", "packages/ui/smoke/neutrality.ts", ...regionInputs, ...linked, ...entryPoints])];
+    // A recursive parent copy already includes every linked path beneath it.
+    for (const path of copyPaths.filter((path) => !copyPaths.some((parent) => path.startsWith(`${parent}/`)))) {
       mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(resolve(path), join(root, path), { recursive: true });
     }
     const manifest = JSON.parse(readFileSync(join(core, "package.json"), "utf8"));
@@ -325,9 +371,14 @@ describe("release:bump", () => {
     const coreExports = planned.writes.map(([, source]) => source.match(/<!-- generated:exports:core -->\n([\s\S]*?)<!-- \/generated:exports:core -->/u)?.[1]).find((body) => body !== undefined);
     expect(coreExports).toMatch(/\n\| `[^`]+` \|/u);
     expect(readFileSync(index, "utf8")).toBe(original);
+    for (const path of entryPoints) {
+      const source = readFileSync(join(root, path), "utf8");
+      const expected = source.replace(/(https:\/\/github\.com\/openlup\/openlup\/(?:blob|tree)\/openlup-[a-z0-9-]+-v)[0-9A-Za-z.+-]+\//gu, (_match, prefix: string) => `${prefix}0.9.0/`);
+      if (source !== expected) expect(planned.writes).toContainEqual([join(root, path), expected]);
+    }
     for (const [file, source] of planned.writes) writeFileSync(file, source);
     writeFileSync(join(core, "package.json"), readFileSync(join(core, "package.json"), "utf8").replace('"version": "0.7.0"', '"version": "0.9.0"'));
     expect(checkGuide(root)).toBe("guide contract ok");
     expect(docs.planReleaseGuide(root, "0.9.0")).toEqual({ writes: [], violations: [], pageViolations: {} });
-  });
+  }, 60_000);
 });

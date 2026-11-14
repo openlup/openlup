@@ -62,9 +62,9 @@ a generic composer. Importing a package does not start a host or activate a
 provider.
 
 For the package contracts, see the
-[core agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/core/AGENTS.md),
-[outbox agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/outbox/AGENTS.md)
-and [platform agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/packages/platform/AGENTS.md).
+[core agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/core/AGENTS.md),
+[outbox agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/outbox/AGENTS.md)
+and [platform agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/AGENTS.md).
 
 ## Runtime boundaries
 

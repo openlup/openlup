@@ -2,13 +2,13 @@
 
 > OpenLup is a development preview, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-development-preview) before relying on any capability.
 
-Last updated: 2026-11-13 · npm set: 0.39.0
+Last updated: 2026-11-13 · npm set: 0.40.0
 
 ## Current status
 
 | Field | Value |
 | --- | --- |
-| Latest npm set | 0.39.0 |
+| Latest npm set | 0.40.0 |
 | Status | development preview |
 | Stable-framework gate (P1-SF) | open |
 
@@ -32,8 +32,12 @@ Last updated: 2026-11-13 · npm set: 0.39.0
 | m14-operations-portability | M14 Operations, observability and store portability | shipped | 0.33.0 | Operations settings, jobs, alerts and diagnostics; upgrade and backfill; local store transfer and restore; and recipes for PostgreSQL, identity, object storage and Node or OCI hosts. No hosted transfer or recovery has run, and the Neon, Neon to Amazon RDS and independent PaaS work moves to the hostability round after M19. |
 | m15-risk-controls | M15 Generic risk controls | shipped | 0.32.0 | Risk scoring, blocklist checks, paid-order assessment and an operator review queue. Risk controls are off by default, and no fraud provider or enabled risk policy is included. |
 | m16-addresses-market-packs | M16 Addresses, company identity and market packs | shipped | 0.33.0 | Company lookup with provider order and a shared cache, address schemas, and settlement, fiscal and formatting helpers driven by explicit market facts. The first version covers Polish and English; other markets and locales are not claimed, and national registry adapters are not packaged. |
-| m17-channel-ingest | M17 Normalized external-channel ingest | shipped | 0.35.0 | Normalized channel contracts with ingest, webhook, operator, pull and recovery bindings, quarantine and replay. No real marketplace connector ships, conversion to a physical order refuses on the portable rail, and channel data export and erasure are unavailable. |
+| m17-channel-ingest | M17 Normalized external-channel ingest | shipped | 0.35.0 | Normalized channel contracts with ingest, webhook, operator, pull and recovery bindings, quarantine and replay. Real marketplace connectors are not planned in the current programme. No real connector ships, conversion to a physical order refuses on the portable rail, and channel data export and erasure are unavailable. |
 | m18-partner-inquiries | M18 Neutral partner inquiries | shipped | 0.36.0 | Partner acquisition schemas, port and PostgreSQL store for capture, listing and status transitions. A closed_won status does not create a customer or marketing consent, and there is no partner data export or deletion. |
+| ecommerce-event-export | Durable ecommerce event export | shipped | 0.40.0 | Experimental retained paid-order, nonfinancial refund-status, checkout-qualification and subscription lifecycle facts, projected explicitly through the existing outbox. Sandbox and offline proof only; provider acceptance does not prove ingestion, and activation with a real account requires separate qualification. Existing installations do not export events automatically. |
+| reference-communications | Reference email and marketing-sync composition | shipped | 0.40.0 | Opt-in reference composition for transactional email and marketing sync, with explicit scope and qualification requirements. Sandbox and offline proof only; activation with a real account requires separate qualification. |
+| adapter-recipes | Adapter wiring recipes | shipped | 0.40.0 | Recipes for transactional delivery, marketing refusals and frozen event replay. Sandbox and offline proof only; the recipes activate no route, job or flow, and activation with a real account requires separate qualification. |
+| reader-guide | Packaged reader guide | shipped | 0.40.0 | The reader guide ships inside @openlup/core and covers installation, composition, extension, operation, upgrades and current limits. It documents the development preview and does not establish a stable API or upgrade guarantee. |
 
 ## M19a: working store
 
@@ -108,7 +112,7 @@ Last updated: 2026-11-13 · npm set: 0.39.0
 
 | ID | Name | Status | Release | Summary |
 | --- | --- | --- | --- | --- |
-| n6-portable-real-money | N6: real payments on the portable rail | planned | - | A real payment provider on the portable rail, with payment-method setup, cumulative refunds and card replacement. Until it lands, real money runs only on the managed rail, so a portable real-money store without vendor lock-in is not available. Proposed as the first round after M19; the project owner sets the order of all rounds after M19. |
+| n6-portable-real-money | N6: real payments on the portable rail | planned | 0.42.0 | In progress for 0.42.0: real payments on the portable rail, with a real provider adapter and a generic prepared-attempt and evidence store, including payment-method setup, cumulative refunds and card replacement. Until it lands, real money runs only on the managed rail, so a portable real-money store without vendor lock-in is not available. Catalogue and catalogue management follow N6, then fulfilment. |
 | hostability-providers | Hostability and provider portability | planned | - | Hosted runs and provider portability: a Neon receipt, Neon to Amazon RDS transfer and recovery, an independent PaaS candidate with Netlify first, a hosted database connection and a Vercel host for the neutral store, and a checkout attempt limiter that survives restarts. The providers in scope are Vercel, Netlify, AWS and Neon. Until then no hosted claim is made, and the neutral store runs on its local demonstration database. |
 | promotions-codes-schedule | Promotions: codes and acquisition schedule | planned | - | Promotion codes with a code catalogue, claims and limits, an operator code center and a checkout code card, plus an acquisition schedule writer with a command line. Device evidence for eligibility is decided together with a retention and erasure design. Until then, promotion codes are not available on the portable rail. |
 | a5-market-adapters | A5 market adapters | planned | - | An example company and customer lookup adapter built on Polish public registries (VAT whitelist, GUS/CEIDG), after the company-identity and invoicing ports are frozen. Data provenance, freshness, licence and fallback are settled first, and other market adapters can follow the same pattern. |
@@ -134,7 +138,7 @@ Last updated: 2026-11-13 · npm set: 0.39.0
 | tpay | Tpay payments | yes | managed | Opt-in example adapter with simulator evidence only. Real settlement and provider readback are not verified. |
 | omnipack | OmniPack warehouse fulfillment | yes | managed | Opt-in, default-off example with offline conformance. Exact absence, label create and void and cancellation are not available, and some dispatch and reconciliation paths have not been exercised. |
 | polish-company-registries | Polish company registries (VAT whitelist, GUS/CEIDG) | no | portable and managed | Not packaged. A packaged example lookup adapter comes in the A5 adapter round. |
-| external-channels | External sales channels (normalized import) | yes | portable and managed | Normalized ingest contracts and bindings. No real connector ships, and conversion to a physical order refuses on the portable rail. |
+| external-channels | External sales channels (normalized import) | yes | portable and managed | Normalized ingest contracts and bindings. Real marketplace connectors are not planned in the current programme. No real connector ships, and conversion to a physical order refuses on the portable rail. |
 
 ## Deferred and not built
 
@@ -147,7 +151,7 @@ Last updated: 2026-11-13 · npm set: 0.39.0
 | deferred-multi-cycle-prepaid | Multi-cycle prepaid subscriptions | deferred | - | Subscriptions paid in advance for several cycles are not available. |
 | deferred-partner-conversion | Partner conversion, export and deletion | deferred | - | Converting a partner inquiry into a customer, and exporting or deleting partner data, are not built. |
 | deferred-portable-lot-tracking | Lot and location tracking on the portable rail | deferred | - | The portable rail does not record lots, locations or stock movements. Stock holds, release, expiry and stock accounting work. |
-| deferred-catalogue-publication | Catalogue publication workflow | deferred | - | Creating, activating and withdrawing variants with publication to product pages is planned as its own round and is not scheduled. Catalogue drafts and administration work. |
+| deferred-catalogue-publication | Catalogue publication workflow | deferred | - | Creating, activating and withdrawing variants with publication to product pages is planned in the catalogue and catalogue-management round after N6, before fulfilment; no release is scheduled. Catalogue drafts and administration work. |
 | deferred-operator-contact-edits | Operator contact edits and order notes on the portable rail | deferred | - | Operator changes to a customer's email, phone and account link, order notes and order address corrections refuse by name on the portable rail. |
 | deferred-rich-order-reports | Rich order projections and reports on the portable rail | deferred | - | Rich operator order projections, analytics, document guidance, saved draft resume and commercial reports refuse by name on the portable rail. Reduced order reads work. |
 | deferred-portable-social-sign-in | Social sign-in on the portable rail | deferred | - | Customer sign-in with a social account is not provided on the portable rail. Email magic links and one-time codes work. |

@@ -537,7 +537,7 @@ The native fulfillment translation uses `fulfillment_shipments.replaces_shipment
 and order → cycle → subscription correlation, with cycle number on the renewal
 operation. It adds no `retry_scheduled` state or payment lifecycle change.
 Native invoker privileges and catalogue ownership remain in
-[Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+[Data and migrations](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 ## Compatibility posture
 
@@ -621,7 +621,7 @@ It requires an already-local immutable Node 24.21.0 image argument for H1/H2.
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
 The opt-in OIDC settings registry and reference verifier composition retain the
-[identity owner](IDENTITY.md#opt-in-oidc-access-tokens).
+[identity owner](../../packages/core/docs/guide/concepts/identity.md#opt-in-oidc-access-tokens).
 
 The disposable identity reference's run directory, run id and local mail origin
 are evaluation settings bound to one owned installation. They establish no
@@ -1389,7 +1389,7 @@ host-injected persistence/effect keys must keep the donor namespace for replay.
 Native 0.22.0 digest receipts/effects and superseded outcomes are outside that
 compatibility: retries can repeat tracking or fail with
 `fulfillment_observation_outcome_conflict`. Drain in-flight observation retries
-before upgrading; the [Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased)
+before upgrading; the [0.23.0 migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230)
 records these limitations without a bridge or alias migration.
 The normalized fact uses a separate opaque identity. Hosts must retain the raw
 evidence referenced by its opaque pointer, with access/retention policy of their own.
@@ -1484,11 +1484,13 @@ and apply are separate transactions; apply commits terms, event and receipt
 atomically. Private introductory cadence and acquisition policy remain host-owned.
 Multi-cycle prepaid retains its named unsupported capability. The dedicated
 native payment store supports durable preparation, immutable ingress and exact
-attempt correlation. Correlated provider renewal failures record one immutable
-attempt-bound retry receipt before truth reuses the financial transition. The
-receipt owns the rung and schedule; the cycle stays `payment_pending`. Provider
-dunning case, notice and token handoff await attributed composition, and a real
-provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
+attempt correlation. The first failure of each correlated provider renewal
+attempt records one immutable attempt-bound retry receipt before truth reuses
+the financial transition. The receipt owns the rung and schedule; the cycle
+stays `payment_pending`. An expiry
+after that attempt's decline records the escalation without another retry stage.
+Provider dunning case, notice and token handoff await attributed composition,
+and a real provider renewal binding is not yet supplied. The subscription descriptor retains its separate composition
 limits. N1 retry recovery is selected while stock recovery remains
 unavailable. One executor stays default off with mandatory delivery admission.
 Host-selected M04 descriptors carry recorded
@@ -1509,7 +1511,7 @@ surface as typed conflicts. Native upgrades never freeze a previously claimed du
 Reader guidance: [Compose invoicing](../../packages/core/docs/guide/how-to/build/invoicing.md).
 
 Host artifact persistence, clearance observation and M04 acceptance are separate
-proofs. The [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts)
+proofs. The [invoicing contract reference](../../packages/core/docs/guide/how-to/build/invoicing.md#select-the-ports)
 retains source witnesses.
 
 See the [M09 forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
@@ -1575,7 +1577,7 @@ guarded paymentMethod.execute lane and collects a transient handoff only.
 A45/A46 token routes remain reference handlers. Native repair authorization and
 scheduling are a registered follow-up, because the donor native graph does not
 serve them.
-See the [self-service reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts).
+See the [self-service reference](../../packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports).
 
 
 ### Operator support receipts and partial links

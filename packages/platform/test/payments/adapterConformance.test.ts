@@ -1,3 +1,4 @@
+import { createScriptedPaymentFake } from "../../src/payments/testing/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { runPaymentAdapterConformance, runExecutionConformance, runDurableEventConformance,
   executePreparedAttemptMechanism, createVerifiedPaymentIngress, paymentPayloadFingerprint } from "@openlup/platform/payments";
@@ -24,10 +25,12 @@ function subject(provider: string): PaymentAdapterConformanceSubject & { verific
     { input: { ...input, rawBody: new TextEncoder().encode('{ "outcome" : "failed" }') }, expected: failed },
     { input: { ...input, rawBody: new TextEncoder().encode('{ "outcome" : "refusal" }') }, expected: { kind: "refusal", reason: "signature" } },
   ];
+  const fake = createScriptedPaymentFake<{ verify: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>> }>();
   const verifyAndNormalize: PaymentVerifyNormalizePort["verifyAndNormalize"] = vi.fn(async value => {
     const fixture = verification.find(row => row.input.rawBody === value.rawBody && row.input.receivedAt === value.receivedAt);
     if (!fixture || fixture.input.headers !== value.headers) throw new Error("raw_bytes_changed");
-    return fixture.expected;
+    fake.enqueue("verify", { kind: "success", value: fixture.expected });
+    return fake.invoke("verify");
   });
   return { subjectId: provider, executionInput: { ...identity, fingerprint: "attempt-fingerprint", providerIdempotencyKey: "provider-key", money,
     mode: "test", purpose: "initial" }, readbackInput: { identity, expectedMoney: money, purpose: "active_checkout" },
@@ -145,9 +148,12 @@ describe("adapter conformance suites", () => {
     expect(JSON.stringify(stored.mock.calls)).not.toContain("unknown-extra");
     expect(JSON.stringify(stored.mock.calls)).not.toContain("unknown-nested");
   });
-  it("requires exact before-dispatch refusal for missing adapter-required payer input", async () => {
+  it("scopes required payer refusal to unattended attempts and requires exact before-dispatch evidence", async () => {
     const f = subject("provider-a");
     f.adapter.capabilities.payerContext.requiresPayerBlock = true;
+    await expect(runPaymentAdapterConformance([f])).resolves.toBeDefined();
+    f.executionInput.purpose = "renewal-unattended";
+    f.adapter.capabilities.unattended = "supported";
     await expect(runPaymentAdapterConformance([f])).rejects.toThrow("missing required input exact notDispatched");
     const reason = { code: "payment_failed" as const, hints: [] };
     f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "decline", refusal: reason },

@@ -6,7 +6,7 @@ saw; they do not establish payment, delivery or other business outcomes.
 
 ## Select the diagnostic bindings
 
-The [diagnostic source binding](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/server/runtime/observability/customerDiagnosticHistoryBinding.ts)
+The [diagnostic source binding](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/server/runtime/observability/customerDiagnosticHistoryBinding.ts)
 and its browser reporter require explicit composition in your application. Their
 configuration below belongs to those bindings; installing packages does not
 automatically mount their routes or timers.
@@ -77,10 +77,10 @@ expiry filtering alone does not remove stored history.
 3. Explicitly enable `platform_job_controls.enabled` for
    `job_name = 'customer-diagnostic-prune'`, retaining `active_driver = 'worker'`.
 4. Arrange a trusted timer to invoke the
-   [retention runtime](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/server/runtime/observability/customerDiagnosticPruneRuntime.ts).
+   [retention runtime](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/server/runtime/observability/customerDiagnosticPruneRuntime.ts).
    For Node, explicitly declare the job and bind its direct handler through
    `scheduledJobHandlers`. Alternatively mount the
-   [HTTP handler](https://github.com/openlup/openlup/blob/openlup-core-v0.39.0/api/cron/customer-diagnostic-prune.ts)
+   [HTTP handler](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/api/cron/customer-diagnostic-prune.ts)
    at `/api/cron/customer-diagnostic-prune` and have an external timer send `POST`
    with `Authorization: Bearer <CRON_SECRET>`.
 5. Inspect the job-run ledger and deletion summary. A disabled flag returns

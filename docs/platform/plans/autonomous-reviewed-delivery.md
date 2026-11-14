@@ -1,5 +1,7 @@
 # Plan: autonomous reviewed delivery
 
+Status: historical record, 2026-11-06.
+
 Status: historical design record; current delivery and review rules are in [Deliver a change](../../../CONTRIBUTING.md#deliver-a-change).
 
 ## Historical implementation boundary

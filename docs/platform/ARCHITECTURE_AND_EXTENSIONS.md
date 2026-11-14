@@ -150,7 +150,7 @@ subject/session-keyed memory.
 The direct operator store redeems invitations and challenges in one transaction.
 Reference defaults and caller-composed routes use the admin-mutation wrapper and
 injected session-binding factory. The shell maps a neutral session subset and
-initializes managed clients lazily. [Identity](IDENTITY.md#direct-human-login)
+initializes managed clients lazily. [Identity](../../packages/core/docs/guide/concepts/identity.md#direct-human-login)
 owns source challenge, callback and recovery detail.
 
 Managed email association assesses settings after principal lookup, before email
@@ -337,7 +337,7 @@ current core, outbox and platform code exports and refuse missing evidence.
 
 Moved to [Take ownership of a copied component or page](../../packages/core/docs/guide/how-to/extend/eject-source.md#check-for-a-seam-first).
 
-The [adopter recipe](adopter-kit/README.md#adopt-or-upgrade-a-package) owns the
+The [adopter recipe](../../packages/core/docs/guide/start/adopt-from-npm.md#compare-at-first-adoption-and-upgrade) owns the
 comparison and extension-disposition steps.
 
 ## Package architecture
@@ -381,11 +381,11 @@ in core; importing platform as a whole is not a browser-safety guarantee.
 
 The `openlup-context` executable is a narrow tool-only distribution decision:
 core already reaches installed consumers, so it carries offline context lookup
-without a new package or service. Its Node built-ins read local installed
-snapshots only when explicitly invoked. No kernel export imports the executable;
-all kernel imports remain I/O-free and browser-safe. Package-root
-`AGENT_CONTEXT.md` snapshots ship with their owning packages. Lookup results
-locate evidence and grant no policy or execution authority. This exception does
+without a new package or service. When explicitly invoked, its Node built-ins
+search core's installed reader guide and package instructions, READMEs,
+changelogs, declarations and exports. No kernel export imports the executable;
+all kernel imports remain I/O-free and browser-safe. Lookup results locate
+evidence and grant no policy or execution authority. This exception does
 not permit Node dependencies or I/O in kernel contracts or logic.
 
 Place a new module at declared subpaths of `@openlup/platform` by default.
@@ -728,7 +728,7 @@ UI admission still needs its own artifact role and consumer proof.
 - **Schema in the tarball.** A package that owns schema ships its SQL in its tarball from its
   first release, for the application's own migration chain to apply. It never applies SQL itself.
   Shipped SQL follows expand, compatible deploy, backfill, contract. The
-  [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+  [migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
   distinguishes source history, tarball projection and an existing store.
 - **Readiness adaptation release.** A public readiness API or behaviour change
   needs the next minor set, chosen against the actual registry. Merging the readiness adaptation does
@@ -1025,7 +1025,7 @@ provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or
 credentials. Legacy `0.22.0` native shadow drafts/attempts do not replay under that
 new identity; complete or abandon them before upgrading (see the package
-[migration note](../../packages/platform/CHANGELOG.md#unreleased)). Host readiness
+[migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230)). Host readiness
 and selected capability checks still apply.
 
 Dispatch results retain neutral typed error code, HTTP status, retryability and
@@ -1110,7 +1110,7 @@ and durable receipt namespace when switching from the donor. This compatibility
 does not cover native 0.22.0 digest receipts/effects or superseded outcomes: retries
 can repeat tracking or fail with `fulfillment_observation_outcome_conflict`.
 Drain in-flight observation retries before upgrading; see the
-[Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased).
+[0.23.0 migration note](../../packages/platform/CHANGELOG-HISTORY.md#0230).
 
 The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
 returns the normalized carrier kind stored in `carrierRef` and passed to effects as
@@ -1208,7 +1208,7 @@ contract; they do not correct the private snapshot. Contact correction is a
 separate operation outside this capability. Legacy resolution
 rejects canonical override markers, validates the destination and freezes its
 bounded inference atomically. Erased and present-invalid contacts never fall
-back to the customer profile. The [privacy contributor](IDENTITY.md#identity-personal-data)
+back to the customer profile. The [privacy contributor](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage)
 and finite retained-store transfer own export, erasure and transport. These
 private fields add nothing to the commerce projection below.
 
@@ -1704,7 +1704,7 @@ revoked. There is no `SECURITY DEFINER` routine or new execution role. The initi
 executor is the deployment owner; a separate service principal requires explicit
 least-privilege grants on routines and underlying objects. Install the complete
 canonical catalogue; `FULFILLMENT_MIGRATIONS` contains byte-identical sparse
-projections. See [native installation boundaries](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+projections. See [native installation boundaries](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
 [status parity](../../packages/core/test/fulfillmentStatusMap.test.ts),
@@ -1862,7 +1862,7 @@ plan-length and portion resize policy remains unconfigured; its ordinary classic
 and sized editor choices preserve explicit counts. Its paid-email parcel-note
 callback is mounted by its paid-mail host for private captured receipts. Proven
 sized renewal facts produce a note; classic and acquisition receipts omit it.
-See the [editor composition and proof limits](../../examples/neutral-store/README.md#customer-subscription-editors).
+See the [editor composition and proof limits](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-a-customer-subscription).
 
 | Action | Future-template effect |
 | --- | --- |
@@ -2297,8 +2297,9 @@ same command carriers. The new lifecycle terms contain no retained purchase,
 pricing, cadence-offer or acquisition override. Stored receipts replay before
 reading changed host timing policy; a changed command still conflicts.
 Timed auto-resume, its system-event alias and starter portal mounting are
-separate integrations. Native multi-cycle prepaid and the M07 prepared-attempt
-store retain named unsupported declarations. The unbound native descriptor keeps stock recovery unavailable;
+separate integrations. Native multi-cycle prepaid and prepared-attempt composition
+remain unsupported in the subscription composition descriptor. The payment schema
+descriptor declares `paymentSchemaDescriptor.preparedDurableStore` supported. The unbound native descriptor keeps stock recovery unavailable;
 the explicitly selected M10 reference binding declares it selected, with the
 composed PostgreSQL witness. N1 retry recovery is selected after its store proofs. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
@@ -2482,7 +2483,7 @@ Reader guidance: [Compose invoicing](../../packages/core/docs/guide/how-to/build
 
 Managed invoicing adapters are unchanged by the optional
 `@openlup/platform/invoicing/postgres` composition. The
-[captured native invoice record](PLATFORM_PACKAGE_REFERENCE.md#captured-native-invoices)
+[captured native invoice record](../../packages/core/docs/guide/how-to/build/invoicing.md#capture-sandbox-invoices)
 retains its source witnesses; the reader guide above owns composition and
 refusal guidance.
 
@@ -2531,7 +2532,7 @@ the claim wrapper revision. Delivery settlement retains provider identity, retry
 delay and uncertain receipt hints. Native takes
 `p_evidence.retrySeconds`: a whole number of seconds clamped to 60..86400,
 otherwise 900; `retryable:false` parks at infinity. The
-[invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
+[invoicing reference](../../packages/core/docs/guide/how-to/build/invoicing.md#select-the-ports) describes
 delivery retry evidence, correction, payout item and account-lineage seams and
 their source witnesses.
 
@@ -2687,7 +2688,7 @@ checks detect drift; they do not create a second command or invoice engine.
 Invoice access retains M09's order-scoped history/download authorization shape.
 Self-service, Customer 360 and operator envelopes declare future composition,
 not landed executors. See the [R1 plan](plans/oss-m12-account-support.md) and
-[consumer reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
+[consumer reference](../../packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports)
 for available behavior and exclusions.
 
 The contribution factory in `/composition` publishes the two existing account-support entries and selected
@@ -2855,7 +2856,7 @@ policy. Any correction needs its own behavior-change approval.
 
 `RISK_MIGRATIONS` is an unchanged sparse asset projection of the native post-order
 control unit, which also contains other modules' objects. Follow the
-[catalogue contract](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories);
+[catalogue contract](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue);
 it is not a standalone installation history. See the
 [R1 record](plans/oss-m15-generic-risk-controls.md) for scope and evidence.
 
@@ -2902,7 +2903,7 @@ Portability is deferred by default; an optional opaque host value is carried
 unchanged without invocation, transfer/restore validation or an M14 import.
 No reference route or R2 binding is changed. Identity retains authorization,
 transaction rollback and receipt replay, including its managed erasure refusal.
-See [identity personal data](IDENTITY.md#identity-personal-data) for the
+See [identity personal data](../../packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage) for the
 orchestration and completion limits.
 
 ## Application file upgrades
@@ -3092,7 +3093,7 @@ backends, then freezes its coordinator before final graph and full `objects/tmp`
 capture. Network exclusion alone does not seal local file writers. Target
 recovery and application composition wait for both canonical publications;
 physical clones and restored claim tokens are not that boundary. The
-[runtime owner](RUNTIME_AND_SELF_HOSTING.md#runtime-model) defines the fixture's
+[runtime owner](../../packages/core/docs/guide/how-to/operate/self-host.md#compose-the-host) defines the fixture's
 resource retirement and host limits, and the
 [data owner](DATA_AND_MIGRATIONS.md#compatible-data-transfer) preserves interrupted
 state and lossless rows. It adds no production fencing API, role model, scheduler,
@@ -3194,7 +3195,7 @@ adapters' confirm, moderation, delete preparation and revoke replay receipts.
 Context key updates, neighboring dispatch deletion and receipt mutation refuse;
 neither setup-owner facts nor a reference inventory substitutes for normal-runtime
 command proof. The separately approved SQL changes only the finite grants described
-by the [migration owner](DATA_AND_MIGRATIONS.md#compatibility-lifecycle), with no new
+by the [migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility), with no new
 transfer API, runtime adapter, role compiler or installation executor.
 The same qualified production composition now includes the separately approved
 owner-path forward and checks its installed settings and restricted runtime and
@@ -3203,7 +3204,7 @@ restore behavior in both role modes. The transfer graph and API are unchanged.
 That selected installation witness also exercises pooled request reads and
 session-affine scheduler locks under the restricted runtime login. Real backend
 switch/reset cases refuse before job execution and preserve another backend's
-lock on a refused release. The [connection recipe](RUNTIME_AND_SELF_HOSTING.md#postgresql-connection-recipe)
+lock on a refused release. The [connection recipe](../../packages/core/docs/guide/how-to/operate/connect-postgresql.md#assign-connections-by-work)
 owns those transport requirements; this local proof adds no source/target
 transfer coverage, hosted qualification or writer-fencing guarantee.
 

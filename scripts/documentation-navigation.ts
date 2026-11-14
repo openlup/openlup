@@ -98,9 +98,7 @@ export function renderDocumentationSourceMap(state: DocumentationState): string 
   }
   lines.push("<!-- openlup-generated:end -->", "",
     "## Drill down to a file", "",
-    "The checked documentation bundle's `sources.json` lists every selected public path,",
-    "publication class, structural role, canonical owner, content digest and syntactically",
-    "declared export names. It labels the origin of those descriptions. Read the owner's",
+    "Follow a surface's selectors to its files and open the canonical owner. Read the owner's",
     "invariants and tests before changing behavior; a file name is not a behavioral contract.", "");
   return lines.join("\n");
 }

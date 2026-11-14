@@ -29,9 +29,9 @@ open its cited source. For work spanning packages, follow the relevant exports,
 callers and tests until each required contract has a witness. A ranked hit is a
 starting point, not proof that all related constraints were found.
 
-Core supplies this Node-only executable. It reads installed local snapshots on
-invocation and grants no application policy, tool permission or external-write
-authority. The application's own instructions govern.
+Core supplies this Node-only executable. It searches the installed reader guide
+and package files on invocation and grants no application policy, tool permission
+or external-write authority. The application's own instructions govern.
 
 ## Subpath maturity
 
@@ -90,6 +90,7 @@ authority. The application's own instructions govern.
 | `./payments` | capability | experimental |
 | `./payments/contracts` | capability | experimental |
 | `./payments/stripe` | capability | experimental |
+| `./payments/testing` | capability | experimental |
 | `./payments/tpay` | capability | experimental |
 | `./portability` | rail | experimental |
 | `./pricing` | capability | experimental |
@@ -138,8 +139,9 @@ for transactional email.
 Read the installed `src/`, exported `dist/` declarations and their declaration
 maps before guessing a contract. The shipped SQL is applied only through the
 explicit installation route in the [README](README.md#install-the-portable-postgresql-schema).
-Repository links in context excerpts refer to the matching package release tag;
-those repository files are not paths to create in the application.
+Context lookup searches the installed reader guide and package files, citing
+local paths and line ranges. Read those installed files before changing the
+application.
 
 ## Readiness codes
 

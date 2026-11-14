@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, planPackageDocumentationUpdates, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -414,7 +414,7 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
     mkdirSync(dirname(join(repository, path)), { recursive: true });
     writeFileSync(join(repository, path), contents);
   };
-  write("config/openlup-packages.json", "{}\n");
+  write("config/openlup-packages.json", '{"packages":[]}\n');
   write("README.md", "# Repository\n");
   write("AGENTS.md", "# Agents\n");
   write("config/documentation-guide-allowlist.json", '{"schemaVersion":1,"terms":["S3"]}\n');
@@ -442,6 +442,26 @@ function guideFixture(index: string, pages: Record<string, string> = {}) {
 
 const cpDir = (from: string, to: string) => cpSync(from, to, { recursive: true });
 
+describe("package release-link planning", () => {
+  it("preserves package tag names and URL forms, changes only publishable entry points, and omits current files", () => {
+    const { repository } = guideFixture("# Guide\n");
+    writeFileSync(join(repository, "config/openlup-packages.json"), JSON.stringify({ packages: [
+      { directory: "packages/core", publish: true }, { directory: "packages/outbox", publish: false },
+    ] }));
+    const source = "[Core](https://github.com/openlup/openlup/blob/openlup-core-v1.2.2/README.md)\n" +
+      '<a href="https://github.com/openlup/openlup/tree/openlup-platform-v1.2.2/packages/platform#read">Platform</a>\n' +
+      "[Branch](https://github.com/openlup/openlup/blob/main/README.md)\n";
+    const files = ["packages/core/AGENTS.md", "packages/core/README.md", "packages/outbox/AGENTS.md"];
+    for (const file of files) writeFileSync(join(repository, file), source);
+    const planned = planPackageDocumentationUpdates(repository, "1.2.3");
+    const expected = source.replaceAll("-v1.2.2/", "-v1.2.3/");
+    expect(planned).toEqual(files.slice(0, 2).map((file) => [join(repository, file), expected]));
+    for (const file of files) expect(readFileSync(join(repository, file), "utf8")).toBe(source);
+    for (const [file, contents] of planned) writeFileSync(file, contents);
+    expect(planPackageDocumentationUpdates(repository, "1.2.3")).toEqual([]);
+  });
+});
+
 function checkGuide(fixtureRoots: { repository: string; core: string }, write = false): void {
   assertDocumentationContract(fixtureRoots.core, () => ["AGENTS.md", "README.md", "package.json", "docs/guide.md"], { repositoryRoot: fixtureRoots.repository, write });
 }
@@ -450,6 +470,29 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it.each([
+    [2, "# Title\n\n# Another title\n"],
+    [2, "# Title\n\n # Other\n"],
+    [2, "# Title\n\n#\tOther\n"],
+    [2, "# Title\n\n#\n"],
+    [0, "## Section\n\nA page without a title.\n"],
+  ])("refuses a guide page with %i level-one headings", (count, source) => {
+    const roots = guideFixture("# Guide\n", { "reference/page.md": source });
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/reference/page.md: a guide page has exactly one level-one heading, its title (found ${count})`);
+  });
+
+  it("does not count #hashtag text as a level-one heading", () => {
+    const roots = guideFixture("# Guide\n", { "reference/page.md": "# Title\n\n#hashtag\n" });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it.each(["```", "~~~", "````", "~~~~"])("ignores level-one headings inside a %s fence", (marker) => {
+    const roots = guideFixture("# Guide\n", {
+      "reference/page.md": `# Title\n\n${marker}text\n# Example heading\n${marker}\n\n## Section\n`,
+    });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
   it("plans pending absolute and package-relative pages through the CLI without writing", () => {
     const roots = guideFixture(`# Guide\n\n[README](${repositoryLink("README.md", "openlup-core-v1.0.0")})\n`);
     const file = join(roots.core, "docs/guide/upgrade/v1-2-3.md");
@@ -853,6 +896,7 @@ describe("TypeScript fence compilation", () => {
 const referenceRegions = [
   "exports:core", "exports:outbox", "exports:platform", "sql:outbox", "sql:platform",
   "cli:openlup", "cli:openlup-context", "versioning", "configuration-keys", "refusal-codes", "refusal-codes-open",
+  "compatibility-policies",
 ];
 
 function referenceFixture() {
@@ -887,6 +931,7 @@ function referenceFixture() {
   write("packages/platform/src/lifecycle/openlup.mjs", 'const help = `openlup verify [--json]\n`; const a = "OPENLUP_E_CLI_INPUT"; const b = "OPENLUP_E_CLI_FAILURE"; const c = "OPENLUP_E_APP_UNKNOWN";');
   write("packages/core/src/openlup-context.js", 'import { runCli } from "../dist/agent-context-cli.js"; runCli();\n');
   write("packages/core/src/agent-context-cli.ts", 'const usage = "openlup-context search <task> [--code]\\nopenlup-context mcp\\n";');
+  write("packages/core/scripts/public-api-config.ts", 'const compatibilityByMaturity: Record<string, string> = { testing: "test-policy", candidate: "preview-policy", experimental: "preview-policy" };');
   write(".github/VERSIONING_AND_EOL.md", "# Versioning\n");
   return { ...fixture, write, report };
 }
@@ -960,6 +1005,40 @@ describe("generated reference regions", () => {
       expect(body).toContain(`| \`@openlup/${pkg}\` | compatibilityPolicies | candidate | Preview API. |\n| \`@openlup/${pkg}\` | compatibilityPolicies | testing | Synthetic protocol support. |`);
     }
     expect(body).toContain(repositoryLink(".github/VERSIONING_AND_EOL.md"));
+  });
+
+  it("reads the validator's maturity mapping, including changes absent from the release-gate surfaces", () => {
+    const fixture = referenceFixture();
+    const path = "packages/core/scripts/public-api-config.ts";
+    const before = renderGeneratedRegion("compatibility-policies", fixture.repository)!;
+    expect(before).toBe("| Maturity | Compatibility policy |\n| --- | --- |\n| `candidate` | `preview-policy` |\n| `experimental` | `preview-policy` |\n| `testing` | `test-policy` |\n\n" + `[Compatibility policy mapping](${repositoryLink(path)})\n`);
+    // No module is executed, and neither gate entries nor renderer literals own the mapping.
+    fixture.write(path, 'throw new Error("must not execute"); const compatibilityByMaturity = { "future-preview": "new-policy", candidate: "changed-policy" };');
+    const after = renderGeneratedRegion("compatibility-policies", fixture.repository)!;
+    expect(after).toContain("| `candidate` | `changed-policy` |\n| `future-preview` | `new-policy` |\n");
+    expect(after).not.toContain("experimental");
+    expect(after).not.toContain("testing");
+    const stale: string[] = [];
+    syncGeneratedRegions(generatedRegion("compatibility-policies", before), "fixture", fixture.repository, false, stale);
+    expect(stale).toEqual(["fixture: generated region compatibility-policies is stale; run docs:check -- --write"]);
+    const repaired: string[] = [];
+    expect(syncGeneratedRegions(generatedRegion("compatibility-policies", before), "fixture", fixture.repository, true, repaired))
+      .toBe(generatedRegion("compatibility-policies", after));
+    expect(repaired).toEqual([]);
+  });
+
+  it.each([
+    "const otherMapping = {};",
+    "const compatibilityByMaturity = getPolicies();",
+    "const compatibilityByMaturity = {};",
+    "const compatibilityByMaturity = { candidate: policy };",
+    "const compatibilityByMaturity = { ...policies };",
+    'const compatibilityByMaturity = { [maturity]: "policy" };',
+  ])("refuses an unreadable maturity mapping: %s", (source) => {
+    const fixture = referenceFixture();
+    fixture.write("packages/core/scripts/public-api-config.ts", source);
+    expect(() => renderGeneratedRegion("compatibility-policies", fixture.repository))
+      .toThrow("packages/core/scripts/public-api-config.ts: expected a nonempty static compatibilityByMaturity object with literal policies");
   });
 
   it("reports undeclared release fields without borrowing another package's policy", () => {

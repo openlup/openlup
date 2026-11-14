@@ -71,20 +71,21 @@
         "config/doc-routing.json",
         "config/openlup-publication-catalog.json",
         "config/openlup-source-release-contract.json",
-        "scripts/documentation-routing.ts"
+        "scripts/documentation-routing.ts",
+        "scripts/documentation-git*.ts",
+        "scripts/documentation-navigation*.ts"
       ],
       "doc": "docs/platform/DOCUMENTATION.md",
       "anchor": "#ownership"
     },
     {
       "id": "agent-context",
-      "when": "Generated offline adopter context, source spans and freshness",
+      "when": "Installed reader guide lookup smoke matrix",
       "paths": [
-        "scripts/agent-context/**",
-        "packages/*/AGENT_CONTEXT.md"
+        "scripts/agent-context/evaluate.mjs"
       ],
       "doc": "docs/platform/DOCUMENTATION.md",
-      "anchor": "#ownership"
+      "anchor": "#reader-guide-contract"
     },
     {
       "id": "browser",
@@ -243,8 +244,8 @@
       "paths": [
         "packages/core/src/bundle/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#bundle-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/bundles.md",
+      "anchor": "#compose-native-bundle-writes"
     },
     {
       "id": "subscription-kernel",
@@ -263,18 +264,6 @@
       ],
       "doc": "CONTRIBUTING.md",
       "anchor": "#development-preview-checks"
-    },
-    {
-      "id": "docs-export",
-      "when": "Generated documentation navigation and the checked bundle consumer boundary",
-      "paths": [
-        "scripts/documentation-bundle*.ts",
-        "scripts/documentation-git*.ts",
-        "scripts/documentation-navigation*.ts",
-        ".gitignore"
-      ],
-      "doc": "docs/platform/DOCUMENTATION.md",
-      "anchor": "#exporting"
     },
     {
       "id": "tests",
@@ -616,8 +605,8 @@
         "scripts/packages/outbox-consumer-proof.test.ts",
         "scripts/packages/outbox-disposable-postgres.ts"
       ],
-      "doc": "packages/outbox/README.md",
-      "anchor": ""
+      "doc": "packages/core/docs/guide/how-to/build/outbox.md",
+      "anchor": "#deliver-events-with-the-outbox"
     },
     {
       "id": "platform-substrate",
@@ -668,8 +657,8 @@
       "paths": [
         "packages/platform/src/scheduler/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#scheduled-jobs"
+      "doc": "packages/core/docs/guide/how-to/operate/self-host.md",
+      "anchor": "#select-background-work"
     },
     {
       "id": "platform-payments",
@@ -875,8 +864,8 @@
       "paths": [
         "packages/core/src/catalog/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#catalog-identifiers"
+      "doc": "packages/core/docs/guide/reference/limits.md",
+      "anchor": "#pure-contract-limits"
     },
     {
       "id": "core-inventory",
@@ -884,8 +873,8 @@
       "paths": [
         "packages/core/src/inventory/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#inventory-availability"
+      "doc": "packages/core/docs/guide/reference/limits.md",
+      "anchor": "#pure-contract-limits"
     },
     {
       "id": "core-pricing",
@@ -893,8 +882,8 @@
       "paths": [
         "packages/core/src/pricing/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#price-resolution-and-breakdown"
+      "doc": "packages/core/docs/guide/how-to/build/quote-prices.md",
+      "anchor": "#resolve-prices-and-adjustments"
     },
     {
       "id": "core-promotions",
@@ -902,8 +891,8 @@
       "paths": [
         "packages/core/src/promo/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#promotion-evaluation-and-adjustments"
+      "doc": "packages/core/docs/guide/how-to/build/quote-prices.md",
+      "anchor": "#resolve-prices-and-adjustments"
     },
     {
       "id": "core-fulfillment",
@@ -911,8 +900,8 @@
       "paths": [
         "packages/core/src/fulfillment/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#fulfillment-fact-and-status-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/fulfillment.md",
+      "anchor": "#compose-native-fulfillment"
     },
     {
       "id": "core-shipping",
@@ -920,8 +909,8 @@
       "paths": [
         "packages/core/src/shipping/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#shipping-rule-resolution"
+      "doc": "packages/core/docs/guide/how-to/build/fulfillment.md",
+      "anchor": "#select-shipping-rules"
     },
     {
       "id": "core-company-identity",
@@ -929,8 +918,8 @@
       "paths": [
         "packages/core/src/company-identity/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#company-identity-lookup-contracts"
+      "doc": "packages/core/docs/guide/reference/limits.md",
+      "anchor": "#pure-contract-limits"
     },
     {
       "id": "core-payment",
@@ -938,8 +927,8 @@
       "paths": [
         "packages/core/src/payment/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#payment-contracts"
+      "doc": "packages/core/docs/guide/concepts/payments.md",
+      "anchor": "#payments"
     },
     {
       "id": "core-marketing",
@@ -947,8 +936,8 @@
       "paths": [
         "packages/core/src/marketing/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#marketing-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/marketing.md",
+      "anchor": "#compose-marketing-handlers"
     },
     {
       "id": "core-outbox",
@@ -956,8 +945,8 @@
       "paths": [
         "packages/core/src/outbox/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#outbox-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/outbox.md",
+      "anchor": "#select-and-compose-handlers"
     },
     {
       "id": "core-platform-runtime",
@@ -965,8 +954,8 @@
       "paths": [
         "packages/core/src/platform-runtime/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#platform-runtime-contracts"
+      "doc": "packages/core/docs/guide/how-to/operate/self-host.md",
+      "anchor": "#compose-the-host"
     },
     {
       "id": "core-standard-schema",
@@ -974,8 +963,8 @@
       "paths": [
         "packages/core/src/standard-schema/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#standard-schema-contracts"
+      "doc": "packages/core/docs/guide/reference/limits.md",
+      "anchor": "#pure-contract-limits"
     },
     {
       "id": "platform-account-support",
@@ -985,8 +974,8 @@
         "packages/platform/test/account-support/**",
         "tests/postgres/customerAccountMutations*.ts"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#account-and-support-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/account-and-support.md",
+      "anchor": "#compose-account-and-support-services"
     },
     {
       "id": "platform-bff",
@@ -1003,8 +992,8 @@
       "paths": [
         "packages/platform/src/blob/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#blob-storage"
+      "doc": "packages/core/docs/guide/how-to/operate/self-host.md",
+      "anchor": "#supply-configuration-and-storage"
     },
     {
       "id": "platform-catalog",
@@ -1039,8 +1028,8 @@
       "paths": [
         "packages/platform/src/composition/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#what-the-application-supplies"
+      "doc": "packages/core/docs/guide/how-to/operate/self-host.md",
+      "anchor": "#compose-the-host"
     },
     {
       "id": "platform-data",
@@ -1057,8 +1046,8 @@
       "paths": [
         "packages/platform/src/http/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#http-runtime-and-security-contract"
+      "doc": "packages/core/docs/guide/how-to/operate/self-host.md",
+      "anchor": "#declare-http-admission"
     },
     {
       "id": "platform-inventory",
@@ -1075,8 +1064,8 @@
       "paths": [
         "packages/platform/src/job-ledger/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#job-run-ledger-sql"
+      "doc": "packages/core/docs/guide/upgrade/database-migrations.md",
+      "anchor": "#select-the-complete-catalogue"
     },
     {
       "id": "platform-kernel",
@@ -1084,8 +1073,8 @@
       "paths": [
         "packages/platform/src/kernel/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#bundle-readiness"
+      "doc": "packages/core/docs/guide/how-to/operate/self-host.md",
+      "anchor": "#select-the-bundle"
     },
     {
       "id": "platform-marketing",
@@ -1093,8 +1082,8 @@
       "paths": [
         "packages/platform/src/marketing/**"
       ],
-      "doc": "packages/platform/README.md",
-      "anchor": "#marketing-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/marketing.md",
+      "anchor": "#compose-marketing-handlers"
     },
     {
       "id": "platform-migrations",
@@ -1295,8 +1284,8 @@
       "paths": [
         "packages/core/src/partners/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#partner-lifecycle-contracts"
+      "doc": "packages/core/docs/guide/how-to/build/marketing.md",
+      "anchor": "#bind-partner-inquiries"
     },
     {
       "id": "core-risk",
@@ -1304,8 +1293,8 @@
       "paths": [
         "packages/core/src/risk/**"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#risk-evaluation-contracts"
+      "doc": "packages/core/docs/guide/reference/limits.md",
+      "anchor": "#pure-contract-limits"
     },
     {
       "id": "platform-channels",
@@ -1348,8 +1337,8 @@
       "paths": [
         "examples/neutral-store/**"
       ],
-      "doc": "examples/neutral-store/README.md",
-      "anchor": ""
+      "doc": "packages/core/docs/guide/how-to/build/customize-the-starter.md",
+      "anchor": "#customize-the-starter-store"
     }
   ]
 }

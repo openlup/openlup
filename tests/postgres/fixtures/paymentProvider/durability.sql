@@ -1,7 +1,7 @@
 -- Native preparation and inline retry; assertions retained from the managed witness.
 
 BEGIN;
-SELECT plan(46);
+SELECT plan(56);
 
 INSERT INTO public.clients (id, email)
 VALUES ('cfa00000-0000-4000-8000-000000000001', 'provider-attempt@example.invalid');
@@ -485,6 +485,106 @@ SELECT is(
     WHERE settlement_intent_id = (SELECT intent_id FROM _intent)),
   5,
   'event-backed success creates no second provider attempt');
+-- Each event near miss gets its own intent, preserving fresh admission and
+-- exact attempt counts independently of any successful evidence in other cases.
+CREATE TEMP TABLE _success_near_misses (position int, case_name text, event_type text, signed boolean);
+INSERT INTO _success_near_misses VALUES
+  (1, 'unsigned-event',    'payment.succeeded',       false),
+  (2, 'pending-event',     'payment.requires_action', true),
+  (5, 'cross-intent',      'payment.succeeded',       true),
+  (6, 'cross-attempt',     'payment.succeeded',       true),
+  (7, 'provider-mismatch', 'payment.succeeded',       true);
+
+CREATE TEMP TABLE _near_miss_results
+  (position int, case_name text, replayed boolean, attempt_count int, expected_count int);
+
+DO $$
+DECLARE
+  c record;
+  v_order uuid;
+  v_intent uuid;
+  v_attempt uuid;
+  v_evidence_attempt uuid;
+  v_provider_attempt text;
+  v_response jsonb;
+  v_expected_count int;
+  v_currency text;
+  v_target_kind text;
+BEGIN
+  SELECT i.currency_code, s.target_kind INTO v_currency, v_target_kind
+    FROM public.commerce_settlement_intents i JOIN public.payment_provider_states s ON s.id=i.id
+    WHERE i.id = (SELECT intent_id FROM _intent);
+
+  FOR c IN SELECT * FROM _success_near_misses ORDER BY position LOOP
+    v_order := gen_random_uuid();
+    PERFORM pg_temp.provider_order(v_order,'cfa00000-0000-4000-8000-000000000001',2599);
+    v_intent := (pg_temp.provider_intent(
+      'near-miss-intent-' || c.position, v_target_kind, v_order,
+      NULL, NULL, 2599, v_currency, '{}'::jsonb
+    ) -> 'paymentIntent' ->> 'id')::uuid;
+    v_response := public.payment_provider_attempt_prepare(
+      'near-miss-first-' || c.position, v_intent, 'card_rail',
+      'near-miss-provider-first-' || c.position,
+      'near-miss-fingerprint-first-' || c.position,
+      'off_session_payment', 'pm_near_miss', '{}'::jsonb
+    );
+    v_attempt := (v_response -> 'paymentAttempt' ->> 'id')::uuid;
+    v_provider_attempt := 'pi_near_miss_' || c.position;
+    UPDATE public.payment_provider_attempts
+       SET status = 'failed', provider_attempt_id = v_provider_attempt,
+           provider_session_id = 'cs_near_miss_' || c.position
+     WHERE id = v_attempt;
+    UPDATE public.payment_provider_states SET status = 'failed' WHERE id = v_intent;
+    v_evidence_attempt := v_attempt;
+    v_expected_count := 2;
+
+    IF c.case_name = 'cross-attempt' THEN
+      v_response := public.payment_provider_attempt_prepare(
+        'near-miss-cross-attempt', v_intent, 'card_rail',
+        'near-miss-provider-cross-attempt', 'near-miss-fingerprint-cross-attempt',
+        'off_session_payment', 'pm_near_miss', '{}'::jsonb
+      );
+      v_evidence_attempt := v_attempt;
+      v_attempt := (v_response -> 'paymentAttempt' ->> 'id')::uuid;
+      v_provider_attempt := 'pi_near_miss_cross_active';
+      UPDATE public.payment_provider_attempts
+         SET status = 'failed', provider_attempt_id = v_provider_attempt,
+             provider_session_id = 'cs_near_miss_cross_active'
+       WHERE id = v_attempt;
+      v_expected_count := 3;
+    END IF;
+
+    INSERT INTO public.payment_provider_attempt_evidence (
+      provider, provider_event_id, event_type, processing_status, payload, error,
+      settlement_intent_id, payment_attempt_id, provider_payment_id, amount_minor,
+      currency, signature_verified, received_via
+    ) VALUES (
+      CASE WHEN c.case_name = 'provider-mismatch' THEN 'transfer_rail' ELSE 'card_rail' END,
+      'near-miss-event-' || c.position, c.event_type, 'received', '{}'::jsonb,
+      '{}'::jsonb,
+      CASE WHEN c.case_name = 'cross-intent' THEN (SELECT intent_id FROM _intent) ELSE v_intent END,
+      v_evidence_attempt, v_provider_attempt, 2599, v_currency, c.signed, 'pgTAP'
+    );
+
+    v_response := public.payment_provider_attempt_prepare(
+      'near-miss-retry-' || c.position, v_intent, 'card_rail',
+      'near-miss-provider-retry-' || c.position,
+      'near-miss-fingerprint-retry-' || c.position,
+      'off_session_payment', 'pm_near_miss_retry', '{}'::jsonb
+    );
+    INSERT INTO _near_miss_results
+    SELECT c.position, c.case_name,
+           (v_response -> 'paymentAttempt' ->> 'replayed')::boolean,
+           count(*)::int, v_expected_count
+      FROM public.payment_provider_attempts WHERE settlement_intent_id = v_intent;
+  END LOOP;
+END $$;
+
+SELECT is(replayed, false, case_name || ' evidence does not fence a valid retry')
+  FROM _near_miss_results ORDER BY position;
+SELECT is(attempt_count, expected_count, case_name || ' admits exactly one retry attempt')
+  FROM _near_miss_results ORDER BY position;
+
 SELECT pg_temp.provider_order('cfa10000-0000-4000-8000-000000000099','cfa00000-0000-4000-8000-000000000001',2599);
 
 CREATE TEMP TABLE _inline_intent AS

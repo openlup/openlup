@@ -1,5 +1,7 @@
 # Complete observation of the published source tree
 
+Status: historical record, 2026-11-06.
+
 Status: maintainer-approved bounded implementation; final evidence is recorded below.
 Audience: development-preview contributors and the public repository maintainer.
 Purpose: expose all shipped test obligations while preserving required-main coverage.

@@ -1,5 +1,7 @@
 # Closed native forward admission class
 
+Status: historical record, 2026-11-04.
+
 Status: landed in openlup/openlup#501 (merge `5f9c45e6c5b77b5861b486593b51af2babdd6e25`, 2026-11-02). The final state, including six native review cycles, the mechanical integration with main and the two integration reviews, is recorded in "Final state" at the end of this record. Earlier sections are the history of the work as it stood when each was written.
 
 Outcome: admit one separately approved, finite native forward inventory for
@@ -449,7 +451,7 @@ canonical verify was run. The complete file results are:
 | `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) |
 | `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) |
 | `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) |
-| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) |
+| [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts) | PASS: 20 passed (20) |
 | `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) |
 | `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) |
 | `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) |
@@ -555,7 +557,7 @@ passes unchanged. Every execution used focused admission. Results:
 | `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) |
 | `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) |
 | `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) |
-| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) |
+| [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts) | PASS: 20 passed (20) |
 | `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) |
 | `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) |
 | `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) |
@@ -692,7 +694,7 @@ SQL/package inputs are unchanged. Final selection evidence:
 | `scripts/agent-review-session.test.ts` | PASS: 98 passed (98) | fresh: current merged tree |
 | `scripts/check-publishable-gap-enumeration.test.ts` | PASS: 5 passed (5) | fresh: current merged tree |
 | `scripts/ci-test-scope.test.ts` | PASS: 58 passed (58) | fresh: current merged tree |
-| `scripts/documentation-bundle.test.ts` | PASS: 20 passed (20) | fresh: current merged tree |
+| [retired `documentation-bundle.test.ts`](https://github.com/openlup/openlup/blob/5acb11d04b9a0db2fc73417b24d518ac257731d8/scripts/documentation-bundle.test.ts) | PASS: 20 passed (20) | fresh: current merged tree |
 | `scripts/documentation-cli.test.ts` | PASS: 3 passed (3) | fresh: current merged tree |
 | `scripts/oss-published-tree-check.test.ts` | PASS: 74 passed (74) | fresh: current merged tree |
 | `scripts/packages/package-release.test.ts` | PASS: 18 passed (18) | fresh: current merged tree |

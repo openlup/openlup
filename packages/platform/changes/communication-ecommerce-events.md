@@ -1,5 +1,0 @@
-- Add experimental neutral ecommerce-event contracts, retained paid-time source snapshots and explicit PostgreSQL projection through the existing outbox. Paid orders, nonfinancial refund status, checkout qualification and subscription lifecycle facts keep source identities separate from delivery attempts.
-- Extend `@openlup/platform/communications/klaviyo` with separately qualified events using the account's existing pacing and cooldown. Provider acceptance remains distinct from ingestion; pending scope, historical import and stale authority refuse before HTTP.
-- Ship offline wiring recipes for transactional delivery, marketing refusals and frozen event replay. Local fixtures do not qualify provider accounts or activate any route, job or flow.
-
-Migration: apply the complete packaged migration chain before composing the new projection. Select the fixed live cutoff, account/environment and mapping explicitly; register actual privacy/retention policy and preserve pending duties during recovery. Existing installations do not export events automatically.
