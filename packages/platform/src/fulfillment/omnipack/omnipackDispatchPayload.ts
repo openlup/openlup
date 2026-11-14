@@ -25,6 +25,12 @@ export interface OmnipackDispatchCandidate {
 
 export { buildOmnipackOutboundOrderEvidence as buildSanitizedEvidence };
 
+/** Immutable parcel ordinal owns the provider's unique external order number. */
+export function providerOrderNumberFor(orderNumber: string | null, sequenceNo: number): string | null {
+  if (orderNumber === null || sequenceNo <= 0) return orderNumber;
+  return `${orderNumber}-R${sequenceNo}`;
+}
+
 export function buildOmnipackDispatchCommand(candidate: OmnipackDispatchCandidate) {
   const providerPayload = buildOmnipackDispatchPayloadFromCandidate(candidate);
   const sanitizedRequest = {

@@ -1414,6 +1414,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4606,6 +4610,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -6635,6 +6643,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/native/commerceReads.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/native/customerAlignment.ts",
       "class": "public-output"
     },
     {
@@ -29543,6 +29555,10 @@
     },
     {
       "path": "tests/postgres/fixtures/paymentReconciliation/setup.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentAlignmentComposition.test.ts",
       "class": "public-output"
     },
     {

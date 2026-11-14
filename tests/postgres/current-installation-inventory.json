@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 139,
-        "exactTailCount": 29,
-        "objectInventorySha256": "560230e832ae2067eabee7167c0ff9d0da2952a72b0d737559dc440bdf5876a5",
+        "count": 140,
+        "exactTailCount": 30,
+        "objectInventorySha256": "0508ef0238714b13f198d5bc1347218a7492bd329bf67db60958b900a04c19cf",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+            "sha256": "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f"
+          },
           {
             "file": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
             "sha256": "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288"
@@ -565,10 +569,14 @@
         ]
       },
       "bootstrap": {
-        "count": 144,
-        "exactTailCount": 29,
-        "objectInventorySha256": "886565712d4b8589d1433da119661d5ebacab996241437e38a7805a2a29d390d",
+        "count": 145,
+        "exactTailCount": 30,
+        "objectInventorySha256": "5f2b4381eb020abd92745cf90a49e41b34012503b9abab4bca42e8171c163d27",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+            "sha256": "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f"
+          },
           {
             "file": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
             "sha256": "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288"
@@ -1148,10 +1156,14 @@
         ]
       },
       "separate": {
-        "count": 144,
-        "exactTailCount": 29,
-        "objectInventorySha256": "8bee8b366d82ff56bd499aaa3c64bf24aef93236df5cda1b59c244f2db192630",
+        "count": 145,
+        "exactTailCount": 30,
+        "objectInventorySha256": "379f4ad2d82043d01c96afb6f69e18dad801ddf2cfcf54fd13bcb0e6db7fcfd9",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+            "sha256": "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f"
+          },
           {
             "file": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
             "sha256": "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288"
@@ -1731,10 +1743,14 @@
         ]
       },
       "admin-managed": {
-        "count": 143,
-        "exactTailCount": 29,
-        "objectInventorySha256": "723d728835121dae8b2f835245e5f7e9ce55d3bb0c3123afdd996c6af7904454",
+        "count": 144,
+        "exactTailCount": 30,
+        "objectInventorySha256": "544a94ce89828ddd7a616965ee862346e498a05add12dc61798021432018dd1a",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+            "sha256": "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f"
+          },
           {
             "file": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
             "sha256": "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288"
@@ -2310,10 +2326,14 @@
         ]
       },
       "admin-operator": {
-        "count": 143,
-        "exactTailCount": 29,
-        "objectInventorySha256": "a0cf92a9ff4bee79b2478488fa3adac09413d4759a0286a3ff943cf3ddb1ccd5",
+        "count": 144,
+        "exactTailCount": 30,
+        "objectInventorySha256": "925f4c2f22415cf4309d7b423383fda87d240e4f2d8a040d4d339998402ac8f7",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql",
+            "sha256": "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f"
+          },
           {
             "file": "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql",
             "sha256": "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288"

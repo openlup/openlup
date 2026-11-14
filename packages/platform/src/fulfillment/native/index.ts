@@ -123,6 +123,7 @@ export function createNativeFulfillmentBinding(input: {
 export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas, type NativeFulfillmentCommerceOrder, type NativeFulfillmentCommerceReadPort } from "./commerceReads.js";
 
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
+export { createPostgresCustomerAlignmentRowsReader } from './customerAlignment.js';
 
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
 export { createPostgresFulfillmentCommerceMutationPort } from './commerceMutations.js';
