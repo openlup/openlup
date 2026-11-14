@@ -395,6 +395,7 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
   }
   function selected(f: Subject, mode: 'shadow' | 'stage' = 'stage', hooks: {
     dispatch?: (request: FulfillmentDispatchRequest, evidence: DispatchEvidence) => Promise<FulfillmentDispatchResult>;
+    batchLimit?: number;
     query?: (sql: string, values: unknown[] | undefined, execute: (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>) => Promise<{ rows: Record<string, unknown>[] }>;
   } = {}) {
     const lane = createPostgresFulfillmentTransactionLane({ connectionString: 'fixture-unused' }, { poolFactory: () => h.runtime });
@@ -412,7 +413,7 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     }, nativeDispatch: { portKey: `f1-${f.order}`, providerRef: 'warehouse' },
     services: { selection: { providerRef: 'warehouse', carrierRef: 'carrier', serviceRef: 'service', deliveryKind: 'courier', pickupPoint: null },
       capability: profile, readiness: async () => ({ ready: true }), shadowCommandFingerprint: fingerprint,
-      config: { mode, batchLimit: 100 }, keys: { request: r => r.requestKey, mappedAttempt: (key, i) => `${key}:mapped:${i}`,
+      config: { mode, batchLimit: hooks.batchLimit ?? 100 }, keys: { request: r => r.requestKey, mappedAttempt: (key, i) => `${key}:mapped:${i}`,
         acceptance: ref => ({ providerAttemptKey: `accepted-${ref}`, labelKey: `receipt-${ref}` }) },
       provider: { async prepare(r) { return { kind: 'prepared', evidence: { commandFingerprint: fingerprint(r), contactRevision: r.contactRevision,
         providerRef: 'warehouse', carrierRef: 'carrier', serviceRef: 'service' } }; },
@@ -499,6 +500,14 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     expect(await readRef(f)).toEqual(before); expect(run.calls()).toBe(1);
     expect((await h.owner.query('SELECT status FROM public.fulfillment_provider_attempts WHERE shipment_id=$1', [f.shipment])).rows).toEqual([{ status: 'recorded' }]);
   });
+  it('withholds an invalid earlier row without starving a ready candidate at batch limit one', async () => {
+    const old = await dispatchSubject(), ready = await dispatchSubject();
+    await h.owner.query("UPDATE public.fulfillment_shipments SET port_key=$2,created_at='2000-01-01T00:00:00Z' WHERE id=$1", [old.shipment, `f1-${ready.order}`]);
+    await h.owner.query('DELETE FROM public.fulfillment_parcel_contacts WHERE shipment_id=$1', [old.shipment]);
+    expect(await selected(ready, 'stage', { batchLimit: 1 }).binding.services.runDispatch()).toMatchObject({ ok: true, checked: 1, providerCalls: 1 });
+    expect(await readRef(old)).toBeUndefined();
+    expect(await readRef(ready)).toMatchObject({ status: 'created' });
+  });
   it('preserves accepted proof after lost ACK and repairs ahead of absent contact or current holds', async () => {
     const f = await dispatchSubject(); let refuseAck = true;
     const run = selected(f, 'stage', { query: async (sql, values, execute) => {
@@ -521,8 +530,8 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
         begins++;
         if (begins === 1 || repeated) {
           const revision = begins + 1;
-          await execute("UPDATE public.fulfillment_parcel_contacts SET contact=jsonb_set(contact,'{revision}',to_jsonb($2::int)) WHERE shipment_id=$1", [f.shipment, revision]);
-          await execute('UPDATE public.fulfillment_dispatch_contexts SET contact_revision=$2 WHERE shipment_id=$1', [f.shipment, { schemaVersion: 1, source: 'contact', revision }]);
+          await h.owner.query("UPDATE public.fulfillment_parcel_contacts SET contact=jsonb_set(contact,'{revision}',to_jsonb($2::int)) WHERE shipment_id=$1", [f.shipment, revision]);
+          await h.owner.query('UPDATE public.fulfillment_dispatch_contexts SET contact_revision=$2 WHERE shipment_id=$1', [f.shipment, { schemaVersion: 1, source: 'contact', revision }]);
         }
       }
       return execute(sql, values);
@@ -554,7 +563,7 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
   });
   it('sweeps stale submitting references to durable uncertainty and denies customer access to private attempts', async () => {
     const f = await dispatchSubject(); await selected(f, 'shadow').binding.services.runDispatch();
-    await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET mode='stage',status='submitting',updated_at='2026-01-01T00:00:00Z' WHERE shipment_id=$1", [f.shipment]);
+    await h.owner.query("UPDATE public.fulfillment_dispatch_refs SET mode='stage',status='submitting',updated_at='2000-01-01T00:00:00Z' WHERE shipment_id=$1", [f.shipment]);
     expect(await selected(f).binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });
     expect(await readRef(f)).toMatchObject({ status: 'uncertain', outcome: { classification: 'uncertain', code: 'dispatch_submission_stale', mayHaveSucceeded: true, submissionAttempted: true } });
     await expect(h.actor(f.actor, db => db.query('SELECT * FROM public.fulfillment_operator_attempts'))).rejects.toMatchObject({ code: '42501' });

@@ -2610,7 +2610,7 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
 }, {
     readonly position: 136;
     readonly catalogPath: "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql";
-    readonly sha256: "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f";
+    readonly sha256: "14a52c2498bc40663af5e5138002d42ca0ad05c4dd6339c6ccae6704111e1625";
     readonly url: URL;
 }];
 ```

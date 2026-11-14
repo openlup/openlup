@@ -8,8 +8,8 @@ let container: PostgresContainer | undefined;
 let pool: Pool;
 beforeAll(async () => {
   container = await runManagedCompatPostgres({ name: `fulfillment-outcomes-pgtap-${process.pid}`, password: 'synthetic-conformance' });
-  pool = new Pool({ connectionString: container.connectionString });
-  await pool.query('DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role');
+  pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:") });
+  await pool.query('DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role; CREATE ROLE service_role');
   const manifest = JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8'));
   for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, 'utf8'));
   await pool.query('CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions');

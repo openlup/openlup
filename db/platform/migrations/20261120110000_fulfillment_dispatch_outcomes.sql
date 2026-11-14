@@ -20,7 +20,7 @@ ALTER TABLE public.fulfillment_operator_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.fulfillment_operator_attempts FROM PUBLIC;
 
 ALTER TABLE public.fulfillment_shipment_operations DROP CONSTRAINT fulfillment_shipment_operations_operation_type_check;
-ALTER TABLE public.fulfillment_shipment_operations ADD CONSTRAINT fulfillment_shipment_operations_operation_type_check CHECK (operation_type IN ('shipment_created','shipment_advanced','evidence_recorded','shipment_cancelled','shipment_exception_raised','order_routed','provider_attempt_recorded')) NOT VALID;
+ALTER TABLE public.fulfillment_shipment_operations ADD CONSTRAINT fulfillment_shipment_operations_operation_type_check CHECK (operation_type IN ('shipment_created','shipment_advanced','evidence_recorded','shipment_cancelled','shipment_exception_raised','order_routed','provider_attempt_recorded'));
 
 CREATE FUNCTION public.fulfillment_dispatch_outcome(p_result jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
@@ -220,15 +220,28 @@ BEGIN
 END; $$;
 
 CREATE FUNCTION public.fulfillment_dispatch_candidate_ids(p_port_key text,p_provider_key text,p_limit integer)
-RETURNS TABLE(shipment_id uuid) LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
- SELECT s.id FROM public.fulfillment_shipments s JOIN public.commerce_orders o ON o.id=s.order_id
- LEFT JOIN public.fulfillment_dispatch_refs r ON r.shipment_id=s.id
- WHERE s.port_key=p_port_key AND s.status IN ('created','label_pending') AND
- ((r.external_ref IS NOT NULL AND r.mode IN ('stage','live') AND r.status IN ('created','uncertain') AND r.evidence->>'providerRef'=p_provider_key)
- OR (o.status IN ('paid','fulfillment_pending') AND (r.id IS NULL OR (r.status='draft' AND r.external_ref IS NULL))
-  AND EXISTS(SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.status='settled')
-  AND NOT EXISTS(SELECT 1 FROM public.commerce_order_holds h WHERE h.order_id=o.id AND h.status='active')))
- ORDER BY s.created_at,s.id LIMIT greatest(1,least(coalesce(p_limit,25),100));
+RETURNS TABLE(shipment_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE candidate record; prepared jsonb; emitted integer:=0;
+BEGIN
+ FOR candidate IN
+  SELECT s.id FROM public.fulfillment_shipments s JOIN public.commerce_orders o ON o.id=s.order_id
+  LEFT JOIN public.fulfillment_dispatch_refs r ON r.shipment_id=s.id
+  WHERE s.port_key=p_port_key AND s.status IN ('created','label_pending') AND
+  ((r.external_ref IS NOT NULL AND r.mode IN ('stage','live') AND r.status IN ('created','uncertain') AND r.evidence->>'providerRef'=p_provider_key)
+  OR (o.status IN ('paid','fulfillment_pending') AND (r.id IS NULL OR (r.status='draft' AND r.external_ref IS NULL))
+   AND EXISTS(SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.status='settled')
+   AND NOT EXISTS(SELECT 1 FROM public.commerce_order_holds h WHERE h.order_id=o.id AND h.status='active')))
+  ORDER BY s.created_at,s.id
+ LOOP
+  BEGIN
+   prepared:=public.fulfillment_dispatch_read_candidate(candidate.id,p_provider_key);
+  EXCEPTION WHEN invalid_parameter_value THEN CONTINUE;
+  END;
+  IF prepared IS NULL THEN CONTINUE; END IF;
+  shipment_id:=candidate.id; RETURN NEXT; emitted:=emitted+1;
+  IF emitted>=greatest(1,least(coalesce(p_limit,25),100)) THEN EXIT; END IF;
+ END LOOP;
+END;
 $$;
 
 CREATE FUNCTION public.fulfillment_native_dispatch_begin(p_id uuid,p_fingerprint text)
@@ -316,4 +329,4 @@ REVOKE ALL ON FUNCTION public.fulfillment_dispatch_mark_stale_submissions_uncert
 REVOKE ALL ON FUNCTION public.fulfillment_dispatch_read_candidate(uuid,text) FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) FROM anon;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) FROM authenticated;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb), public.fulfillment_record_provider_attempt(text,uuid,jsonb,text), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.fulfillment_dispatch_outcome(jsonb), public.fulfillment_record_operator_attempt(text,uuid,text,text,jsonb,jsonb,text,uuid,jsonb), public.fulfillment_dispatch_finish(uuid,jsonb,boolean,text), public.fulfillment_operator_create_order(text,uuid,text,uuid,jsonb), public.fulfillment_dispatch_candidate_ids(text,text,integer), public.fulfillment_native_dispatch_begin(uuid,text), public.fulfillment_dispatch_mark_stale_submissions_uncertain(timestamptz), public.fulfillment_dispatch_read_candidate(uuid,text) TO service_role;'; END IF; END; $$;

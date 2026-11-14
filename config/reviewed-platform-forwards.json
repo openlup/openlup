@@ -6686,7 +6686,7 @@
     },
     {
       "path": "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql",
-      "sha256": "60f96464373f57a9570b17eb99d74e7b4615e8940ed46374d45d605b8435344f",
+      "sha256": "14a52c2498bc40663af5e5138002d42ca0ad05c4dd6339c6ccae6704111e1625",
       "functions": [
         {
           "signature": "public.fulfillment_dispatch_claim(text,uuid,uuid,text,text,jsonb)",
@@ -6721,7 +6721,7 @@
         {
           "signature": "public.fulfillment_dispatch_candidate_ids(text,text,integer)",
           "beforeSha256": null,
-          "afterSha256": "6a64dbacf786ee92c85aca03e442f91cfc82764b115ee46d4bdf1e6511e0a487"
+          "afterSha256": "315f62c9469ad2a052425d4157f9fd7f0bd6cd8ca8ac0a439c09fde421183a73"
         },
         {
           "signature": "public.fulfillment_native_dispatch_begin(uuid,text)",
