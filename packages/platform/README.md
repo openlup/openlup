@@ -2107,7 +2107,9 @@ contact authority, the operational revision and `shipping_address_updated` audit
 `nativeFulfillmentCommerceResponseSchemas` adds the existing `deliveryContact`
 projection to the latest native shipment. It compares recorded baseline with
 effective contact and carries provenance, revision, digest and eligibility.
-Older explicit shipments and custom destination readers have a null projection. Orders without shipments still
+Older explicit shipments and custom destination readers have a null projection.
+The native response schemas also accept older payloads without `deliveryContact`,
+normalizing its absence to null. Orders without shipments still
 return null detail. Managed schemas and other native reader limits are unchanged.
 The privacy contributor exports/erases private order contacts and correction
 responses; finite native transfer carries their rows and payload-free erasure fences.

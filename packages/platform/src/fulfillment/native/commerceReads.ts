@@ -7,7 +7,7 @@ import { createPostgresDeliveryContactReadPort, nativeDeliveryContactProjectionS
 const destinationResponseSchemas = createCommerceFulfillmentResponseSchemas(
   commerceFulfillmentShippingAddressSnapshotSchema.extend({ addressId: commerceFulfillmentShippingAddressSnapshotSchema.shape.addressId.nullable() }),
 );
-const nativeOrderSchema = destinationResponseSchemas.order.extend({ deliveryContact: nativeDeliveryContactProjectionSchema.nullable() });
+const nativeOrderSchema = destinationResponseSchemas.order.extend({ deliveryContact: nativeDeliveryContactProjectionSchema.nullable().default(null) });
 export const nativeFulfillmentCommerceResponseSchemas = {
   order: nativeOrderSchema,
   detail: destinationResponseSchemas.detail.extend({ order: nativeOrderSchema }),

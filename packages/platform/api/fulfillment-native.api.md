@@ -1368,7 +1368,7 @@ export declare const nativeFulfillmentCommerceResponseSchemas: {
         }, z.core.$strict>>;
         createdAt: z.ZodString;
         updatedAt: z.ZodString;
-        deliveryContact: z.ZodNullable<z.ZodObject<{
+        deliveryContact: z.ZodDefault<z.ZodNullable<z.ZodObject<{
             baseline: z.ZodNullable<z.ZodObject<{
                 schemaVersion: z.ZodLiteral<1>;
                 source: z.ZodString;
@@ -1425,7 +1425,7 @@ export declare const nativeFulfillmentCommerceResponseSchemas: {
                 cancel_requested: "cancel_requested";
             }>;
             correctionAllowed: z.ZodBoolean;
-        }, z.core.$strict>>;
+        }, z.core.$strict>>>;
     }, z.core.$strict>;
     detail: z.ZodObject<{
         contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
@@ -1533,7 +1533,7 @@ export declare const nativeFulfillmentCommerceResponseSchemas: {
             }, z.core.$strict>>;
             createdAt: z.ZodString;
             updatedAt: z.ZodString;
-            deliveryContact: z.ZodNullable<z.ZodObject<{
+            deliveryContact: z.ZodDefault<z.ZodNullable<z.ZodObject<{
                 baseline: z.ZodNullable<z.ZodObject<{
                     schemaVersion: z.ZodLiteral<1>;
                     source: z.ZodString;
@@ -1590,7 +1590,7 @@ export declare const nativeFulfillmentCommerceResponseSchemas: {
                     cancel_requested: "cancel_requested";
                 }>;
                 correctionAllowed: z.ZodBoolean;
-            }, z.core.$strict>>;
+            }, z.core.$strict>>>;
         }, z.core.$strict>;
     }, z.core.$strict>;
     list: z.ZodObject<{
@@ -1702,7 +1702,7 @@ export declare const nativeFulfillmentCommerceResponseSchemas: {
             }, z.core.$strict>>;
             createdAt: z.ZodString;
             updatedAt: z.ZodString;
-            deliveryContact: z.ZodNullable<z.ZodObject<{
+            deliveryContact: z.ZodDefault<z.ZodNullable<z.ZodObject<{
                 baseline: z.ZodNullable<z.ZodObject<{
                     schemaVersion: z.ZodLiteral<1>;
                     source: z.ZodString;
@@ -1759,7 +1759,7 @@ export declare const nativeFulfillmentCommerceResponseSchemas: {
                     cancel_requested: "cancel_requested";
                 }>;
                 correctionAllowed: z.ZodBoolean;
-            }, z.core.$strict>>;
+            }, z.core.$strict>>>;
         }, z.core.$strict>>;
     }, z.core.$strict>;
 };
