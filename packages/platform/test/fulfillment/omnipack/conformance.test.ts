@@ -248,6 +248,8 @@ function fullSubject() {
       expectedDispatch: detail.mayHaveSucceeded ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: detail }
         : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: detail } });
   }
+  dispatchRows.push({ input: { ...request(), recipient: { ...request().recipient, line1: "" } },
+    expectedPrepare: { kind: "refused", refusal: refusal("not_dispatchable", "prepare") } });
   value.fixtures.dispatch = dispatchRows;
   value.fixtures.label!.read = [{ input: [{ objectRef: "label-a", mediaType: "application/pdf", externalRef: "external-a" }], expected: { kind: "refused", refusal: refusal("unsupported", "dispatch") } }];
   const valid = value.fixtures.observation![0]!;
@@ -299,7 +301,7 @@ function fullSubject() {
   fake.enqueue("GET /stock-movements", json({}), fail());
   fake.enqueue("GET /products/SKU-A", json({ packs: [] }), fail());
   let movements = 0;
-  value.certification = { profile: "adapter", dispatch: { addressBeforeSubmission: 1, addressAfterSubmission: 2,
+  value.certification = { profile: "adapter", dispatch: { addressBeforeSubmission: 6, addressAfterSubmission: 2,
     transport: { "transport-before-submission": { fixture: 3, calls: fake.calls }, "transport-after-submission": { fixture: 4, calls: fake.calls }, "http-failure": { fixture: 5, calls: fake.calls } } },
     observation: { duplicate: [0, 1], outOfOrder: [0, 2], authenticationFailure: 3 }, exceptions: { returned: 2, lostCoarse: 3 },
     paging: { full: { input: { page: 0, size: 2 }, expected: { kind: "page", rows: [pageResult, pageResult] } },
@@ -327,7 +329,7 @@ function fullSubject() {
   return { value, fake, wire };
 }
 
-it("qualifies the real reference adapter offline with strict fixtures and native refusal probes", async () => {
+it("qualifies the real reference adapter offline with invocation-bound fixtures and native refusal probes", async () => {
   const fixture = fullSubject();
   const proof = await runFulfillmentAdapterConformance([fixture.value], { mode: "full" });
   expect(proof.cases.at(-1)?.operation).toBe("full:adapter (offline; no durable host qualification)");
@@ -336,6 +338,138 @@ it("qualifies the real reference adapter offline with strict fixtures and native
   expect(fixture.wire.filter(row => row.path === "/orders")).toHaveLength(4);
   expect(fixture.wire.filter(row => row.path === "/fulfilments").slice(-5).map(row => row.query)).toEqual(["?page=0&size=2", "?page=1&size=2", "?page=2&size=2", "?page=3&size=2", "?page=4&size=2"]);
   expect(JSON.stringify(proof)).not.toMatch(/synthetic-credential|synthetic-signature/);
+});
+
+it("delivers status tuples explicitly even when fixture storage is oldest first", async () => {
+  const fixture = fullSubject(), rows = fixture.value.fixtures.observation!;
+  fixture.value.fixtures.observation = [rows[2]!, rows[0]!, rows[1]!, rows[3]!];
+  fixture.value.certification!.observation = { duplicate: [1, 2], outOfOrder: [1, 0], authenticationFailure: 3 };
+  const verify = fixture.value.adapter.observation!.verifyAndNormalize, delivered: (string | null)[] = [];
+  fixture.value.adapter.observation!.verifyAndNormalize = async (...input) => {
+    const result = await verify(...input);
+    if (result.kind === "verified") delivered.push(result.observation.fact.occurredAt);
+    return result;
+  };
+  await runFulfillmentAdapterConformance([fixture.value], { mode: "full" });
+  expect(delivered.slice(-4)).toEqual([now, now, now, "2026-10-20T10:00:00.000Z"]);
+});
+
+it("fails full qualification when an adapter corrupts an older status after a newer one", async () => {
+  const fixture = fullSubject(), rows = fixture.value.fixtures.observation!;
+  fixture.value.fixtures.observation = [rows[2]!, rows[0]!, rows[1]!, rows[3]!];
+  fixture.value.certification!.observation = { duplicate: [1, 2], outOfOrder: [1, 0], authenticationFailure: 3 };
+  const verify = fixture.value.adapter.observation!.verifyAndNormalize;
+  let latest = "";
+  fixture.value.adapter.observation!.verifyAndNormalize = async (...input) => {
+    const result = await verify(...input);
+    if (result.kind === "verified") {
+      const occurredAt = result.observation.fact.occurredAt!;
+      if (occurredAt < latest) return { kind: "refused", refusal: refusal("stale", "normalize") };
+      latest = occurredAt;
+    }
+    return result;
+  };
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("observation fixture");
+});
+
+it("rejects transport evidence from an unrelated invocation in a shared log", async () => {
+  const fixture = fullSubject(), unrelated = createScriptedFulfillmentFake<{ read: unknown }>();
+  unrelated.enqueue("read", { kind: "transport-before-submission" });
+  await expect(unrelated.invoke("read")).rejects.toThrow("transport-before-submission");
+  fixture.value.certification!.dispatch!.transport["transport-before-submission"].calls = unrelated.calls;
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("transport-before-submission injected fault required for dispatch invocation");
+});
+
+it("rejects a before-submission result after provider access", async () => {
+  const fixture = fullSubject(), dispatch = fixture.value.adapter.dispatch.dispatch, count = fixture.value.readIoCount;
+  let calls = 0;
+  fixture.value.readIoCount = () => count() + calls;
+  fixture.value.adapter.dispatch.dispatch = async (input, evidence) => {
+    const result = await dispatch(input, evidence);
+    if (input.requestKey === "before-send" && !evidence.commandFingerprint.endsWith(":mismatch") && calls === 0) calls++;
+    return result;
+  };
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("transport-before-submission submission I/O");
+});
+
+it("rejects the missing-items fixture as an address witness", async () => {
+  const fixture = fullSubject();
+  fixture.value.certification!.dispatch!.addressBeforeSubmission = 1;
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("address invalid with valid items");
+});
+
+it.each([
+  ["address-rejected", "address after submission I/O"],
+  ["after-send", "transport-after-submission submission I/O"],
+  ["server-failure", "http-failure submission I/O"],
+])("rejects %s submission evidence without a provider call", async (key, hint) => {
+  const fixture = fullSubject(), dispatch = fixture.value.adapter.dispatch.dispatch, count = fixture.value.readIoCount;
+  let hidden = 0;
+  fixture.value.readIoCount = () => count() - hidden;
+  fixture.value.adapter.dispatch.dispatch = async (input, evidence) => {
+    const before = count(), result = await dispatch(input, evidence);
+    if (input.requestKey === key) hidden += count() - before;
+    return result;
+  };
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow(hint);
+});
+
+it("rejects selection refusal after provider access", async () => {
+  const fixture = fullSubject(), prepare = fixture.value.adapter.dispatch.prepare, count = fixture.value.readIoCount;
+  let calls = 0;
+  fixture.value.readIoCount = () => count() + calls;
+  fixture.value.adapter.dispatch.prepare = async input => { if (!input.selection.providerRef) calls++; return prepare(input); };
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("selection refusal before I/O");
+});
+
+it.each(["observation", "readback", "sync"] as const)("rejects unsupported %s after provider access", async operation => {
+  const fixture = fullSubject(), count = fixture.value.readIoCount;
+  const unsupported = refusal("unsupported", operation === "observation" ? "verify" : operation === "readback" ? "readback" : "sync");
+  let calls = 0;
+  fixture.value.readIoCount = () => count() + calls;
+  if (operation === "observation") {
+    fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, verifyObservation: { supported: false, reason: "not_implemented" } };
+    fixture.value.fixtures.observation = [{ input: [webhook(webhookPayload)], expected: { kind: "refused", refusal: unsupported } }];
+    fixture.value.adapter.observation!.verifyAndNormalize = async () => { calls++; return { kind: "refused", refusal: unsupported }; };
+  } else if (operation === "readback") {
+    fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, readback: { supported: false, reason: "not_implemented" } };
+    fixture.value.fixtures.readback = [{ input: [readInput("external-a")], expected: { kind: "unsupported", refusal: unsupported } }];
+    fixture.value.adapter.readback!.read = async () => { calls++; return { kind: "unsupported", refusal: unsupported }; };
+  } else {
+    fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, syncStock: { supported: false, reason: "not_implemented" } };
+    fixture.value.fixtures.stockSync = [{ operation: "getStock", input: [], expected: { kind: "refused", refusal: { reason: "unsupported", phase: "sync", retryable: false } } }];
+    fixture.value.adapter.stockSync!.getStock = async () => { calls++; throw unsupported; };
+  }
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow(`unsupported ${operation} before I/O`);
+});
+
+it("requires distinct label-void success and refusal witnesses", async () => {
+  const fixture = fullSubject(), contradictory = { providerDeletion: "confirmed" as const, labelDeleted: true, canProceed: true, refusal: refusal("io_failure", "dispatch") };
+  fixture.value.adapter.capabilities.operations = { ...fixture.value.adapter.capabilities.operations, labelVoid: { supported: true } };
+  fixture.value.adapter.label!.void = async () => contradictory;
+  fixture.value.fixtures.label!.void = [{ input: [{ parcelRef: "parcel-a", document: null }], expected: contradictory }];
+  await expect(runFulfillmentAdapterConformance([fixture.value], { mode: "full" })).rejects.toThrow("label void success and failure required");
+});
+
+it("rejects status tuples that describe different inputs or shipments", async () => {
+  const duplicate = fullSubject();
+  const rows = [...duplicate.value.fixtures.observation!];
+  rows[1] = { ...rows[1]!, input: [{ ...rows[1]!.input[0], receivedAt: "2026-10-22T10:00:00.000Z" }] };
+  // Keep the result stable to isolate the fixture-identity check from normalization.
+  const verify = duplicate.value.adapter.observation!.verifyAndNormalize;
+  duplicate.value.adapter.observation!.verifyAndNormalize = input => verify({ ...input, receivedAt: now });
+  duplicate.value.fixtures.observation = rows;
+  await expect(runFulfillmentAdapterConformance([duplicate.value], { mode: "full" })).rejects.toThrow("full duplicate input");
+  const shipment = fullSubject(), older = shipment.value.fixtures.observation![2]!;
+  if (older.expected.kind !== "verified") throw Error("Expected older observation");
+  older.expected.observation.correlation.externalRef = "unrelated-shipment";
+  const normalize = shipment.value.adapter.observation!.verifyAndNormalize;
+  shipment.value.adapter.observation!.verifyAndNormalize = async input => {
+    const result = await normalize(input);
+    if (result.kind === "verified" && result.observation.fact.occurredAt !== now) result.observation.correlation.externalRef = "unrelated-shipment";
+    return result;
+  };
+  await expect(runFulfillmentAdapterConformance([shipment.value], { mode: "full" })).rejects.toThrow("full out-of-order same shipment");
 });
 
 it.each([

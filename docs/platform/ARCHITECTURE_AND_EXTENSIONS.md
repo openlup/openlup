@@ -865,8 +865,9 @@ observation ledger; neither initiates a replacement send.
 
 Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
 entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
-Strict qualification requires capability-selected fixtures and explicit refusal
-probes; baseline callers retain their existing checks. Offline adapter evidence
+Full mode requires capability-selected fixtures and explicit refusal probes.
+It binds transport faults to each indexed dispatch, checks submission I/O counts
+and executes status pairs in declared order; baseline callers retain their checks. Offline adapter evidence
 does not establish database locking, durable deduplication or replacement transactions.
 
 The fulfillment entry also exports its existing `parseOutboxPayload` helper.

@@ -3068,7 +3068,10 @@ refuse explicitly. No credentials or target activation are transferred. See the
 `@openlup/platform/fulfillment/testing` exports the existing conformance runner,
 captured dispatch adapter and `createScriptedFulfillmentFake`. Adapter authors
 bind synthetic transport outcomes to their real adapter and provide independently
-expected fixtures. Use `{ mode: "full" }` for strict qualification; the default
+expected fixtures. Use `{ mode: "full" }` for the named scenario checks; the default
 baseline mode preserves existing callers. Missing applicable fixtures fail full
-qualification. The captured adapter selects the narrower `dispatch-only` profile.
+qualification. Dispatch faults must occur within their indexed invocation, with
+provider-call counts proving the submission boundary. Status pairs execute in
+declared order and must preserve the expected older-after-newer result. The
+captured adapter selects the narrower `dispatch-only` profile.
 See [certify a fulfilment adapter offline](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).

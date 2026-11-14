@@ -236,11 +236,20 @@ scenarios index the subject's dispatch fixtures: address refusal before submissi
 definitive rejection after submission, transport failures before and after
 submission, and HTTP 5xx. Bind the scripted fault at the actual boundary: a
 before-submission script injected into fetch has already crossed that boundary.
-The runner checks adapter error evidence, including `submissionAttempted` and
-`mayHaveSucceeded`; a script's metadata alone proves neither.
+Supply the fake's live append-only `calls` log. The runner accepts a fault only
+from the log delta around that indexed dispatch, excluding preparation, replay
+and other operations. It checks the actual result's `submissionAttempted` and
+`mayHaveSucceeded`, plus an unchanged provider-call count before submission and
+an increased count after submission. A script's metadata alone proves neither.
+The before-submission address fixture must contain valid items and a blank
+required address field; an empty-items refusal does not exercise that scenario.
 
 Observation indices select an exact duplicate, a newer then older occurrence
-with explicit timestamps, and an authentication refusal. Authentication may be
+with explicit timestamps for the same shipment, and an authentication refusal.
+The runner invokes each duplicate and out-of-order pair explicitly in tuple
+order, comparing each actual result with its independent expectation, including
+the older occurrence delivered after the newer one. Duplicate inputs must match.
+Authentication may be
 a token check; passing it does not establish body-signature verification.
 Readback includes unknown versus authoritative absence, returned parcels and a
 coarse exception representing loss recovery input. It does not manufacture an

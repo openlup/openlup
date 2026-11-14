@@ -8,19 +8,21 @@ type SyncFixtures<P> = { [K in keyof P]: P[K] extends (...args: never[]) => unkn
   ? { operation: K; success: MethodFixture<P[K]>; failure: MethodFixture<P[K]> } : never }[keyof P];
 export type FulfillmentTransportScenario = "transport-before-submission" | "transport-after-submission" | "http-failure";
 
-/** Indices refer to independently expected baseline fixtures, executed by the existing runner. */
+/** Indices refer to independently expected baseline fixtures. Status pairs also execute explicitly in tuple order. */
 export interface FulfillmentAdapterCertificationScenarios {
   profile: "adapter" | "dispatch-only";
   /** A transportless captured adapter qualifies only its dispatch profile. */
   dispatch?: {
+    /** Valid items and a blank required address field; preparation must refuse without provider I/O. */
     addressBeforeSubmission: number;
     addressAfterSubmission: number;
     transport: Record<FulfillmentTransportScenario, {
       fixture: number;
-      /** Log from the injected fake; scripts describe faults, adapter results prove uncertainty. */
+      /** Live append-only log from the injected fake. Only entries appended during this indexed dispatch count. */
       calls: readonly { kind: ScriptedFulfillmentOutcome<unknown>["kind"] }[];
     }>;
   };
+  /** Duplicate inputs must match; outOfOrder is [newer, older] for the same shipment. */
   observation?: { duplicate: readonly [number, number]; outOfOrder: readonly [number, number]; authenticationFailure: number };
   /** Coarse exceptions only; no automatic loss detection or replacement is certified. */
   exceptions?: { returned: number; lostCoarse: number };
