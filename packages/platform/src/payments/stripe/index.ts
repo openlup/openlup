@@ -70,6 +70,8 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
       || !input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
       || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0
       || !supportedCurrencies.includes(input.money.currency)
+      || (input.orderMode !== undefined && !["one_time", "subscription_cycle"].includes(input.orderMode))
+      || (input.purpose === "renewal-unattended" && input.orderMode === "one_time")
       || input.customerAuthorization !== undefined
       || (input.purpose === "renewal-unattended" && !input.storedMethod?.reference)) {
       throw new Error("Unsupported payment input");
@@ -100,7 +102,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
           idempotencyKey: input.attemptRef, providerIdempotencyKey: input.providerIdempotencyKey,
           providerRequestFingerprint: input.fingerprint, paymentIntentId: input.intentRef,
           amountMinor: input.money.amountMinor, currency: input.money.currency,
-          mode: input.purpose === "renewal-unattended" ? "subscription_cycle" : "one_time",
+          mode: input.purpose === "renewal-unattended" ? "subscription_cycle" : input.orderMode ?? "one_time",
           orderRef: input.orderRef ?? input.intentRef,
           clientId: input.clientId, customerRef: input.customerRef, saveForFutureUse: input.saveForFutureUse,
           providerFlow: input.purpose === "renewal-unattended" ? "off_session_payment" : "one_time_payment",

@@ -62,12 +62,12 @@ Exact absence, refund creation and separate authorization/capture are
 unavailable. Establish account-specific readiness before live use.
 
 For portable PostgreSQL, the 0.42.0 source example
-[`composeStripePortableRail`](https://github.com/openlup/openlup/blob/main/examples/neutral-store/host/provider-portable.ts)
+`examples/neutral-store/host/provider-portable.ts` (`composeStripePortableRail`)
 binds the neutral factory to the native payment and renewal owners. Keep its
 webhook control, renewal lifecycle and retry ports together. Supply authenticated
 method ownership, SDK requests, customer creation, a population lease, readiness,
 inventory and frozen execution inputs from your host. Purchase execution forwards
-`orderRef`, `clientId`, `customerRef` and `saveForFutureUse`; persist only its
+`orderRef`, `orderMode`, `clientId`, `customerRef` and `saveForFutureUse`; persist only its
 redacted `persistence` facts. The browser confirms interactive requests.
 This example is not selected by the starter and supplies no portable composition
 for the second reference provider.

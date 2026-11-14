@@ -69,6 +69,8 @@ export interface PaymentAttemptPort {
     money: { amountMinor: number; currency: string };
     mode: "live" | "test";
     purpose: "initial" | "renewal-unattended" | "recovery";
+    /** Purchase context; unattended renewal always uses subscription_cycle. */
+    orderMode?: "one_time" | "subscription_cycle";
     orderRef?: string;
     clientId?: string;
     customerRef?: string;

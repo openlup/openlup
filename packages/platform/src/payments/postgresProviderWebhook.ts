@@ -27,8 +27,14 @@ export function createPostgresPaymentWebhookControlPort(db: PaymentProviderExecu
         settlementIntentId: input.paymentIntentId ?? null, amountMinor: input.amountMinor ?? null,
         currency: input.currency?.toUpperCase() ?? null, occurredAt: input.occurredAt, payloadFingerprint,
       });
+      // The opt-in receipt envelope captures the same database transaction time
+      // as evidence.created_at; redelivery reads those committed bytes unchanged.
       const parsed = receipt.safeParse((await db.query(
-        "SELECT public.payment_provider_event_ingest($1,$2,$3,$4,$5::uuid,$6::uuid,$7::integer,$8,$9,$10::jsonb) AS response",
+        `SELECT public.payment_provider_event_ingest($1,$2,$3,$4,$5::uuid,$6::uuid,$7::integer,$8,$9,
+          CASE WHEN jsonb_typeof($10::jsonb->'openlupReceipt')='object' THEN
+            jsonb_set($10::jsonb,'{openlupReceipt,recordedAt}',
+              to_jsonb(to_char(transaction_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),true)
+          ELSE $10::jsonb END) AS response`,
         [input.provider, input.providerEventId, input.eventType, input.providerPaymentId, input.paymentIntentId ?? null,
           input.paymentAttemptId ?? null, input.amountMinor ?? null, input.currency ?? null, true,
           JSON.stringify({ ...input.rawPayload, __paymentTruth: { fingerprint: eventFingerprint, evidence: sourceEvidence } })],

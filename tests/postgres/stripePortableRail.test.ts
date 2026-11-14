@@ -80,7 +80,7 @@ function signed(type: string, object: Record<string, unknown>, id = `evt_${rando
 function executionRequest() {
   return { attemptRef: `purchase-attempt:${orderId}`, intentRef: intentId, fingerprint: "f".repeat(64),
     providerIdempotencyKey: `purchase-provider:${orderId}`, money: { amountMinor: 200, currency: "XXX" }, mode: "test" as const,
-    purpose: "initial" as const, orderRef: orderId, clientId, customerRef: "cus_primary", saveForFutureUse: true };
+    purpose: "initial" as const, orderMode: "subscription_cycle" as const, orderRef: orderId, clientId, customerRef: "cus_primary", saveForFutureUse: true };
 }
 function policy(): AutomaticRenewalPolicy {
   return { identityKey: due => `subscription:${due.subscriptionId}:cycle:${new Date(due.scheduledAt).toISOString()}`, classifyFailure: () => "soft_retryable", validateInput() {},
@@ -98,7 +98,7 @@ it("prepares a purchase before dispatch and preserves order, client, customer an
   const result = await rail.execute(executionRequest());
   expect(result.execution.handoff).toMatchObject({ kind: "client-confirmed", payload: "transient_only" });
   expect(requests[0]).toMatchObject({ customer: "cus_primary", setupFutureUsage: "off_session", key: executionRequest().providerIdempotencyKey,
-    metadata: { orderRef: orderId, clientId, paymentIntentId: intentId } });
+    metadata: { orderRef: orderId, clientId, paymentIntentId: intentId, mode: "subscription_cycle" } });
   const a = await rail.readAttempt(intentId);
   expect(a).toMatchObject({ requestPayload: { orderRef: orderId, clientId, customerRef: "cus_primary", saveForFutureUse: true } });
   expect(JSON.stringify(a)).not.toContain("transient_only");
@@ -110,11 +110,11 @@ it("captures signed evidence, records the saved method, then attaches the paid p
   const invalid = signed("payment_intent.succeeded", {}); invalid.headers["stripe-signature"] += "invalid";
   expect((await rail.ingress.receive(invalid)).status).toBe(400);
   const capture = signed("payment_intent.succeeded", { ...remote, status: "succeeded", amount_received: 200, setup_future_usage: "off_session",
-    metadata: { paymentIntentId: intentId, clientId } });
+    metadata: { paymentIntentId: intentId, clientId, mode: "subscription_cycle" } });
   expect(await rail.ingress.receive(capture)).toMatchObject({ status: 200 });
   expect(await rail.ingress.receive(capture)).toMatchObject({ status: 200, data: { replayed: true } });
   const method = await createPostgresPaymentMethodStore(env.runtime).read(rail.provider, currentMethod);
-  expect(method).toMatchObject({ client_id: clientId, active: true, provider_customer_ref: "cus_primary" });
+  expect(method).toMatchObject({ client_id: clientId, active: true, provider_customer_ref: "cus_primary", consent_snapshot: { checkoutMode: "subscription_cycle" } });
   const active = await activateNativePurchaseWithRenewal(env.runtime, { orderId, capturedReference: intentId,
     idempotencyKey: `activate:${orderId}`, facts: { settlementChannelKey: rail.provider, authorizationRef: "purchase-consent",
       unattendedChargeAuthorizedAt: AT, payerAccountRef: "cus_primary", methodRef: currentMethod, methodEvidenceRef: method!.id,
@@ -188,7 +188,11 @@ it("recovers with the recorded replacement and retains committed accepted-event 
     .toMatch(/^provider:[a-f0-9-]{36}$/);
   const receipt = (await env.owner.query(`SELECT r.input FROM public.subscription_retry_receipts r
     JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.subscription_id=$1 AND r.kind='recovery'`, [subscriptionId])).rows[0].input;
-  expect(Date.parse(receipt.firstRecordedAt)).toBe(Date.parse(event.receivedAt));
+  const evidence = (await env.owner.query(`SELECT payload,
+    to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at
+    FROM public.payment_provider_attempt_evidence WHERE provider_event_id=$1`, [JSON.parse(event.rawBody.toString()).id])).rows[0];
+  expect(receipt.firstRecordedAt).toBe(evidence.recorded_at);
+  expect(evidence.payload.openlupReceipt.receivedAt).toBe(event.receivedAt);
   expect(Date.parse(receipt.occurredAt)).toBe(Math.floor(Date.parse(time) / 1000) * 1000);
   expect((await env.owner.query("SELECT status FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows).toEqual([{ status: "active" }]);
   fake.assertDrained();
@@ -226,7 +230,7 @@ describe("durable dispatch boundaries", () => {
       amountMinor: 200, currency: "XXX", metadata: {}, channelKey: rail.provider, at: time })).id;
   });
   const request = () => ({ ...executionRequest(), attemptRef: `attempt:${intent}`, intentRef: intent, orderRef: order,
-    providerIdempotencyKey: `provider:${intent}`, saveForFutureUse: false });
+    providerIdempotencyKey: `provider:${intent}`, saveForFutureUse: false, orderMode: "one_time" as const });
   it("retains uncertainty after a lost provider reply and never dispatches on restart", async () => {
     fake.enqueue("create", { kind: "timeout-after-dispatch" });
     await expect(rail.execute(request())).rejects.toThrow("timeout-after-dispatch");
@@ -257,6 +261,24 @@ describe("durable dispatch boundaries", () => {
     expect((await env.owner.query("SELECT status FROM public.commerce_settlement_intents WHERE id=$1", [intent])).rows).toEqual([{ status: "created" }]);
     expect((await env.owner.query("SELECT processing_status,payload#>'{openlupEvidence,providerOccurredAt}' AS provider_time FROM public.payment_provider_attempt_evidence WHERE settlement_intent_id=$1", [intent])).rows)
       .toEqual([{ processing_status: "received", provider_time: null }]);
+  });
+});
+
+describe("off-session customer confirmation", () => {
+  beforeAll(async () => {
+    const row = (await env.runtime.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows[0];
+    time = new Date(new Date(row.next_cycle_at).getTime() + 60_000).toISOString();
+  });
+  it("records the canonical SCA class on a finalized native attempt", async () => {
+    fake.enqueue("create", { kind: "success", value: payment("pi_confirmation", "requires_action") });
+    expect(await binding.services.run()).toMatchObject({ renewals: [{ status: "refused" }] });
+    expect((await env.owner.query(`SELECT a.failure_class,a.next_action_kind FROM public.payment_provider_attempts a
+      WHERE a.provider_attempt_id='pi_confirmation'`)).rows).toEqual([{ failure_class: "sca_required", next_action_kind: "sca_required" }]);
+    const op = (await env.owner.query("SELECT id,operation_fingerprint FROM public.subscription_renewal_operations WHERE external_attempt_ref='pi_confirmation'")).rows[0];
+    await expect(renewal.lifecycle.settlement.acknowledgeExternalAttempt({ operationId: op.id,
+      operationFingerprint: op.operation_fingerprint, externalAttemptRef: "pi_other", acknowledgedAt: time }))
+      .rejects.toThrow("commerce_renewal_attempt_ack_not_prepared");
+    fake.assertDrained();
   });
 });
 

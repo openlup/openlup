@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PaymentFailureClass } from "@openlup/core/payment";
 import { createPostgresRetryStore } from "./postgresRetryStore.js";
 import { nativeInstant } from "./nativeInstant.js";
 import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -10,7 +11,7 @@ import type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
 export interface ProviderRenewalResultInput {
   idempotencyKey: string; paymentIntentId: string; paymentEventId: string | null;
   resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
-  occurredAt: string; failureReason: string | null; failureClass?: string | null; failureClassDecidedBy?: string | null;
+  occurredAt: string; failureReason: string | null; failureClass?: PaymentFailureClass | null; failureClassDecidedBy?: string | null;
 }
 type ProviderRenewalWebhookControl = { applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }> };
 type ProviderRenewalWebhook = { providerEventId: string; providerPaymentId: string; rawPayload: Record<string, unknown> };
@@ -30,7 +31,7 @@ export interface ProviderRenewalPaymentPorts {
     money: { amountMinor: number; currency: string }; mode: "live" | "test"; purpose: "renewal-unattended";
     orderRef: string; clientId: string; customerRef?: string; storedMethod: { reference: string; mandate: { recurringModel: string | null } } }): Promise<{
       attempt: { paymentAttemptId: string }; execution: {
-        outcome: { kind: "attempt"; status: string } | { kind: "decline"; refusal: { code: string } };
+        outcome: { kind: "attempt"; status: string } | { kind: "decline"; refusal: { code: PaymentFailureClass } };
         dispatch: { kind: "dispatched"; providerPaymentRef: string } | { kind: "unknown" | "notDispatched" };
         persistence?: { declineReason?: string };
       };
@@ -124,9 +125,9 @@ export function createPostgresProviderRenewalBinding(input: {
       // supplies local correlation, never authority to execute that remote object.
       if (row.state === "attempt_prepared") await base.acknowledgeExternalAttempt({ operationId: String(row.id), operationFingerprint: String(row.operation_fingerprint),
         externalAttemptRef: remote ?? attempt.paymentAttemptId, acknowledgedAt: input.now() });
-      const failure = execution.outcome.kind === "decline"
+      const failure: { reason: string; failureClass: PaymentFailureClass } | null = execution.outcome.kind === "decline"
         ? { reason: execution.persistence?.declineReason ?? "provider_declined", failureClass: execution.outcome.refusal.code }
-        : execution.outcome.status === "requires_action" ? { reason: "off_session_sca_required", failureClass: "customer_action_required" } : null;
+        : execution.outcome.status === "requires_action" ? { reason: "off_session_sca_required", failureClass: "sca_required" } : null;
       if (failure) {
         await payments.control.applyPaymentResult({ idempotencyKey: `${request.executionIdempotencyKey}:result`,
           paymentIntentId: request.paymentIntentId, paymentEventId: null, resultStatus: "failed", occurredAt: input.now(),
@@ -205,11 +206,19 @@ export function createPostgresProviderRenewalBinding(input: {
     failureHandoff: { async handoffFailure(request) {
       const a = await payments.readAttempt(request.paymentIntentId);
       if (!a) throw new Error("payment_control_result_active_attempt_not_found");
-      const result = await handoff(request.paymentIntentId, a.paymentAttempt.id);
-      if (!result.caseId) throw new Error("subscription_dunning_failed_attempt_unattributed");
-      return { caseId: result.caseId, replayed: result.replayed };
+      return handoff(request.paymentIntentId, a.paymentAttempt.id);
     } },
-    settlement: { prepareRenewal: base.prepareRenewal, acknowledgeExternalAttempt: base.acknowledgeExternalAttempt,
+    settlement: { prepareRenewal: base.prepareRenewal,
+      async acknowledgeExternalAttempt(request) {
+        const row = (await db.query("SELECT * FROM public.subscription_renewal_operations WHERE id=$1::uuid", [request.operationId])).rows[0];
+        // The payment owner may already have terminalized the operation. Only
+        // the exact previously committed ACK can be projected as a replay.
+        if (row && ["refused", "succeeded"].includes(String(row.state))
+          && row.operation_fingerprint === request.operationFingerprint && row.external_attempt_ref === request.externalAttemptRef.trim()) {
+          return input.codec.readback(subscriptionRecord((await db.query("SELECT public.subscription_read_renewal($1) AS response", [row.identity_key])).rows[0]?.response));
+        }
+        return base.acknowledgeExternalAttempt(request);
+      },
       async recordTerminalOutcome(request) {
         const intent = (await db.query("SELECT id FROM public.commerce_settlement_intents WHERE renewal_operation_id=$1::uuid", [request.operationId])).rows[0];
         const attempt = intent && await payments.readAttempt(String(intent.id));
@@ -252,7 +261,7 @@ export function createPostgresProviderRenewalBinding(input: {
       const history = receipt.attempts as { id: string; evidence: Record<string, unknown>[] }[];
       const durable = history?.find(row => row.id === a.id)?.evidence.find(value =>
         subscriptionRecord(value.openlupEvidence).providerEventId === event.providerEventId);
-      const firstRecordedAt = durable && subscriptionRecord(durable.openlupReceipt).receivedAt;
+      const firstRecordedAt = durable && subscriptionRecord(durable.openlupReceipt).recordedAt;
       if (typeof firstRecordedAt !== "string") throw new Error("payment_event_receipt_unavailable");
       return input.withTransaction(async tx => {
         const retry = createPostgresRetryStore(tx), obligation = await retry.read(String(op.id));

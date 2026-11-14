@@ -2080,6 +2080,7 @@ export {};
 ## dist/subscriptions/postgresProviderRenewalBinding.d.ts
 
 ```ts
+import type { PaymentFailureClass } from "@openlup/core/payment";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { RenewalPaymentRail, RenewalSettlementPort } from "./contracts/renewal.js";
 import type { RenewalFailureHandoffPort } from "./contracts/dunning.js";
@@ -2092,7 +2093,7 @@ export interface ProviderRenewalResultInput {
     resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
     occurredAt: string;
     failureReason: string | null;
-    failureClass?: string | null;
+    failureClass?: PaymentFailureClass | null;
     failureClassDecidedBy?: string | null;
 }
 type ProviderRenewalWebhookControl = {
@@ -2175,7 +2176,7 @@ export interface ProviderRenewalPaymentPorts {
             } | {
                 kind: "decline";
                 refusal: {
-                    code: string;
+                    code: PaymentFailureClass;
                 };
             };
             dispatch: {

@@ -65,6 +65,7 @@ export function createPostgresProviderPaymentRail(input: {
       const requestPayload = { orderRef: request.orderRef ?? request.intentRef, clientId: request.clientId ?? null,
         customerRef: request.customerRef ?? null, saveForFutureUse: request.saveForFutureUse ?? false,
         purpose: request.purpose, mode: request.mode, amountMinor: request.money.amountMinor, currency: request.money.currency,
+        orderMode: request.purpose === "renewal-unattended" ? "subscription_cycle" : request.orderMode ?? "one_time",
         methodSelection: request.methodSelection ?? null, storedMethod: request.storedMethod ?? null };
       const prepared = await control.prepareProviderAttempt({ idempotencyKey: request.attemptRef, paymentIntentId: request.intentRef,
         provider, providerIdempotencyKey: request.providerIdempotencyKey, providerRequestFingerprint: request.fingerprint,
