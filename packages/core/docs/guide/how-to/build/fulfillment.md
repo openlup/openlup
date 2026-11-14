@@ -95,6 +95,59 @@ kinds are `shipment.preparing`, `shipment.packed`, `shipment.in_transit` and
 `shipment.delivered`. Preserve existing event keys and receipts when adopting
 these aliases.
 
+## Bind provider intake and reconciliation
+
+After installing the complete catalogue through
+`20261120120000_fulfillment_provider_intake.sql`, construct
+`createPostgresFulfillmentProviderIntake` from the native entry. Supply a selected
+capability and selection, a SQL executor, observation and page ports, tracking
+codecs, and durable stock, handoff, tracking, exception and acceptance keys.
+Reuse the acceptance keys used by dispatch. The executor must commit each call
+before resolving; never wrap provider reads or invoicing in its transaction.
+Construction installs no route or schedule. Disabled or incomplete bindings
+refuse before provider access. Polling-only capabilities refuse webhook intake.
+
+Pass untouched request bytes, headers and receipt time to `ingest`. The selected
+adapter authenticates before parsing and translates status, occurrence identity
+and recovery policy into `intake` facts. Native intake retains the first durable
+webhook envelope and restores it before correlation, ACK or effects. Correlation
+uses recorded dispatch associations, with contradictory references refused. It
+never parses merchant-number suffixes or treats provider identifiers as native
+UUIDs. Old receipts without a typed fact/evidence pointer require manual recovery.
+
+Early stages write evidence only. Packed evidence consumes the accepted parcel's
+frozen reservations and records packing without inventing a label. Shipping
+commits stock, handoff and each admitted tracking reference before accounting.
+Each reference retains nullable carrier, service and approved public URL data.
+Provider exceptions create occurrence-idempotent holds without changing parcel
+status. Newer eligible evidence can release only a proven machine exception hold;
+terminal exceptions, unknown chronology and human holds remain manual cases.
+
+A delivered observation with no admitted tracking reference records status but
+writes no arrival or alignment. It can still heal an eligible hold. An authorized
+operator tracking/delivery command, or a later observation with a reference, is
+the manual completion path. Delivered evidence suppresses a late dispatched
+notice; a handoff with zero references creates no dispatched notice key.
+
+Call `reconcile` from your existing scheduler with its job ledger, job name,
+invocation and page size. It claims the lease, reads the latest terminal
+checkpoint, then calls the provider. Full pages advance even when an item fails;
+short and empty pages reset to zero. Missing, malformed or resized checkpoint
+metadata starts at zero. A checkpoint-read failure makes no provider call and
+finishes without replacing pagination metadata. This native composition resets
+a fatal zero-scan failure to zero; the generic page helper retains its existing
+pre-traversal retry rule. Sequential cursor translation belongs to the adapter.
+
+Polling applies current page snapshots, so revised tracking can take effect for
+a repeated status occurrence. Stored chronology is checked before status and
+physical effects; off-track rows retain eligible evidence without ACK or effects.
+Optional accounting runs after physical commits: webhook errors are fail-soft,
+while polling classifies transient failures separately from permanent refusals.
+The returned `commands` expose the existing operator label, handoff and tracking
+factory methods; authenticate their actors in your host. Unbound fallback ports
+remain inert. This recipe and its conformance witnesses are offline evidence;
+provider activation and hosted qualification remain separate.
+
 ## Exercise captured dispatch
 
 Call `createCapturedFulfillmentAdapter` with `providerRef`, explicit

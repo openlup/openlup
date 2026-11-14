@@ -7,6 +7,7 @@ import { OmnipackProviderError } from "./client.js";
 import type { OmnipackFulfilmentEvidence } from "./mappers.js";
 import { digest, observation, reference, refusal, timestamp, type OmnipackObservationCodecs } from "./observation.js";
 import { localStatusFor, normalizeStatus } from "./omnipackStatusVocabulary.js";
+import { reconciliationIntake } from "./intake.js";
 
 type Config = {
   observationCodecs?: OmnipackObservationCodecs;
@@ -30,7 +31,8 @@ export function reconciliationObservation(row: OmnipackFulfilmentEvidence, confi
   const mapped = observation({ evidence, event, status, fulfillmentRef, receivedAt: config.clock(),
     rawDigest: digest(JSON.stringify({ ...evidence, providerStatus })), evidenceRef: config.mintEvidenceReference(), source: "provider_reconciliation", approveTrackingUrl: config.approveTrackingUrl, observationCodecs: config.observationCodecs });
   return { kind: "found", externalRef: row.providerOrderId ?? "", createdAt: timestamp(row.createdAt), updatedAt: timestamp(occurredAt),
-    observation: projectObservation({ ...mapped, eventKey, fact: { ...mapped.fact, factId: eventKey }, providerStatus }, config.approveTrackingUrl, config.observationCodecs) };
+    observation: projectObservation({ ...mapped, eventKey, fact: { ...mapped.fact, factId: eventKey }, providerStatus,
+      intake: reconciliationIntake(row.status, occurredAt) }, config.approveTrackingUrl, config.observationCodecs) };
 }
 
 export function createReconciliationPagePort(client: OmnipackClient, config: Config, ready: () => ReturnType<typeof refusal> | null): FulfillmentObservationPagePort {

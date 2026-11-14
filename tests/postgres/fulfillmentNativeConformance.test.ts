@@ -68,7 +68,7 @@ it('native G17 correlates a newly observed external ID and replays its atomic ac
  expect(await native.read(`observation-${f.shipment}`)).toEqual(before);
 });
 it('fresh full-catalogue install binds sparse assets, hashes and object inventory, then replays without changing history',async()=>{
- expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76,135,136]);
+ expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76,135,136,137]);
  for(const unit of FULFILLMENT_MIGRATIONS){const bytes=readFileSync(unit.catalogPath);expect(readFileSync(unit.url)).toEqual(bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(unit.sha256);expect(units[unit.position]).toEqual({file:unit.catalogPath,sha256:unit.sha256});}
  const history=(await h.pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
  expect(history.map(({catalog_path,sha256,position})=>({file:catalog_path,sha256,position}))).toEqual(units.map((u,position)=>({...u,position})));

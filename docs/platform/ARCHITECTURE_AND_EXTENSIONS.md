@@ -1243,6 +1243,23 @@ back to the customer profile. The [privacy contributor](../../packages/core/docs
 and finite retained-store transfer own export, erasure and transport. These
 private fields add nothing to the commerce projection below.
 
+`createPostgresFulfillmentProviderIntake` composes the existing generic ingress
+and reconciliation workers with native observation, dispatch ACK, shipment
+commands and job-run ledger. Each SQL call commits before provider or accounting
+I/O. The reference adapter owns status-occurrence and recovery translation into
+closed neutral facts. The native store never interprets provider status tokens
+or replacement-number conventions. Recorded associations own correlation.
+Webhook replay restores its first durable envelope; polling effects use each
+current page snapshot while status evidence deduplicates by occurrence.
+Packing consumes frozen reservations from accepted dispatch commitments without
+manufacturing a label. Provider exceptions hold the order without rewriting the
+parcel FSM; newer eligible status evidence heals only proven machine scope,
+independently of arrival. A delivered observation without tracking records no
+arrival or alignment. Existing operator commands provide the manual path.
+The [recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation)
+owns channel, checkpoint and accounting composition. Construction registers no
+scheduler, changes no unbound fallback and establishes no hosted qualification.
+
 The existing `@openlup/platform/fulfillment/native` entry exposes
 `createPostgresFulfillmentCommerceReadPort`. It reads the native shipment spine,
 order items, settlement intent, holds, cycle and inventory reservation facts.

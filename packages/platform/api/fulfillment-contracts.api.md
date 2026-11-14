@@ -504,6 +504,11 @@ export interface FulfillmentObservation {
         parcelRef: string | null;
     };
     trackingRefs: readonly FulfillmentTrackingReference[];
+    /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
+    intake?: {
+        occurrenceKey: string;
+        recovery: "provider_recovered" | "delivery_only" | "manual" | null;
+    };
     /** Original provider status tokens; canonical status does not identify an occurrence. */
     providerStatus?: {
         primary: string | null;

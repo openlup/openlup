@@ -77,6 +77,11 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
       const projected = projectTrackingReference(ref, privacy, approveTrackingUrl, codecs);
       return projected ? [projected] : [];
     }),
+    ...(value.intake ? { intake: {
+      occurrenceKey: reference(value.intake.occurrenceKey) ?? (() => { throw new Error("fulfillment_occurrence_key_invalid"); })(),
+      recovery: value.intake.recovery === null || ["provider_recovered", "delivery_only", "manual"].includes(value.intake.recovery)
+        ? value.intake.recovery : (() => { throw new Error("fulfillment_recovery_classification_invalid"); })(),
+    } } : {}),
   };
   if (privacy.redactedFieldCount) diagnostics.redactedFieldCount = privacy.redactedFieldCount;
   return { ...safe, ...(Object.keys(diagnostics).length ? { diagnostics } : {}) };

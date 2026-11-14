@@ -40,7 +40,7 @@ function expectedObservation(source: "provider_webhook" | "provider_reconciliati
     fulfillmentReference: source === "provider_webhook" ? "parcel-a" : "fulfillment-a", canonicalStatus: "delivered",
     provenance: { source, authority: "provider_asserted" }, occurredAt: now, receivedAt: now,
     rawEvent: { reference: evidenceRef, digestAlgorithm: "sha256", digest: hash(raw) } },
-    eventKind: "order.delivered", eventKey, firstReceivedAt: now,
+    eventKind: "order.delivered", eventKey, firstReceivedAt: now, intake: { occurrenceKey: hash(JSON.stringify(["delivered", now])), recovery: null },
     correlation: { orderRef: null, fulfillmentRef: source === "provider_webhook" ? null : "fulfillment-a",
       externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs, diagnostics: { redactedFieldCount: 1, admission: { rejectedTrackingRefs: 0, rejectedTrackingUrls: 1 } } };
 }
@@ -207,4 +207,22 @@ it("M08 host ledger fences fresh-instance and evicted-fingerprint replays before
     expect(ledger.get(candidate.requestKey)).toEqual(record);
     expect(attempts.size).toBe(1);
   }
+});
+
+it.each([
+  ['SUSPENDED', 'exception', 'provider_recovered', 'suspended'],
+  ['SHIPPING-FAILED', 'exception', 'delivery_only', 'shipping_failed'],
+  ['returned_to_sender', 'exception', 'manual', 'returned_to_sender'],
+  ['cancelled', 'exception', 'manual', 'cancelled'],
+  ['shipping', 'in_transit', null, 'shipping'],
+] as const)('projects %s into closed native intake facts without changing status or occurrence parity', async (status, canonical, recovery, normalized) => {
+  const { reconciliationObservation } = await import('../../../src/fulfillment/omnipack/reconciliation.js');
+  const value = reconciliationObservation({ provider: 'omnipack', providerOrderId: 'external-a', fulfilmentNumber: 'parcel-a', orderNumber: null,
+    status, subStatus: null, createdAt: null, updatedAt: now, externalNumber: null, items: [], trackingNumbers: [], trackingReferences: [] },
+  { clock: () => now, mintEvidenceReference: () => evidenceRef, approveTrackingUrl: () => false });
+  expect(value.kind).toBe('found');
+  if (value.kind !== 'found') throw new Error('expected_found');
+  expect(value.observation.fact.canonicalStatus).toBe(canonical);
+  expect(value.observation.intake).toEqual({ occurrenceKey: hash(JSON.stringify([normalized, now])), recovery });
+  expect(value.observation.providerStatus).toEqual({ primary: status, subStatus: null });
 });
