@@ -1668,6 +1668,7 @@ export { createPostgresSandboxInlineRecoveryAttemptPort } from "./sandboxInlineR
 export { createPostgresPaymentMethodStore, createPostgresPaymentWebhookMethodRefPort, applyPostgresPaymentMethodLifecycleEvent, schedulePostgresRetryOnDurableMethodUpdate, consumePostgresPaymentMethodDelivery } from "./postgresPaymentMethods.js";
 export { createPostgresPaymentMethodSetup } from "./postgresMethodSetup.js";
 export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscriptionMethod.js";
+export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1936,6 +1937,15 @@ export declare function schedulePostgresRetryOnDurableMethodUpdate(db: PaymentPr
 /** Compose after registration; a throw leaves the ingress row received for redelivery. */
 export declare function consumePostgresPaymentMethodDelivery(db: PaymentProviderExecutor, event: NormalizedProviderPaymentWebhook): Promise<void>;
 export {};
+```
+## dist/payments/postgresPaymentProviderReconciliation.d.ts
+
+```ts
+import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
+import type { InteractivePreparedAttemptManualReconciliationPort } from "./contracts/reconciliation.js";
+import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+/** Provider reads run outside SQL; application and evidence commit atomically. */
+export declare function createPostgresPaymentProviderReconciliationPort(db: PaymentProviderExecutor, options: PostgresPaymentTruthOptions): InteractivePreparedAttemptManualReconciliationPort;
 ```
 ## dist/payments/postgresPaymentTruth.d.ts
 
@@ -2338,8 +2348,8 @@ export declare const paymentSchemaDescriptor: {
     readonly laterOnlyCycle: "supported";
     readonly preparedDurableStore: "supported";
     readonly methodSetup: "supported";
-    readonly absenceReopen: "unsupported";
-    readonly cumulativeRefund: "unsupported";
+    readonly absenceReopen: "supported";
+    readonly cumulativeRefund: "supported";
 };
 ```
 ## dist/payments/sql.d.ts

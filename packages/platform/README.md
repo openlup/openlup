@@ -1645,6 +1645,9 @@ later-only dates; this does not claim managed-store parity or host activation.
 The following paragraph describes the attempt-store prefix. The subsequent
 method-reference forward adds collection to that prefix as described below.
 
+The next three paragraphs record the earlier provider-store checkpoint; the
+0.42.0 qualification below supersedes its uncomposed capabilities.
+
 The current native chain through `20261114100000_payment_provider_attempt_store.sql`
 adds `createPostgresPreparedAttemptPersistencePort`,
 `createPostgresProviderPaymentControlPort` and
@@ -1696,6 +1699,32 @@ not settle money or alter subscription service. Expiring methods can remain
 chargeable until expiry; dispatched repair authority cannot be substituted.
 Offline PostgreSQL and fake-client witnesses establish this selected store path;
 provider activation and joined renewal composition remain separate.
+
+The 0.42.0 source qualification adds the complete chain through
+`20261114120000_payment_reconciliation_refund_evidence.sql` and
+`createPostgresPaymentProviderReconciliationPort(executor, options)`. The port
+claims recorded attempts, commits exact-identity application and reconciliation
+evidence atomically, and opens or advances dunning only from an immutable
+attempt-bound failure rung. Same and stale observations replay without changing
+case, authorization or notice authority. Historical unattributed cases return a
+named refusal while retaining applied money.
+
+`paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are now
+`supported` for that installed chain. Auto-reopen remains default off. Explicit
+absence proof, watchdog evidence, age and conflict guards authorize one recorded
+provider sequence without spending customer retry budget or bypassing existing
+dispatch receipts. Cumulative refund evidence uses a maximum per charge; original
+payment money remains unchanged. Refunds preserve subscriptions and paid-cycle
+history, releasing only eligible held reservations for that order.
+
+On the native rail `commerce.order.refunded` means the status only, with no
+money-moved claim. Customer “refund processed” messaging must use the
+evidence-gated `commerce.order.refund_processed` path. Monetary readback through
+`payment_refund_readback` requires accepted same-currency evidence. A status-only
+refund cannot produce that financial notice. The native rail supports the two
+reference payment providers; a third provider needs the provider-profile
+refactor. Refund creation and live-provider activation remain separate work.
+See the [native payment limits](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 The additive provider recovery factories read bounded evidence and use the existing
 checkout admission owners: `createPostgresProviderPaymentRecoveryGuidancePort`,

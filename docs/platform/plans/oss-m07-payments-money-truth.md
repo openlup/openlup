@@ -70,9 +70,11 @@ The direct truth store is contributed with unchanged logic, using the existing
 platform data executor structural shape, as in the inventory precedent. Its options DTO moves
 to the contracts entry. Three byte-identical SQL projections retain canonical
 positions 10/35/56, paths and hashes; the sparse descriptor is not an install
-chain. Direct truth, settlement and later-only alignment are supported; prepared
-durable storage, method setup, absence reopen and cumulative refund explicitly
-refuse capability admission. Refunds are purely financial; no refund operation
+chain. Direct truth, settlement and later-only alignment are supported. The
+complete native chain now supports prepared durable storage, method setup,
+proof-backed absence reopening and cumulative refund evidence. Hosts compose
+the provider/store paths explicitly; the starter remains sandbox-only.
+Absence auto-reopen stays default off. Refunds are purely financial; no refund operation
 cancels a subscription, and no activating-cycle cancellation exception applies.
 
 Attempt inputs add optional method selection (opaque, persistable channelRef) and

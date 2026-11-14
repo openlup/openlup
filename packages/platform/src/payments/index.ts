@@ -40,3 +40,4 @@ export { createPostgresPaymentMethodStore, createPostgresPaymentWebhookMethodRef
   schedulePostgresRetryOnDurableMethodUpdate, consumePostgresPaymentMethodDelivery } from "./postgresPaymentMethods.js";
 export { createPostgresPaymentMethodSetup } from "./postgresMethodSetup.js";
 export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscriptionMethod.js";
+export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";

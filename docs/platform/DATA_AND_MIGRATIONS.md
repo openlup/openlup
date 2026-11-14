@@ -673,10 +673,9 @@ rung and schedule. Truth reuses `<apply-key>:truth:settlement`, or the original
 renewal outcome's settlement transition when that same original attempt was
 already refused under another key; it does not open
 the generic dunning case on this path. The cycle remains `payment_pending`, and
-the retry obligation owns scheduling. At this stage no provider dunning case,
-notice or token handoff is composed. Attributed dunning and a real provider
-renewal binding require later composition; the starter still binds sandbox
-renewals only. Other truth routes and sandbox failure handoff are unchanged.
+the retry obligation owns scheduling. The reconciliation/refund forward below
+adds attributed case handoff. A real provider renewal binding still requires
+later composition; the starter binds sandbox renewals only. Other truth routes and sandbox failure handoff are unchanged.
 The service-only `payment_provider_retry_failure_recorded` lookup returns only
 whether the intent, receipt key and exact attempt match that recorded context.
 It keeps invoker truth routes from reading private provider tables directly;
@@ -796,6 +795,66 @@ or hosted renewal qualification.
 The [native witnesses](../../tests/postgres/paymentProviderStore.test.ts) and
 [pgTAP twins](../../tests/postgres/paymentProviderStorePgtap.test.ts) exercise the
 installed store without contacting a payment provider.
+
+The complete chain through `20261114120000_payment_reconciliation_refund_evidence.sql`
+adds `createPostgresPaymentProviderReconciliationPort`. Claims retain bounded,
+least-recently-checked selection and skip locked attempts. Composite application
+validates the exact order, intent, attempt and payment before committing its
+reconciliation evidence. The dunning bridge reads the immutable applied failure
+receipt, validates case attribution and replays its canonical response. Only the
+five named attribution refusals preserve applied money with sticky refusal
+evidence; other errors roll back application, rung, case, notices and receipts.
+It never applies a failure twice or adopts an unattributed historical case.
+Finite native capture and qualified restore retain all four new relations after
+their payment, truth, case and retry-receipt parents. Exact restore and replay
+preserve the recorded financial evidence and do not issue another notice or token.
+
+Absence reopening is default off. Exact provider proof, a recorded watchdog,
+30-minute age and the absence of references, events or terminal corrections are
+required. Reopening cancels that prepared attempt and records one new provider
+sequence and due receipt. It preserves the native `payment_pending` cycle,
+customer retry budget and immutable dispatch receipts. Due readback and keyed
+consumption do not dispatch a payment or turn ordinary prepared replay into
+permission to charge again. Interactive reopening retains its existing narrow
+provider restriction; its portable host binding remains deferred.
+
+Refund observations use `payment_refund_evidence`, separate from captured truth
+and original settlement money. Cumulative observations contribute a maximum per
+charge; individual observations retain addition. Equal or older cumulative
+snapshots are recorded as ignored. Full refunds release only eligible held,
+order-scoped reservations. Consumed or unrelated stock, paid cycle history,
+subscriptions and dunning history remain intact. Eventless full-refund repair
+retains its existing local repair behavior and never manufactures evidence.
+
+On the native rail, `commerce.order.refunded` is a status-only event with no
+money-moved claim. Customer “refund processed” messaging must use
+`commerce.order.refund_processed`, whose monetary payload is admitted only by
+accepted same-currency refund evidence. `payment_refund_readback` supplies the
+same evidence-gated cumulative authority; a status change alone returns no
+financial evidence. The once-per-order status event and its manual-refund
+exclusion retain their existing contract.
+
+| Native payment limit | Result and manual path |
+| --- | --- |
+| Historical simulator attempt or intent without a provider lifecycle | Zero provider claims; no reconstructed payment identity. Admit complete provider authority explicitly. |
+| Unresolved or superseded provider event | `payment_control_result_attempt_unresolved` or `payment_control_result_attempt_mismatch`; zero financial, stock and dunning effects. Resolve attribution explicitly. |
+| Settled intent with only an external reference | Preserve settlement; no inferred attempt, method or refund evidence. |
+| Method state without a provider reference | No method mutation or charging authority. Independently attributed money evidence does not require an invented method. |
+| Thin cumulative refund payload or missing currency | `payment_control_result_refund_snapshot_unproven`; no amount inferred from the order. |
+| Late fresh dunning handoff | A late dunning handoff issues a recovery link valid from issue. Advance the attributed case and revoke earlier tokens; mint a recovery token with expiry at issue time plus 14 days, or 30 days for an exhausted ladder. Prompt and late handoff use the same issue-time window. Redemption requires an open case; fresh advancement revokes the earlier link. Case, rung, customer/operator notice identities and canonical replay are preserved; no historical backfill. |
+| Historical unattributed dunning case | `subscription_dunning_case_unattributed`; preserve applied money and refusal evidence. No adoption by cycle. |
+| Cancelled or refunded historical service | No resurrection, rewritten receipts or automatic repair. |
+| Equal or older cumulative refund observation | Durable ignored observation; no repeated financial, reservation or notice effect. |
+| Refunded order status without accepted same-currency evidence | Status projection only; no financial notice or monetary readback. Use verified refund evidence for customer messaging. |
+| Another payment provider | The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. |
+| Provider dispatch and customer delivery | Offline store proof supplies no live-provider or journey activation claim. The host owns provider reads, dispatch and financial-notice delivery. |
+
+`paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are supported
+for this complete installed chain. This is development-preview qualification,
+not provider activation. The [native attribution witnesses](../../tests/postgres/paymentReconciliationAttributionGap.test.ts),
+[pgTAP witnesses](../../tests/postgres/paymentReconciliationPgtap.test.ts) and
+[installed runtime-role PostgreSQL witnesses](../../tests/postgres/paymentReconciliationStore.test.ts)
+exercise the boundary without live provider access.
 
 List payments awaiting operator review:
 

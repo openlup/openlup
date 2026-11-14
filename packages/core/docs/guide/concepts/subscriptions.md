@@ -243,11 +243,11 @@ prevent automatic arrival alignment regardless of scheduled date.
 ## Native payment truth and review
 
 The native payment descriptor supports truth, settlement, later-only cycle
-alignment, durable prepared-attempt storage and method setup with the complete
-installed database catalogue. Provider execution and method collection require
-explicit host bindings; sandbox-attempt storage is a separate capability. See
-the [payment capability limits](../reference/limits.md#purchase-composition-boundaries)
-for unsupported actions. Refunds settle money without cancelling service.
+alignment, durable prepared-attempt storage, method setup, absence reopening
+and cumulative refunds with the complete installed database catalogue.
+Provider execution and method collection require explicit host bindings;
+absence auto-reopen remains default off. Sandbox-attempt storage is a separate
+capability. Refunds settle money without cancelling service.
 A descriptor alone does not establish installed schema readiness.
 
 Capture against a cancelled order remains `captured` and `open` with

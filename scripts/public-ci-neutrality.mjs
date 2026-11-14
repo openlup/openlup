@@ -224,7 +224,8 @@ export function neutralityIncreases(baseline, current) {
 }
 // Bounded debt C94 retains 13 managed paths/15 tuples; M14 adds one exact
 // unchanged package SQL carrier. N6 R1 adds its native payment slot and mirror
-// and unchanged durability witness (three paths/six tuples), preserving the two
+// and unchanged durability witness (three paths/six tuples). Reconciliation adds
+// its slot, mirror and two exact SQL fixtures (four paths/seven tuples), preserving the two
 // reference payment adapters' names until the provider-profile refactor. Only
 // slots 42–44, their package mirrors and the exact payment witnesses below may join this
 // path class; each row adds its own pins. Method-ledger witnesses add three paths
@@ -237,6 +238,10 @@ export const reviewedPinnedIntroductions = [
   ["tests/postgres/fixtures/paymentMethods/scope_repair.sql","e2dcc12ff8f76ec519bdb5444c83fb1e748b341c135cff1f3b92de1ea33cacc2",[["ui-13",0,10],["ui-14",0,1]]],
   ["db/platform/migrations/20261114100000_payment_provider_attempt_store.sql", "e99f59e7146ee5cdd57c9b24c60ba7951db264d332d24a9c84b3bb1e9de61511", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
   ["packages/platform/sql/20261114100000_payment_provider_attempt_store.sql", "e99f59e7146ee5cdd57c9b24c60ba7951db264d332d24a9c84b3bb1e9de61511", [["ui-13", 0, 4], ["ui-14", 0, 3]]],
+  ["db/platform/migrations/20261114120000_payment_reconciliation_refund_evidence.sql","53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f",[["ui-13",0,9],["ui-14",0,5]]],
+  ["packages/platform/sql/20261114120000_payment_reconciliation_refund_evidence.sql","53e6675a8346accaf31805d03118940df09c5dfc1cc063578af53714d2abcc5f",[["ui-13",0,9],["ui-14",0,5]]],
+  ["tests/postgres/fixtures/paymentReconciliation/setup.sql","8a17e1de319f07597dc2ca606800c08b9fcf5fba2e7231c06c21fd50ed6bca20",[["ui-13",0,4],["ui-14",0,2]]],
+  ["tests/postgres/fixtures/paymentReconciliation/evidence.sql","e55fa02a9d000143617a73fad40f1e760125bc3aebf6192476015d145f69d95c",[["ui-13",0,1]]],
   ["tests/postgres/fixtures/paymentProvider/durability.sql", "968618b954dd39f33034076633daa618ca81208ac27b7bc039e5a7988661da59", [["ui-13", 0, 6], ["ui-14", 0, 5]]],
   ["packages/platform/sql/20260814010000_platform_control_plane.sql", "b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9", [["ui-12", 0, 1]]],
   ["config/reviewed-platform-forwards.json", "f036750c10aae1e9600d98c737d573e5e4672ad817e83bd63aafe860e0685957", [["ui-13", 0, 1]]],
@@ -273,6 +278,8 @@ export function validateReviewedPinnedIntroductions(entries) {
       && path !== "tests/postgres/fixtures/paymentMethods/replayed.sql"
       && path !== "tests/postgres/fixtures/paymentMethods/subscription_switch.sql"
       && path !== "tests/postgres/fixtures/paymentMethods/scope_repair.sql"
+      && path !== "tests/postgres/fixtures/paymentReconciliation/setup.sql"
+      && path !== "tests/postgres/fixtures/paymentReconciliation/evidence.sql"
       && !nativePaymentIntroductionPaths.has(path)
       && !/^(?:scripts\/fixtures\/reviewed-m10\/supabase\/migrations\/|supabase\/migrations\/)[^/]+\.sql$/.test(path)) {
       throw new Error(`unsupported pinned introduction path: ${label(path)}`);

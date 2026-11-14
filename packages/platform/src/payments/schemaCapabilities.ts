@@ -5,6 +5,6 @@ export const paymentSchemaDescriptor = {
   laterOnlyCycle: "supported",
   preparedDurableStore: "supported",
   methodSetup: "supported",
-  absenceReopen: "unsupported",
-  cumulativeRefund: "unsupported",
+  absenceReopen: "supported",
+  cumulativeRefund: "supported",
 } as const;
