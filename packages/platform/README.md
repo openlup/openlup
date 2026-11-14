@@ -1646,7 +1646,7 @@ The following paragraph describes the attempt-store prefix. The subsequent
 method-reference forward adds collection to that prefix as described below.
 
 The next three paragraphs record the earlier provider-store checkpoint; the
-0.41.0 qualification below supersedes its uncomposed capabilities.
+0.42.0 qualification below supersedes its uncomposed capabilities.
 
 The current native chain through `20261114100000_payment_provider_attempt_store.sql`
 adds `createPostgresPreparedAttemptPersistencePort`,
@@ -1700,7 +1700,7 @@ chargeable until expiry; dispatched repair authority cannot be substituted.
 Offline PostgreSQL and fake-client witnesses establish this selected store path;
 provider activation and joined renewal composition remain separate.
 
-The 0.41.0 source qualification adds the complete chain through
+The 0.42.0 source qualification adds the complete chain through
 `20261114120000_payment_reconciliation_refund_evidence.sql` and
 `createPostgresPaymentProviderReconciliationPort(executor, options)`. The port
 claims recorded attempts, commits exact-identity application and reconciliation
