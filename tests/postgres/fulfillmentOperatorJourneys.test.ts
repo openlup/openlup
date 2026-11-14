@@ -528,24 +528,33 @@ for (const generation of lifecycleProfiles) describe(`operator parcel journeys o
     expect(await readRef(f)).toMatchObject({ status: 'draft', external_ref: null, outcome: null });
     expect(await selected(f).binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });
   });
-  it('withholds a natively created replacement that inherits the original dispatch port', async () => {
+  it('dispatches each replacement through its own prepared claim and submission, preserving frozen line fields', async () => {
     const f = await dispatchSubject();
+    expect(await selected(f).binding.services.runDispatch()).toMatchObject({ok:true,providerCalls:1});
+    const originalDispatch = await readRef(f);
+    await h.owner.query("UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{orderDraftSnapshot,lines,0}',(metadata#>'{orderDraftSnapshot,lines,0}')||$2::jsonb) WHERE id=$1", [f.order, {lotNumber:null,lotCode:' LOT-1 ',expiresAt:' 2027-01-02 '}]);
     await h.owner.query("UPDATE public.fulfillment_shipments SET status='in_transit' WHERE id=$1", [f.shipment]);
     const result = await replace(f);
     if (!('replacement' in result)) throw new Error('Expected replacement');
-    const replacement = { ...f, shipment: result.replacement.fulfillmentOrderId }, run = selected(replacement);
-    expect(result.replacement).toMatchObject({ sequenceNo: 1, replacesFulfillmentOrderId: f.shipment, status: 'created' });
-    await expect(h.runtime.query('SELECT public.fulfillment_native_dispatch_read_candidate($1,$2)', [replacement.shipment, 'warehouse'])).rejects.toThrow('replacement_dispatch_not_composed');
-    expect(await run.binding.services.runDispatch()).toMatchObject({ providerCalls: 0 });
-    expect(run.calls()).toBe(0); expect(await readRef(replacement)).toBeUndefined();
-    // A historical draft may predate this native composition; begin must still refuse it.
-    const fingerprint = 'a'.repeat(64);
-    const { rows } = await h.owner.query("INSERT INTO public.fulfillment_dispatch_refs(request_key,shipment_id,order_id,mode,evidence) VALUES($1,$2,$3,'stage',$4) RETURNING id",
-      [`replacement-${replacement.shipment}`, replacement.shipment, f.order, { providerRef: 'warehouse', commandFingerprint: fingerprint }]);
-    const before = await readRef(replacement);
-    expect((await h.runtime.query('SELECT public.fulfillment_native_dispatch_begin($1,$2) AS value', [rows[0].id, fingerprint])).rows[0].value)
-      .toMatchObject({ kind: 'refused', refusal: { reason: 'replacement_dispatch_not_composed', phase: 'begin' } });
-    expect(await readRef(replacement)).toEqual(before); expect(run.calls()).toBe(0);
+    const next = { ...f, shipment: result.replacement.fulfillmentOrderId };
+    expect(result.replacement).toMatchObject({ sequenceNo:1, replacesFulfillmentOrderId:f.shipment, status:'created' });
+    expect(await readRef(next)).toBeUndefined();
+    expect((await h.owner.query('SELECT delivered_at FROM public.fulfillment_shipments WHERE id=$1',[next.shipment])).rows).toEqual([{delivered_at:null}]);
+    const run = selected(next, 'stage', { dispatch: async (request, evidence) => {
+      expect(request).toMatchObject({fulfillmentRef:next.shipment, orderRef:f.order, parcelSequenceNo:1,
+        lines:[{skuRef:f.sku, quantity:2, lotRef:' LOT-1 ', expirationDate:' 2027-01-02 '}]});
+      return {kind:'accepted', externalRef:`external-${next.shipment}`, evidence, providerAttemptKey:'ignored',labelKey:'ignored'};
+    } });
+    expect(await run.binding.services.runDispatch()).toMatchObject({ok:true,providerCalls:1});
+    expect(await readRef(next)).toMatchObject({shipment_id:next.shipment,external_ref:`external-${next.shipment}`,status:'created'});
+    expect(await readRef(f)).toEqual(originalDispatch);
+    expect((await readRef(next)).external_ref).not.toBe(originalDispatch.external_ref);
+    expect(await run.binding.services.runDispatch()).toMatchObject({providerCalls:0});
+    await h.owner.query("UPDATE public.fulfillment_shipments SET status='handed_over' WHERE id=$1",[next.shipment]);
+    const again=await replace(f);
+    if (!('replacement' in again)) throw new Error('Expected second replacement');
+    expect(again.replacement).toMatchObject({sequenceNo:2,replacesFulfillmentOrderId:next.shipment,status:'created'});
+    expect(again.replacement.fulfillmentOrderId).not.toBe(next.shipment);
   });
   it('refuses an external reference on a draft instead of authorizing another submission', async () => {
     const f = await dispatchSubject(); await selected(f, 'shadow').binding.services.runDispatch();

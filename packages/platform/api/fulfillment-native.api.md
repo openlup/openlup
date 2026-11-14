@@ -283,6 +283,8 @@ export interface FulfillmentDispatchRequest {
     orderRef: string;
     orderNumber: string | null;
     parcelRef: string | null;
+    /** Native parcel ordinal; adapters own any provider-facing number format. */
+    parcelSequenceNo?: number;
     contactRevision: {
         schemaVersion: number;
         source: string;
@@ -1627,6 +1629,15 @@ export declare function createPostgresFulfillmentCommerceReadPort(input: {
 }): NativeFulfillmentCommerceReadPort;
 export {};
 ```
+## dist/fulfillment/native/customerAlignment.d.ts
+
+```ts
+import type { FulfillmentCustomerAlignmentRowsReader } from '../contracts/customerAlignment.js';
+import type { PgExecutor } from '../postgresDispatchStore.js';
+/** Raw customer rows in update order; feed readFulfillmentDelay with the current schedules.
+ * The host authorizes subscription IDs and owns the executor's lifetime. */
+export declare function createPostgresCustomerAlignmentRowsReader(db: PgExecutor): FulfillmentCustomerAlignmentRowsReader;
+```
 ## dist/fulfillment/native/dispatchComposition.d.ts
 
 ```ts
@@ -1724,6 +1735,7 @@ export declare function createNativeFulfillmentBinding(input: {
 };
 export { createPostgresFulfillmentCommerceReadPort, nativeFulfillmentCommerceResponseSchemas, type NativeFulfillmentCommerceOrder, type NativeFulfillmentCommerceReadPort } from "./commerceReads.js";
 export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationConsumption } from "./operatorMutations.js";
+export { createPostgresCustomerAlignmentRowsReader } from './customerAlignment.js';
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
 export { createPostgresFulfillmentCommerceMutationPort } from './commerceMutations.js';
 export { createPostgresFulfillmentDispatchComposition } from './dispatchComposition.js';

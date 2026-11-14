@@ -610,3 +610,26 @@ it("sweeps every provider string field through adapters, workers and durable sin
   expect(new Set(subStatusKeys).size).toBe(plants.length);
   expect([...sinks]).toEqual(expect.arrayContaining(["native-dispatch", "native-observation", "provider-status", "quarantine", "ack-evidence", "effect", "transcript", "checkpoint-and-diagnostics", "dispatch-diagnostics", "reconciliation-diagnostics", "provider-exception", "accepted-ack-recovery", "accepted-ack-recovery-readback"]));
 });
+
+it('numbers replacement parcels only at the adapter and carries frozen optional lot/expiry through the submitted bytes', async () => {
+  for (const sequence of [0, 1, 2]) {
+    const a = adapter(), r = { ...candidate(), parcelSequenceNo: sequence,
+      lines: [{ ...candidate().lines[0], lotRef: ' LOT-1 ', expirationDate: ' 2027-01-02 ' }] };
+    const prepared = await a.adapter.dispatch.prepare(r);
+    if (prepared.kind !== 'prepared') throw new Error('Expected preparation');
+    expect(await a.adapter.dispatch.dispatch(r, prepared.evidence)).toMatchObject({kind:'accepted'});
+    const body = JSON.parse(String(a.http.mock.calls[0][1]?.body));
+    expect(body.orderNumber).toBe(sequence > 0 ? `ORDER-A-R${sequence}` : 'ORDER-A');
+    expect(body.items).toEqual([{sku:'SKU-A',quantity:1,lotNumber:'LOT-1',expirationDate:'2027-01-02'}]);
+    expect(r.orderNumber).toBe('ORDER-A');
+    expect(a.adapter.orderIdentity.outboundOrderNumber({orderRef:r.orderRef,orderNumber:r.orderNumber,parcelSequenceNo:sequence})).toBe(body.orderNumber);
+  }
+  const a = adapter(), r = { ...candidate(), orderNumber:null,parcelSequenceNo:3,
+    lines:[{...candidate().lines[0],lotRef:null,expirationDate:null}] };
+  const prepared = await a.adapter.dispatch.prepare(r);
+  if (prepared.kind !== 'prepared') throw new Error('Expected preparation');
+  await a.adapter.dispatch.dispatch(r,prepared.evidence);
+  const body = JSON.parse(String(a.http.mock.calls[0][1]?.body));
+  expect(body.orderNumber).toBe(r.orderRef);
+  expect(body.items).toEqual([{sku:'SKU-A',quantity:1}]);
+});
