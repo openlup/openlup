@@ -359,11 +359,14 @@ function commandDigest(request: FulfillmentDispatchRequest): string {
   return stableDispatchHash({
     requestKey: request.requestKey, fulfillmentRef: request.fulfillmentRef,
     orderRef: request.orderRef, orderNumber: request.orderNumber, parcelRef: request.parcelRef,
+    parcelSequenceNo: request.parcelSequenceNo ?? 0,
     contactRevision: { schemaVersion: request.contactRevision.schemaVersion,
       source: request.contactRevision.source, revision: request.contactRevision.revision },
     recipient: { name: request.recipient.name, email: request.recipient.email, phone: request.recipient.phone,
       line1: request.recipient.line1, city: request.recipient.city, postalCode: request.recipient.postalCode, country: request.recipient.country },
-    lines: request.lines.map(line => ({ skuRef: line.skuRef, productRef: line.productRef, packRef: line.packRef, quantity: line.quantity })),
+    // Undefined resolves host metadata; null explicitly omits the outbound value.
+    lines: request.lines.map(line => ({ skuRef: line.skuRef, productRef: line.productRef, packRef: line.packRef,
+      quantity: line.quantity, lotRef: line.lotRef, expirationDate: line.expirationDate })),
     selection: { providerRef: request.selection.providerRef, carrierRef: request.selection.carrierRef,
       serviceRef: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind,
       pickupPointId: request.selection.pickupPoint?.id ?? null },

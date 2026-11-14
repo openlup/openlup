@@ -234,8 +234,8 @@ and bind its `requestReplacementShipment` to the replacement handler. The host
 authenticates the actor and supplies the stock binding. Creation commits a queued
 parcel with fresh counted reservations, frozen contact, destination and lines;
 it performs no dispatch, arrival confirmation or notification. Same-key replay
-returns that parcel. A second request waits until the previous replacement was
-handed over.
+returns that parcel. Another request refuses while a replacement is in `created`
+or `label_pending`; other states do not trigger that queue fence.
 
 Select the existing `nativeDispatch` composition for replacement dispatch. Each
 parcel gets its own preparation, claim, submission and acceptance identity.
