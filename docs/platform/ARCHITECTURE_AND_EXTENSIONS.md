@@ -2019,12 +2019,17 @@ observations in the existing outcome ledger; no additional attempt store is
 created. ACK loss or ambiguity never permits redispatch. A trusted sandbox
 `observe()` call can supply a matching late terminal observation before the
 incumbent renewal transaction applies it. This is no PSP or real-mandate
-qualification, and real-provider method setup remains unavailable. Initial
+qualification. The subsequent native method-reference lane supplies explicitly
+selected real-provider method collection, recorded health and bounded repair
+authority; it still requires host authentication, provider ingress and route
+composition. Initial
 method health is healthy only with the registered sandbox method evidence;
 `writer.transitionMethod()` records later missing, pending, unchargeable or
 healthy states with immutable event identity and expected-state comparison.
-Legacy renewal terms without a method-state row retain their previous
-authorization behavior; only an explicit non-healthy state refuses renewal. New
+Legacy sandbox renewal terms without recorded provider authority retain their
+previous method-state behavior. All native health/evidence readers select the
+recorded classification when any reference row or provider evidence exists,
+including inactive references and provider history linked through an initial order. New
 purchase completion always writes the method state atomically with its terms.
 A financial decline alone does not assert that a method disappeared. Recovery
 composition must exercise an actual unhealthy state, repair it with fresh method

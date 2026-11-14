@@ -737,7 +737,9 @@ the quarantine deadline. Recorded provider state, settlement channels and frozen
 renewal channels select this path even when historical method refs are absent.
 A completed sandbox attachment with current sandbox terms preserves the sandbox
 lane when only the initial paid checkout has a non-sandbox channel. Recorded
-references (including inactive rows), provider markers or state, non-sandbox
+references (including inactive rows), provider markers or state (also linked
+through the initial settlement intent/order), linked provider delivery evidence,
+non-sandbox
 renewal operations and provider retry evidence still select recorded authority;
 a healthy legacy label cannot override those facts.
 Reminder eligibility reads active-method facts through the bounded health reader
@@ -765,7 +767,9 @@ composition; the existing sandbox case handoff remains selected separately.
 For host-composed native subscriptions with real-provider history but no recorded
 references, retry, recovery, reactivation, auto-resume and upcoming reminders
 refuse or remain ineligible until the host records refs. Original renewal charging
-is unchanged. Sandbox subscriptions retain their previous behavior, including a
+uses the same execution transaction; its method-evidence readers now consistently
+select recorded health when authority exists. Sandbox subscriptions retain their
+previous behavior, including a
 completed sandbox renewal attachment whose initial paid checkout used a different
 channel, provided no recorded provider or real-renewal evidence selects authority.
 

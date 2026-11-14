@@ -184,7 +184,20 @@ CREATE FUNCTION public.subscription_method_uses_recorded_refs(p_subscription_id 
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.payment_method_refs WHERE subscription_id=p_subscription_id)
   OR EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=p_subscription_id AND provider_kind IS NOT NULL)
-  OR EXISTS(SELECT 1 FROM public.payment_provider_states WHERE subscription_id=p_subscription_id)
+  OR EXISTS(SELECT 1 FROM public.payment_provider_states provider
+   JOIN public.commerce_settlement_intents intent ON intent.id=provider.id
+   JOIN public.commerce_orders orders ON orders.id=intent.order_id
+   LEFT JOIN public.subscription_cycles cycle ON cycle.id=orders.subscription_cycle_id
+   LEFT JOIN public.subscription_activations activation ON activation.order_id=orders.id
+   LEFT JOIN public.subscription_renewal_operations operation ON operation.id=orders.renewal_operation_id
+   WHERE provider.subscription_id=p_subscription_id OR cycle.subscription_id=p_subscription_id OR activation.subscription_id=p_subscription_id OR operation.subscription_id=p_subscription_id)
+  OR EXISTS(SELECT 1 FROM public.payment_provider_attempt_evidence evidence
+   JOIN public.commerce_settlement_intents intent ON intent.id=evidence.settlement_intent_id
+   JOIN public.commerce_orders orders ON orders.id=intent.order_id
+   LEFT JOIN public.subscription_cycles cycle ON cycle.id=orders.subscription_cycle_id
+   LEFT JOIN public.subscription_activations activation ON activation.order_id=orders.id
+   LEFT JOIN public.subscription_renewal_operations operation ON operation.id=orders.renewal_operation_id
+   WHERE cycle.subscription_id=p_subscription_id OR activation.subscription_id=p_subscription_id OR operation.subscription_id=p_subscription_id)
   OR EXISTS(SELECT 1 FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id
    JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=p_subscription_id AND i.channel_key<>'sandbox'
     -- A captured initial purchase can fund an explicitly sandbox renewal lane.
@@ -811,8 +824,9 @@ BEGIN
     UPDATE public.subscription_dunning_cases SET status='cancelled',next_retry_at=NULL,updated_at=p_now
      WHERE subscription_id=s.id AND status='open';
    END IF;
-   IF p_action IN ('skip_next_cycle','slide_next_cycle') AND NOT EXISTS(
-    SELECT 1 FROM public.subscription_method_states WHERE subscription_id=s.id AND health_state='healthy') THEN
+   IF p_action IN ('skip_next_cycle','slide_next_cycle') AND NOT (CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
+    THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(
+     SELECT 1 FROM public.subscription_method_states WHERE subscription_id=s.id AND health_state='healthy') END) THEN
     RAISE EXCEPTION 'subscription_command_payment_blocked' USING ERRCODE='22023';
    END IF;
    -- Do not move away from a current payment obligation on resume.
@@ -1810,6 +1824,7 @@ BEGIN
  END IF;
  SELECT * INTO a FROM public.subscription_retry_recovery_authorizations WHERE id=p_authorization_id FOR UPDATE;
  IF o.id IS NULL OR o.state<>'waiting' OR a.obligation_id IS DISTINCT FROM o.id OR a.retry_attempt<>o.retry_attempt OR a.consumed_at IS NOT NULL OR
+  public.subscription_method_uses_recorded_refs(o.subscription_id) OR
   NOT EXISTS(SELECT 1 FROM public.subscription_method_states WHERE subscription_id=o.subscription_id AND health_state='healthy') THEN
   RAISE EXCEPTION 'subscription_retry_recovery_not_authorized' USING ERRCODE='22023'; END IF;
  -- Receipt first: a failed schedule write rolls the receipt back too.

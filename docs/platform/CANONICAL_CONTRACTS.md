@@ -1574,9 +1574,11 @@ host paymentMethodSetup refusal by identity, commerce returns commerceRecovery b
 identity, and every other lane returns the frozen host_binding_required constant.
 The guard runs before every unselected-lane refusal. M07 method setup adapts setupMethod to the
 guarded paymentMethod.execute lane and collects a transient handoff only.
-A45/A46 token routes remain reference handlers. Native repair authorization and
-scheduling are a registered follow-up, because the donor native graph does not
-serve them.
+Token routes remain reference handlers. The selected native method-reference
+lane now supplies recorded repair authorization and bounded recovery-retry
+scheduling through its service-only store. The host still composes authenticated
+routes, verified provider ingress and method collection; importing the factory
+does not select those routes or qualify a provider account.
 See the [self-service reference](../../packages/core/docs/guide/how-to/build/account-and-support.md#choose-the-imports).
 
 

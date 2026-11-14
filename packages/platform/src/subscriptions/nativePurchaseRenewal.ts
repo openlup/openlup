@@ -94,7 +94,7 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
       const row = (await executor.query(`SELECT m.health_state AS "healthState",m.method_ref AS "methodRef",
         m.evidence_ref AS "evidenceRef" FROM public.subscription_method_states m
         JOIN public.subscription_renewal_terms t ON t.subscription_id=m.subscription_id
-        WHERE m.subscription_id=$1::uuid AND t.settlement_channel_key='sandbox'`, [subscriptionId])).rows[0];
+        WHERE m.subscription_id=$1::uuid AND NOT public.subscription_method_uses_recorded_refs(m.subscription_id)`, [subscriptionId])).rows[0];
       if (row) return row;
       const health = (await executor.query("SELECT public.subscription_method_health_read($1::uuid) AS response", [subscriptionId])).rows[0]?.response;
       if (!health || typeof health !== "object") return null;

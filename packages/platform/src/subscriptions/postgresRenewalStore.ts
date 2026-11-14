@@ -26,7 +26,10 @@ export const subscriptionCorrelationJoin = `LEFT JOIN public.subscription_activa
  LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id`;
 const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,s.template_version,o.id AS activation_order_id,to_char(s.next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS scheduled_at,t.*,
  to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
- ${subscriptionCorrelationSql},m.health_state,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
+ ${subscriptionCorrelationSql},CASE WHEN public.subscription_method_uses_recorded_refs(s.id)
+  THEN public.subscription_method_health_read(s.id)->>'health_state' ELSE m.health_state END AS health_state,
+ CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now())
+  ELSE m.health_state IS NULL OR m.health_state='healthy' END AS method_authorized,public.subscription_renewal_purchase_terms(s.id) AS purchase_facts,
  (SELECT e.payload->'linePricing' FROM public.subscription_events e WHERE e.subscription_id=s.id
   AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template',
    'subscription.customer_self_service.swap_base_line','subscription.customer_self_service.add_addon',
@@ -89,7 +92,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     },
     async readMandateEvidence(input) {
       const row = await header(input);
-      return { authorized: row.health_state == null || row.health_state === "healthy", authorizationRef: String(row.authorization_ref),
+      return { authorized: row.method_authorized === true, authorizationRef: String(row.authorization_ref),
         authorizedAt: String(row.unattended_charge_authorized_at) };
     },
     async admitDeliveryAlignment(input) {

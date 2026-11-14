@@ -5,8 +5,8 @@ import { createPostgresProviderPaymentControlPort, createPostgresPaymentMethodSt
   applyPostgresPaymentMethodLifecycleEvent, schedulePostgresRetryOnDurableMethodUpdate, createPostgresRecordedSubscriptionMethodReader } from "@openlup/platform/payments";
 import type { VerifiedMethodEvidence } from "@openlup/platform/payments/contracts";
 import type { RenewalFrozenSnapshot } from "@openlup/platform/subscriptions/contracts";
-import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
-import { createNativeRetryDriver, createPostgresRetryStore, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore, createSelfServiceCommandFacade } from "@openlup/platform/account-support";
+import { createPostgresPurchaseRenewalWriter, createPostgresRenewalStore, createNativeRenewalCodec, createNativeRetryDriver, createPostgresRetryStore, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import type { PaymentMethodLifecycleEvent, PaymentMethodReplacementFacts } from "@openlup/core/payment";
 import { call, failure, prepareOriginal, renewal, request } from "./subscriptionNativeFixture.js";
 import { readFileSync } from "node:fs";
@@ -79,13 +79,13 @@ it("authorizes setup before provider I/O, reuses the customer and preserves both
   const lane = createPostgresPaymentMethodSetup(db, { enabled: () => true,
     ensureCustomer: async input => { trace.push(input.idempotencyKey); return "customer-created"; },
     methodPort: { async setupMethod(input) { trace.push(input.idempotencyKey); return { kind: "ready", setupRef: "setup-1", handoff: { kind: "client-confirmed", payload: "transient" as never }, replayed: false }; } } });
-  expect(await lane.execute(randomUUID(), { subscriptionId: f.subscription, idempotencyKey: "setup" })).toMatchObject({ kind: "forbidden" });
+  expect(await lane.execute(randomUUID(), { subscriptionId: f.subscription, idempotencyKey: "setup-key" })).toMatchObject({ kind: "forbidden" });
   expect(trace).toEqual([]);
-  expect(await lane.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: "setup" })).toMatchObject({ kind: "ready" });
-  expect(trace).toEqual([`account-card-customer:${f.subscription}:setup`, `account-card-setup:${f.subscription}:setup`]);
+  expect(await lane.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: "setup-key" })).toMatchObject({ kind: "ready" });
+  expect(trace).toEqual([`account-card-customer:${f.subscription}:setup-key`, `account-card-setup:${f.subscription}:setup-key`]);
   await method(f); trace.length = 0;
-  expect(await lane.execute(f.principal, { subscriptionId: f.subscription.toUpperCase(), idempotencyKey: "again" })).toMatchObject({ kind: "ready" });
-  expect(trace).toEqual([`account-card-setup:${f.subscription}:again`]);
+  expect(await lane.execute(f.principal, { subscriptionId: f.subscription.toUpperCase(), idempotencyKey: "again-key" })).toMatchObject({ kind: "ready" });
+  expect(trace).toEqual([`account-card-setup:${f.subscription}:again-key`]);
   const unavailable = { supported: false, refusalCode: "host_binding_required" } as const;
   const facade = createSelfServiceCommandFacade({ context: { principalId: f.principal, clientId: f.client, graph: "native" },
     capabilities: { graph: "native", accountRead: unavailable, customer360Read: unavailable, invoiceAccess: unavailable,
@@ -96,7 +96,7 @@ it("authorizes setup before provider I/O, reuses the customer and preserves both
         commandBoundReceipts: { supported: false, refusalCode: "native_command_bound_receipts_unsupported" } },
       communicationGifts: { supported: false, refusalCode: "unsupported_preference" } }, paymentMethod: lane });
   await expect(facade.paymentMethod.execute(randomUUID(), { subscriptionId: f.subscription, idempotencyKey: "foreign" })).rejects.toThrow("customer_principal_mismatch");
-  expect(await facade.paymentMethod.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: "account" })).toMatchObject({ kind: "ready" });
+  expect(await facade.paymentMethod.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: "account-key" })).toMatchObject({ kind: "ready" });
   const disabled = createPostgresPaymentMethodSetup(db, { enabled: () => false, ensureCustomer: async () => { throw new Error("unreachable"); }, methodPort: { async setupMethod() { throw new Error("unreachable"); } } });
   expect(await disabled.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: "disabled" })).toEqual({ kind: "disabled" });
   expect(await lane.execute(f.principal, { subscriptionId: "invalid", idempotencyKey: "" })).toEqual({ kind: "invalid" });
@@ -513,10 +513,20 @@ it("keeps a hard stop below rung four closed to a bare webhook and repairs it on
 
 // Execute identical public lifecycle requests before and after the method forward.
 // All identifiers are discarded from the comparison; observable verdicts remain.
-async function sandboxCompatibilityFixture(channel: "sandbox" | "captured") {
+async function sandboxCompatibilityFixture(channel: "sandbox" | "captured", initialProvider = false) {
   const purchase = await nativeNoticeOrder(db, db, undefined, "subscription", channel);
   const { client, order, sku, variantId } = purchase, source = randomUUID();
-  await purchase.settle();
+  if (initialProvider) {
+    const control = createPostgresProviderPaymentControlPort(db, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+    await control.createIntent({ idempotencyKey: `provider:${order}`, targetKind: "one_time_order", orderId: order,
+      subscriptionId: null, subscriptionCycleId: null, amountMinor: 200, currency: "XXX", metadata: {}, channelKey: channel, at: AT });
+    const attempt = await control.prepareProviderAttempt({ idempotencyKey: `prepare:${order}`, paymentIntentId: purchase.intent, provider: "card_rail",
+      providerIdempotencyKey: `provider:${order}`, providerRequestFingerprint: "e".repeat(64), providerFlow: "one_time_payment", paymentMethodRef: "initial-method", requestPayload: {} });
+    await control.finalizeProviderAttempt({ idempotencyKey: `finalize:${order}`, paymentIntentId: purchase.intent, paymentAttemptId: attempt.paymentAttemptId,
+      providerIdempotencyKey: `provider:${order}`, providerRequestFingerprint: "e".repeat(64), providerAttemptId: `attempt:${order}`, providerSessionId: null,
+      attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
+    await control.applyPaymentResult({ idempotencyKey: `result:${order}`, paymentIntentId: purchase.intent, paymentEventId: null, resultStatus: "succeeded", occurredAt: AT });
+  } else await purchase.settle();
   await call(db, "subscription_declare_provisional_activation", [`declare:${order}`, order, 28]);
   const facts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization", unattendedChargeAuthorizedAt: new Date().toISOString(),
     payerAccountRef: null, methodRef: "compatibility-method", methodEvidenceRef: "sandbox-evidence", stockSourceKey: source,
@@ -524,7 +534,7 @@ async function sandboxCompatibilityFixture(channel: "sandbox" | "captured") {
     shippingAmountMinor: 0, acquisitionRef: null };
   await call(db, "subscription_register_renewal_purchase", [order, facts]);
   const external = (await db.query("SELECT external_ref FROM public.commerce_settlement_intents WHERE id=$1", [purchase.intent])).rows[0].external_ref;
-  const activation = await call(db, "subscription_activate_from_captured_payment", [`activate:${order}`, order, createHash("sha256").update(external).digest("hex")]);
+  const activation = await call(db, "subscription_activate_from_captured_payment", [`activate:${order}`, order, createHash("sha256").update(external ?? purchase.intent).digest("hex")]);
   await call(db, "subscription_complete_renewal_attachment", [order]);
   const subscription = String(activation.subscriptionId), actor = randomUUID();
   await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code) VALUES($1,$2,2,0,false,100,'XXX')", [subscription, variantId]);
@@ -648,6 +658,114 @@ it("keeps real-history lifecycle refusals and reminder/auto-resume skips free of
     before = await methodRows();
     await call(db, "subscription_auto_resume_due", [500, window.ends_at]);
     expect((await db.query("SELECT resumed_at FROM public.subscription_pause_windows WHERE id=$1", [window.id])).rows[0].resumed_at).toBeNull();
+    expect(await methodRows()).toEqual(before);
+  } finally { await db.query("ROLLBACK"); }
+});
+
+it("selects strict authority for an initial purchase's one-time provider state and attempt linked only through its order", async () => {
+  await db.query("BEGIN");
+  try {
+    const f = await sandboxCompatibilityFixture("captured", true);
+    const state = (await db.query("SELECT target_kind,subscription_id,subscription_cycle_id,active_attempt_id FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0];
+    expect(state).toMatchObject({ target_kind: "one_time_order", subscription_id: null, subscription_cycle_id: null, active_attempt_id: expect.any(String) });
+    expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+    expect(await createPostgresPurchaseRenewalWriter(db).readMethod(f.subscription)).toMatchObject({ healthState: "method_missing", methodRef: null });
+    const before = await methodRows();
+    expect(await call(db, "subscription_method_chargeable_unattended", [f.subscription])).toBe(false);
+    expect(await createPostgresRecordedSubscriptionMethodReader(db).read(f.subscription)).toEqual({ kind: "unavailable", reason: "method_ref_not_recorded" });
+    expect(await methodRows()).toEqual(before);
+  } finally { await db.query("ROLLBACK"); }
+});
+function accountMethodSources(f: { client: string; principal: string }) {
+  const scope = { principalId: f.principal, clientId: f.client };
+  return createPostgresAccountReadSources(db, { ...scope, orders: createPostgresCustomerOrderHistoryReadStore(db, { ...scope, readInvoiceSummaries: async () => new Map() }),
+    orderProjection: { automaticHoldSource: "fixture.hold", automaticReleaseSource: "fixture.release", orderReference: id => id,
+      presentation: { display: () => ({ title: "Fixture", variantName: null, productSlug: null, displayLabel: null, accentColor: null }) },
+      fulfillmentEvidence: () => ({ trackingReferences: [], trackingNumbers: [], trackingNumber: null, trackingUrl: null, carrierKind: null, service: null, trackingTimeline: [] }) },
+    now: () => AT, additional: { readExtension: async () => null, readNextCharges: async () => new Map() } });
+}
+it.each(["revoked", "expired", "expiring"] as const)("all native readers retain recorded authority after a sandbox subscription's real method is %s", async status => {
+  await db.query("BEGIN");
+  try {
+    const f = await sandboxCompatibilityFixture("sandbox"), principal = randomUUID();
+    await db.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client, principal]);
+    const writer = createPostgresPurchaseRenewalWriter(db), sources = accountMethodSources({ ...f, principal });
+    expect(await writer.readMethod(f.subscription)).toMatchObject({ healthState: "healthy", methodRef: "compatibility-method" });
+    const m = await method(f, `recorded:${f.subscription}`);
+    expect((await db.query("SELECT provider_kind FROM public.subscription_method_states WHERE subscription_id=$1", [f.subscription])).rows[0].provider_kind).toBeNull();
+    expect(await writer.readMethod(f.subscription)).toMatchObject({ healthState: "healthy", methodRef: m.reference });
+    if (status === "revoked") await call(db, "payment_method_ref_deactivate", [randomUUID(), m.id, "revoked", {}]);
+    else await db.query("UPDATE public.payment_method_refs SET expires_at=now()+$2::interval WHERE id=$1", [m.id, status === "expired" ? "-1 second" : "10 days"]);
+    expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+    expect((await sources.readPaymentEvidence([f.subscription])).get(f.subscription)?.healthState).toBe(status === "revoked" ? "method_missing" : "method_expiring");
+    expect(await writer.readMethod(f.subscription)).toMatchObject({ healthState: status === "revoked" ? "method_missing" : "method_expiring", methodRef: status === "revoked" ? null : m.reference });
+    const at = (await db.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].at;
+    const evidence = await createPostgresRenewalStore(db, createNativeRenewalCodec()).readMandateEvidence({ subscriptionId: f.subscription, scheduledAt: at, scheduledInstant: Date.parse(at) });
+    expect(evidence.authorized).toBe(status === "expiring");
+    expect(await call(db, "subscription_method_chargeable_unattended", [f.subscription])).toBe(status === "expiring");
+  } finally { await db.query("ROLLBACK"); }
+});
+it("validates and trims setup keys before ownership lookup or provider I/O", async () => {
+  const f = await subject(), keys: string[] = [], queries: string[] = [];
+  const lane = createPostgresPaymentMethodSetup({ async query(sql, values) { queries.push(sql); return db.query(sql, values); } }, {
+    enabled: () => true, ensureCustomer: async input => { keys.push(input.idempotencyKey); return "customer"; },
+    methodPort: { async setupMethod(input) { keys.push(input.idempotencyKey); return { kind: "ready", setupRef: "setup", handoff: { kind: "client-confirmed", payload: "transient" as never }, replayed: false }; } } });
+  for (const key of ["", "       ", "1234567", "x".repeat(181)]) expect(await lane.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: key })).toEqual({ kind: "invalid" });
+  expect(queries).toEqual([]); expect(keys).toEqual([]);
+  for (const key of ["  stable-key  ", "stable-key", "stable-key\t"]) expect(await lane.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: key })).toMatchObject({ kind: "ready" });
+  expect(keys).toEqual(Array.from({ length: 3 }, () => [`account-card-customer:${f.subscription}:stable-key`, `account-card-setup:${f.subscription}:stable-key`]).flat());
+  for (const key of ["a".repeat(8), `  ${"b".repeat(180)}  `]) expect(await lane.execute(f.principal, { subscriptionId: f.subscription, idempotencyKey: key })).toMatchObject({ kind: "ready" });
+  expect(keys.slice(-4)).toEqual([`account-card-customer:${f.subscription}:${"a".repeat(8)}`, `account-card-setup:${f.subscription}:${"a".repeat(8)}`,
+    `account-card-customer:${f.subscription}:${"b".repeat(180)}`, `account-card-setup:${f.subscription}:${"b".repeat(180)}`]);
+});
+it("selects only the newest open case for a durable method update", async () => {
+  const f = await declined(), m = await method(f), newer = randomUUID(), closed = randomUUID();
+  await db.query("INSERT INTO public.subscription_dunning_cases(id,subscription_id,client_id,status,idempotency_key,opened_at,recovered_at) VALUES($1,$2,$3,'open',$1::uuid::text,now()+interval '1 second',NULL),($4,$2,$3,'recovered',$4::uuid::text,now()+interval '2 seconds',now()+interval '2 seconds')", [newer, f.subscription, f.client, closed]);
+  expect((await store().read("card_rail", m.reference))?.open_case_id).toBe(newer);
+  const event = { provider: "card_rail", providerEventId: randomUUID(), providerPaymentId: "setup", eventType: "setup.succeeded" as const, occurredAt: AT, rawPayload: {},
+    reusableMethod: { clientId: f.client, subscriptionId: f.subscription, providerMethodRef: m.reference, methodKind: "card", status: "active" as const } };
+  const before = await methodRows();
+  expect(await schedulePostgresRetryOnDurableMethodUpdate(db, event)).toEqual({ outcome: "not_scheduled", reason: "cycle_not_retryable" });
+  expect(await methodRows()).toEqual(before);
+  const body = (await db.query("SELECT pg_get_functiondef('public.payment_method_ref_read(text,text)'::regprocedure) AS body")).rows[0].body;
+  // Retain the query-shape contract against the actual bounded native reader.
+  const calls = { subscription_dunning_cases: {
+    eq: [...body.matchAll(/(?:WHERE|AND)\s+(subscription_id|status)\s*=\s*(m\.subscription_id|'[^']*')/gu)].map((match: RegExpMatchArray) => [match[1], match[2] === "m.subscription_id" ? f.subscription : match[2].slice(1, -1)]),
+    order: [...body.matchAll(/ORDER BY\s+(\w+)\s+(ASC|DESC)/gu)].map((match: RegExpMatchArray) => [match[1], { ascending: match[2] === "ASC" }]),
+    limit: [...body.matchAll(/LIMIT\s+(\d+)/gu)].map((match: RegExpMatchArray) => Number(match[1])),
+  } };
+  const SUBSCRIPTION_ID = f.subscription;
+  expect(calls.subscription_dunning_cases).toEqual({
+    eq: [["subscription_id", SUBSCRIPTION_ID], ["status", "open"]],
+    order: [["opened_at", { ascending: false }]],
+    limit: [1],
+  });
+});
+
+it("writes a published future expiry and retains it on a digits-only native lifecycle refresh", async () => {
+  const f = await subject(), m = await method(f, randomUUID(), { recurringModel: "O", source: "rail_webhook" });
+  expect(await applyPostgresPaymentMethodLifecycleEvent(db, lifecycle(m.reference, "method_updated", { schemeLabel: "visa", lastDigits: "8210", expiresAt: "2029-11-30T23:59:59.999Z" })))
+    .toEqual({ outcome: "metadata_refreshed", reason: null });
+  const read = () => db.query("SELECT expires_at,active,consent_snapshot FROM public.payment_method_refs WHERE id=$1", [m.id]);
+  expect((await read()).rows[0]).toMatchObject({ expires_at: new Date("2029-11-30T23:59:59.999Z"), active: true,
+    consent_snapshot: { source: "rail_webhook", recurringModel: "O", methodScheme: "visa", methodLastDigits: "8210", methodExpiresAt: "2029-11-30T23:59:59.999Z" } });
+  await applyPostgresPaymentMethodLifecycleEvent(db, { ...lifecycle(m.reference), replacement: { schemeLabel: null, lastDigits: "0001", expiresAt: null } });
+  expect((await read()).rows[0].expires_at).toEqual(new Date("2029-11-30T23:59:59.999Z"));
+});
+
+it("selects strict authority for provider delivery evidence linked to an initial intent without a provider-state row", async () => {
+  await db.query("BEGIN");
+  try {
+    const f = await sandboxCompatibilityFixture("captured");
+    expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(false);
+    const control = createPostgresPaymentWebhookControlPort(db, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+    await control.ingestPaymentEvent({ provider: "card_rail", providerEventId: randomUUID(), providerPaymentId: "initial-payment",
+      paymentIntentId: f.intent, eventType: "payment.succeeded", amountMinor: 200, currency: "XXX", occurredAt: AT, rawPayload: {} });
+    expect((await db.query("SELECT count(*)::int AS n FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0].n).toBe(0);
+    expect((await db.query("SELECT count(*)::int AS n FROM public.payment_provider_attempt_evidence WHERE settlement_intent_id=$1", [f.intent])).rows[0].n).toBe(1);
+    const before = await methodRows();
+    expect(await call(db, "subscription_method_uses_recorded_refs", [f.subscription])).toBe(true);
+    expect(await call(db, "subscription_method_chargeable_unattended", [f.subscription])).toBe(false);
     expect(await methodRows()).toEqual(before);
   } finally { await db.query("ROLLBACK"); }
 });
