@@ -24,7 +24,7 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       await db.query(`INSERT INTO public.fulfillment_stock_sync_cursors(source_key,status,last_stock_synced_at,last_movement_occurred_at,cursor,error_code,updated_at)
         VALUES($1,$2,$3,$4,$5::jsonb,$6,now()) ON CONFLICT(source_key) DO UPDATE SET status=EXCLUDED.status,
         last_stock_synced_at=EXCLUDED.last_stock_synced_at,last_movement_occurred_at=EXCLUDED.last_movement_occurred_at,cursor=EXCLUDED.cursor,error_code=EXCLUDED.error_code,updated_at=now()`,
-      [source,v.status,v.lastStockSyncedAt,v.lastMovementOccurredAt,JSON.stringify({ syncRunId: v.syncRunId, counts: v.counts, items: v.items, alerts: v.alerts, staleSync: v.staleSync, error: v.error, continuation: { nextRef: v.continuation.nextRef, startLocalDate: v.continuation.startLocalDate, endLocalDate: v.continuation.endLocalDate }, coverageGapSkus: [...(v.coverageGapSkus ?? [])], refusal: v.refusal }),v.error?.reason ?? v.refusal?.reason ?? null]);
+      [source,v.status,v.lastStockSyncedAt,v.lastMovementOccurredAt,JSON.stringify({ syncRunId: v.syncRunId, counts: v.counts, items: v.items, alerts: v.alerts, staleSync: v.staleSync, error: v.error, continuation: { nextRef: v.continuation.nextRef, startLocalDate: v.continuation.startLocalDate, endLocalDate: v.continuation.endLocalDate }, coverageGapSkus: [...(v.coverageGapSkus ?? [])], ...(v.movementRefusal ? { movementRefusal: v.movementRefusal } : {}), refusal: v.refusal }),v.error?.reason ?? v.refusal?.reason ?? null]);
     },
     async readSkuInventoryClasses(skus) {
       if (!skus.length) return new Map();

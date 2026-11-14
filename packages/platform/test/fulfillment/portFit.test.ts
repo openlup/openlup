@@ -76,3 +76,69 @@ it("keeps injected capabilities default-off with independent selection, readines
     "createAdminCommerceFulfillmentOrdersListHandler", "createAdminCommerceFulfillmentOrderDetailHandler", "createAdminCommerceFulfillmentCreateOrderHandler", "createAdminCommerceFulfillmentRecordProviderAttemptHandler", "createAdminCommerceFulfillmentRecordLabelHandler", "createAdminCommerceFulfillmentHandOffHandler", "createAdminCommerceFulfillmentTrackingEventHandler", "createAdminCommerceFulfillmentCancelOrderHandler", "createAdminCommerceOrderRequestReplacementShipmentHandler", "CommerceFulfillmentConflictError", "readFulfillmentDelay", "readFulfillmentLabel", "cleanupFulfillmentLabel", "currentParcel", "currentParcelFor", "currentParcelPerOrder", "currentParcelFirst", "belongsToParcel", "rowsForParcel", "parcelSequenceNo", "compareParcelPrecedence", "FULFILLMENT_NATIVE_UNSUPPORTED", "createNativeUnsupportedFulfillmentPorts", "FULFILLMENT_REPLACEMENT_REFUSALS",
   ].sort());
 });
+
+it("admits compatible defaults and provider-selected native transport independently of role", () => {
+  const descriptor = { ...profile(), selected: true, readiness: { ready: true as const } };
+  const selection = { providerRef: descriptor.providerRef, carrierRef: null, serviceRef: null, deliveryKind: "courier" as const, pickupPoint: null };
+  expect(readFulfillmentCapabilities([descriptor], selection)).toMatchObject({ refusal: { reason: "carrier_service_required" } });
+  descriptor.transportSelection = "provider";
+  expect(readFulfillmentCapabilities([descriptor], selection)).toEqual({ kind: "selected", descriptor });
+  expect(readFulfillmentCapabilities([descriptor], selection, { operation: "labelRead", format: "application/pdf" })).toEqual({ kind: "selected", descriptor });
+  expect(readFulfillmentCapabilities([descriptor], { ...selection, providerRef: null })).toMatchObject({ refusal: { reason: "selection_required" } });
+  descriptor.role = "direct_carrier"; descriptor.transportSelection = "merchant";
+  expect(readFulfillmentCapabilities([descriptor], selection)).toMatchObject({ refusal: { reason: "carrier_service_required" } });
+});
+
+it.each([
+  ["independentSplit", "independent_split_unsupported"],
+  ["pickupPointDelivery", "pickup_point_delivery_unsupported"],
+  ["labelCreate", "label_create_unsupported"],
+  ["labelVoid", "label_void_unsupported"],
+  ["cancel", "provider_cancel_unsupported"],
+  ["reservations", "provider_reservations_unsupported"],
+] as const)("names the native %s execution limit without changing adapter support", (operation, reason) => {
+  const descriptor = { ...profile(), selected: true, readiness: { ready: true as const }, transportSelection: "provider" as const };
+  const selection = { providerRef: descriptor.providerRef, carrierRef: null, serviceRef: null, deliveryKind: "courier" as const, pickupPoint: null };
+  expect(readFulfillmentCapabilities([descriptor], selection, { operation })).toEqual({ kind: "refused", refusal: { reason, phase: "selection", retryable: false } });
+  expect(descriptor.operations.pickupPoint).toEqual({ supported: true });
+});
+
+it.each([
+  [{ inventory: { reservationOwner: "provider", consumption: "finished_picking" } }, "provider_reservations_unsupported"],
+  [{ inventory: { reservationOwner: "local", consumption: "provider_managed" } }, "stock_consumption_policy_unsupported"],
+  [{ independentSplits: true }, "independent_split_unsupported"],
+  [{ labelFormats: ["application/pdf", "application/zpl"] }, "label_format_unsupported"],
+] satisfies [Partial<FulfillmentCapabilityDescriptor>, string][])("refuses unsupported declarations before host/store/provider access: %j", async (declaration, reason) => {
+  const descriptor = { ...profile(), ...declaration, selected: true, readiness: { ready: true as const } };
+  const selection = { providerRef: descriptor.providerRef, carrierRef: "carrier-a", serviceRef: "service-a", deliveryKind: "courier" as const, pickupPoint: null };
+  const forbidden = async (): Promise<never> => { throw new Error("unexpected host access"); };
+  const services = fulfillment.createFulfillmentServices({ enabled: true, selection, capability: descriptor, store: null, provider: null,
+    readiness: forbidden, listCandidates: forbidden, config: { mode: "live", batchLimit: 1 },
+    keys: { request: () => "request", mappedAttempt: () => "mapped", acceptance: () => ({ providerAttemptKey: "attempt", labelKey: "receipt" }) } });
+  expect(await services.runDispatch()).toEqual({ kind: "refused", refusal: { reason, phase: "selection", retryable: false } });
+  descriptor.selected = false;
+  expect(await services.runDispatch()).toMatchObject({ refusal: { reason: "disabled" } });
+});
+
+it("refuses non-PDF requests and explicitly undeclared PDF without changing the label type", () => {
+  const descriptor = { ...profile(), selected: true, readiness: { ready: true as const } };
+  const selection = { providerRef: descriptor.providerRef, carrierRef: "carrier-a", serviceRef: "service-a", deliveryKind: "courier" as const, pickupPoint: null };
+  for (const format of ["application/zpl", "image/png"]) expect(readFulfillmentCapabilities([descriptor], selection, { format })).toMatchObject({ refusal: { reason: "label_format_unsupported" } });
+  descriptor.labelFormats = [];
+  expect(readFulfillmentCapabilities([descriptor], selection, { format: "application/pdf" })).toMatchObject({ refusal: { reason: "label_format_unsupported" } });
+});
+
+it("projects neutral observation aliases without changing legacy fields or occurrence identity", async () => {
+  const { projectObservation } = await import("../../src/fulfillment/observationProjection.js");
+  const { observation } = await import("./fixtures.js");
+  for (const eventKind of ["shipment.preparing", "shipment.packed", "shipment.in_transit", "shipment.delivered"] as const) {
+    const legacy = observation();
+    const aliased = { ...legacy, eventKind, providerStatus: { primary: "status-a", subStatus: "detail-a", code: "status-a", detailCode: "detail-a" } };
+    const safe = projectObservation(aliased);
+    expect(safe.eventKey).toBe(legacy.eventKey); expect(safe.fact).toEqual(legacy.fact);
+    expect(safe.eventKind).toBe(eventKind); expect(safe.providerStatus).toEqual(aliased.providerStatus);
+  }
+  const legacy = { ...observation(), providerStatus: { primary: "status-a", subStatus: null } };
+  expect(projectObservation(legacy).providerStatus).toEqual(legacy.providerStatus);
+  expect(projectObservation({ ...legacy, providerStatus: { ...legacy.providerStatus, code: "private@example.invalid", detailCode: "https://example.invalid/secret" } }).providerStatus).toEqual({ ...legacy.providerStatus, code: null, detailCode: null });
+});

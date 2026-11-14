@@ -515,9 +515,10 @@ has been met. It runs without `--advisory`, so a failed tutorial fails the step.
 The workflow admits no `continue-on-error`.
 Push-to-main runs reuse merge-group evidence and skip the tutorial step when
 reuse succeeds.
-The separate registry tutorial remains advisory until its second green run:
-`--advisory` reports a failure as a warning annotation and a FAIL line in the
-step summary while the step still succeeds.
+The separate registry tutorial is blocking after two green release runs: a
+failed tutorial fails that workflow run, which reports to the maintainer. It
+runs after publication and cannot affect that publication. A propagation
+timeout still warns and defers the tutorial.
 A step the product cannot pass is stated as a current limit, not worked around.
 
 ## Impact

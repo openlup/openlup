@@ -56,8 +56,9 @@ Constructing the recovery-wave adapter starts no scheduler.
 Recovery inspection is read-only presentation, not payment authority. Existing
 order retry and expired-order recreation are separate paths: recreation checks
 prior-payment safety and a fresh matching quote before preparing a replacement.
-The supplied native recovery attempt adapters use the sandbox rail; other rails
-refuse with `native_prepared_attempt_store_unsupported`.
+The starter's recovery actions select the sandbox rail; unconfigured real-provider
+actions refuse with `native_prepared_attempt_store_unsupported`. The native
+provider attempt ports require explicit host composition; see [payments](payments.md#dispatch-and-settlement).
 
 Use [Recover abandoned checkouts and payments](../how-to/build/checkout-recovery.md)
 for token authority, reminder scheduling, retry and recreation composition.

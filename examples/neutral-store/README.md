@@ -80,7 +80,7 @@ V, the expected sha512 integrity and the exact public-registry tarball URL for
 P@V. The root entry's dependency sections must match the extracted package.json,
 including its exact V pins. Every other non-root entry refuses if its key, name,
 resolved URL (also URL-decoded) or any dependency, optional-dependency,
-peer-dependency or dev-dependency value contains `@openlup/` or `%40openlup`,
+peer-dependency or dev-dependency key or value contains `@openlup/` or `%40openlup`,
 case-insensitively. Nested and aliased OpenLup copies are forbidden. All non-root
 entries must retain public `https://registry.npmjs.org` resolutions without links,
 credentials, query strings or fragments. Refusals use `starter_release_*` names.
@@ -464,6 +464,14 @@ persists a simulator observation and reads that exact attempt before handing
 source evidence to the native recovery owner. An ambiguous prepared attempt is
 read again after restart and never dispatched again. This is local simulation;
 it does not qualify a real payment method or provider.
+
+The opt-in [card provider server composition](host/provider-portable.ts) shows the native
+provider rail with the complete catalogue. The host selects and authenticates
+its payment ingress and method setup, then passes the returned subscription
+ports to its single native binding. It preserves frozen money, method authority,
+prepared-attempt replay and attributed dunning. The starter does not select it;
+its real-payment actions retain their unconfigured refusals. Offline
+PostgreSQL proof does not activate a provider or qualify a live account.
 
 The account response adds a narrow `renewal` projection from owned action,
 payment, alignment and frozen/retained charge facts. Charge dates are distinct

@@ -23,15 +23,6 @@
         "fulfillment_pending"
       ],
       "aliasTokens": [],
-      "providers": {
-        "omnipack": {
-          "status": [],
-          "note": "before dispatch to the provider"
-        },
-        "dhl": {
-          "events": []
-        }
-      },
       "effects": {
         "stock": "reserved",
         "handover": false,
@@ -64,23 +55,6 @@
         "processing",
         "provider_attempt_recorded"
       ],
-      "providers": {
-        "omnipack": {
-          "status": [
-            "NEW"
-          ],
-          "subStatusExamples": [
-            "VALIDATION_PENDING",
-            "READY_FOR_EXPORT",
-            "EXPORTED"
-          ]
-        },
-        "dhl": {
-          "events": [
-            "label_created"
-          ]
-        }
-      },
       "effects": {
         "stock": "reserved",
         "handover": false,
@@ -114,24 +88,6 @@
         "awaiting_courier",
         "ready_for_pickup"
       ],
-      "providers": {
-        "omnipack": {
-          "status": [
-            "IN_FULFILLMENT",
-            "READY_FOR_PACKING",
-            "AWAITING_COURIER"
-          ],
-          "subStatusExamples": [
-            "PICKING",
-            "PICKED",
-            "PACKED",
-            "READY_FOR_PICKUP"
-          ]
-        },
-        "dhl": {
-          "events": []
-        }
-      },
       "effects": {
         "stock": "consumed",
         "handover": false,
@@ -164,19 +120,6 @@
         "out_for_delivery",
         "dispatched"
       ],
-      "providers": {
-        "omnipack": {
-          "status": [
-            "SHIPPING"
-          ]
-        },
-        "dhl": {
-          "events": [
-            "in_transit",
-            "out_for_delivery"
-          ]
-        }
-      },
       "effects": {
         "stock": "consumed",
         "handover": true,
@@ -207,18 +150,6 @@
       "aliasTokens": [
         "delivery_delivered"
       ],
-      "providers": {
-        "omnipack": {
-          "status": [
-            "DELIVERED"
-          ]
-        },
-        "dhl": {
-          "events": [
-            "delivered"
-          ]
-        }
-      },
       "effects": {
         "stock": "consumed",
         "handover": true,
@@ -250,21 +181,6 @@
         "suspended",
         "returned_to_sender"
       ],
-      "providers": {
-        "omnipack": {
-          "status": [
-            "SUSPENDED",
-            "SHIPPING_FAILED",
-            "RETURNED_TO_SENDER",
-            "CANCELLED"
-          ]
-        },
-        "dhl": {
-          "events": [
-            "exception"
-          ]
-        }
-      },
       "effects": {
         "stock": "held",
         "handover": false,
@@ -296,17 +212,6 @@
       "aliasTokens": [
         "canceled"
       ],
-      "providers": {
-        "omnipack": {
-          "status": [],
-          "note": "reserved for audited local cancellation"
-        },
-        "dhl": {
-          "events": [
-            "cancelled"
-          ]
-        }
-      },
       "effects": {
         "stock": "released",
         "handover": false,
