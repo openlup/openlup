@@ -71,9 +71,10 @@ platform data executor structural shape, as in the inventory precedent. Its opti
 to the contracts entry. Three byte-identical SQL projections retain canonical
 positions 10/35/56, paths and hashes; the sparse descriptor is not an install
 chain. Direct truth, settlement and later-only alignment are supported. The
-complete native chain now adds prepared durable storage, proof-backed absence
-reopening and cumulative refund evidence; method setup retains its separate
-capability refusal. Absence auto-reopen stays default off. Refunds are purely financial; no refund operation
+complete native chain now supports prepared durable storage, method setup,
+proof-backed absence reopening and cumulative refund evidence. Hosts compose
+the provider/store paths explicitly; the starter remains sandbox-only.
+Absence auto-reopen stays default off. Refunds are purely financial; no refund operation
 cancels a subscription, and no activating-cycle cancellation exception applies.
 
 Attempt inputs add optional method selection (opaque, persistable channelRef) and
