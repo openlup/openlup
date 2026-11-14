@@ -70,6 +70,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./fulfillment` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment.api.md) |
 | `./fulfillment/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-contracts.api.md) |
 | `./fulfillment/native` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-native.api.md) |
+| `./fulfillment/testing` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/fulfillment-testing.api.md) |
 | `./http` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/http.api.md) |
 | `./identity` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/identity.api.md) |
 | `./identity/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.41.0/packages/platform/api/identity-contracts.api.md) |
