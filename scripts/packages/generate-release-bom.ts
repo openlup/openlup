@@ -40,6 +40,7 @@ type ExactSetEvidence = {
   setVersion: string; tag: string; tagCommit: string;
   extraction: { mode: string; setVersion: string; sourceRevision: string; contentSha256: string; lockfileSha256: string };
   packages: { name: string; version: string; integrity: string; verificationSource: string; provenanceSha256: string }[];
+  sbom: { packages: { sha256: string; tool: { name: string; version: string } }; image: { sha256: string; subjectDigest: string; tool: { name: string; version: string; imageDigest: string } } };
   image: { name: string; platform: string; manifestDigest: string; baseImageDigest: string };
 };
 
@@ -49,6 +50,10 @@ export function generateExactSetReleaseBom(root: string, application: string, ev
   const { setVersion, tag, tagCommit, image } = evidence;
   if (image?.name !== "ghcr.io/openlup/neutral-store-starter" || image.platform !== "linux/amd64"
     || !/^sha256:[a-f0-9]{64}$/u.test(image.manifestDigest) || image.baseImageDigest !== readCiImage("starter-node").digest) refuse("image_identity_mismatch");
+  const sbom = evidence.sbom, scanner = readCiImage("qualification-syft");
+  if (!sbom || !/^[a-f0-9]{64}$/u.test(sbom.packages?.sha256) || !/^[a-f0-9]{64}$/u.test(sbom.image?.sha256)
+    || sbom.packages.tool.name !== "npm" || sbom.packages.tool.version !== "11.19.0" || sbom.image.subjectDigest !== image.manifestDigest
+    || sbom.image.tool.name !== "syft" || "v" + sbom.image.tool.version !== scanner.tag || sbom.image.tool.imageDigest !== scanner.digest) refuse("sbom_identity_mismatch");
   if (!/^0\.\d+\.\d+$/u.test(setVersion) || tag !== `openlup-core-v${setVersion}` || !/^[a-f0-9]{40}$/u.test(tagCommit)) refuse("set_identity_mismatch");
   const read = (path: string) => {
     try { return execFileSync("git", ["show", `${tagCommit}:${path}`], { cwd: root, stdio: ["ignore", "pipe", "pipe"] }); }
@@ -92,7 +97,7 @@ export function generateExactSetReleaseBom(root: string, application: string, ev
     return [{ path: `${pkg.name}/sql/manifest.json`, sha256: hash(bytes) }];
   }).map((entry, position) => ({ position, ...entry }));
   if (!entries.length) refuse("schema_catalogue_missing");
-  return { formatVersion: 3, kind: "openlup-exact-set-bom", image: { name: image.name, platform: image.platform, manifestDigest: image.manifestDigest, baseImageDigest: image.baseImageDigest }, setVersion, tag, tagCommit, posture: "development-preview", packages,
+  return { formatVersion: 4, sbom: { packages: { sha256: sbom.packages.sha256, tool: { ...sbom.packages.tool } }, image: { sha256: sbom.image.sha256, subjectDigest: image.manifestDigest, tool: { ...sbom.image.tool } } }, kind: "openlup-exact-set-bom", image: { name: image.name, platform: image.platform, manifestDigest: image.manifestDigest, baseImageDigest: image.baseImageDigest }, setVersion, tag, tagCommit, posture: "development-preview", packages,
     verificationSha256: hash(JSON.stringify(packages)), starter,
     composition: { profile: "neutral-store-postgresql-node-oci", postgresMajor: 16, files, sha256: hash(JSON.stringify(files)) },
     schemaCatalogue: { entries, sha256: hash(JSON.stringify(entries)) } };

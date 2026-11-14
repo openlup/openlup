@@ -468,7 +468,7 @@ export interface FulfillmentSelection {
     deliveryKind: DeliveryKind;
     pickupPoint: PickupPoint | null;
 }
-export declare const FULFILLMENT_REFUSAL_REASONS: readonly ["dispatch_reservations_not_recorded", "order_mode_unproven", "payment_not_succeeded", "subscription_cycle_not_paid", "not_dispatchable", "selection_required", "provider_mismatch", "carrier_service_required", "disabled", "not_ready", "unsupported", "withheld", "claim_conflict", "contact_stale", "stock_contention", "local_missing", "io_failure", "malformed", "untrusted", "unsupported_event", "stale", "missing_correlation", "provider_reservations_unsupported", "stock_consumption_policy_unsupported", "stock_movements_unsupported", "independent_split_unsupported", "pickup_point_delivery_unsupported", "label_create_unsupported", "label_void_unsupported", "provider_cancel_unsupported", "label_format_unsupported"];
+export declare const FULFILLMENT_REFUSAL_REASONS: readonly ["dispatch_reservations_not_recorded", "order_mode_unproven", "payment_not_succeeded", "subscription_cycle_not_paid", "not_dispatchable", "selection_required", "provider_mismatch", "carrier_service_required", "disabled", "not_ready", "unsupported", "withheld", "claim_conflict", "contact_stale", "stock_contention", "local_missing", "io_failure", "malformed", "untrusted", "unsupported_event", "stale", "missing_correlation", "provider_reservations_unsupported", "stock_consumption_policy_unsupported", "stock_movements_unsupported", "independent_split_unsupported", "pickup_point_delivery_unsupported", "label_create_unsupported", "label_void_unsupported", "provider_cancel_unsupported", "label_format_unsupported", "provider_proof_requires_acknowledgement", "succeeded_provider_attempt_exists", "replacement_dispatch_not_composed"];
 export interface FulfillmentRefusal {
     reason: typeof FULFILLMENT_REFUSAL_REASONS[number];
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
@@ -703,6 +703,12 @@ export interface FulfillmentObservation {
         parcelRef: string | null;
     };
     trackingRefs: readonly FulfillmentTrackingReference[];
+    /** Adapter-owned occurrence identity and closed recovery policy; no raw status interpretation in stores. */
+    intake?: {
+        occurredAt?: string | null;
+        occurrenceKey: string;
+        recovery: "provider_recovered" | "delivery_only" | "manual" | null;
+    };
     /** Original provider status tokens; canonical status does not identify an occurrence. */
     providerStatus?: {
         primary: string | null;
@@ -2621,6 +2627,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261120110000_fulfillment_dispatch_outcomes.sql";
     readonly sha256: "7ba87709cff775a4c8d7b1b12f4213544ea9a5db82218b6a87a0ce7f2fb9c54d";
     readonly url: URL;
+}, {
+    readonly position: 138;
+    readonly catalogPath: "db/platform/migrations/20261120120000_fulfillment_provider_intake.sql";
+    readonly sha256: "4475906787dd245c8fef91a150aa32868a888c19edbcaf896a5d3d0519a1f288";
+    readonly url: URL;
 }];
 ```
 ## dist/fulfillment/nativeUnsupported.d.ts
@@ -3747,6 +3758,7 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
         recordObservation(observation: FulfillmentObservation): Promise<{
             replayed: boolean;
             receiptId?: string;
+            observation?: FulfillmentObservation;
         }>;
         /** Idempotent; only called after completion or a classified superseding conflict. */
         markProcessed(eventKey: string, outcome: {

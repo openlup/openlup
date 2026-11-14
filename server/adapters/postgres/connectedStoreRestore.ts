@@ -452,7 +452,8 @@ export async function restoreConnectedNativeStore(input: {
             RETURNING p.id`, [product]);
           if (updated.rows.length !== 1) fail("target_conflict", "catalog_products");
         }
-        if (table === "commerce_order_holds") neutralized = await neutralizeHistoricalHoldNotifications(client, source, facts.xid);
+        if (table === "shipment_external_refs") await neutralizeHistoricalNotifications(client, source, facts.xid, table);
+        if (table === "commerce_order_holds") neutralized = await neutralizeHistoricalNotifications(client, source, facts.xid, table);
       }
       // No alignment case or source policy is activated while shipment/hold INSERT
       // triggers replay. Preserve the captured policy only after all retained data.
@@ -624,6 +625,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
+    shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
     outbox_events: ["channel_purchase_outbox_guard", "communication_event_source_guard"],
     // The guard admits only classic inserts. The binder acts only on opt-in
     // events, whose subscriptions are sized.v1 and refused before any writes.
@@ -638,33 +640,46 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
   // Full definitions/functions/roles are independently pinned by the existing
   // qualified inventory. A known name alone never attests harmless behavior.
 }
-async function neutralizeHistoricalHoldNotifications(client: PoolClient, source: Map<TableName, Rows>, xid: string): Promise<number> {
+async function neutralizeHistoricalNotifications(client: PoolClient, source: Map<TableName, Rows>, xid: string,
+  table: "commerce_order_holds" | "shipment_external_refs"): Promise<number> {
   const keys = new Set(source.get("outbox_events")!.rows.map(row => {
     const value = JSON.parse(row) as Record<string, unknown>; return JSON.stringify([value.event_type, value.idempotency_key]);
   }));
+  const hold = table === "commerce_order_holds";
+  const eventType = hold ? "commerce.shipment.exception" : "commerce.shipment.dispatched";
+  const noticeSource = hold ? "fulfillment_emit_shipment_exception_notification" : "fulfillment_emit_shipment_dispatched";
+  const matches = hold ? `p.reason='fulfillment_exception' AND p.created_by IS NULL AND p.status='active'
+      AND o.aggregate_id=p.order_id
+      AND o.payload=pg_catalog.jsonb_build_object('orderUuid',p.order_id,'holdUuid',p.id,'occurredAt',p.created_at)`
+    : `p.ref_role='tracking' AND p.external_id IS NOT NULL
+      AND s.status IN ('handed_over','in_transit') AND s.delivered_at IS NULL
+      AND NOT EXISTS(SELECT 1 FROM public.fulfillment_operator_status_evidence WHERE shipment_id=s.id AND canonical_status='delivered')
+      AND o.aggregate_id=s.order_id
+      AND o.payload=pg_catalog.jsonb_build_object('orderUuid',s.order_id,'shipmentUuid',s.id,'occurredAt',s.handed_over_at)`;
   let removed = 0;
-  for (const hold of source.get("commerce_order_holds")!.rows) {
-    const id = String((JSON.parse(hold) as Record<string, unknown>).id);
-    if (keys.has(JSON.stringify(["commerce.shipment.exception", `shipment_exception:${id}`]))) continue;
+  for (const row of source.get(table)!.rows) {
+    const value = JSON.parse(row) as Record<string, unknown>;
+    if (!hold && (value.ref_role !== "tracking" || value.external_id === null)) continue;
+    const key = hold ? `shipment_exception:${String(value.id)}` : `shipment_dispatched:${String(value.shipment_id)}`;
+    if (keys.has(JSON.stringify([eventType, key]))) continue;
     const observed = (await client.query<{ id: string; value: string; matches: boolean }>(`SELECT o.id::pg_catalog.text AS id,
       pg_catalog.to_jsonb(o)::pg_catalog.text AS value,
-      p.reason='fulfillment_exception' AND p.created_by IS NULL AND p.status='active'
-      AND o.aggregate_type='commerce_order' AND o.aggregate_id=p.order_id
-      AND o.payload=pg_catalog.jsonb_build_object('orderUuid',p.order_id,'holdUuid',p.id,'occurredAt',p.created_at)
-      AND o.metadata=pg_catalog.jsonb_build_object('source','fulfillment_emit_shipment_exception_notification')
+      ${matches} AND o.aggregate_type='commerce_order'
+      AND o.metadata=pg_catalog.jsonb_build_object('source',$5::pg_catalog.text)
       AND o.status='pending' AND o.attempts=0 AND o.processed_at IS NULL AND o.error IS NULL
       AND o.created_at=pg_catalog.transaction_timestamp() AND o.available_at=pg_catalog.transaction_timestamp()
       AND o.xmin::pg_catalog.text=pg_catalog.mod($2::pg_catalog.numeric,4294967296)::pg_catalog.int8::pg_catalog.text AS matches
-      FROM public.outbox_events o,pg_catalog.jsonb_populate_record(NULL::public.commerce_order_holds,$1::jsonb) p
-      WHERE o.event_type='commerce.shipment.exception' AND o.idempotency_key='shipment_exception:'||p.id::pg_catalog.text`, [hold, xid])).rows;
+      FROM public.outbox_events o,pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p
+      ${hold ? "" : "JOIN public.fulfillment_shipments s ON s.id=p.shipment_id"}
+      WHERE o.event_type=$3 AND o.idempotency_key=$4`, [row, xid, eventType, key, noticeSource])).rows;
     if (!observed.length) continue;
     if (observed.length !== 1 || observed[0]!.matches !== true) fail("target_conflict", "outbox_events");
     const event = observed[0]!;
     const deleted = await client.query(`DELETE FROM public.outbox_events o WHERE o.id=$1::uuid
-      AND o.event_type='commerce.shipment.exception' AND o.idempotency_key=$2
+      AND o.event_type=$5 AND o.idempotency_key=$2
       AND pg_catalog.to_jsonb(o)=$3::jsonb
       AND o.xmin::pg_catalog.text=pg_catalog.mod($4::pg_catalog.numeric,4294967296)::pg_catalog.int8::pg_catalog.text RETURNING o.id`,
-    [event.id, `shipment_exception:${id}`, event.value, xid]);
+    [event.id, key, event.value, xid, eventType]);
     if (deleted.rows.length !== 1) fail("target_conflict", "outbox_events");
     removed++;
   }

@@ -127,3 +127,4 @@ export { createPostgresFulfillmentOperatorPort, createPostgresParcelReservationC
 export { createPostgresFulfillmentShipmentCommandPort } from './shipmentCommands.js';
 export { createPostgresFulfillmentCommerceMutationPort } from './commerceMutations.js';
 export { createPostgresFulfillmentDispatchComposition } from './dispatchComposition.js';
+export { createPostgresFulfillmentProviderIntake, type NativeFulfillmentProviderIntakeOptions, type NativeFulfillmentProviderIntake, type NativeFulfillmentReconciliationJob, type NativeFulfillmentReconciliationResult } from './providerIntake.js';

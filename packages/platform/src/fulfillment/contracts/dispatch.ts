@@ -13,6 +13,7 @@ export const FULFILLMENT_REFUSAL_REASONS = Object.freeze([
   "contact_stale", "stock_contention", "local_missing", "io_failure", "malformed", "untrusted", "unsupported_event", "stale", "missing_correlation",
   "provider_reservations_unsupported", "stock_consumption_policy_unsupported", "stock_movements_unsupported", "independent_split_unsupported",
   "pickup_point_delivery_unsupported", "label_create_unsupported", "label_void_unsupported", "provider_cancel_unsupported", "label_format_unsupported",
+  "provider_proof_requires_acknowledgement", "succeeded_provider_attempt_exists", "replacement_dispatch_not_composed",
 ] as const);
 export interface FulfillmentRefusal {
   reason: typeof FULFILLMENT_REFUSAL_REASONS[number];
