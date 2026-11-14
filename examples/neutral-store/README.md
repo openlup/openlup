@@ -101,12 +101,12 @@ Both generated identity files stay outside owned/managed upgrade snapshots;
 the upgrade CLI installs nothing. These modes do not establish stable-framework
 or supported-installation status.
 
-The extracted ownership and proof notes retain the candidate baseline bytes.
-For released extraction, the committed lockfile stays generated; do not move it
-to managed when preparing the release. The upgrade CLI installs no dependencies.
-The extracted README's archive-import steps apply to candidate mode; released
-applications install the exact public-registry set from their committed lockfile
-with `npm ci`. The extraction schema marker lives in the source-only extractor,
+Candidate extraction retains baseline mechanics, metadata and non-documentation
+file bytes; the extracted README, ownership and proof notes describe both modes.
+The committed released lockfile stays generated and outside upgrade snapshots;
+the upgrade CLI installs no dependencies. Install the exact public-registry set
+separately from its committed lockfile with `npm ci`.
+The extraction schema marker lives in the source-only extractor,
 and schema version 2 is recorded in the generated released identity.
 
 Run the source-only offline identity checks from `examples/neutral-store`:
@@ -116,9 +116,10 @@ node --experimental-strip-types --test test/extract.test.ts
 ```
 
 These fixtures cover named lock refusals, npm aliases, Git source verification,
-reconstruction, every candidate file's baseline bytes and deterministic hashes.
-They make no network request and do not qualify any released set. The copied
-proof notes continue to describe local candidates.
+reconstruction, every non-documentation candidate file's baseline bytes and
+deterministic hashes. Only `README.md`, `docs/proof.md` and `docs/ownership.md` are
+exempt from that byte comparison. These fixtures make no network request and do
+not qualify any released set.
 
 ## Run the local application
 

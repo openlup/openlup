@@ -35,11 +35,13 @@ test('extract creates an independent repository and refuses to overwrite an exis
       assert.deepEqual(await readFile(resolve(target, file)),
         await readFile(resolve(root, ownership.sourceMappings?.[file] ?? file)), file);
     }
-    const candidateFiles = [...ownership.owned, ...ownership.managed, '.starter-origin.json'].sort();
+    const candidateDocumentation = ['README.md', 'docs/proof.md', 'docs/ownership.md'];
+    const candidateFiles = [...ownership.owned, ...ownership.managed, '.starter-origin.json']
+      .filter(path => !candidateDocumentation.includes(path)).sort();
     const candidateContent = await Promise.all(candidateFiles.map(async path =>
       [path, sha256(await readFile(resolve(target, path)))]));
-    // Frozen output of b037c43e9: includes every copied file, not only the identity.
-    assert.equal(sha256(JSON.stringify(candidateContent)), '547a549e1c194c41f9a281271839977bb51dd12521a0727440f06aa6fada1e69');
+    // Frozen non-documentation output of b037c43e9, including metadata and identity.
+    assert.equal(sha256(JSON.stringify(candidateContent)), '49908e5041582a081addb9f7d663e104655296c74387f743f921c55c64dae2c9');
     for (const file of ownership.demoData) assert.ok(ownership.owned.includes(file), file);
     assert.ok(ownership.demoDataNote.includes('customer environment'));
     assert.ok(ownership.pageCopyRequiredFor.length > 0);
