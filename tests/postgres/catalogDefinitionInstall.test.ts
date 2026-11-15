@@ -56,6 +56,7 @@ beforeAll(async () => {
   await owner.query(readFileSync(path, "utf8"));
   expect(await snapshot()).toEqual(baseline);
   await owner.query("CREATE ROLE catalog_runtime LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-catalogue'");
+  await owner.query("GRANT service_role TO catalog_runtime WITH INHERIT TRUE, SET TRUE");
   await owner.query("GRANT SELECT ON public.catalog_products TO catalog_runtime; GRANT UPDATE(name) ON public.catalog_products TO catalog_runtime");
   const url = new URL(container.connectionString); url.username = "catalog_runtime";
   runtime = new Pool({ connectionString: url.toString() }); pools.push(runtime);
@@ -74,8 +75,8 @@ it("catalog_legacy_backfill_preserves_references", async () => {
 it("pack_install_is_idempotent_and_install_role_only", async () => {
   expect((await owner.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
     .toEqual([{ rolsuper: false, rolbypassrls: false }]);
-  expect((await runtime.query("SELECT pg_has_role(current_user, 'catalog_install', 'MEMBER') AS owner_member")).rows)
-    .toEqual([{ owner_member: false }]);
+  expect((await runtime.query("SELECT pg_has_role(current_user, 'catalog_install', 'MEMBER') AS owner_member, pg_has_role(current_user, 'service_role', 'USAGE') AS runtime_group")).rows)
+    .toEqual([{ owner_member: false, runtime_group: true }]);
   const input = pack("idempotent");
   const receipts = await Promise.all([installCatalogDefinitions(owner, input), installCatalogDefinitions(owner, input)]);
   expect(receipts[1]).toEqual(receipts[0]);
