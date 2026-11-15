@@ -5288,6 +5288,22 @@
           "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_gross_mass_check CHECK (\n  (gross_mass_dimension IS NULL AND gross_mass_unscaled IS NULL AND gross_mass_scale IS NULL AND gross_mass_unit IS NULL)\n  OR (gross_mass_dimension IS NOT NULL AND gross_mass_unscaled IS NOT NULL AND gross_mass_scale IS NOT NULL AND gross_mass_unit IS NOT NULL\n    AND gross_mass_dimension = 'mass' AND gross_mass_unscaled BETWEEN 1 AND 9999999999999999999999999999999999999999\n    AND gross_mass_scale BETWEEN 0 AND 12)) NOT VALID;",
           "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_gross_mass_check;"
         ]
+      },
+      {
+        "row": "catalogue-s3",
+        "path": "db/platform/migrations/20261122120000_catalog_attributes.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_products ADD COLUMN attribute_values jsonb;",
+          "ALTER TABLE public.catalog_skus ADD COLUMN attribute_values jsonb;",
+          "ALTER TABLE public.catalog_products ADD CONSTRAINT catalog_products_attribute_values_check CHECK (\n  attribute_values IS NULL OR (jsonb_typeof(attribute_values) = 'object' AND octet_length(CAST(attribute_values AS text)) BETWEEN 0 AND 1048576)) NOT VALID;",
+          "ALTER TABLE public.catalog_products VALIDATE CONSTRAINT catalog_products_attribute_values_check;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_attribute_values_check CHECK (\n  attribute_values IS NULL OR (jsonb_typeof(attribute_values) = 'object' AND octet_length(CAST(attribute_values AS text)) BETWEEN 0 AND 1048576)) NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_attribute_values_check;"
+        ]
       }
     ]
   },
@@ -7344,6 +7360,11 @@
           "afterSha256": "150043785dd39be4704c01a9bc867615314d35a2ddd87257177e7582c67fd2c9"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261122120000_catalog_attributes.sql",
+      "sha256": "a33c24d3e7904125cd8e8df489b2c995e83ddbf70fb2fd4dbc6f3c463cdfb7d1",
+      "functions": []
     }
   ]
 }

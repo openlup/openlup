@@ -7,7 +7,7 @@ import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, store
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
-  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes", "catalog_skus"] as const;
+  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes", "catalog_skus", "catalog_products"] as const;
 const packs = [1, 2].map(version => ({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
   types: [{ key: "example:transfer-item", version, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }],
     netContentUnits: ["openlup:piece"], dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] }],
@@ -59,9 +59,20 @@ beforeAll(async () => {
     'mass',9999999999999999999999999999999999999999,12,'example:custom-mass')`, [liveId]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp())", [listId]);
   await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',123,clock_timestamp())", [listId, liveId]);
+  await source.owner.query(`UPDATE public.catalog_products SET attribute_values=
+    '{"example:title":{"en":"Synthetic é","pl":"e\\u0301"},"example:enabled":false,"example:empty":[],"example:decimal":"-123456789012345678901234567890.123456789012"}'::jsonb WHERE id=$1`, [liveId]);
+  await source.owner.query(`UPDATE public.catalog_skus SET attribute_values=
+    '{"example:ref":"synthetic-private-reference","example:decimal":"0.000000000001"}'::jsonb WHERE id=$1`, [liveId]);
+  // A stale revision is derived data: capture counts it without carrying its payload.
+  await source.owner.query(`INSERT INTO public.catalog_attribute_projection
+    (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
+    VALUES($1,17,'example:stale',1,0,'text','stale-projection-must-not-travel')`, [liveId]);
   target = await resources.installation("catalog-draft-target");
   const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
   before = await journeyCensus(source.owner);
+  expect(before.catalog_attribute_projection).toHaveLength(1);
+  // The whole target census must match retained authority with an empty projection.
+  before = { ...before, catalog_attribute_projection: [] };
   packet = await captureStoreJourney(source.owner, "draft-source:catalog-drafts");
   expect(before.catalog_skus!.map(row => JSON.parse(row))).toEqual([expect.objectContaining({
     net_content_dimension: "volume", net_content_scale: 12, net_content_unit: "example:custom-volume",
@@ -76,6 +87,14 @@ beforeAll(async () => {
   expect(before.catalog_draft_sku_reservations).toHaveLength(2);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
     .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
+  expect(packet.outsideProfileCensus.find(entry => entry.relation === "public.catalog_attribute_projection"))
+    .toMatchObject({ rows: "1", disposition: "rebuildable" });
+  expect(packet.emptyOutsideProfile).not.toContain("public.catalog_attribute_projection");
+  expect(JSON.stringify(packet)).not.toContain("stale-projection-must-not-travel");
+  expect([...packet.compatible.tables, ...packet.owned].some(entry => String(entry.table) === "catalog_attribute_projection")).toBe(false);
+  expect((await target.owner.query("SELECT * FROM public.catalog_attribute_projection")).rows).toEqual([]);
+  expect((await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine })).replayed).toBe(true);
+  expect((await target.owner.query("SELECT * FROM public.catalog_attribute_projection")).rows).toEqual([]);
   restored = await journeyCensus(target.owner);
 }, postgresSetupTimeoutMs);
 afterAll(async () => {

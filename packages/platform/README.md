@@ -1354,6 +1354,28 @@ itself performs no backfill. The old `net_weight_g` contract and V1 readers stay
 unchanged; V2 readers and migration-phase host wiring arrive separately. The
 managed rail does not supply this feature.
 
+The native attribute forward adds nullable `attribute_values` JSONB on products
+and SKUs. NULL preserves legacy absence; each supplied value must be an object
+whose PostgreSQL rendered text is at most 1 MiB (1,048,576 bytes). This storage
+ceiling measures different bytes from canonical JSON safety checks and the
+separate aggregate draft limit. No opaque document is mined or backfilled, and
+V1 DTOs and canonical bytes are unchanged. Typed value validation, batch reference
+resolution and pure projection preparation remain separate work.
+
+`catalog_attribute_projection` is the single rebuildable SKU-keyed projection
+specified by the [catalogue extension agreements](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-extension-agreements).
+Its key distinguishes SKU, publication revision, attribute key, definition version
+and value ordinal. Text, decimal, boolean, date and reference slots accompany
+quantity dimension, canonical unit and `numeric(52,12)` canonical value. The
+projection has RLS enabled, owner-only access and no runtime grants or policies.
+There is no publication-table FK before publications exist, no seeded revision
+and no generation service. Future trusted preparation must refuse decimal or
+quantity loss before SQL coercion; this storage change cannot prove exact input
+admission. Connected transfer carries authoritative product/SKU values and omits
+projection contents even when populated. Restore leaves the projection empty;
+rebuild and serving require later integration. No writer or consumer is activated.
+The managed rail does not supply this feature.
+
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.
@@ -1362,8 +1384,8 @@ The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
 semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
-projects canonical positions 1, 8, 58, 59, 61, 142 and 143 byte for byte, including
-the nullable definition-binding and quantity forwards; these assets are sparse references,
+projects canonical positions 1, 8, 58, 59, 61, 142, 143 and 144 byte for byte, including
+the nullable definition-binding, quantity and attribute forwards; these assets are sparse references,
 never a standalone install chain.
 
 `createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the

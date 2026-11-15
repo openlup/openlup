@@ -779,6 +779,24 @@ it("maps only absent catalogue quantities as unknown and preserves supplied valu
   } finally { await managed.owner.query(`ALTER TABLE public.catalog_skus ${columns.map(column => `DROP COLUMN ${column}`).join(",")}`); }
 });
 
+it("maps only absent catalogue attribute values as NULL and preserves supplied values and refusals", async () => {
+  const rows = (mapped: Awaited<ReturnType<typeof mapSource>>, table: string) => mapped.packet.owned
+    .find(entry => entry.table === table)!.rows.map(row => JSON.parse(row));
+  for (const table of ["catalog_products", "catalog_skus"]) {
+    expect(rows(await mapSource(), table)).toEqual([expect.objectContaining({ attribute_values: null })]);
+    await managed.owner.query(`ALTER TABLE public.${table} ADD COLUMN attribute_values jsonb`);
+    try {
+      expect(rows(await mapSource(), table)).toEqual([expect.objectContaining({ attribute_values: null })]);
+      for (const value of [{}, { "example:enabled": false, "example:list": [], "example:decimal": "-12345678901234567890.123456789012" }]) {
+        await managed.owner.query(`UPDATE public.${table} SET attribute_values=$1::jsonb`, [JSON.stringify(value)]);
+        expect(rows(await mapSource(), table)).toEqual([expect.objectContaining({ attribute_values: value })]);
+      }
+      await managed.owner.query(`UPDATE public.${table} SET attribute_values='{"example:unsafe":123456789012345678901234567890}'::jsonb`);
+      await expect(mapSource()).rejects.toMatchObject({ code: "invalid_input" });
+    } finally { await managed.owner.query(`ALTER TABLE public.${table} DROP COLUMN attribute_values`); }
+  }
+});
+
 // Refusal fixtures need only the row to exist, so foreign keys to unrelated rails stay out of the way.
 async function unchecked(sql: string, params: unknown[]) {
   const client = await managed.owner.connect();
