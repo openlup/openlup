@@ -1430,6 +1430,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122110000_catalog_quantities.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4650,6 +4654,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122110000_catalog_quantities.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -4947,6 +4955,10 @@
     },
     {
       "path": "packages/platform/src/catalog/adminBundleWritePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/backfillCatalogNetContent.ts",
       "class": "public-output"
     },
     {
@@ -29415,6 +29427,10 @@
     },
     {
       "path": "tests/postgres/catalogDefinitionInstall.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogQuantities.test.ts",
       "class": "public-output"
     },
     {
