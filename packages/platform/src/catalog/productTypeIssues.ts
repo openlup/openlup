@@ -149,3 +149,30 @@ export function catalogProductTypeIssues(definitions: readonly unknown[]): Catal
   });
   return issues;
 }
+
+const packSchema = z.object({
+  id: z.string(), namespace: z.string(), version: z.number(), openlupRange: z.string(),
+  capabilities: z.record(z.string(), z.boolean()), types: z.array(z.unknown()),
+  taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
+  subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
+}).strict();
+/** Pack-level closure/references use the same definition issues as runtime installation. */
+export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
+  const parsed = packSchema.safeParse(input);
+  if (!parsed.success) return parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => issue.code === "unrecognized_keys"
+    ? issue.keys.map((key) => ({ code: "definition_unknown_field" as const, path: pointer([...issue.path, key]) }))
+    : [{ code: issue.path[0] === "version" ? "definition_version_invalid" as const : "definition_invalid_shape" as const, path: pointer(issue.path) }]);
+  const pack = parsed.data;
+  const issues = catalogProductTypeIssues(pack.types).map((issue) => ({ ...issue, path: `/types${issue.path}` }));
+  pack.types.forEach((input, index) => {
+    if (!input || typeof input !== "object") return;
+    const definition = input as Record<string, unknown>;
+    if (typeof definition.key === "string" && !definition.key.startsWith(`${pack.namespace}:`)) issues.push({ code: "pack_type_namespace_mismatch", path: `/types/${index}/key` });
+    if (typeof definition.taxClass === "string" && !pack.taxClasses.some(({ key }) => key === definition.taxClass)) issues.push({ code: "definition_unknown_tax_class", path: `/types/${index}/taxClass` });
+    if (definition.subscriptionProfileRef && typeof definition.subscriptionProfileRef === "object") {
+      const ref = definition.subscriptionProfileRef as Record<string, unknown>;
+      if (!pack.subscriptionProfiles?.some(({ key, version }) => key === ref.key && version === ref.version)) issues.push({ code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef` });
+    }
+  });
+  return issues;
+}

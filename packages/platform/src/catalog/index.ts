@@ -53,3 +53,4 @@ export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
+export { catalogPackIssues } from "./productTypeIssues.js";
