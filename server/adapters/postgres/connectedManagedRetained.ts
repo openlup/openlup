@@ -647,10 +647,11 @@ export async function mapManagedRetainedBusiness(input: {
     // The target catalogue has no allergen column, so carrying this product would serve an empty safety list.
     if (!Array.isArray(row.allergens) || row.allergens.length) fail("unsupported_table", "public.catalog_products");
     // The managed source may predate native type bindings; supplied values stay authoritative.
-    projected.catalog_products!.push(project("catalog_products", { type_key: null, type_version: null, attribute_values: null, ...row }));
+    projected.catalog_products!.push(project("catalog_products", { type_key: null, type_version: null, attribute_values: null, variant_axes: null, ...row }));
   }
   // Older managed sources have no quantity groups; never replace supplied values.
   for (const row of skus) projected.catalog_skus!.push(project("catalog_skus", {
+    option_values: null, canonical_option_bytes: null, combination_digest: null,
     attribute_values: null, net_content_dimension: null, net_content_unscaled: null, net_content_scale: null, net_content_unit: null,
     gross_mass_dimension: null, gross_mass_unscaled: null, gross_mass_scale: null, gross_mass_unit: null, ...row,
   }));

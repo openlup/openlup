@@ -5304,6 +5304,22 @@
           "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_attribute_values_check CHECK (\n  attribute_values IS NULL OR (jsonb_typeof(attribute_values) = 'object' AND octet_length(CAST(attribute_values AS text)) BETWEEN 0 AND 1048576)) NOT VALID;",
           "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_attribute_values_check;"
         ]
+      },
+      {
+        "row": "catalogue-s4",
+        "path": "db/platform/migrations/20261122130000_catalog_variant_axes.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_products ADD COLUMN variant_axes text[];",
+          "ALTER TABLE public.catalog_skus ADD COLUMN option_values jsonb, ADD COLUMN canonical_option_bytes bytea, ADD COLUMN combination_digest bytea;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_option_values_check CHECK (\n  option_values IS NULL OR jsonb_typeof(option_values) = 'object') NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_option_values_check;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_combination_digest_check CHECK (\n  combination_digest IS NULL OR octet_length(combination_digest) = 32) NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_combination_digest_check;"
+        ]
       }
     ]
   },
@@ -7364,6 +7380,11 @@
     {
       "path": "db/platform/migrations/20261122120000_catalog_attributes.sql",
       "sha256": "a33c24d3e7904125cd8e8df489b2c995e83ddbf70fb2fd4dbc6f3c463cdfb7d1",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261122130000_catalog_variant_axes.sql",
+      "sha256": "48bc16639ca567aba31f2257f7cd79ca7c562be4cd4aedc4020aedf70e273c70",
       "functions": []
     }
   ]

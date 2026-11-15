@@ -1288,11 +1288,12 @@ with paths under `/types`. These checks perform no I/O or callback execution.
 and throws its first issue as `error.issue`, retaining the
 `invalid_catalog_type_definition` refusal. The Node entry `./catalog` exports
 `CATALOG_CONFORMANCE_RULES`, an exhaustive typed record supplying severity, rule,
-fix and reserved recipe destinations. Browser contracts export
+fix and installed recipe destinations. Browser contracts export
 `CatalogConformanceCode` and its related shapes as types only; the union reuses
-Core's `CatalogQuantityCode` for quantity refusals; checker prose
+Core's `CatalogQuantityCode` for quantity refusals and the V2 owner's
+`CatalogCombinationCode` for combination refusals; checker prose
 stays in the Node entry. The small pack authoring helpers remain browser-safe;
-the recipe guide and offline checker are separate additions. Existing definitions remain valid.
+the recipe guide and offline checker are separate opt-in entries. Existing definitions remain valid.
 New metadata includes optional exact unit factors, bounded attributes, axes,
 a default tax class, a versioned profile reference and a build-pinned
 `validatorRef` (`sha256:` followed by 64 lowercase hexadecimal digits).
@@ -1384,6 +1385,47 @@ projection contents even when populated. Restore leaves the projection empty;
 rebuild and serving require later integration. No writer or consumer is activated.
 The managed rail does not supply this feature.
 
+The native axes forward adds nullable product `variant_axes` in display order
+and SKU `option_values`, `canonical_option_bytes` and `combination_digest`.
+The SKU-local partial unique index applies to active, non-NULL combinations per
+product, regardless of product status. Existing legacy rows retain NULLs and all
+existing identity constraints. The storage CHECKs require supplied options to be
+objects and digests to be 32 bytes; they do not certify canonicalization.
+
+`canonicalizeCatalogCombinationV2({definition, axes, options})` in the Node entry
+computes canonical bytes and SHA-256. Supply installed immutable metadata and
+complete selected options. Axis keys sort for identity; the product's display
+array is retained separately. Stable enum IDs and booleans are canonical, labels
+are excluded, and quantity equivalents share identity through Core's exact
+arithmetic with explicit installed unit factors. Missing factors, unknown or
+incomplete axes and unrepresentable quantities refuse. The existing option
+helper and v1 command/receipt bytes retain their exact behavior.
+V2 quantity options use Core's positive decimal-string grammar: up to 52 input
+coefficient digits and scale 0–12, with canonical `numeric(52,12)` bounds checked
+after normalization and conversion. V1 retains its 40-digit input ceiling.
+
+`validateCatalogCombinationChangesV2` prepares retained plus incoming SKU facts
+without I/O. Retained evidence must come from authoritative rows/history scoped
+to one product; incoming changes accept options, never a digest. Omitted SKUs
+remain unchanged, withdrawal preserves facts, and a changed mapped identity
+requires a new SKU. Active typed SKUs require complete options and identity;
+zero selected axes with explicit empty options has one canonical empty identity.
+The helper refuses active duplicates; `classifyCatalogCombinationConflictV2`
+compares bytes on a digest conflict to distinguish a duplicate from a collision.
+Both refuse without merging identities. Payloads contain at most 10,000 SKUs;
+the product capacity parameter defaults to 50,000 retained plus incoming SKUs.
+This is pure preparation, not persisted capacity enforcement or publication.
+
+LC2 must bind definitions and recompute evidence within the human-authorized
+publication transaction, apply the
+[catalogue lock order](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order),
+preserve published identity keys and immutable history, and prove explicit
+legacy conversion and incremental publication. No publisher, lifecycle wiring,
+serving reader or capability is activated here. Connected transfer carries the
+new authoritative fields, including NULLs and declared order, in existing rows;
+old readers ignore them, and future V2 readers require publication evidence.
+The managed rail does not supply this feature.
+
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.
@@ -1392,8 +1434,8 @@ The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
 semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
-projects canonical positions 1, 8, 58, 59, 61, 142, 143 and 144 byte for byte, including
-the nullable definition-binding, quantity and attribute forwards; these assets are sparse references,
+projects canonical positions 1, 8, 58, 59, 61, 142, 143, 144 and 145 byte for byte, including
+the nullable definition-binding, quantity, attribute and axes forwards; these assets are sparse references,
 never a standalone install chain.
 
 `createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the

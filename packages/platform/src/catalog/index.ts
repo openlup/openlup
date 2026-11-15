@@ -58,3 +58,4 @@ export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 export { catalogPackIssues } from "./productTypeIssues.js";
 export { backfillCatalogNetContent } from "./backfillCatalogNetContent.js";
+export { CatalogCombinationError, canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, validateCatalogCombinationChangesV2 } from "./variantCombination.js";

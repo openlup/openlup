@@ -63,6 +63,14 @@ beforeAll(async () => {
     '{"example:title":{"en":"Synthetic é","pl":"e\\u0301"},"example:enabled":false,"example:empty":[],"example:decimal":"-123456789012345678901234567890.123456789012"}'::jsonb WHERE id=$1`, [liveId]);
   await source.owner.query(`UPDATE public.catalog_skus SET attribute_values=
     '{"example:ref":"synthetic-private-reference","example:decimal":"0.000000000001"}'::jsonb WHERE id=$1`, [liveId]);
+  // Unbound authoritative storage travels byte-for-byte, including declared display order.
+  const optionBytes = Buffer.from('["catalog-combination",2,[["enabled","boolean",false],["finish","choice","matte"]]]', "utf8");
+  await source.owner.query("UPDATE public.catalog_products SET variant_axes=ARRAY['finish','enabled'] WHERE id=$1", [liveId]);
+  await source.owner.query(`UPDATE public.catalog_skus SET option_values='{"finish":{"kind":"choice","value":"matte"},"enabled":{"kind":"boolean","value":false}}'::jsonb,
+    canonical_option_bytes=$2,combination_digest=$3 WHERE id=$1`, [liveId, optionBytes, createHash("sha256").update(optionBytes).digest()]);
+  const legacyId = randomUUID();
+  await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'transfer-legacy','Synthetic unmapped')", [legacyId]);
+  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,'TRANSFER-LEGACY','Synthetic unmapped')", [legacyId]);
   // A stale revision is derived data: capture counts it without carrying its payload.
   await source.owner.query(`INSERT INTO public.catalog_attribute_projection
     (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
@@ -74,10 +82,16 @@ beforeAll(async () => {
   // The whole target census must match retained authority with an empty projection.
   before = { ...before, catalog_attribute_projection: [] };
   packet = await captureStoreJourney(source.owner, "draft-source:catalog-drafts");
-  expect(before.catalog_skus!.map(row => JSON.parse(row))).toEqual([expect.objectContaining({
+  expect(before.catalog_skus!.map(row => JSON.parse(row))).toEqual(expect.arrayContaining([expect.objectContaining({
+    id: liveId, option_values: { finish: { kind: "choice", value: "matte" }, enabled: { kind: "boolean", value: false } },
+    canonical_option_bytes: `\\x${optionBytes.toString("hex")}`,
+    combination_digest: `\\x${createHash("sha256").update(optionBytes).digest("hex")}`,
     net_content_dimension: "volume", net_content_scale: 12, net_content_unit: "example:custom-volume",
     gross_mass_dimension: "mass", gross_mass_scale: 12, gross_mass_unit: "example:custom-mass",
-  })]);
+  }), expect.objectContaining({ id: legacyId, option_values: null, canonical_option_bytes: null, combination_digest: null })]));
+  expect(before.catalog_products!.map(row => JSON.parse(row))).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: liveId, variant_axes: ["finish", "enabled"] }), expect.objectContaining({ id: legacyId, variant_axes: null }),
+  ]));
   expect(before.catalog_type_versions).toHaveLength(2);
   expect(before.catalog_definition_installs).toHaveLength(2);
   expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);

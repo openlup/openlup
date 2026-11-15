@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
-import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry } from "../../src/catalog/index.js";
+import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
+  canonicalizeCatalogCombinationV2, CatalogCombinationError } from "../../src/catalog/index.js";
 import type { CatalogConformanceSubject, CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
 import type { CatalogPackInput, CatalogProductTypeRef } from "../../src/catalog/index.js";
 
@@ -101,6 +102,23 @@ describe("offline catalogue conformance", () => {
     fixture.run = () => ({ code: "owner_unsupported" }); fixture.assertZeroEffects = () => false; expect(run().exitCode).toBe(1);
     expect(runCatalogExtensionConformance({ packs: [] }).exitCode).toBe(1);
     expect(runCatalogExtensionConformance({ packs: Array(1) }).exitCode).toBe(1);
+  });
+  it("conformance_links_variant_combination_owner_codes", () => {
+    const p = pack();
+    p.types[0].validateContent = () => {
+      try { canonicalizeCatalogCombinationV2({ definition: p.types[0], axes: ["absent"], options: {} }); }
+      catch (error) {
+        if (!(error instanceof CatalogCombinationError)) throw error;
+        return [{ code: error.code, path: error.path }];
+      }
+      return [];
+    };
+    const d = { ...draft(), product: { ...draft().product, sharedContent: {} } };
+    const report = runCatalogExtensionConformance({ packs: [{ pack: p, drafts: [d] }] });
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toEqual([expect.objectContaining({ code: "axis_not_installed",
+      path: "/packs/0/drafts/0/product/sharedContent/axes/absent", recipe: "how-to/extend/catalogue-extension.md#add-axis" })]);
+    expect(runCatalogExtensionConformance({ packs: [{ pack: p }], requiredChecks: ["variant-combinations"] }).exitCode).toBe(2);
   });
   it("conformance_does_not_publish_or_seed", () => {
     const p = pack(); p.capabilities = { publish: false };

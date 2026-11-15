@@ -14,8 +14,9 @@ malformed references refuse before registry lookup.
 `requiredChecks: ["taxonomy"]`, for example, requests a future check and returns
 required-evidence-unavailable (2). All requested checks in `requiredChecks` are
 currently unavailable. Unknown fields refuse; they are never silently passed.
-Attribute-value/projection and cross-unit variant-combination checks await their
-owners. Do not add attribute values to strict v1 drafts.
+Attribute-value/projection checks await their owners. Version 2 combination helpers are
+available separately in Platform's server catalogue entry; combination fixtures
+are not wired into this checker. Do not add typed attribute or combination fields to strict v1 drafts.
 
 The command imports trusted code, including callbacks, without a sandbox. Modules
 must not write stdout or start effects. The checker owns no database, network,
@@ -94,6 +95,8 @@ Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,
 `definition_unknown_net_content_unit`, `definition_duplicate_net_content_unit`,
 `quantity_invalid`, `quantity_cross_dimension`, `quantity_fractional_count`,
 `quantity_unknown_unit`, `quantity_overflow`, `quantity_not_exactly_representable`.
+Combination quantities additionally refuse `unit_factor_missing` until their
+installed definition declares an explicit exact factor.
 Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`.
 
 ## Add axis
@@ -101,7 +104,12 @@ Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`
 Edit `pack.ts`, `catalogue.ts`, `fixtures.ts`: `dimensions: [{key: "finish", kind:
 "boolean"}], axes: [{key: "finish", attributeKey: "finish"}]`, referencing a
 variant attribute in the same type. Metadata and existing v1 validation are
-available; new canonical cross-unit combination identity awaits its owner.
+available. Platform's server `./catalog` entry supplies
+`canonicalizeCatalogCombinationV2` and `validateCatalogCombinationChangesV2`
+for pure combination preparation. They require installed definitions and
+authoritative retained facts; they do not publish. Cross-unit combination
+fixtures are not yet part of this CLI: `requiredChecks: ["variant-combinations"]`
+still returns 2.
 New attribute kinds/dimensions are upstream work. Usual codes:
 `definition_dimension_invalid`, `definition_axis_invalid`, `definition_duplicate_axis`,
 `definition_unknown_axis_attribute`, `definition_axis_scope_invalid`,
@@ -109,6 +117,16 @@ New attribute kinds/dimensions are upstream work. Usual codes:
 `definition_duplicate_choice`, `definition_duplicate_dimension_unit`,
 `definition_dimension_unit_mismatch`, `definition_net_content_unit_mismatch`,
 `definition_multiple_net_content_dimensions`.
+The combination owner also reports `axis_not_installed`, `duplicate_axis`,
+`option_not_selected`, `option_missing`, `option_invalid`,
+`sku_identity_change_requires_new_sku`, `duplicate_combination`,
+`combination_digest_collision` and `duplicate_sku_id`. Use stable enum IDs and
+complete options; a changed canonical identity requires a new SKU. Compare bytes
+on a digest conflict and refuse both duplicates and collisions without merging.
+`sku_payload_limit` bounds one incoming payload at 10,000 SKUs, separately from
+configured retained product capacity (default 50,000), reported by
+`product_capacity_exceeded` or `product_capacity_invalid`. Persisted incremental
+publication and its authority/races remain with the publisher.
 Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`.
 
 ## Add tax class
