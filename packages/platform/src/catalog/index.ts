@@ -48,3 +48,7 @@ export { createBundleAdminWriteStore, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, ty
 export { createPostgresBundleAdminWriteStore, type PostgresBundleAdminWriteStore } from "./postgresBundleAdminWriteStore.js";
 export { createPostgresCommerceQuoteCatalogReadPort } from "./commerceQuoteCatalogRead.js";
 export type { PostgresCommerceQuoteCatalogReadOptions } from "./commerceQuoteCatalogRead.js";
+export { catalogProductTypeIssues } from "./productTypeIssues.js";
+export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
+export { catalogPackManifest } from "./catalogPackManifest.js";
+export type { CatalogPackManifest } from "./catalogPackManifest.js";

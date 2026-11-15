@@ -3198,6 +3198,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/catalog/quantities.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/company-identity/contracts.ts",
       "class": "public-output"
     },
@@ -3483,6 +3487,10 @@
     },
     {
       "path": "packages/core/test/bundle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/catalogQuantities.test.ts",
       "class": "public-output"
     },
     {
@@ -4978,7 +4986,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogDefinitionDigest.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogPackManifest.ts",
       "class": "public-output"
     },
     {
@@ -4994,6 +5010,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/attributes.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/bundleAdmin.ts",
       "class": "public-output"
     },
@@ -5003,6 +5023,14 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/bundleRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/catalogConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/catalogPack.ts",
       "class": "public-output"
     },
     {
@@ -5079,6 +5107,10 @@
     },
     {
       "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/productTypeIssues.ts",
       "class": "public-output"
     },
     {
@@ -9234,7 +9266,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/catalogPackContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPackTypes.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/catalogProductTypeContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogProductTypeIssues.test.ts",
       "class": "public-output"
     },
     {

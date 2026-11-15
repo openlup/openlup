@@ -46,4 +46,44 @@ export declare const variantIdSchema: z.ZodString;
 ```ts
 /** @beta */
 export * from "./identifiers.js";
+export * from "./quantities.js";
+```
+## dist/catalog/quantities.d.ts
+
+```ts
+/** A physical quantity uses positive decimal strings; its dimension never changes. */
+export type CatalogQuantityDimension = "mass" | "volume" | "count";
+export interface CatalogQuantity {
+    dimension: CatalogQuantityDimension;
+    unscaled: string;
+    scale: number;
+    unit: string;
+}
+export type CatalogCanonicalUnit = "openlup:g" | "openlup:ml" | "openlup:piece";
+/** Exact decimal multiplier to the dimension's canonical unit. */
+export interface CatalogUnitFactor {
+    canonicalUnit: CatalogCanonicalUnit;
+    unscaled: string;
+    scale: number;
+}
+export interface CatalogQuantityUnit {
+    code: string;
+    dimension: CatalogQuantityDimension;
+    integral: boolean;
+    factor: CatalogUnitFactor;
+}
+export type CatalogQuantityCode = "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count" | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable";
+export declare class CatalogQuantityError extends Error {
+    readonly code: CatalogQuantityCode;
+    constructor(code: CatalogQuantityCode);
+}
+export declare const CATALOG_CANONICAL_UNITS: Readonly<Record<CatalogQuantityDimension, CatalogCanonicalUnit>>;
+export declare const CATALOG_QUANTITY_UNITS: readonly CatalogQuantityUnit[];
+/** Validates a declared conversion, without inferring density or item mass. */
+export declare function validateCatalogUnitFactor(unit: CatalogQuantityUnit): void;
+export declare function parseCatalogQuantity(input: unknown, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
+/** Canonical numeric(52,12) evidence, with minimal scale and no rounding. */
+export declare function canonicalizeCatalogQuantity(input: CatalogQuantity, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
+export declare function compareCatalogQuantities(left: CatalogQuantity, right: CatalogQuantity, units?: readonly CatalogQuantityUnit[]): -1 | 0 | 1;
+export declare function convertCatalogQuantity(input: CatalogQuantity, target: string, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
 ```

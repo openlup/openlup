@@ -1,5 +1,6 @@
-export type CatalogQuantityDimension = "mass" | "volume" | "count";
-export interface CatalogQuantity { dimension: CatalogQuantityDimension; unscaled: string; scale: number; unit: string }
+import type { CatalogQuantity, CatalogQuantityDimension, CatalogUnitFactor } from "@openlup/core/catalog";
+import type { AttributeDefinition, CatalogAxisDefinition } from "./attributes.js";
+export type { CatalogQuantity, CatalogQuantityDimension } from "@openlup/core/catalog";
 export type CatalogOptionValue =
   | { kind: "choice"; value: string }
   | { kind: "quantity"; value: CatalogQuantity }
@@ -7,14 +8,34 @@ export type CatalogOptionValue =
 export type CatalogDraftIssue = { path: string; code: string };
 export interface CatalogProductTypeRef { key: string; version: number }
 export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
-  units: { code: string; dimension: CatalogQuantityDimension; integral: boolean }[];
+  units: { code: string; dimension: CatalogQuantityDimension; integral: boolean; factor?: CatalogUnitFactor }[];
   netContentUnits: string[];
   dimensions: (
     | { key: string; kind: "choice"; values: string[] }
     | { key: string; kind: "quantity"; dimension: CatalogQuantityDimension; units: string[]; role?: "net_content" }
     | { key: string; kind: "boolean" }
   )[];
+  attributes?: readonly AttributeDefinition[];
+  axes?: readonly CatalogAxisDefinition[];
+  validatorRef?: string;
+  subscriptionProfileRef?: CatalogProductTypeRef;
+  taxClass?: string;
+  labels?: Readonly<Record<string, string>>;
   validateContent: (content: unknown) => readonly CatalogDraftIssue[];
+}
+/** Readonly authoring counterpart; the existing mutable definition API stays compatible. */
+export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units" | "netContentUnits" | "dimensions"> & {
+  units: readonly CatalogProductTypeDefinition["units"][number][];
+  netContentUnits: readonly string[];
+  dimensions: readonly (
+    | { key: string; kind: "choice"; values: readonly string[] }
+    | { key: string; kind: "quantity"; dimension: CatalogQuantityDimension; units: readonly string[]; role?: "net_content" }
+    | { key: string; kind: "boolean" }
+  )[];
+};
+export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "validateContent"> {
+  validatorRef: string;
+  attributes: readonly AttributeDefinition[];
 }
 export interface CatalogProductTypeRegistry {
   resolve(ref: CatalogProductTypeRef): CatalogProductTypeDefinition | undefined;

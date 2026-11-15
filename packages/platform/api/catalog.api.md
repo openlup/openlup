@@ -982,6 +982,13 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
     readonly constraint: CompositionConstraint | null | undefined;
 }): Promise<BundleRuleResult>;
 ```
+## dist/catalog/catalogDefinitionDigest.d.ts
+
+```ts
+import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
+/** Labels and callbacks are never definition identity. Runtime schemas bound the metadata. */
+export declare function catalogDefinitionDigest(definition: CatalogProductTypeInput): string;
+```
 ## dist/catalog/catalogDraftStore.d.ts
 
 ```ts
@@ -989,6 +996,31 @@ import { type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 /** Dark owner-only storage. Composition must verify the operator before use. */
 export declare function createPostgresCatalogDraftStore(client: PgQueryExecutor): CatalogDraftStorePort;
+```
+## dist/catalog/catalogPackManifest.d.ts
+
+```ts
+import type { CatalogPackInput } from "./contracts/catalogPack.js";
+export interface CatalogPackManifest {
+    readonly id: string;
+    readonly namespace: string;
+    readonly version: number;
+    readonly openlupRange: string;
+    readonly capabilities: Readonly<Record<string, boolean>>;
+    readonly types: readonly {
+        readonly key: string;
+        readonly version: number;
+        readonly definitionDigest: string;
+    }[];
+    readonly taxClasses: readonly string[];
+    readonly subscriptionProfiles: readonly {
+        readonly key: string;
+        readonly version: number;
+    }[];
+    readonly digest: string;
+}
+/** A derived in-memory projection; no manifest or digest is accepted from a client. */
+export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest;
 ```
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
@@ -1024,6 +1056,70 @@ export interface PostgresCommerceQuoteCatalogReadOptions {
  * head. Each call scans afresh; hosts may share a promise within one request.
  */
 export declare function createPostgresCommerceQuoteCatalogReadPort(executor: PgQueryExecutor, options: PostgresCommerceQuoteCatalogReadOptions): CommerceQuoteCatalogReadPort;
+```
+## dist/catalog/contracts/attributes.d.ts
+
+```ts
+/** Definition grammar only. Attribute value validation belongs to publication. */
+export type CatalogAttributeScalarType = {
+    kind: "text";
+    maxLength: number;
+    minLength?: number;
+} | {
+    kind: "localized_text";
+    maxLength: number;
+    locales: readonly string[];
+    requiredLocales?: readonly string[];
+} | {
+    kind: "decimal";
+    scale: number;
+    min?: string;
+    max?: string;
+} | {
+    kind: "quantity";
+    dimension: import("./productTypes.js").CatalogQuantityDimension;
+    units: readonly string[];
+} | {
+    kind: "boolean";
+} | {
+    kind: "enum";
+    values: readonly {
+        id: string;
+        labels?: Readonly<Record<string, string>>;
+    }[];
+} | {
+    kind: "reference";
+    allowlist: readonly string[];
+} | {
+    kind: "date";
+};
+export type CatalogAttributeValueType = CatalogAttributeScalarType | {
+    kind: "list";
+    item: CatalogAttributeScalarType;
+    min: number;
+    max: number;
+};
+export interface AttributeDefinition {
+    key: string;
+    scope: "product" | "variant";
+    valueType: CatalogAttributeValueType;
+    required: boolean;
+    cardinality: {
+        min: number;
+        max: number;
+    };
+    filterable: boolean;
+    facetable: boolean;
+    public: boolean;
+    displayOrder: number;
+    labels: Readonly<Record<string, string>>;
+}
+/** Axes reference variant attributes; display order stays in the declared array. */
+export interface CatalogAxisDefinition {
+    key: string;
+    attributeKey: string;
+    labels?: Readonly<Record<string, string>>;
+}
 ```
 ## dist/catalog/contracts/bundleAdmin.d.ts
 
@@ -1482,6 +1578,119 @@ export type BundlePricePreview = {
     }[];
 };
 ```
+## dist/catalog/contracts/catalogConformance.d.ts
+
+```ts
+/** Stable meanings shared by runtime admission and offline conformance. */
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count" | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable";
+export interface CatalogConformanceRule {
+    severity: "error" | "warning";
+    rule: string;
+    fix: string;
+    recipe: string;
+}
+export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>>;
+export interface CatalogDefinitionIssue {
+    code: CatalogConformanceCode;
+    path: string;
+}
+```
+## dist/catalog/contracts/catalogPack.d.ts
+
+```ts
+import type { CatalogDraftPayload } from "./draft.js";
+import type { CatalogProductTypeInput, CatalogOptionValue, CatalogQuantity } from "./productTypes.js";
+export interface CatalogPackInput {
+    id: string;
+    namespace: string;
+    version: number;
+    openlupRange: string;
+    capabilities: Readonly<Record<string, boolean>>;
+    types: readonly CatalogProductTypeInput[];
+    taxClasses: readonly {
+        key: string;
+        labels?: Readonly<Record<string, string>>;
+    }[];
+    subscriptionProfiles?: readonly {
+        key: string;
+        version: number;
+    }[];
+}
+type Member<T> = T extends readonly (infer E)[] ? E : never;
+type Units<T extends CatalogProductTypeInput> = T["units"][number]["code"];
+type Dimension<T extends CatalogProductTypeInput> = T["dimensions"][number];
+type TypedOption<D, T extends CatalogProductTypeInput> = D extends {
+    kind: "choice";
+    values: readonly string[];
+} ? {
+    kind: "choice";
+    value: D["values"][number];
+} : D extends {
+    kind: "quantity";
+    dimension: CatalogQuantity["dimension"];
+    units: readonly string[];
+} ? {
+    kind: "quantity";
+    value: CatalogQuantity & {
+        dimension: D["dimension"];
+        unit: D["units"][number] & Units<T>;
+    };
+} : D extends {
+    kind: "boolean";
+} ? {
+    kind: "boolean";
+    value: boolean;
+} : CatalogOptionValue;
+type DraftForType<T extends CatalogProductTypeInput> = Omit<CatalogDraftPayload, "product" | "skus"> & {
+    product: Omit<CatalogDraftPayload["product"], "type" | "dimensions"> & {
+        type: Pick<T, "key" | "version">;
+        dimensions: readonly Dimension<T>["key"][];
+    };
+    skus: readonly (Omit<CatalogDraftPayload["skus"][number], "options" | "netContent" | "grossMass"> & {
+        options: {
+            readonly [D in Dimension<T> as D["key"]]: TypedOption<D, T>;
+        };
+        netContent?: CatalogQuantity & {
+            unit: T["netContentUnits"][number] & Units<T>;
+        };
+        grossMass?: CatalogQuantity & {
+            dimension: "mass";
+            unit: Extract<T["units"][number], {
+                dimension: "mass";
+            }>["code"];
+        };
+    })[];
+};
+export type CatalogPackDraft<P extends CatalogPackInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T> : never : never;
+type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInput> = T & {
+    key: `${P["namespace"]}:${string}`;
+    netContentUnits: readonly Units<T>[];
+    dimensions: readonly (Dimension<T> & {
+        units?: readonly Units<T>[];
+    })[];
+    taxClass?: P["taxClasses"][number]["key"];
+    subscriptionProfileRef?: Member<P["subscriptionProfiles"]>;
+    attributes?: readonly (NonNullable<T["attributes"]>[number] & {
+        valueType: NonNullable<T["attributes"]>[number]["valueType"] & {
+            units?: readonly Units<T>[];
+        };
+    })[];
+    axes?: readonly {
+        key: Dimension<T>["key"];
+        attributeKey: NonNullable<T["attributes"]>[number]["key"];
+    }[];
+};
+type PackReferences<P extends CatalogPackInput> = {
+    types: {
+        readonly [I in keyof P["types"]]: P["types"][I] extends CatalogProductTypeInput ? TypeReferences<P, P["types"][I]> : P["types"][I];
+    };
+};
+/** Authoring preserves literals; it does not validate or execute pack callbacks. */
+export declare function defineCatalogPack<const P extends CatalogPackInput>(pack: P & PackReferences<P>): P;
+/** v1 authoring only; attributes and prices join the versioned draft payload separately. */
+export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): (drafts: readonly CatalogPackDraft<P>[]) => readonly CatalogPackDraft<P>[];
+export {};
+```
 ## dist/catalog/contracts/draft.d.ts
 
 ```ts
@@ -1665,6 +1874,10 @@ export type { CreateBundleDraftRequest, CreateBundleDraftResponse, UpdateBundleD
 export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBundleRequest, GetBundleResponse, BundleDetailView, BundleAvailabilityView, BundleHistoryRequest, BundleHistoryResponse, PreviewBundlePriceRequest, PreviewBundlePriceResponse, BundlePricePreview } from "./bundleRead.js";
 export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
 export type { AgentReason } from "./rpcErrors.js";
+export * from "./attributes.js";
+export * from "./catalogConformance.js";
+export * from "./catalogPack.js";
+export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -1831,13 +2044,9 @@ export declare function validateProductMediaManifest(value: unknown): ProductMed
 ## dist/catalog/contracts/productTypes.d.ts
 
 ```ts
-export type CatalogQuantityDimension = "mass" | "volume" | "count";
-export interface CatalogQuantity {
-    dimension: CatalogQuantityDimension;
-    unscaled: string;
-    scale: number;
-    unit: string;
-}
+import type { CatalogQuantity, CatalogQuantityDimension, CatalogUnitFactor } from "@openlup/core/catalog";
+import type { AttributeDefinition, CatalogAxisDefinition } from "./attributes.js";
+export type { CatalogQuantity, CatalogQuantityDimension } from "@openlup/core/catalog";
 export type CatalogOptionValue = {
     kind: "choice";
     value: string;
@@ -1861,6 +2070,7 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         code: string;
         dimension: CatalogQuantityDimension;
         integral: boolean;
+        factor?: CatalogUnitFactor;
     }[];
     netContentUnits: string[];
     dimensions: ({
@@ -1877,7 +2087,36 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         key: string;
         kind: "boolean";
     })[];
+    attributes?: readonly AttributeDefinition[];
+    axes?: readonly CatalogAxisDefinition[];
+    validatorRef?: string;
+    subscriptionProfileRef?: CatalogProductTypeRef;
+    taxClass?: string;
+    labels?: Readonly<Record<string, string>>;
     validateContent: (content: unknown) => readonly CatalogDraftIssue[];
+}
+/** Readonly authoring counterpart; the existing mutable definition API stays compatible. */
+export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units" | "netContentUnits" | "dimensions"> & {
+    units: readonly CatalogProductTypeDefinition["units"][number][];
+    netContentUnits: readonly string[];
+    dimensions: readonly ({
+        key: string;
+        kind: "choice";
+        values: readonly string[];
+    } | {
+        key: string;
+        kind: "quantity";
+        dimension: CatalogQuantityDimension;
+        units: readonly string[];
+        role?: "net_content";
+    } | {
+        key: string;
+        kind: "boolean";
+    })[];
+};
+export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "validateContent"> {
+    validatorRef: string;
+    attributes: readonly AttributeDefinition[];
 }
 export interface CatalogProductTypeRegistry {
     resolve(ref: CatalogProductTypeRef): CatalogProductTypeDefinition | undefined;
@@ -2583,6 +2822,10 @@ export { createBundleAdminWriteStore, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, ty
 export { createPostgresBundleAdminWriteStore, type PostgresBundleAdminWriteStore } from "./postgresBundleAdminWriteStore.js";
 export { createPostgresCommerceQuoteCatalogReadPort } from "./commerceQuoteCatalogRead.js";
 export type { PostgresCommerceQuoteCatalogReadOptions } from "./commerceQuoteCatalogRead.js";
+export { catalogProductTypeIssues } from "./productTypeIssues.js";
+export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
+export { catalogPackManifest } from "./catalogPackManifest.js";
+export type { CatalogPackManifest } from "./catalogPackManifest.js";
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -2661,13 +2904,11 @@ export interface PostgresBundleAdminWriteStore extends AdminBundleWritePort {
 }
 export declare function createPostgresBundleAdminWriteStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresBundleAdminWriteStore;
 ```
-## dist/catalog/productTypeSchemas.d.ts
+## dist/catalog/productTypeIssues.d.ts
 
 ```ts
 import { z } from "./validation.js";
-import type { CatalogProductTypeDefinition, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
-export { canonicalCatalogOption, validateCatalogQuantity } from "./contracts/productTypes.js";
-export type { CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogProductTypeDefinition, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 export declare const catalogNamespacedKeySchema: z.ZodString;
 export declare const catalogDimensionKeySchema: z.ZodString;
 export declare const catalogQuantityDimensionSchema: z.ZodEnum<{
@@ -2708,8 +2949,164 @@ export declare const catalogProductTypeRefSchema: z.ZodObject<{
     key: z.ZodString;
     version: z.ZodNumber;
 }, z.core.$strict>;
+export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
+    key: z.ZodString;
+    version: z.ZodNumber;
+    units: z.ZodArray<z.ZodObject<{
+        code: z.ZodString;
+        dimension: z.ZodEnum<{
+            count: "count";
+            mass: "mass";
+            volume: "volume";
+        }>;
+        integral: z.ZodBoolean;
+        factor: z.ZodOptional<z.ZodObject<{
+            canonicalUnit: z.ZodEnum<{
+                "openlup:g": "openlup:g";
+                "openlup:ml": "openlup:ml";
+                "openlup:piece": "openlup:piece";
+            }>;
+            unscaled: z.ZodString;
+            scale: z.ZodNumber;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
+    netContentUnits: z.ZodArray<z.ZodString>;
+    dimensions: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        key: z.ZodString;
+        kind: z.ZodLiteral<"choice">;
+        values: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        key: z.ZodString;
+        kind: z.ZodLiteral<"quantity">;
+        dimension: z.ZodEnum<{
+            count: "count";
+            mass: "mass";
+            volume: "volume";
+        }>;
+        units: z.ZodArray<z.ZodString>;
+        role: z.ZodOptional<z.ZodLiteral<"net_content">>;
+    }, z.core.$strict>, z.ZodObject<{
+        key: z.ZodString;
+        kind: z.ZodLiteral<"boolean">;
+    }, z.core.$strict>], "kind">>;
+    attributes: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        key: z.ZodString;
+        scope: z.ZodEnum<{
+            product: "product";
+            variant: "variant";
+        }>;
+        valueType: z.ZodUnion<readonly [z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"text">;
+            maxLength: z.ZodNumber;
+            minLength: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"localized_text">;
+            maxLength: z.ZodNumber;
+            locales: z.ZodArray<z.ZodString>;
+            requiredLocales: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"decimal">;
+            scale: z.ZodNumber;
+            min: z.ZodOptional<z.ZodString>;
+            max: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"quantity">;
+            dimension: z.ZodEnum<{
+                count: "count";
+                mass: "mass";
+                volume: "volume";
+            }>;
+            units: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"boolean">;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"enum">;
+            values: z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"reference">;
+            allowlist: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"date">;
+        }, z.core.$strict>], "kind">, z.ZodObject<{
+            kind: z.ZodLiteral<"list">;
+            item: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"text">;
+                maxLength: z.ZodNumber;
+                minLength: z.ZodOptional<z.ZodNumber>;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"localized_text">;
+                maxLength: z.ZodNumber;
+                locales: z.ZodArray<z.ZodString>;
+                requiredLocales: z.ZodOptional<z.ZodArray<z.ZodString>>;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"decimal">;
+                scale: z.ZodNumber;
+                min: z.ZodOptional<z.ZodString>;
+                max: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"quantity">;
+                dimension: z.ZodEnum<{
+                    count: "count";
+                    mass: "mass";
+                    volume: "volume";
+                }>;
+                units: z.ZodArray<z.ZodString>;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"boolean">;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"enum">;
+                values: z.ZodArray<z.ZodObject<{
+                    id: z.ZodString;
+                    labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+                }, z.core.$strict>>;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"reference">;
+                allowlist: z.ZodArray<z.ZodString>;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"date">;
+            }, z.core.$strict>], "kind">;
+            min: z.ZodNumber;
+            max: z.ZodNumber;
+        }, z.core.$strict>]>;
+        required: z.ZodBoolean;
+        cardinality: z.ZodObject<{
+            min: z.ZodNumber;
+            max: z.ZodNumber;
+        }, z.core.$strict>;
+        filterable: z.ZodBoolean;
+        facetable: z.ZodBoolean;
+        public: z.ZodBoolean;
+        displayOrder: z.ZodNumber;
+        labels: z.ZodRecord<z.ZodString, z.ZodString>;
+    }, z.core.$strict>>>;
+    axes: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        key: z.ZodString;
+        attributeKey: z.ZodString;
+        labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+    }, z.core.$strict>>>;
+    validatorRef: z.ZodOptional<z.ZodString>;
+    subscriptionProfileRef: z.ZodOptional<z.ZodObject<{
+        key: z.ZodString;
+        version: z.ZodNumber;
+    }, z.core.$strict>>;
+    taxClass: z.ZodOptional<z.ZodString>;
+    labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
+}, z.core.$strict>;
+/** The runtime throws the first issue; offline callers can report the complete list. */
+export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
+```
+## dist/catalog/productTypeSchemas.d.ts
+
+```ts
+import type { CatalogProductTypeInput, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+export { catalogNamespacedKeySchema, catalogDimensionKeySchema, catalogQuantityDimensionSchema, catalogQuantitySchema, catalogOptionValueSchema, catalogProductTypeRefSchema, catalogProductTypeIssues } from "./productTypeIssues.js";
+export { canonicalCatalogOption, validateCatalogQuantity } from "./contracts/productTypes.js";
+export type { CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogProductTypeDefinition, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 /** Definitions are installed by composition, never supplied as executable draft data. */
-export declare function createCatalogProductTypeRegistry(definitions: readonly CatalogProductTypeDefinition[]): CatalogProductTypeRegistry;
+export declare function createCatalogProductTypeRegistry(definitions: readonly CatalogProductTypeInput[]): CatalogProductTypeRegistry;
 ```
 ## dist/catalog/publicationPorts.d.ts
 

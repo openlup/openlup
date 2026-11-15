@@ -1,0 +1,3 @@
+Add readonly catalogue pack descriptors, typed v1 draft authoring, declarative metadata, shared definition issues and server-computed definition/manifest digests. Catalogue quantity types now re-export Core's identical shape.
+
+Migration: additive catalog and catalog/contracts exports. Existing definitions remain valid; v1 command bytes and quantity/option helpers are unchanged. Invalid definitions retain invalid_catalog_type_definition and now carry their first structured issue. Attribute values remain outside v1 drafts. No installation, publication, SQL or activation; target package set 0.44.0.

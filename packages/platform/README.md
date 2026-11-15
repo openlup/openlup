@@ -1241,6 +1241,34 @@ in the application. The existing cold consumer exercises both entries and
 compiles installed declarations without optional provider peers.
 
 ## Catalog
+
+Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
+`./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
+tax-class and profile references. `defineCatalogPack` freezes the descriptor;
+it neither validates it nor invokes callbacks. `draftsFor` types the existing v1
+draft fields. Attribute definitions describe the closed value-kind grammar;
+attribute values and prices are not added to v1 drafts.
+
+`catalogProductTypeIssues` in the server entry returns definition issues with
+stable `CatalogConformanceCode` values and JSON-pointer paths rooted at the
+input definition array. `createCatalogProductTypeRegistry` uses that same list
+and throws its first issue as `error.issue`, retaining the
+`invalid_catalog_type_definition` refusal. `CATALOG_CONFORMANCE_RULES` supplies
+severity, rule, fix and reserved recipe destinations; the recipe guide and
+offline checker are separate additions. Existing definitions remain valid.
+New metadata includes optional exact unit factors, bounded attributes, axes,
+a default tax class, a versioned profile reference and a build-pinned
+`validatorRef` (`sha256:` followed by 64 lowercase hexadecimal digits).
+An axis names a declared dimension and a variant-scoped attribute of that type.
+
+`catalogDefinitionDigest` and `catalogPackManifest` compute SHA-256 identities
+server-side over bounded canonical JSON. Labels and executable callbacks are
+excluded; validator artifact references and all other admitted definition
+metadata are covered. Definition versioning follows the
+[catalogue extension agreements](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-extension-agreements).
+Manifests are derived immutable projections, never client-authored evidence. These helpers install nothing, publish nothing and
+activate no capability. Quantity types re-export Core's single definition;
+the existing v1 quantity validator and option canonical bytes are unchanged.
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.
