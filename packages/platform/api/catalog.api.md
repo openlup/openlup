@@ -1654,15 +1654,24 @@ type TypedOption<D, T extends CatalogProductTypeInput> = D extends {
     kind: "boolean";
     value: boolean;
 } : CatalogOptionValue;
-type DraftForType<T extends CatalogProductTypeInput> = Omit<CatalogDraftPayload, "product" | "skus"> & {
+/** Recursive view of values frozen by defineCatalogPack; callbacks keep their signatures. */
+type CatalogReadonly<T> = T extends (...args: never[]) => unknown ? T : T extends object ? {
+    readonly [K in keyof T]: CatalogReadonly<T[K]>;
+} : T;
+type SelectedOptions<T extends CatalogProductTypeInput, Selected extends string> = [Extract<Dimension<T>, {
+    key: Selected;
+}>] extends [never] ? Readonly<Record<string, never>> : {
+    readonly [D in Extract<Dimension<T>, {
+        key: Selected;
+    }> as D["key"]]: TypedOption<D, T>;
+};
+type DraftForType<T extends CatalogProductTypeInput, Selected extends string = Dimension<T>["key"]> = Omit<CatalogDraftPayload, "product" | "skus"> & {
     product: Omit<CatalogDraftPayload["product"], "type" | "dimensions"> & {
         type: Pick<T, "key" | "version">;
-        dimensions: readonly Dimension<T>["key"][];
+        dimensions: readonly (Selected & Dimension<T>["key"])[];
     };
     skus: readonly (Omit<CatalogDraftPayload["skus"][number], "options" | "netContent" | "grossMass"> & {
-        options: {
-            readonly [D in Dimension<T> as D["key"]]: TypedOption<D, T>;
-        };
+        options: SelectedOptions<T, Selected>;
         netContent?: CatalogQuantity & {
             unit: T["netContentUnits"][number] & Units<T>;
         };
@@ -1674,7 +1683,29 @@ type DraftForType<T extends CatalogProductTypeInput> = Omit<CatalogDraftPayload,
         };
     })[];
 };
-export type CatalogPackDraft<P extends CatalogPackInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T> : never : never;
+export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
+type DraftInput = CatalogReadonly<CatalogDraftPayload>;
+type SelectedDraft<P extends CatalogPackInput, D extends DraftInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? D["product"]["type"] extends Pick<T, "key" | "version"> ? DraftForType<T, D["product"]["dimensions"][number]> & {
+    skus: {
+        readonly [I in keyof D["skus"]]: D["skus"][I] extends {
+            options: infer O;
+        } ? {
+            options: {
+                readonly [K in Exclude<keyof O, D["product"]["dimensions"][number]>]: never;
+            };
+        } : D["skus"][I];
+    };
+} : never : never : never;
+type AttributeReferences<V, T extends CatalogProductTypeInput> = V extends {
+    kind: "quantity";
+} ? V & {
+    units: readonly Units<T>[];
+} : V extends {
+    kind: "list";
+    item: infer Item;
+} ? V & {
+    item: AttributeReferences<Item, T>;
+} : V;
 type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInput> = T & {
     key: `${P["namespace"]}:${string}`;
     netContentUnits: readonly Units<T>[];
@@ -1684,9 +1715,7 @@ type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInpu
     taxClass?: P["taxClasses"][number]["key"];
     subscriptionProfileRef?: Member<P["subscriptionProfiles"]>;
     attributes?: readonly (NonNullable<T["attributes"]>[number] & {
-        valueType: NonNullable<T["attributes"]>[number]["valueType"] & {
-            units?: readonly Units<T>[];
-        };
+        valueType: AttributeReferences<NonNullable<T["attributes"]>[number]["valueType"], T>;
     })[];
     axes?: readonly {
         key: Dimension<T>["key"];
@@ -1699,9 +1728,11 @@ type PackReferences<P extends CatalogPackInput> = {
     };
 };
 /** Authoring preserves literals; it does not validate or execute pack callbacks. */
-export declare function defineCatalogPack<const P extends CatalogPackInput>(pack: P & PackReferences<P>): P;
+export declare function defineCatalogPack<const P extends CatalogPackInput>(pack: P & PackReferences<P>): CatalogReadonly<P>;
 /** v1 authoring only; attributes and prices join the versioned draft payload separately. */
-export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): (drafts: readonly CatalogPackDraft<P>[]) => readonly CatalogPackDraft<P>[];
+export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): <const D extends readonly DraftInput[]>(drafts: D & {
+    readonly [I in keyof D]: SelectedDraft<P, D[I]>;
+}) => D;
 export {};
 ```
 ## dist/catalog/contracts/definitionInstall.d.ts

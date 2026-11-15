@@ -1244,9 +1244,15 @@ compiles installed declarations without optional provider peers.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
 `./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
-tax-class and profile references. `defineCatalogPack` freezes the descriptor;
-it neither validates it nor invokes callbacks. `draftsFor` types the existing v1
-draft fields. Attribute definitions describe the closed value-kind grammar;
+tax-class and profile references. `defineCatalogPack` recursively freezes the descriptor and returns a recursively
+readonly view, including metadata supplied through referenced objects; it neither
+validates it nor invokes callbacks. `draftsFor` types the existing v1 draft fields
+and derives each SKU's option keys from that product's selected `dimensions`.
+Zero selected dimensions require empty options. Type-level unit references also
+cover quantity scalars inside list attributes. To hand readonly authoring output
+to existing mutable draft/command DTOs, pass each draft through the existing
+server `catalogDraftPayloadSchema.parse(draft)`; the schema validates and returns
+the v1 wire payload. Attribute definitions describe the closed value-kind grammar;
 attribute values and prices are not added to v1 drafts.
 
 `catalogProductTypeIssues` in the server entry returns definition issues with
