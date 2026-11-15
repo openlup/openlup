@@ -32,7 +32,7 @@ beforeAll(async () => {
   containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Catalogue PostgreSQL unavailable");
   const bootstrap = new Pool({ connectionString: container.connectionString }); pools.push(bootstrap);
-  await bootstrap.query("CREATE ROLE catalog_install LOGIN SUPERUSER PASSWORD 'synthetic-catalogue'; ALTER DATABASE postgres OWNER TO catalog_install");
+  await bootstrap.query("CREATE ROLE catalog_install LOGIN SUPERUSER PASSWORD 'synthetic-catalogue'; CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS; ALTER DATABASE postgres OWNER TO catalog_install");
   const installUrl = new URL(container.connectionString); installUrl.username = "catalog_install";
   owner = new Pool({ connectionString: installUrl.toString() }); pools.push(owner);
   // Apply the unchanged native prefix first; legacy facts exist before the new forward.
