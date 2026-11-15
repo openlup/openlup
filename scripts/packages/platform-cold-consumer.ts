@@ -2038,6 +2038,10 @@ const cases = [
    const invalid = invoke(invalidArgs); assert.equal(invalid.exitCode, 1);
    assert(invalid.findings.some(f => f.code === "definition_duplicate_identity"));
    assert.deepEqual(invalid, invoke(invalidArgs));
+   writeFileSync(join(owned, "invalid-reference.ts"), 'import subject from "./registry.ts"; export default {packs:[{...subject.packs[0], quantities:[{type:{key:"stationery:notebook",version:"1"},value:{dimension:"count",unit:"stationery:each",unscaled:"1",scale:0}}]}]};');
+   const malformedReference = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/invalid-reference.ts"]);
+   assert.equal(malformedReference.exitCode, 1);
+   assert(malformedReference.findings.some(f => f.code === "definition_version_invalid" && f.path === "/packs/0/quantities/0/type/version"));
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
    const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);

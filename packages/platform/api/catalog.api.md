@@ -2934,7 +2934,7 @@ export { createBundleAdminWriteStore, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, ty
 export { createPostgresBundleAdminWriteStore, type PostgresBundleAdminWriteStore } from "./postgresBundleAdminWriteStore.js";
 export { createPostgresCommerceQuoteCatalogReadPort } from "./commerceQuoteCatalogRead.js";
 export type { PostgresCommerceQuoteCatalogReadOptions } from "./commerceQuoteCatalogRead.js";
-export { catalogProductTypeIssues } from "./productTypeIssues.js";
+export { catalogProductTypeIssues, catalogProductTypeRefIssues } from "./productTypeIssues.js";
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
@@ -3222,9 +3222,11 @@ export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
     taxClass: z.ZodOptional<z.ZodString>;
     labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
 }, z.core.$strict>;
+/** Reference admission shares the definition key/version grammar and issue codes. */
+export declare function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIssue[];
 /** The runtime throws the first issue; offline callers can report the complete list. */
 export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
-/** Shared pack shape, definitions and references; installation also requires a bounded pack version, pinned validators and unique tax-class keys. */
+/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys. */
 export declare function catalogPackIssues(input: unknown): CatalogDefinitionIssue[];
 ```
 ## dist/catalog/productTypeSchemas.d.ts

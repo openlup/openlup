@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
-import { catalogPackIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry } from "../../src/catalog/index.js";
+import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry } from "../../src/catalog/index.js";
 import type { CatalogConformanceSubject, CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
-import type { CatalogPackInput } from "../../src/catalog/index.js";
+import type { CatalogPackInput, CatalogProductTypeRef } from "../../src/catalog/index.js";
 
 function pack(): CatalogPackInput {
   return { id: "stationery", namespace: "stationery", version: 1, openlupRange: "^0.44.0", capabilities: {}, taxClasses: [{ key: "standard" }], types: [{
@@ -50,8 +50,39 @@ describe("offline catalogue conformance", () => {
     const oversized = { ...draft(), product: { ...draft().product, sharedContent: "x".repeat(1_048_576) } };
     expect(catalogDraftPayloadSchema.safeParse(oversized).success).toBe(false);
     expect(runCatalogExtensionConformance({ packs: [{ pack: p, drafts: [oversized] }] }).findings[0].code).toBe("draft_input_invalid");
+    const typeRef = { key: p.types[0].key, version: p.types[0].version };
+    const validQuantity = { dimension: "count" as const, unit: "stationery:each", unscaled: "1", scale: 0 };
+    const malformedReferences: [unknown, string][] = [
+      [{ ...typeRef, version: "1" }, "definition_version_invalid"],
+      [{ ...typeRef, version: Object(1) }, "definition_version_invalid"],
+      [{ ...typeRef, version: 0 }, "definition_version_invalid"],
+      [{ ...typeRef, version: 1.5 }, "definition_version_invalid"],
+      [{ ...typeRef, version: 2_147_483_648 }, "definition_version_invalid"],
+      [{ ...typeRef, key: "item" }, "definition_key_invalid"],
+      [{ ...typeRef, key: Object(typeRef.key) }, "definition_key_invalid"],
+      [{ ...typeRef, extra: true }, "definition_unknown_field"],
+      [null, "definition_invalid_shape"],
+    ];
+    for (const [reference, code] of malformedReferences) {
+      const ownerIssues = catalogProductTypeRefIssues(reference);
+      expect(ownerIssues.some(issue => issue.code === code)).toBe(true);
+      const report = runCatalogExtensionConformance({ packs: [{ pack: p, quantities: [{ type: reference as CatalogProductTypeRef, value: validQuantity }] }] });
+      expect(report.exitCode).toBe(1);
+      expect(report.findings.map(({ code, path }) => ({ code, path }))).toEqual(ownerIssues.map(issue => ({ ...issue, path: `/packs/0/quantities/0/type${issue.path}` })));
+    }
+    expect(runCatalogExtensionConformance({ packs: [{ pack: p, quantities: [{ type: typeRef, value: validQuantity }] }] }).exitCode).toBe(0);
+    // Other subject identifiers already enter strict owners before lookup.
+    const malformedDraft = { ...draft(), product: { ...draft().product, type: { ...typeRef, version: "1" } } };
+    expect(catalogDraftPayloadSchema.safeParse(malformedDraft).success).toBe(false);
+    expect(runCatalogExtensionConformance({ packs: [{ pack: p, drafts: [malformedDraft] }] }).findings[0].code).toBe("draft_input_invalid");
+    for (const version of [0, -1, 1.5, 2_147_483_648]) {
+      const invalidPack = { ...p, version };
+      expect(catalogPackIssues(invalidPack)).toContainEqual({ code: "definition_version_invalid", path: "/version" });
+      const report = check(invalidPack);
+      expect(report.exitCode).toBe(1); expect(report.findings[0].code).toBe("definition_version_invalid");
+    }
     const quantity = { dimension: "count" as const, unit: "stationery:each", unscaled: "15", scale: 1 };
-    expect(runCatalogExtensionConformance({ packs: [{ pack: p, quantities: [{ type: p.types[0], value: quantity }] }] }).findings[0].code).toBe("quantity_fractional_count");
+    expect(runCatalogExtensionConformance({ packs: [{ pack: p, quantities: [{ type: typeRef, value: quantity }] }] }).findings[0].code).toBe("quantity_fractional_count");
     expect(runCatalogExtensionConformance({ packs: [{ pack: p }], requiredChecks: ["taxonomy", "tax-coverage", "profiles", "attribute-values", "variant-combinations"] }).exitCode).toBe(2);
   });
   it("conformance_requires_refusal_fixture", () => {
@@ -60,6 +91,12 @@ describe("offline catalogue conformance", () => {
     const fixture: CatalogRefusalFixture = { name: "unsupported", capability: "recurring", expectedCode: "owner_unsupported", run: () => ({ code: "owner_unsupported" }), assertZeroEffects: () => true };
     const run = () => runCatalogExtensionConformance({ packs: [{ pack: p, refusals: [fixture] }] });
     expect(run().exitCode).toBe(0);
+    const malformedRun = vi.fn(() => ({ code: "owner_unsupported" }));
+    const malformed = { ...fixture, capability: Object("recurring") as string, run: malformedRun };
+    const malformedReport = runCatalogExtensionConformance({ packs: [{ pack: p, refusals: [fixture, malformed] }] });
+    expect(malformedReport.exitCode).toBe(1);
+    expect(malformedReport.findings).toContainEqual(expect.objectContaining({ code: "conformance_refusal_fixture_invalid", path: "/packs/0/refusals/1" }));
+    expect(malformedRun).not.toHaveBeenCalled();
     fixture.run = () => ({ code: "other" }); expect(run().exitCode).toBe(1);
     fixture.run = () => ({ code: "owner_unsupported" }); fixture.assertZeroEffects = () => false; expect(run().exitCode).toBe(1);
     expect(runCatalogExtensionConformance({ packs: [] }).exitCode).toBe(1);

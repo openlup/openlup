@@ -1,6 +1,6 @@
 import { CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity } from "@openlup/core/catalog";
 import {
-  CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues,
+  CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
   catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
@@ -65,10 +65,13 @@ export function runCatalogExtensionConformance(subject: CatalogConformanceSubjec
     });
     Array.from(entry.quantities ?? []).forEach((fixture, i) => {
       const path = `${at}/quantities/${i}`;
-      if (!object(fixture) || !object(fixture.type) || !object(fixture.value)
+      if (!object(fixture) || !object(fixture.value)
         || Object.keys(fixture).some(key => !["type", "value", "targetUnit"].includes(key))) {
         add("conformance_subject_invalid", path); return;
       }
+      const referenceIssues = catalogProductTypeRefIssues(fixture.type);
+      referenceIssues.forEach(issue => add(issue.code, `${path}/type${issue.path}`));
+      if (referenceIssues.length) return;
       const type = registry.resolve(fixture.type);
       if (!type) { add("type_not_installed", `${path}/type`); return; }
       // Units without factors remain valid legacy definitions; exact conversion needs explicit factors.
@@ -90,6 +93,7 @@ export function runCatalogExtensionConformance(subject: CatalogConformanceSubjec
     Array.from(entry.refusals ?? []).forEach((fixture, i) => {
       const path = `${at}/refusals/${i}`;
       if (!object(fixture) || typeof fixture.name !== "string" || !fixture.name || typeof fixture.expectedCode !== "string" || !fixture.expectedCode
+        || typeof fixture.capability !== "string" || !Object.hasOwn(pack.capabilities, fixture.capability)
         || pack.capabilities[fixture.capability] !== false || typeof fixture.run !== "function" || typeof fixture.assertZeroEffects !== "function") {
         add("conformance_refusal_fixture_invalid", path); return;
       }

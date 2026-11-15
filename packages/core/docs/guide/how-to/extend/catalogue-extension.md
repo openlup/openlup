@@ -8,7 +8,9 @@ stationery pack; full reference packs and installed commerce journeys remain pen
 
 The registry explicitly exports a default `CatalogConformanceSubject`. Each `packs`
 entry contains `pack`, optional `drafts`, `quantities` and `refusals`. Quantity fixtures
-contain `{type, value, targetUnit?}` and require explicit conversion factors.
+contain `{type, value, targetUnit?}` and require explicit conversion factors. Type
+references use exactly a namespaced string key and a positive integer version;
+malformed references refuse before registry lookup.
 `requiredChecks: ["taxonomy"]`, for example, requests a future check and returns
 required-evidence-unavailable (2). All requested checks in `requiredChecks` are
 currently unavailable. Unknown fields refuse; they are never silently passed.
@@ -83,7 +85,8 @@ and projection are pending. A new attribute kind is upstream work. Usual codes:
 
 Edit `pack.ts` and `fixtures.ts`: `units: [{code: "stationery:each", dimension:
 "count", integral: true, factor: {canonicalUnit: "openlup:piece", unscaled: "1",
-scale: 0}}]`. Add `{type: pack.types[0], value: {dimension: "count", unit:
+scale: 0}}]`. Add `{type: {key: pack.types[0].key, version: pack.types[0].version},
+value: {dimension: "count", unit:
 "stationery:each", unscaled: "2", scale: 0}}` to quantity fixtures.
 Exact conversion is available; new dimensions require upstream grammar changes.
 Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,

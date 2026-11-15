@@ -8,3 +8,9 @@ subpath and `openlup catalogue check --packs ./owned/catalogue.ts --json` requir
 an explicit trusted default-exported subject. No database migration, installation,
 host wiring, publication or capability activation occurs. Upgrade all packages as
 one exact set; an offline PASS is scoped evidence only.
+
+Quantity fixture type references now use the shared `catalogProductTypeRefIssues`
+owner before resolution; malformed keys/versions report existing definition codes.
+Refusal capability keys must be own string keys, and pack versions share the
+installer's existing positive bounded integer rule. Valid inputs are unchanged;
+malformed fixtures and pack versions that could pass offline now refuse.
