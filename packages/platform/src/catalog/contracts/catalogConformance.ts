@@ -1,3 +1,4 @@
+import type { CatalogQuantityCode } from "@openlup/core/catalog";
 /** Stable meanings shared by runtime admission and offline conformance. */
 export type CatalogConformanceCode =
   | "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid"
@@ -10,7 +11,7 @@ export type CatalogConformanceCode =
   | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis"
   | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value"
   | "definition_unknown_axis_dimension"
-  | "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count"
-  | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable";
+  | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch"
+  | CatalogQuantityCode;
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string }
