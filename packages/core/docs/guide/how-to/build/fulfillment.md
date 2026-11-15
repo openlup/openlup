@@ -278,6 +278,38 @@ host-owned overview data and returns `host_binding_required` when unbound. Keep
 `createNativeUnsupportedFulfillmentPorts` as the inert fallback for unbound
 surfaces. See the [execution limits](../../reference/limits.md#fulfillment-execution-limits).
 
+## Correct a delivery contact
+
+Install the complete selected catalogue through
+`20261121100000_order_delivery_contact_correction.sql`. Bind the native OMS
+`updateShippingAddress` behind the existing operator authorization. Read the
+current resolution with `createPostgresDeliveryContactReadPort` from
+`@openlup/platform/fulfillment/native`, then submit both `expectedRevision` and
+`expectedContactDigest` with a fresh command key. The digest comes from PostgreSQL;
+do not reconstruct it in the browser. Exact replay retains the original response.
+
+The explicit native latest-shipment response adds `deliveryContact` with baseline,
+effective contact, provenance, revision, digest and correction eligibility.
+Fulfillment detail remains null without a shipment; use the separate order reader.
+A pre-parcel correction takes precedence over the original contact when operator
+creation validates the destination, then freezes into the new parcel. Creation captures
+only a recorded override or baseline; an order without canonical contact retains
+its existing explicit first-capture path. Historical missing
+baselines stay null and reads write nothing. A stale contact requires a fresh read;
+`lock_timeout` permits an unchanged retry. Submission-started and erased contacts
+refuse. `fulfillment_contact_not_recorded` requires an authorized manual review of
+the order's recorded destination; it does not infer a replacement contact.
+Register the parcel-contact privacy contributor for order contacts and retained
+correction responses as well as parcel contacts. Erasure retains payload-free fences.
+
+For checkout selection, inject normalized dictionary/accepted-catalogue options
+and canonical point lookup/search ports into `createDeliverySelectionBoundary`.
+A valid dictionary without an allowlist offers nothing. A malformed dictionary
+uses the accepted catalogue with optional narrowing. Excluded point sources do
+no I/O. Provider-selected transport remains unavailable wherever checkout or saved
+preferences require carrier/service strings. Correction makes no provider call,
+label acknowledgment, notification or subscription-cycle change.
+
 ## Record handoff and arrival accurately
 
 Handoff accepts packed or labelled parcels and consumes only frozen purchase or

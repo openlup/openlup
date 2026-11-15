@@ -2773,6 +2773,11 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261120130000_fulfillment_alignment_arrival_chronology.sql";
     readonly sha256: "26b428443a2dea5aec852ddf4c6960b354f89e1d1c9ff8064705bebe2d80e04f";
     readonly url: URL;
+}, {
+    readonly position: 141;
+    readonly catalogPath: "db/platform/migrations/20261121100000_order_delivery_contact_correction.sql";
+    readonly sha256: "8a614c86d51742703b5f3f89d50ac9ec1f1b323ab33b2bd5ea9cd79d32a1f783";
+    readonly url: URL;
 }];
 ```
 ## dist/fulfillment/nativeUnsupported.d.ts

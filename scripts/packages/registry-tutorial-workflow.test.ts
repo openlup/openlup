@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { assertReleaseProvenance, assertSbomPackages, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, assertSbomPackages, auditInstalledRelease, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
 import * as browserRunner from "../starter-browser-ci.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -415,7 +415,14 @@ execFileSync("git", ["init", "--quiet", target]);`);
         const payload = JSON.stringify(statement()).replaceAll("openlup-core-v", `openlup-${name.slice(9)}-v`).replaceAll("%40openlup/core@", `%40openlup/${name.slice(9)}@`);
         return { name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1", bundle: { verificationMaterial: index % 2 ? { x509CertificateChain: { certificates: [{ rawBytes: certificate }] } } : { certificate: { rawBytes: certificate } }, dsseEnvelope: { payload: Buffer.from(payload).toString("base64") } } }] };
       });
-      const audit = JSON.parse(JSON.stringify({ invalid: [], missing: [], verified }));
+      // Recorded 0.41.0/0.42.0 failing audit, projected to release packages with synthetic bundles.
+      const filtered = { invalid: [], missing: [], verified: verified.filter(entry => entry.name === "@openlup/core") };
+      expect(() => verifiedReleasePackages(filtered, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toThrow("@openlup/outbox@0.41.0: missing or duplicated verified provenance");
+      writeFileSync(join(directory, ".npmrc"), "workspaces=false\n");
+      const audit = auditInstalledRelease(directory, (command: string, args: string[], cwd: string) => {
+        const scope = execFileSync(command, ["config", "get", "workspaces", ...args.slice(4)], { cwd, encoding: "utf8" }).trim();
+        return JSON.stringify(scope === "null" ? { invalid: [], missing: [], verified } : filtered);
+      });
       expect(verifiedReleasePackages(audit, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toEqual(packages.map(({ name }: { name: string }) => ({ name, version, integrity, verificationSource: "npm audit signatures --json --include-attestations", provenanceSha256: expect.stringMatching(/^[a-f0-9]{64}$/) })));
       audit.verified[1].attestationBundles[0].bundle.verificationMaterial = audit.verified[0].attestationBundles[0].bundle.verificationMaterial;
       expect(() => verifiedReleasePackages(audit, packages.map(({ name }: { name: string }) => ({ name, integrity })), version, commit)).toThrow("signer mismatch");
@@ -433,7 +440,7 @@ execFileSync("git", ["init", "--quiet", target]);`);
       (s: ReturnType<typeof statement>) => { s.predicate.buildDefinition.resolvedDependencies[0]!.digest.gitCommit = "b".repeat(40); },
     ]) { const next = statement(); mutate(next); expect(() => assertReleaseProvenance(next, signer, name, integrity, version, commit)).toThrow(name + "@" + version); }
     expect(() => assertReleaseProvenance(statement(), signer.replace("openlup/openlup", "other/fork"), name, integrity, version, commit)).toThrow("signer mismatch");
-    for (const audit of [{ invalid: [], missing: [], verified: [] }, { invalid: [], missing: [], verified: [{ name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1" }] }] }, { invalid: [{ name }], missing: [] }, { invalid: [], missing: [{ name }] }]) {
+    for (const audit of [{ invalid: [], missing: [], verified: [] }, { invalid: [], missing: [], verified: [{ name, version }, { name, version }] }, { invalid: [], missing: [], verified: [{ name, version, attestationBundles: [{ predicateType: "https://slsa.dev/provenance/v1" }] }] }, { invalid: [{ name }], missing: [] }, { invalid: [], missing: [{ name }] }]) {
       expect(() => verifiedReleasePackages(audit, [{ name, integrity }], version, commit)).toThrow(name);
     }
   });
