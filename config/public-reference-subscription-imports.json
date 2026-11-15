@@ -3,6 +3,7 @@
   "files": [
     "packages/core/dist/catalog/identifiers.js",
     "packages/core/dist/catalog/index.js",
+    "packages/core/dist/catalog/quantities.js",
     "packages/core/dist/fulfillment/currentFulfillmentParcel.js",
     "packages/core/dist/fulfillment/facts.js",
     "packages/core/dist/fulfillment/index.js",
