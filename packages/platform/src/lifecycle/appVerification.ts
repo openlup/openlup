@@ -113,6 +113,12 @@ function describeFinding(input: ReadinessInput, issue: ReadinessIssue, observati
     bound = typeof input?.schemaProbe?.observe === "function" ? "A schema observation function was supplied." : "No callable schema observer was supplied.";
     checked = ["version_mismatch", "object_absent"].includes(issue.observation ?? "") ? "A bounded observation returned a concrete mismatch." : "Unknown; this finding is not proof of a stale database.";
     unknown.push("Catalog presence does not prove SQL bodies, privileges or migration safety.");
+  } else if (issue.code === "registry_missing_referenced_version") {
+    declared = "Every live product type reference requires equal installed and composed definition digests.";
+    observed = issue.observation ?? "Catalogue registry evidence is unavailable.";
+    cause = "The supplied catalogue observation is incomplete, identifies another database, or lacks an equal composed version.";
+    bound = "Application-supplied read-only catalogue observation; no installer or boot hook runs.";
+    checked = "Compared live type references and definition digests with the composed code registry.";
   } else if (issue.code === "OPENLUP_E_ENV_MISSING") {
     declared = `Environment name ${issue.subject} is required; values are never reported.`;
     observed = "The required environment entry is absent or blank.";

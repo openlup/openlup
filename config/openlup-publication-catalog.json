@@ -1426,6 +1426,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122100000_catalog_definition_binding.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4642,6 +4646,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122100000_catalog_definition_binding.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -4994,6 +5002,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogDefinitionReadiness.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogDraftStore.ts",
       "class": "public-output"
     },
@@ -5035,6 +5047,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/catalogPack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/definitionInstall.ts",
       "class": "public-output"
     },
     {
@@ -5103,6 +5119,10 @@
     },
     {
       "path": "packages/platform/src/catalog/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/installCatalogDefinitions.ts",
       "class": "public-output"
     },
     {
@@ -29391,6 +29411,10 @@
     },
     {
       "path": "tests/postgres/bundleNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogDefinitionInstall.test.ts",
       "class": "public-output"
     },
     {

@@ -1298,6 +1298,42 @@ metadata are covered. Definition versioning follows the
 Manifests are derived immutable projections, never client-authored evidence. These helpers install nothing, publish nothing and
 activate no capability. Quantity types re-export Core's single definition;
 the existing v1 quantity validator and option canonical bytes are unchanged.
+`installCatalogDefinitions(installExecutor, pack)` installs definitions and tax-class
+keys through the owner-only native `catalog_definition_install` invoker routine.
+The installer uses `catalogPackIssues` for pack closure and references before SQL.
+Supply the native migration-owner executor explicitly after applying the complete
+selected catalogue. Digests come from the platform's canonical bytes, and the
+receipt replays for the same pack version and manifest digest. Reusing a pack
+version with different bytes or redefining an installed type version refuses.
+Retired tax-class keys stay retired; custom units remain definition JSONB.
+Installation never publishes or binds a runtime capability.
+
+Products have nullable `type_key` and `type_version`: NULL means legacy and not
+mapped. Existing products, SKU codes, prices, documents and subscription references
+are unchanged. A composite foreign key requires complete new bindings to name an
+installed version. SKUs inherit their product's type. There is no separate binding
+state because it would duplicate NULL-ness before publication exists.
+
+`observeCatalogDefinitionReadiness(readExecutor, registry, database)` reads every
+live product type reference and compares its installed digest with the composed
+registry. The executor needs SELECT on both tables through table ownership or a
+BYPASSRLS read role, with row security inactive on both tables; the helper grants
+no access. It checks `row_security_active` for both tables in the same SQL statement
+as the binding read. Active row security marks the observation incomplete, even
+when no bindings are visible. A referenced definition that is unavailable retains
+its binding with a NULL installed digest. Both cases yield `unknown` readiness
+and make the write guard refuse with `registry_missing_referenced_version`.
+Put the result in `ReadinessInput.catalogRegistry`
+in the application's `createVerificationInput()` for `openlup verify --app`.
+Missing versions or unequal digests report `registry_missing_referenced_version`.
+Keep every referenced version in the composed registry.
+`createCatalogDefinitionWriteGuard(readExecutor, registry)` returns a guard that
+re-probes before invoking each supplied catalogue-write callback. A mismatch or
+probe failure prevents the callback. Applications must explicitly wrap their
+writes; existing adapters are not silently rebound. Host migration-phase calls,
+boot readiness and publication wiring belong to the later V2 reader/composition
+work. The managed rail does not supply this feature.
+
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.
@@ -1306,9 +1342,9 @@ The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
 semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
-projects canonical positions 1, 8, 58, 59 and 61 byte for byte; these assets are
-sparse references, never a standalone install chain. No canonical migration or
-manifest entry changes.
+projects canonical positions 1, 8, 58, 59, 61 and 142 byte for byte, including the
+nullable definition-binding forward; these assets are sparse references,
+never a standalone install chain.
 
 `createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the
 strict quote catalog port using existing runtime `service_role` SELECT grants.

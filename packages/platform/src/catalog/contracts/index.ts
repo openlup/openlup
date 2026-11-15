@@ -17,3 +17,4 @@ export * from "./attributes.js";
 export type { CatalogConformanceCode, CatalogConformanceRule, CatalogDefinitionIssue } from "./catalogConformance.js";
 export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
+export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";

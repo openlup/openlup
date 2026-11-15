@@ -272,6 +272,32 @@ unqualified by this local witness.
 
 ## Compatible data transfer
 
+Catalogue definitions, definition-install receipts and tax-class keys are
+AUTHORITATIVE catalogue relations in the native connected-store profile. The `transfer_round_trip_matrix` covers each relation, retained v1/v2 definitions,
+receipt replay, bound product references and retired tax keys. Restore
+definitions before products so nullable type bindings satisfy their composite
+foreign key; preserve definition bytes, digests, receipts and retired key state.
+These relations contain pack metadata and no customer foreign keys, so they need
+no client-absorption policy row or personal-data erasure contributor. Restore
+inserts immutable versions on a pristine target; normal UPDATE and DELETE remain
+refused by the definition trigger. See the
+[package catalogue owner](../../packages/platform/README.md#catalog) for explicit
+install executors, readiness observations and the unbound write guard.
+
+Managed-to-native retained transfer initializes only absent product `type_key`
+and `type_version` fields to NULL. Supplied values, including explicit NULLs,
+are preserved; the generic missing-column refusal still applies to every other
+required target column. This is legacy ingress compatibility, not a managed
+catalogue-definition installer.
+
+The native definition-binding forward adds no seed or backfill. Old readers
+ignore the nullable product columns, and NULL continues to mean legacy, not
+mapped. The managed rail does not supply this feature; its future equivalent
+needs separately authored tables, service/operator read policies and a restricted
+install principal. Native owner-only invoker semantics can be expressed by
+managed grants and RLS. This forward relaxes no constraints on `net_weight_g`,
+`pet_type`, `kcal_per_unit`, `requires_pet_profile` or `feeding_grams_per_unit`.
+
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
 transports data into an already qualified canonical target. It does not restore
 managed internals, source roles/grants or `platform_schema_migrations`. Source
@@ -912,13 +938,14 @@ already knowing their IDs and excludes ordinary open events. Use the returned
 `payment_truth_event_id` with the truth port's `readEvent` for effect details.
 The query records no decision and creates no refund or order transition.
 
-`CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
-1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
-and subscription price-policy foundation, its validation, and isolated drafts.
+`CATALOG_MIGRATIONS` projects canonical catalogue positions
+1, 8, 58, 59, 61 and 142: read foundation, storefront attributes, document/identifier
+and subscription price-policy foundation, its validation, isolated drafts and
+definition bindings.
 Each descriptor keeps the canonical path, position, digest and byte-identical
-package SQL. There is no new migration, reordered history or manifest edit.
-Install and observe the complete selected catalogue; these five projections do
-not supply an independent installation sequence. The package envelope and draft
+package SQL. History stays in canonical order. Install and observe the complete
+selected catalogue; these six projections do not supply an independent installation
+sequence. The package envelope and draft
 stores keep their incumbent SQL and refusal semantics after the source move.
 
 

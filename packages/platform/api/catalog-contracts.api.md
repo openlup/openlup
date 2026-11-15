@@ -708,6 +708,21 @@ export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (s
 }) => D;
 export {};
 ```
+## dist/catalog/contracts/definitionInstall.d.ts
+
+```ts
+import type { CatalogProductTypeRef } from "./productTypes.js";
+/** Durable install evidence; installation does not publish catalogue data. */
+export interface CatalogDefinitionInstallReceipt {
+    readonly packId: string;
+    readonly packVersion: number;
+    readonly manifestDigest: string;
+    readonly installedAt: string;
+    readonly types: readonly (CatalogProductTypeRef & {
+        readonly definitionDigest: string;
+    })[];
+}
+```
 ## dist/catalog/contracts/draft.d.ts
 
 ```ts
@@ -895,6 +910,7 @@ export * from "./attributes.js";
 export type { CatalogConformanceCode, CatalogConformanceRule, CatalogDefinitionIssue } from "./catalogConformance.js";
 export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
+export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 

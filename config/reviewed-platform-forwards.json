@@ -5237,6 +5237,37 @@
             ]
           }
         ]
+      },
+      {
+        "row": "catalogue-s1",
+        "path": "db/platform/migrations/20261122100000_catalog_definition_binding.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_type_version_immutable()",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.catalog_definition_install(text,integer,jsonb)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_products ADD COLUMN type_key text, ADD COLUMN type_version integer;",
+          "ALTER TABLE public.catalog_products ADD CONSTRAINT catalog_products_type_binding_check CHECK ((type_key IS NULL AND type_version IS NULL) OR (type_key IS NOT NULL AND type_version IS NOT NULL)) NOT VALID;",
+          "ALTER TABLE public.catalog_products VALIDATE CONSTRAINT catalog_products_type_binding_check;",
+          "ALTER TABLE public.catalog_products ADD CONSTRAINT catalog_products_type_version_fk FOREIGN KEY (type_key, type_version) REFERENCES public.catalog_type_versions(type_key, version) NOT VALID;",
+          "ALTER TABLE public.catalog_products VALIDATE CONSTRAINT catalog_products_type_version_fk;"
+        ],
+        "createdTriggers": [
+          {
+            "name": "catalog_type_version_immutable",
+            "table": "public.catalog_type_versions",
+            "sha256": "e61f9848d76f6af70eab9c6145016c0bb1f3dc08085cedba0bbdcf4ec3ccf84d"
+          }
+        ]
       }
     ]
   },
@@ -7264,6 +7295,22 @@
           "signature": "public.fulfillment_capture_order_contact_for_shipment(uuid)",
           "beforeSha256": null,
           "afterSha256": "5b3d3eb4893fb08f825c89c12f7638fbba156124d961d24c92ebcce6a76a74c2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122100000_catalog_definition_binding.sql",
+      "sha256": "3236260783b90d8210d324d656bf5b9406ec9deeb59e943f0bda3f3aa337b6cb",
+      "functions": [
+        {
+          "signature": "public.catalog_type_version_immutable()",
+          "beforeSha256": null,
+          "afterSha256": "4b5664bd2cac233bfe75785545ad1a4d645cb551f0851d8865e82f7d5a44b076"
+        },
+        {
+          "signature": "public.catalog_definition_install(text,integer,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2"
         }
       ]
     }

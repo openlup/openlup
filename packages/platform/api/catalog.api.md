@@ -993,7 +993,20 @@ export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConforman
 ```ts
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 /** Labels and callbacks are never definition identity. Runtime schemas bound the metadata. */
+export declare function catalogDefinitionJson(definition: CatalogProductTypeInput): string;
+/** The same canonical metadata bytes are used by installation and registry checks. */
 export declare function catalogDefinitionDigest(definition: CatalogProductTypeInput): string;
+```
+## dist/catalog/catalogDefinitionReadiness.d.ts
+
+```ts
+import type { CatalogRegistryObservation } from "@openlup/core/readiness";
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables. */
+export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string): Promise<CatalogRegistryObservation>;
+/** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called. */
+export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry): <T>(write: () => Promise<T>) => Promise<T>;
 ```
 ## dist/catalog/catalogDraftStore.d.ts
 
@@ -1765,6 +1778,21 @@ export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (s
 }) => D;
 export {};
 ```
+## dist/catalog/contracts/definitionInstall.d.ts
+
+```ts
+import type { CatalogProductTypeRef } from "./productTypes.js";
+/** Durable install evidence; installation does not publish catalogue data. */
+export interface CatalogDefinitionInstallReceipt {
+    readonly packId: string;
+    readonly packVersion: number;
+    readonly manifestDigest: string;
+    readonly installedAt: string;
+    readonly types: readonly (CatalogProductTypeRef & {
+        readonly definitionDigest: string;
+    })[];
+}
+```
 ## dist/catalog/contracts/draft.d.ts
 
 ```ts
@@ -1952,6 +1980,7 @@ export * from "./attributes.js";
 export type { CatalogConformanceCode, CatalogConformanceRule, CatalogDefinitionIssue } from "./catalogConformance.js";
 export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
+export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -2900,8 +2929,20 @@ export { catalogProductTypeIssues } from "./productTypeIssues.js";
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
+export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
+export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 export { catalogPackIssues } from "./productTypeIssues.js";
+```
+## dist/catalog/installCatalogDefinitions.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogPackInput } from "./contracts/catalogPack.js";
+import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
+/** Supply the native migration-owner executor explicitly. No runtime binding or hook is created. */
+export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -3173,7 +3214,7 @@ export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
 }, z.core.$strict>;
 /** The runtime throws the first issue; offline callers can report the complete list. */
 export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
-/** Pack-level closure/references use the same definition issues as runtime installation. */
+/** Shared pack shape, definitions and references; installation also requires a bounded pack version, pinned validators and unique tax-class keys. */
 export declare function catalogPackIssues(input: unknown): CatalogDefinitionIssue[];
 ```
 ## dist/catalog/productTypeSchemas.d.ts
@@ -3551,6 +3592,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20260908100000_catalog_draft_foundation.sql";
     readonly position: 61;
     readonly sha256: "ac0d614cdb2874df8fbdbbbda4f9455986ef95241fe1334b0b54a1fa6478ab2e";
+    readonly url: URL;
+}, {
+    readonly id: "20261122100000_catalog_definition_binding";
+    readonly catalogPath: "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
+    readonly position: 142;
+    readonly sha256: "3236260783b90d8210d324d656bf5b9406ec9deeb59e943f0bda3f3aa337b6cb";
     readonly url: URL;
 }];
 ```

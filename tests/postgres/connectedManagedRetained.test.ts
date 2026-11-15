@@ -736,6 +736,22 @@ it("refuses a cancelled checkout with captured money, an active attempt or linke
 const mapSource = async () => mapManagedRetainedBusiness({ capture: await capture(),
   issuer: "https://issuer.example.invalid/managed", freshTarget: freshBaseline, targetOwner: targetOwner! });
 
+it("maps only absent catalogue type bindings as legacy and preserves supplied values", async () => {
+  const products = (mapped: Awaited<ReturnType<typeof mapSource>>) => mapped.packet.owned
+    .find(table => table.table === "catalog_products")!.rows.map(row => JSON.parse(row));
+  expect(products(await mapSource())).toEqual([expect.objectContaining({ id: productId, type_key: null, type_version: null })]);
+  await managed.owner.query("ALTER TABLE public.catalog_products ADD COLUMN type_key text, ADD COLUMN type_version integer");
+  try {
+    expect(products(await mapSource())).toEqual([expect.objectContaining({ id: productId, type_key: null, type_version: null })]);
+    await managed.owner.query("UPDATE public.catalog_products SET type_key='example:provided',type_version=7 WHERE id=$1", [productId]);
+    expect(products(await mapSource())).toEqual([expect.objectContaining({ id: productId, type_key: "example:provided", type_version: 7 })]);
+    await managed.owner.query("ALTER TABLE public.catalog_products RENAME COLUMN description TO temporarily_missing_description");
+    try {
+      await expect(mapSource()).rejects.toMatchObject({ code: "schema_conflict", table: "catalog_products" });
+    } finally { await managed.owner.query("ALTER TABLE public.catalog_products RENAME COLUMN temporarily_missing_description TO description"); }
+  } finally { await managed.owner.query("ALTER TABLE public.catalog_products DROP COLUMN type_key, DROP COLUMN type_version"); }
+});
+
 // Refusal fixtures need only the row to exist, so foreign keys to unrelated rails stay out of the way.
 async function unchecked(sql: string, params: unknown[]) {
   const client = await managed.owner.connect();

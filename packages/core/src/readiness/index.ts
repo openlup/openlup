@@ -120,6 +120,22 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
       add("OPENLUP_E_SCHEMA_BEHIND", c.manifest.name, schemaObjectKey(object), `Apply ${req.migration} for the selected adapter.`, present === null ? "object_unknown" : "object_absent");
     }
   }
+  if (input.catalogRegistry !== undefined) {
+    const observation = input.catalogRegistry;
+    const valid = observation && observation.database === input.candidate?.database
+      && (observation.complete === undefined || observation.complete === true)
+      && Array.isArray(observation.referencedVersions) && observation.referencedVersions.every(ref =>
+        ref && typeof ref.key === "string" && /^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u.test(ref.key)
+        && Number.isSafeInteger(ref.version) && ref.version > 0 && ref.version <= 2147483647 && typeof ref.definitionDigest === "string" && /^[a-f0-9]{64}$/u.test(ref.definitionDigest)
+        && (ref.registryDigest === null || (typeof ref.registryDigest === "string" && /^[a-f0-9]{64}$/u.test(ref.registryDigest))));
+    if (!valid) {
+      unknown = true;
+      add("registry_missing_referenced_version", "@openlup/platform", "catalogRegistry", "Observe live catalogue references for the exact candidate database.", "probe_malformed_or_identity_unknown", "catalog");
+    } else for (const ref of observation.referencedVersions) if (ref.registryDigest !== ref.definitionDigest) {
+      add("registry_missing_referenced_version", "@openlup/platform", `${ref.key}@${ref.version}`,
+        "Keep every referenced type version in the composed code registry with its installed digest.", ref.registryDigest === null ? "registry_version_missing" : "registry_digest_mismatch", "catalog");
+    }
+  }
   return report();
 }
 function validObservation(value: unknown, requirement: RequiredSchema): value is SchemaObservation {

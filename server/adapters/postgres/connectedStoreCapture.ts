@@ -35,6 +35,8 @@ const owned = [
   "commerce_destinations", "commerce_destination_bindings", "fulfillment_parcel_contacts", "fulfillment_order_contacts", "fulfillment_contact_correction_receipts", "subscription_command_receipts", "subscription_quote_previews",
   "customer_support_subscription_commands", "customer_support_subscription_audit_events",
   "platform_human_principals", "platform_human_memberships", "platform_human_membership_audit_events",
+  // AUTHORITATIVE pack metadata; no customer FK or absorption/erasure duty.
+  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   // Authoritative draft history and identity reservations, including abandoned drafts.
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
