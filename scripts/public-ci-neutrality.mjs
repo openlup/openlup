@@ -494,6 +494,21 @@ export function scanSnapshots(snapshots) {
   return { rows: Object.fromEntries(Object.entries(rows).sort()), paths, textFiles: sources.length, binaryFiles: binary.length, binary };
 }
 export function scanTree(ref) { return scanSnapshots(ref ? treeBytes(ref) : workingBytes()); }
+export function validateRoadmapProviderMatrix(contents) {
+  // openlup.com renders each Proof scope cell verbatim with a 40-word limit.
+  let proofScopeColumn = -1;
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line.trim().startsWith("|")) { proofScopeColumn = -1; continue; }
+    const cells = line.trim().slice(1, -1).split("|").map((cell) => cell.trim());
+    if (cells[0] === "ID" && cells.includes("Proof scope")) {
+      proofScopeColumn = cells.indexOf("Proof scope");
+      continue;
+    }
+    if (proofScopeColumn < 0) continue;
+    const words = (cells[proofScopeColumn]?.match(/\S+/g) ?? []).length;
+    if (words > 40) throw new Error(`ROADMAP.md provider ${label(cells[0])}: Proof scope has ${words} words; openlup.com renders the cell verbatim with a 40-word limit (whitespace-separated words)`);
+  }
+}
 function baseCommit(args) {
   const index = args.indexOf("--base-commit");
   const explicit = index < 0 ? undefined : args[index + 1];
@@ -519,6 +534,8 @@ function main() {
   const baseBytes = treeBytes(base);
   const parent = baseBytes.has(baselinePath) ? parseBaseline(baseBytes.get(baselinePath)) : undefined;
   const currentBytes = workingBytes();
+  // Validate the candidate only: a historical base may predate the website limit.
+  if (currentBytes.has("ROADMAP.md")) validateRoadmapProviderMatrix(currentBytes.get("ROADMAP.md").toString("utf8"));
   const scannerPins = verifyPins(parent, currentBytes, baseBytes);
   const measuredBase = scanSnapshots(baseBytes);
   // Pinned counts-mode scanners are deterministic for these complete path/byte inputs.
