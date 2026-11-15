@@ -29,7 +29,7 @@ as described [above](#choose-the-imports), then compose these steps in your host
 4. Bind [authenticated intake and scheduled reconciliation](#bind-provider-intake-and-reconciliation).
 5. Record [actual arrival](#record-handoff-and-arrival-accurately) and bind
    [subscription alignment](#bind-replacement-and-customer-alignment).
-6. Use the authorized [contact correction](https://github.com/openlup/openlup/blob/7c71bbef3cc46ca10525991700564fffdae1c73c/packages/core/docs/guide/how-to/build/fulfillment.md#correct-a-delivery-contact) path when
+6. Use the authorized [contact correction](#correct-a-delivery-contact) path when
    an eligible order needs a corrected delivery contact.
 
 The installed-package PostgreSQL witness exercises this rail with a scripted
