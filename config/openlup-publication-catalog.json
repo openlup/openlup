@@ -4994,6 +4994,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogDefinitionDigest.ts",
       "class": "public-output"
     },
