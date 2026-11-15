@@ -1,7 +1,12 @@
 Add the unbound catalogue attribute owner validator, injected allowlisted batch
 reference resolution and pure preparation for the single SKU-keyed projection.
 Supplied malformed values refuse; required values/locales are publication
-readiness issues. Signed decimals remain strings, and Core quantity conversion
+readiness issues. Each product/SKU attribute object independently fits the 1 MiB
+PostgreSQL-rendered text storage ceiling, including separator spaces and UTF-8
+string bytes. Numeric exponent expansion is conservatively bounded; admitted
+attribute shapes are counted exactly. Oversized objects refuse with
+`attribute_storage_too_large` and the product/SKU owner path. The aggregate
+canonical JSON safety bound remains separate. Signed decimals remain strings, and Core quantity conversion
 refuses inexact or overflowing canonical numeric values before SQL.
 
 Migration: additive server exports and shared conformance codes only. Existing

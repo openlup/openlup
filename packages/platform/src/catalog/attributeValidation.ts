@@ -8,7 +8,7 @@ import type { AttributeDefinition, CatalogAttributeScalarType } from "./contract
 import type { CatalogDefinitionIssue, CatalogConformanceCode } from "./contracts/catalogConformance.js";
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 import { catalogProductTypeIssues, catalogQuantitySchema } from "./productTypeIssues.js";
-import { catalogAttributeDateSchema, catalogAttributeDecimal, catalogAttributeReferenceSchema, compareAttributeDecimals } from "./attributeSchemas.js";
+import { catalogAttributeDateSchema, catalogAttributeDecimal, catalogAttributeStorageBytes, catalogAttributeReferenceSchema, compareAttributeDecimals } from "./attributeSchemas.js";
 import type { CatalogAttributeReference, CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 
 export interface CatalogAttributeInput {
@@ -127,6 +127,8 @@ export async function validateCatalogAttributes(
     const rows: CatalogAttributeProjectionValue[] = [];
     if (raw === undefined || raw === null) raw = {};
     if (typeof raw !== "object" || Array.isArray(raw)) { add(path, "attribute_values_invalid"); return rows; }
+    // Independent of the aggregate canonical-input ceiling: mirror S3a's per-object CHECK.
+    if (catalogAttributeStorageBytes(raw) > 1_048_576) { add(path, "attribute_storage_too_large"); return rows; }
     const supplied = raw as Record<string, unknown>;
     for (const key of Object.keys(supplied).sort(compare)) {
       const attribute = attributes.get(key), at = `${path}/${pointer(key)}`;

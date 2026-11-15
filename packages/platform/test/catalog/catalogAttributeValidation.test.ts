@@ -5,6 +5,8 @@ import type { CatalogProductTypeInput } from "../../src/catalog/contracts/produc
 import type { CatalogAttributeInput, CatalogAttributeValidation } from "../../src/catalog/attributeValidation.js";
 import type { CatalogAttributeReferencePort, CatalogAttributeReference } from "../../src/catalog/attributeReferencePort.js";
 
+import { catalogAttributeStorageBytes } from "../../src/catalog/attributeSchemas.js";
+
 const first = "00000000-0000-4000-8000-000000000001";
 const second = "00000000-0000-4000-8000-000000000002";
 function attribute(key: string, valueType: CatalogAttributeValueType, extra: Partial<AttributeDefinition> = {}): AttributeDefinition {
@@ -249,5 +251,60 @@ describe("pure single-projection preparation", () => {
     expect(issues(await validateCatalogAttributes(type, subject({ amount: { dimension: "mass", unit: "example:large", unscaled: "9".repeat(40), scale: 0 } })))).toContainEqual({ path: "/productAttributes/amount", code: "quantity_overflow" });
     const counts = definition([attribute("amount", { kind: "quantity", dimension: "count", units: ["openlup:piece"] })]);
     expect(issues(await validateCatalogAttributes(counts, subject({ amount: { dimension: "count", unit: "openlup:piece", unscaled: "15", scale: 1 } })))).toContainEqual({ path: "/productAttributes/amount", code: "quantity_fractional_count" });
+  });
+});
+
+
+describe("independent attribute-object rendered storage ceiling", () => {
+  const fixtures = [
+    { name: "boolean list", item: { kind: "boolean" } as const, max: 180_000,
+      under: () => Array(174_760).fill(true), underBytes: 1_048_571,
+      over: () => Array(174_761).fill(true), overBytes: 1_048_577,
+      reported: () => Array(180_000).fill(true), reportedBytes: 1_080_011 },
+    { name: "101-character string list", item: { kind: "text", maxLength: 101 } as const, max: 10_000,
+      under: () => [...Array(9_986).fill("x".repeat(101)), "x".repeat(30)], underBytes: 1_048_575,
+      over: () => [...Array(9_986).fill("x".repeat(101)), "x".repeat(32)], overBytes: 1_048_577,
+      reported: () => Array(10_000).fill("x".repeat(101)), reportedBytes: 1_050_011 },
+  ];
+  for (const fixture of fixtures) for (const scope of ["product", "variant"] as const) {
+    for (const boundary of ["under", "over", "reported"] as const) {
+      it(`catalog_attribute_storage_bound: ${fixture.name}, ${scope}, ${boundary}`, async () => {
+        const values = { items: fixture[boundary]() };
+        const type = definition([attribute("items", { kind: "list", item: fixture.item, min: 0, max: fixture.max }, {
+          scope, cardinality: { min: 0, max: fixture.max },
+        })]);
+        const input = scope === "product" ? subject(values) : { skus: [{ id: first, attributes: values }] };
+        // Both reviewer examples and their adjacent boundaries fit the separate compact aggregate bound.
+        expect(new TextEncoder().encode(JSON.stringify(input)).byteLength).toBeLessThan(1_048_576);
+        expect(catalogAttributeStorageBytes(values)).toBe(fixture[`${boundary}Bytes`]);
+        const result = await validateCatalogAttributes(type, input);
+        expect(result.valid).toBe(boundary === "under");
+        expect(catalogAttributesReadyForPublication(result)).toBe(boundary === "under");
+        expect(prepareCatalogAttributeProjection(result, "7").prepared).toBe(boundary === "under");
+        if (boundary !== "under") expect(issues(result)).toEqual([{
+          path: scope === "product" ? "/productAttributes" : "/skus/0/attributes",
+          code: "attribute_storage_too_large",
+        }]);
+      });
+    }
+  }
+  it("counts escaped strings, Unicode, nested separators and ordinary numeric scales", () => {
+    const value = { "é": ["\n\t\b\f\r\\\"", "😀"], quantity: { scale: 12 }, empty: {} };
+    const rendered = '{"é": ["\\n\\t\\b\\f\\r\\\\\\"", "😀"], "quantity": {"scale": 12}, "empty": {}}';
+    expect(catalogAttributeStorageBytes(value)).toBe(new TextEncoder().encode(rendered).byteLength);
+  });
+  it("conservatively bounds numeric exponent expansion rather than counting its compact token", () => {
+    expect(catalogAttributeStorageBytes({ value: 1e-7 })).toBeGreaterThanOrEqual('{"value": 0.0000001}'.length);
+    expect(catalogAttributeStorageBytes({ value: 1e21 })).toBeGreaterThanOrEqual('{"value": 1000000000000000000000}'.length);
+    expect(catalogAttributeStorageBytes({ value: -5e-324 })).toBeGreaterThanOrEqual(338);
+  });
+  it("does not sum separate storage ceilings across product and SKU objects", async () => {
+    const type = definition(["product", "variant"].map((scope) => attribute(scope, { kind: "list", item: { kind: "boolean" }, min: 0, max: 90_000 }, {
+      scope: scope as "product" | "variant", cardinality: { min: 0, max: 90_000 },
+    })));
+    const result = await validateCatalogAttributes(type, {
+      productAttributes: { product: Array(90_000).fill(true) }, skus: [{ id: first, attributes: { variant: Array(90_000).fill(true) } }],
+    });
+    expect(catalogAttributesReadyForPublication(result)).toBe(true);
   });
 });

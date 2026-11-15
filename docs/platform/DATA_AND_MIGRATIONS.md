@@ -331,7 +331,11 @@ publication evidence. Rolling code back leaves the nullable fields and retained
 values intact; do not reverse the migration or discard populated columns.
 
 The unbound package owner now validates typed values and prepares projection
-rows without database access. See the [catalogue package owner](../../packages/platform/README.md#catalog)
+rows without database access. Each product/SKU object also passes an independent
+rendered-text byte guard, including JSONB separator spaces and UTF-8 string bytes;
+numeric exponent expansion is conservatively bounded. An oversized object is
+refused before projection preparation with `attribute_storage_too_large` at its
+owner path. The aggregate canonical-input bound remains separate. See the [catalogue package owner](../../packages/platform/README.md#catalog)
 for wire shapes, reference visibility evidence, exact numeric handling and
 readiness refusal. This adds no migration or transfer disposition. Old readers
 continue to ignore nullable values; future V2 readers require publication

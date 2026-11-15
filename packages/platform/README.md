@@ -1365,7 +1365,16 @@ V1 DTOs and canonical bytes are unchanged.
 an installed type's existing attribute definitions. Pass `productAttributes`
 and `skus: [{id, attributes?}]`; omitted or NULL attribute objects mean absence.
 The helper reuses `catalogProductTypeIssues` and canonical JSON depth/byte safety
-checks, snapshots supplied data, and does not call `validateContent`. Compose
+checks and independently enforces the per-product/per-SKU 1 MiB rendered-text
+storage ceiling before value preparation or reference resolution. The storage
+counter includes UTF-8 string bytes and the spaces after JSONB colons and commas;
+key ordering does not affect size. It conservatively allows for numeric exponent
+expansion rather than claiming to reproduce every PostgreSQL numeric spelling.
+For admitted values (whose only JSON numbers are integer quantity scales 0–12),
+the count is exact. An oversized object returns `attribute_storage_too_large`
+at `/productAttributes` or `/skus/<index>/attributes`. Separate objects do not
+share a storage-byte budget; the aggregate canonical-input limit still applies.
+The helper snapshots supplied data and does not call `validateContent`. Compose
 that callback separately for application cross-field policy. Unknown keys,
 wrong scope, malformed values and invalid cardinality return `valid: false`
 with shared conformance codes and JSON-pointer paths. Missing required values

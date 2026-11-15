@@ -4966,6 +4966,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/attributeProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/attributeReferencePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/attributeSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/attributeValidation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/backfillCatalogNetContent.ts",
       "class": "public-output"
     },
@@ -9283,6 +9299,10 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogActiveSkuSelection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogAttributeValidation.test.ts",
       "class": "public-output"
     },
     {

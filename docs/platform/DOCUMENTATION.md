@@ -70,6 +70,10 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 ## Ownership
 
 Review coverage helpers use the existing tooling owner in CONTRIBUTING.
+The catalogue attribute validator, reference port, pure projection preparation
+and package witnesses are explicit publication-catalogue paths, owned by the
+[package catalogue section](../../packages/platform/README.md#catalog). Their
+inclusion supplies source navigation only; it enables no publication or serving.
 Task records belong in the PR description under
 [Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 
