@@ -2000,6 +2000,10 @@ process.exit(0);
 
 /** SDK-absent catalog operations and inert structural contribution, reused by the selected P7 case. */
 export function proveCatalogCompositionConsumer(consumer: string) {
+  // HEAD owns expectations independently of both working-tree edits and packed bytes.
+  const descriptor = command("git", ["show", "HEAD:packages/platform/src/catalog/sql.ts"], root, isolatedConsumerEnv());
+  const positions = JSON.parse(command(process.execPath, ["--input-type=module", "--eval", `${stripTypeScriptTypes(descriptor)}
+console.log(JSON.stringify(CATALOG_MIGRATIONS.map(unit => unit.position)));`], root, isolatedConsumerEnv()));
   consumerNode(consumer, `
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -2014,7 +2018,7 @@ assert.equal(statements.length, 1);
 await assert.rejects(native.getSkuEnvelope({ kind: "sku_code", skuCode: "ABSENT" }), error => error instanceof catalog.CatalogSkuAuthorityError && error.code === "catalog_sku_authority_sku_absent");
 const draft = catalog.createPostgresCatalogDraftStore({ query: async () => { throw { code: "42501" }; } });
 assert.deepEqual(await draft.apply({ canonicalCommand: "{}", fingerprint: "a".repeat(64), actorId: "synthetic" }), { outcome: "unauthorized", reason: "operator_required" });
-assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(unit => unit.position), [1,8,58,59,61]);
+assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(unit => unit.position), ${JSON.stringify(positions)}, "installed catalogue migration positions differ from the committed descriptor");
 for (const unit of catalog.CATALOG_MIGRATIONS) assert.equal(createHash("sha256").update(readFileSync(unit.url)).digest("hex"), unit.sha256);
 const quote = () => { throw new Error("synthetic_quote_unavailable"); };
 const selected = createCatalogContribution({ version: JSON.parse(readFileSync(new URL("./node_modules/@openlup/platform/package.json", import.meta.url))).version, requiredSchema: { version: "complete", migration: "complete", objects: [] },

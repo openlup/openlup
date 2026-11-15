@@ -45,6 +45,7 @@ import {
   proveNativeCommunicationsOperations,
   proveResendConsumer,
   proveMarketingSyncConsumer,
+  proveCatalogCompositionConsumer,
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
 import { proveSelfServiceConsumer } from "./platform-cold-consumer.ts";
@@ -539,6 +540,20 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it.each([
+  ["missing", "CATALOG_MIGRATIONS.pop();"],
+  ["extra", "CATALOG_MIGRATIONS.push({ ...CATALOG_MIGRATIONS.at(-1), position: Number.MAX_SAFE_INTEGER });"],
+  ["reordered", "CATALOG_MIGRATIONS.reverse();"],
+])("refuses packed catalogue positions differing from the committed descriptor: %s", (_name, mutation) => {
+  const consumer = pristinePackedA1Fixture();
+  const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/sql.js");
+  const original = readFileSync(path, "utf8");
+  proveCatalogCompositionConsumer(consumer);
+  try {
+    writeFileSync(path, original + "\n" + mutation);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/installed catalogue migration positions differ from the committed descriptor/);
+  } finally { writeFileSync(path, original); }
+});
 it("proves installed portability copy/resume and rejects a copy that skips byte publication", () => {
   const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   provePortabilityConsumer(consumer);
