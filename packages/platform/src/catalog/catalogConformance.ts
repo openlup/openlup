@@ -4,6 +4,7 @@ import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
 const rule = (text: string, fix: string, anchor: string): CatalogConformanceRule => Object.freeze({ severity: "error", rule: text, fix, recipe: recipe(anchor) });
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
+  attribute_projection_text_too_large: rule("Every projected text slot fits the unconditional composite B-tree index.", "Keep the UTF-8 text slot within 2048 bytes, including the full localized JSON map; facet/filter flags do not bypass this limit.", "add-attribute"),
   attribute_storage_too_large: rule("Each attribute object fits 1 MiB of PostgreSQL-rendered JSONB text.", "Reduce this product or SKU object's rendered UTF-8 size, including separator spaces.", "add-attribute"),
   attribute_values_invalid: rule("Values use bounded canonical JSON objects and unique SKU identities.", "Correct the object shape, identity, JSON depth or byte bound.", "add-attribute"),
   attribute_value_invalid: rule("Supplied values match the installed closed value kind and bounds.", "Supply the declared kind, stable ID, locale, date or allowlisted reference.", "add-attribute"),

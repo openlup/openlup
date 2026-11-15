@@ -1,5 +1,7 @@
 Document the unbound attribute owner beside the offline catalogue checker and
 include its shared issue codes in the generated installed refusal-to-recipe links.
+The recipe links include the per-slot UTF-8 text-index refusal
+`attribute_projection_text_too_large`.
 The checker retains its existing definitions, exact quantity and v1 draft scope;
 attribute-value/projection integration remains pending.
 

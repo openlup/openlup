@@ -335,7 +335,11 @@ rows without database access. Each product/SKU object also passes an independent
 rendered-text byte guard, including JSONB separator spaces and UTF-8 string bytes;
 numeric exponent expansion is conservatively bounded. An oversized object is
 refused before projection preparation with `attribute_storage_too_large` at its
-owner path. The aggregate canonical-input bound remains separate. See the [catalogue package owner](../../packages/platform/README.md#catalog)
+owner path. A separate 2,048-byte UTF-8 limit on each projected text slot,
+including the whole localized map, keeps prepared rows within the landed
+unconditional composite B-tree index on the qualified stock PostgreSQL profile;
+oversized slots refuse with `attribute_projection_text_too_large`. The aggregate
+canonical-input bound remains separate. See the [catalogue package owner](../../packages/platform/README.md#catalog)
 for wire shapes, reference visibility evidence, exact numeric handling and
 readiness refusal. This adds no migration or transfer disposition. Old readers
 continue to ignore nullable values; future V2 readers require publication

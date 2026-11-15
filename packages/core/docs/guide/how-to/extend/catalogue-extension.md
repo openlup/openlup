@@ -83,7 +83,7 @@ without writing. They are not yet called by this checker, and values remain
 excluded from v1 drafts. Reference resolution needs its injected allowlisted port;
 actual publication and generation serving remain pending. A new attribute kind
 is upstream work. Usual owner codes:
-`attribute_storage_too_large`, `attribute_values_invalid`, `attribute_value_invalid`,
+`attribute_projection_text_too_large`, `attribute_storage_too_large`, `attribute_values_invalid`, `attribute_value_invalid`,
 `attribute_unknown_key`, `attribute_scope_conflict`, `attribute_cardinality_invalid`,
 `attribute_required_missing`, `attribute_required_locale_missing`,
 `attribute_reference_unresolved`, `attribute_publication_revision_invalid`.

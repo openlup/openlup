@@ -121,6 +121,13 @@ export async function validateCatalogAttributes(
         if (!catalogAttributeDateSchema.safeParse(value).success) return invalid();
         row.date_value = value as string; break;
     }
+    // The unconditional text index also carries an ASCII key (<=64 B), int4
+    // version and UUID. 2048 B + 64 + 4 + 16 + 128 B header/alignment reserve
+    // stays below the 2704 B B-tree budget on the qualified 8 KiB-page profile.
+    // Bound actual slot bytes, including the complete localized JSON map.
+    if (row.text_value !== null && new TextEncoder().encode(row.text_value).byteLength > 2_048) {
+      add(path, "attribute_projection_text_too_large"); return [];
+    }
     return [row];
   }
   function values(raw: unknown, scope: AttributeDefinition["scope"], path: string): CatalogAttributeProjectionValue[] {

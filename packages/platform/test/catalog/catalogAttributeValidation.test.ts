@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { validateCatalogAttributes, catalogAttributesReadyForPublication, prepareCatalogAttributeProjection, CATALOG_CONFORMANCE_RULES } from "../../src/catalog/index.js";
 import type { AttributeDefinition, CatalogAttributeValueType } from "../../src/catalog/contracts/attributes.js";
 import type { CatalogProductTypeInput } from "../../src/catalog/contracts/productTypes.js";
@@ -306,5 +307,55 @@ describe("independent attribute-object rendered storage ceiling", () => {
       productAttributes: { product: Array(90_000).fill(true) }, skus: [{ id: first, attributes: { variant: Array(90_000).fill(true) } }],
     });
     expect(catalogAttributesReadyForPublication(result)).toBe(true);
+  });
+});
+
+
+describe("projection text index safety", () => {
+  const sample = Array.from({ length: 256 }, (_, i) => createHash("sha256").update(String(i)).digest("hex")).join("");
+  for (const scope of ["product", "variant"] as const) for (const filterable of [false, true]) {
+    for (const kind of ["text", "localized_text"] as const) for (const bytes of [2_047, 2_048, 2_049]) {
+      it(`catalog_attribute_projection_text_bound: ${scope}, ${kind}, filterable=${filterable}, bytes=${bytes}`, async () => {
+        const valueType = kind === "text" ? { kind, maxLength: 16_384 } : { kind, maxLength: 16_384, locales: ["en"] };
+        const value = kind === "text" ? sample.slice(0, bytes) : { en: sample.slice(0, bytes - 9) };
+        const type = definition([attribute("value", valueType, { scope, filterable, facetable: filterable })]);
+        const input = scope === "product" ? subject({ value }) : { skus: [{ id: first, attributes: { value } }] };
+        const result = await validateCatalogAttributes(type, input);
+        expect(result.valid).toBe(bytes <= 2_048);
+        expect(catalogAttributesReadyForPublication(result)).toBe(bytes <= 2_048);
+        expect(prepareCatalogAttributeProjection(result, "7").prepared).toBe(bytes <= 2_048);
+        if (bytes <= 2_048) expect(new TextEncoder().encode(rows(result)[0].text_value!).byteLength).toBe(bytes);
+        else expect(issues(result)).toEqual([{
+          path: scope === "product" ? "/productAttributes/value" : "/skus/0/attributes/value", code: "attribute_projection_text_too_large",
+        }]);
+      });
+    }
+  }
+  it.each(["text", "localized_text"] as const)("refuses the incompressible 16384-character reviewer example: %s", async kind => {
+    const valueType = kind === "text" ? { kind, maxLength: 16_384 } : { kind, maxLength: 16_384, locales: ["en"] };
+    const value = kind === "text" ? sample : { en: sample };
+    const result = await validateCatalogAttributes(definition([attribute("value", valueType)]), subject({ value }));
+    expect(issues(result)).toEqual([{ path: "/productAttributes/value", code: "attribute_projection_text_too_large" }]);
+    expect(prepareCatalogAttributeProjection(result, "7").prepared).toBe(false);
+  });
+  it.each(["text", "localized_text"] as const)("refuses oversized list elements with their ordinal path: %s", async kind => {
+    const item = kind === "text" ? { kind, maxLength: 16_384 } : { kind, maxLength: 16_384, locales: ["en"] };
+    const result = await validateCatalogAttributes(definition([attribute("items", { kind: "list", item, min: 0, max: 2 }, { cardinality: { min: 0, max: 2 } })]),
+      subject({ items: kind === "text" ? ["small", sample] : [{ en: "small" }, { en: sample }] }));
+    expect(issues(result)).toEqual([{ path: "/productAttributes/items/1", code: "attribute_projection_text_too_large" }]);
+  });
+  it("counts UTF-8 bytes independently of the definition character bound", async () => {
+    const type = definition([attribute("value", { kind: "text", maxLength: 16_384 })]);
+    expect((await validateCatalogAttributes(type, subject({ value: "😀".repeat(512) }))).valid).toBe(true);
+    expect((await validateCatalogAttributes(type, subject({ value: "😀".repeat(512) + "x" }))).valid).toBe(false);
+  });
+  it("bounds the whole localized map including escaped bytes and every locale", async () => {
+    const type = definition([attribute("value", { kind: "localized_text", maxLength: 16_384, locales: ["en", "fr"] })]);
+    for (const text of ["é".repeat(1_019) + "x", "\n".repeat(1_019) + "x"]) {
+      const under = await validateCatalogAttributes(type, subject({ value: { en: text } }));
+      expect(new TextEncoder().encode(rows(under)[0].text_value!).byteLength).toBe(2_048);
+      expect((await validateCatalogAttributes(type, subject({ value: { en: text + "x" } }))).valid).toBe(false);
+    }
+    expect((await validateCatalogAttributes(type, subject({ value: { en: "x".repeat(1_020), fr: "x".repeat(1_020) } }))).valid).toBe(false);
   });
 });

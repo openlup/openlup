@@ -6,7 +6,11 @@ PostgreSQL-rendered text storage ceiling, including separator spaces and UTF-8
 string bytes. Numeric exponent expansion is conservatively bounded; admitted
 attribute shapes are counted exactly. Oversized objects refuse with
 `attribute_storage_too_large` and the product/SKU owner path. The aggregate
-canonical JSON safety bound remains separate. Signed decimals remain strings, and Core quantity conversion
+canonical JSON safety bound remains separate. Each projected text slot also fits
+2,048 UTF-8 bytes, including whole localized maps and list scalars, independently
+of facet/filter flags. This conservative composite-index budget on the qualified
+8 KiB-page PostgreSQL profile refuses with `attribute_projection_text_too_large`
+before insertion; it does not depend on compressibility. Signed decimals remain strings, and Core quantity conversion
 refuses inexact or overflowing canonical numeric values before SQL.
 
 Migration: additive server exports and shared conformance codes only. Existing

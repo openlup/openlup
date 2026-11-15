@@ -1407,6 +1407,21 @@ arbitrary relation or URL lookup on behalf of this helper.
 successful, complete validation result and a positive bigint revision written
 as a decimal string. It produces deterministic frozen rows, repeating product
 attributes per SKU, retaining local SKU values and zero-based list ordinals.
+Every `text_value` slot is additionally bounded to **2,048 UTF-8 bytes**, including
+the entire canonical-JSON map for localized text and each scalar list element.
+The landed unconditional index carries `(attribute_key, definition_version,
+text_value, sku_id)`, so the bound applies regardless of `filterable` or `facetable`.
+On the qualified stock PostgreSQL profile (8 KiB pages), the
+[B-tree tuple budget](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/include/access/nbtree.h#L142-L155)
+is 2,704 bytes. The conservative allocation is 2,048 text bytes + 64 ASCII
+attribute-key bytes + 4 version bytes + 16 UUID bytes + 128 bytes reserved for
+headers/alignment: 2,260 bytes. It does not depend on value compressibility.
+Custom builds with smaller pages are outside this sizing proof. A larger declared
+character `maxLength` still permits shorter values; an oversized actual text slot
+returns `attribute_projection_text_too_large` at the scalar's input path and
+prevents preparation. The real-index witness uses maximum-length keys and version
+values, inserts adjacent safe boundaries and reproduces a bypassed oversized
+index insertion failure.
 Localized scalar maps occupy one canonical-JSON text slot; reference slots encode
 `[namespace,id]` as canonical JSON. Signed decimals remain exact strings in the
 unconstrained numeric slot. Quantity preparation calls Core
