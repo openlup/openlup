@@ -1242,6 +1242,14 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
+Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
+`runCatalogExtensionConformance`. The existing bin runs
+`npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`.
+See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
+for the explicit subject, copied skeleton, supported offline checks and pending
+owners. Trusted callbacks are not sandboxed. PASS grants no installation,
+migration, publication or activation authority.
+
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
 `./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
 tax-class and profile references. `defineCatalogPack` recursively freezes the descriptor and returns a recursively
@@ -1280,11 +1288,12 @@ with paths under `/types`. These checks perform no I/O or callback execution.
 and throws its first issue as `error.issue`, retaining the
 `invalid_catalog_type_definition` refusal. The Node entry `./catalog` exports
 `CATALOG_CONFORMANCE_RULES`, an exhaustive typed record supplying severity, rule,
-fix and reserved recipe destinations. Browser contracts export
+fix and installed recipe destinations. Browser contracts export
 `CatalogConformanceCode` and its related shapes as types only; the union reuses
-Core's `CatalogQuantityCode` for quantity refusals; checker prose
+Core's `CatalogQuantityCode` for quantity refusals and the V2 owner's
+`CatalogCombinationCode` for combination refusals; checker prose
 stays in the Node entry. The small pack authoring helpers remain browser-safe;
-the recipe guide and offline checker are separate additions. Existing definitions remain valid.
+the recipe guide and offline checker are separate opt-in entries. Existing definitions remain valid.
 New metadata includes optional exact unit factors, bounded attributes, axes,
 a default tax class, a versioned profile reference and a build-pinned
 `validatorRef` (`sha256:` followed by 64 lowercase hexadecimal digits).
@@ -1425,8 +1434,8 @@ The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
 semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
-projects canonical positions 1, 8, 58, 59, 61, 142, 143 and 144 byte for byte, including
-the nullable definition-binding, quantity and attribute forwards; these assets are sparse references,
+projects canonical positions 1, 8, 58, 59, 61, 142, 143, 144 and 145 byte for byte, including
+the nullable definition-binding, quantity, attribute and axes forwards; these assets are sparse references,
 never a standalone install chain.
 
 `createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the

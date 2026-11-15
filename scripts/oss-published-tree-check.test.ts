@@ -29,7 +29,7 @@ import {
   publicInventoryVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
-import { PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
+import { validateGuidePage, PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
 import { readManagedMigrationChain } from "./public-ci-pgtap.mjs";
@@ -1375,4 +1375,15 @@ it("admits the operator challenge forward and refuses executable or privilege ad
   for (const addition of ["CREATE FUNCTION public.bad() RETURNS int LANGUAGE SQL AS 'SELECT 1';", "CREATE TRIGGER bad AFTER INSERT ON public.operator_identity_challenges EXECUTE FUNCTION bad();", "CREATE POLICY bad ON public.operator_identity_challenges USING (true);", "GRANT SELECT ON public.operator_identity_challenges TO public;"]) {
     expect(isExpandOnlyPlatformForward(sql + addition)).toBe(false);
   }
+});
+
+it("admits only the closed non-executable catalogue documentation skeleton", () => {
+  const base = "packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/";
+  for (const file of ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json"]) {
+    expect(validateGuidePage(base + file, "sample\n", "100644")).toBe("sample\n");
+    expect(() => validateGuidePage(base + file, "sample", "100755")).toThrow();
+    expect(() => validateGuidePage(base + file, "<<<<<<< conflict", "100644")).toThrow();
+  }
+  for (const file of ["extra.ts", "install.mjs", "nested/pack.ts", "../pack.ts"]) expect(() => validateGuidePage(base + file, "sample", "100644")).toThrow();
+  expect(() => validateGuidePage("packages/core/docs/guide/other.ts", "sample", "100644")).toThrow();
 });

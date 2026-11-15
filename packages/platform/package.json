@@ -418,6 +418,11 @@
       "types": "./dist/fulfillment/testing/index.d.ts",
       "import": "./dist/fulfillment/testing/index.js",
       "default": "./dist/fulfillment/testing/index.js"
+    },
+    "./catalog/testing": {
+      "types": "./dist/catalog/testing/index.d.ts",
+      "import": "./dist/catalog/testing/index.js",
+      "default": "./dist/catalog/testing/index.js"
     }
   },
   "repository": {

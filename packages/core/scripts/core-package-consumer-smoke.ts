@@ -414,6 +414,11 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     assert(run(contextExecutable, ["--help"], consumerDir).includes("Usage: openlup-context"), "installed context executable did not print usage");
     const context = JSON.parse(run(contextExecutable, ["search", "extension seam", "--json"], consumerDir));
     assert(context.hits.some((hit: { file?: string }) => hit.file?.endsWith(`/node_modules/${packageName}/docs/guide/how-to/extend/choose-an-extension-seam.md`) === true), "installed context search did not find the installed extension-seam guide page");
+    const catalogueSearch = { name: "installed_guide_search_finds_each_recipe", queries: ["new vertical", "add attribute", "add unit", "add axis", "add tax class", "add category or collection", "promotion with existing grammar", "subscription profile", "upgrade a definition"] };
+    for (const recipe of catalogueSearch.queries) {
+      const found = JSON.parse(run(contextExecutable, ["search", `catalogue ${recipe}`, "--json"], consumerDir));
+      assert(found.hits.some((hit: { file?: string; title?: string }) => hit.file?.endsWith("/how-to/extend/catalogue-extension.md") && hit.title?.toLowerCase() === recipe), `${catalogueSearch.name}: ${recipe}`);
+    }
     const sourceContext = JSON.parse(run(contextExecutable, ["search", "nextRetryAttemptAt", "--package-code", "--json"], consumerDir));
     for (const scope of ["declarations", "package-source"]) {
       assert(sourceContext.scans.some((scan: { scope: string; packageName?: string; scannedFiles: number }) => scan.scope === scope && scan.packageName === packageName && scan.scannedFiles > 0), `installed context did not report a nonempty ${scope} scan`);

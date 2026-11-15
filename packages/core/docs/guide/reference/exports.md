@@ -50,6 +50,7 @@ Find an import subpath and its API report. API reports list every exported symbo
 | `./blob` | rail | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/blob.api.md) |
 | `./catalog` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/catalog.api.md) |
 | `./catalog/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/catalog-contracts.api.md) |
+| `./catalog/testing` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/catalog-testing.api.md) |
 | `./channels` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/channels.api.md) |
 | `./channels/contracts` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/channels-contracts.api.md) |
 | `./channels/server` | capability | experimental | [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/channels-server.api.md) |

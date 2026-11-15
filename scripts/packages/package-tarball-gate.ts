@@ -53,7 +53,9 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
     if (carriesPrivateOperationalCoordinate(text, path)) finding(path, "operational-coordinate", "a private operational coordinate is packed");
     const declarationMap = /^dist\/.+\.d\.ts\.map$/u.test(path);
     if (path.endsWith(".map") && !declarationMap) { finding(path, "sourcemap", "only declaration maps to shipped source may ship"); continue; }
-    if (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path)) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
+    // Closed documentation sample, copied and checked by the installed consumer; tracked-byte admission still applies.
+    const catalogueSample = entry.name === "@openlup/core" && /^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/(?:(?:pack|catalogue|fixtures|registry)\.ts|tsconfig\.json)$/u.test(path);
+    if (!catalogueSample && (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path))) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
     const derived = DERIVED.exec(path);
     if (derived) {
       const stem = `${entry.directory}/src/${derived[1]}`;

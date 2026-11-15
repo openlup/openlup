@@ -62,3 +62,5 @@ monorepo instead, and this file does not apply there.
 ## This application
 
 Write your application's own rules here, outside the managed block.
+
+Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).

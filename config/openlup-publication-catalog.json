@@ -3818,6 +3818,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/catalog-testing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/catalog.api.md",
       "class": "public-output"
     },
@@ -5203,6 +5207,18 @@
     },
     {
       "path": "packages/platform/src/catalog/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/testing/catalogExtensionConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/testing/contracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/testing/index.ts",
       "class": "public-output"
     },
     {
@@ -9311,6 +9327,10 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogDraftValidation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogExtensionConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -30807,7 +30827,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-2596e792092af299bdbb6b988b847a29caaa49aaec5d82954a9a6cb47e788d7b"
+      "digest": "sha256-d4a305b4aec33ef10062b04de376a8b1c013e2cd810a1fdda66cc0d0508846cc"
     },
     {
       "path": "package.json",

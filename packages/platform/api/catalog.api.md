@@ -1610,8 +1610,9 @@ export type BundlePricePreview = {
 
 ```ts
 import type { CatalogQuantityCode } from "@openlup/core/catalog";
+import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance. */
-export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | CatalogQuantityCode;
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
     rule: string;
@@ -2665,8 +2666,8 @@ export declare const catalogDraftPageSchema: z.ZodObject<{
 export declare const catalogDraftRefusalSchema: z.ZodObject<{
     outcome: z.ZodEnum<{
         conflict: "conflict";
-        validation_issue: "validation_issue";
         unauthorized: "unauthorized";
+        validation_issue: "validation_issue";
         dependency_unavailable: "dependency_unavailable";
     }>;
     reason: z.ZodString;
@@ -2773,8 +2774,8 @@ export declare const catalogDraftApplyResultSchema: z.ZodUnion<readonly [z.ZodOb
 }, z.core.$strict>, z.ZodObject<{
     outcome: z.ZodEnum<{
         conflict: "conflict";
-        validation_issue: "validation_issue";
         unauthorized: "unauthorized";
+        validation_issue: "validation_issue";
         dependency_unavailable: "dependency_unavailable";
     }>;
     reason: z.ZodString;
@@ -2961,7 +2962,7 @@ export { createBundleAdminWriteStore, BUNDLE_WRITE_ROUTINES, BUNDLE_RELATION, ty
 export { createPostgresBundleAdminWriteStore, type PostgresBundleAdminWriteStore } from "./postgresBundleAdminWriteStore.js";
 export { createPostgresCommerceQuoteCatalogReadPort } from "./commerceQuoteCatalogRead.js";
 export type { PostgresCommerceQuoteCatalogReadOptions } from "./commerceQuoteCatalogRead.js";
-export { catalogProductTypeIssues } from "./productTypeIssues.js";
+export { catalogProductTypeIssues, catalogProductTypeRefIssues } from "./productTypeIssues.js";
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
@@ -3250,9 +3251,11 @@ export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
     taxClass: z.ZodOptional<z.ZodString>;
     labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
 }, z.core.$strict>;
+/** Reference admission shares the definition key/version grammar and issue codes. */
+export declare function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIssue[];
 /** The runtime throws the first issue; offline callers can report the complete list. */
 export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
-/** Shared pack shape, definitions and references; installation also requires a bounded pack version, pinned validators and unique tax-class keys. */
+/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys. */
 export declare function catalogPackIssues(input: unknown): CatalogDefinitionIssue[];
 ```
 ## dist/catalog/productTypeSchemas.d.ts
