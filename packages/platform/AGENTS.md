@@ -68,6 +68,7 @@ or external-write authority. The application's own instructions govern.
 | `./fulfillment/native` | capability | experimental |
 | `./fulfillment/omnipack` | capability | experimental |
 | `./fulfillment/testing` | capability | experimental |
+| `./catalog/testing` | capability | experimental |
 | `./http` | rail | experimental |
 | `./identity` | capability | experimental |
 | `./identity/contracts` | capability | experimental |
@@ -170,3 +171,5 @@ and application authorization. Installation does not activate a host or provider
 This guide describes the installed contract and grants no host/tool/external-write
 authority. The application's own `AGENTS.md` governs. Inside the OpenLup monorepo,
 the repository root `AGENTS.md` governs instead.
+
+Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).

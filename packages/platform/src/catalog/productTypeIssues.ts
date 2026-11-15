@@ -72,6 +72,15 @@ function parseCode(path: readonly PropertyKey[], code: string): CatalogConforman
   };
   return codes[String(path[0])] ?? "definition_invalid_shape";
 }
+/** Reference admission shares the definition key/version grammar and issue codes. */
+export function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIssue[] {
+  const parsed = catalogProductTypeRefSchema.safeParse(input);
+  if (parsed.success) return [];
+  return parsed.error.issues.flatMap<CatalogDefinitionIssue>(issue => issue.code === "unrecognized_keys"
+    ? issue.keys.map(key => ({ code: "definition_unknown_field", path: pointer([...issue.path, key]) }))
+    : [{ code: parseCode(issue.path, issue.code), path: pointer(issue.path) }]);
+}
+
 /** The runtime throws the first issue; offline callers can report the complete list. */
 export function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[] {
   const issues: CatalogDefinitionIssue[] = [];
@@ -151,12 +160,12 @@ export function catalogProductTypeIssues(definitions: readonly unknown[]): Catal
 }
 
 const packSchema = z.object({
-  id: z.string(), namespace: z.string(), version: z.number(), openlupRange: z.string(),
+  id: z.string(), namespace: z.string(), version: catalogProductTypeRefSchema.shape.version, openlupRange: z.string(),
   capabilities: z.record(z.string(), z.boolean()), types: z.array(z.unknown()),
   taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
   subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
 }).strict();
-/** Shared pack shape, definitions and references; installation also requires a bounded pack version, pinned validators and unique tax-class keys. */
+/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys. */
 export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
   const parsed = packSchema.safeParse(input);
   if (!parsed.success) return parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => issue.code === "unrecognized_keys"

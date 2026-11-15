@@ -172,6 +172,7 @@ export const PLATFORM_MODULE_GRAPH = {
   // Bundle factories bind host schemas/admin kit; native reads use the data executor type, writes its transaction lane.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
+  "catalog/testing": { values: ["catalog"], types: ["catalog/contracts"] },
   catalog: { contracts: true, values: ["pricing", "data"], types: ["bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
@@ -372,4 +373,12 @@ export default tseslint.config(
     })),
   ...workspacePackages.filter(({ name }) => name === "@openlup/platform").flatMap((pkg) =>
     Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) => platformModuleRules(pkg, module))),
+  // Copied documentation material has application imports; Core production remains isolated.
+  {
+    files: ["packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/{pack,catalogue,fixtures,registry}.ts"],
+    rules: boundaryRules([packageExports, {
+      message: "The copied catalogue sample imports only its local files and the two documented platform entries.",
+      regexes: ["^(?!(?:@openlup/platform/catalog/(?:contracts|testing)|\\./(?:pack|catalogue|fixtures)\\.ts)$)"],
+    }]),
+  },
 );

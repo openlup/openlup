@@ -574,3 +574,8 @@ The routing map selects canonical owners; it is navigation rather than a second
 capability census. Regenerate after adding or moving sources or changing headings.
 Generated output does not establish runtime behavior, hosted qualification or
 compatibility with a different installed package version.
+
+Catalogue offline testing, the shared command branch and installed recipe/skeleton
+proofs route to the platform catalog owner and the installed catalogue extension
+guide. The refusal-code generator derives recipe links from the typed Node rule
+record; navigation adds no installation, publication or activation claim.

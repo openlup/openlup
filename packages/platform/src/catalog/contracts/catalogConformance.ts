@@ -16,6 +16,9 @@ export type CatalogConformanceCode =
   | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict"
   | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing"
   | "attribute_reference_unresolved" | "attribute_publication_revision_invalid"
+  | "conformance_subject_invalid" | "conformance_owner_unavailable"
+  | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch"
+  | "draft_input_invalid" | "draft_payload_invalid"
   | CatalogQuantityCode;
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string }

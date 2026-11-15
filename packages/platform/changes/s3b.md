@@ -13,7 +13,10 @@ Migration: additive server exports and shared conformance codes only. Existing
 V1 drafts, DTOs, canonical bytes and readers are unchanged. Compose the new owner
 with installed definitions explicitly; do not pass attribute values to V1 drafts.
 Old readers ignore the nullable storage introduced separately. Future V2 readers
-must consume publication evidence. No SQL, data backfill, runtime writer or
+must consume publication evidence. Shared conformance guidance and installed
+recipe links include all new attribute codes beside the offline checker's codes.
+The checker still checks definitions, exact quantities and v1 drafts only;
+attribute-value/projection checker integration remains pending. No SQL, data backfill, runtime writer or
 serving switch is included; rolling back this helper cannot rebuild or publish
 stored values. LC1/LC2 still own validation/digest/atomic publication integration,
 and later serving/restore work owns shadow generations and rebuilding.

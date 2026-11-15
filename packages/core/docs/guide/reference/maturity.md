@@ -61,6 +61,7 @@ for package policy definitions and release boundaries.
 | `./blob` | rail | experimental |
 | `./catalog` | capability | experimental |
 | `./catalog/contracts` | capability | experimental |
+| `./catalog/testing` | capability | experimental |
 | `./channels` | capability | experimental |
 | `./channels/contracts` | capability | experimental |
 | `./channels/server` | capability | experimental |
