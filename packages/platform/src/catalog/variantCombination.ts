@@ -1,10 +1,18 @@
 import { createHash } from "node:crypto";
-import { canonicalizeCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { canonicalizeCatalogQuantity, parseCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { CatalogOptionValue, CatalogProductTypeInput } from "./contracts/productTypes.js";
 import type { CatalogCombinationChangeV2, CatalogCombinationCode, CatalogCombinationIdentityV2,
   CatalogRetainedCombinationV2 } from "./contracts/variantAxes.js";
-import { catalogDimensionKeySchema, catalogOptionValueSchema } from "./productTypeSchemas.js";
+import { catalogDimensionKeySchema, catalogNamespacedKeySchema, catalogOptionValueSchema, catalogQuantityDimensionSchema } from "./productTypeSchemas.js";
+import { z } from "./validation.js";
+
+// Keep field closure; Core owns the V2 decimal grammar and canonical numeric bounds.
+const quantityOptionV2Schema = z.object({
+  kind: z.literal("quantity"),
+  value: z.object({ dimension: catalogQuantityDimensionSchema, unit: catalogNamespacedKeySchema,
+    unscaled: z.unknown(), scale: z.unknown() }).strict(),
+}).strict();
 
 export class CatalogCombinationError extends Error {
   constructor(readonly code: CatalogCombinationCode, readonly path: string) {
@@ -31,7 +39,8 @@ export function canonicalizeCatalogCombinationV2(input: {
   for (const key of Object.keys(options)) if (!selected.has(key)) refuse("option_not_selected", `options.${key}`);
   const entries = [...selected].sort().map(key => {
     if (!Object.hasOwn(options, key)) return refuse("option_missing", `options.${key}`);
-    const parsed = catalogOptionValueSchema.safeParse(options[key]);
+    const value = options[key];
+    const parsed = value?.kind === "quantity" ? quantityOptionV2Schema.safeParse(value) : catalogOptionValueSchema.safeParse(value);
     if (!parsed.success) return refuse("option_invalid", `options.${key}`);
     const option = parsed.data;
     const axis = definition.axes!.find(axis => axis.key === key)!;
@@ -52,7 +61,7 @@ export function canonicalizeCatalogCombinationV2(input: {
       if (!unit.factor) return refuse("unit_factor_missing", `options.${key}`);
       return { ...unit, factor: unit.factor };
     });
-    const quantity = canonicalizeCatalogQuantity(option.value, units);
+    const quantity = canonicalizeCatalogQuantity(parseCatalogQuantity(option.value, units), units);
     return [key, "quantity", quantity.dimension, quantity.unit, quantity.unscaled, quantity.scale];
   });
   const canonicalOptionBytes = Buffer.from(canonicalCatalogDraftJson(["catalog-combination", 2, entries]), "utf8");

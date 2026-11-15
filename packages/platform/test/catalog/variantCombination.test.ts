@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { canonicalCatalogOption } from "../../src/catalog/contracts/productTypes.js";
+import { catalogOptionValueSchema } from "../../src/catalog/productTypeSchemas.js";
 import type { CatalogOptionValue, CatalogProductTypeInput } from "../../src/catalog/contracts/productTypes.js";
 import { canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, validateCatalogCombinationChangesV2 } from "../../src/catalog/variantCombination.js";
 
@@ -34,6 +35,14 @@ it("catalog_equivalent_units_share_combination_identity", () => {
     expect(canonical({ ...options, size: value })).toEqual(identity);
   }
   expect(Buffer.from(identity.combinationDigest).toString("hex")).toBe(createHash("sha256").update(identity.canonicalOptionBytes).digest("hex"));
+  const boundary = canonical({ ...options, size: quantity(`1${"0".repeat(39)}`) });
+  for (const scale of [1, 12]) {
+    const equivalent = quantity(`1${"0".repeat(39 + scale)}`, scale);
+    expect(canonical({ ...options, size: equivalent })).toEqual(boundary);
+    // The unchanged v1 wire schema deliberately keeps its original 40-digit ceiling.
+    expect(catalogOptionValueSchema.safeParse(equivalent).success).toBe(false);
+  }
+  expect(catalogOptionValueSchema.safeParse(quantity(`1${"0".repeat(39)}`)).success).toBe(true);
   expect(canonicalCatalogOption(quantity("1", 0, "openlup:kg"))).not.toEqual(canonicalCatalogOption(quantity("1000")));
 });
 
@@ -59,6 +68,9 @@ describe("combination validation table", () => {
     ["unknown unit", ["size"], { size: quantity("1", 0, "example:unknown") }, "option_invalid"],
     ["precision overflow", ["size"], { size: quantity("1", 1, "example:small") }, "quantity_not_exactly_representable"],
     ["numeric overflow", ["size"], { size: quantity("9".repeat(40), 0, "openlup:kg") }, "quantity_overflow"],
+    ["beyond canonical integer bound", ["size"], { size: quantity(`1${"0".repeat(40)}`) }, "quantity_overflow"],
+    ["extra quantity option field", ["size"], { size: { ...quantity("1"), extra: true } }, "option_invalid"],
+    ["extra quantity value field", ["size"], { size: { kind: "quantity", value: { dimension: "mass", unit: "openlup:g", unscaled: "1", scale: 0, extra: true } } }, "option_invalid"],
   ])("%s", (_name, selected, values, code) => {
     expect(() => canonicalizeCatalogCombinationV2({ definition, axes: selected as string[], options: values as Record<string, CatalogOptionValue> })).toThrow(code as string);
   });

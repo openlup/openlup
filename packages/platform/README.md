@@ -1391,6 +1391,9 @@ are excluded, and quantity equivalents share identity through Core's exact
 arithmetic with explicit installed unit factors. Missing factors, unknown or
 incomplete axes and unrepresentable quantities refuse. The existing option
 helper and v1 command/receipt bytes retain their exact behavior.
+V2 quantity options use Core's positive decimal-string grammar: up to 52 input
+coefficient digits and scale 0–12, with canonical `numeric(52,12)` bounds checked
+after normalization and conversion. V1 retains its 40-digit input ceiling.
 
 `validateCatalogCombinationChangesV2` prepares retained plus incoming SKU facts
 without I/O. Retained evidence must come from authoritative rows/history scoped
