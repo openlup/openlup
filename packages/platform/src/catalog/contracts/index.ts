@@ -13,3 +13,7 @@ export type { CreateBundleDraftRequest, CreateBundleDraftResponse, UpdateBundleD
 export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBundleRequest, GetBundleResponse, BundleDetailView, BundleAvailabilityView, BundleHistoryRequest, BundleHistoryResponse, PreviewBundlePriceRequest, PreviewBundlePriceResponse, BundlePricePreview } from "./bundleRead.js";
 export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
 export type { AgentReason } from "./rpcErrors.js";
+export * from "./attributes.js";
+export type { CatalogConformanceCode, CatalogConformanceRule, CatalogDefinitionIssue } from "./catalogConformance.js";
+export * from "./catalogPack.js";
+export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";

@@ -1241,6 +1241,63 @@ in the application. The existing cold consumer exercises both entries and
 compiles installed declarations without optional provider peers.
 
 ## Catalog
+
+Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
+`./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
+tax-class and profile references. `defineCatalogPack` recursively freezes the descriptor and returns a recursively
+readonly view, including metadata supplied through referenced objects; it neither
+validates it nor invokes callbacks. `draftsFor` types the existing v1 draft fields
+and derives each SKU's option keys from that product's selected `dimensions`.
+Zero selected dimensions require empty options. For explicit annotations, supply
+the selected keys as the second type argument, for example
+`CatalogPackDraft<typeof pack, "finish">`; omitting it means all installed
+dimensions. Derive this argument from `typeof product.dimensions[number]` when
+annotating an existing product. An annotation restricts allowed dimension names;
+`draftsFor` correlates the actual inferred selection with SKU options, while
+runtime validation checks the supplied list. The full v1 SKU shape accepts
+inline or referenced objects and readonly or mutable arrays, including
+`identifiers` and `assetRefs`. Type-level unit references also
+cover quantity scalars inside list attributes. To hand readonly authoring output
+to existing mutable draft/command DTOs, pass each draft through the existing
+server `catalogDraftPayloadSchema.parse(draft)`; the schema validates and returns
+the v1 wire payload. Attribute definitions describe the closed value-kind grammar;
+attribute values and prices are not added to v1 drafts.
+
+Descriptor fields are closed, including nested metadata. Unit dimensions and
+axis attribute references resolve within the selected type. Referenced keys,
+unit codes, type versions, tax-class keys and profile references retain literal
+types: use the inline helper or preserve those literals when declaring arrays
+and objects elsewhere. Widening them to a general `CatalogPackInput` or string
+keys removes static reference evidence, even when the runtime value is valid.
+Runtime schemas remain authoritative for value bounds and semantic checks.
+
+`catalogProductTypeIssues` in the server entry returns definition issues with
+stable `CatalogConformanceCode` values and JSON-pointer paths rooted at the
+input definition array. `catalogPackIssues` checks the closed pack shape,
+namespace, tax-class and profile references, then reuses those definition issues
+with paths under `/types`. These checks perform no I/O or callback execution.
+`createCatalogProductTypeRegistry` uses the definition issue list
+and throws its first issue as `error.issue`, retaining the
+`invalid_catalog_type_definition` refusal. The Node entry `./catalog` exports
+`CATALOG_CONFORMANCE_RULES`, an exhaustive typed record supplying severity, rule,
+fix and reserved recipe destinations. Browser contracts export
+`CatalogConformanceCode` and its related shapes as types only; the union reuses
+Core's `CatalogQuantityCode` for quantity refusals; checker prose
+stays in the Node entry. The small pack authoring helpers remain browser-safe;
+the recipe guide and offline checker are separate additions. Existing definitions remain valid.
+New metadata includes optional exact unit factors, bounded attributes, axes,
+a default tax class, a versioned profile reference and a build-pinned
+`validatorRef` (`sha256:` followed by 64 lowercase hexadecimal digits).
+An axis names a declared dimension and a variant-scoped attribute of that type.
+
+`catalogDefinitionDigest` and `catalogPackManifest` compute SHA-256 identities
+server-side over bounded canonical JSON. Labels and executable callbacks are
+excluded; validator artifact references and all other admitted definition
+metadata are covered. Definition versioning follows the
+[catalogue extension agreements](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-extension-agreements).
+Manifests are derived immutable projections, never client-authored evidence. These helpers install nothing, publish nothing and
+activate no capability. Quantity types re-export Core's single definition;
+the existing v1 quantity validator and option canonical bytes are unchanged.
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.

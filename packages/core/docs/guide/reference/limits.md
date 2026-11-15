@@ -72,6 +72,24 @@ Core's catalogue identifier schemas validate bounded shapes. They do not prove
 that a product, SKU, variant or slug exists; your catalogue reader owns
 membership and current product facts.
 
+Core's `./catalog` quantity helpers use decimal strings and `BigInt`, with the
+closed dimensions `mass | volume | count`. `parseCatalogQuantity` validates
+positive coefficients (at most 52 digits) and scales 0–12.
+`canonicalizeCatalogQuantity`, `compareCatalogQuantities` and
+`convertCatalogQuantity` use declared exact factors. Built-in codes are
+`openlup:g`, `openlup:kg`, `openlup:ml`, `openlup:l` and `openlup:piece`;
+the canonical units are grams, millilitres and pieces. Custom units declare a
+positive decimal multiplier to the matching canonical unit. They cannot change
+a built-in factor. The helpers never infer mass from another dimension.
+
+Canonical values must fit `numeric(52,12)` exactly: at most 40 integer digits
+and 12 fractional digits after removing trailing zeroes. Inexact conversions
+refuse with `quantity_not_exactly_representable`, never round. Unknown units,
+cross-dimension conversions, fractional counts, malformed values and overflow
+have separate `CatalogQuantityError.code` values. Converted values must also
+fit the decimal-string boundary. This arithmetic performs no stock operation,
+agreement edit, publication or database installation.
+
 `calculateInventoryAtp` evaluates supplied stock, reservations, unavailable
 quantities, safety stock and lot facts. It selects a location when the request
 can be fulfilled there and can return review-required or unsupported results.
