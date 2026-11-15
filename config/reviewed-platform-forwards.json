@@ -7305,12 +7305,12 @@
         {
           "signature": "public.catalog_type_version_immutable()",
           "beforeSha256": null,
-          "afterSha256": "eccb5b137e9d01e8ec7502a5278a8724b8df69f3b2611c1a5ca6da9e54fe00af"
+          "afterSha256": "4b5664bd2cac233bfe75785545ad1a4d645cb551f0851d8865e82f7d5a44b076"
         },
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "0ad2130a9eaeb2e7472e48903be5bbee68127cb073c6db514cacd0890aa5b34e"
+          "afterSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2"
         }
       ]
     }
