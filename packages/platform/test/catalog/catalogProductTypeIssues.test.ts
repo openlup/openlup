@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { catalogProductTypeIssues, createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { CATALOG_CONFORMANCE_RULES } from "../../src/catalog/contracts/catalogConformance.js";
+import { CATALOG_CONFORMANCE_RULES } from "../../src/catalog/index.js";
+import * as browserContracts from "../../src/catalog/contracts/index.js";
 import type { CatalogProductTypeDefinition } from "../../src/catalog/contracts/productTypes.js";
 const definition: CatalogProductTypeDefinition = {
   key: "example:item", version: 1, units: [{ code: "openlup:piece", dimension: "count", integral: true }],
   netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [],
 };
 describe("shared definition issues", () => {
+  it("keeps conformance guidance in the server entry", () => {
+    expect(browserContracts).not.toHaveProperty("CATALOG_CONFORMANCE_RULES");
+    expect(CATALOG_CONFORMANCE_RULES.quantity_not_exactly_representable).toMatchObject({
+      severity: "error", rule: expect.any(String), fix: expect.any(String),
+      recipe: "how-to/extend/catalogue-extension.md#add-unit",
+    });
+  });
   it("registry_issue_codes_carry_path", () => {
     const input = { ...definition, units: [...definition.units, ...definition.units], netContentUnits: ["example:unknown"], dimensions: [{ key: "finish", kind: "choice", values: ["matte", "matte"] }] };
     const issues = catalogProductTypeIssues([input]);

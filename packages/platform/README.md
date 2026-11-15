@@ -1259,9 +1259,12 @@ attribute values and prices are not added to v1 drafts.
 stable `CatalogConformanceCode` values and JSON-pointer paths rooted at the
 input definition array. `createCatalogProductTypeRegistry` uses that same list
 and throws its first issue as `error.issue`, retaining the
-`invalid_catalog_type_definition` refusal. `CATALOG_CONFORMANCE_RULES` supplies
-severity, rule, fix and reserved recipe destinations; the recipe guide and
-offline checker are separate additions. Existing definitions remain valid.
+`invalid_catalog_type_definition` refusal. The Node entry `./catalog` exports
+`CATALOG_CONFORMANCE_RULES`, an exhaustive typed record supplying severity, rule,
+fix and reserved recipe destinations. Browser contracts export
+`CatalogConformanceCode` and its related shapes as types only; checker prose
+stays in the Node entry. The small pack authoring helpers remain browser-safe;
+the recipe guide and offline checker are separate additions. Existing definitions remain valid.
 New metadata includes optional exact unit factors, bounded attributes, axes,
 a default tax class, a versioned profile reference and a build-pinned
 `validatorRef` (`sha256:` followed by 64 lowercase hexadecimal digits).

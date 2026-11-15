@@ -538,7 +538,6 @@ export interface CatalogConformanceRule {
     fix: string;
     recipe: string;
 }
-export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>>;
 export interface CatalogDefinitionIssue {
     code: CatalogConformanceCode;
     path: string;
@@ -855,7 +854,7 @@ export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBun
 export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
 export type { AgentReason } from "./rpcErrors.js";
 export * from "./attributes.js";
-export * from "./catalogConformance.js";
+export type { CatalogConformanceCode, CatalogConformanceRule, CatalogDefinitionIssue } from "./catalogConformance.js";
 export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
 ```
