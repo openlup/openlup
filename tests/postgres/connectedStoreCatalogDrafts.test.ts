@@ -13,7 +13,9 @@ const packs = [1, 2].map(version => ({ id: "example:transfer", namespace: "examp
     netContentUnits: ["openlup:piece"], dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] }],
   taxClasses: [{ key: "example:transfer-standard" }] }));
 const resources = storeJourneyResources();
-let source: JourneyInstallation;
+let source: JourneyInstallation, target: JourneyInstallation;
+let before: Awaited<ReturnType<typeof journeyCensus>>, restored: typeof before;
+let packet: Awaited<ReturnType<typeof captureStoreJourney>>;
 let commands: { canonicalCommand: string; fingerprint: string; actorId: string; result: CatalogDraftApplyResult }[];
 
 beforeAll(async () => {
@@ -53,38 +55,40 @@ beforeAll(async () => {
   await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,'TRANSFER-LIVE','Synthetic live SKU')", [liveId]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp())", [listId]);
   await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',123,clock_timestamp())", [listId, liveId]);
+  target = await resources.installation("catalog-draft-target");
+  const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
+  before = await journeyCensus(source.owner);
+  packet = await captureStoreJourney(source.owner, "draft-source:catalog-drafts");
+  expect(before.catalog_type_versions).toHaveLength(2);
+  expect(before.catalog_definition_installs).toHaveLength(2);
+  expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);
+  expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open"]);
+  expect(before.catalog_draft_revisions).toHaveLength(5);
+  expect(before.catalog_draft_command_receipts).toHaveLength(5);
+  expect(before.catalog_draft_sku_reservations).toHaveLength(2);
+  expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
+    .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
+  restored = await journeyCensus(target.owner);
 }, postgresSetupTimeoutMs);
-afterAll(() => resources.close(), postgresTeardownTimeoutMs);
+afterAll(async () => {
+  try {
+    // One whole-census comparison covers restore and every command replay,
+    // including no extra live products, SKUs, prices or other effects.
+    if (target && before) expect(await journeyCensus(target.owner)).toEqual(before);
+  } finally { await resources.close(); }
+}, postgresTeardownTimeoutMs);
 
 describe.each(relations)("%s", relation => {
-  let target: JourneyInstallation;
-  beforeAll(async () => { target = await resources.installation(relation); }, postgresSetupTimeoutMs);
-
-  // The existing 10 s flat bound stays below 4x the comparable hosted purchase
-  // transfer case (12,998 ms); installation uses the existing setup hook.
+  // 52 s rounds up 4x the 12,998 ms hosted case in Published Tree CI 43695486286:
+  // storeJourneyTransfer.test.ts, "transfers one purchased store to a pristine
+  // database and continues its open activation duty through the restricted runtime".
+  // Installation and the single restore use the existing setup-hook deadline.
   it("transfer_round_trip_matrix", async () => {
-    const pristine = await captureStoreJourney(target.owner, `pristine:${relation}`);
-    const before = await journeyCensus(source.owner);
-    const packet = await captureStoreJourney(source.owner, `draft-source:${relation}`);
-    for (const table of relations) {
-      expect(before[table]!.length).toBeGreaterThan(0);
-      expect(packet.owned.find(entry => entry.table === table)!.rows).toEqual(before[table]);
-    }
-    expect(before.catalog_type_versions).toHaveLength(2);
-    expect(before.catalog_definition_installs).toHaveLength(2);
-    expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);
-    expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open"]);
-    expect(before.catalog_draft_revisions).toHaveLength(5);
-    expect(before.catalog_draft_command_receipts).toHaveLength(5);
-    expect(before.catalog_draft_sku_reservations).toHaveLength(2);
-    const restore = () => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection,
-      packet, freshTarget: pristine });
-    expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
-    const restored = await journeyCensus(target.owner);
     // PostgreSQL's raw JSON text compares every column, including microsecond
     // timestamps and JSONB payloads, without JavaScript row reserialization.
+    expect(before[relation]!.length).toBeGreaterThan(0);
+    expect(packet.owned.find(entry => entry.table === relation)!.rows).toEqual(before[relation]);
     expect(restored[relation]).toEqual(before[relation]);
-    expect(restored).toEqual(before);
     for (const { canonicalCommand, fingerprint, actorId, result } of commands) {
       if (result.outcome !== "committed") throw new Error("Fixture command did not commit");
       expect(await journeyRpc(target.runtime, "catalog_draft_apply", [canonicalCommand, fingerprint, actorId]))
@@ -93,9 +97,15 @@ describe.each(relations)("%s", relation => {
     for (const pack of packs) {
       expect(await installCatalogDefinitions(target.owner, pack)).toEqual(await installCatalogDefinitions(source.owner, pack));
     }
-    expect(await journeyCensus(target.owner)).toEqual(restored);
-    expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 });
-    expect(await journeyCensus(target.owner)).toEqual(restored);
-    expect(await journeyCensus(source.owner)).toEqual(before);
-  });
+    const db = await target.owner.connect();
+    try {
+      await db.query("BEGIN READ ONLY");
+      await db.query("SET LOCAL TimeZone='UTC'");
+      const rows = await db.query<{ value: string }>(`SELECT to_jsonb(t)::text AS value
+        FROM public."${relation}" t ORDER BY to_jsonb(t)::text`);
+      expect(rows.rows.map(row => row.value)).toEqual(restored[relation]);
+      await db.query("COMMIT");
+    } catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+  }, 52_000);
 });
