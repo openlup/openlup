@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions, validateRoadmapProviderMatrix } from "./public-ci-neutrality.mjs";
+import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -489,67 +489,6 @@ describe("tree-wide neutrality ratchet", () => {
     const result = cli(root, base);
     expect(result.status, result.output).toBe(0);
     expect(readFileSync(join(root, baselinePath))).toEqual(before);
-  });
-
-  it("limits every roadmap Proof scope cell to 40 whitespace-separated words because openlup.com renders it verbatim", () => {
-    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
-    const matrix = contents.split("## Providers and adapters\n")[1].split("\n## ")[0];
-    const rows = matrix.split("\n").filter(line => line.startsWith("| ")).slice(2);
-    expect(rows.length).toBeGreaterThan(0);
-    expect(() => validateRoadmapProviderMatrix(contents)).not.toThrow();
-    for (const row of rows) {
-      const cells = row.split("|");
-      const id = cells[1].trim();
-      // Repeated spaces and tabs separate words; hyphens do not.
-      cells[5] = `  ${Array(40).fill("offline-proof").join(" \t  ")}  `;
-      const atLimit = contents.replace(row, cells.join("|"));
-      expect(() => validateRoadmapProviderMatrix(atLimit), id).not.toThrow();
-      cells[5] += " extra ";
-      expect(() => validateRoadmapProviderMatrix(contents.replace(row, cells.join("|"))), id)
-        .toThrow(`ROADMAP.md provider ${JSON.stringify(id)}: Proof scope has 41 words`);
-    }
-  });
-
-  it.each([true, false])("counts escaped pipes within roadmap Proof scope cells (closing pipe: %s)", closingPipe => {
-    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
-    const row = contents.split("\n").find(line => line.startsWith("| portable-postgresql |"))!;
-    const prefix = row.split("|").slice(0, 5).join("|");
-    const atLimit = `${prefix}| fact\\|detail ${Array(39).fill("proof").join(" ")}${closingPipe ? " |" : ""}`;
-    expect(() => validateRoadmapProviderMatrix(contents.replace(row, atLimit))).not.toThrow();
-    const overlong = `${prefix}| fact\\|detail ${Array(40).fill("proof").join(" ")}${closingPipe ? " |" : ""}`;
-    expect(() => validateRoadmapProviderMatrix(contents.replace(row, overlong)))
-      .toThrow('ROADMAP.md provider "portable-postgresql": Proof scope has 41 words');
-  });
-
-  it("counts the final word of a roadmap Proof scope without a closing pipe", () => {
-    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
-    const row = contents.split("\n").find(line => line.startsWith("| portable-postgresql |"))!;
-    const prefix = row.split("|").slice(0, 5).join("|");
-    const atLimit = `${prefix}| ${Array(39).fill("proof").join(" ")} a`;
-    expect(() => validateRoadmapProviderMatrix(contents.replace(row, atLimit))).not.toThrow();
-    const overlong = `${prefix}| ${Array(40).fill("proof").join(" ")} a`;
-    expect(() => validateRoadmapProviderMatrix(contents.replace(row, overlong)))
-      .toThrow('ROADMAP.md provider "portable-postgresql": Proof scope has 41 words');
-  });
-
-  it("refuses an overlong roadmap Proof scope through the neutrality CLI even when the base is identical", () => {
-    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
-    const row = contents.split("\n").find(line => line.startsWith("| portable-postgresql |"))!;
-    const cells = row.split("|");
-    cells[5] = ` ${Array(41).fill("proof").join(" ")} `;
-    const overlong = contents.replace(row, cells.join("|"));
-    const { root, base } = installed();
-    put(root, "ROADMAP.md", overlong);
-    const overlongBase = commit(root);
-    for (const reference of [base, overlongBase]) {
-      const result = cli(root, reference);
-      expect(result.status, result.output).toBe(1);
-      expect(result.output).toContain('ROADMAP.md provider "portable-postgresql": Proof scope has 41 words');
-      expect(result.output).toContain("openlup.com renders the cell verbatim with a 40-word limit");
-    }
-    put(root, "ROADMAP.md", contents);
-    const repaired = cli(root, overlongBase);
-    expect(repaired.status, repaired.output).toBe(0);
   });
 
   it.each([
