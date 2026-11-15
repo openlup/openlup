@@ -646,7 +646,8 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of products) {
     // The target catalogue has no allergen column, so carrying this product would serve an empty safety list.
     if (!Array.isArray(row.allergens) || row.allergens.length) fail("unsupported_table", "public.catalog_products");
-    projected.catalog_products!.push(project("catalog_products", row));
+    // The managed source may predate native type bindings; supplied values stay authoritative.
+    projected.catalog_products!.push(project("catalog_products", { type_key: null, type_version: null, ...row }));
   }
   for (const row of skus) projected.catalog_skus!.push(project("catalog_skus", row));
   for (const row of priceLists) projected.price_lists!.push(project("price_lists", row));

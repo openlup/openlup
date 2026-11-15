@@ -386,6 +386,11 @@ one disposable managed PostgreSQL snapshot across non-system schemas, selecting
 Auth identity metadata without credentials. A capture login that row security
 would filter refuses. Its finite typed projection maps
 eligible business obligations into the existing connected restore packet.
+For legacy catalogue products, only absent `type_key` and `type_version`
+columns default to NULL. A source-supplied value, including NULL, is preserved;
+other missing target columns retain the generic `schema_conflict` refusal.
+The native complete-reference check and installed-version FK remain enforced
+when the projected packet is restored.
 The pinned managed source has no package-editor composition constraint; carried
 subscriptions project the target's nullable `composition_constraint` as NULL
 and `configured_offer_version` as `classic`.

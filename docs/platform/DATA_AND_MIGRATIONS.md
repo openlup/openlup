@@ -284,6 +284,12 @@ refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
 
+Managed-to-native retained transfer initializes only absent product `type_key`
+and `type_version` fields to NULL. Supplied values, including explicit NULLs,
+are preserved; the generic missing-column refusal still applies to every other
+required target column. This is legacy ingress compatibility, not a managed
+catalogue-definition installer.
+
 The native definition-binding forward adds no seed or backfill. Old readers
 ignore the nullable product columns, and NULL continues to mean legacy, not
 mapped. The managed rail does not supply this feature; its future equivalent
