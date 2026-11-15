@@ -1359,8 +1359,43 @@ and SKUs. NULL preserves legacy absence; each supplied value must be an object
 whose PostgreSQL rendered text is at most 1 MiB (1,048,576 bytes). This storage
 ceiling measures different bytes from canonical JSON safety checks and the
 separate aggregate draft limit. No opaque document is mined or backfilled, and
-V1 DTOs and canonical bytes are unchanged. Typed value validation, batch reference
-resolution and pure projection preparation remain separate work.
+V1 DTOs and canonical bytes are unchanged.
+
+`validateCatalogAttributes(definition, input, references?)` checks values against
+an installed type's existing attribute definitions. Pass `productAttributes`
+and `skus: [{id, attributes?}]`; omitted or NULL attribute objects mean absence.
+The helper reuses `catalogProductTypeIssues` and canonical JSON depth/byte safety
+checks, snapshots supplied data, and does not call `validateContent`. Compose
+that callback separately for application cross-field policy. Unknown keys,
+wrong scope, malformed values and invalid cardinality return `valid: false`
+with shared conformance codes and JSON-pointer paths. Missing required values
+or locales return `valid: true` with `readinessIssues`. A locale fallback never
+satisfies an explicitly required locale. `false`, absence and a supplied empty
+list retain their declared meaning; a required list may be empty only when its
+bounds permit it.
+
+Values use strings for text, stable enum IDs, signed decimals and calendar dates
+(`YYYY-MM-DD`, years 0001–9999); localized text is a locale-to-string object.
+Quantity values use Core's decimal-string quantity shape and installed units.
+Lists contain only the declared scalar kind. References use
+`{namespace, id}`; the namespace must occur in the definition's allowlist. The
+injected `CatalogAttributeReferencePort.resolve` receives one deduplicated batch
+across product and SKU values. Each requested pair needs exactly one `resolved`
+result; missing, duplicate, dangling, private, unavailable or failed resolution
+refuses. The port supplies application visibility evidence and performs no
+arbitrary relation or URL lookup on behalf of this helper.
+
+`catalogAttributesReadyForPublication` is only the attribute admission predicate.
+`prepareCatalogAttributeProjection(validation, publicationRevision)` accepts its
+successful, complete validation result and a positive bigint revision written
+as a decimal string. It produces deterministic frozen rows, repeating product
+attributes per SKU, retaining local SKU values and zero-based list ordinals.
+Localized scalar maps occupy one canonical-JSON text slot; reference slots encode
+`[namespace,id]` as canonical JSON. Signed decimals remain exact strings in the
+unconstrained numeric slot. Quantity preparation calls Core
+`canonicalizeCatalogQuantity` with the installed conversions, rejecting overflow
+and `quantity_not_exactly_representable` before any SQL coercion. No Number
+conversion, rounding, inferred unit factor or mixed revision is admitted.
 
 `catalog_attribute_projection` is the single rebuildable SKU-keyed projection
 specified by the [catalogue extension agreements](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-extension-agreements).
@@ -1369,9 +1404,11 @@ and value ordinal. Text, decimal, boolean, date and reference slots accompany
 quantity dimension, canonical unit and `numeric(52,12)` canonical value. The
 projection has RLS enabled, owner-only access and no runtime grants or policies.
 There is no publication-table FK before publications exist, no seeded revision
-and no generation service. Future trusted preparation must refuse decimal or
-quantity loss before SQL coercion; this storage change cannot prove exact input
-admission. Connected transfer carries authoritative product/SKU values and omits
+and no generation service. The preparation helper refuses quantity loss before
+SQL coercion; it never inserts rows or commits independently. LC1/LC2 must integrate attribute validation,
+candidate/publication digests and insertion in the single publication transaction.
+The L1 required-locale predicate is not proof of a durable publish refusal.
+Connected transfer carries authoritative product/SKU values and omits
 projection contents even when populated. Restore leaves the projection empty;
 rebuild and serving require later integration. No writer or consumer is activated.
 The managed rail does not supply this feature.

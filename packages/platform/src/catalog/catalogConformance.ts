@@ -4,6 +4,15 @@ import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
 const rule = (text: string, fix: string, anchor: string): CatalogConformanceRule => Object.freeze({ severity: "error", rule: text, fix, recipe: recipe(anchor) });
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
+  attribute_values_invalid: rule("Values use bounded canonical JSON objects and unique SKU identities.", "Correct the object shape, identity, JSON depth or byte bound.", "add-attribute"),
+  attribute_value_invalid: rule("Supplied values match the installed closed value kind and bounds.", "Supply the declared kind, stable ID, locale, date or allowlisted reference.", "add-attribute"),
+  attribute_unknown_key: rule("Every supplied attribute key is declared.", "Declare the attribute in a new definition version or remove the unknown key.", "add-attribute"),
+  attribute_scope_conflict: rule("Product values are shared; variant values belong only to SKUs.", "Move the value to its declared owner.", "add-attribute"),
+  attribute_cardinality_invalid: rule("Supplied scalar and list cardinalities match the definition.", "Supply the declared number of values within both list and cardinality bounds.", "add-attribute"),
+  attribute_required_missing: rule("Required values must exist before publication.", "Supply the missing value before preparing publication.", "add-attribute"),
+  attribute_required_locale_missing: rule("Every required locale must exist before publication.", "Supply the required locale explicitly; a fallback does not satisfy it.", "add-attribute"),
+  attribute_reference_unresolved: rule("Every reference resolves uniquely and is available to this catalogue.", "Resolve the allowlisted batch and remove dangling, private or unavailable references.", "add-attribute"),
+  attribute_publication_revision_invalid: rule("Projection preparation names one explicit publication revision.", "Supply a positive bigint revision as a decimal string.", "add-attribute"),
   definition_unknown_tax_class: rule("Default tax classes are declared by the pack.", "Declare the tax class or correct its reference.", "add-tax-class"),
   definition_unknown_profile_ref: rule("Profile keys and versions are declared by the pack.", "Declare the profile version or correct its reference.", "subscription-profile"),
   pack_type_namespace_mismatch: rule("Type keys use the pack namespace.", "Use this pack's namespace for the type key.", "new-vertical"),

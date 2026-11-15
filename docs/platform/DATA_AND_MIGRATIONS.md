@@ -330,6 +330,14 @@ Old readers ignore these nullable fields; future typed readers require the V2
 publication evidence. Rolling code back leaves the nullable fields and retained
 values intact; do not reverse the migration or discard populated columns.
 
+The unbound package owner now validates typed values and prepares projection
+rows without database access. See the [catalogue package owner](../../packages/platform/README.md#catalog)
+for wire shapes, reference visibility evidence, exact numeric handling and
+readiness refusal. This adds no migration or transfer disposition. Old readers
+continue to ignore nullable values; future V2 readers require publication
+evidence. Publication/digest integration and durable shadow rebuilds remain
+pending, so preparation alone grants no serving or restore-rebuild capability.
+
 `catalog_attribute_projection` is REBUILDABLE. The closed capture census records
 only its owner and row count with disposition `rebuildable`, even when nonempty;
 no projection row enters an authoritative payload. Restore validates that exact
