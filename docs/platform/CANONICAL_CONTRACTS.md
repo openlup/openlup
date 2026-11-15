@@ -1676,3 +1676,155 @@ Its callback is invoked before the second call without awaiting refresh. Email
 correction instead follows admission, exclusive execution claim, identity commit
 and settlement. A queued recovery notice is not proof of delivery, and an email
 claim is not a universal reservation against independent identity writers.
+
+## Catalogue extension agreements
+
+Status: frozen design, 2026-11-15, for the catalogue extension round (typed product
+models, the runtime writer and price writer, taxonomy, tax classes, targeted
+promotions). These agreements bind every change in that round and later catalogue,
+tax, pricing and promotion work. A change references the agreement it implements
+and does not restate it. Changing an agreement is a reviewed amendment of this
+section that lands before the code that needs it. Each agreement describes the
+required design; it becomes current behaviour only when the change that introduces
+its structures lands.
+
+### Shared structures
+
+- **X1. One source-line relation and one allocation order.** Order lines get one
+  immutable source-line relation, `commerce_order_line_sources`. Tax, promotions,
+  acceptance evidence and invoice verification all allocate with one comparator,
+  `source_ordinal` ascending. No second tie order exists.
+- **X2. One attribute projection.** Attribute values are typed JSONB on products
+  and SKUs. One derived, rebuildable, SKU-keyed projection,
+  `catalog_attribute_projection`, feeds facets, filters and listing rows, and the
+  listing rows carry the search `tsvector` column. There is no other derived
+  attribute store, no authoritative entity-attribute-value table, and no adopter
+  DDL in the platform schema.
+- **X3. One acceptance fence and one lock order.** Subscription acceptance of
+  catalogue changes goes through one fence. Every transaction that locks rows of
+  two or more families follows the [lock order](#catalogue-lock-order).
+- **X4. One publication transaction.** A publication writes attributes, axes,
+  quantities, tax assignments, categories, successor links and projections in one
+  transaction.
+- **X5. Versioned additions.** A new shape is added as a new version beside the old
+  one: the V2 envelope, the quote-money version, promotion v3, renewal terms v2 and
+  the alias table. Existing versions keep their exact behaviour and canonical bytes.
+- **X6. Definitions are versioned code.** Type, attribute, unit, axis and profile
+  definitions are written in a pack and reach the database only through the
+  definition installer. Every change covered by the definition digest, relaxations
+  included, is a new `key@version`; an installed version is immutable. The platform
+  computes every digest; no author or client supplies one.
+- **X7. One operator receipt table.** Publish, merchandising, adoption and tax
+  adoption commands record receipts in one kinded table,
+  `catalog_operator_receipts(kind, scope_id, command_key, fingerprint, actor_id,
+  publication_id, result)`. The definition-install ledger stays separate because it
+  belongs to the install role. Pricing keeps its own receipts, and successor
+  commands reuse `subscription_command_receipts`.
+
+### Money and currency invariants
+
+- **M1.** Money is always `{amountMinor, currency}` with the currency's exponent.
+  It is never a bare number and never a float.
+- **M2.** A subscription agreement is fixed to its currency and price context at
+  signup.
+- **M3.** Renewals never convert currency. A renewal whose price context no longer
+  exists in the agreement's currency refuses at operator preflight; it is never
+  re-quoted in another currency.
+- **M4.** Changing a subscriber's currency is an explicit migration with notice and
+  acceptance, like a price change.
+- **M5.** Promotion money is per currency. Fixed amounts, minimum spend and maximum
+  discount are `{[currency]: minor}` maps. A quote in a currency without an entry
+  makes the rule not applicable (`promotion_currency_not_configured`); nothing is
+  converted. Codes carry no money.
+- **M6.** Tax resolves per market through the market-pack seam.
+- **M7.** A comparison unit price is computed in the line's currency.
+- **M8.** Listing, quote and checkout take the currency from the server-selected
+  market context, never from the browser.
+- **M9.** Reporting never sums different currencies without an explicit rate
+  snapshot.
+- **M10.** Prices are scoped to an explicit `price_context_key` (legacy `default`),
+  not only to region and currency, and the accepted context is stored with the
+  purchase.
+
+### Catalogue lock order
+
+The census of existing native callers (main `6facc3e72`, 2026-11-15) found no
+single order of catalogue, commerce and promotion keys that every existing caller
+follows. Subscription editors, renewal preparation and order creation lock the
+subscription or order first and only then reach catalogue rows, usually through
+foreign-key checks. The design therefore uses two lock domains with one rule for
+transactions that touch both. It replaces the single ten-step chain proposed
+earlier: catalogue keys come after commerce keys, never before.
+
+**Commerce domain order.** New code that locks two or more of these acquires them
+in this order, and several rows of one kind in ascending key order:
+
+1. subscription;
+2. renewal operation, then cycle, then retry obligation or dunning case;
+3. order, a source order before its replacement, an order before its parcels;
+4. settlement intent, then payment attempts, provider state, evidence, recovery
+   tokens and saved payment methods;
+5. promotion definition heads;
+6. promotion codes;
+7. promotion claims and benefit uses.
+
+Steps 1 to 4 are the native payment aggregate
+(`payment_provider_lock_aggregate`); steps 3, 5, 6 and 7 are the existing order
+→ code → claim promotion order.
+
+**Catalogue domain order.** Definitions and tax-class keys; then catalogue
+lineage (publication head, product, SKU and its revisions); then merchandising
+(categories, collections); then price context (head before entries). Rows of
+one kind are locked in ascending key order.
+
+**Rules.**
+
+- **R1. Catalogue writers take catalogue locks only.** The definition installer,
+  the publisher, the merchandising, price and tax-adoption writers lock rows of
+  the catalogue domain in catalogue order and never lock a commerce row.
+- **R2. Mixed transactions lock commerce first.** A transaction that needs both
+  domains (an acceptance fence in a subscription edit lane, a consent or successor
+  migration, renewal tax revalidation, a subscription promotion) acquires all its
+  commerce locks first, in commerce order, and then its catalogue locks in
+  catalogue order, in shared modes only: `FOR SHARE`, a shared advisory lock, or
+  the `FOR KEY SHARE` of a foreign-key check. After its first catalogue lock it
+  locks no further existing commerce row. Rows it inserts itself are exempt,
+  because no other transaction can see them before commit.
+- **R3. Referenced catalogue rows are never exclusively locked.** Products, SKUs,
+  SKU and publication revisions, price lists and price entries that commerce rows
+  reference by foreign key are never locked `FOR UPDATE`, never deleted, and never
+  have a uniquely indexed column changed. Writers update other columns (`FOR NO
+  KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` then
+  never waits for a catalogue writer, so foreign-key checks are exempt from R2's
+  ordering.
+- **R4. Advisory locks take the rank of the rows they guard**, with shared and
+  exclusive modes as for rows. Overlap guards run under `READ COMMITTED`.
+- **R5. Store transfer is a separate regime.** Restore takes table locks on a
+  fresh target with no concurrent writers; it is outside this order.
+- **R6. A row that adds a mixed transaction proves it** with independent
+  connections on the native call paths it can meet, including the real payment
+  settlement (`lock_matrix_races_native_payment_settlement`). A managed twin
+  follows the same order when an adopter's managed chain adds it.
+
+**Existing exceptions (do not copy).** These commerce paths predate the round and
+acquire commerce keys out of the order above. They belong to their owning modules
+and are not changed by catalogue work unless a catalogue change would close a new
+cycle with one of them; that change then repairs the caller with a
+characterization witness.
+
+- `commerce_record_subscription_renewal_outcome` (success) locks the renewal
+  operation before the subscription.
+- `subscription_retry_apply_failure` and `subscription_retry_record_recovery`
+  lock the settlement intent before the order.
+- The successful branch of `commerce_record_settlement`, terminal payment
+  application and unpaid-artifact terminalization lock cycles or dunning cases
+  after intents and claims.
+- Exception holds (`oms_create_hold`, `oms_create_system_hold`,
+  `fulfillment_intake_record_exception`) and parcel delivery or exception
+  transitions (`fulfillment_advance_shipment`,
+  `fulfillment_raise_shipment_exception`) lock the order or parcel before the
+  subscription when delivery alignment applies.
+- `customer_checkout_recovery_settle` locks an order and its intent before a
+  linked subscription.
+- Saved payment method switch and upsert reach the subscription after the
+  method.
