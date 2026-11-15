@@ -180,12 +180,16 @@ function prepareReleasedStarter(receipt, temporary, run) {
   return { application: extracted, packages };
 }
 
-function proveReleasedStarter(receipt, input, temporary, run, environment) {
+export function auditInstalledRelease(application, run) {
+  // Reset workspaces=false: npm 11 otherwise filters out the installed root's edges.
+  return JSON.parse(run('npm', ['audit', 'signatures', '--json', '--include-attestations', '--workspaces=null', '--prefix', application], dirname(application)));
+}
+
+function proveReleasedStarter(receipt, input, run, environment) {
   const { application, packages } = input;
   proveNeutralStarterConsumer(root, { mode: 'released', application, environment, run,
     lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name), verifyInstalled() {
-      // Audit from the isolated parent: the project's workspaces=false omits root edges.
-      const audit = JSON.parse(run('npm', ['audit', 'signatures', '--json', '--include-attestations', '--prefix', application], temporary));
+      const audit = auditInstalledRelease(application, run);
       receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, receipt.tagCommit);
     }
   });
@@ -344,7 +348,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       const inputs = releases.map((release, index) => {
         const directory = join(temporary, String(index)); mkdirSync(directory);
         const input = prepareReleasedStarter(release, directory, run);
-        proveReleasedStarter(release, input, directory, run, environment);
+        proveReleasedStarter(release, input, run, environment);
         return input;
       });
       const applications = inputs.map(input => input.application);
@@ -355,13 +359,13 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       // The CLI moved declarations; the harness moves the verified lock and installs.
       assert.deepEqual(readFileSync(join(applications[0], 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
       writeFileSync(join(applications[0], 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
-      proveReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, temporary, run, environment);
+      proveReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, run, environment);
       finish();
       pair.to.result = 'PASS'; pair.to.endedAt = new Date().toISOString();
       pair.result = 'PASS';
     } else {
       const input = prepareReleasedStarter(receipt, temporary, run);
-      proveReleasedStarter(receipt, input, temporary, run, environment);
+      proveReleasedStarter(receipt, input, run, environment);
       const extracted = input.application;
       receipt.postgresImage = imageReference(readCiImage('install-proof-postgres'));
       if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
