@@ -197,7 +197,7 @@ it('keeps the existing GET, authorization, success envelope and missing-id respo
   const detail = createAdminCommerceFulfillmentOrderDetailHandler(deps);
   await detail({ method: 'GET', query: { fulfillmentOrderId: id(1), orderId: id(99) } }, res.response);
   expect(res.output()).toMatchObject({ ok: true, data: { order: { id: id(1) } } });
-  expect(h.queries.at(-2)?.values).toEqual([id(1), null]);
+  expect(h.queries.filter(query => query.sql.startsWith('SELECT to_jsonb(s)')).at(-1)?.values).toEqual([id(1), null]);
   h.missing(); await detail({ method: 'GET', query: { orderId: id(99) } }, res.response);
   expect(res.output()).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
 });
@@ -467,6 +467,7 @@ it('preserves default builder outputs and distinguishes saved-address gates from
   const native = { ...absent, fulfillmentOrder: { ...absent.fulfillmentOrder, shipping_address_snapshot: { ...absent.fulfillmentOrder.shipping_address_snapshot, addressId: null } } };
   const detail = buildCommerceFulfillmentOrderDetailResponse({ ...native, hasShippingAddress: true, responseSchemas: nativeFulfillmentCommerceResponseSchemas }, policy);
   const list = buildCommerceFulfillmentOrdersListResponse({ ...managedListInput(absent), fulfillmentOrders: [native.fulfillmentOrder], hasShippingAddress: { [input.orderContext.id]: true }, responseSchemas: nativeFulfillmentCommerceResponseSchemas }, policy);
+  expect(detail.order.deliveryContact).toBeNull();
   expect(detail.order.shippingAddress.addressId).toBeNull();
   expect(detail.order.omsEligibility).toEqual({ allowed: true, reason: null });
   expect(list.orders).toEqual([detail.order]);

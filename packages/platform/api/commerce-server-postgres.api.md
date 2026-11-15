@@ -9541,6 +9541,32 @@ export declare function addressRow(clientId: string, input: CustomerAddressUpser
 export declare function findCanonicalAddressId(store: CustomerAddressReadStore, clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): Promise<string | null>;
 export declare function clearDefaultAddress(store: CustomerAddressReadStore, clientId: string, kind: string): Promise<void>;
 ```
+## dist/shipping/deliverySelectionBoundary.d.ts
+
+```ts
+import type { DeliverySelectionPort } from './deliverySelectionPort.js';
+import type { PickupPointSearchPort } from './pickupPointSearchPort.js';
+import type { DeliveryOption, PickupPoint } from './contracts/index.js';
+/** Adapters decode their own dictionary and supply normalized options and point I/O. */
+export declare function createDeliverySelectionBoundary(input: {
+    dictionary: {
+        valid: boolean;
+        options: readonly DeliveryOption[];
+    };
+    acceptedCatalog: readonly DeliveryOption[];
+    allowedCarriers: ReadonlySet<string>;
+    fallbackValidation: DeliverySelectionPort['validatePickupPoint'];
+    pointSources?: Readonly<Record<string, {
+        getById(id: string): Promise<PickupPoint | null>;
+        search: PickupPointSearchPort['searchPickupPoints'];
+    }>>;
+}): {
+    source: 'dictionary' | 'static_accepted_catalog';
+    enabledCarriers: string[];
+    port: DeliverySelectionPort;
+    searchPort: PickupPointSearchPort;
+};
+```
 ## dist/shipping/deliverySelectionHandler.d.ts
 
 ```ts
@@ -9604,6 +9630,7 @@ export {};
 export type { DeliverySelectionSummaryKind, DeliverySelectionSummary, DeliverySelectionSourceKey, DeliverySelectionSources, DeliverySelectionEvidence, } from "./contracts/delivery.js";
 export type { DeliverySelectionPort } from "./deliverySelectionPort.js";
 export type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export { createDeliverySelectionBoundary } from './deliverySelectionBoundary.js';
 export type { DeliverySelectionSchemas } from "./handlerSchemas.js";
 export { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler, DELIVERY_SELECTION_CONTRACT_VERSION, PICKUP_POINT_SEARCH_CONTRACT_VERSION, } from "./deliverySelectionHandler.js";
 export { summarizeDeliverySelection } from "./deliverySelectionSummary.js";
