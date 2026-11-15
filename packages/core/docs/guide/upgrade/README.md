@@ -73,7 +73,8 @@ Upgrade conflicts report paths and reasons without a named refusal code.
 Snapshot validation failures after JSON parsing can return `74`.
 Readiness findings use `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`,
 `OPENLUP_E_EVENT_DUPLICATE`, `OPENLUP_E_SCHEDULE_UNBOUND`,
-`OPENLUP_E_SCHEMA_BEHIND`, `OPENLUP_E_SET_MISMATCH` or `OPENLUP_E_ENV_MISSING`.
+`OPENLUP_E_SCHEMA_BEHIND`, `OPENLUP_E_SET_MISMATCH`, `OPENLUP_E_ENV_MISSING`
+or `registry_missing_referenced_version`.
 Each finding includes an observation, cause, fix and recheck instruction.
 
 ## Per-release notes

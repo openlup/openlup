@@ -10,10 +10,6 @@ in the source repository.
 
 ## [Unreleased]
 
-Add native catalogue definition installation, nullable product bindings and an explicit registry probe/write guard.
-
-Migration: install the complete native chain through `20261122100000_catalog_definition_binding.sql`; supply a migration-owner executor explicitly. Existing products stay NULL-bound legacy. No host hook, publication or activation is added; the managed rail does not supply this feature.
-
 ## [0.43.0]
 
 - Publishable on the npm `latest` dist-tag as `0.43.0`, from tag

@@ -295,7 +295,8 @@ ignore the nullable product columns, and NULL continues to mean legacy, not
 mapped. The managed rail does not supply this feature; its future equivalent
 needs separately authored tables, service/operator read policies and a restricted
 install principal. Native owner-only invoker semantics can be expressed by
-managed grants and RLS. No food-column relaxation is part of this forward.
+managed grants and RLS. This forward relaxes no constraints on `net_weight_g`,
+`pet_type`, `kcal_per_unit`, `requires_pet_profile` or `feeding_grams_per_unit`.
 
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
 transports data into an already qualified canonical target. It does not restore

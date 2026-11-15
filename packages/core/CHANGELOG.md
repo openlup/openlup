@@ -10,10 +10,6 @@ in the source repository.
 
 ## [Unreleased]
 
-Add optional inert catalogue registry observations to readiness. Missing referenced versions or unequal digests refuse with `registry_missing_referenced_version`.
-
-Migration: additive readiness observation; existing inputs are unchanged. Observation and host wiring remain application-owned.
-
 ## [0.43.0]
 
 - Publishable on the npm `latest` dist-tag as `0.43.0`, from tag

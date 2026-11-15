@@ -576,11 +576,16 @@ describe("catalogue registry observation", () => {
     expect(report.state).toBe(registryDigest === digest ? "ready" : "unsatisfied");
     expect(report.issues.map(issue => issue.code)).toEqual(registryDigest === digest ? [] : ["registry_missing_referenced_version"]);
   });
-  it.each(["other-database", "missing-digest", "malformed"]) ("refuses unavailable registry evidence: %s", async mode => {
+  it.each(["other-database", "missing-digest", "null-digest", "malformed"]) ("refuses unavailable registry evidence: %s", async mode => {
     const facts = input();
     facts.catalogRegistry = { database: mode === "other-database" ? "db-2" : "db-1", referencedVersions: [{ key: "example:item", version: 1,
-      definitionDigest: mode === "missing-digest" ? "" : digest, registryDigest: digest }] };
+      definitionDigest: mode === "null-digest" ? null : mode === "missing-digest" ? "" : digest, registryDigest: digest }] };
     if (mode === "malformed") facts.catalogRegistry = {} as never;
     expect((await evaluateReadiness(facts)).state).toBe("unknown");
+  });
+  it.each([undefined, true, false])("requires complete visibility even with no visible bindings: %s", async complete => {
+    const facts = input();
+    facts.catalogRegistry = { database: "db-1", complete, referencedVersions: [] };
+    expect((await evaluateReadiness(facts)).state).toBe(complete === false ? "unknown" : "ready");
   });
 });
