@@ -1798,7 +1798,9 @@ one kind are locked in ascending key order.
   never waits for a catalogue writer, so foreign-key checks are exempt from R2's
   ordering.
 - **R4. Advisory locks take the rank of the rows they guard**, with shared and
-  exclusive modes as for rows. Overlap guards run under `READ COMMITTED`.
+  exclusive modes as for rows. A transaction that takes both an advisory guard
+  and row locks of the same rank takes the guard first, before any row lock of
+  that rank. Overlap guards run under `READ COMMITTED`.
 - **R5. Store transfer is a separate regime.** Restore takes table locks on a
   fresh target with no concurrent writers; it is outside this order.
 - **R6. A row that adds a mixed transaction proves it** with independent
