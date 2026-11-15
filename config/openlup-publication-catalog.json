@@ -29434,11 +29434,11 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/catalogDefinitionInstall.test.ts",
+      "path": "tests/postgres/catalogAttributeProjection.test.ts",
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/catalogAttributeProjection.test.ts",
+      "path": "tests/postgres/catalogDefinitionInstall.test.ts",
       "class": "public-output"
     },
     {

@@ -70,6 +70,9 @@ beforeAll(async () => {
   target = await resources.installation("catalog-draft-target");
   const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
   before = await journeyCensus(source.owner);
+  expect(before.catalog_attribute_projection).toHaveLength(1);
+  // The whole target census must match retained authority with an empty projection.
+  before = { ...before, catalog_attribute_projection: [] };
   packet = await captureStoreJourney(source.owner, "draft-source:catalog-drafts");
   expect(before.catalog_skus!.map(row => JSON.parse(row))).toEqual([expect.objectContaining({
     net_content_dimension: "volume", net_content_scale: 12, net_content_unit: "example:custom-volume",
