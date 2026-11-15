@@ -8,7 +8,7 @@ import { catalogPackManifest } from "./catalogPackManifest.js";
 /** Supply the native migration-owner executor explicitly. No runtime binding or hook is created. */
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
   const manifest = catalogPackManifest(pack);
-  if (!/^[a-z0-9][a-z0-9:._-]*$/u.test(pack.id) || !Number.isSafeInteger(pack.version) || pack.version < 1 || pack.version > 2147483647
+  if (!Number.isSafeInteger(pack.version) || pack.version < 1 || pack.version > 2147483647
     || pack.types.some(type => !type.validatorRef || !type.key.startsWith(`${pack.namespace}:`))
     || new Set(pack.types.map(type => `${type.key}@${type.version}`)).size !== pack.types.length
     || new Set(pack.taxClasses.map(taxClass => taxClass.key)).size !== pack.taxClasses.length) throw new Error("invalid_catalog_pack");
