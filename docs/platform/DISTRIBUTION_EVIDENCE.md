@@ -31,29 +31,52 @@ candidate's isolation, confinement and application assertions; candidate callers
 and their offline tarball installation remain unchanged. Candidate extraction
 starts in the existing temporary parent before creating the application directory.
 
-Before executing application checks, `npm audit signatures --json --include-attestations`
-verifies registry signatures and provenance. Every OpenLup package must have a
-verified provenance subject matching its locked SHA-512, this repository's
+Before executing application checks, `npm audit signatures --json --include-attestations
+--workspaces=null --prefix <application>` runs from the isolated parent against
+the installed application. Resetting the starter's `workspaces=false` to npm's
+default prevents npm 11.19.0 from filtering out the application's root dependency
+edges. The installation, manifest and lock stay unchanged. Every OpenLup package
+must have exactly one verified provenance subject matching its locked SHA-512, this repository's
 release workflow certificate identity, its package release tag and the same
 source commit. Registry metadata alone is insufficient; missing or mismatched
-provenance refuses the named package. This uses retained npm provenance rather
+provenance refuses the named package; invalid or missing registry signatures also
+refuse qualification. This uses retained npm provenance rather
 than the publisher's seven-day pack artifacts, allowing later requalification
 without changing publication. PostgreSQL uses the digest-pinned GHCR mirror
 with job-scoped GitHub token authentication and no upstream fallback. The
 installed application checks the PostgreSQL major, typechecks, builds, runs its
 application tests and runs the existing development-loop HTTP proof.
 
-The local 2026-11-14 run against published 0.41.0, source commit
+The local 2026-11-14 rehearsal against published 0.41.0, source commit
 `699157a61f5be9befc268225bb5e8b1539a8ec0a`, passed in 25.816 seconds with
 Node 24.21.0/npm 11.19.0 and the same pinned PostgreSQL 17 content available
 locally under its upstream digest. It recorded reconstructed extraction,
-verified all three package provenances, and passed typecheck, build, 296
+used an auxiliary audit view for all three provenances, and passed typecheck, build, 296
 application tests and two development-loop tests. This is local evidence,
 not a hosted qualification receipt. The qualification step's two-minute bound
 is 4× that measurement rounded up; the first hosted run must remeasure it. The
-shared-proof follow-up on the same date passed against that set in 27.814
-seconds, with all three provenances, 296 application tests and two development-loop
-tests passing. The existing two-minute bound still covers 4× the follow-up.
+shared-proof follow-up on the same date reported 27.814 seconds, 296 application
+tests and two development-loop tests. Neither rehearsal established that the
+committed audit invocation verified the complete installed set.
+
+On 2026-11-15, [hosted run 43656204743](https://github.com/openlup/openlup/actions/runs/43656204743)
+passed the registry tutorial and failed exact-set qualification for 0.42.0 with
+`@openlup/outbox@0.42.0: missing or duplicated verified provenance`; the image
+publisher was skipped. Local reproduction with Node 24.21.0/npm 11.19.0 on both
+0.42.0 and 0.41.0 found only core among the OpenLup `verified` entries, with empty
+`missing` and `invalid` arrays. Outbox and platform were omitted, not duplicated:
+their only incoming edges were from the filtered application root, while core
+also had incoming package edges. Running outside the application with `--prefix`
+still loaded its `.npmrc`. The explicit default above fixes that audit scope;
+the exact-one bundle, locked subject, signer, tag and commit checks remain intact.
+The corrected entry point passed locally on 2026-11-15 for the 0.42.0 tag commit
+`494387957789fc2d4596646658ad186d15ff3cbf` in 25.981 seconds: all three
+provenances, 296 application tests, typecheck, build, two development-loop tests
+and the PostgreSQL 17 major check passed. It used the cached pinned PostgreSQL
+content locally; this is not a hosted mirror-access or full canary result.
+The same local entry point's adjacent 0.41.0→0.42.0 starter upgrade passed in
+59.778 seconds, including all three provenances for both releases, interruption,
+resume, replay and preservation of application-owned bytes.
 
 One workflow artifact, retained for 90 days, contains the qualification receipt
 and the [exact-set BOM](#package-set-bom). The receipt records the set/tag/commit,
@@ -420,7 +443,7 @@ and Syft v1.38.0 at
 GHCR mirror through the existing bounded pull helper, without an upstream
 fallback or implicit BuildKit scanner download.
 
-A local 2026-11-14 rehearsal on the signature/provenance-verified 0.41.0 set
+A local 2026-11-14 rehearsal on the 0.41.0 set, using the auxiliary audit view above,
 passed npm inventory generation and named-package checks in 0.187 seconds
 (72 components), then Syft scanning in 5.312 seconds (3,451 components).
 It used the same pinned scanner and Node content from upstream locally because
