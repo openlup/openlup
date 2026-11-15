@@ -962,12 +962,12 @@ already knowing their IDs and excludes ordinary open events. Use the returned
 The query records no decision and creates no refund or order transition.
 
 `CATALOG_MIGRATIONS` projects canonical catalogue positions
-1, 8, 58, 59, 61 and 142: read foundation, storefront attributes, document/identifier
+1, 8, 58, 59, 61, 142 and 143: read foundation, storefront attributes, document/identifier
 and subscription price-policy foundation, its validation, isolated drafts and
-definition bindings.
+definition bindings and physical quantities.
 Each descriptor keeps the canonical path, position, digest and byte-identical
 package SQL. History stays in canonical order. Install and observe the complete
-selected catalogue; these six projections do not supply an independent installation
+selected catalogue; these seven projections do not supply an independent installation
 sequence. The package envelope and draft
 stores keep their incumbent SQL and refusal semantics after the source move.
 
