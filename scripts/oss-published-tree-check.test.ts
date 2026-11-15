@@ -289,7 +289,7 @@ describe("CI image mirror workflow controls", () => {
   const qualification = readFileSync(join(ROOT, ".github/workflows/registry-tutorial.yml"), "utf8");
   const assertPublisherControls = (source: string) => {
     const writer = workflowJob("publish-qualified-image", source);
-    expect(writer).toContain("    needs: exact-set-qualification\n    if: ${{ needs.exact-set-qualification.result == 'success' }}\n");
+    expect(writer).toContain("    needs: exact-set-qualification\n    if: ${{ needs.exact-set-qualification.result == 'success' && (github.event_name == 'workflow_run' || inputs.publish_image) }}\n");
     expect(permissionBlocks(source).filter(({ job }) => job === "publish-qualified-image")).toEqual([{ job: "publish-qualified-image", block: "    permissions: {packages: write, attestations: write, id-token: write}" }]);
     // No checkout at all: downloaded data is verified, never executed. Only these
     // full-SHA first-party actions may run alongside the reviewed shell program.
@@ -306,7 +306,7 @@ describe("CI image mirror workflow controls", () => {
     // run forms; shell allowlists cannot prove that candidate code stays inert.
     // Canonical workflow keys precede jobs, so this also seals inherited env,
     // permissions, triggers and concurrency. Defaults are refused above.
-    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("0e553428a9de0610a137d84050113db154fc85305f1e4452adf902bea4569350");
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("e417fbcd5b523279e7e2e3a88322314d6face06fc289e4ba329f7f18d6d531b5");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
   it.each([
@@ -327,6 +327,7 @@ describe("CI image mirror workflow controls", () => {
     ["gh attestation verify ", "echo unverified "],
     ["needs: exact-set-qualification", "needs: registry-tutorial"],
     ["needs.exact-set-qualification.result == 'success'", "always()"],
+    [" && (github.event_name == 'workflow_run' || inputs.publish_image)", ""],
     ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: write-all"],
     ["permissions: {packages: write, attestations: write, id-token: write}", "permissions:\n      packages: write"],
     ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: {packages: write, contents: read}"],

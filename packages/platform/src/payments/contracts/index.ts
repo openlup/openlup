@@ -56,3 +56,5 @@ export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
 
 export type { SandboxPaymentOutcome, SandboxMethodFacts, SandboxPaymentObservation, SandboxPaymentAttempt,
   SandboxPaymentSimulator, SandboxPaymentSimulatorOptions } from "./sandbox.js";
+
+export type { PaymentProviderProfile } from "./providerProfile.js";
