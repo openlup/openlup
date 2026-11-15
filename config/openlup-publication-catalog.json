@@ -29502,6 +29502,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/connectedStoreCatalogDrafts.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/connectedStoreCatalogRevisions.test.ts",
       "class": "public-output"
     },

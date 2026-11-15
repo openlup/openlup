@@ -228,6 +228,11 @@ product primary-SKU reference after its SKU exists, sends before observations,
 and sync state after its outbox work, then includes them in replay and the final
 whole-table census. The profile still refuses other nonempty tables.
 
+The authoritative `catalog_draft_heads`, `catalog_draft_revisions`,
+`catalog_draft_command_receipts` and `catalog_draft_sku_reservations` retain
+abandoned heads, historical revisions and replay identities in their
+[documented restore order](../../docs/platform/DATA_AND_MIGRATIONS.md#compatible-data-transfer).
+
 `catalog_product_document_revisions` is carried with its immutable row text.
 Restore stages both product pointers to null, inserts revisions after their
 products, then installs each current-revision pointer while the primary-SKU
