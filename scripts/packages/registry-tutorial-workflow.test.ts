@@ -441,9 +441,9 @@ execFileSync("git", ["init", "--quiet", target]);`);
 
 describe("qualified image publication", () => {
   const publish = job(workflow, "publish-qualified-image"), body = script(step(publish, "Verify and publish the qualified archive"));
-  it("isolates writes from candidate execution and defaults dispatch to verification only", () => {
+  it("isolates writes from candidate execution and skips the publisher on non-publishing dispatches", () => {
     expect(publish).toContain("needs: exact-set-qualification");
-    expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' }}");
+    expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' && (github.event_name == 'workflow_run' || inputs.publish_image) }}");
     expect(permissionBlocks(publish)).toEqual(["    permissions: {packages: write, attestations: write, id-token: write}\n"]);
     expect(publish).not.toMatch(/checkout@|setup-node@|npm |timeout|sleep|retry/u);
     expect(workflow).toContain("type: boolean\n        default: false");
@@ -455,7 +455,7 @@ describe("qualified image publication", () => {
     try { writeFileSync(join(application, "Dockerfile"), dockerfile); expect(() => buildQualifiedImage(application, "unused", "unused")).toThrow("qualified_image_base_unexpected"); }
     finally { rmSync(application, { recursive: true, force: true }); }
   });
-  it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch"])("checks archive, immutable tag and registry equality: %s", mode => {
+  it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch"])("checks the defensive shell guard, archive, immutable tag and registry equality: %s", mode => {
     const directory = mkdtempSync(join(tmpdir(), "qualified-image-")), input = join(directory, "qualified-image"); mkdirSync(input);
     const manifest = '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}', digest = "sha256:" + createHash("sha256").update(manifest).digest("hex");
     const bom = JSON.stringify({ formatVersion: 4, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });

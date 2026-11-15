@@ -290,7 +290,8 @@ The script resolves upstream tags to digests, copies complete indexes to
 target tags, refuses conflicting tags and verifies the digest after copying.
 Exactly two jobs receive `packages: write`: `mirror` in `mirror-ci-images.yml`
 and `publish-qualified-image` in `registry-tutorial.yml`. The publisher runs only
-after successful qualification, verifies and copies the downloaded OCI archive,
+after successful qualification for a release-event run or an explicit
+`publish_image: true` dispatch, verifies and copies the downloaded OCI archive,
 and executes no candidate code. This split keeps installation code away from a
 write token. The mirror reads owned pins from its own
 checkout, refuses a missing digest or two pins that would write different digests
@@ -420,8 +421,10 @@ workflow run and reports to the maintainer; a propagation timeout warns and
 defers the tutorial. It runs after publication and cannot affect it. The
 separate `exact-set-qualification` job verifies and tests the exact locked npm
 set against release provenance and retains a blocking qualification result
-and a 90-day receipt. Both jobs have `contents: read`; qualification also has
-`packages: read` for the pinned PostgreSQL mirror. See the
+and a 90-day receipt. A dispatch with `publish_image: false` skips the publisher
+job, so no write token is minted; its retained qualification receipt is the run's
+receipt, with no separate publication receipt. Both jobs have `contents: read`;
+qualification also has `packages: read` for the pinned PostgreSQL mirror. See the
 [qualification owner](docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
 for trust, evidence and support limits. The workflow adds no required PR check,
 does not hold publication open and does not delay the next dispatch.

@@ -261,7 +261,7 @@ surfaces. See the [execution limits](../../reference/limits.md#fulfillment-execu
 ## Correct a delivery contact
 
 Install the complete selected catalogue through
-`20261120140000_order_delivery_contact_correction.sql`. Bind the native OMS
+`20261121100000_order_delivery_contact_correction.sql`. Bind the native OMS
 `updateShippingAddress` behind the existing operator authorization. Read the
 current resolution with `createPostgresDeliveryContactReadPort` from
 `@openlup/platform/fulfillment/native`, then submit both `expectedRevision` and

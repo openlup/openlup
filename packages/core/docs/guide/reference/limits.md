@@ -179,7 +179,7 @@ address tuple returns `starter_acquisition_seed_conflict` and rolls back.
 | --- | --- | --- |
 | Take real payments, set up a payment method or replace a card in the starter | The starter binds sandbox attempts only. The native provider store and method-setup lane require a complete installed database catalogue and explicit host composition; installing them does not enable these starter actions. | `native_prepared_attempt_store_unsupported` |
 | Use native cumulative refunds or absence reopening | These installed native capabilities are supported with the complete catalogue and explicit host/provider composition. Absence auto-reopen stays off by default. The starter remains sandbox-only; refund creation and live-provider activation are separate. Refund evidence does not cancel subscription service. | —; host composition required |
-| Add another native payment provider | The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. The supplied portable composition selects card provider only. | —; follow-up required |
+| Add another native payment provider | The native rail supports the two reference payment providers through declarative provider profiles. A third provider needs a profile declaration plus its adapter. The supplied portable composition selects card provider only. | —; follow-up required |
 | Use an email address alone to access an existing purchase | Guest checkout is available, but existing-order access needs an owned customer session or an admitted recovery link. A recovery link grants no account or subscription-command access. | `customer_session_required` for account actions; `starter_recovery_unavailable` for unavailable recovery authority |
 | Change the address of a parcel already in flight through the customer action | The destination change applies from the next parcel; the parcel in flight keeps its address. | —; result `applied_from_next_parcel` |
 
@@ -379,8 +379,6 @@ creates no notification or mutation.
 | Look up public tracking | The operation refuses even though authorized operator shipment reads and evidence commands are available. | `starter_tracking_access_unavailable` |
 | Confirm an undelivered replacement as delivered | There is no separate replacement-arrival confirmation control. An undelivered replacement remains outstanding; a delivered tracking event must record actual arrival. | —; no separate attestation control |
 | Hand off a historical parcel without recorded reservation associations | No current stock is acquired as a substitute; inspect the handoff result. | —; result `reservationDisposition: "reservations_not_recorded"` |
-| Correct a historical order with no usable recorded delivery contact | An authorized operator must review the recorded destination and resolve the missing source through its owning manual process; reads and refused corrections write nothing. [Contact correction](../how-to/build/fulfillment.md#correct-a-delivery-contact). | `fulfillment_contact_not_recorded` |
-| Correct a contact after erasure | Retained payload-free markers prevent response replay or personal-data restoration. | `fulfillment_contact_erased` |
 | Automatically purge stored label URLs and raw shipment payloads | No automatic retention cleanup is supplied. The application owner must control retention and authorized cleanup, including copies and backups. URL expiry does not delete stored evidence. | —; owner-managed cleanup |
 
 Read the exact parcel and confirm each label, handoff or tracking action.

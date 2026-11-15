@@ -22,10 +22,12 @@ A separate job publishes the retained archive as
 It verifies archive/BOM equality, refuses an existing tag with another digest,
 and requires registry readback equality. Use the BOM's
 `ghcr.io/openlup/neutral-store-starter@sha256:<manifest-hex>` reference when selecting
-a qualified image. Manual dispatch builds and verifies but skips publishing unless
-`publish_image` is explicitly true; release-event qualification publishes.
-The final receipt records `published`, `skipped-dispatch` or `refused` and the
-registry readback (null when none was observed). A published image does not prove
+a qualified image. Manual dispatch builds and verifies but skips the publisher
+job unless `publish_image` is explicitly true; no write token is minted when it
+is false. That run retains only the qualification receipt, with no separate
+publication receipt. Release-event qualification publishes. When the publisher
+job runs, its final receipt records `published` or `refused` and the registry
+readback (null when none was observed). A published image does not prove
 a hosted store, data migration, rollback or stable support. See
 [distribution evidence](../../docs/platform/DISTRIBUTION_EVIDENCE.md#qualified-application-image)
 for the permission boundary, retention and activation limits.
@@ -129,7 +131,7 @@ The native rail can compose the reference card provider through the explicit
 [host composition](../../examples/neutral-store/host/provider-portable.ts), with
 the complete database catalogue and host-owned configuration. Real-payment,
 method-setup and card-replacement actions remain unconfigured in this starter.
-The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor.
+The native rail uses provider profiles; a third provider is added by a declaration plus an adapter.
 The supplied portable composition covers the reference card provider only.
 No supported, stable or production-ready deployment is claimed.
 
