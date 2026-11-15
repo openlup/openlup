@@ -26,7 +26,7 @@ beforeAll(async () => {
   containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Catalogue PostgreSQL unavailable");
   const bootstrap = new Pool({ connectionString: container.connectionString }); pools.push(bootstrap);
-  await bootstrap.query("CREATE ROLE catalog_install LOGIN SUPERUSER PASSWORD 'synthetic-catalogue'; CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; ALTER DATABASE postgres OWNER TO catalog_install");
+  await bootstrap.query("CREATE ROLE catalog_install LOGIN SUPERUSER PASSWORD 'synthetic-catalogue'; CREATE ROLE service_role NOLOGIN; ALTER DATABASE postgres OWNER TO catalog_install");
   const url = new URL(container.connectionString); url.username = "catalog_install";
   owner = new Pool({ connectionString: url.toString() }); pools.push(owner);
   for (const unit of [manifest.baseline, ...manifest.forward]) {
@@ -134,7 +134,7 @@ it("catalog_quantity_storage_preserves_decimal_strings_and_defers_unit_admission
 
 it("inventory_reserves_packs_not_contents", async () => {
   const skuId = randomUUID(), subscription = randomUUID(), source = randomUUID(), sku = `PACK-${skuId}`;
-  const at = (await owner.query("SELECT clock_timestamp()::text AS at")).rows[0].at;
+  const at = (await owner.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`)).rows[0].at;
   const client = (await owner.query("INSERT INTO public.clients(email) VALUES($1) RETURNING id", [`${subscription}@example.invalid`])).rows[0].id;
   await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription, client, at]);
   await owner.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,net_content_dimension,net_content_unscaled,net_content_scale,net_content_unit,
@@ -153,6 +153,11 @@ it("inventory_reserves_packs_not_contents", async () => {
   expect((await owner.query(`SELECT l.sku,l.quantity FROM public.fulfillment_inventory_reservation_lines l
     JOIN public.fulfillment_inventory_reservations r ON r.id=l.reservation_id WHERE r.renewal_operation_id=$1`, [input.operationId])).rows)
     .toEqual([{ sku, quantity: 2 }]);
+  const after = await agreements();
+  expect(after.map(({ operations: _operations, ...fixed }) => fixed))
+    .toEqual(before.map(({ operations: _operations, ...fixed }) => fixed));
+  expect((await owner.query("SELECT state FROM public.subscription_renewal_operations WHERE id=$1", [input.operationId])).rows)
+    .toEqual([{ state: "reserved" }]);
   expect(await reservation.reserve(input)).toMatchObject({ reservationId: held.reservationId, replayed: true });
-  expect(await agreements()).toEqual(before);
+  expect(await agreements()).toEqual(after);
 });
