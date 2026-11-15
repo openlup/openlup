@@ -354,6 +354,28 @@ Connected native restore refuses any subscription whose `configured_offer_versio
 is not `classic` with `unsupported_table` for `subscriptions` before any target
 data write; sized offer bindings have no transfer mapping in this preview.
 
+Catalogue authoring data is authoritative retained data, not a projection to
+rebuild. The finite native profile carries `catalog_draft_heads`,
+`catalog_draft_revisions`, `catalog_draft_command_receipts` and
+`catalog_draft_sku_reservations`. Restore inserts heads, then revisions, then
+command receipts, then SKU reservations (whose only parent is the head).
+Abandoned heads, historical revisions, payloads, command keys, fingerprints,
+actor text, reserved SKU identities and timestamps retain their original values.
+The existing draft history triggers guard UPDATE/DELETE only; INSERT needs no
+trigger exception. Restoring these draft rows does not publish them or add
+products, SKUs or prices beyond the captured live catalogue. The parameterized
+[`transfer_round_trip_matrix`](../../tests/postgres/connectedStoreCatalogDrafts.test.ts)
+checks all four relations and command replay against real PostgreSQL.
+
+None of these four relations references `public.clients`, so no client
+absorption-policy entry applies. Revision `actor_id` is an opaque operator
+identifier and can be personal data; free-form draft payloads can also contain
+personal data. These retained rows belong to the same sensitive transfer stream
+and host access/exclusion requirements as other owned rows. Carrying them adds
+no subject export or erasure contributor: the existing
+[personal-data coverage limits](IDENTITY.md#retained-responsibilities) still
+apply. No actor identifier or draft payload is rewritten during transfer.
+
 Channel source captures, purchased-line claims and pull pages have no transfer
 mapping in this profile. Native restore imports ordinary outbox rows through the
 locked owner path and refuses the three protected channel evidence types before

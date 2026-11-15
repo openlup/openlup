@@ -414,7 +414,7 @@ step: its condition of two green merge-group runs on main has been met.
 The separate registry tutorial runs trusted default-branch code after a
 successful core publication, checking the release tag's commit against the
 completed publication run. A maintainer may also dispatch it from the default
-branch for an existing core release tag. It waits up to ten minutes for the
+branch for an existing core release tag. It waits up to thirty minutes for the
 matching npm set; automatic runs also require core's `latest` to match. The
 tutorial is blocking after two green release runs: a failure fails its own
 workflow run and reports to the maintainer; a propagation timeout warns and
