@@ -42,6 +42,8 @@ versions and upgrade all `@openlup/*` packages together.
 
 ### How-to: extend
 
+- [Extend a catalogue pack](how-to/extend/catalogue-extension.md)
+
 - [Run an adapter conformance check](how-to/extend/adapter-conformance.md)
 - [Choose an extension seam](how-to/extend/choose-an-extension-seam.md)
 - [Take ownership of a copied component or page](how-to/extend/eject-source.md)

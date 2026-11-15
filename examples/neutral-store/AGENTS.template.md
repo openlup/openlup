@@ -95,3 +95,5 @@ actually run against the selected installed artifacts before completion is claim
 The default `test:browser` setup does not prove a successful persisted purchase; see
 [proof guidance](docs/proof.md). `./lifecycle verify` and `./lifecycle upgrade` depend
 on the installed CLI and explicit inputs and may refuse.
+
+Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).

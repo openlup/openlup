@@ -4,6 +4,13 @@ import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
 const rule = (text: string, fix: string, anchor: string): CatalogConformanceRule => Object.freeze({ severity: "error", rule: text, fix, recipe: recipe(anchor) });
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
+  conformance_subject_invalid: rule("Conformance subjects use the documented explicit fixture shape.", "Supply packs and only the documented fixture fields.", "new-vertical"),
+  conformance_owner_unavailable: rule("Requested checks require an available offline owner and its evidence.", "Limit the request to available checks or wait for the named owner; never treat this as PASS.", "new-vertical"),
+  conformance_refusal_fixture_missing: rule("Every unsupported capability has a refusal fixture.", "Add a fixture with the exact owner code and a zero-effect assertion.", "new-vertical"),
+  conformance_refusal_fixture_invalid: rule("Refusal fixtures name an unsupported capability and executable assertions.", "Correct the capability, expected code, run and assertZeroEffects fixture fields.", "new-vertical"),
+  conformance_refusal_fixture_mismatch: rule("A refusal matches its exact expected owner code and has zero effects.", "Repair the refusal or its expected code and verify the instrumented effects remain zero.", "new-vertical"),
+  draft_input_invalid: rule("V1 drafts satisfy the existing bounded wire schema and safe JSON limits.", "Correct the v1 draft shape or reduce its payload; attributes need their separate owner.", "new-vertical"),
+  draft_payload_invalid: rule("Supplied v1 draft facts satisfy the type registry and draft validator.", "Correct the fact named by the owner issue path and code.", "new-vertical"),
   definition_unknown_tax_class: rule("Default tax classes are declared by the pack.", "Declare the tax class or correct its reference.", "add-tax-class"),
   definition_unknown_profile_ref: rule("Profile keys and versions are declared by the pack.", "Declare the profile version or correct its reference.", "subscription-profile"),
   pack_type_namespace_mismatch: rule("Type keys use the pack namespace.", "Use this pack's namespace for the type key.", "new-vertical"),

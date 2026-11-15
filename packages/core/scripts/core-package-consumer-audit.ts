@@ -116,8 +116,9 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   const forbiddenFiles = packFiles.filter(
     (path) =>
       path.startsWith("smoke/") ||
-      // The reader guide ships as Markdown only, at any depth under docs/guide/.
-      (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md" && !/^docs\/guide\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/u.test(path)) ||
+      // The reader guide includes Markdown and the closed copied catalogue sample.
+      (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md" && !/^docs\/guide\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/u.test(path)
+        && !/^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/(?:(?:pack|catalogue|fixtures|registry)\.ts|tsconfig\.json)$/u.test(path)) ||
       path.startsWith(".context/") ||
       path === "vitest.config.ts" ||
       path.startsWith("tsconfig."),

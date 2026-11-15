@@ -984,6 +984,16 @@
       ],
       "entrypoint": "dist/fulfillment/testing/index.d.ts",
       "snapshot": "api/fulfillment-testing.api.md"
+    },
+    "./catalog/testing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/catalog/catalogExtensionConformance.test.ts"
+      ],
+      "entrypoint": "dist/catalog/testing/index.d.ts",
+      "snapshot": "api/catalog-testing.api.md"
     }
   },
   "pack": {

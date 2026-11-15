@@ -91,6 +91,7 @@ export const ADAPTER_ENTRIES = [
   "marketing/server/postgres",
   "blob",
   "catalog",
+  "catalog/testing",
   "communications",
   "communications/klaviyo",
   "communications/resend",
@@ -1998,6 +1999,80 @@ process.exit(0);
   }
 }
 
+/** Packed offline checker, copied skeleton and recipe links; no database or repository imports. */
+export function proveCatalogConformanceConsumer(consumer: string, compiler: string): void {
+  console.log(consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { runCatalogExtensionConformance } from "@openlup/platform/catalog/testing";
+import { CATALOG_CONFORMANCE_RULES } from "@openlup/platform/catalog";
+const guideRoot = join(process.cwd(), "node_modules/@openlup/core/docs/guide");
+const owned = join(process.cwd(), "catalogue-skeleton");
+cpSync(join(guideRoot, "how-to/extend/catalogue-pack-skeleton"), owned, { recursive: true });
+const bin = join(process.cwd(), "node_modules/@openlup/platform/src/lifecycle/openlup.mjs");
+const invoke = args => {
+ const result = spawnSync(process.execPath, [bin, ...args, "--json"], { encoding: "utf8" });
+ assert.equal(result.error, undefined); assert.equal(result.signal, null);
+ const report = JSON.parse(result.stdout); assert.equal(report.formatVersion, 1); assert.equal(report.exitCode, result.status);
+ assert.equal(result.stdout.trim().split("\\n").length, 1); return report;
+};
+const registry = "./catalogue-skeleton/registry.ts";
+const command = ["catalogue", "check", "--packs", registry];
+const cases = [
+ { name: "guide_skeleton_pack_passes_checker", run() {
+   const compiled = spawnSync(process.execPath, [process.argv[2], "-p", join(owned, "tsconfig.json")], { encoding: "utf8" });
+   assert.equal(compiled.status, 0, compiled.stdout + compiled.stderr);
+   assert.equal(invoke(command).exitCode, 0);
+ } },
+ { name: "catalogue_check_cli_reports_stable_codes_and_exit", run() {
+   assert.equal(invoke(["catalogue", "check", "--packs", registry, "--app", "unused"]).exitCode, 64);
+   assert.equal(invoke(["verify", "--packs", registry]).exitCode, 64);
+   assert.equal(invoke(["upgrade", "plan", "--packs", registry]).exitCode, 64);
+   for (const flag of ["--root", "--from", "--to", "--schema-version"]) assert.equal(invoke([...command, flag, "unused"]).exitCode, 64);
+   writeFileSync(join(owned, "unavailable.ts"), 'import subject from "./registry.ts"; export default {...subject, requiredChecks:["taxonomy"]};');
+   assert.equal(invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/unavailable.ts"]).exitCode, 2);
+   writeFileSync(join(owned, "invalid.ts"), 'import subject from "./registry.ts"; export default {packs:[{pack:{...subject.packs[0].pack, types:[...subject.packs[0].pack.types,...subject.packs[0].pack.types]}}]};');
+   const invalidArgs = ["catalogue", "check", "--packs", "./catalogue-skeleton/invalid.ts"];
+   const invalid = invoke(invalidArgs); assert.equal(invalid.exitCode, 1);
+   assert(invalid.findings.some(f => f.code === "definition_duplicate_identity"));
+   assert.deepEqual(invalid, invoke(invalidArgs));
+   for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
+   writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
+   const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);
+   assert.equal(failure.exitCode, 74); assert(!JSON.stringify(failure).includes("SENSITIVE_LOAD_DETAIL"));
+   assert.equal(invoke(["catalogue", "check", "--packs", "./absent.ts"]).exitCode, 74);
+   assert.equal(invoke(["catalogue", "check"]).exitCode, 64);
+ } },
+ { name: "catalogue_codes_link_existing_recipes", run() {
+   const guide = readFileSync(join(guideRoot, "how-to/extend/catalogue-extension.md"), "utf8");
+   const codes = readFileSync(join(guideRoot, "reference/refusal-codes.md"), "utf8");
+   const anchors = new Set([...guide.matchAll(/^## (.+)$/gm)].map(match => match[1].toLowerCase().replace(/[^a-z0-9 -]/g, "").replaceAll(" ", "-")));
+   for (const [code, rule] of Object.entries(CATALOG_CONFORMANCE_RULES)) {
+     assert(anchors.has(rule.recipe.split("#")[1]), code);
+     assert(codes.includes("[\`" + code + "\`](../" + rule.recipe + ")"), code);
+   }
+   for (const fragment of codes.split("[\`")) {
+     if (!fragment.includes("\`](../how-to/extend/catalogue-extension.md#")) continue;
+     const [code, rest] = fragment.split("\`](../");
+     assert.equal(CATALOG_CONFORMANCE_RULES[code]?.recipe, rest.split(")")[0]);
+   }
+ } },
+];
+for (const test of cases) { test.run(); console.log(test.name + ": PASS"); }
+const {default: subject} = await import("./catalogue-skeleton/registry.ts");
+const three = [1,2,3].map(index => {
+ const entry = subject.packs[0], namespace = "synthetic" + index;
+ const type = {...entry.pack.types[0], key:namespace + ":notebook"};
+ return {...entry, pack:{...entry.pack, id:namespace, namespace, types:[type]}, drafts:entry.drafts.map(draft => ({...draft, product:{...draft.product, type:{key:type.key, version:type.version}}}))};
+});
+const start = performance.now(); const report = runCatalogExtensionConformance({packs:three});
+// Synthetic A1 timing only, not full reference-pack completion or a timing gate.
+console.log("synthetic A1 three-pack warm check ms=" + (performance.now()-start).toFixed(3)); assert.equal(report.exitCode, 0);
+`, [compiler]).trim());
+}
+
 /** SDK-absent catalog operations and inert structural contribution, reused by the selected P7 case. */
 export function proveCatalogCompositionConsumer(consumer: string) {
   // HEAD owns expectations independently of both working-tree edits and packed bytes.
@@ -2417,6 +2492,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveLifecycleConsumer(consumer);
     proveDistributionCliConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
+    proveCatalogConformanceConsumer(consumer, compiler);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);

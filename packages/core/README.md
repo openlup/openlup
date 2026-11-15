@@ -319,3 +319,5 @@ artifact evidence.
 ## Release notes
 
 Read [the changelog](CHANGELOG.md#0430) before upgrading the package set.
+
+Catalogue pack authors: [offline extension recipes and skeleton](docs/guide/how-to/extend/catalogue-extension.md).

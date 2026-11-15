@@ -1242,6 +1242,14 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
+Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
+`runCatalogExtensionConformance`. The existing bin runs
+`npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`.
+See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
+for the explicit subject, copied skeleton, supported offline checks and pending
+owners. Trusted callbacks are not sandboxed. PASS grants no installation,
+migration, publication or activation authority.
+
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
 `./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
 tax-class and profile references. `defineCatalogPack` recursively freezes the descriptor and returns a recursively
