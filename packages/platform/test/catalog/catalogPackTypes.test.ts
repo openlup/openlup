@@ -75,13 +75,61 @@ const readonlyAssets: readonly string[] = sku.assetRefs;
 const readonlySkus: readonly (Omit<typeof sku, "identifiers" | "assetRefs"> & { identifiers: typeof readonlyIdentifiers; assetRefs: typeof readonlyAssets })[] = [{ ...sku, identifiers: readonlyIdentifiers, assetRefs: readonlyAssets }];
 const readonlyDraft = { ...draft, skus: readonlySkus };
 const mutableUnits = primary.units.map((unit) => ({ ...unit, factor: { ...unit.factor } }));
-const mutableAttributes = [...attributes];
+const mutableScalars = {
+  text: { ...text }, localized: { ...localized, locales: [...localized.locales], requiredLocales: [...localized.requiredLocales] },
+  decimal: { ...decimal }, quantity: { ...quantity, units: [...quantity.units] }, boolean: { ...boolean },
+  enumeration: { ...enumeration, values: enumeration.values.map((value) => ({ ...value, labels: { ...value.labels } })) },
+  reference: { ...reference, allowlist: [...reference.allowlist] }, date: { ...date },
+};
+const mutableAttributes = [
+  { ...attributes[0], valueType: mutableScalars.text },
+  { ...attributes[1], valueType: mutableScalars.localized },
+  { ...attributes[2], valueType: mutableScalars.decimal },
+  { ...attributes[3], valueType: mutableScalars.quantity },
+  { ...attributes[4], valueType: mutableScalars.boolean },
+  { ...attributes[5], valueType: mutableScalars.enumeration },
+  { ...attributes[6], valueType: mutableScalars.reference },
+  { ...attributes[7], valueType: mutableScalars.date },
+  { ...attributes[8], valueType: { ...attributes[8].valueType, item: mutableScalars.text } },
+  { ...attributes[9], valueType: { ...attributes[9].valueType, item: mutableScalars.localized } },
+  { ...attributes[10], valueType: { ...attributes[10].valueType, item: mutableScalars.decimal } },
+  { ...attributes[11], valueType: { ...attributes[11].valueType, item: mutableScalars.quantity } },
+  { ...attributes[12], valueType: { ...attributes[12].valueType, item: mutableScalars.boolean } },
+  { ...attributes[13], valueType: { ...attributes[13].valueType, item: mutableScalars.enumeration } },
+  { ...attributes[14], valueType: { ...attributes[14].valueType, item: mutableScalars.reference } },
+  { ...attributes[15], valueType: { ...attributes[15].valueType, item: mutableScalars.date } },
+  { ...editableAttribute },
+];
 const mutableDimensions = primary.dimensions.map((dimension) => dimension.kind === "choice" ? { ...dimension, values: [...dimension.values] } : dimension.kind === "quantity" ? { ...dimension, units: [...dimension.units] } : { ...dimension });
 const mutablePack = { ...baseline, types: [{ ...primary, units: mutableUnits, attributes: mutableAttributes, dimensions: mutableDimensions, axes: [...primary.axes] }, other], taxClasses: [...baseline.taxClasses], subscriptionProfiles: [...baseline.subscriptionProfiles] };
 const mutableDraft = { ...draft, product: { ...product, dimensions: [...product.dimensions] }, skus: [{ ...sku, identifiers: [...sku.identifiers], assetRefs: [...sku.assetRefs] }] };
 const { subscriptionProfileRef: _profile, validatorRef: _validator, taxClass: _tax, labels: _labels, axes: _axes, ...withoutOptionalType } = primary;
 const { subscriptionProfiles: _profiles, ...withoutOptionalPack } = baseline;
-const omittedPack = { ...withoutOptionalPack, types: [{ ...withoutOptionalType, units: primary.units.map(({ factor: _factor, ...unit }) => unit), attributes: [...attributes] }, other] };
+const omittedScalars = {
+  text: { kind: "text", maxLength: 80 }, localized: { kind: "localized_text", maxLength: 80, locales: ["en"] },
+  decimal: { kind: "decimal", scale: 2 }, quantity, boolean,
+  enumeration: { kind: "enum", values: [{ id: "matte" }, { id: "gloss" }] }, reference, date,
+} as const;
+const omittedAttributes = [
+  { ...attributes[0], valueType: omittedScalars.text },
+  { ...attributes[1], valueType: omittedScalars.localized },
+  { ...attributes[2], valueType: omittedScalars.decimal },
+  { ...attributes[3], valueType: omittedScalars.quantity },
+  { ...attributes[4], valueType: omittedScalars.boolean },
+  { ...attributes[5], valueType: omittedScalars.enumeration },
+  { ...attributes[6], valueType: omittedScalars.reference },
+  { ...attributes[7], valueType: omittedScalars.date },
+  { ...attributes[8], valueType: { ...attributes[8].valueType, item: omittedScalars.text } },
+  { ...attributes[9], valueType: { ...attributes[9].valueType, item: omittedScalars.localized } },
+  { ...attributes[10], valueType: { ...attributes[10].valueType, item: omittedScalars.decimal } },
+  { ...attributes[11], valueType: { ...attributes[11].valueType, item: omittedScalars.quantity } },
+  { ...attributes[12], valueType: { ...attributes[12].valueType, item: omittedScalars.boolean } },
+  { ...attributes[13], valueType: { ...attributes[13].valueType, item: omittedScalars.enumeration } },
+  { ...attributes[14], valueType: { ...attributes[14].valueType, item: omittedScalars.reference } },
+  { ...attributes[15], valueType: { ...attributes[15].valueType, item: omittedScalars.date } },
+  editableAttribute,
+] as const;
+const omittedPack = { ...withoutOptionalPack, taxClasses: baseline.taxClasses.map(({ key }) => ({ key })), types: [{ ...withoutOptionalType, units: primary.units.map(({ factor: _factor, ...unit }) => unit), attributes: omittedAttributes }, other] };
 const omittedDraft = { schemaVersion: 1, product: { id: product.id, type: product.type, dimensions: product.dimensions }, skus: [{ id: sku.id, productId: sku.productId, options: sku.options }] } as const;
 const inlinePack = { ...baseline, types: [{ ...primary }, other] };
 const inlineDraft = { schemaVersion: 1, product: { id: product.id, type: product.type, slug: "example", primarySkuId: sku.id, dimensions: product.dimensions, sharedContent: { title: "Example" }, documentRevision: product.documentRevision }, skus: [{ id: sku.id, productId: product.id, code: "EXAMPLE", options: sku.options, netContent: sku.netContent, grossMass: sku.grossMass, identifiers: sku.identifiers, assetRefs: sku.assetRefs, priceRef: "example:price", logisticsRef: "example:logistics" }] } as const;
@@ -1054,8 +1102,18 @@ const matrix: MatrixCase[] = [
     return packCodes(input);
   } },
   { form: 'inline literals', name: 'complete descriptor and v1 fields', expected: [], run: () => {
-    const input = inlinePack; const authored = defineCatalogPack(input);
-    const values = draftsFor(authored)([inlineDraft]);
+    const input = inlinePack;
+    const authored = defineCatalogPack({ id: "example:pack", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false, install: false }, types: [primary, other], taxClasses: baseline.taxClasses, subscriptionProfiles: baseline.subscriptionProfiles });
+    const values = draftsFor(authored)([{ schemaVersion: 1, product: {
+      id: "10000000-0000-4000-8000-000000000001", type: { key: "example:item", version: 1 }, slug: "example", primarySkuId: "20000000-0000-4000-8000-000000000001",
+      dimensions: ["finish", "amount", "featured"], sharedContent: { title: "Example" },
+      documentRevision: { id: "30000000-0000-4000-8000-000000000001", productId: "10000000-0000-4000-8000-000000000001", revisionNo: 1, schemaId: "example:document", documentRef: "example:document", sourceRef: "example:source", digest: "a".repeat(64) },
+    }, skus: [{
+      id: "20000000-0000-4000-8000-000000000001", productId: "10000000-0000-4000-8000-000000000001", code: "EXAMPLE",
+      options: { finish: { kind: "choice", value: "matte" }, amount: { kind: "quantity", value: { dimension: "count", unscaled: "1", scale: 0, unit: "openlup:piece" } }, featured: { kind: "boolean", value: true } },
+      netContent: { dimension: "count", unscaled: "1", scale: 0, unit: "openlup:piece" }, grossMass: { dimension: "mass", unscaled: "100", scale: 0, unit: "openlup:g" },
+      identifiers: [{ scheme: "example:identifier", issuer: "example", value: "ITEM", packagingLevel: "unit", quantity: 1 }], assetRefs: ["example:asset"], priceRef: "example:price", logisticsRef: "example:logistics",
+    }] }]);
     return [...packCodes(input), ...draftCodes(input, values[0])];
   } },
   { form: 'inline literals', name: 'all optional definition fields may be omitted', expected: [], run: () => {
@@ -1186,79 +1244,79 @@ const matrix: MatrixCase[] = [
   { form: 'inline literals', name: 'unknown product type', expected: ['type_not_installed'], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, type: { key: "example:missing", version: 1 } } } as const;
     // @ts-expect-error unknown product type.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'unknown product field', expected: ['unrecognized_keys'], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, bogus: true } } as const;
     // @ts-expect-error unknown product field.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision, bogus: true }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'product identity datatype', expected: ['invalid_type'], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, id: 1 } } as const;
     // @ts-expect-error product identity datatype.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'unknown SKU field', expected: ['unrecognized_keys'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, bogus: true }] } as const;
     // @ts-expect-error unknown SKU field.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef, bogus: true }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'SKU identity datatype', expected: ['invalid_type'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, id: 1 }] } as const;
     // @ts-expect-error SKU identity datatype.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'SKU code datatype', expected: ['invalid_type'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, code: 1 }] } as const;
     // @ts-expect-error SKU code datatype.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'undeclared option key', expected: ['dimension_not_declared'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, options: { ...sku.options, missing: { kind: "boolean", value: true } } }] } as const;
     // @ts-expect-error undeclared option key.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'quantity dimension disagrees with unit', expected: ['net_content_invalid', 'net_content_option_mismatch'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, netContent: { ...sku.netContent, dimension: "mass" } }] } as const;
     // @ts-expect-error quantity dimension disagrees with unit.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'undeclared SKU unit', expected: ['net_content_invalid', 'net_content_option_mismatch'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, netContent: { ...sku.netContent, unit: "example:other" } }] } as const;
     // @ts-expect-error undeclared SKU unit.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'quantity unscaled datatype', expected: ['invalid_type'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, netContent: { ...sku.netContent, unscaled: 1 } }] } as const;
     // @ts-expect-error quantity unscaled datatype.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'gross mass dimension', expected: ['gross_mass_invalid'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, grossMass: { ...sku.grossMass, dimension: "volume" } }] } as const;
     // @ts-expect-error gross mass dimension.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'identifier datatype', expected: ['invalid_type'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, identifiers: [{ ...sku.identifiers[0], issuer: 1 }] }] } as const;
     // @ts-expect-error identifier datatype.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'asset reference datatype', expected: ['invalid_type'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, assetRefs: [1] }] } as const;
     // @ts-expect-error asset reference datatype.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'widened pack evidence is static only', expected: [], run: () => {
@@ -1755,40 +1813,40 @@ const matrix: MatrixCase[] = [
   } },
   { form: 'inline literals', name: 'selected subset needs only its options', expected: [], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, dimensions: ["finish"] }, skus: [{ ...sku, options: { finish: sku.options.finish } }] } as const;
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'zero selection has empty options', expected: [], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, dimensions: [] }, skus: [{ ...sku, options: {} }] } as const;
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'installed but unselected options', expected: ['dimension_not_declared'], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, dimensions: ["finish"] }, skus: [sku] } as const;
     // @ts-expect-error installed but unselected options.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'empty selection refuses unknown options', expected: ['dimension_not_declared'], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, dimensions: [] }, skus: [{ ...sku, options: { missing: { kind: "boolean", value: true } } }] } as const;
     // @ts-expect-error empty selection refuses unknown options.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'missing selected options report readiness', expected: ['option_missing'], run: () => {
     const input = { ...inlineDraft, skus: [{ ...sku, options: { finish: sku.options.finish } }] } as const;
     // @ts-expect-error missing selected options report readiness.
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'admitted mass quantity', expected: [], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, dimensions: ["finish", "featured"] }, skus: [{ ...sku, options: { finish: sku.options.finish, featured: sku.options.featured }, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "1", scale: 0 } }] } as const;
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'admitted volume quantity', expected: [], run: () => {
     const input = { ...inlineDraft, product: { ...inlineDraft.product, dimensions: ["finish", "featured"] }, skus: [{ ...sku, options: { finish: sku.options.finish, featured: sku.options.featured }, netContent: { dimension: "volume", unit: "openlup:ml", unscaled: "1", scale: 0 } }] } as const;
-    draftsFor(defineCatalogPack(inlinePack))([input]);
+    draftsFor(defineCatalogPack(inlinePack))([{ schemaVersion: 1, product: { id: input.product.id, type: input.product.type, slug: input.product.slug, primarySkuId: input.product.primarySkuId, dimensions: input.product.dimensions, sharedContent: input.product.sharedContent, documentRevision: input.product.documentRevision }, skus: [{ id: input.skus[0].id, productId: input.skus[0].productId, code: input.skus[0].code, options: input.skus[0].options, netContent: input.skus[0].netContent, grossMass: input.skus[0].grossMass, identifiers: input.skus[0].identifiers, assetRefs: input.skus[0].assetRefs, priceRef: input.skus[0].priceRef, logisticsRef: input.skus[0].logisticsRef }] }]);
     return draftCodes(inlinePack, input);
   } },
   { form: 'inline literals', name: 'returned referenced metadata is readonly', expected: [], run: () => {
