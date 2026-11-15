@@ -65,6 +65,7 @@ versions and upgrade all `@openlup/*` packages together.
 - [Upgrading to 0.40.0](upgrade/v0-40-0.md)
 - [Upgrading to 0.41.0](upgrade/v0-41-0.md)
 - [Upgrading to 0.42.0](upgrade/v0-42-0.md)
+- [Upgrading to 0.43.0](upgrade/v0-43-0.md)
 
 ### Concepts
 
@@ -123,4 +124,4 @@ versions and upgrade all `@openlup/*` packages together.
   rewrites on a version change.
 
 How to change OpenLup itself is in
-[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v0.42.0/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/CONTRIBUTING.md).

@@ -4,6 +4,20 @@ Status: historical record, 2026-11-11.
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.40.0]
+
+- Publishable on the npm `latest` dist-tag as `0.40.0`, from tag
+  `openlup-platform-v0.40.0`.
+
+- Add experimental neutral ecommerce-event contracts, retained paid-time source snapshots and explicit PostgreSQL projection through the existing outbox. Paid orders, nonfinancial refund status, checkout qualification and subscription lifecycle facts keep source identities separate from delivery attempts.
+- Extend `@openlup/platform/communications/klaviyo` with separately qualified events using the account's existing pacing and cooldown. Provider acceptance remains distinct from ingestion; pending scope, historical import and stale authority refuse before HTTP.
+- Ship offline wiring recipes for transactional delivery, marketing refusals and frozen event replay. Local fixtures do not qualify provider accounts or activate any route, job or flow.
+
+Migration: apply the complete packaged migration chain before composing the new projection. Select the fixed live cutoff, account/environment and mapping explicitly; register actual privacy/retention policy and preserve pending duties during recovery. Existing installations do not export events automatically.
+
+Require the complete declared scope set for the opt-in marketing adapter's consent-push capability, including profile write permission. Missing evidence remains verification-pending before provider HTTP. Preserve the existing transport outcome contract and clarify host retry, delivery and adapter-selection responsibilities.
+
+- Stop shipping `AGENT_CONTEXT.md`. Use core's `openlup-context` and the reader guide shipped in `@openlup/core`.
 ## [0.39.0]
 
 - Publishable on the npm `latest` dist-tag as `0.39.0`, from tag

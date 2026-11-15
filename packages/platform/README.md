@@ -2746,16 +2746,19 @@ Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
 SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
 available from the type-only contracts entry. Legacy obligations keep fallback.
 
-For the prepared `0.42.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0420) before selecting optional services. This set
-adds native provider-attempt persistence, recorded payment-method references,
-reconciliation, attributed dunning and evidence-gated refunds, plus explicit
-card reference provider composition over those native owners. Install schema
-migration slots 42–44 through `20261114120000_payment_reconciliation_refund_evidence.sql`
-before selecting the new bindings. Real-provider lifecycle history without a
-recorded method reference fails closed; the host registers verified references
-with `payment_method_ref_upsert`, without automatic backfill. The original
-renewal evidence lane and explicit sandbox lane retain the limits in the notes.
+For the prepared `0.43.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0430) before selecting optional services. This set
+adds neutral fulfillment capabilities, native dispatch, intake, reconciliation,
+replacement arrival/alignment, delivery-contact correction and an offline
+adapter testing entry. Native payment provider profiles preserve the existing
+policy variants; a third provider needs a declaration plus its adapter. Apply
+all seven ordered forwards at slots 135–141, through
+`20261121100000_order_delivery_contact_correction.sql`, including the event-erasure
+lock preparation and payment-profile forward. Hosts explicitly compose the
+selected provider port, authorization, transactions, intake and schedules.
+The starter still selects sandbox payments; portable payment composition covers
+the reference card provider only. The warehouse adapter remains a reference
+example, and offline evidence supplies no live provider/carrier qualification.
 Apply the complete selected migration catalogue before composing the new native
 bindings. Experimental
 marketing uses browser-safe `./marketing`, type-only browser-safe
@@ -2802,7 +2805,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.41.0` tarball. Preparation and offline
+Size comparison uses the published `0.42.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
