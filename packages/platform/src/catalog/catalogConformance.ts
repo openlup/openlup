@@ -4,6 +4,9 @@ import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
 const rule = (text: string, fix: string, anchor: string): CatalogConformanceRule => Object.freeze({ severity: "error", rule: text, fix, recipe: recipe(anchor) });
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
+  definition_unknown_tax_class: rule("Default tax classes are declared by the pack.", "Declare the tax class or correct its reference.", "add-tax-class"),
+  definition_unknown_profile_ref: rule("Profile keys and versions are declared by the pack.", "Declare the profile version or correct its reference.", "subscription-profile"),
+  pack_type_namespace_mismatch: rule("Type keys use the pack namespace.", "Use this pack's namespace for the type key.", "new-vertical"),
   quantity_invalid: rule("Quantities use positive decimal strings and scale 0–12.", "Correct the quantity shape or exact unit factor.", "add-unit"),
   quantity_cross_dimension: rule("Conversions stay within one dimension.", "Choose a unit of the same dimension; never infer density or item mass.", "add-unit"),
   quantity_fractional_count: rule("Counts and integral units contain whole items.", "Supply a whole-item quantity and integral count factor.", "add-unit"),

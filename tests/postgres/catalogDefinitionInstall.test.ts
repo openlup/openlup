@@ -94,6 +94,18 @@ it("pack_install_is_idempotent_and_install_role_only", async () => {
   expect((await owner.query("SELECT status FROM public.catalog_tax_classes WHERE key='example:standard'")).rows).toEqual([{ status: "retired" }]);
 });
 
+it("definition installation uses shared pack closure before SQL", async () => {
+  const before = (await owner.query("SELECT count(*)::int AS count FROM public.catalog_definition_installs")).rows;
+  const unknownField = { ...pack("unknown-field"), unexpected: true };
+  const unknownTaxClass = { ...pack("unknown-tax-class"), types: [{ ...definition(), taxClass: "example:missing" }] };
+  const unknownProfile = { ...pack("unknown-profile"), types: [{ ...definition(), subscriptionProfileRef: { key: "example:missing", version: 1 } }] };
+  for (const [input, code] of [[unknownField, "definition_unknown_field"], [unknownTaxClass, "definition_unknown_tax_class"],
+    [unknownProfile, "definition_unknown_profile_ref"]] as const) {
+    await expect(installCatalogDefinitions(owner, input)).rejects.toMatchObject({ message: "invalid_catalog_pack", issue: { code } });
+  }
+  expect((await owner.query("SELECT count(*)::int AS count FROM public.catalog_definition_installs")).rows).toEqual(before);
+});
+
 it("pack_custom_unit_needs_no_ddl", async () => {
   const ddl = async () => (await owner.query("SELECT oid,relname,relkind FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY oid")).rows;
   const before = await ddl();

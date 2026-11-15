@@ -4,15 +4,15 @@ import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDige
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import type { AttributeDefinition } from "../../src/catalog/contracts/attributes.js";
-const attribute: AttributeDefinition = {
-  key: "finish", scope: "variant", valueType: { kind: "text", maxLength: 64 }, required: true,
+const attribute = {
+  key: "finish" as const, scope: "variant", valueType: { kind: "text" as const, maxLength: 64 }, required: true,
   cardinality: { min: 1, max: 1 }, filterable: true, facetable: true, public: true, displayOrder: 0, labels: { en: "Finish" },
-};
+} satisfies AttributeDefinition;
 const definition = {
   key: "example:item", version: 1, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true, factor: { canonicalUnit: "openlup:piece" as const, unscaled: "1", scale: 0 } }],
   netContentUnits: ["openlup:piece"], dimensions: [], attributes: [attribute],
-  validatorRef: `sha256:${"a".repeat(64)}`, validateContent: (_input: unknown) => [],
-};
+  validatorRef: `sha256:${"a".repeat(64)}` as const, validateContent: (_input: unknown) => [],
+} as const;
 describe("catalog pack projection", () => {
   it("freezes literals without validating or executing them at import", () => {
     const pack = defineCatalogPack({ id: "example:pack", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, taxClasses: [], types: [{ ...definition, key: "example:item", version: -1, validateContent: () => { throw new Error("not invoked"); } }] });

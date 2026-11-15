@@ -4,12 +4,15 @@ import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionJson } from "./catalogDefinitionDigest.js";
 import { catalogPackManifest } from "./catalogPackManifest.js";
+import { catalogPackIssues } from "./productTypeIssues.js";
 
 /** Supply the native migration-owner executor explicitly. No runtime binding or hook is created. */
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
+  const issue = catalogPackIssues(pack)[0];
+  if (issue) throw Object.assign(new Error("invalid_catalog_pack"), { issue });
   const manifest = catalogPackManifest(pack);
   if (!Number.isSafeInteger(pack.version) || pack.version < 1 || pack.version > 2147483647
-    || pack.types.some(type => !type.validatorRef || !type.key.startsWith(`${pack.namespace}:`))
+    || pack.types.some(type => !type.validatorRef)
     || new Set(pack.types.map(type => `${type.key}@${type.version}`)).size !== pack.types.length
     || new Set(pack.taxClasses.map(taxClass => taxClass.key)).size !== pack.taxClasses.length) throw new Error("invalid_catalog_pack");
   const { digest: _digest, ...projection } = manifest;
