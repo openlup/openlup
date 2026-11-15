@@ -1334,6 +1334,26 @@ writes; existing adapters are not silently rebound. Host migration-phase calls,
 boot readiness and publication wiring belong to the later V2 reader/composition
 work. The managed rail does not supply this feature.
 
+The native quantity forward adds nullable all-or-none net-content and gross-mass
+columns to live SKUs. Net dimensions are `mass|volume|count`; gross dimension is
+explicit and fixed to `mass`, so storage rejects any other dimension. Coefficients
+are positive `numeric(40,0)` values and scales are 0–12. Use decimal strings at the
+TypeScript boundary. SQL does not admit unit codes: the future publisher checks
+units against installed definitions. Gross mass is never inferred from net content.
+Stock and reservations continue to count sellable packs.
+
+After applying the complete native catalogue, call
+`backfillCatalogNetContent(installExecutor, {batchSize})` with the migration-owner
+executor. `batchSize` is a required positive PostgreSQL integer. Each invocation
+of the owner-only invoker routine locks one batch of eligible SKUs in ascending
+ID order with `FOR NO KEY UPDATE`. The driver drains batches, can resume after an
+interruption and is a no-op on replay. It fills only absent net content from
+positive legacy grams as mass / scale 0 / `openlup:g`; native zero stays unknown.
+It preserves existing content and every gross-mass field. Migration application
+itself performs no backfill. The old `net_weight_g` contract and V1 readers stay
+unchanged; V2 readers and migration-phase host wiring arrive separately. The
+managed rail does not supply this feature.
+
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.
@@ -1342,8 +1362,8 @@ The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
 semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
-projects canonical positions 1, 8, 58, 59, 61 and 142 byte for byte, including the
-nullable definition-binding forward; these assets are sparse references,
+projects canonical positions 1, 8, 58, 59, 61, 142 and 143 byte for byte, including
+the nullable definition-binding and quantity forwards; these assets are sparse references,
 never a standalone install chain.
 
 `createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the

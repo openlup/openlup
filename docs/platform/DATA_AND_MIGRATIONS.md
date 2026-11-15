@@ -298,6 +298,29 @@ install principal. Native owner-only invoker semantics can be expressed by
 managed grants and RLS. This forward relaxes no constraints on `net_weight_g`,
 `pet_type`, `kcal_per_unit`, `requires_pet_profile` or `feeding_grams_per_unit`.
 
+Live SKU net-content and gross-mass columns are AUTHORITATIVE catalogue data,
+carried in the existing `catalog_skus` capture entry and restore position. They
+add no relation, customer foreign key, personal data or absorption duty. The
+`transfer_round_trip_matrix` compares complete raw PostgreSQL rows, including
+40-digit coefficients and scales, across capture and restore. Managed-to-native
+retained transfer initializes only absent quantity fields to NULL, preserves
+supplied fields and keeps the existing missing-column and exact-number refusals.
+
+The native quantity forward adds and validates nullable group CHECKs without
+changing `net_weight_g`. Old readers keep reading grams; V2 readers, the checked
+compatibility projection and nullability changes belong to the later reader
+stage. After migration, an explicit migration-owner call to
+`backfillCatalogNetContent(installExecutor, {batchSize})` drains bounded,
+ascending-ID batches. Only positive legacy grams with absent content convert;
+zero stays unknown, existing quantities and gross mass are never overwritten.
+No install hook runs automatically, and runtime has no backfill EXECUTE. See the
+[package catalogue owner](../../packages/platform/README.md#catalog) for the driver
+and the [catalogue lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order).
+The managed rail does not supply this feature. Its twin needs the same nullable
+SKU groups under the managed table's grants and RLS, with an administrative
+install principal and no runtime EXECUTE. Existing mandatory food-related
+columns and their later relaxation remain separate from this expansion.
+
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
 transports data into an already qualified canonical target. It does not restore
 managed internals, source roles/grants or `platform_schema_migrations`. Source
@@ -939,12 +962,12 @@ already knowing their IDs and excludes ordinary open events. Use the returned
 The query records no decision and creates no refund or order transition.
 
 `CATALOG_MIGRATIONS` projects canonical catalogue positions
-1, 8, 58, 59, 61 and 142: read foundation, storefront attributes, document/identifier
+1, 8, 58, 59, 61, 142 and 143: read foundation, storefront attributes, document/identifier
 and subscription price-policy foundation, its validation, isolated drafts and
-definition bindings.
+definition bindings and physical quantities.
 Each descriptor keeps the canonical path, position, digest and byte-identical
 package SQL. History stays in canonical order. Install and observe the complete
-selected catalogue; these six projections do not supply an independent installation
+selected catalogue; these seven projections do not supply an independent installation
 sequence. The package envelope and draft
 stores keep their incumbent SQL and refusal semantics after the source move.
 

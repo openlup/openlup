@@ -386,6 +386,15 @@ export interface AdminBundleWritePort {
     deactivate(actorId: string, input: DeactivateBundleRequest): Promise<BundleWriteResult>;
 }
 ```
+## dist/catalog/backfillCatalogNetContent.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+/** Drain bounded batches with the explicitly supplied migration-owner executor; safe to resume. */
+export declare function backfillCatalogNetContent(installExecutor: PgQueryExecutor, options: {
+    batchSize: number;
+}): Promise<void>;
+```
 ## dist/catalog/bundleAdminWriteStore.d.ts
 
 ```ts
@@ -2934,6 +2943,7 @@ export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } 
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 export { catalogPackIssues } from "./productTypeIssues.js";
+export { backfillCatalogNetContent } from "./backfillCatalogNetContent.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -3598,6 +3608,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
     readonly position: 142;
     readonly sha256: "3236260783b90d8210d324d656bf5b9406ec9deeb59e943f0bda3f3aa337b6cb";
+    readonly url: URL;
+}, {
+    readonly id: "20261122110000_catalog_quantities";
+    readonly catalogPath: "db/platform/migrations/20261122110000_catalog_quantities.sql";
+    readonly position: 143;
+    readonly sha256: "7c347d2449ca970a6edd4ec77a03892680a901450d817f243456b1b08840573a";
     readonly url: URL;
 }];
 ```

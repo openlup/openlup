@@ -7,7 +7,7 @@ import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, store
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
-  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes"] as const;
+  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes", "catalog_skus"] as const;
 const packs = [1, 2].map(version => ({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
   types: [{ key: "example:transfer-item", version, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }],
     netContentUnits: ["openlup:piece"], dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] }],
@@ -52,13 +52,21 @@ beforeAll(async () => {
   const liveId = randomUUID(), listId = randomUUID();
   await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'transfer-live','Synthetic live product')", [liveId]);
   await source.owner.query("UPDATE public.catalog_products SET type_key='example:transfer-item',type_version=1 WHERE id=$1", [liveId]);
-  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,'TRANSFER-LIVE','Synthetic live SKU')", [liveId]);
+  await source.owner.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,
+    net_content_dimension,net_content_unscaled,net_content_scale,net_content_unit,
+    gross_mass_dimension,gross_mass_unscaled,gross_mass_scale,gross_mass_unit)
+    VALUES($1,$1,'TRANSFER-LIVE','Synthetic live SKU','volume',1234567890123456789012345678901234567890,12,'example:custom-volume',
+    'mass',9999999999999999999999999999999999999999,12,'example:custom-mass')`, [liveId]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp())", [listId]);
   await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',123,clock_timestamp())", [listId, liveId]);
   target = await resources.installation("catalog-draft-target");
   const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
   before = await journeyCensus(source.owner);
   packet = await captureStoreJourney(source.owner, "draft-source:catalog-drafts");
+  expect(before.catalog_skus!.map(row => JSON.parse(row))).toEqual([expect.objectContaining({
+    net_content_dimension: "volume", net_content_scale: 12, net_content_unit: "example:custom-volume",
+    gross_mass_dimension: "mass", gross_mass_scale: 12, gross_mass_unit: "example:custom-mass",
+  })]);
   expect(before.catalog_type_versions).toHaveLength(2);
   expect(before.catalog_definition_installs).toHaveLength(2);
   expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);

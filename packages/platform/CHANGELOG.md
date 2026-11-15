@@ -10,6 +10,10 @@ in the source repository.
 
 ## [Unreleased]
 
+Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
+
+Migration: apply the complete native catalogue through `20261122110000_catalog_quantities.sql`, then call `backfillCatalogNetContent` with the install executor and batch size. Old grams and readers stay unchanged; the managed rail does not supply this feature.
+
 ## [0.43.0]
 
 - Publishable on the npm `latest` dist-tag as `0.43.0`, from tag

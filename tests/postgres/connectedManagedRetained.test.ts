@@ -752,6 +752,33 @@ it("maps only absent catalogue type bindings as legacy and preserves supplied va
   } finally { await managed.owner.query("ALTER TABLE public.catalog_products DROP COLUMN type_key, DROP COLUMN type_version"); }
 });
 
+it("maps only absent catalogue quantities as unknown and preserves supplied values and refusals", async () => {
+  const columns = ["net_content_dimension", "net_content_unscaled", "net_content_scale", "net_content_unit",
+    "gross_mass_dimension", "gross_mass_unscaled", "gross_mass_scale", "gross_mass_unit"];
+  const absent = Object.fromEntries(columns.map(column => [column, null]));
+  const skus = (mapped: Awaited<ReturnType<typeof mapSource>>) => mapped.packet.owned
+    .find(table => table.table === "catalog_skus")!.rows.map(row => JSON.parse(row));
+  expect(skus(await mapSource())).toEqual([expect.objectContaining({ id: skuId, ...absent })]);
+  await managed.owner.query(`ALTER TABLE public.catalog_skus ADD COLUMN net_content_dimension text, ADD COLUMN net_content_unscaled numeric(40,0),
+    ADD COLUMN net_content_scale smallint, ADD COLUMN net_content_unit text, ADD COLUMN gross_mass_dimension text,
+    ADD COLUMN gross_mass_unscaled numeric(40,0), ADD COLUMN gross_mass_scale smallint, ADD COLUMN gross_mass_unit text`);
+  try {
+    expect(skus(await mapSource())).toEqual([expect.objectContaining({ id: skuId, ...absent })]);
+    await managed.owner.query(`UPDATE public.catalog_skus SET net_content_dimension='volume',net_content_unscaled=50,net_content_scale=0,
+      net_content_unit='example:custom-volume',gross_mass_dimension='mass',gross_mass_unscaled=75,gross_mass_scale=1,gross_mass_unit='example:custom-mass' WHERE id=$1`, [skuId]);
+    expect(skus(await mapSource())).toEqual([expect.objectContaining({ id: skuId, net_content_dimension: "volume", net_content_unscaled: 50,
+      net_content_scale: 0, net_content_unit: "example:custom-volume", gross_mass_dimension: "mass", gross_mass_unscaled: 75,
+      gross_mass_scale: 1, gross_mass_unit: "example:custom-mass" })]);
+    // Keep the incumbent exact-number refusal; no rounded coefficient may reach native restore.
+    await managed.owner.query("UPDATE public.catalog_skus SET net_content_unscaled=1234567890123456789012345678901234567890 WHERE id=$1", [skuId]);
+    await expect(mapSource()).rejects.toMatchObject({ code: "invalid_input" });
+    await managed.owner.query("UPDATE public.catalog_skus SET net_content_unscaled=50 WHERE id=$1", [skuId]);
+    await managed.owner.query("ALTER TABLE public.catalog_skus RENAME COLUMN title TO temporarily_missing_title");
+    try { await expect(mapSource()).rejects.toMatchObject({ code: "schema_conflict", table: "catalog_skus" }); }
+    finally { await managed.owner.query("ALTER TABLE public.catalog_skus RENAME COLUMN temporarily_missing_title TO title"); }
+  } finally { await managed.owner.query(`ALTER TABLE public.catalog_skus ${columns.map(column => `DROP COLUMN ${column}`).join(",")}`); }
+});
+
 // Refusal fixtures need only the row to exist, so foreign keys to unrelated rails stay out of the way.
 async function unchecked(sql: string, params: unknown[]) {
   const client = await managed.owner.connect();
