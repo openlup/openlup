@@ -273,7 +273,8 @@ unqualified by this local witness.
 ## Compatible data transfer
 
 Catalogue definitions, definition-install receipts and tax-class keys are
-AUTHORITATIVE catalogue relations in the native connected-store profile. Restore
+AUTHORITATIVE catalogue relations in the native connected-store profile. The `transfer_round_trip_matrix` covers each relation, retained v1/v2 definitions,
+receipt replay, bound product references and retired tax keys. Restore
 definitions before products so nullable type bindings satisfy their composite
 foreign key; preserve definition bytes, digests, receipts and retired key state.
 These relations contain pack metadata and no customer foreign keys, so they need

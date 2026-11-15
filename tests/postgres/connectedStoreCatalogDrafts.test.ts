@@ -1,18 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, type CatalogDraftApplyResult, type CatalogDraftCommand } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, installCatalogDefinitions, type CatalogDraftApplyResult, type CatalogDraftCommand } from "@openlup/platform/catalog";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
-const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations"] as const;
+const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
+  "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes"] as const;
+const packs = [1, 2].map(version => ({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
+  types: [{ key: "example:transfer-item", version, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }],
+    netContentUnits: ["openlup:piece"], dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] }],
+  taxClasses: [{ key: "example:transfer-standard" }] }));
 const resources = storeJourneyResources();
 let source: JourneyInstallation;
 let commands: { canonicalCommand: string; fingerprint: string; actorId: string; result: CatalogDraftApplyResult }[];
 
 beforeAll(async () => {
   source = await resources.installation("catalog-draft-source");
+  for (const pack of packs) await installCatalogDefinitions(source.owner, pack);
+  await source.owner.query("UPDATE public.catalog_tax_classes SET status='retired' WHERE key='example:transfer-standard'");
   commands = [];
   // Both open and abandoned heads retain historical revisions and reservations
   // for SKUs removed from the latest payload. The writer supplies database times.
@@ -42,6 +49,7 @@ beforeAll(async () => {
   // accidental publication of the separate draft product/SKU identities.
   const liveId = randomUUID(), listId = randomUUID();
   await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'transfer-live','Synthetic live product')", [liveId]);
+  await source.owner.query("UPDATE public.catalog_products SET type_key='example:transfer-item',type_version=1 WHERE id=$1", [liveId]);
   await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,'TRANSFER-LIVE','Synthetic live SKU')", [liveId]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp())", [listId]);
   await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',123,clock_timestamp())", [listId, liveId]);
@@ -62,6 +70,9 @@ describe.each(relations)("%s", relation => {
       expect(before[table]!.length).toBeGreaterThan(0);
       expect(packet.owned.find(entry => entry.table === table)!.rows).toEqual(before[table]);
     }
+    expect(before.catalog_type_versions).toHaveLength(2);
+    expect(before.catalog_definition_installs).toHaveLength(2);
+    expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);
     expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open"]);
     expect(before.catalog_draft_revisions).toHaveLength(5);
     expect(before.catalog_draft_command_receipts).toHaveLength(5);
@@ -78,6 +89,9 @@ describe.each(relations)("%s", relation => {
       if (result.outcome !== "committed") throw new Error("Fixture command did not commit");
       expect(await journeyRpc(target.runtime, "catalog_draft_apply", [canonicalCommand, fingerprint, actorId]))
         .toEqual({ outcome: "replayed", record: result.record });
+    }
+    for (const pack of packs) {
+      expect(await installCatalogDefinitions(target.owner, pack)).toEqual(await installCatalogDefinitions(source.owner, pack));
     }
     expect(await journeyCensus(target.owner)).toEqual(restored);
     expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 });
