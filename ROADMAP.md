@@ -2,13 +2,13 @@
 
 > OpenLup is a development preview, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-development-preview) before relying on any capability.
 
-Last updated: 2026-11-14 · npm set: 0.42.0
+Last updated: 2026-11-15 · npm set: 0.43.0
 
 ## Current status
 
 | Field | Value |
 | --- | --- |
-| Latest npm set | 0.42.0 |
+| Latest npm set | 0.43.0 |
 | Status | development preview |
 | Stable-framework gate (P1-SF) | open |
 
@@ -113,12 +113,13 @@ Last updated: 2026-11-14 · npm set: 0.42.0
 
 | ID | Name | Status | Release | Summary |
 | --- | --- | --- | --- | --- |
-| n6-portable-real-money | N6: real payments on the portable rail | shipped | 0.42.0 | A prepared-attempt and evidence store, recorded payment-method references with setup and recovery authority, reconciliation, attributed dunning handoff, evidence-gated cumulative refunds and card replacement. The reference card-provider composition runs on the portable rail with the complete installed database catalogue and explicit host/provider composition. Proof is limited to fake clients and offline checks; the starter still selects sandbox payments. The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. Native subscriptions with real-provider history but no recorded method references refuse retry and recovery until the host records the references. |
-| fulfilment-portable | Fulfilment and shipping on the portable rail | planned | 0.43.0 | In progress: a neutral fulfilment and shipping provider port with declared capabilities and named refusals, an offline adapter testing kit, and native dispatch, intake, reconciliation and arrival on the portable rail. The included warehouse adapter is a reference example; other providers plug in behind the same port. |
+| n6-portable-real-money | N6: real payments on the portable rail | shipped | 0.42.0 | A prepared-attempt and evidence store, recorded payment-method references with setup and recovery authority, reconciliation, attributed dunning handoff, evidence-gated cumulative refunds and card replacement. The reference card-provider composition runs on the portable rail with the complete installed database catalogue and explicit host/provider composition. Proof is limited to fake clients and offline checks; the starter still selects sandbox payments. From 0.43.0 the native rail reads payment behaviour from declarative provider profiles, so a third provider is added with a declaration plus its adapter; the supplied portable composition still covers the reference card provider only. Native subscriptions with real-provider history but no recorded method references refuse retry and recovery until the host records the references. |
+| fulfilment-portable | Fulfilment and shipping on the portable rail | shipped | 0.43.0 | A neutral fulfilment and shipping provider port with declared capabilities and named refusals; native dispatch, provider intake by webhook or polling, reconciliation, arrival chronology and delivery alignment on the portable rail; delivery-contact correction; and an offline adapter testing kit with full certification. An installed-package PostgreSQL witness covers dispatch, intake, arrival and alignment. The included warehouse adapter is a reference example; other providers plug in behind the same port. Proof is limited to scripted adapters and offline checks: exact absence, label create and void, provider-side cancellation and courier pickup are not available, and no live provider is qualified. A replacement settles delivery alignment only after it reaches the customer, and deliveries never stack. |
 | hostability-providers | Hostability and provider portability | planned | - | Hosted runs and provider portability: a Neon receipt, Neon to Amazon RDS transfer and recovery, an independent PaaS candidate with Netlify first, a hosted database connection and a Vercel host for the neutral store, and a checkout attempt limiter that survives restarts. The providers in scope are Vercel, Netlify, AWS and Neon. Until then no hosted claim is made, and the neutral store runs on its local demonstration database. |
 | promotions-codes-schedule | Promotions: codes and acquisition schedule | planned | - | Promotion codes with a code catalogue, claims and limits, an operator code center and a checkout code card, plus an acquisition schedule writer with a command line. Device evidence for eligibility is decided together with a retention and erasure design. Until then, promotion codes are not available on the portable rail. |
+| catalogue-extension | Catalogue extension pattern and catalogue management | planned | - | A pattern for adding new product kinds: versioned packs of product types with attributes, units, variants, tax classes, categories and filters, checked offline, plus runtime product lifecycle and price management and per-product promotions. Supplements and cosmetics ship as reference packs. Scheduled after the current rounds; no release is committed. |
 | a5-market-adapters | A5 market adapters | planned | - | An example company and customer lookup adapter built on Polish public registries (VAT whitelist, GUS/CEIDG), after the company-identity and invoicing ports are frozen. Data provenance, freshness, licence and fallback are settled first, and other market adapters can follow the same pattern. |
-| p1-sf-stable-framework | P1-SF stable framework | planned | - | In progress: exact-set qualification after publication, an extracted starter from npm, adjacent-release upgrade proofs, a release bill of materials, digest-bound images with provenance and SBOMs, and a first-party demo store built from npm alone as adoption evidence. The stable claim still needs a later owner activation; OpenLup remains a development preview. |
+| p1-sf-stable-framework | P1-SF stable framework | in-progress | - | Exact-set qualification of a published set, an extracted starter installed from npm, adjacent-release upgrade and schema-compatibility proofs, a release bill of materials and digest-bound images with provenance and SBOMs are built, and a hosted qualification of the published 0.42.0 set passed. Next is a first-party demo store built from npm alone as adoption evidence. The stable claim still needs a later owner activation; OpenLup remains a development preview. |
 
 ## Providers and adapters
 
@@ -138,7 +139,7 @@ Last updated: 2026-11-14 · npm set: 0.42.0
 | klaviyo | Klaviyo marketing sync | yes | portable and managed | Opt-in adapter with offline conformance only; account verification is pending. |
 | stripe | Stripe payments | yes | portable and managed | Opt-in injected-client adapter with a reference card-provider composition on the portable rail. Fake-client and offline proof only; no production qualification. Refund creation and split authorization and capture remain unavailable. |
 | tpay | Tpay payments | yes | managed | Opt-in example adapter with offline conformance proof only; no production qualification. No supplied portable composition; provider-account readiness awaits TEST readback. |
-| omnipack | OmniPack warehouse fulfillment | yes | managed | Opt-in, default-off example with offline conformance. Exact absence, label create and void and cancellation are not available, and some dispatch and reconciliation paths have not been exercised. |
+| omnipack | OmniPack warehouse fulfillment | yes | portable and managed | Opt-in, default-off reference example behind the neutral fulfilment port, composed on the portable and managed rails with full offline certification and an installed-package PostgreSQL witness. Exact absence, label create and void, provider-side cancellation and courier pickup are not available; no live provider qualification. |
 | polish-company-registries | Polish company registries (VAT whitelist, GUS/CEIDG) | no | portable and managed | Not packaged. A packaged example lookup adapter comes in the A5 adapter round. |
 | external-channels | External sales channels (normalized import) | yes | portable and managed | Normalized ingest contracts and bindings. Real marketplace connectors are not planned in the current programme. No real connector ships, and conversion to a physical order refuses on the portable rail. |
 
