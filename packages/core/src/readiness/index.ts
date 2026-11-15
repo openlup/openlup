@@ -123,6 +123,7 @@ export async function checkReadiness(input: ReadinessInput): Promise<ReadinessRe
   if (input.catalogRegistry !== undefined) {
     const observation = input.catalogRegistry;
     const valid = observation && observation.database === input.candidate?.database
+      && (observation.complete === undefined || observation.complete === true)
       && Array.isArray(observation.referencedVersions) && observation.referencedVersions.every(ref =>
         ref && typeof ref.key === "string" && /^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u.test(ref.key)
         && Number.isSafeInteger(ref.version) && ref.version > 0 && ref.version <= 2147483647 && typeof ref.definitionDigest === "string" && /^[a-f0-9]{64}$/u.test(ref.definitionDigest)

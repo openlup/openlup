@@ -295,7 +295,8 @@ ignore the nullable product columns, and NULL continues to mean legacy, not
 mapped. The managed rail does not supply this feature; its future equivalent
 needs separately authored tables, service/operator read policies and a restricted
 install principal. Native owner-only invoker semantics can be expressed by
-managed grants and RLS. No food-column relaxation is part of this forward.
+managed grants and RLS. This forward relaxes no constraints on `net_weight_g`,
+`pet_type`, `kcal_per_unit`, `requires_pet_profile` or `feeding_grams_per_unit`.
 
 Live SKU net-content and gross-mass columns are AUTHORITATIVE catalogue data,
 carried in the existing `catalog_skus` capture entry and restore position. They
@@ -960,13 +961,14 @@ already knowing their IDs and excludes ordinary open events. Use the returned
 `payment_truth_event_id` with the truth port's `readEvent` for effect details.
 The query records no decision and creates no refund or order transition.
 
-`CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
-1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
-and subscription price-policy foundation, its validation, and isolated drafts.
+`CATALOG_MIGRATIONS` projects canonical catalogue positions
+1, 8, 58, 59, 61 and 142: read foundation, storefront attributes, document/identifier
+and subscription price-policy foundation, its validation, isolated drafts and
+definition bindings.
 Each descriptor keeps the canonical path, position, digest and byte-identical
-package SQL. There is no new migration, reordered history or manifest edit.
-Install and observe the complete selected catalogue; these five projections do
-not supply an independent installation sequence. The package envelope and draft
+package SQL. History stays in canonical order. Install and observe the complete
+selected catalogue; these six projections do not supply an independent installation
+sequence. The package envelope and draft
 stores keep their incumbent SQL and refusal semantics after the source move.
 
 

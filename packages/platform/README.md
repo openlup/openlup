@@ -1316,8 +1316,14 @@ state because it would duplicate NULL-ness before publication exists.
 
 `observeCatalogDefinitionReadiness(readExecutor, registry, database)` reads every
 live product type reference and compares its installed digest with the composed
-registry. The executor needs read access to those references and definitions;
-the helper grants no access. Put its result in `ReadinessInput.catalogRegistry`
+registry. The executor needs SELECT on both tables through table ownership or a
+BYPASSRLS read role, with row security inactive on both tables; the helper grants
+no access. It checks `row_security_active` for both tables in the same SQL statement
+as the binding read. Active row security marks the observation incomplete, even
+when no bindings are visible. A referenced definition that is unavailable retains
+its binding with a NULL installed digest. Both cases yield `unknown` readiness
+and make the write guard refuse with `registry_missing_referenced_version`.
+Put the result in `ReadinessInput.catalogRegistry`
 in the application's `createVerificationInput()` for `openlup verify --app`.
 Missing versions or unequal digests report `registry_missing_referenced_version`.
 Keep every referenced version in the composed registry.

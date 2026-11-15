@@ -156,7 +156,7 @@ const packSchema = z.object({
   taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
   subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
 }).strict();
-/** Pack-level closure/references use the same definition issues as runtime installation. */
+/** Shared pack shape, definitions and references; installation also requires a bounded pack version, pinned validators and unique tax-class keys. */
 export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
   const parsed = packSchema.safeParse(input);
   if (!parsed.success) return parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => issue.code === "unrecognized_keys"

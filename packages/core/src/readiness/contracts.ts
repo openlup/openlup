@@ -66,5 +66,8 @@ export interface ReadinessReport {
 /** @beta Read-only live product type references and the composed registry's matching digests. */
 export interface CatalogRegistryObservation {
   database: string;
-  referencedVersions: readonly { key: string; version: number; definitionDigest: string; registryDigest: string | null }[];
+  /** False means row visibility is incomplete; omission preserves existing observations. */
+  complete?: boolean;
+  /** A null installed digest means the referenced definition was unavailable. */
+  referencedVersions: readonly { key: string; version: number; definitionDigest: string | null; registryDigest: string | null }[];
 }

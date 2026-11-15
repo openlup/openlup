@@ -153,8 +153,8 @@ snapshot reference, and the host owns inventory.
 The optional `ReadinessInput.catalogRegistry` observation carries live product
 type references, installed definition digests and matching composed-registry
 digests for the candidate database. Missing versions or unequal digests yield
-`registry_missing_referenced_version`; malformed or mismatched database evidence
-is unknown. Applications obtain this inert observation through the platform's
+`registry_missing_referenced_version`; `complete: false`, a NULL installed digest,
+malformed evidence or mismatched database evidence is unknown. Applications obtain this inert observation through the platform's
 explicit catalogue probe before `openlup verify --app`. Existing inputs without
 it keep their behaviour. No observer, installer or boot hook is added to Core.
 

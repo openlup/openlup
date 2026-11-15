@@ -1012,7 +1012,7 @@ export declare function catalogDefinitionDigest(definition: CatalogProductTypeIn
 import type { CatalogRegistryObservation } from "@openlup/core/readiness";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
-/** Read-only, uncached live-binding probe. The application owns observer permissions and database identity. */
+/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables. */
 export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string): Promise<CatalogRegistryObservation>;
 /** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called. */
 export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry): <T>(write: () => Promise<T>) => Promise<T>;
@@ -3224,7 +3224,7 @@ export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
 }, z.core.$strict>;
 /** The runtime throws the first issue; offline callers can report the complete list. */
 export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
-/** Pack-level closure/references use the same definition issues as runtime installation. */
+/** Shared pack shape, definitions and references; installation also requires a bounded pack version, pinned validators and unique tax-class keys. */
 export declare function catalogPackIssues(input: unknown): CatalogDefinitionIssue[];
 ```
 ## dist/catalog/productTypeSchemas.d.ts

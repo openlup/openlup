@@ -12,12 +12,16 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 const path = "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
-let owner: Pool, runtime: Pool, product: string, baseline: unknown;
+let owner: Pool, runtime: Pool, observer: Pool, product: string, baseline: unknown;
 const definition = (version = 1) => ({ key: "example:item", version,
   units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }], netContentUnits: ["openlup:piece"],
   dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] });
 const pack = (id: string, version = 1): CatalogPackInput => ({ id: `example:${id}`, namespace: "example", version,
   openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition(version)], taxClasses: [{ key: "example:standard" }] });
+const verifyCatalogRegistry = (catalogRegistry: Awaited<ReturnType<typeof observeCatalogDefinitionReadiness>>) => verifyApp({
+  candidate: { artifact: "test", configuration: "test", environment: "test", database: "catalog-db", schema: "test" },
+  inventoryComplete: true, loadedPackages: [{ name: "@openlup/core", version: "0.43.0", kind: "kernel" }], contributions: [], vocabulary: [], exemptions: [],
+  bindings: { ports: {}, routes: {}, triggers: {}, env: {} }, schemaProbe: { observe: async () => { throw new Error("not required"); } }, catalogRegistry });
 const snapshot = async () => (await owner.query(`SELECT
   (SELECT jsonb_agg(to_jsonb(p)-'type_key'-'type_version' ORDER BY id) FROM public.catalog_products p) AS products,
   (SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM public.catalog_skus s) AS skus,
@@ -60,6 +64,10 @@ beforeAll(async () => {
   await owner.query("GRANT SELECT ON public.catalog_products TO catalog_runtime; GRANT UPDATE(name) ON public.catalog_products TO catalog_runtime");
   const url = new URL(container.connectionString); url.username = "catalog_runtime";
   runtime = new Pool({ connectionString: url.toString() }); pools.push(runtime);
+  await owner.query("CREATE ROLE catalog_observer LOGIN NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-catalogue'");
+  await owner.query("GRANT SELECT ON public.catalog_products, public.catalog_type_versions TO catalog_observer");
+  url.username = "catalog_observer";
+  observer = new Pool({ connectionString: url.toString() }); pools.push(observer);
   // The immutable legacy prefix needs bootstrap privileges; feature calls need only ownership.
   await bootstrap.query("ALTER ROLE catalog_install NOSUPERUSER NOBYPASSRLS");
 }, postgresSetupTimeoutMs);
@@ -78,6 +86,7 @@ it("pack_install_is_idempotent_and_install_role_only", async () => {
   expect((await runtime.query("SELECT pg_has_role(current_user, 'catalog_install', 'MEMBER') AS owner_member, pg_has_role(current_user, 'service_role', 'USAGE') AS runtime_group")).rows)
     .toEqual([{ owner_member: false, runtime_group: true }]);
   const input = pack("idempotent");
+  // Receipt equality proves replay, without claiming the two SQL calls overlap.
   const receipts = await Promise.all([installCatalogDefinitions(owner, input), installCatalogDefinitions(owner, input)]);
   expect(receipts[1]).toEqual(receipts[0]);
   expect(receipts[0].manifestDigest).toBe(catalogPackManifest(input).digest);
@@ -153,15 +162,44 @@ it("runtime_refuses_registry_missing_referenced_version", async () => {
       .rejects.toThrow("registry_missing_referenced_version");
     expect(await snapshot()).toEqual(before);
     const catalogRegistry = await observeCatalogDefinitionReadiness(owner, registry, "catalog-db");
-    const report = await verifyApp({ candidate: { artifact: "test", configuration: "test", environment: "test", database: "catalog-db", schema: "test" },
-      inventoryComplete: true, loadedPackages: [{ name: "@openlup/core", version: "0.43.0", kind: "kernel" }], contributions: [], vocabulary: [], exemptions: [],
-      bindings: { ports: {}, routes: {}, triggers: {}, env: {} }, schemaProbe: { observe: async () => { throw new Error("not required"); } }, catalogRegistry });
+    const report = await verifyCatalogRegistry(catalogRegistry);
     expect(report.state).toBe("unsatisfied");
     expect(report.findings.map(finding => finding.code)).toEqual(["registry_missing_referenced_version"]);
   }
-  const guard = createCatalogDefinitionWriteGuard(owner, createCatalogProductTypeRegistry([definition()]));
+  const registry = createCatalogProductTypeRegistry([definition()]);
+  const observed = await observeCatalogDefinitionReadiness(owner, registry, "catalog-db");
+  expect(observed.complete).toBe(true);
+  expect((await verifyCatalogRegistry(observed)).state).toBe("ready");
+  const guard = createCatalogDefinitionWriteGuard(owner, registry);
   expect((await guard(() => runtime.query("UPDATE public.catalog_products SET name=name WHERE id=$1", [product]))).rowCount).toBe(1);
   await owner.query("UPDATE public.catalog_products SET type_key=NULL,type_version=NULL WHERE id=$1", [product]);
+});
+
+it("restricted_catalog_observer_never_reports_ready_or_calls_write", async () => {
+  expect((await observer.query(`SELECT rolsuper,rolbypassrls,pg_has_role(current_user,'catalog_install','MEMBER') AS owner_member,
+    row_security_active('public.catalog_products') AS products, row_security_active('public.catalog_type_versions') AS definitions
+    FROM pg_roles WHERE rolname=current_user`)).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false, owner_member: false, products: false, definitions: true }]);
+  const registry = createCatalogProductTypeRegistry([definition()]);
+  const guard = createCatalogDefinitionWriteGuard(observer, registry);
+  let writes = 0;
+  await owner.query("UPDATE public.catalog_products SET type_key='example:item',type_version=1 WHERE id=$1", [product]);
+  try {
+    const observation = await observeCatalogDefinitionReadiness(observer, registry, "catalog-db");
+    expect(observation).toEqual({ database: "catalog-db", complete: false, referencedVersions: [{ key: "example:item", version: 1,
+      definitionDigest: null, registryDigest: catalogDefinitionDigest(definition()) }] });
+    expect((await verifyCatalogRegistry(observation)).state).toBe("unknown");
+    await expect(guard(async () => { writes++; return runtime.query("UPDATE public.catalog_products SET name='Changed' WHERE id=$1", [product]); }))
+      .rejects.toMatchObject({ code: "registry_missing_referenced_version" });
+    expect(writes).toBe(0);
+  } finally {
+    await owner.query("UPDATE public.catalog_products SET type_key=NULL,type_version=NULL WHERE id=$1", [product]);
+  }
+  const empty = await observeCatalogDefinitionReadiness(observer, registry, "catalog-db");
+  expect(empty).toEqual({ database: "catalog-db", complete: false, referencedVersions: [] });
+  expect((await verifyCatalogRegistry(empty)).state).toBe("unknown");
+  await expect(guard(async () => { writes++; })).rejects.toMatchObject({ code: "registry_missing_referenced_version" });
+  expect(writes).toBe(0);
 });
 
 it("catalog_v1_receipt_replays_after_type_upgrade", async () => {
