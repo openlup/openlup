@@ -321,7 +321,7 @@ After a successful core publication, the separate
 workflow runs trusted default-branch code after checking the release tag's
 commit against the completed publication run. A maintainer may also dispatch
 it from the default branch for an existing core release tag. The tutorial
-reads the tagged page and waits up to ten minutes for the matching npm set;
+reads the tagged page and waits up to thirty minutes for the matching npm set;
 automatic runs also require core's `latest` to match. The tutorial is blocking
 after two green release runs: a failure fails its own workflow run and reports
 to the maintainer; a propagation timeout warns and defers the tutorial. It runs
@@ -333,6 +333,10 @@ pinned PostgreSQL mirror. See the
 [qualification owner](DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification)
 for trust, evidence and support limits. This workflow adds no required PR
 check, does not hold publication open and does not delay the next dispatch.
+
+On 2026-11-15, `@openlup/platform@0.43.0` became visible on npm about 12.5 minutes
+after its publish was accepted, exceeding the former ten-minute wait in
+[the automatic qualification run](https://github.com/openlup/openlup/actions/runs/43691774952).
 
 The packed-candidate tutorial in `install-packages` is blocking because its
 condition of two green merge-group runs on main has been met.
