@@ -35,7 +35,7 @@ jobs:
     name: Guide tutorial against the npm registry
     if: ${{ github.repository == 'openlup/openlup' && ((github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == 'openlup/openlup' && github.event.workflow_run.head_repository.full_name == 'openlup/openlup' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && startsWith(github.event.workflow_run.head_branch, 'openlup-core-v'))) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     permissions:
       contents: read
     outputs:
@@ -73,7 +73,7 @@ jobs:
           git show "refs/tags/$RELEASE_TAG:packages/core/docs/guide/start/tutorial.md" > "$RUNNER_TEMP/tutorial.md"
       - name: Wait for the published set on npm
         id: registry
-        timeout-minutes: 11
+        timeout-minutes: 31
         env:
           RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}
           EVENT_NAME: ${{ github.event_name }}
@@ -84,7 +84,9 @@ jobs:
           specs=""
           for package in $packages; do specs="$specs $package@$version"; done
           if [ "$EVENT_NAME" != workflow_dispatch ]; then specs="$specs @openlup/core"; fi
-          deadline=$((SECONDS + 600))
+          # npm processes large packages asynchronously after accepting a publish; 0.43.0 platform became visible ~12.5 min later (run 43691774952).
+          visibility_seconds=1800
+          deadline=$((SECONDS + visibility_seconds))
           delay=5
           while (( SECONDS < deadline )); do
             ready=true
@@ -108,9 +110,9 @@ jobs:
             sleep "$wait_seconds"
             if (( delay < 30 )); then delay=$((delay + 5)); fi
           done
-          echo '::warning title=Guide tutorial::Published set not visible on npm within 10 minutes; registry tutorial deferred.'
+          echo "::warning title=Guide tutorial::Published set not visible on npm within $((visibility_seconds / 60)) minutes; registry tutorial deferred."
           echo '### Guide tutorial: deferred' >> "$GITHUB_STEP_SUMMARY"
-          echo "The published set $version was not visible on npm within 10 minutes." >> "$GITHUB_STEP_SUMMARY"
+          echo "The published set $version was not visible on npm within $((visibility_seconds / 60)) minutes." >> "$GITHUB_STEP_SUMMARY"
       - name: Start the pinned package-proof PostgreSQL service
         id: postgres
         if: steps.registry.outputs.ready == 'true'

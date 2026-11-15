@@ -936,7 +936,7 @@ The separate [Guide tutorial against the npm registry](workflows/registry-tutori
 workflow runs trusted default-branch code after a successful core publication,
 checking the release tag's commit against the completed publication run. A
 maintainer may also dispatch it from the default branch for an existing core
-release tag. The tutorial reads the tagged page and waits up to ten minutes for
+release tag. The tutorial reads the tagged page and waits up to thirty minutes for
 the matching npm set; automatic runs also require core's `latest` to match.
 The tutorial is blocking after two green release runs: a failure fails its own
 workflow run and reports to the maintainer; a propagation timeout warns and
