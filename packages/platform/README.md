@@ -1376,6 +1376,44 @@ projection contents even when populated. Restore leaves the projection empty;
 rebuild and serving require later integration. No writer or consumer is activated.
 The managed rail does not supply this feature.
 
+The native axes forward adds nullable product `variant_axes` in display order
+and SKU `option_values`, `canonical_option_bytes` and `combination_digest`.
+The SKU-local partial unique index applies to active, non-NULL combinations per
+product, regardless of product status. Existing legacy rows retain NULLs and all
+existing identity constraints. The storage CHECKs require supplied options to be
+objects and digests to be 32 bytes; they do not certify canonicalization.
+
+`canonicalizeCatalogCombinationV2({definition, axes, options})` in the Node entry
+computes canonical bytes and SHA-256. Supply installed immutable metadata and
+complete selected options. Axis keys sort for identity; the product's display
+array is retained separately. Stable enum IDs and booleans are canonical, labels
+are excluded, and quantity equivalents share identity through Core's exact
+arithmetic with explicit installed unit factors. Missing factors, unknown or
+incomplete axes and unrepresentable quantities refuse. The existing option
+helper and v1 command/receipt bytes retain their exact behavior.
+
+`validateCatalogCombinationChangesV2` prepares retained plus incoming SKU facts
+without I/O. Retained evidence must come from authoritative rows/history scoped
+to one product; incoming changes accept options, never a digest. Omitted SKUs
+remain unchanged, withdrawal preserves facts, and a changed mapped identity
+requires a new SKU. Active typed SKUs require complete options and identity;
+zero selected axes with explicit empty options has one canonical empty identity.
+The helper refuses active duplicates; `classifyCatalogCombinationConflictV2`
+compares bytes on a digest conflict to distinguish a duplicate from a collision.
+Both refuse without merging identities. Payloads contain at most 10,000 SKUs;
+the product capacity parameter defaults to 50,000 retained plus incoming SKUs.
+This is pure preparation, not persisted capacity enforcement or publication.
+
+LC2 must bind definitions and recompute evidence within the human-authorized
+publication transaction, apply the
+[catalogue lock order](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order),
+preserve published identity keys and immutable history, and prove explicit
+legacy conversion and incremental publication. No publisher, lifecycle wiring,
+serving reader or capability is activated here. Connected transfer carries the
+new authoritative fields, including NULLs and declared order, in existing rows;
+old readers ignore them, and future V2 readers require publication evidence.
+The managed rail does not supply this feature.
+
 Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
 `effectiveTarget` hook provide [effective bundle parity](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
 `selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.

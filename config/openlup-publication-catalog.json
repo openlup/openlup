@@ -1438,6 +1438,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122130000_catalog_variant_axes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4666,6 +4670,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122130000_catalog_variant_axes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5110,6 +5118,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/variantAxes.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/draftHandler.ts",
       "class": "public-output"
     },
@@ -5195,6 +5207,10 @@
     },
     {
       "path": "packages/platform/src/catalog/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/variantCombination.ts",
       "class": "public-output"
     },
     {
@@ -9335,6 +9351,10 @@
     },
     {
       "path": "packages/platform/test/catalog/sellableBundleHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/variantCombination.test.ts",
       "class": "public-output"
     },
     {
@@ -29443,6 +29463,10 @@
     },
     {
       "path": "tests/postgres/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogVariantAxes.test.ts",
       "class": "public-output"
     },
     {
