@@ -31,7 +31,10 @@ beforeAll(async () => {
   const container = await runPostgresContainer({ name: `catalog-definitions-${process.pid}`, password: "synthetic-catalogue" });
   containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Catalogue PostgreSQL unavailable");
-  owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
+  const bootstrap = new Pool({ connectionString: container.connectionString }); pools.push(bootstrap);
+  await bootstrap.query("CREATE ROLE catalog_install LOGIN SUPERUSER PASSWORD 'synthetic-catalogue'; ALTER DATABASE postgres OWNER TO catalog_install");
+  const installUrl = new URL(container.connectionString); installUrl.username = "catalog_install";
+  owner = new Pool({ connectionString: installUrl.toString() }); pools.push(owner);
   // Apply the unchanged native prefix first; legacy facts exist before the new forward.
   for (const unit of [manifest.baseline, ...manifest.forward]) {
     if (unit.file === path) break;
@@ -56,6 +59,8 @@ beforeAll(async () => {
   await owner.query("GRANT SELECT ON public.catalog_products TO catalog_runtime; GRANT UPDATE(name) ON public.catalog_products TO catalog_runtime");
   const url = new URL(container.connectionString); url.username = "catalog_runtime";
   runtime = new Pool({ connectionString: url.toString() }); pools.push(runtime);
+  // The immutable legacy prefix needs bootstrap privileges; feature calls need only ownership.
+  await bootstrap.query("ALTER ROLE catalog_install NOSUPERUSER NOBYPASSRLS");
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
 
@@ -67,6 +72,10 @@ it("catalog_legacy_backfill_preserves_references", async () => {
 });
 
 it("pack_install_is_idempotent_and_install_role_only", async () => {
+  expect((await owner.query("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
+    .toEqual([{ rolsuper: false, rolbypassrls: false }]);
+  expect((await runtime.query("SELECT pg_has_role(current_user, 'catalog_install', 'MEMBER') AS owner_member")).rows)
+    .toEqual([{ owner_member: false }]);
   const input = pack("idempotent");
   const receipts = await Promise.all([installCatalogDefinitions(owner, input), installCatalogDefinitions(owner, input)]);
   expect(receipts[1]).toEqual(receipts[0]);
