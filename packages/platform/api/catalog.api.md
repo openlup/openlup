@@ -1675,13 +1675,15 @@ type DraftForType<T extends CatalogProductTypeInput, Selected extends string = D
         };
     })[];
 };
+/** Explicit annotations supply the product's selected dimension keys as Selected.
+ * Omitted Selected covers all installed dimensions; draftsFor infers the selection. */
 export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
 type DraftInput = CatalogReadonly<CatalogDraftPayload>;
 type SelectedDraft<P extends CatalogPackInput, D extends DraftInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? D["product"]["type"] extends Pick<T, "key" | "version"> ? DraftForType<T, D["product"]["dimensions"][number]> & {
     skus: {
         readonly [I in keyof D["skus"]]: D["skus"][I] extends {
             options: infer O;
-        } ? {
+        } ? Omit<D["skus"][I], "options"> & {
             options: {
                 readonly [K in Exclude<keyof O, D["product"]["dimensions"][number]>]: never;
             };

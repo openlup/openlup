@@ -1248,7 +1248,11 @@ tax-class and profile references. `defineCatalogPack` recursively freezes the de
 readonly view, including metadata supplied through referenced objects; it neither
 validates it nor invokes callbacks. `draftsFor` types the existing v1 draft fields
 and derives each SKU's option keys from that product's selected `dimensions`.
-Zero selected dimensions require empty options. Type-level unit references also
+Zero selected dimensions require empty options. For explicit annotations, supply
+the selected keys as the second type argument, for example
+`CatalogPackDraft<typeof pack, "finish">`; omitting it means all installed
+dimensions. `draftsFor` infers the selection automatically and accepts the full
+v1 SKU shape, including fields written inline. Type-level unit references also
 cover quantity scalars inside list attributes. To hand readonly authoring output
 to existing mutable draft/command DTOs, pass each draft through the existing
 server `catalogDraftPayloadSchema.parse(draft)`; the schema validates and returns
