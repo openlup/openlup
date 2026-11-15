@@ -47,7 +47,7 @@ describe("the blocking registry tutorial after publication", () => {
     expect(permissionBlocks(tutorial)).toEqual(["    permissions:\n      contents: read\n"]);
     expect(tutorial).not.toMatch(/secrets\.|github\.token|id-token|environment:|strategy:|needs:|continue-on-error|npm (?:ci|install)\b/u);
     expect([...workflow.split("\njobs:\n")[1]!.matchAll(/^ {2}([a-z][a-z-]*):$/gmu)].map(match => match[1])).toEqual(["registry-tutorial", "exact-set-qualification", "publish-qualified-image"]);
-    expect(tutorial).toContain("    timeout-minutes: 20\n");
+    expect(tutorial).toContain("    timeout-minutes: 40\n");
     expect(stepTexts(tutorial)[1]).toBe(CHECKOUT);
     expect(stepTexts(tutorial)[2]).toBe(SETUP_NODE);
     expect(stepList(tutorial)).toEqual([
@@ -183,7 +183,7 @@ console.log(answer.version);
       writeFileSync(join(bin, "timeout"), '#!/bin/sh\nshift\nexec "$@"\n');
       for (const name of ["npm", "sleep", "timeout"]) chmodSync(join(bin, name), 0o755);
       const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
-      const source = expire ? wait.replace("SECONDS + 600", "SECONDS + 0") : wait;
+      const source = expire ? wait.replace("SECONDS + visibility_seconds", "SECONDS + 0") : wait;
       const result = spawnSync("bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", source], {
         cwd: ROOT, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: "openlup-core-v0.13.1", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, EVENT_NAME: event }, encoding: "utf8", timeout: 5000,
       });
@@ -194,7 +194,8 @@ console.log(answer.version);
   it("retries registry errors and stale versions, waiting for the full set and core's latest value", () => {
     expect(step(tutorial, REGISTRY_WAIT)).toContain("RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}");
     expect(wait).toContain('version="${RELEASE_TAG##*-v}"');
-    expect(wait).toContain("deadline=$((SECONDS + 600))");
+    expect(wait).toContain("visibility_seconds=1800\ndeadline=$((SECONDS + visibility_seconds))");
+    expect(step(tutorial, REGISTRY_WAIT)).toContain("        timeout-minutes: 31\n");
     expect(wait).toContain('timeout "$remaining" npm view "$spec" version');
     expect(wait).toContain("if (( delay < 30 )); then delay=$((delay + 5)); fi");
     const packages = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { name: string }) => `${entry.name}@0.13.1`);
@@ -222,7 +223,7 @@ console.log(answer.version);
     expect(result.stdout).toContain("::warning title=Guide tutorial::");
     expect(result.summary).toContain("Guide tutorial: deferred");
     expect(result.summary).not.toContain("(advisory)");
-    expect(result.summary).toContain("0.13.1 was not visible on npm within 10 minutes.");
+    expect(result.summary).toContain("0.13.1 was not visible on npm within 30 minutes.");
     expect(result.requests).toEqual([]);
     expect(step(tutorial, "Start the pinned package-proof PostgreSQL service")).toContain(REGISTRY_READY);
     expect(step(tutorial, REGISTRY_STEP)).toContain(REGISTRY_READY);
