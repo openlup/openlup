@@ -1434,6 +1434,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122120000_catalog_attributes.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4655,6 +4659,10 @@
     },
     {
       "path": "packages/platform/sql/20261122110000_catalog_quantities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122120000_catalog_attributes.sql",
       "class": "public-output"
     },
     {

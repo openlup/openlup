@@ -321,6 +321,41 @@ SKU groups under the managed table's grants and RLS, with an administrative
 install principal and no runtime EXECUTE. Existing mandatory food-related
 columns and their later relaxation remain separate from this expansion.
 
+Product and SKU `attribute_values` are AUTHORITATIVE, sensitive retained data in
+the existing catalogue capture entries and restore order. NULL means legacy
+absence; supplied objects have an independent 1 MiB PostgreSQL rendered-text
+ceiling. Canonical JSON safety checks and the aggregate draft ceiling measure a
+separate boundary. No document mining, defaults or mass backfill is performed.
+Old readers ignore these nullable fields; future typed readers require the V2
+publication evidence. Rolling code back leaves the nullable fields and retained
+values intact; do not reverse the migration or discard populated columns.
+
+`catalog_attribute_projection` is REBUILDABLE. The closed capture census records
+only its owner and row count with disposition `rebuildable`, even when nonempty;
+no projection row enters an authoritative payload. Restore validates that exact
+disposition, refuses a projection in the carried table list and requires the
+fresh target projection to be empty. Replaying restore does not restore stale
+rows. Actual rebuilding and the gate before any projection consumer are later
+work; this expansion enables no serving switch. The `transfer_round_trip_matrix`
+compares complete product/SKU rows, command replay and populated projection
+omission using real PostgreSQL. Managed retained mapping supplies NULL only for
+absent `attribute_values` columns, preserving supplied values, explicit NULLs,
+missing-column refusals and exact-number guards.
+
+Free text and reference values may contain personal data and travel in the
+sensitive retained stream. There is no new direct `clients` FK, so no absorption
+census row is added; this change makes no new subject-erasure claim. The native
+projection uses table ownership for administrative access, with RLS and no
+runtime/browser access. The managed rail does not supply this feature. Its twin
+needs nullable product/SKU JSONB columns with equivalent checks and the same
+projection table and indexes, retaining existing grants/RLS on authoritative
+rows. A restricted administrative principal owns projection maintenance; runtime
+projection access remains denied until a later explicit grant/policy, and browser
+roles receive no direct writes. These semantics are expressible by managed
+grants and RLS. Mandatory food-column relaxation remains later reader work.
+See the [package catalogue owner](../../packages/platform/README.md#catalog) and
+[catalogue lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order).
+
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
 transports data into an already qualified canonical target. It does not restore
 managed internals, source roles/grants or `platform_schema_migrations`. Source
