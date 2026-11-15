@@ -938,13 +938,14 @@ already knowing their IDs and excludes ordinary open events. Use the returned
 `payment_truth_event_id` with the truth port's `readEvent` for effect details.
 The query records no decision and creates no refund or order transition.
 
-`CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
-1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
-and subscription price-policy foundation, its validation, and isolated drafts.
+`CATALOG_MIGRATIONS` projects canonical catalogue positions
+1, 8, 58, 59, 61 and 142: read foundation, storefront attributes, document/identifier
+and subscription price-policy foundation, its validation, isolated drafts and
+definition bindings.
 Each descriptor keeps the canonical path, position, digest and byte-identical
-package SQL. There is no new migration, reordered history or manifest edit.
-Install and observe the complete selected catalogue; these five projections do
-not supply an independent installation sequence. The package envelope and draft
+package SQL. History stays in canonical order. Install and observe the complete
+selected catalogue; these six projections do not supply an independent installation
+sequence. The package envelope and draft
 stores keep their incumbent SQL and refusal semantics after the source move.
 
 

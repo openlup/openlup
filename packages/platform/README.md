@@ -1342,8 +1342,8 @@ The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
 semantics. The mapper remains internal to the package. `CATALOG_MIGRATIONS`
-projects the original canonical positions 1, 8, 58, 59 and 61 plus the nullable
-definition-binding forward byte for byte; these assets are sparse references,
+projects canonical positions 1, 8, 58, 59, 61 and 142 byte for byte, including the
+nullable definition-binding forward; these assets are sparse references,
 never a standalone install chain.
 
 `createPostgresCommerceQuoteCatalogReadPort(executor, options)` implements the
