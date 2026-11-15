@@ -483,7 +483,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     };
     const entries = readdirSync(platformSource, { withFileTypes: true });
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
-    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server", "operations/server", "risk/server", "company-identity/server", "channels/server"].sort());
+    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server", "operations/server", "risk/server", "company-identity/server", "channels/server", "catalog/testing"].sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
       for (const target of [...values, ...types]) {
         const [owner, ...entry] = target.split("/");
@@ -800,4 +800,16 @@ describe("account-support module graph addition", () => {
       "packages/platform/src/account-support/fit.ts"
     )).toContainEqual(expect.stringContaining('module "account-support"'));
   });
+});
+
+it("keeps copied catalogue documentation imports narrow and Core production isolated", async () => {
+  const config = await loadConfig();
+  const file = "packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/pack.ts";
+  for (const specifier of ["@openlup/platform/catalog/contracts", "@openlup/platform/catalog/testing", "./pack.ts", "./catalogue.ts", "./fixtures.ts"]) {
+    expect(await boundaryMessages(config, `import value from "${specifier}";`, file)).toEqual([]);
+  }
+  for (const specifier of ["node:fs", "pg", "@openlup/platform/catalog", "../../../../src/index.ts"]) {
+    expect((await boundaryMessages(config, `import value from "${specifier}";`, file)).length).toBeGreaterThan(0);
+  }
+  expect((await boundaryMessages(config, 'import value from "@openlup/platform/catalog/contracts";', "packages/core/src/catalog/sample.ts")).length).toBeGreaterThan(0);
 });

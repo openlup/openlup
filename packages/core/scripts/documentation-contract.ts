@@ -716,8 +716,11 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
       if (group) group.reports.push(type.report);
       else groups.set(key, { type, reports: [type.report] });
     }
+    const recipes = catalogueRecipeLinks(repositoryRoot);
+    const linkedCode = (code: string): string => recipes.has(code) ? `[${codeLiteral(code)}](${recipes.get(code)})` : codeLiteral(code);
     const rows = [...groups.values()].map(({ type, reports }) => [`\`@openlup/${type.packageName}\``, `\`${type.typeName}\``,
-      [...new Set(reports)].sort().map((report) => link(report, reportLabel(repositoryRoot, type.packageName, report))).join(", "), type.codes!.map(codeLiteral).join(", ")]);
+      [...new Set(reports)].sort().map((report) => link(report, reportLabel(repositoryRoot, type.packageName, report))).join(", "), type.codes!.map(linkedCode).join(", ")]);
+    if (recipes.size) rows.push(["`@openlup/platform`", "`CatalogConformanceCode`", link("packages/platform/src/catalog/catalogConformance.ts", "catalogue rule record"), [...recipes.keys()].sort().map(linkedCode).join(", ")]);
     const cliPath = "packages/platform/src/lifecycle/openlup.mjs";
     const cliCodes = readCliCodes(repositoryRoot);
     if (cliCodes.length) rows.push(["`@openlup/platform`", "`openlup`", link(cliPath, "command line"), cliCodes.map(codeLiteral).join(", ")]);
@@ -920,6 +923,42 @@ function readCliCodes(repositoryRoot: string): string[] {
   return [...new Set(readFileSync(path, "utf8").match(/\bOPENLUP_E_[A-Z_]+\b/g) ?? [])].filter((code) => code.startsWith("OPENLUP_E_CLI_")).sort();
 }
 
+/** Derive installed recipe links from the exhaustive owner record, without executing pack code. */
+export function catalogueRecipeLinks(repositoryRoot: string): Map<string, string> {
+  const path = join(repositoryRoot, "packages/platform/src/catalog/catalogConformance.ts");
+  if (!existsSync(path)) return new Map();
+  const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+  const declaration = source.statements.flatMap(statement => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [])
+    .find(node => ts.isIdentifier(node.name) && node.name.text === "CATALOG_CONFORMANCE_RULES");
+  const call = declaration?.initializer;
+  const record = call && ts.isCallExpression(call) ? call.arguments[0] : undefined;
+  if (!record || !ts.isObjectLiteralExpression(record)) throw new Error("Catalogue rule record must remain a static typed object");
+  const links = new Map<string, string>();
+  for (const property of record.properties) {
+    if (!ts.isPropertyAssignment(property) || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+      || !ts.isCallExpression(property.initializer) || !ts.isIdentifier(property.initializer.expression)
+      || property.initializer.expression.text !== "rule") throw new Error("Catalogue rule metadata must use rule(rule, fix, recipe)");
+    const anchor = property.initializer.arguments[2];
+    if (!anchor || !ts.isStringLiteral(anchor)) throw new Error("Catalogue recipe anchor must be literal");
+    links.set(property.name.text, `../how-to/extend/catalogue-extension.md#${anchor.text}`);
+  }
+  return links;
+}
+
+export function assertCatalogueRecipeReachability(rendered: string, repositoryRoot: string, violations: string[]): void {
+  const links = catalogueRecipeLinks(repositoryRoot);
+  if (!links.size) return;
+  const guide = readFileSync(join(repositoryRoot, "packages/core/docs/guide/how-to/extend/catalogue-extension.md"), "utf8");
+  const anchors = new Set([...guide.matchAll(/^## (.+)$/gm)].map(match => match[1]!.toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-")));
+  for (const [code, recipe] of links) {
+    if (!anchors.has(recipe.split("#")[1]!)) violations.push(`catalogue recipe missing anchor: ${recipe}`);
+    if (!rendered.includes(`[${codeLiteral(code)}](${recipe})`)) violations.push(`catalogue code missing recipe link: ${code}`);
+  }
+  for (const match of rendered.matchAll(/\[(`[^`]+`)\]\((\.\.\/how-to\/extend\/catalogue-extension\.md#[^)]+)\)/g)) {
+    if (links.get(match[1]!.slice(1, -1)) !== match[2]) violations.push(`catalogue recipe link has no matching owner code: ${match[1]}`);
+  }
+}
+
 /** Independent inventory-to-render check: byte freshness alone cannot catch a lossy renderer. */
 export function assertRefusalCodeReachability(rendered: string, repositoryRoot: string, violations: string[], label = "refusal-codes"): void {
   const codes = new Set([...collectRefusalTypes(repositoryRoot).flatMap((type) => type.codes ?? []), ...readCliCodes(repositoryRoot)]);
@@ -928,6 +967,7 @@ export function assertRefusalCodeReachability(rendered: string, repositoryRoot: 
   const visible = new Set(rendered.split("\n").filter((line) => line.startsWith("|"))
     .flatMap((line) => [...line.slice(line.lastIndexOf("|", line.length - 2) + 1, line.lastIndexOf("|")).matchAll(/`([^`]+)`|<code>(.*?)<\/code>/g)]
       .map((match) => match[1] ?? match[2]!.replace(/&(?:amp|lt|gt|#124|#10|#13|#96);/g, (entity) => decoded[entity]!))));
+  assertCatalogueRecipeReachability(rendered, repositoryRoot, violations);
   const missing = [...codes].filter((code) => !visible.has(code)).sort();
   if (missing.length) violations.push(`${label}: refusal-codes is missing reachable codes: ${missing.join(", ")}`);
 }

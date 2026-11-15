@@ -12,6 +12,9 @@ export type CatalogConformanceCode =
   | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value"
   | "definition_unknown_axis_dimension"
   | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch"
+  | "conformance_subject_invalid" | "conformance_owner_unavailable"
+  | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch"
+  | "draft_input_invalid" | "draft_payload_invalid"
   | CatalogQuantityCode;
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string }

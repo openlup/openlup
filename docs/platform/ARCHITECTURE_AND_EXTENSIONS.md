@@ -3095,6 +3095,14 @@ an authored witness establishes no passing execution result.
 
 ### Application command-line tooling
 
+Catalogue checks share this executable through the explicit `catalogue check
+--packs` branch. The Node-only `catalog/testing` subpath imports owner validators;
+ordinary catalog cannot import testing. The installed
+[catalogue guide](../../packages/core/docs/guide/how-to/extend/catalogue-extension.md)
+owns the subject, refusal fixtures, exit codes and pending owners. This branch
+loads trusted code without a sandbox and has no database, installation, seed or
+publication path. An offline PASS grants no activation authority.
+
 The tool-only Node executable
 [`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside
 `@openlup/platform`. It is separate from imported engine entries and adds no

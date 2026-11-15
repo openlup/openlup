@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { agentsFileCap, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, planPackageDocumentationUpdates, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
+import { agentsFileCap, assertCatalogueRecipeReachability, catalogueRecipeLinks, assertCompiledFences, assertDocumentationContract, assertGuideContract, assertPackageDocumentation, assertRefusalCodeReachability, listOpenRefusalTypes, planPackageDocumentationUpdates, providerSpecificKeys, refusalTypeSuffixes, renderGeneratedRegion, syncGeneratedRegions } from "../scripts/documentation-contract.ts";
 
 const roots: string[] = [];
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -1193,7 +1193,10 @@ describe("generated reference regions", () => {
     expect(body).toBeTypeOf("string");
     expect(body.endsWith("\n")).toBe(true);
     expect(renderGeneratedRegion(name, repositoryRoot)).toBe(body);
-    const fixture = guideFixture(`# Guide\n\n${generatedRegion(name, body)}`);
+    const fixture = name === "refusal-codes" ? guideFixture("# Guide\n\n[Codes](reference/refusal-codes.md)\n[Recipes](how-to/extend/catalogue-extension.md)\n", {
+      "reference/refusal-codes.md": `# Codes\n\n${generatedRegion(name, body)}`,
+      "how-to/extend/catalogue-extension.md": readFileSync(join(repositoryRoot, "packages/core/docs/guide/how-to/extend/catalogue-extension.md"), "utf8").split("\n").filter(line => /^##? /.test(line)).join("\n") + "\n",
+    }) : guideFixture(`# Guide\n\n${generatedRegion(name, body)}`);
     const version = JSON.parse(readFileSync(join(repositoryRoot, "packages/core/package.json"), "utf8")).version;
     writeFileSync(join(fixture.core, "package.json"), JSON.stringify({ version }));
     const violations: string[] = [];
@@ -1231,4 +1234,19 @@ describe("generated reference regions", () => {
     expect(violations).toEqual([]);
     expect(open.map(({ typeName }) => typeName)).not.toContain("PrivacyRefusalCode");
   }, realRepositoryTimeout);
+});
+
+it("catalogue_codes_link_existing_recipes", () => {
+  const repository = resolve(packageRoot, "../..");
+  const links = catalogueRecipeLinks(repository);
+  const rendered = renderGeneratedRegion("refusal-codes", repository)!;
+  const issues: string[] = [];
+  assertCatalogueRecipeReachability(rendered, repository, issues);
+  expect(issues).toEqual([]);
+  const [code, recipe] = [...links][0]!;
+  assertCatalogueRecipeReachability(rendered.replaceAll(`[\`${code}\`](${recipe})`, "removed"), repository, issues);
+  expect(issues).toContain(`catalogue code missing recipe link: ${code}`);
+  const stale: string[] = [];
+  assertCatalogueRecipeReachability(rendered + "[`unknown`](../how-to/extend/catalogue-extension.md#new-vertical)", repository, stale);
+  expect(stale).toContain("catalogue recipe link has no matching owner code: `unknown`");
 });

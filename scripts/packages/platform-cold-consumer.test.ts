@@ -46,6 +46,7 @@ import {
   proveResendConsumer,
   proveMarketingSyncConsumer,
   proveCatalogCompositionConsumer,
+  proveCatalogConformanceConsumer,
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
 import { proveSelfServiceConsumer } from "./platform-cold-consumer.ts";
@@ -540,6 +541,9 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it("guide_skeleton_pack_passes_checker", () => {
+  proveCatalogConformanceConsumer(pristinePackedA1Fixture(), join(root, "node_modules/typescript/bin/tsc"));
+});
 it.each([
   ["missing", "CATALOG_MIGRATIONS.pop();"],
   ["extra", "CATALOG_MIGRATIONS.push({ ...CATALOG_MIGRATIONS.at(-1), position: Number.MAX_SAFE_INTEGER });"],

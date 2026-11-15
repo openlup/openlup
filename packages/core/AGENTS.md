@@ -131,3 +131,5 @@ OpenLup monorepo, root `AGENTS.md` governs.
 Installed package bytes remain the engine: do not autonomously patch, fork,
 vendor, monkey-patch, shadow resolution or restore a copied engine. Import
 only declared exports, never private source or `dist` paths.
+
+Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).
