@@ -16,6 +16,26 @@ and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0
 [complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
 including the native dispatch outcome routines, before selecting native commands.
 
+## Compose an installed store end to end
+
+Install matching package versions and the complete selected PostgreSQL catalogue
+as described [above](#choose-the-imports), then compose these steps in your host:
+
+1. Select one neutral provider port and its declared capabilities using the
+   [preparation and dispatch binding](#provide-preparation-and-dispatch-ports).
+2. [Certify the adapter offline](#certify-a-fulfilment-adapter-offline) in full mode.
+3. [Create the local paid-order obligation](#compose-local-commerce-operations),
+   then explicitly enable [dispatch](#provide-preparation-and-dispatch-ports).
+4. Bind [authenticated intake and scheduled reconciliation](#bind-provider-intake-and-reconciliation).
+5. Record [actual arrival](#record-handoff-and-arrival-accurately) and bind
+   [subscription alignment](#bind-replacement-and-customer-alignment).
+6. Use the authorized [contact correction](#correct-a-delivery-contact) path when
+   an eligible order needs a corrected delivery contact.
+
+The installed-package PostgreSQL witness exercises this rail with a scripted
+provider. External provider activation and hosted qualification remain separate;
+check the [execution limits](../../reference/limits.md#fulfillment-execution-limits).
+
 ## Select shipping rules
 
 Call `resolveShipping` from `@openlup/core/shipping` with your cart, rules and
