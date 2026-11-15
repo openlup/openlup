@@ -5268,6 +5268,26 @@
             "sha256": "e61f9848d76f6af70eab9c6145016c0bb1f3dc08085cedba0bbdcf4ec3ccf84d"
           }
         ]
+      },
+      {
+        "row": "catalogue-s2",
+        "path": "db/platform/migrations/20261122110000_catalog_quantities.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_net_content_backfill_batch(integer)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_skus\n  ADD COLUMN net_content_dimension text,\n  ADD COLUMN net_content_unscaled numeric(40,0),\n  ADD COLUMN net_content_scale smallint,\n  ADD COLUMN net_content_unit text,\n  ADD COLUMN gross_mass_dimension text,\n  ADD COLUMN gross_mass_unscaled numeric(40,0),\n  ADD COLUMN gross_mass_scale smallint,\n  ADD COLUMN gross_mass_unit text;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_net_content_check CHECK (\n  (net_content_dimension IS NULL AND net_content_unscaled IS NULL AND net_content_scale IS NULL AND net_content_unit IS NULL)\n  OR (net_content_dimension IS NOT NULL AND net_content_unscaled IS NOT NULL AND net_content_scale IS NOT NULL AND net_content_unit IS NOT NULL\n    AND net_content_dimension IN ('mass', 'volume', 'count') AND net_content_unscaled BETWEEN 1 AND 9999999999999999999999999999999999999999\n    AND net_content_scale BETWEEN 0 AND 12)) NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_net_content_check;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_gross_mass_check CHECK (\n  (gross_mass_dimension IS NULL AND gross_mass_unscaled IS NULL AND gross_mass_scale IS NULL AND gross_mass_unit IS NULL)\n  OR (gross_mass_dimension IS NOT NULL AND gross_mass_unscaled IS NOT NULL AND gross_mass_scale IS NOT NULL AND gross_mass_unit IS NOT NULL\n    AND gross_mass_dimension = 'mass' AND gross_mass_unscaled BETWEEN 1 AND 9999999999999999999999999999999999999999\n    AND gross_mass_scale BETWEEN 0 AND 12)) NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_gross_mass_check;"
+        ]
       }
     ]
   },
@@ -7311,6 +7331,17 @@
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": null,
           "afterSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122110000_catalog_quantities.sql",
+      "sha256": "7c347d2449ca970a6edd4ec77a03892680a901450d817f243456b1b08840573a",
+      "functions": [
+        {
+          "signature": "public.catalog_net_content_backfill_batch(integer)",
+          "beforeSha256": null,
+          "afterSha256": "150043785dd39be4704c01a9bc867615314d35a2ddd87257177e7582c67fd2c9"
         }
       ]
     }

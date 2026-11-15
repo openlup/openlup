@@ -649,7 +649,11 @@ export async function mapManagedRetainedBusiness(input: {
     // The managed source may predate native type bindings; supplied values stay authoritative.
     projected.catalog_products!.push(project("catalog_products", { type_key: null, type_version: null, ...row }));
   }
-  for (const row of skus) projected.catalog_skus!.push(project("catalog_skus", row));
+  // Older managed sources have no quantity groups; never replace supplied values.
+  for (const row of skus) projected.catalog_skus!.push(project("catalog_skus", {
+    net_content_dimension: null, net_content_unscaled: null, net_content_scale: null, net_content_unit: null,
+    gross_mass_dimension: null, gross_mass_unscaled: null, gross_mass_scale: null, gross_mass_unit: null, ...row,
+  }));
   for (const row of priceLists) projected.price_lists!.push(project("price_lists", row));
   for (const row of priceEntries) projected.price_entries!.push(project("price_entries", row));
   const skuById = byId(skus), subscriptionById = byId(subscriptions);

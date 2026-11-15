@@ -56,3 +56,4 @@ export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
 export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
 export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
+export { backfillCatalogNetContent } from "./backfillCatalogNetContent.js";

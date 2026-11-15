@@ -297,6 +297,29 @@ needs separately authored tables, service/operator read policies and a restricte
 install principal. Native owner-only invoker semantics can be expressed by
 managed grants and RLS. No food-column relaxation is part of this forward.
 
+Live SKU net-content and gross-mass columns are AUTHORITATIVE catalogue data,
+carried in the existing `catalog_skus` capture entry and restore position. They
+add no relation, customer foreign key, personal data or absorption duty. The
+`transfer_round_trip_matrix` compares complete raw PostgreSQL rows, including
+40-digit coefficients and scales, across capture and restore. Managed-to-native
+retained transfer initializes only absent quantity fields to NULL, preserves
+supplied fields and keeps the existing missing-column and exact-number refusals.
+
+The native quantity forward adds and validates nullable group CHECKs without
+changing `net_weight_g`. Old readers keep reading grams; V2 readers, the checked
+compatibility projection and nullability changes belong to the later reader
+stage. After migration, an explicit migration-owner call to
+`backfillCatalogNetContent(installExecutor, {batchSize})` drains bounded,
+ascending-ID batches. Only positive legacy grams with absent content convert;
+zero stays unknown, existing quantities and gross mass are never overwritten.
+No install hook runs automatically, and runtime has no backfill EXECUTE. See the
+[package catalogue owner](../../packages/platform/README.md#catalog) for the driver
+and the [catalogue lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order).
+The managed rail does not supply this feature. Its twin needs the same nullable
+SKU groups under the managed table's grants and RLS, with an administrative
+install principal and no runtime EXECUTE. Existing mandatory food-related
+columns and their later relaxation remain separate from this expansion.
+
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
 transports data into an already qualified canonical target. It does not restore
 managed internals, source roles/grants or `platform_schema_migrations`. Source

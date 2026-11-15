@@ -10,6 +10,10 @@ in the source repository.
 
 ## [Unreleased]
 
+Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
+
+Migration: apply the complete native catalogue through `20261122110000_catalog_quantities.sql`, then call `backfillCatalogNetContent` with the install executor and batch size. Old grams and readers stay unchanged; the managed rail does not supply this feature.
+
 Add native catalogue definition installation, nullable product bindings and an explicit registry probe/write guard.
 
 Migration: install the complete native chain through `20261122100000_catalog_definition_binding.sql`; supply a migration-owner executor explicitly. Existing products stay NULL-bound legacy. No host hook, publication or activation is added; the managed rail does not supply this feature.
