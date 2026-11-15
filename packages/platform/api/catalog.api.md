@@ -987,7 +987,20 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
 ```ts
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 /** Labels and callbacks are never definition identity. Runtime schemas bound the metadata. */
+export declare function catalogDefinitionJson(definition: CatalogProductTypeInput): string;
+/** The same canonical metadata bytes are used by installation and registry checks. */
 export declare function catalogDefinitionDigest(definition: CatalogProductTypeInput): string;
+```
+## dist/catalog/catalogDefinitionReadiness.d.ts
+
+```ts
+import type { CatalogRegistryObservation } from "@openlup/core/readiness";
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+/** Read-only, uncached live-binding probe. The application owns observer permissions and database identity. */
+export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string): Promise<CatalogRegistryObservation>;
+/** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called. */
+export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry): <T>(write: () => Promise<T>) => Promise<T>;
 ```
 ## dist/catalog/catalogDraftStore.d.ts
 
@@ -1691,6 +1704,21 @@ export declare function defineCatalogPack<const P extends CatalogPackInput>(pack
 export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): (drafts: readonly CatalogPackDraft<P>[]) => readonly CatalogPackDraft<P>[];
 export {};
 ```
+## dist/catalog/contracts/definitionInstall.d.ts
+
+```ts
+import type { CatalogProductTypeRef } from "./productTypes.js";
+/** Durable install evidence; installation does not publish catalogue data. */
+export interface CatalogDefinitionInstallReceipt {
+    readonly packId: string;
+    readonly packVersion: number;
+    readonly manifestDigest: string;
+    readonly installedAt: string;
+    readonly types: readonly (CatalogProductTypeRef & {
+        readonly definitionDigest: string;
+    })[];
+}
+```
 ## dist/catalog/contracts/draft.d.ts
 
 ```ts
@@ -1878,6 +1906,7 @@ export * from "./attributes.js";
 export * from "./catalogConformance.js";
 export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
+export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -2826,6 +2855,18 @@ export { catalogProductTypeIssues } from "./productTypeIssues.js";
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
+export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
+export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
+```
+## dist/catalog/installCatalogDefinitions.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogPackInput } from "./contracts/catalogPack.js";
+import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
+/** Supply the native migration-owner executor explicitly. No runtime binding or hook is created. */
+export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -3473,6 +3514,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20260908100000_catalog_draft_foundation.sql";
     readonly position: 61;
     readonly sha256: "ac0d614cdb2874df8fbdbbbda4f9455986ef95241fe1334b0b54a1fa6478ab2e";
+    readonly url: URL;
+}, {
+    readonly id: "20261122100000_catalog_definition_binding";
+    readonly catalogPath: "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
+    readonly position: 142;
+    readonly sha256: "3236260783b90d8210d324d656bf5b9406ec9deeb59e943f0bda3f3aa337b6cb";
     readonly url: URL;
 }];
 ```

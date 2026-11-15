@@ -1,7 +1,7 @@
 import type { OutboxHandlerDescriptor } from "../outbox/index.js";
 import type { EventVocabularyEntry } from "../outbox/vocabulary.js";
 /** @beta */
-export const READINESS_CODES = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING"] as const;
+export const READINESS_CODES = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING", "registry_missing_referenced_version"] as const;
 /** @beta */
 export type ReadinessCode = typeof READINESS_CODES[number];
 /** @beta */
@@ -42,6 +42,8 @@ export interface ReadinessInput {
   loadedPackages: readonly LoadedPackage[]; contributions: readonly Contribution[];
   vocabulary: readonly EventVocabularyEntry[]; exemptions: readonly EventExemption[];
   bindings: { ports: Readonly<Record<string, unknown>>; triggers: Readonly<Record<string, unknown>>; routes: Readonly<Record<string, unknown>>; env: Readonly<Record<string, string | undefined>> };
+  /** Optional observed catalogue bindings; absence keeps existing readiness behaviour. */
+  catalogRegistry?: CatalogRegistryObservation;
   schemaProbe: SchemaProbePort; probeTimeoutMs?: number;
 }
 /** @beta A bounded catalog observation, not proof of SQL bodies, ACL or recovery. */
@@ -59,4 +61,10 @@ export interface SqlExecutor {
 export interface ReadinessReport {
   state: "ready" | "unsatisfied" | "unknown";
   candidate: CandidateIdentity; loadedPackages: readonly LoadedPackage[]; issues: readonly ReadinessIssue[];
+}
+
+/** @beta Read-only live product type references and the composed registry's matching digests. */
+export interface CatalogRegistryObservation {
+  database: string;
+  referencedVersions: readonly { key: string; version: number; definitionDigest: string; registryDigest: string | null }[];
 }

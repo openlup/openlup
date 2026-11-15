@@ -272,6 +272,24 @@ unqualified by this local witness.
 
 ## Compatible data transfer
 
+Catalogue definitions, definition-install receipts and tax-class keys are
+AUTHORITATIVE catalogue relations in the native connected-store profile. Restore
+definitions before products so nullable type bindings satisfy their composite
+foreign key; preserve definition bytes, digests, receipts and retired key state.
+These relations contain pack metadata and no customer foreign keys, so they need
+no client-absorption policy row or personal-data erasure contributor. Restore
+inserts immutable versions on a pristine target; normal UPDATE and DELETE remain
+refused by the definition trigger. See the
+[package catalogue owner](../../packages/platform/README.md#catalog) for explicit
+install executors, readiness observations and the unbound write guard.
+
+The native definition-binding forward adds no seed or backfill. Old readers
+ignore the nullable product columns, and NULL continues to mean legacy, not
+mapped. The managed rail does not supply this feature; its future equivalent
+needs separately authored tables, service/operator read policies and a restricted
+install principal. Native owner-only invoker semantics can be expressed by
+managed grants and RLS. No food-column relaxation is part of this forward.
+
 The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
 transports data into an already qualified canonical target. It does not restore
 managed internals, source roles/grants or `platform_schema_migrations`. Source

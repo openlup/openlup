@@ -52,3 +52,6 @@ export { catalogProductTypeIssues } from "./productTypeIssues.js";
 export { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 export { catalogPackManifest } from "./catalogPackManifest.js";
 export type { CatalogPackManifest } from "./catalogPackManifest.js";
+export { installCatalogDefinitions } from "./installCatalogDefinitions.js";
+export { observeCatalogDefinitionReadiness, createCatalogDefinitionWriteGuard } from "./catalogDefinitionReadiness.js";
+export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";

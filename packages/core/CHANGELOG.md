@@ -10,6 +10,10 @@ in the source repository.
 
 ## [Unreleased]
 
+Add optional inert catalogue registry observations to readiness. Missing referenced versions or unequal digests refuse with `registry_missing_referenced_version`.
+
+Migration: additive readiness observation; existing inputs are unchanged. Observation and host wiring remain application-owned.
+
 Add browser-safe exact catalogue quantities, canonical units, comparison and declared-unit conversion using decimal strings and BigInt. Inexact canonical values refuse without rounding.
 
 Migration: additive exports on the existing catalog entry. Existing identifier schemas are unchanged. No database, subscription or capability change; target package set 0.44.0.
