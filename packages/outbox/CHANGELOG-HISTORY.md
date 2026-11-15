@@ -4,6 +4,14 @@ Status: historical record, 2026-11-11.
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.40.0]
+
+- Publishable on the npm `latest` dist-tag as `0.40.0`, from tag
+  `openlup-outbox-v0.40.0`.
+
+- Stop shipping `AGENT_CONTEXT.md`. Use core's `openlup-context` and the reader guide shipped in `@openlup/core`.
+
+Skip payload compaction while an owner pins `metadata.retainPayload=true`, retaining unresolved downstream evidence without blocking unrelated terminal pruning. Removing the pin remains the obligation owner's responsibility.
 ## [0.39.0]
 
 - Publishable on the npm `latest` dist-tag as `0.39.0`, from tag
