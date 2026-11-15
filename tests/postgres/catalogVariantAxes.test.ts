@@ -110,6 +110,9 @@ it("catalog_digest_collision_never_merges_skus", async () => {
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect((await owner.query("SELECT id,option_values,canonical_option_bytes FROM public.catalog_skus WHERE product_id=$1", [id])).rows)
     .toEqual([{ id: first, option_values: options(false), canonical_option_bytes: a.canonicalOptionBytes }]);
+  const stored = (await owner.query("SELECT canonical_option_bytes,combination_digest FROM public.catalog_skus WHERE id=$1", [first])).rows[0];
+  expect(classifyCatalogCombinationConflictV2({ version: 2, canonicalOptionBytes: stored.canonical_option_bytes,
+    combinationDigest: stored.combination_digest }, b)).toBe("collision");
 });
 
 it("catalog_publish_refuses_duplicate_combination", async () => {
@@ -117,10 +120,10 @@ it("catalog_publish_refuses_duplicate_combination", async () => {
   const id = await product(), a = await owner.connect(), b = await owner.connect(), evidence = identity(false);
   try {
     expect((await a.query("SELECT pg_backend_pid() AS pid")).rows[0].pid).not.toBe((await b.query("SELECT pg_backend_pid() AS pid")).rows[0].pid);
+    await Promise.all([a.query("BEGIN"), b.query("BEGIN")]);
+    await Promise.all([sku(a, id, null, "draft", null), sku(b, id, null, "draft", null)]);
     const attempts = [a, b].map(async db => {
-      await db.query("BEGIN");
       try {
-        await sku(db, id, null, "draft", null);
         const result = await sku(db, id, evidence);
         await db.query("COMMIT");
         return result;
