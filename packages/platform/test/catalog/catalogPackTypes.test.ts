@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { defineCatalogPack, draftsFor, type CatalogPackInput, type CatalogTypeDefinitionV2, type CatalogQuantity as PlatformQuantity } from "../../src/catalog/contracts/index.js";
 import type { CatalogQuantity } from "@openlup/core/catalog";
-import type { AttributeDefinition, CatalogDraftPayload, CatalogDraftCommand } from "../../src/catalog/contracts/index.js";
+import type { AttributeDefinition, CatalogDraftPayload, CatalogDraftCommand, CatalogPackDraft } from "../../src/catalog/contracts/index.js";
 import { catalogDraftPayloadSchema } from "../../src/catalog/draftSchemas.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
@@ -17,7 +17,7 @@ const pack = defineCatalogPack({
   id: "example:pack", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false },
   taxClasses: [{ key: "example:standard" }], subscriptionProfiles: [{ key: "example:regular", version: 1 }],
   types: [{
-    key: "example:item", version: 1, units: [{ code: "openlup:piece", dimension: "count", integral: true }],
+    key: "example:item", version: 1, units: [{ code: "openlup:piece", dimension: "count", integral: true }, { code: "example:gram", dimension: "mass", integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } }],
     netContentUnits: ["openlup:piece"], dimensions: [{ key: "finish", kind: "choice", values: ["matte", "gloss"] }, { key: "size", kind: "choice", values: ["compact", "large"] }], attributes: [referencedAttribute],
     validateContent: (_content: unknown) => [], taxClass: "example:standard", subscriptionProfileRef: { key: "example:regular", version: 1 },
   }, {
@@ -37,6 +37,21 @@ it("define_catalog_pack_types_reject_undeclared_keys", () => {
   expect(draftsFor(pack)([{ schemaVersion: 1, product: { ...product, dimensions: ["finish", "size"] }, skus: [{ ...sku, options: { ...sku.options, size: { kind: "choice", value: "compact" } } }] }])).toHaveLength(1);
   expect(pack.types[0].attributes[0].required).toBe(true);
   expect(defineCatalogPack({ ...pack, types: [{ ...pack.types[0], attributes: [quantityListAttribute] }] }).types[0].attributes[0].valueType.item.units).toEqual(["openlup:piece"]);
+  const explicit = draftsFor(pack)([{ schemaVersion: 1, product, skus: [{
+    id: "20000000-0000-4000-8000-000000000001", productId: "10000000-0000-4000-8000-000000000001", code: "EXPLICIT",
+    options: { finish: { kind: "choice", value: "matte" } },
+    netContent: { dimension: "count", unscaled: "1", scale: 0, unit: "openlup:piece" },
+    grossMass: { dimension: "mass", unscaled: "100", scale: 0, unit: "example:gram" },
+    identifiers: [{ scheme: "example:identifier", issuer: "example", value: "item-1", packagingLevel: "unit" }],
+    assetRefs: ["example:asset"],
+  }] }]);
+  const wire = catalogDraftPayloadSchema.parse(explicit[0]);
+  expect(validateCatalogDraft(wire, createCatalogProductTypeRegistry(pack.types)).valid).toBe(true);
+  const annotated: CatalogPackDraft<typeof pack, "finish"> = { schemaVersion: 1, product, skus: [{
+    id: "20000000-0000-4000-8000-000000000001", productId: "10000000-0000-4000-8000-000000000001",
+    options: { finish: { kind: "choice", value: "matte" } },
+  }] };
+  expect(annotated.product.dimensions).toEqual(["finish"]);
   const compileOnly = (): void => {
     // @ts-expect-error a zero-dimension type has closed empty options.
     draftsFor(pack)([{ schemaVersion: 1, product: plain, skus: [{ ...sku, options: { undeclared: { kind: "choice", value: "invalid" } } }] }]);
@@ -54,8 +69,8 @@ it("define_catalog_pack_types_reject_undeclared_keys", () => {
     draftsFor(pack)([{ schemaVersion: 1, product, skus: [{ ...sku, options: { size: { kind: "choice", value: "small" } } }] }]);
     // @ts-expect-error Choice values are inferred literals.
     draftsFor(pack)([{ schemaVersion: 1, product, skus: [{ ...sku, options: { finish: { kind: "choice", value: "missing" } } }] }]);
-    // @ts-expect-error Unit belongs to another type.
-    draftsFor(pack)([{ schemaVersion: 1, product, skus: [{ ...sku, netContent: { dimension: "mass", unscaled: "1", scale: 0, unit: "openlup:g" } }] }]);
+    // @ts-expect-error Net content uses the admitted piece unit, not another type's gram unit.
+    draftsFor(pack)([{ schemaVersion: 1, product, skus: [{ id: "20000000-0000-4000-8000-000000000001", productId: "10000000-0000-4000-8000-000000000001", code: "EXPLICIT", options: { finish: { kind: "choice", value: "matte" } }, netContent: { dimension: "count", unscaled: "1", scale: 0, unit: "openlup:g" }, grossMass: { dimension: "mass", unscaled: "100", scale: 0, unit: "example:gram" }, identifiers: [{ scheme: "example:identifier", issuer: "example", value: "item-1", packagingLevel: "unit" }], assetRefs: ["example:asset"] }] }]);
     // @ts-expect-error Unknown product dimension.
     draftsFor(pack)([{ schemaVersion: 1, product: { ...product, dimensions: ["missing"] }, skus: [] }]);
     const widened: CatalogPackInput = pack;
