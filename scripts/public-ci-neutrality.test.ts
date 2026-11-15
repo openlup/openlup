@@ -510,6 +510,28 @@ describe("tree-wide neutrality ratchet", () => {
     }
   });
 
+  it.each([true, false])("counts escaped pipes within roadmap Proof scope cells (closing pipe: %s)", closingPipe => {
+    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
+    const row = contents.split("\n").find(line => line.startsWith("| portable-postgresql |"))!;
+    const prefix = row.split("|").slice(0, 5).join("|");
+    const atLimit = `${prefix}| fact\\|detail ${Array(39).fill("proof").join(" ")}${closingPipe ? " |" : ""}`;
+    expect(() => validateRoadmapProviderMatrix(contents.replace(row, atLimit))).not.toThrow();
+    const overlong = `${prefix}| fact\\|detail ${Array(40).fill("proof").join(" ")}${closingPipe ? " |" : ""}`;
+    expect(() => validateRoadmapProviderMatrix(contents.replace(row, overlong)))
+      .toThrow('ROADMAP.md provider "portable-postgresql": Proof scope has 41 words');
+  });
+
+  it("counts the final word of a roadmap Proof scope without a closing pipe", () => {
+    const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
+    const row = contents.split("\n").find(line => line.startsWith("| portable-postgresql |"))!;
+    const prefix = row.split("|").slice(0, 5).join("|");
+    const atLimit = `${prefix}| ${Array(39).fill("proof").join(" ")} a`;
+    expect(() => validateRoadmapProviderMatrix(contents.replace(row, atLimit))).not.toThrow();
+    const overlong = `${prefix}| ${Array(40).fill("proof").join(" ")} a`;
+    expect(() => validateRoadmapProviderMatrix(contents.replace(row, overlong)))
+      .toThrow('ROADMAP.md provider "portable-postgresql": Proof scope has 41 words');
+  });
+
   it("refuses an overlong roadmap Proof scope through the neutrality CLI even when the base is identical", () => {
     const contents = readFileSync(join(sourceRoot, "ROADMAP.md"), "utf8");
     const row = contents.split("\n").find(line => line.startsWith("| portable-postgresql |"))!;

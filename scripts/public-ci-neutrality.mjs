@@ -499,7 +499,8 @@ export function validateRoadmapProviderMatrix(contents) {
   let proofScopeColumn = -1;
   for (const line of contents.split(/\r?\n/)) {
     if (!line.trim().startsWith("|")) { proofScopeColumn = -1; continue; }
-    const cells = line.trim().slice(1, -1).split("|").map((cell) => cell.trim());
+    const cells = line.trim().slice(1).split(/(?<!\\)\|/).map((cell) => cell.trim());
+    if (cells.at(-1) === "") cells.pop();
     if (cells[0] === "ID" && cells.includes("Proof scope")) {
       proofScopeColumn = cells.indexOf("Proof scope");
       continue;
