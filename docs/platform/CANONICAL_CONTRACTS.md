@@ -1760,13 +1760,18 @@ earlier: catalogue keys come after commerce keys, never before.
 in this order, and several rows of one kind in ascending key order:
 
 1. subscription;
-2. renewal operation, then cycle, then retry obligation or dunning case;
-3. order, a source order before its replacement, an order before its parcels;
-4. settlement intent, then payment attempts, provider state, evidence, recovery
-   tokens and saved payment methods;
+2. renewal operation, with its cycle, retry obligation and dunning case rows;
+3. order and its parcels, a source order before its replacement;
+4. settlement intent, with the payment rows that follow it (attempts, provider
+   state, evidence, recovery tokens, saved payment methods);
 5. promotion definition heads;
 6. promotion codes;
 7. promotion claims and benefit uses.
+
+Inside steps 2, 3 and 4 the owning module's existing order applies; for example
+the fulfilment rail locks a parcel before its order. Catalogue work locks only
+subscriptions, renewal operations, orders, settlement intents and promotion rows
+of these steps.
 
 Steps 1 to 4 are the native payment aggregate
 (`payment_provider_lock_aggregate`); steps 3, 5, 6 and 7 are the existing order
@@ -1775,7 +1780,8 @@ Steps 1 to 4 are the native payment aggregate
 **Catalogue domain order.** Definitions and tax-class keys; then catalogue
 lineage (publication head, product, SKU and its revisions); then merchandising
 (categories, collections); then price context (head before entries). Rows of
-one kind are locked in ascending key order.
+one kind are locked in ascending key order. A **rank** is one numbered commerce
+step or one kind in this catalogue list.
 
 **Rules.**
 
@@ -1795,12 +1801,13 @@ one kind are locked in ascending key order.
   reference by foreign key are never locked `FOR UPDATE`, never deleted, and never
   have a uniquely indexed column changed. Writers update other columns (`FOR NO
   KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` then
-  never waits for a catalogue writer, so foreign-key checks are exempt from R2's
-  ordering.
+  never waits for a catalogue writer, so foreign-key checks are exempt from the
+  ordering in R2 and R4.
 - **R4. Advisory locks take the rank of the rows they guard**, with shared and
   exclusive modes as for rows. A transaction that takes both an advisory guard
   and row locks of the same rank takes the guard first, before any row lock of
-  that rank. Overlap guards run under `READ COMMITTED`.
+  that rank; several guards of one rank are taken in ascending guarded-key order.
+  Overlap guards run under `READ COMMITTED`.
 - **R5. Store transfer is a separate regime.** Restore takes table locks on a
   fresh target with no concurrent writers; it is outside this order.
 - **R6. A row that adds a mixed transaction proves it** with independent
@@ -1812,7 +1819,8 @@ one kind are locked in ascending key order.
 acquire commerce keys out of the order above. They belong to their owning modules
 and are not changed by catalogue work unless a catalogue change would close a new
 cycle with one of them; that change then repairs the caller with a
-characterization witness.
+characterization witness. The list covers inversions between the numbered
+steps, not each module's order inside a step.
 
 - `commerce_record_subscription_renewal_outcome` (success) locks the renewal
   operation before the subscription.
