@@ -1233,6 +1233,16 @@ Checkout admission, claims, finalization,
 promotion implementation, stores, SQL, routes and activation remain outside
 this API.
 
+Native policy revisions expose optional `closedFromOpen` evidence after their
+one admitted NULL-to-finite close. Digest verification retains the original
+NULL end; selection and returned `effectiveTo` use the shortened interval.
+Install the complete catalogue through
+`20261122140000_subscription_price_policy_close_digest` before using the updated
+native readers. Unverifiable pre-forward closed tuples refuse with
+`subscription_price_policy_original_tuple_unverified`; historical digests are
+never replaced. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
+owns compatibility. This adds no scheduler, closing command or activation.
+
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
 token, quote, snapshot, handler, offer, cache and readiness assertions. Currency
 fixtures use synthetic identifiers while preserving the same arithmetic and

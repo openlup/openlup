@@ -12,7 +12,7 @@ interface PriceRow {
 interface PolicyRow {
   id: string; revision_no: number; price_list_id: string; region_code: string;
   currency: string; channel: string; discount_bps: number; rounding_quantum_minor: number;
-  rounding_rule: string; digest: string; effective_from: Instant; effective_to: Instant | null;
+  rounding_rule: string; digest: string; closed_from_open: boolean; effective_from: Instant; effective_to: Instant | null;
 }
 const LISTS_SQL = `SELECT id, valid_from, valid_to FROM public.price_lists
   WHERE region_code = $1::text AND currency = $2::text AND status = 'active' ORDER BY id`;
@@ -21,7 +21,7 @@ const ENTRIES_SQL = `SELECT id, price_list_id, variant_id, mode, min_qty, unit_p
   WHERE variant_id = ANY($1::uuid[]) AND price_list_id = $2::uuid AND mode = $3::text
   AND min_qty = 1 AND active = true ORDER BY id`;
 const POLICIES_SQL = `SELECT id, revision_no, price_list_id, region_code, currency, channel,
-  discount_bps, rounding_quantum_minor, rounding_rule, digest, effective_from, effective_to
+  discount_bps, rounding_quantum_minor, rounding_rule, digest, effective_from, effective_to, closed_from_open
   FROM public.subscription_price_policy_revisions
   WHERE price_list_id = $1::uuid AND region_code = $2::text AND currency = $3::text
   AND channel = $4::text ORDER BY revision_no, id`;
@@ -58,6 +58,7 @@ export function createPostgresCommercePriceAuthorityReadPort(executor: PgQueryEx
         regionCode: row.region_code, currency: row.currency, channel: row.channel,
         discountBps: row.discount_bps, roundingQuantumMinor: row.rounding_quantum_minor,
         roundingRule: row.rounding_rule, digest: row.digest,
+        ...(row.closed_from_open ? { closedFromOpen: true } : {}),
         effectiveFrom: iso(row.effective_from), effectiveTo: row.effective_to === null ? null : iso(row.effective_to),
       }, row.effective_from, row.effective_to));
     },
