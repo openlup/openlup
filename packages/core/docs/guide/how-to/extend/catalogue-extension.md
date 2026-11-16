@@ -143,9 +143,13 @@ New attribute kinds/dimensions are upstream work. Usual codes:
 The combination owner also reports `axis_not_installed`, `duplicate_axis`,
 `option_not_selected`, `option_missing`, `option_invalid`,
 `sku_identity_change_requires_new_sku`, `duplicate_combination`,
-`combination_digest_collision` and `duplicate_sku_id`. Use stable enum IDs and
+`combination_identity_integrity_failed` and `duplicate_sku_id`. Use stable enum IDs and
 complete options; a changed canonical identity requires a new SKU. Compare bytes
 on a digest conflict and refuse both duplicates and collisions without merging.
+Inconsistent authoritative bytes/digests and digest collisions are integrity
+failures: investigate them without changing retained identities. The earlier
+`combination_digest_collision` code remains in the exported union and guidance
+record for compatibility; the owner now emits `combination_identity_integrity_failed`.
 `sku_payload_limit` bounds one incoming payload at 10,000 SKUs, separately from
 configured retained product capacity (default 50,000), reported by
 `product_capacity_exceeded` or `product_capacity_invalid`. Persisted incremental

@@ -3522,6 +3522,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/catalogueMoneyGolden.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/consumerTooling.test.ts",
       "class": "public-output"
     },
@@ -3531,6 +3535,10 @@
     },
     {
       "path": "packages/core/test/documentationContract.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fixtures/catalogue-money.v1.json",
       "class": "public-output"
     },
     {
@@ -10554,6 +10562,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/catalogueMoneyGolden.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/invoicing/continuity.test.ts",
       "class": "public-output"
     },
@@ -11087,6 +11099,10 @@
     },
     {
       "path": "packages/platform/test/pricing/catalogFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/catalogueMoneyGolden.test.ts",
       "class": "public-output"
     },
     {
