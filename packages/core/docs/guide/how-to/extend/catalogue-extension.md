@@ -38,7 +38,10 @@ evidence unavailable, 64 invalid invocation or JSON syntax, 74 filesystem or
 unexpected operation failure. Only explicitly allowlisted, deliberate owner input
 errors become exit 1 at the input path, retaining their stable codes. Other owner
 exceptions propagate unchanged: the direct promise rejects and the CLI returns
-74 with raw errors withheld. JSON syntax still returns 64. Closed primitive
+74 with raw errors withheld. Default checker failure is 74; only an error tagged
+at its `JSON.parse` site gives 64, and only owner input-denial codes give 1.
+Integrity failures, including `combination_identity_integrity_failed` and legacy
+`combination_digest_collision`, give 74. Closed primitive
 admission prevents malformed quantity types from reaching owner coercion.
 Violations take precedence over unavailable evidence.
 JSON stdout is one `formatVersion: 1` object. Findings retain exact owner codes

@@ -94,7 +94,11 @@ try {
     const text = await fs.readFile(resolve(values.packs), "utf8");
     let report;
     try { report = await runCatalogExtensionConformance(text); }
-    catch (error) { if (error instanceof SyntaxError) validatingInput = true; throw error; }
+    // Checker failures default to 74: only the JSON.parse tag gives 64; owner input codes give 1; integrity failures give 74.
+    catch (error) {
+      if (error instanceof SyntaxError && error[Symbol.for("openlup.catalogue.json.parse")] === true) validatingInput = true;
+      throw error;
+    }
     const recheck = "npx --no -- openlup " + process.argv.slice(2).map(value => /^[A-Za-z0-9_./=-]+$/u.test(value) ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
     report.findings = report.findings.map(finding => ({ ...finding, recheck }));
     emit({ command: "catalogue check", ...report }, `catalogue check: ${report.state}\n${report.boundary}\n${report.findings.map(renderFinding).join("\n")}`.trimEnd());

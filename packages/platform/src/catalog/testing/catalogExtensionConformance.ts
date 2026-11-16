@@ -23,7 +23,7 @@ const OWNER_INPUT_CODES = new Set([
   "quantity_overflow", "quantity_not_exactly_representable",
   "axis_not_installed", "duplicate_axis", "option_not_selected", "option_missing", "option_invalid",
   "unit_factor_missing", "sku_identity_change_requires_new_sku", "duplicate_combination",
-  "combination_digest_collision", "duplicate_sku_id", "sku_payload_limit", "product_capacity_exceeded", "product_capacity_invalid",
+  "duplicate_sku_id", "sku_payload_limit", "product_capacity_exceeded", "product_capacity_invalid",
   "draft_json_invalid", "draft_json_depth", "draft_payload_too_large", "invalid_catalog_type_definition",
 ]);
 
@@ -43,6 +43,7 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
   async function owner<T>(path: string, work: () => T | Promise<T>): Promise<T | undefined> {
     try { return await work(); }
     catch (error) {
+      if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
       add(named, `${path}${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
@@ -65,7 +66,12 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
     return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0, boundary, findings };
   }
   if (typeof jsonText !== "string") { add("conformance_subject_invalid", ""); return finish(); }
-  const parsed: unknown = JSON.parse(jsonText);
+  let parsed: unknown;
+  try { parsed = JSON.parse(jsonText); }
+  catch (error) {
+    if (error instanceof SyntaxError) Object.defineProperty(error, Symbol.for("openlup.catalogue.json.parse"), { value: true });
+    throw error;
+  }
   if (!object(parsed) || !closed(parsed, ["packs", "requiredChecks", "recheck"])
     || !Array.isArray(parsed.packs) || !parsed.packs.length
     || (Object.hasOwn(parsed, "recheck") && typeof parsed.recheck !== "string")

@@ -1253,7 +1253,9 @@ owners. Content validation is unavailable offline. Refusal records check
 observations, and retained options do not prove stored identities. Quantity
 fixtures admit closed primitive fields before handoff. Only allowlisted owner
 input errors become exit-1 findings at the input path. Other exceptions propagate
-unchanged: the direct promise rejects and the CLI returns 74 without raw errors. PASS grants no installation,
+unchanged: the direct promise rejects and the CLI returns 74 without raw errors.
+The default is 74; only the tagged `JSON.parse` site gives 64. Integrity failures
+are excluded from the input allowlist and give 74. PASS grants no installation,
 migration, publication or activation authority.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to

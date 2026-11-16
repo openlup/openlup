@@ -17,4 +17,6 @@ Primitive quantity fields are admitted before owner handoff. Only deliberate
 owner input errors in the checker's explicit code allowlist become input refusals
 (exit 1 at the input path). All other owner exceptions propagate unchanged;
 the direct promise rejects and the CLI returns 74 with raw errors withheld.
-Syntax stays 64. Shared owners, API signatures, SQL and release caps are unchanged.
+Default failure is 74; only the tagged `JSON.parse` site gives 64. Integrity codes
+are never input-denial codes and propagate to CLI 74. API signatures, SQL and
+release caps are unchanged by this checker repair.

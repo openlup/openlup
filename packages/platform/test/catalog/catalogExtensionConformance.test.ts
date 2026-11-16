@@ -223,7 +223,7 @@ describe("offline catalogue conformance", () => {
     const bin = fileURLToPath(new URL("../../src/lifecycle/openlup.mjs", import.meta.url)), file = join(folder, "catalogue.json");
     const call = (args: string[], nodeArgs: string[] = []) => {
       const result = spawnSync(process.execPath, [...nodeArgs, bin, ...args, "--json"], { encoding: "utf8" });
-      expect(result.stderr).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED/u);
+      expect(result.stderr).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED|SENSITIVE_HASH_SYNTAX|draft_json_invalid|combination_identity_integrity_failed/u);
       const report = JSON.parse(result.stdout); expect(report.formatVersion).toBe(1); expect(report.exitCode).toBe(result.status);
       expect(result.stdout.trim().split("\n")).toHaveLength(1); return report;
     };
@@ -305,6 +305,44 @@ describe("offline catalogue conformance", () => {
       expect(operational.exitCode).toBe(74);
       expect(operational.findings).toEqual([expect.objectContaining({ code: "OPENLUP_E_CLI_FAILURE" })]);
       expect(JSON.stringify(operational)).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED/u);
+      const collisionPack = pack(), definition = collisionPack.types[0];
+      definition.dimensions = [{ key: "flag", kind: "boolean" }];
+      definition.attributes = [{ key: "flag", scope: "variant", valueType: { kind: "boolean" }, required: false,
+        cardinality: { min: 0, max: 1 }, filterable: true, facetable: true, public: true, displayOrder: 0, labels: {} }];
+      definition.axes = [{ key: "flag", attributeKey: "flag" }];
+      const collisionText = JSON.stringify({ packs: [{ pack: collisionPack, combinations: [{ type, input: { typed: true, axes: ["flag"], retained: [],
+        incoming: [true, false].map((value, index) => ({ skuId: `sku${index}`, state: "active", optionValues: { flag: { kind: "boolean", value } } })) } }] }] });
+      writeFileSync(file, collisionText);
+      expect((await runCatalogExtensionConformance(collisionText)).exitCode).toBe(0);
+      expect(call(args).exitCode).toBe(0);
+      rejection = undefined;
+      try {
+        crypto.createHash = (...args) => { const hash = originalHash(...args); Object.defineProperty(hash, "digest", { value: () => Buffer.alloc(32) }); return hash; };
+        syncBuiltinESMExports();
+        try { await runCatalogExtensionConformance(collisionText); } catch (error) { rejection = error; }
+      } finally { crypto.createHash = originalHash; syncBuiltinESMExports(); }
+      expect(rejection).toBeInstanceOf(CatalogCombinationError);
+      expect(rejection).toMatchObject({ code: "combination_identity_integrity_failed" });
+      const collisionPreload = 'import crypto from "node:crypto"; import {syncBuiltinESMExports} from "node:module"; const original = crypto.createHash; crypto.createHash = (...args) => { const hash = original(...args); Object.defineProperty(hash,"digest",{value:()=>Buffer.alloc(32)}); return hash; }; syncBuiltinESMExports();';
+      const collision = call(args, ["--import", `data:text/javascript,${encodeURIComponent(collisionPreload)}`]);
+      expect(collision.exitCode).toBe(74);
+      expect(collision.findings).toEqual([expect.objectContaining({ code: "OPENLUP_E_CLI_FAILURE" })]);
+      expect(JSON.stringify(collision)).not.toContain("combination_identity_integrity_failed");
+      writeFileSync(file, validText);
+      const syntaxFault = new SyntaxError("draft_json_invalid");
+      rejection = undefined;
+      try {
+        crypto.createHash = (() => { throw syntaxFault; }) as typeof crypto.createHash;
+        syncBuiltinESMExports();
+        try { await runCatalogExtensionConformance(validText); } catch (error) { rejection = error; }
+      } finally { crypto.createHash = originalHash; syncBuiltinESMExports(); }
+      expect(rejection).toBe(syntaxFault);
+      expect(Object.hasOwn(syntaxFault, Symbol.for("openlup.catalogue.json.parse"))).toBe(false);
+      const syntaxPreload = 'import crypto from "node:crypto"; import {syncBuiltinESMExports} from "node:module"; crypto.createHash = () => { throw new SyntaxError("draft_json_invalid"); }; syncBuiltinESMExports();';
+      const operationalSyntax = call(args, ["--import", `data:text/javascript,${encodeURIComponent(syntaxPreload)}`]);
+      expect(operationalSyntax.exitCode).toBe(74);
+      expect(operationalSyntax.findings).toEqual([expect.objectContaining({ code: "OPENLUP_E_CLI_FAILURE" })]);
+      expect(JSON.stringify(operationalSyntax)).not.toContain("draft_json_invalid");
       const subject = { packs: [{ pack: p }], recheck: "identical command" }; p.types = [...p.types, p.types[0]];
       const report = await checkSubject(subject); expect(report).toEqual(await checkSubject(subject));
       for (const finding of report.findings) expect(finding).toMatchObject({ recheck: subject.recheck, severity: "error", fix: expect.any(String), recipe: expect.any(String), evidence: expect.any(Object) });
