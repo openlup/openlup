@@ -1251,9 +1251,9 @@ owners. The entry accepts JSON text and returns a Promise; the CLI reads text
 without importing user code. Attribute and combination fixtures reuse their
 owners. Content validation is unavailable offline. Refusal records check
 observations, and retained options do not prove stored identities. Quantity
-fixtures admit closed primitive fields before handoff. Input-driven owner
-exceptions become deterministic exit-1 findings at the input path; CLI I/O and
-non-input operation failures retain exit 74. PASS grants no installation,
+fixtures admit closed primitive fields before handoff. Only allowlisted owner
+input errors become exit-1 findings at the input path. Other exceptions propagate
+unchanged: the direct promise rejects and the CLI returns 74 without raw errors. PASS grants no installation,
 migration, publication or activation authority.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to

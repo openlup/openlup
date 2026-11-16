@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
+import { syncBuiltinESMExports } from "node:module";
 import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
 import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError } from "../../src/catalog/index.js";
@@ -219,8 +221,9 @@ describe("offline catalogue conformance", () => {
   it("catalogue_check_cli_reports_stable_codes_and_exit", async () => {
     const folder = mkdtempSync(join(tmpdir(), "catalogue-cli-"));
     const bin = fileURLToPath(new URL("../../src/lifecycle/openlup.mjs", import.meta.url)), file = join(folder, "catalogue.json");
-    const call = (args: string[]) => {
-      const result = spawnSync(process.execPath, [bin, ...args, "--json"], { encoding: "utf8" });
+    const call = (args: string[], nodeArgs: string[] = []) => {
+      const result = spawnSync(process.execPath, [...nodeArgs, bin, ...args, "--json"], { encoding: "utf8" });
+      expect(result.stderr).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED/u);
       const report = JSON.parse(result.stdout); expect(report.formatVersion).toBe(1); expect(report.exitCode).toBe(result.status);
       expect(result.stdout.trim().split("\n")).toHaveLength(1); return report;
     };
@@ -273,6 +276,7 @@ describe("offline catalogue conformance", () => {
         refusals.push([name, { packs: [{ pack: invalidPack, combinations: [{ type, input: { typed: true, axes: ["choice"], incoming: retained ? [] : [row], retained: retained ? [row] : [] } }] }] },
           "draft_json_invalid", "/packs/0/combinations/0/input", throws]);
       }
+      refusals.push(["allowlisted owner quantity input code", { packs: [{ pack: p, quantities: [{ type, value: { ...quantity, scale: -1 } }] }] }, "quantity_invalid", "/packs/0/quantities/0/value"]);
       for (const [name, data, code, path, throws] of refusals) {
         if (throws) expect(throws, name).toThrow("draft_json_invalid");
         const recheck = "npx --no -- openlup " + [...args, "--json"].join(" ");
@@ -283,6 +287,24 @@ describe("offline catalogue conformance", () => {
         expect(cli, name).toEqual(direct); expect(direct.exitCode, name).toBe(1);
         expect(direct.findings, name).toEqual([expect.objectContaining({ code, path })]);
       }
+      const valid = { packs: [{ pack: p, combinations: [{ type, input: { typed: true, axes: [], retained: [], incoming: [{ skuId: "one", state: "active", optionValues: {} }] } }] }] };
+      const validText = JSON.stringify(valid); writeFileSync(file, validText);
+      expect((await runCatalogExtensionConformance(validText)).exitCode).toBe(0);
+      expect(call(args).exitCode).toBe(0);
+      const fault = Object.assign(new Error("SENSITIVE_CRYPTO_FAILURE"), { code: "ERR_OSSL_EVP_UNSUPPORTED" });
+      const originalHash = crypto.createHash;
+      let rejection: unknown;
+      try {
+        crypto.createHash = (() => { throw fault; }) as typeof crypto.createHash;
+        syncBuiltinESMExports();
+        try { await runCatalogExtensionConformance(validText); } catch (error) { rejection = error; }
+      } finally { crypto.createHash = originalHash; syncBuiltinESMExports(); }
+      expect(rejection).toBe(fault); // Operational exceptions retain their exact identity.
+      const preload = 'import crypto from "node:crypto"; import {syncBuiltinESMExports} from "node:module"; crypto.createHash = () => { throw Object.assign(new Error("SENSITIVE_CRYPTO_FAILURE"), {code:"ERR_OSSL_EVP_UNSUPPORTED"}); }; syncBuiltinESMExports();';
+      const operational = call(args, ["--import", `data:text/javascript,${encodeURIComponent(preload)}`]);
+      expect(operational.exitCode).toBe(74);
+      expect(operational.findings).toEqual([expect.objectContaining({ code: "OPENLUP_E_CLI_FAILURE" })]);
+      expect(JSON.stringify(operational)).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED/u);
       const subject = { packs: [{ pack: p }], recheck: "identical command" }; p.types = [...p.types, p.types[0]];
       const report = await checkSubject(subject); expect(report).toEqual(await checkSubject(subject));
       for (const finding of report.findings) expect(finding).toMatchObject({ recheck: subject.recheck, severity: "error", fix: expect.any(String), recipe: expect.any(String), evidence: expect.any(Object) });

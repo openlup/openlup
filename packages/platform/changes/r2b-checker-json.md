@@ -13,8 +13,8 @@ ports with resolution rows, and retained identity bytes with options. The single
 entry retains report fields, deterministic ordering and the five CLI exits.
 No SQL, publication, subscription changes or capability activation occurs.
 
-Primitive quantity fields are admitted before owner handoff. Shared-owner
-exceptions on fixture data become deterministic input refusals (exit 1), keeping
-named owner codes where available and otherwise `conformance_subject_invalid`.
-Syntax stays 64 and CLI filesystem/non-input failures stay 74. Shared owners,
-API signatures, SQL and release caps are unchanged.
+Primitive quantity fields are admitted before owner handoff. Only deliberate
+owner input errors in the checker's explicit code allowlist become input refusals
+(exit 1 at the input path). All other owner exceptions propagate unchanged;
+the direct promise rejects and the CLI returns 74 with raw errors withheld.
+Syntax stays 64. Shared owners, API signatures, SQL and release caps are unchanged.

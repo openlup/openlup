@@ -35,11 +35,12 @@ database references/cadence, listing capacity, publication races and legal
 rate correctness remain runtime facts. No database, network, seed or publish
 path is supplied. Exit codes: 0 satisfied within scope, 1 violated, 2 required
 evidence unavailable, 64 invalid invocation or JSON syntax, 74 filesystem or
-unexpected operation failure. Exceptions from shared owners while processing
-fixture data become exit 1 at that input path, retaining a named owner code when
-available and otherwise using `conformance_subject_invalid`. JSON syntax still
-returns 64; filesystem or non-input operation failures remain 74. Violations take
-precedence over unavailable evidence.
+unexpected operation failure. Only explicitly allowlisted, deliberate owner input
+errors become exit 1 at the input path, retaining their stable codes. Other owner
+exceptions propagate unchanged: the direct promise rejects and the CLI returns
+74 with raw errors withheld. JSON syntax still returns 64. Closed primitive
+admission prevents malformed quantity types from reaching owner coercion.
+Violations take precedence over unavailable evidence.
 JSON stdout is one `formatVersion: 1` object. Findings retain exact owner codes
 and paths, sort by JSON pointer, code and fixture, and include cause, fix, recipe,
 identical recheck command and evidence.

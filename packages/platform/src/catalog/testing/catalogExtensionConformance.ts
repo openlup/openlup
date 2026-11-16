@@ -16,6 +16,17 @@ const closed = (value: unknown, keys: readonly string[]): boolean => object(valu
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 const referenceKey = (namespace: string, id: string): string => JSON.stringify([namespace, id]);
 
+// Deliberate input throws: Core catalog/quantities.ts:15, variantCombination.ts:22,
+// contracts/draft.ts:40-67 and productTypeSchemas.ts:10. Operational failures are excluded.
+const OWNER_INPUT_CODES = new Set([
+  "quantity_invalid", "quantity_cross_dimension", "quantity_fractional_count", "quantity_unknown_unit",
+  "quantity_overflow", "quantity_not_exactly_representable",
+  "axis_not_installed", "duplicate_axis", "option_not_selected", "option_missing", "option_invalid",
+  "unit_factor_missing", "sku_identity_change_requires_new_sku", "duplicate_combination",
+  "combination_digest_collision", "duplicate_sku_id", "sku_payload_limit", "product_capacity_exceeded", "product_capacity_invalid",
+  "draft_json_invalid", "draft_json_depth", "draft_payload_too_large", "invalid_catalog_type_definition",
+]);
+
 /** Parse JSON text without a reviver; non-string arguments are refused without inspection. Syntax errors reject. */
 export async function runCatalogExtensionConformance(jsonText: string): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
@@ -33,10 +44,8 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
     try { return await work(); }
     catch (error) {
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
-      const code = Object.hasOwn(CATALOG_CONFORMANCE_RULES, named)
-        || ["draft_json_invalid", "draft_json_depth", "draft_payload_too_large", "invalid_catalog_type_definition"].includes(named)
-        ? named : "conformance_subject_invalid";
-      add(code, `${path}${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
+      if (!OWNER_INPUT_CODES.has(named)) throw error;
+      add(named, `${path}${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
       return undefined;
     }
   }
