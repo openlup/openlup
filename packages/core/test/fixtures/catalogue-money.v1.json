@@ -1,0 +1,144 @@
+{
+  "version": "1",
+  "rows": [
+    {
+      "id": "included_vat_12300_at_2300",
+      "kind": "quote_money",
+      "ruleRef": "legacy.included-vat",
+      "operation": "included_vat",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "src/domains/commerce/quoteContracts.ts:104-107",
+        "witness": "server/domains/commerce/dbBackedCommerceQuoteHelpers.test.ts:uses the supplied tax rate for net/gross conversion and included VAT"
+      },
+      "input": { "grossMinor": "12300", "vatRateBps": "2300" },
+      "expected": { "netMinor": "10000", "vatMinor": "2300" }
+    },
+    {
+      "id": "discount_fractional_tie_is_stable",
+      "kind": "quote_money",
+      "ruleRef": "legacy.discount-largest-remainder-input-order",
+      "operation": "discount_allocation",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:211-239",
+        "witness": "server/domains/accounting/accountingLineAllocation.test.ts:allocates the discount with the order writer tie-break"
+      },
+      "input": { "lineTotalsMinor": ["100", "100", "100"], "chargedTotalMinor": "299" },
+      "expected": { "linePayablesMinor": ["99", "100", "100"] }
+    },
+    {
+      "id": "promotion_target_percentage_preserves_v2_money",
+      "kind": "promotion",
+      "ruleRef": "promotion-engine.v2.target-percentage",
+      "operation": "promotion_v2",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "server/domains/commerce/quotePromotionCodeAdjustments.ts:1-4",
+        "witness": "server/domains/commerce/quotePromotionCodeAdjustments.test.ts:makes an 80%% code target-effective for %s without stacking percentages"
+      },
+      "input": {
+        "context": {
+          "purchaseScope": "subscription_initial",
+          "referenceProductMinor": "10000",
+          "currentProductMinor": "5000",
+          "shippingMinor": "0",
+          "minimumProductPayableMinor": "100"
+        },
+        "candidates": [
+          { "promotionId": "code-target", "codeId": "code-a", "code": "EXAMPLE", "name": "Example target", "source": "code", "lane": "product", "kind": "target_percentage", "valueBps": "8000", "scopes": ["subscription_initial"] }
+        ]
+      },
+      "expected": {
+        "productPayableMinor": "2000",
+        "shippingPayableMinor": "0",
+        "effectiveProductDiscountBps": "8000",
+        "adjustments": [{ "promotionId": "code-target", "source": "code", "amountOffMinor": "3000", "floorApplied": false }],
+        "rejectedCodes": []
+      }
+    },
+    {
+      "id": "promotion_v2_product_floor",
+      "kind": "promotion",
+      "ruleRef": "promotion-engine.v2.product-floor",
+      "operation": "promotion_v2",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "server/domains/commerce/quotePromotionCodeAdjustments.ts:1-4",
+        "witness": "server/domains/commerce/quotePromotionCodeAdjustments.test.ts:212-227"
+      },
+      "input": {
+        "context": {
+          "purchaseScope": "one_time",
+          "referenceProductMinor": "101",
+          "currentProductMinor": "101",
+          "shippingMinor": "0",
+          "minimumProductPayableMinor": "100"
+        },
+        "candidates": [
+          { "promotionId": "code-floor", "codeId": "code-a", "code": "EXAMPLE", "name": "Example floor", "source": "code", "lane": "product", "kind": "target_percentage", "valueBps": "9999", "scopes": ["one_time"] }
+        ]
+      },
+      "expected": {
+        "productPayableMinor": "100",
+        "shippingPayableMinor": "0",
+        "effectiveProductDiscountBps": "99",
+        "adjustments": [{ "promotionId": "code-floor", "source": "code", "amountOffMinor": "1", "floorApplied": true }],
+        "rejectedCodes": []
+      }
+    },
+    {
+      "id": "promotion_v2_automatic_beats_code_on_tie",
+      "kind": "promotion",
+      "ruleRef": "promotion-engine.v2.automatic-before-code",
+      "operation": "promotion_v2",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "server/domains/commerce/quotePromotionV2.ts:1-14",
+        "witness": "server/domains/commerce/quotePromotionV2.legacyCodeOutcomes.test.ts:keeps automatic-v2 money and truthfully rejects a %s legacy code [equal]"
+      },
+      "input": {
+        "context": {
+          "purchaseScope": "one_time",
+          "referenceProductMinor": "10000",
+          "currentProductMinor": "10000",
+          "shippingMinor": "0",
+          "minimumProductPayableMinor": "100"
+        },
+        "candidates": [
+          { "promotionId": "a-code", "codeId": "code-a", "code": "EXAMPLE", "name": "Example code", "source": "code", "lane": "product", "kind": "target_percentage", "valueBps": "5000", "scopes": ["one_time"] },
+          { "promotionId": "z-automatic", "name": "Example automatic", "source": "automatic", "lane": "product", "kind": "target_percentage", "valueBps": "5000", "scopes": ["one_time"] }
+        ]
+      },
+      "expected": {
+        "productPayableMinor": "5000",
+        "shippingPayableMinor": "0",
+        "effectiveProductDiscountBps": "5000",
+        "adjustments": [{ "promotionId": "z-automatic", "source": "automatic", "amountOffMinor": "5000", "floorApplied": false }],
+        "rejectedCodes": [{ "codeId": "code-a", "code": "EXAMPLE", "reason": "better_price_exists" }]
+      }
+    },
+    {
+      "id": "legacy_mixed_tax_refuses",
+      "kind": "quote_money",
+      "ruleRef": "commerce.v0.single-tax-rate",
+      "operation": "legacy_quote",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "src/domains/commerce/quoteContracts.ts:150-153",
+        "witness": "src/domains/commerce/quoteContracts.test.ts:names mixed tax rates as unsupported for quote-level allocation"
+      },
+      "input": {
+        "currency": "XXX",
+        "lines": [
+          { "grossMinor": "1490", "netMinor": "1380", "vatMinor": "110", "vatRateBps": "800" },
+          { "grossMinor": "12300", "netMinor": "10000", "vatMinor": "2300", "vatRateBps": "2300" }
+        ],
+        "grossMinor": "13790",
+        "netMinor": "11380",
+        "vatMinor": "2410"
+      },
+      "expected": { "success": false, "issue": { "path": ["lines"], "message": "mixed VAT rates are not supported by quote discount and shipping tax allocation" } }
+    }
+  ]
+}
