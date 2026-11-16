@@ -1,0 +1,36 @@
+{
+  "packs": [
+    {
+      "pack": {
+        "id": "starter",
+        "namespace": "starter",
+        "version": 1,
+        "openlupRange": "^0.44.0",
+        "capabilities": {},
+        "taxClasses": [],
+        "types": [
+          {
+            "key": "starter:item",
+            "version": 1,
+            "units": [
+              {
+                "code": "starter:each",
+                "dimension": "count",
+                "integral": true,
+                "factor": {
+                  "canonicalUnit": "openlup:piece",
+                  "unscaled": "1",
+                  "scale": 0
+                }
+              }
+            ],
+            "netContentUnits": [
+              "starter:each"
+            ],
+            "dimensions": []
+          }
+        ]
+      }
+    }
+  ]
+}

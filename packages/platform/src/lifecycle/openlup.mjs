@@ -7,11 +7,11 @@ import { parseArgs } from "node:util";
 
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
-openlup catalogue check --packs ./owned/catalogue.ts [--json]
+openlup catalogue check --packs ./owned/catalogue.json [--json]
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
-Catalogue explicitly imports trusted pack code exporting default CatalogConformanceSubject. Node 24 strips erasable TypeScript; use explicit .ts specifiers, type-only imports and no aliases. Callbacks are not sandboxed and must not write stdout. Offline PASS grants no install, migration, publication or activation authority.
+Catalogue reads JSON text only; the supplied file is never imported. Reference and refusal records are fixture evidence. Application content validation is unavailable offline. PASS grants no install, migration, publication or activation authority.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 operation or application loading failure. JSON uses formatVersion=1, one object on stdout.
 `;
 let json = process.argv.slice(2).includes("--json");
@@ -91,10 +91,12 @@ try {
     validatingInput = false;
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the installed testing subpath; ordinary catalog cannot import testing
     const { runCatalogExtensionConformance } = await import("@openlup/platform/catalog/testing");
-    const loaded = await import(pathToFileURL(resolve(values.packs)).href);
-    if (!loaded.default || typeof loaded.default !== "object") throw new TypeError("missing_conformance_subject");
+    const text = await fs.readFile(resolve(values.packs), "utf8");
+    let report;
+    try { report = await runCatalogExtensionConformance(text); }
+    catch (error) { if (error instanceof SyntaxError) validatingInput = true; throw error; }
     const recheck = "npx --no -- openlup " + process.argv.slice(2).map(value => /^[A-Za-z0-9_./=-]+$/u.test(value) ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
-    const report = runCatalogExtensionConformance({ ...loaded.default, recheck });
+    report.findings = report.findings.map(finding => ({ ...finding, recheck }));
     emit({ command: "catalogue check", ...report }, `catalogue check: ${report.state}\n${report.boundary}\n${report.findings.map(renderFinding).join("\n")}`.trimEnd());
   } else {
     refuse(64, "OPENLUP_E_CLI_INPUT", "Command or required options do not match the public syntax.", "Use openlup --help and explicit input paths.");
@@ -102,5 +104,5 @@ try {
 } catch (error) {
   // Never print raw application errors, configured values, connection strings or file contents.
   const invalid = validatingInput && (error instanceof SyntaxError || error instanceof TypeError || (typeof error?.code === "string" && error.code.startsWith("ERR_PARSE_ARGS")));
-  refuse(invalid ? 64 : 74, invalid ? "OPENLUP_E_CLI_INPUT" : "OPENLUP_E_CLI_FAILURE", "The operation could not complete; raw input and application errors are withheld.", "Check the command, readable JSON snapshots and schema ordinal, or the trusted --app/--packs module and its documented export. After a partial upgrade, rerun the identical snapshots under exclusive access.");
+  refuse(invalid ? 64 : 74, invalid ? "OPENLUP_E_CLI_INPUT" : "OPENLUP_E_CLI_FAILURE", "The operation could not complete; raw input and application errors are withheld.", "Check the command, readable JSON snapshots and schema ordinal, the catalogue JSON, or the trusted --app module and its documented export. After a partial upgrade, rerun the identical snapshots under exclusive access.");
 }

@@ -1244,10 +1244,13 @@ compiles installed declarations without optional provider peers.
 
 Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
 `runCatalogExtensionConformance`. The existing bin runs
-`npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`.
+`npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
 See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
 for the explicit subject, copied skeleton, supported offline checks and pending
-owners. Trusted callbacks are not sandboxed. PASS grants no installation,
+owners. The entry accepts JSON text and returns a Promise; the CLI reads text
+without importing user code. Attribute and combination fixtures reuse their
+owners. Content validation is unavailable offline. Refusal records check
+observations, and retained options do not prove stored identities. PASS grants no installation,
 migration, publication or activation authority.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to

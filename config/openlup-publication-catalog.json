@@ -2494,6 +2494,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/catalogue.json",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/catalogue.ts",
       "class": "public-output"
     },
@@ -30855,7 +30859,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-d4a305b4aec33ef10062b04de376a8b1c013e2cd810a1fdda66cc0d0508846cc"
+      "digest": "sha256-9e02b27ca2e171d50f113a29b41438c593a4c78100c64c6adb384de32311340c"
     },
     {
       "path": "package.json",

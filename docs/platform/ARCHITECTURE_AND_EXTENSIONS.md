@@ -3106,8 +3106,10 @@ Catalogue checks share this executable through the explicit `catalogue check
 ordinary catalog cannot import testing. The installed
 [catalogue guide](../../packages/core/docs/guide/how-to/extend/catalogue-extension.md)
 owns the subject, refusal fixtures, exit codes and pending owners. This branch
-loads trusted code without a sandbox and has no database, installation, seed or
-publication path. An offline PASS grants no activation authority.
+reads JSON text without importing user code and has no database, installation,
+seed or publication path. Attribute/projection and combination owners receive only
+parsed fixture data; content validation is unavailable. Reference/refusal records
+and derived retained identities are fixture evidence, never runtime qualification. An offline PASS grants no activation authority.
 
 The tool-only Node executable
 [`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside

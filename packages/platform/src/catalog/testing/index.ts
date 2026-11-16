@@ -1,3 +1,3 @@
-/** @experimental Opt-in offline checks; trusted callbacks are not sandboxed. */
+/** @experimental Opt-in offline checks; JSON text only; no caller callbacks. */
 export { runCatalogExtensionConformance } from "./catalogExtensionConformance.js";
 export type { CatalogConformanceSubject, CatalogRefusalFixture, CatalogConformanceFinding, CatalogConformanceReport } from "./contracts.js";

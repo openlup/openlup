@@ -60,7 +60,9 @@ The optional `supportEmail` is owned configuration. Managed support rendering
 uses text nodes only. Partner/review host composition is managed and reuses the
 same request admission and native operator authority as other operator reads.
 
-`owned/catalogue.ts` owns the fictional catalogue-draft type registry. Managed
+`owned/catalogue.ts` owns the fictional catalogue-draft type registry.
+`owned/catalogue.json` supplies offline checker fixtures; it grants no runtime
+activation or content-validation evidence. Managed
 `host/operator-composition.ts` composes support and catalogue native ports. Native
 human membership precedes each operator action; the owner alone provisions and
 deactivates the separate support roster as documented in the README. No runtime
@@ -153,7 +155,9 @@ The extracted repository retains the inventory, but not its `sourceOnly` files.
 Its `npm test` runs application tests only. Source-release `npm test` additionally
 runs extraction and refusal coverage, including the materialized test command.
 
-`owned/catalogue.ts` owns the fictional catalogue-draft type registry. Managed
+`owned/catalogue.ts` owns the fictional catalogue-draft type registry.
+`owned/catalogue.json` supplies offline checker fixtures; it grants no runtime
+activation or content-validation evidence. Managed
 `host/operator-composition.ts` composes support and catalogue native ports. Native
 human membership precedes each operator action; the owner alone provisions and
 deactivates the separate support roster as documented in the README. No runtime
