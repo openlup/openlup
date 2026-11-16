@@ -1,8 +1,10 @@
 Add opt-in catalogue definition/quantity/v1-draft checks, explicit refusal
-fixtures and installed recipes with a copied stationery skeleton. Later attribute,
-variant, taxonomy, tax, profile and promotion semantics remain explicitly pending.
+fixtures and installed recipes with a copied stationery skeleton. Separate
+attribute/projection and V2 combination fixtures use their owner validators. Taxonomy, dated tax, profile and promotion semantics remain pending.
 
-Migration: Additive tooling for the next package set. Old imports and v1 canonical
+Migration: Opt-in tooling for the unreleased 0.44.0 package set. Await
+`runCatalogExtensionConformance(subject)`, returning
+`Promise<CatalogConformanceReport>`. Released imports and v1 canonical
 bytes remain unchanged. The new Node-only `@openlup/platform/catalog/testing`
 subpath and `openlup catalogue check --packs ./owned/catalogue.ts --json` require
 an explicit trusted default-exported subject. No database migration, installation,

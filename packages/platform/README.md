@@ -1243,7 +1243,11 @@ compiles installed declarations without optional provider peers.
 ## Catalog
 
 Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
-`runCatalogExtensionConformance`. The existing bin runs
+`runCatalogExtensionConformance`, returning `Promise<CatalogConformanceReport>`.
+Await the report. Separate `attributes` fixtures call the attribute validation and
+projection preparation owners; `combinations` fixtures call the V2 change owner
+for supplied options and retained facts, without Cartesian enumeration. These
+fixtures never alter v1 drafts. The existing bin runs
 `npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json`.
 See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
 for the explicit subject, copied skeleton, supported offline checks and pending

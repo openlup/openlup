@@ -1,19 +1,20 @@
 import { CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity } from "@openlup/core/catalog";
 import {
   CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
+  validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError,
   catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
-const boundary = "Offline definitions, exact quantities and supplied v1 draft validation only. Attribute-value/projection and canonical cross-unit variant-combination checker integration remain pending; their separate owners are available unbound. Taxonomy, dated tax coverage, profile semantics and promotion grammar await their owners. Installed versions, existing database references, installed cadence, listing capacity, publication races and legal rate correctness are unobserved runtime facts. PASS grants no installation, migration, publication or activation authority. Trusted imported modules and callbacks are not sandboxed; the checker owns no database, network, seed or publish path.";
+const boundary = "Offline definitions, exact quantities, supplied v1 drafts, separate attribute validation/projection preparation and supplied V2 variant combination changes only. Supplied reference resolvers and retained combination facts are trusted fixture evidence, not proof of database state. Taxonomy, dated tax coverage, profile semantics and promotion grammar await their owners. Installed versions, existing database references, installed cadence, listing capacity, publication races and legal rate correctness are unobserved runtime facts. PASS grants no installation, migration, publication or activation authority. Trusted imported modules and callbacks are not sandboxed; the checker owns no database, network, seed or publish path.";
 const command = "npx --no -- openlup catalogue check --packs ./owned/catalogue.ts --json";
 const pointer = (parts: readonly PropertyKey[]): string => parts.map(part => `/${String(part).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 const object = (value: unknown): boolean => value !== null && typeof value === "object" && !Array.isArray(value);
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
 /** Calls existing owners only. Unexpected callback failures propagate to the CLI's sanitized failure path. */
-export function runCatalogExtensionConformance(subject: CatalogConformanceSubject): CatalogConformanceReport {
+export async function runCatalogExtensionConformance(subject: CatalogConformanceSubject): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false;
   let violated = false;
@@ -36,20 +37,23 @@ export function runCatalogExtensionConformance(subject: CatalogConformanceSubjec
     || (subject.requiredChecks !== undefined && (!Array.isArray(subject.requiredChecks) || subject.requiredChecks.some(check => typeof check !== "string")))) {
     add("conformance_subject_invalid", ""); return finish();
   }
-  for (const [index] of (subject.requiredChecks ?? []).entries()) {
-    add("conformance_owner_unavailable", `/requiredChecks/${index}`, "", true);
+  for (const [index, check] of (subject.requiredChecks ?? []).entries()) {
+    const field = check === "attribute-values" ? "attributes" : check === "variant-combinations" ? "combinations" : undefined;
+    if (!field || !Array.from(subject.packs).every(entry => object(entry) && Array.isArray(entry[field]) && entry[field]!.length > 0))
+      add("conformance_owner_unavailable", `/requiredChecks/${index}`, "", true);
   }
   const allTypes: unknown[] = [];
   const typePaths: string[] = [];
-  Array.from(subject.packs).forEach((entry: CatalogConformanceSubject["packs"][number], index: number) => {
+  for (const [index, rawEntry] of Array.from(subject.packs).entries()) {
+    const entry: CatalogConformanceSubject["packs"][number] = rawEntry;
     const at = `/packs/${index}`;
-    if (!object(entry) || Object.keys(entry).some(key => !["pack", "drafts", "quantities", "refusals"].includes(key))
-      || [entry.drafts, entry.quantities, entry.refusals].some(value => value !== undefined && !Array.isArray(value))) {
-      add("conformance_subject_invalid", at); return;
+    if (!object(entry) || Object.keys(entry).some(key => !["pack", "drafts", "quantities", "attributes", "combinations", "refusals"].includes(key))
+      || [entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(value => value !== undefined && !Array.isArray(value))) {
+      add("conformance_subject_invalid", at); continue;
     }
     const issues = catalogPackIssues(entry.pack);
     issues.forEach(issue => add(issue.code, `${at}/pack${issue.path}`));
-    if (issues.length) return;
+    if (issues.length) continue;
     const pack: CatalogPackInput = entry.pack;
     pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
     const registry = createCatalogProductTypeRegistry(pack.types);
@@ -85,6 +89,56 @@ export function runCatalogExtensionConformance(subject: CatalogConformanceSubjec
         add(error.code, `${path}/value`);
       }
     });
+    for (const field of ["attributes", "combinations"] as const) {
+      for (const [i, fixture] of (entry[field] ?? []).entries()) {
+        const path = `${at}/${field}/${i}`;
+        const allowed = field === "attributes" ? ["type", "input", "publicationRevision", "references"] : ["type", "input"];
+        if (!object(fixture) || Object.keys(fixture).some(key => !allowed.includes(key))) {
+          add("conformance_subject_invalid", path); continue;
+        }
+        const referenceIssues = catalogProductTypeRefIssues(fixture.type);
+        referenceIssues.forEach(issue => add(issue.code, `${path}/type${issue.path}`));
+        if (referenceIssues.length) continue;
+        const definition = registry.resolve(fixture.type);
+        if (!definition) { add("type_not_installed", `${path}/type`); continue; }
+        if (field === "attributes") {
+          const value = fixture as NonNullable<typeof entry.attributes>[number];
+          if (value.references !== undefined && (!object(value.references) || typeof value.references.resolve !== "function")) {
+            add("conformance_subject_invalid", `${path}/references`); continue;
+          }
+          const validation = await validateCatalogAttributes(definition, value.input, value.references);
+          const prepared = prepareCatalogAttributeProjection(validation, value.publicationRevision);
+          if (!prepared.prepared) prepared.issues.forEach(issue => add(issue.code,
+            `${path}${issue.code === "attribute_publication_revision_invalid" ? "" : "/input"}${issue.path}`));
+        } else {
+          const value = fixture as NonNullable<typeof entry.combinations>[number];
+          const input = value.input;
+          if (!object(input) || Object.keys(input).some(key => !["axes", "typed", "retained", "incoming", "capacity"].includes(key))
+            || !Array.isArray(input.axes) || input.axes.some(key => typeof key !== "string") || typeof input.typed !== "boolean"
+            || !Array.isArray(input.retained) || !Array.isArray(input.incoming)) {
+            add("conformance_subject_invalid", `${path}/input`); continue;
+          }
+          try { validateCatalogCombinationChangesV2({ ...input, definition }); }
+          catch (error) {
+            if (!(error instanceof CatalogCombinationError) && !(error instanceof CatalogQuantityError)) throw error;
+            // Owner paths name axes or SKU identities, not array positions. Keep the
+            // report pointer inside the supplied fixture; option faults cover its input.
+            let at = `${path}/input`;
+            if (error instanceof CatalogCombinationError) {
+              const axis = error.path.startsWith("axes.") ? input.axes.lastIndexOf(error.path.slice(5)) : -1;
+              const incoming = input.incoming.findIndex(change => change?.skuId === error.path);
+              const retained = input.retained.findIndex(fact => fact?.skuId === error.path);
+              if (axis >= 0) at += `/axes/${axis}`;
+              else if (incoming >= 0) at += `/incoming/${incoming}`;
+              else if (retained >= 0) at += `/retained/${retained}`;
+              else if (["incoming", "capacity", "skus"].includes(error.path))
+                at += error.path === "skus" ? "" : `/${error.path}`;
+            }
+            add(error.code, at);
+          }
+        }
+      }
+    }
     for (const [capability, supported] of Object.entries(pack.capabilities)) {
       if (supported) continue;
       const fixtures = entry.refusals?.filter(fixture => object(fixture) && fixture.capability === capability) ?? [];
@@ -101,7 +155,7 @@ export function runCatalogExtensionConformance(subject: CatalogConformanceSubjec
       const zeroEffects = fixture.assertZeroEffects();
       if (!object(result) || result.code !== fixture.expectedCode || zeroEffects !== true) add("conformance_refusal_fixture_mismatch", path, fixture.name);
     });
-  });
+  }
   catalogProductTypeIssues(allTypes).filter(issue => issue.code === "definition_duplicate_identity").forEach(issue => {
     const [, index, ...rest] = issue.path.split("/");
     const path = `${typePaths[Number(index)]}/${rest.join("/")}`;

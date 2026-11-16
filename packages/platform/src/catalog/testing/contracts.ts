@@ -1,3 +1,6 @@
+import type { CatalogAttributeInput } from "../attributeValidation.js";
+import type { CatalogAttributeReferencePort } from "../attributeReferencePort.js";
+import type { validateCatalogCombinationChangesV2 } from "../variantCombination.js";
 import type { CatalogPackInput, CatalogProductTypeRef, CatalogQuantity } from "../contracts/index.js";
 
 /** Explicit trusted, synchronous fixtures. Callbacks are not sandboxed. */
@@ -13,9 +16,15 @@ export interface CatalogConformanceSubject {
     pack: CatalogPackInput;
     drafts?: readonly unknown[];
     quantities?: readonly { type: CatalogProductTypeRef; value: CatalogQuantity; targetUnit?: string }[];
+    /** Separate from unchanged v1 drafts; references are explicitly trusted offline fixtures. */
+    attributes?: readonly { type: CatalogProductTypeRef; input: CatalogAttributeInput;
+      publicationRevision: string; references?: CatalogAttributeReferencePort }[];
+    /** Only supplied changes/retained facts are checked; no Cartesian enumeration. */
+    combinations?: readonly { type: CatalogProductTypeRef;
+      input: Omit<Parameters<typeof validateCatalogCombinationChangesV2>[0], "definition"> }[];
     refusals?: readonly CatalogRefusalFixture[];
   }[];
-  /** Requests whose owner has not landed refuse with required evidence unavailable. */
+  /** Unavailable owners or missing fixtures for requested checks refuse with required evidence unavailable. */
   requiredChecks?: readonly string[];
   recheck?: string;
 }

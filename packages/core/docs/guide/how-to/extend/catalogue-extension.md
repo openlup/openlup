@@ -2,22 +2,24 @@
 
 Development preview, targeting the next package set. Use matching installed
 `@openlup/*` versions and Node 24. This offline tool checks definitions,
-references, exact quantities and supplied v1 draft facts. It grants no installation,
+references, exact quantities, supplied v1 draft facts and separate attribute and
+version 2 combination fixtures. It grants no installation,
 migration, publication or activation authority. The minimal skeleton is a fictional
 stationery pack; full reference packs and installed commerce journeys remain pending.
 
 The registry explicitly exports a default `CatalogConformanceSubject`. Each `packs`
-entry contains `pack`, optional `drafts`, `quantities` and `refusals`. Quantity fixtures
-contain `{type, value, targetUnit?}` and require explicit conversion factors. Type
-references use exactly a namespaced string key and a positive integer version;
-malformed references refuse before registry lookup.
-`requiredChecks: ["taxonomy"]`, for example, requests a future check and returns
-required-evidence-unavailable (2). All requested checks in `requiredChecks` are
-currently unavailable. Unknown fields refuse; they are never silently passed.
-Attribute-value/projection and version 2 combination owners are available
-separately in Platform's server catalogue entry. Their fixtures are not yet wired
-into this checker. Do not add typed attribute or combination fields to strict v1
-drafts.
+entry contains `pack`, optional `drafts`, `quantities`, `attributes`, `combinations`
+and `refusals`. Await `runCatalogExtensionConformance(subject)` when calling the
+Node testing entry directly; it returns `Promise<CatalogConformanceReport>`.
+Quantity fixtures contain `{type, value, targetUnit?}` and require explicit
+conversion factors. All fixture type references use exactly a namespaced string
+key and a positive integer version; malformed references refuse before lookup.
+`requiredChecks: ["attribute-values", "variant-combinations"]` requires at least
+one corresponding fixture in every pack entry. Missing fixtures return
+required-evidence-unavailable (2). `taxonomy`, `tax-coverage`, `profiles`,
+`promotions` and unrecognized requests still return 2 until their owners exist.
+Unknown fields refuse; they are never silently passed. Do not add typed attribute
+or combination fields to strict v1 drafts.
 
 The command imports trusted code, including callbacks, without a sandbox. Modules
 must not write stdout or start effects. The checker owns no database, network,
@@ -80,8 +82,23 @@ labels: {en: "Finish"}}]`. Metadata/reference checks are available. The separate
 server owners `validateCatalogAttributes` and `prepareCatalogAttributeProjection`
 are available unbound from `@openlup/platform/catalog`; they validate supplied
 values, report missing publication facts as readiness issues and prepare rows
-without writing. They are not yet called by this checker, and values remain
-excluded from v1 drafts. Reference resolution needs its injected allowlisted port;
+without writing. Add a separate fixture to the pack entry:
+
+```ts nocheck
+// Excerpt in fixtures.ts; the type declares a product-scoped boolean finish.
+attributes: [{ type: { key: "stationery:notebook", version: 1 },
+  input: { productAttributes: { finish: false },
+    skus: [{ id: "00000000-0000-4000-8000-000000000001" }] },
+  publicationRevision: "7" }]
+```
+
+The checker awaits the validator and passes its result to projection preparation;
+all malformed values and missing required publication facts report owner codes.
+The revision is fixture data, never proof of a persisted publication. Reference
+resolution uses an optional trusted `references` port on this fixture, whose
+`resolve` callback supplies an allowlisted offline batch. An unresolved, private
+or unavailable target refuses with the owner's code. The checker does not contact
+a database to discover references. Values remain excluded from v1 drafts;
 actual publication and generation serving remain pending. A new attribute kind
 is upstream work. Usual owner codes:
 `attribute_projection_text_too_large`, `attribute_storage_too_large`, `attribute_values_invalid`, `attribute_value_invalid`,
@@ -119,9 +136,23 @@ variant attribute in the same type. Metadata and existing v1 validation are
 available. Platform's server `./catalog` entry supplies
 `canonicalizeCatalogCombinationV2` and `validateCatalogCombinationChangesV2`
 for pure combination preparation. They require installed definitions and
-authoritative retained facts; they do not publish. Cross-unit combination
-fixtures are not yet part of this CLI: `requiredChecks: ["variant-combinations"]`
-still returns 2.
+authoritative retained facts; they do not publish. Add a separate fixture to the pack entry:
+
+```ts nocheck
+// Excerpt in fixtures.ts; finish is a variant boolean attribute and axis.
+combinations: [{ type: { key: "stationery:notebook", version: 1 },
+  input: { axes: ["finish"], typed: true, retained: [], incoming: [{
+    skuId: "00000000-0000-4000-8000-000000000001", state: "active",
+    optionValues: { finish: { kind: "boolean", value: false } }
+  }] } }]
+```
+
+The checker calls the version 2 change validator with the selected type. It checks only
+supplied incoming changes and retained fixture facts; it never enumerates possible
+combinations or reads live capacity. Exact equivalent units share an identity;
+active duplicates refuse. `retained` facts and optional `capacity` describe the
+fixture, not the installation. Request `requiredChecks: ["variant-combinations"]`
+to refuse when a pack entry supplies no combination fixtures.
 New attribute kinds/dimensions are upstream work. Usual codes:
 `definition_dimension_invalid`, `definition_axis_invalid`, `definition_duplicate_axis`,
 `definition_unknown_axis_attribute`, `definition_axis_scope_invalid`,

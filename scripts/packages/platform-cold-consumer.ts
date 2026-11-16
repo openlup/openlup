@@ -2042,6 +2042,16 @@ const cases = [
    const malformedReference = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/invalid-reference.ts"]);
    assert.equal(malformedReference.exitCode, 1);
    assert(malformedReference.findings.some(f => f.code === "definition_version_invalid" && f.path === "/packs/0/quantities/0/type/version"));
+   writeFileSync(join(owned, "owner-fixtures.ts"), 'import subject from "./registry.ts"; const original=subject.packs[0].pack; const type={...original.types[0], attributes:[{key:"finish",scope:"variant",valueType:{kind:"boolean"},required:true,cardinality:{min:1,max:1},filterable:true,facetable:true,public:true,displayOrder:0,labels:{}}],dimensions:[{key:"finish",kind:"boolean"}],axes:[{key:"finish",attributeKey:"finish"}]}; const pack={...original,types:[type]}; const ref={key:type.key,version:type.version}; export default {packs:[{pack,attributes:[{type:ref,input:{skus:[{id:"00000000-0000-4000-8000-000000000001",attributes:{finish:false}}]},publicationRevision:"7"}],combinations:[{type:ref,input:{typed:true,axes:["finish"],retained:[],incoming:[{skuId:"one",state:"active",optionValues:{finish:{kind:"boolean",value:false}}}]}}]}],requiredChecks:["attribute-values","variant-combinations"]};');
+   const ownersCommand = ["catalogue", "check", "--packs", "./catalogue-skeleton/owner-fixtures.ts"];
+   assert.equal(invoke(ownersCommand).exitCode, 0);
+   const ownerSource = readFileSync(join(owned, "owner-fixtures.ts"), "utf8");
+   writeFileSync(join(owned, "owner-fixtures.ts"), ownerSource.replace('attributes:{finish:false}', 'attributes:{unknown:false}'));
+   const ownerFailure = invoke(ownersCommand); assert.equal(ownerFailure.exitCode, 1);
+   assert(ownerFailure.findings.some(f => f.code === "attribute_unknown_key" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/unknown"));
+   writeFileSync(join(owned, "owner-fixtures.ts"), ownerSource.replace('axes:["finish"],retained:[]', 'axes:["finish","finish"],retained:[]'));
+   const axisFailure = invoke(ownersCommand); assert.equal(axisFailure.exitCode, 1);
+   assert(axisFailure.findings.some(f => f.code === "duplicate_axis" && f.path === "/packs/0/combinations/0/input/axes/1"));
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
    const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);
@@ -2071,7 +2081,7 @@ const three = [1,2,3].map(index => {
  const type = {...entry.pack.types[0], key:namespace + ":notebook"};
  return {...entry, pack:{...entry.pack, id:namespace, namespace, types:[type]}, drafts:entry.drafts.map(draft => ({...draft, product:{...draft.product, type:{key:type.key, version:type.version}}}))};
 });
-const start = performance.now(); const report = runCatalogExtensionConformance({packs:three});
+const start = performance.now(); const report = await runCatalogExtensionConformance({packs:three});
 // Synthetic A1 timing only, not full reference-pack completion or a timing gate.
 console.log("synthetic A1 three-pack warm check ms=" + (performance.now()-start).toFixed(3)); assert.equal(report.exitCode, 0);
 `, [compiler]).trim());
