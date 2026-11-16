@@ -33,6 +33,7 @@ contracts as the template for your implementation:
 | Marketing | Implement neutral profile, consent-readback and erasure ports from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/communications-contracts.api.md). Keep consent push separate. | Communications conformance covers marketing sync; consent push needs separate checks. |
 | Payments | Implement the payment contract and declare capabilities from the [payments contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/payments-contracts.api.md). | Use the conformance runner and fixtures in the [payments API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/payments.api.md). Import `runPaymentAdapterConformance` and `createScriptedPaymentFake` from `@openlup/platform/payments/testing` for offline adapter checks. |
 | Fulfillment | Implement the operations you declare in the [fulfillment contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/fulfillment-contracts.api.md). | Use the conformance runner with adapter-owned fixtures from the [fulfillment API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/fulfillment.api.md). |
+| Carrier rate quotes | Bind `resolveQuoteShippingPromotions` in `createDbBackedCommerceQuotePort`; see [quote a carrier shipping rate by weight at checkout](#quote-a-carrier-shipping-rate-by-weight-at-checkout). | No dedicated carrier-rate port or conformance runner is supplied. Prove the quoted total and unsupported-input refusal before provider I/O with your own offline adapter. |
 | Ecommerce events | Implement `EcommerceEventsPort` from the [communications contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/communications-contracts.api.md), independently of profile and consent support. Declare the selected scope and qualification, keep the source, profile and mapping identity on retry, and recheck local authority before each effect. | Communications conformance covers email and marketing sync only; prove event acceptance, refusal without effects, replay and uncertain acceptance with your own offline sink. A passing offline check does not qualify a live account. |
 
 Opt-in templates cover email, marketing, payments and fulfillment. Default
@@ -44,6 +45,62 @@ browser contracts entries do not export provider factories. Consult the [package
 capability
 reference](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/AGENTS.md#subpath-maturity)
 for the declared selection boundary.
+
+### Quote a carrier shipping rate by weight at checkout
+
+To quote a carrier shipping rate by weight at checkout, inject
+`resolveQuoteShippingPromotions` into `createDbBackedCommerceQuotePort` from
+`@openlup/platform/pricing`. The host owns the carrier HTTP client, credentials,
+destination validation and trusted product weights. Extend `CreateQuoteRequest`
+with validated destination facts if needed; its base shape has lines, purchase
+mode, cadence and promotion codes, not weight or address. Keep the resolver
+applicable to both one-time purchases and subscriptions.
+
+```ts
+import {
+  createDbBackedCommerceQuotePort,
+  type CommerceQuoteCatalogItem,
+  type DbBackedCommerceQuotePortDeps,
+} from "@openlup/platform/pricing";
+import type {
+  CommerceQuoteContext,
+  CreateQuoteRequest,
+} from "@openlup/platform/pricing/contracts";
+
+export function composeCarrierQuote<
+  Request extends CreateQuoteRequest,
+  Item extends CommerceQuoteCatalogItem,
+  LineContext extends object,
+  Context extends CommerceQuoteContext,
+>(
+  deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>,
+  resolver: NonNullable<typeof deps.resolveQuoteShippingPromotions>,
+) {
+  return createDbBackedCommerceQuotePort({
+    ...deps,
+    resolveQuoteShippingPromotions: resolver,
+  });
+}
+```
+
+The resolver receives the request, options, region, currency, product reference
+amount, subtotal and resolution time. It returns final `shippingGrossMinor`,
+`hasShipping`, `discounts`, `codeRejections`, `codeRejectionDetails` and optional
+`shippingTerms` / `acquisitionTerms`. Supplying it replaces the flat-fee read,
+automatic promotions and code-application callbacks: compose those policies in
+the resolver rather than dropping existing discounts or free-shipping rules.
+Retain supplied terms in your context schema and quote-acceptance path.
+
+`ShippingRateDataPort` from `@openlup/platform/shipping` only reads/writes an
+administrative flat rate and records its audit; it is not a carrier quote port.
+Fulfillment preparation, labels and tracking are separate from checkout pricing.
+Refuse unsupported destinations, currencies or missing weight facts before
+provider I/O; do not silently substitute a successful zero rate. Use a scripted
+client to verify the shipping amount in the final total, promotion interactions
+and zero-I/O refusals. This preview supplies no dedicated carrier-rate
+conformance runner. In the starter, the quote composition is currently managed
+source; follow the [source-copy ownership process](../build/customize-the-starter.md#change-a-page-or-add-a-route)
+if you change it.
 
 ### Card and wallet payment template
 
