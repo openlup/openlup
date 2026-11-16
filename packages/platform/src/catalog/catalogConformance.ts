@@ -4,6 +4,17 @@ import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
 const rule = (text: string, fix: string, anchor: string): CatalogConformanceRule => Object.freeze({ severity: "error", rule: text, fix, recipe: recipe(anchor) });
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
+  attribute_projection_text_too_large: rule("Every projected text slot fits the unconditional composite B-tree index.", "Keep the UTF-8 text slot within 2048 bytes, including the full localized JSON map; facet/filter flags do not bypass this limit.", "add-attribute"),
+  attribute_storage_too_large: rule("Each attribute object fits 1 MiB of PostgreSQL-rendered JSONB text.", "Reduce this product or SKU object's rendered UTF-8 size, including separator spaces.", "add-attribute"),
+  attribute_values_invalid: rule("Values use bounded canonical JSON objects and unique SKU identities.", "Correct the object shape, identity, JSON depth or byte bound.", "add-attribute"),
+  attribute_value_invalid: rule("Supplied values match the installed closed value kind and bounds.", "Supply the declared kind, stable ID, locale, date or allowlisted reference.", "add-attribute"),
+  attribute_unknown_key: rule("Every supplied attribute key is declared.", "Declare the attribute in a new definition version or remove the unknown key.", "add-attribute"),
+  attribute_scope_conflict: rule("Product values are shared; variant values belong only to SKUs.", "Move the value to its declared owner.", "add-attribute"),
+  attribute_cardinality_invalid: rule("Supplied scalar and list cardinalities match the definition.", "Supply the declared number of values within both list and cardinality bounds.", "add-attribute"),
+  attribute_required_missing: rule("Required values must exist before publication.", "Supply the missing value before preparing publication.", "add-attribute"),
+  attribute_required_locale_missing: rule("Every required locale must exist before publication.", "Supply the required locale explicitly; a fallback does not satisfy it.", "add-attribute"),
+  attribute_reference_unresolved: rule("Every reference resolves uniquely and is available to this catalogue.", "Resolve the allowlisted batch and remove dangling, private or unavailable references.", "add-attribute"),
+  attribute_publication_revision_invalid: rule("Projection preparation names one explicit publication revision.", "Supply a positive bigint revision as a decimal string.", "add-attribute"),
   conformance_subject_invalid: rule("Conformance subjects use the documented explicit fixture shape.", "Supply packs and only the documented fixture fields.", "new-vertical"),
   conformance_owner_unavailable: rule("Requested checks require an available offline owner and its evidence.", "Limit the request to available checks or wait for the named owner; never treat this as PASS.", "new-vertical"),
   conformance_refusal_fixture_missing: rule("Every unsupported capability has a refusal fixture.", "Add a fixture with the exact owner code and a zero-effect assertion.", "new-vertical"),

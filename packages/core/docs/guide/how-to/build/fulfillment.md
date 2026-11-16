@@ -53,7 +53,10 @@ to the rule's rate.
 
 The selected rule supplies a carrier kind and delivery estimate; it does not
 choose or call a carrier adapter. Your host owns carrier selection, pickup
-points, labels and shipment execution. Continue below to compose those effects.
+points, labels and shipment execution. For checkout carrier rates, use the
+[carrier shipping quote recipe](../extend/provider-adapters.md#quote-a-carrier-shipping-rate-by-weight-at-checkout)
+and `resolveQuoteShippingPromotions`; `ShippingRateDataPort` manages an
+administrative flat rate. Continue below to compose shipment effects.
 
 ## Provide preparation and dispatch ports
 

@@ -204,6 +204,8 @@
     "test/editor-contracts.test.ts",
     "test/editor-mail.test.ts",
     "test/subscription-models.test.ts",
-    "test/subscription-routes.test.ts"
+    "test/subscription-routes.test.ts",
+    "release-inputs/openlup-core-v0.43.0/manifest.json",
+    "release-inputs/openlup-core-v0.43.0/package-lock.json"
   ]
 }

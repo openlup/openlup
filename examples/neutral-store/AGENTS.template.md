@@ -31,7 +31,11 @@ monorepo instead, and this file does not apply there.
 - **Customize ordinary application code.** Handlers, policies, ports, composition, host bindings
   and compatible native adapters need no record per function, nomination or upstream release.
   Unpackaged application code remains application-owned regardless of historical origin.
-- **A missing seam holds the dependent change.** Record a local reproducer and obtain authority
+- **Check public composition before declaring a seam missing.** A missing starter setting is
+  not proof of a missing package seam. Search the installed guide, public exports and declarations
+  for commands, ports and composition callbacks; read their contracts and relevant source.
+  Keep managed-source ownership explicit when mounting an existing seam. If no compatible public
+  composition exists, hold the dependent change. Record a local reproducer and obtain authority
   for an upstream submission. A supported wrapper/adapter must preserve the contract; otherwise
   retain compatible serving work or use an available rollback compatible with durable state.
   Do not rewrite published SQL, discard pending work or create another engine.

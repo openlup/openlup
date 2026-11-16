@@ -4,26 +4,12 @@ This starter is an application inside the OpenLup source repository, separate
 from its npm workspaces. It combines public package entries with application-owned
 configuration, browser pages and a local demonstration host.
 
-From this checkout's root, using Node.js 24 and npm 11.19.0 after installing the
-root dependencies and building the packages, run:
-
-```sh
-cd examples/neutral-store
-npm run build
-npm start
-```
-
-This serves the database-free UI at `http://127.0.0.1:4319`. Stop with Ctrl-C.
-For a different configuration or port, use
-`npm start -- --configuration coffee --port 4320`. On macOS and Linux,
-`npm run dev` provides the [watched edit loop](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
-This preview does not bind database-backed purchase or account actions.
-Subscription price previews explain `host_binding_required` in the active
-language and point to `./lifecycle up` for the installed local demonstration.
-One-time estimates still work; installed quotes serve both purchase modes.
-Known price refusals explain the repair through the allowlist in
-`owned/quote-copy.ts`; unknown failures remain generic. Refreshing withholds the
-previous price, including when a superseded success arrives after a failure.
+For an independent application, follow the
+[exact released-starter recipe](#start-from-an-exact-source-archive):
+download the 0.43.0 source archive and pinned input pair, extract with
+`--mode released`, run `npm ci`, then `./lifecycle up`. This development-preview
+application includes both one-time and subscription purchases. No local package
+packing or author checkout is needed.
 
 Read the [guide](../../packages/core/docs/guide/README.md), follow the small
 [npm tutorial](../../packages/core/docs/guide/start/tutorial.md), or prepare an
@@ -56,13 +42,104 @@ the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
 ## Start from an exact source archive
 
+This recipe selects `openlup-core-v0.43.0`, source commit
+`6facc3e72441ade5813397f65ac7edbe34fd1d0f`, and input commit
+`87dadb251b27b72a18718b08ac39951dd4f1fdd0`. The exact
+[manifest](https://github.com/openlup/openlup/blob/87dadb251b27b72a18718b08ac39951dd4f1fdd0/examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json)
+and [lock](https://github.com/openlup/openlup/blob/87dadb251b27b72a18718b08ac39951dd4f1fdd0/examples/neutral-store/release-inputs/openlup-core-v0.43.0/package-lock.json)
+are source-only inputs, omitted from extracted applications. See the
+[distribution owner](../../docs/platform/DISTRIBUTION_EVIDENCE.md#released-starter-inputs)
+for their producer and identity limits. Preserve historical pairs unchanged.
+Do not silently replace this released pair with candidate archives.
+
 `extract.mjs` requires Node 24 and Git, copies only owned/managed inventory and
 materializes `AGENTS.md` and `README.md` through `sourceMappings`. It creates an
-independent Git repository without ancestor lookup or workspace resolution.
-`lifecycle.mjs` binds the selected tarball names, equal set versions
-and SHA-256 identities to the candidate's exact `file:` references.
+independent repository. Released extraction pins the npm set and commits the
+supplied lock and `.starter-origin.json`; `npm ci` installs that exact closure.
+The matching source archive retains its released bytes, including older docs.
+
+From a new download directory:
+
+```sh
+mkdir openlup-0.43.0
+cd openlup-0.43.0
+curl --fail --location \
+  https://github.com/openlup/openlup/archive/6facc3e72441ade5813397f65ac7edbe34fd1d0f.tar.gz \
+  --output source.tar.gz
+tar -xzf source.tar.gz
+curl --fail --location \
+  https://raw.githubusercontent.com/openlup/openlup/87dadb251b27b72a18718b08ac39951dd4f1fdd0/examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json \
+  --output manifest.json
+curl --fail --location \
+  https://raw.githubusercontent.com/openlup/openlup/87dadb251b27b72a18718b08ac39951dd4f1fdd0/examples/neutral-store/release-inputs/openlup-core-v0.43.0/package-lock.json \
+  --output starter-package-lock.json
+node openlup-6facc3e72441ade5813397f65ac7edbe34fd1d0f/examples/neutral-store/extract.mjs ../my-store \
+  --mode released --set-version 0.43.0 \
+  --source-revision 6facc3e72441ade5813397f65ac7edbe34fd1d0f \
+  --manifest manifest.json --lockfile starter-package-lock.json
+cd ../my-store
+npm ci
+./lifecycle up
+```
+
+Use Node 24, npm 11.19.0, Git, curl, tar and Docker with Compose. Run from a
+parent with no `my-store` application; a nonempty target refuses. The lifecycle
+installs the packaged PostgreSQL history and fictional catalogue, then serves
+`http://127.0.0.1:4319`. It changes only this local demonstration's database.
+`./lifecycle down` stops it and preserves data. Keep the passwordless Compose
+network isolated. For customization, recovery and the database-free UI preview,
+continue with the [reader guide](../../packages/core/docs/guide/how-to/build/customize-the-starter.md).
+
+Expect `.starter-origin.json.mode` to be `released`, with set `0.43.0` and the
+source revision above. Extraction checks the input identities; it does not
+verify archive origin or npm provenance. Follow the
+[adoption identity checks](../../packages/core/docs/guide/start/adopt-from-npm.md#compare-at-first-adoption-and-upgrade)
+for those obligations. If download or extraction fails, check the source and
+input commits; never regenerate the lock or silently switch to local candidates.
+
+## Contributor candidate workflow
+
+From this checkout's root, using Node.js 24 and npm 11.19.0 after installing the
+root dependencies and building the packages, run:
+
+```sh
+cd examples/neutral-store
+npm run build
+npm start
+```
+
+This serves the database-free UI at `http://127.0.0.1:4319`. Stop with Ctrl-C.
+For a different configuration or port, use
+`npm start -- --configuration coffee --port 4320`. On macOS and Linux,
+`npm run dev` provides the [watched edit loop](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
+This preview does not bind database-backed purchase or account actions.
+Subscription price previews explain `host_binding_required` in the active
+language and point to `./lifecycle up` for the installed local demonstration.
+One-time estimates still work; installed quotes serve both purchase modes.
+Known price refusals explain the repair through the allowlist in
+`owned/quote-copy.ts`; unknown failures remain generic. Refreshing withholds the
+previous price, including when a superseded success arrives after a failure.
+
+From the repository root, candidate extraction preserves local tarball pins:
+
+```sh
+node examples/neutral-store/extract.mjs ../candidate-store
+cd ../candidate-store
+./lifecycle candidate "$CORE_ARCHIVE" "$OUTBOX_ARCHIVE" "$PLATFORM_ARCHIVE"
+npm ci
+```
+
 Successful `./lifecycle candidate` import ends with `next: npm ci`: import prepares
 the lockfile; run `npm ci` to install it before starting the application.
+
+Set the three archive variables to full paths of the selected candidate packages
+in core, outbox, platform order. The importer checks package names, equal set
+versions and SHA-256 identities against the candidate's exact `file:` references.
+These inputs do not claim released identity. Do not substitute them silently for
+an adopter's selected release. The [artifact boundary](artifacts/README.md)
+retains that rule.
+
+## Extraction input contract
 
 For a released development-preview set, run from the matching source tree's root:
 
@@ -72,9 +149,8 @@ node examples/neutral-store/extract.mjs ../my-store --mode released \
   --manifest ./pack-manifest.json --lockfile ./starter-package-lock.json
 ```
 
-Supply the existing pack producer's v2 manifest (`schemaVersion: 2`, `commit`,
-`packages` with `name`, `version` and `integrity`; artifact filename/hash fields
-are retained). This is an explicit expected-integrity input, not a publication
+Supply the existing qualification producer's v2 manifest (`schemaVersion: 2`,
+`commit`, `packages` with `name`, `version` and `integrity`). This is an explicit expected-integrity input, not a publication
 receipt. Its complete package set and revision must match the source inventory.
 Every source package must have the selected exact version. LockfileVersion 3
 (npm 11's default) and a `packages` map are required. Every map key must already
@@ -93,9 +169,10 @@ case-insensitively. Nested and aliased OpenLup copies are forbidden. All non-roo
 entries must retain public `https://registry.npmjs.org` resolutions without links,
 credentials, query strings or fragments. Refusals use `starter_release_*` names.
 
-Prepare that lockfile in a separate copy of the application's `package.json`:
-replace every `@openlup/*` dependency with the exact set version and run
-`npm install --package-lock-only --ignore-scripts --registry=https://registry.npmjs.org`.
+For another tag, contributors use the existing
+[`prepareReleasedStarter` producer](../../scripts/packages/exact-set-qualification.mjs)
+and retain its exact manifest/lock bytes under a new per-tag directory. Adopters
+use the committed pair rather than constructing a manifest or lock themselves.
 Extraction itself performs no install and makes no registry request. It rewrites
 the application's package pins, removes the lockfile ignore and creates an initial
 Git commit including `package-lock.json` and `.starter-origin.json`, using the local
@@ -132,7 +209,7 @@ and schema version 2 is recorded in the generated released identity.
 Run the source-only offline identity checks from `examples/neutral-store`:
 
 ```sh
-node --experimental-strip-types --test test/extract.test.ts
+npm test -- test/extract.test.ts
 ```
 
 These fixtures cover canonical lock keys, the exact OpenLup allowlist, forbidden

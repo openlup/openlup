@@ -5,15 +5,26 @@ This application was extracted from the OpenLup starter. It uses the
 public entries, with application-owned configuration, browser pages and a local
 host. It is a development preview, not a supported production installation.
 
-Read the OpenLup guide that ships with your installed packages before relying
-on memory: `node_modules/@openlup/core/docs/guide/README.md`. Its page
-`how-to/build/customize-the-starter.md` explains how to import the package
-archives, run the local demonstration, edit and refresh, customize the
-configuration and upgrade the files this application manages.
+For a released extraction, `.starter-origin.json` records `mode: released`, the
+exact set version and source revision. From this application's root, install its
+committed registry lock and start the local database-backed demonstration:
 
-Candidate extraction uses local package archives; import them before installing
-dependencies. Released or reconstructed extraction uses exact public npm pins;
-install from its committed registry lockfile with `npm ci` (see `docs/proof.md`).
+```sh
+npm ci
+./lifecycle up
+```
+
+Use Node 24, npm 11.19.0 and Docker with Compose. The lifecycle installs the
+packaged PostgreSQL history and fictional catalogue, then serves
+`http://127.0.0.1:4319`. `./lifecycle down` stops the project while preserving data.
+Keep this passwordless demonstration isolated; deployment needs your own
+composition and authority. Both one-time and subscription purchases are included.
+
+Read `node_modules/@openlup/core/docs/guide/README.md` after installation.
+`how-to/build/customize-the-starter.md` explains the local demonstration, edit
+loop, owned configuration and application-file upgrades. `docs/proof.md` records
+the extraction modes and evidence limits. Reconstructed extraction retains its
+explicit reason and does not claim original released-starter provenance.
 
 After installing dependencies, build and
 serve the database-free demonstration with the `build` and `start` package
@@ -28,3 +39,18 @@ starting the application.
 
 `AGENTS.md` holds the instructions for coding agents working in this
 application.
+
+## Contributor candidates
+
+A candidate extraction retains local package-archive pins. Only for that mode,
+set `CORE_ARCHIVE`, `OUTBOX_ARCHIVE` and `PLATFORM_ARCHIVE` to the full paths of
+the selected candidate archives, then run:
+
+```sh
+./lifecycle candidate "$CORE_ARCHIVE" "$OUTBOX_ARCHIVE" "$PLATFORM_ARCHIVE"
+npm ci
+```
+
+Import checks package names, equal versions and digests. It does not turn a
+candidate into a released set. Never silently substitute candidate artifacts
+for the selected release or rewrite a released lock to make installation pass.

@@ -14,9 +14,10 @@ malformed references refuse before registry lookup.
 `requiredChecks: ["taxonomy"]`, for example, requests a future check and returns
 required-evidence-unavailable (2). All requested checks in `requiredChecks` are
 currently unavailable. Unknown fields refuse; they are never silently passed.
-Attribute-value/projection checks await their owners. Version 2 combination helpers are
-available separately in Platform's server catalogue entry; combination fixtures
-are not wired into this checker. Do not add typed attribute or combination fields to strict v1 drafts.
+Attribute-value/projection and version 2 combination owners are available
+separately in Platform's server catalogue entry. Their fixtures are not yet wired
+into this checker. Do not add typed attribute or combination fields to strict v1
+drafts.
 
 The command imports trusted code, including callbacks, without a sandbox. Modules
 must not write stdout or start effects. The checker owns no database, network,
@@ -75,8 +76,19 @@ and promotion benefit/target kinds require upstream changes to the closed gramma
 Edit `pack.ts` and `fixtures.ts`. Metadata example: `attributes: [{key: "finish",
 scope: "variant", valueType: {kind: "boolean"}, required: false, cardinality:
 {min: 0, max: 1}, filterable: true, facetable: true, public: true, displayOrder: 0,
-labels: {en: "Finish"}}]`. Metadata/reference checks are available; value validation
-and projection are pending. A new attribute kind is upstream work. Usual codes:
+labels: {en: "Finish"}}]`. Metadata/reference checks are available. The separate
+server owners `validateCatalogAttributes` and `prepareCatalogAttributeProjection`
+are available unbound from `@openlup/platform/catalog`; they validate supplied
+values, report missing publication facts as readiness issues and prepare rows
+without writing. They are not yet called by this checker, and values remain
+excluded from v1 drafts. Reference resolution needs its injected allowlisted port;
+actual publication and generation serving remain pending. A new attribute kind
+is upstream work. Usual owner codes:
+`attribute_projection_text_too_large`, `attribute_storage_too_large`, `attribute_values_invalid`, `attribute_value_invalid`,
+`attribute_unknown_key`, `attribute_scope_conflict`, `attribute_cardinality_invalid`,
+`attribute_required_missing`, `attribute_required_locale_missing`,
+`attribute_reference_unresolved`, `attribute_publication_revision_invalid`.
+Usual metadata codes:
 `definition_attribute_invalid`, `definition_duplicate_attribute`,
 `definition_facetable_not_filterable`, `definition_unknown_attribute_unit`,
 `definition_duplicate_enum_value`. Check:
