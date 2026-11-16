@@ -998,17 +998,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2836436,
+      "maxPackedBytes": 2836317,
       "maxFiles": 4654
     },
     "docs": {
       "maxPackedBytes": 109679,
       "maxFiles": 8
     },
-    "maxPackedBytes": 3593399,
-    "maxUnpackedBytes": 17231110,
+    "maxPackedBytes": 3588283,
+    "maxUnpackedBytes": 17228206,
     "maxFiles": 4830,
-    "capReason": "Under the coordinator-approved budget rule, canonical cold main d1e1641d7 measures total 3376821 B packed / 16281505 B unpacked / 4588 files and code 2649353 B packed / 4420 files. The A2 per-row upper forecasts, including the edit-consent TypeScript work and the small combination-integrity fix, sum to total +181000 B packed / +779000 B unpacked / +195 files and code +159000 B packed / +188 files. Paired total caps are 3593399 B packed (3376821 + 181000 + 35578) and 17231110 B unpacked (16281505 + 779000 + 170605); total files are 4830 (4588 + 195 + 47). Code caps are 2836436 B packed (2649353 + 159000 + 28083) and 4654 files (4420 + 188 + 46). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Code has no unpacked limit, so pairing is vacuous there. Preserve docs and browser limits, the published baseline and every other inherited limit. This budgets unbound 0.44.0 work and activates no capability.",
+    "capReason": "Under the coordinator-approved budget rule, canonical cold main 20ab9d196 measured with Node 24.21.0 and npm 11.19.0 is total 3380756 B packed / 16282630 B unpacked / 4588 files and code 2650235 B packed / 4420 files. S4I is included in this base. The remaining A2 per-row upper forecasts, including edit-consent TypeScript work, sum to total +172000 B packed / +775000 B unpacked / +195 files and code +158000 B packed / +188 files. Paired total caps are 3588283 B packed (3380756 + 172000 + 35527) and 17228206 B unpacked (16282630 + 775000 + 170576); total files are 4830 (4588 + 195 + 47). Code caps are 2836317 B packed (2650235 + 158000 + 28082) and 4654 files (4420 + 188 + 46). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Code has no unpacked limit, so pairing is vacuous there. Preserve docs and browser limits, the published baseline and every other inherited limit. This budgets unbound 0.44.0 work and activates no capability.",
     "baseline": {
       "version": "0.42.0",
       "packedBytes": 3212990
