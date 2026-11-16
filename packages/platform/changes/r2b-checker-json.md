@@ -12,3 +12,9 @@ Replace refusal callbacks with `observedCode` and `zeroEffects` records, referen
 ports with resolution rows, and retained identity bytes with options. The single
 entry retains report fields, deterministic ordering and the five CLI exits.
 No SQL, publication, subscription changes or capability activation occurs.
+
+Primitive quantity fields are admitted before owner handoff. Shared-owner
+exceptions on fixture data become deterministic input refusals (exit 1), keeping
+named owner codes where available and otherwise `conformance_subject_invalid`.
+Syntax stays 64 and CLI filesystem/non-input failures stay 74. Shared owners,
+API signatures, SQL and release caps are unchanged.

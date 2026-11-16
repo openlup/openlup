@@ -1,4 +1,4 @@
-import { CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+import { canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import {
   CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
   validateCatalogAttributes, prepareCatalogAttributeProjection, canonicalizeCatalogCombinationV2,
@@ -27,6 +27,29 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
       cause: rule.rule, fix: rule.fix, recipe: rule.recipe, recheck,
       evidence: { declared: "JSON fixture observations", bound: "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
+  }
+  // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
+  async function owner<T>(path: string, work: () => T | Promise<T>): Promise<T | undefined> {
+    try { return await work(); }
+    catch (error) {
+      const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
+      const code = Object.hasOwn(CATALOG_CONFORMANCE_RULES, named)
+        || ["draft_json_invalid", "draft_json_depth", "draft_payload_too_large", "invalid_catalog_type_definition"].includes(named)
+        ? named : "conformance_subject_invalid";
+      add(code, `${path}${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
+      return undefined;
+    }
+  }
+  function quantityShape(value: unknown, path: string): boolean {
+    if (!closed(value, ["dimension", "unit", "unscaled", "scale"])) { add("quantity_invalid", path); return false; }
+    const fields = value as Record<string, unknown>;
+    let valid = true;
+    for (const key of ["dimension", "unit", "unscaled", "scale"] as const) {
+      if (key === "scale" ? !Number.isInteger(fields[key]) : typeof fields[key] !== "string") {
+        add("quantity_invalid", `${path}/${key}`); valid = false;
+      }
+    }
+    return valid;
   }
   function finish(): CatalogConformanceReport {
     findings.sort((a, b) => compare(a.path, b.path) || compare(a.code, b.code) || compare(a.fixture, b.fixture));
@@ -63,34 +86,37 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
       return { ...type, validateContent: () => [{ code: "conformance_owner_unavailable", path: "" }] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     if (executableField) continue;
-    const issues = catalogPackIssues(pack);
+    const issues = await owner(`${at}/pack`, () => catalogPackIssues(pack));
+    if (!issues) continue;
     issues.forEach(issue => add(issue.code, `${at}/pack${issue.path}`));
     if (issues.length) continue;
     pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
-    const registry = createCatalogProductTypeRegistry(pack.types);
+    const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(pack.types));
+    if (!registry) continue;
     for (const [i, draft] of (drafts ?? []).entries()) {
-      const path = `${at}/drafts/${i}`, admitted = catalogDraftPayloadSchema.safeParse(draft);
+      const path = `${at}/drafts/${i}`, admitted = await owner(`${at}/drafts/${i}`, () => catalogDraftPayloadSchema.safeParse(draft));
+      if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
-      const validation = validateCatalogDraft(admitted.data, registry);
+      const validation = await owner(path, () => validateCatalogDraft(admitted.data, registry));
+      if (!validation) continue;
       if (!validation.valid) validation.issues.forEach(issue => add(issue.code, `${path}${pointer(issue.path.split("."))}`, "", issue.code === "conformance_owner_unavailable"));
     }
     for (const [i, fixture] of (quantities ?? []).entries()) {
       const path = `${at}/quantities/${i}`;
-      if (!closed(fixture, ["type", "value", "targetUnit"]) || !object(fixture.value)) { add("conformance_subject_invalid", path); continue; }
-      const issues = catalogProductTypeRefIssues(fixture.type);
+      if (!closed(fixture, ["type", "value", "targetUnit"])) { add("conformance_subject_invalid", path); continue; }
+      if (!quantityShape(fixture.value, `${path}/value`)) continue;
+      if (fixture.targetUnit !== undefined && typeof fixture.targetUnit !== "string") { add("quantity_invalid", `${path}/targetUnit`); continue; }
+      const issues = await owner(`${path}/type`, () => catalogProductTypeRefIssues(fixture.type));
+      if (!issues) continue;
       issues.forEach(issue => add(issue.code, `${path}/type${issue.path}`));
       if (issues.length) continue;
-      const definition = registry.resolve(fixture.type);
+      const definition = await owner(`${path}/type`, () => registry.resolve(fixture.type) ?? null);
+      if (definition === undefined) continue;
       if (!definition) { add("type_not_installed", `${path}/type`); continue; }
       if (definition.units.some(unit => !unit.factor)) { add("conformance_owner_unavailable", path, "", true); continue; }
       const units = definition.units as readonly CatalogQuantityUnit[];
-      try {
-        if (fixture.targetUnit === undefined) canonicalizeCatalogQuantity(fixture.value, units);
-        else convertCatalogQuantity(fixture.value, fixture.targetUnit, units);
-      } catch (error) {
-        if (!(error instanceof CatalogQuantityError)) throw error;
-        add(error.code, `${path}/value`);
-      }
+      await owner(`${path}/value`, () => fixture.targetUnit === undefined
+        ? canonicalizeCatalogQuantity(fixture.value, units) : convertCatalogQuantity(fixture.value, fixture.targetUnit, units));
     }
     for (const field of ["attributes", "combinations"] as const) {
       for (const [i, fixture] of (field === "attributes" ? attributes ?? [] : combinations ?? []).entries()) {
@@ -98,10 +124,12 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
         if (!closed(fixture, field === "attributes" ? ["type", "input", "publicationRevision", "references"] : ["type", "input"])) {
           add("conformance_subject_invalid", path); continue;
         }
-        const issues = catalogProductTypeRefIssues(fixture.type);
+        const issues = await owner(`${path}/type`, () => catalogProductTypeRefIssues(fixture.type));
+        if (!issues) continue;
         issues.forEach(issue => add(issue.code, `${path}/type${issue.path}`));
         if (issues.length) continue;
-        const definition = registry.resolve(fixture.type);
+        const definition = await owner(`${path}/type`, () => registry.resolve(fixture.type) ?? null);
+        if (definition === undefined) continue;
         if (!definition) { add("type_not_installed", `${path}/type`); continue; }
         if (field === "attributes") {
           const value = fixture as NonNullable<typeof attributes>[number];
@@ -116,8 +144,10 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
             const key = referenceKey(row.namespace, row.id);
             statuses.set(key, [...statuses.get(key) ?? [], row.status]);
           }
-          const validation = await validateCatalogAttributes(definition, value.input, { resolve: async () => evidence });
-          const prepared = prepareCatalogAttributeProjection(validation, value.publicationRevision);
+          const validation = await owner(`${path}/input`, () => validateCatalogAttributes(definition, value.input, { resolve: async () => evidence }));
+          if (!validation) continue;
+          const prepared = await owner(`${path}/input`, () => prepareCatalogAttributeProjection(validation, value.publicationRevision));
+          if (!prepared) continue;
           if (!prepared.prepared) prepared.issues.forEach(issue => {
             let requiredEvidence = false;
             if (issue.code === "attribute_reference_unresolved") {
@@ -148,14 +178,11 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
             }
           }
           if (invalid) continue;
-          try {
+          await owner(`${path}/input`, () => {
             const retained = input.retained.map(row => ({ ...row, identity: row.optionValues === null ? null
               : canonicalizeCatalogCombinationV2({ definition, axes: input.axes, options: row.optionValues }) }));
-            validateCatalogCombinationChangesV2({ ...input, definition, retained });
-          } catch (error) {
-            if (!(error instanceof CatalogCombinationError) && !(error instanceof CatalogQuantityError)) throw error;
-            add(error.code, `${path}/input${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
-          }
+            return validateCatalogCombinationChangesV2({ ...input, definition, retained });
+          });
         }
       }
     }
@@ -177,7 +204,8 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
   for (const [index, check] of (subject.requiredChecks ?? []).entries())
     if (!(check === "attribute-values" ? attributesAvailable : check === "variant-combinations" ? combinationsAvailable : false))
       add("conformance_owner_unavailable", `/requiredChecks/${index}`, "", true);
-  catalogProductTypeIssues(allTypes).filter(issue => issue.code === "definition_duplicate_identity").forEach(issue => {
+  const typeIssues = await owner("/packs", () => catalogProductTypeIssues(allTypes));
+  typeIssues?.filter(issue => issue.code === "definition_duplicate_identity").forEach(issue => {
     const [, index, ...rest] = issue.path.split("/");
     const path = `${typePaths[Number(index)]}/${rest.join("/")}`;
     if (!findings.some(finding => finding.code === issue.code && finding.path === path)) add(issue.code, path);

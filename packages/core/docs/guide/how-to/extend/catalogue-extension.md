@@ -19,7 +19,9 @@ supplying it refuses with `definition_unknown_field`. A v1 draft requesting
 copied skeleton omits that content and checks only its supplied facts.
 Quantity fixtures contain `{type, value, targetUnit?}` and require explicit
 conversion factors. Type references use a namespaced string key and positive
-integer version; malformed references refuse before registry lookup.
+integer version; malformed references refuse before registry lookup. Quantity values have only
+`dimension`, `unit`, `unscaled` and `scale`: the first three are strings and scale
+is an integer. The shared owner retains domain, numeric and conversion bounds.
 
 `requiredChecks: ["attribute-values", "variant-combinations"]` requires fixtures
 for those available owners in each pack. Category graphs, tax intervals, cadence,
@@ -33,7 +35,11 @@ database references/cadence, listing capacity, publication races and legal
 rate correctness remain runtime facts. No database, network, seed or publish
 path is supplied. Exit codes: 0 satisfied within scope, 1 violated, 2 required
 evidence unavailable, 64 invalid invocation or JSON syntax, 74 filesystem or
-unexpected operation failure. Violations take precedence over unavailable evidence.
+unexpected operation failure. Exceptions from shared owners while processing
+fixture data become exit 1 at that input path, retaining a named owner code when
+available and otherwise using `conformance_subject_invalid`. JSON syntax still
+returns 64; filesystem or non-input operation failures remain 74. Violations take
+precedence over unavailable evidence.
 JSON stdout is one `formatVersion: 1` object. Findings retain exact owner codes
 and paths, sort by JSON pointer, code and fixture, and include cause, fix, recipe,
 identical recheck command and evidence.

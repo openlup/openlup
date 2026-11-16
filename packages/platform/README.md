@@ -1250,7 +1250,10 @@ for the explicit subject, copied skeleton, supported offline checks and pending
 owners. The entry accepts JSON text and returns a Promise; the CLI reads text
 without importing user code. Attribute and combination fixtures reuse their
 owners. Content validation is unavailable offline. Refusal records check
-observations, and retained options do not prove stored identities. PASS grants no installation,
+observations, and retained options do not prove stored identities. Quantity
+fixtures admit closed primitive fields before handoff. Input-driven owner
+exceptions become deterministic exit-1 findings at the input path; CLI I/O and
+non-input operation failures retain exit 74. PASS grants no installation,
 migration, publication or activation authority.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to

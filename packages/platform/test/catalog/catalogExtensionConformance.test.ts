@@ -246,6 +246,43 @@ describe("offline catalogue conformance", () => {
           expect(report.exitCode).toBe(1); expect(report.findings).toEqual([expect.objectContaining({ code: "conformance_subject_invalid", path: `/packs/0/combinations/0/input/${name}/0` })]);
         }
       }
+      const quantity = { dimension: "count", unit: "stationery:each", unscaled: "1", scale: 0 };
+      const refusals: [string, unknown, string, string, (() => unknown)?][] = [];
+      for (const [name, value, field] of [
+        ["dimension toString null", { ...quantity, dimension: { toString: null } }, "dimension"],
+        ["dimension toString number", { ...quantity, dimension: { toString: 1 } }, "dimension"],
+        ["dimension array", { ...quantity, dimension: [] }, "dimension"],
+        ["unit object", { ...quantity, unit: {} }, "unit"],
+        ["unscaled object", { ...quantity, unscaled: {} }, "unscaled"],
+        ["scale object", { ...quantity, scale: {} }, "scale"],
+        ["scale fractional", { ...quantity, scale: 0.5 }, "scale"],
+        ["quantity extra field", { ...quantity, extra: true }, ""],
+        ["quantity array", [], ""],
+      ] as const) refusals.push([name, { packs: [{ pack: p, quantities: [{ type, value }] }] }, "quantity_invalid", `/packs/0/quantities/0/value${field ? "/" + field : ""}`]);
+      refusals.push(["target unit object", { packs: [{ pack: p, quantities: [{ type, value: quantity, targetUnit: {} }] }] }, "quantity_invalid", "/packs/0/quantities/0/targetUnit"]);
+      for (const [name, id, retained] of [["NUL choice ID", "\u0000", false], ["unpaired surrogate ID", "\ud800", false], ["owner exception on retained input never becomes 74", "\u0000", true]] as const) {
+        const invalidPack = pack(), definition = invalidPack.types[0];
+        definition.dimensions = [{ key: "choice", kind: "choice", values: [id] }];
+        definition.attributes = [{ key: "choice", scope: "variant", valueType: { kind: "enum", values: [{ id }] }, required: false,
+          cardinality: { min: 0, max: 1 }, filterable: true, facetable: true, public: true, displayOrder: 0, labels: {} }];
+        definition.axes = [{ key: "choice", attributeKey: "choice" }];
+        const options = { choice: { kind: "choice" as const, value: id } };
+        expect(catalogPackIssues(invalidPack), name).toEqual([]); // Existing owner inconsistency, not checker policy.
+        const throws = () => canonicalizeCatalogCombinationV2({ definition, axes: ["choice"], options });
+        const row = { skuId: "one", state: "active", optionValues: options };
+        refusals.push([name, { packs: [{ pack: invalidPack, combinations: [{ type, input: { typed: true, axes: ["choice"], incoming: retained ? [] : [row], retained: retained ? [row] : [] } }] }] },
+          "draft_json_invalid", "/packs/0/combinations/0/input", throws]);
+      }
+      for (const [name, data, code, path, throws] of refusals) {
+        if (throws) expect(throws, name).toThrow("draft_json_invalid");
+        const recheck = "npx --no -- openlup " + [...args, "--json"].join(" ");
+        const text = JSON.stringify({ ...data as object, recheck }); writeFileSync(file, text);
+        const direct = await runCatalogExtensionConformance(text);
+        const { formatVersion, command, ...cli } = call(args);
+        expect(formatVersion).toBe(1); expect(command).toBe("catalogue check");
+        expect(cli, name).toEqual(direct); expect(direct.exitCode, name).toBe(1);
+        expect(direct.findings, name).toEqual([expect.objectContaining({ code, path })]);
+      }
       const subject = { packs: [{ pack: p }], recheck: "identical command" }; p.types = [...p.types, p.types[0]];
       const report = await checkSubject(subject); expect(report).toEqual(await checkSubject(subject));
       for (const finding of report.findings) expect(finding).toMatchObject({ recheck: subject.recheck, severity: "error", fix: expect.any(String), recipe: expect.any(String), evidence: expect.any(Object) });
