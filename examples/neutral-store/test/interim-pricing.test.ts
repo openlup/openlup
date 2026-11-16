@@ -1,3 +1,4 @@
+import { set } from '../shared/subscription-offer.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
@@ -94,16 +95,19 @@ test('shipping terms accept paid delivery and a configurable threshold in both o
 
 for (const original of Object.values(configurations)) test(`${original.id}: native configuration boundaries refuse before composition`, () => {
   const valid = structuredClone(original);
-  valid.offer.cadenceDays = [120]; valid.offer.defaultCadenceDays = 120;
-  valid.quote.acquisition.graduationCadenceDays = 120;
+  valid.offer.cadenceDays = [90]; valid.offer.defaultCadenceDays = 90;
+  for (const plan of Object.values(valid.subscriptionOffers)) {
+    plan.days = set(90); plan.defaultDays = 90;
+    plan.bySku = Object.fromEntries(Object.keys(plan.bySku).map(sku => [sku,[{ days: set(90),quantities: set(1,99) }]]));
+  }
+  valid.quote.acquisition.graduationCadenceDays = 90;
   valid.purchase.tax.legalBasis = 'x'.repeat(200);
   valid.legal.revision = 'x'.repeat(64);
   valid.purchase.stock.quantities[valid.offer.products[0]!.sku] = 2147483647;
   assertConfig(valid);
   for (const mutate of [
-    (config: typeof valid) => { config.offer.cadenceDays = [121]; config.offer.defaultCadenceDays = 121; },
-    (config: typeof valid) => { config.offer.cadenceDays = [120, 121]; },
-    (config: typeof valid) => { config.offer.defaultCadenceDays = 121; },
+    (config: typeof valid) => { config.offer.cadenceDays = [90, 91]; },
+    (config: typeof valid) => { config.offer.defaultCadenceDays = 91; },
     (config: typeof valid) => { config.purchase.stock.quantities[config.offer.products[0]!.sku] = 2147483648; },
     (config: typeof valid) => { config.offer.products[0]!.unitPrice.amountMinor = 2147483648; },
     (config: typeof valid) => { config.offer.subscriptionDiscountBps = 10000; },
@@ -112,6 +116,14 @@ for (const original of Object.values(configurations)) test(`${original.id}: nati
     (config: typeof valid) => { config.legal.revision = ' padded '; },
   ]) {
     const invalid = structuredClone(valid); mutate(invalid);
-    assert.throws(() => assertConfig(invalid), /starter_(offer|purchase_configuration|product|configuration|quote_configuration)_invalid/);
+    assert.throws(() => assertConfig(invalid), /starter_(?:(?:offer|purchase_configuration|product|configuration|quote_configuration)_invalid|database_cadence_limit)/);
+  }
+  for (const mode of ['classic', 'sized'] as const) {
+    const invalid = structuredClone(valid);
+    invalid.subscriptionOffers[mode].days = set(90, 91);
+    assert.throws(() => assertConfig(invalid), /^Error: starter_database_cadence_limit$/);
+    invalid.subscriptionOffers[mode].days = set(90);
+    invalid.subscriptionOffers[mode].defaultDays = 91;
+    assert.throws(() => assertConfig(invalid), /^Error: starter_subscription_offer_invalid$/);
   }
 });

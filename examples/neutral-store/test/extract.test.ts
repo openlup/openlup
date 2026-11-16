@@ -372,8 +372,20 @@ test('a third owned-only registry supplies the host default and shared offer rul
     const config = structuredClone(Object.values(configurations)[0]!);
     config.id = 'harbor-objects';
     config.brand.name = 'Harbor Objects';
+    const plan = config.subscriptionOffers.classic;
+    plan.days = { kind: 'set',values: [21,42] }; plan.defaultDays = 21;
+    plan.bySku = Object.fromEntries(Object.keys(plan.bySku).map(sku => [sku,[{ days: plan.days,quantities: { kind: 'set',values: [1,2,3,4] } }]]));
+    config.subscriptionOffers.sized = { ...structuredClone(plan),minimumBaseUnits: 6 };
+    config.quote.acquisition.graduationCadenceDays = 42;
     const owned = `import type { StoreConfig } from '../shared/config.ts';
+import { choices } from '../shared/subscription-offer.ts';
+import { subscriptionEditing } from './subscription-editing.ts';
 export const configurations: Record<string, StoreConfig> = ${JSON.stringify({ [config.id]: config }, null, 2)};
+for (const config of Object.values(configurations)) {
+  config.offer.cadenceDays = choices(config.subscriptionOffers.classic.days);
+  config.offer.defaultCadenceDays = config.subscriptionOffers.classic.defaultDays;
+  config.subscriptionEditing = subscriptionEditing(config.offer.products,config.subscriptionOffers);
+}
 export const defaultConfigurationId = 'harbor-objects';
 export function selectConfiguration(id: string = defaultConfigurationId): StoreConfig {
   const config = Object.hasOwn(configurations, id) ? configurations[id] : undefined;
@@ -406,9 +418,12 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
       catch { if (child.exitCode !== null) break; await setTimeout(25); }
     }
     assert.ok(response?.ok, diagnostic || 'third configuration host did not start');
-    const body = await response.json() as { config: { id: string; brand: { name: string } } };
+    const body = await response.json() as { config: typeof config };
     assert.equal(body.config.id, config.id);
     assert.equal(body.config.brand.name, 'Harbor Objects');
+    assert.deepEqual(body.config.offer.cadenceDays,[21,42]);
+    assert.deepEqual(body.config.subscriptionEditing.planDays,[21,42]);
+    assert.deepEqual(body.config.subscriptionEditing.sized.allowedCadences,[21,42]);
     const cart = { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
       lines: [{ sku: config.offer.products[0]!.sku, quantity: config.offer.minUnits }], totalMinor: 1 };
     const action = async (operation: string, input: unknown) => {
@@ -428,6 +443,13 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
       cart, termsAccepted: true, termsRevision: config.legal.revision,
     });
     assert.deepEqual(checkout, { status: 409, body: { ok: false, code: 'host_binding_required' } });
+    const selected = { ...cart,mode: 'subscription',cadenceDays: 21,lines: [{ sku: config.offer.products[0]!.sku,quantity: 2 }] };
+    for (const [selection,code] of [[selected,'host_binding_required'],
+      [{ ...selected,cadenceDays: 28 },'cadence_unavailable'],
+      [{ ...selected,lines: [{ ...selected.lines[0]!,quantity: 5 }] },'quantity_invalid']] as const) {
+      const refusal = await action('offer.validate',{ cart: selection,acquisitionCapability: 'subscription-acquisition.v1' });
+      assert.equal(refusal.body.code,code);
+    }
     for (const [path, bytes] of managed) assert.deepEqual(await readFile(resolve(target, path)), bytes, path);
   } finally {
     if (child && child.exitCode === null) { child.kill('SIGTERM'); await exited; }

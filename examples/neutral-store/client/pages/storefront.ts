@@ -1,3 +1,4 @@
+import { quantityChoices } from '../../shared/subscription-offer.ts';
 import type { PageContext } from '../context.ts';
 import type { Cart, OfferResult } from '../../shared/offer.ts';
 import { emptyCart, validateCart } from '../../shared/offer.ts';
@@ -100,6 +101,12 @@ export function builderPage(context: PageContext): HTMLElement {
     lines: [...selected.entries()].map(([sku, control]) => ({ sku, quantity: Number(control.value) }))
       .filter(line => line.quantity !== 0) });
   function preview(): void {
+    for (const [sku,control] of selected) {
+      const quantities = mode.value() === 'subscription' ? quantityChoices(config.subscriptionOffers.classic,sku,mode.cadence()!).filter(qty => qty <= config.offer.maxUnits) : [];
+      control.disabled = mode.value() === 'subscription' && quantities.length === 0;
+      control.setCustomValidity(mode.value() === 'subscription' && Number(control.value) !== 0 && !quantities.includes(Number(control.value)) ? context.t('quantity_invalid') : '');
+      control.max = String(mode.value() === 'subscription' ? quantities.at(-1) ?? 0 : config.offer.maxUnits);
+    }
     for (const element of unitPrices.values()) element.textContent = '';
     const value = validateCart(config, input());
     if (!value.ok) { clearLiveQuote(result); result.replaceChildren(offerIssues(context,value)); return; }

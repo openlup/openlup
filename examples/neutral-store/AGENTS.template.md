@@ -78,12 +78,16 @@ and limits. `npm run build` then `npm start` remains the ordinary one-shot previ
 | --- | --- | --- |
 | Brand, copy, media, offer or cadence | `owned/store.config.ts`, `owned/copy.ts`, `public/media/`; start at [customization](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/docs/guide/how-to/build/customize-the-starter.md) | `npm test`, `npm run typecheck`, `npm run build`; add new media to `ownership.json` |
 | Product, offer or checkout presentation | The three functions in `owned/fragments.ts` | Typecheck and build, then relevant browser proof |
-| Minimum-unit validation | Owned input, the shared `shared/offer.ts` validator and `test/offer.test.ts` | Relevant offer tests; preserve browser/host parity |
+| Subscription cadence, SKU and quantity admission | `subscriptionOffers` in `owned/store.config.ts`; `shared/subscription-offer.ts` owns the typed set/range helper | `test/subscription-offer.test.ts`, `test/offer.test.ts`, editor and checkout witnesses; keep managed files unchanged |
 | New route or whole-page change | [Changes that need a page copy](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/docs/guide/how-to/build/customize-the-starter.md#change-a-page-or-add-a-route), `ownership.json` | Existing route tests and applicable bilingual browser proof; explain maintenance ownership |
 | Unavailable action or integration error | `docs/limits.md`, `host/bindings.ts`, relevant composition and installed package contract | Follow the existing witness in [proof guidance](docs/proof.md); do not invent a success |
 
 The configuration is one typed input, and `shared/offer.ts` is the single
-application offer validator used by browser and host. Do not add a second
+application cart validator used by browser and host. Subscription offers also
+drive editor choices and the public effect-free admission callback. Defaults
+and recommendations grant no admission; every resulting base/add-on line must
+match an explicit SKU rule. Reinstall the demonstration after changing its
+servicing minimum, then restart; admission refuses installed-minimum drift. Do not add a second
 server-only or browser-only commercial rule. Public package engines still own
 order, payment and subscription truth.
 

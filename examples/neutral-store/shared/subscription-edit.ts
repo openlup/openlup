@@ -1,4 +1,5 @@
 import type { PackageEditMoney, SizedEditPolicy } from '@openlup/platform/subscriptions/contracts';
+import type { SubscriptionOffer } from './subscription-offer.ts';
 import type { Localized, Product } from './config.ts';
 
 /** Values and synthetic subject data belong to this application. */
@@ -8,7 +9,7 @@ export interface SubscriptionEditorConfig {
   maximumBaseLines: number;
   maximumAddonLines: number;
   maximumQuantity: number;
-  sized: SizedEditPolicy & { preferredSize: number; nominalSizes: readonly number[] };
+  sized: SizedEditPolicy & { offer: SubscriptionOffer; preferredSize: number; nominalSizes: readonly number[] };
   subject: { revision: number; dailyNeed: number; currentExclusions: string[]; inheritedExclusions: string[] };
   catalogue: readonly EditorProduct[];
 }

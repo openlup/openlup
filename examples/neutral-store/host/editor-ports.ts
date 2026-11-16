@@ -1,3 +1,5 @@
+import type { SubscriptionTermsAdmission } from '@openlup/platform/subscriptions/contracts';
+import { admitsTerms } from '../shared/subscription-offer.ts';
 import { createPostgresCommerceQuoteCatalogReadPort } from '@openlup/platform/catalog';
 import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort,
   type CommercePriceAuthorityReadPort, type CreateQuoteRequest, type CommerceQuoteCatalogItem } from '@openlup/platform/pricing';
@@ -60,12 +62,12 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
       return { coreLines,constraint: { ...constraint,data: { ...constraint.data,value: lever.value } } };
     },
   };
-  return { quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort };
+  return { quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort,admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') };
 }
 
 /** A seeded synthetic profile is shared by this demonstration's owned customer subjects.
  * Locking its installed row protects fact equality through the package's apply transaction. */
-export function sizedHostPorts(config: StoreConfig, now: () => string): Omit<SizedHostPorts, 'quotePort'> {
+export function sizedHostPorts(config: StoreConfig, now: () => string, connection: SubscriptionQueryExecutor): Omit<SizedHostPorts, 'quotePort'> {
   const read = async (db: SubscriptionQueryExecutor, context: { subscriptionId: string; clientId: string }, lock = false) => {
     const row = (await db.query(`SELECT settings.value_text FROM public.commerce_settings settings
       WHERE settings.key=$1 AND EXISTS(SELECT 1 FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
@@ -99,6 +101,7 @@ export function sizedHostPorts(config: StoreConfig, now: () => string): Omit<Siz
     });
   };
   return {
+    admitSubscriptionTerms: starterTermsAdmission(connection,config,'sized'),
     async readFacts(db,context) { const facts = await read(db,context);
       return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: `starter:${context.clientId}`,exclusions: facts.exclusions,snapshot: facts.value }; },
     async resolveOptInNeed(db,context) { const facts = await read(db,context); return { dailyNeed: facts.dailyNeed,snapshot: facts.value }; },
@@ -119,5 +122,19 @@ export function sizedHostPorts(config: StoreConfig, now: () => string): Omit<Siz
     readCatalog: db => readCatalog(db),
     // The demonstration intentionally supplies no demand-driven resize policy.
     proposePortion: async () => { throw new Error('starter_subscription_resize_unconfigured'); },
+  };
+}
+
+/** Effect-free admission of the full resulting set; completed receipts bypass it in the package. */
+export function starterTermsAdmission(db: SubscriptionQueryExecutor, config: StoreConfig, mode: 'classic' | 'sized'): SubscriptionTermsAdmission {
+  return async terms => {
+    const plan = config.subscriptionOffers[mode], products = editorProducts(config);
+    if (![terms.nominalPlanDays,terms.cadenceDays].every(days => admitsTerms(plan,days,terms.base,terms.addons))
+      || [...terms.base,...terms.addons].some(line => line.variantId !== demoIdentifier(config,'sku',line.sku)
+        || !products.some(product => product.sku === line.sku && product.permittedPurchaseModes.includes('subscription')))) {
+      throw new Error('subscription_reprice_terms_not_admitted');
+    }
+    const installed = (await db.query("SELECT value_text FROM public.commerce_settings WHERE key='subscription_minimum_base_units'")).rows[0]?.value_text;
+    if (Number(installed) !== config.subscriptionOffers.classic.minimumBaseUnits) throw new Error('subscription_reprice_terms_not_admitted');
   };
 }

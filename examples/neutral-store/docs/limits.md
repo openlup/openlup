@@ -182,8 +182,12 @@ Input configuration is checked against native destination, integer-money,
 cadence and tax-text constraints before composition.
 
 Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters;
-both demonstrations use 160. Configured subscription cadences and their default
-are whole days from 1 through 120. Checkout admits at most 50 selected lines and
+both demonstrations use 160. The owned `subscriptionOffers` input defines
+subscription cadences, their default and per-SKU quantity rules. `offer.cadenceDays`
+is a derived UI projection, not checkout admission policy. The starter refuses
+configured cadences above 90 with `starter_database_cadence_limit` until the
+historical SQL limit is widened; configured days must be whole numbers from 1
+through 90. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Tax legal-basis text is at most
 200 characters; the shared legal revision is trimmed, nonempty and at most
 64 characters.

@@ -28,17 +28,35 @@ remain separate restart/build operations.
 
 ## Subscription editor values
 
-Evidence (historical record, 2026-11-13):
-Subscription editing values live in `StoreConfig.subscriptionEditing`, built by
-`owned/subscription-editing.ts`. Set classic minimum base units, plan choices and
-quantity/line bounds there. Size-aware values include core minimum, cadence set,
-group/line limits, preferred and nominal physical sizes, portion modes/factors,
-and the synthetic need/exclusion fixture. The extra catalogue is install-only;
-it does not add a size-aware acquisition flow to checkout.
+For the current source candidate, `subscriptionOffers` in `owned/store.config.ts`
+is the commercial input for checkout and classic/sized servicing. The typed
+`shared/subscription-offer.ts` helper accepts `set(...)` and `range(min,max,step)`;
+ranges use `(value-min)%step === 0`. Global cadence and explicit per-SKU rules
+both apply. Missing SKU/rule refuses, and overlapping cadence rules or a default
+outside its domain refuse configuration. List concrete variants explicitly;
+adding a catalogue variant never grants it admission automatically.
+
+`checkoutDays` and `preferredDays` optionally narrow acquisition and visible
+choices within `days`. `defaultDays` only selects an initial value. Neither a
+default nor a recommendation widens admission. Checkout can have its own
+`checkoutMinimumBaseUnits`; servicing uses `minimumBaseUnits`. One-time purchases
+retain the cart's independent purchase-mode and total-unit checks.
+
+`owned/subscription-editing.ts` derives editor limits and choices from this input;
+physical-size preferences, portion modes and synthetic subject/catalogue facts
+remain there. Full-result classic, exact and sized preview/apply admission covers
+unchanged lines and add-ons, including edits retaining frozen prices. Selecting a
+cadence preserves quantities; incompatible selections must be repaired explicitly.
+Current membership is checked only for fresh checkout/editor work. Completed
+matching receipts replay before current membership; payload conflicts still refuse.
+Existing active commitments are not rewritten by changing configuration.
 
 Installation writes `subscription_minimum_base_units` as text in
 `commerce_settings`; the package's TypeScript and SQL minimum checks read that
-same value. It also writes the matching introductory phase policy and the
+same value. Admission checks that installed minimum against the owned input;
+reapply the existing demonstration installation and restart after changing it.
+A stale installation refuses edits rather than silently using different minima.
+It also writes the matching introductory phase policy and the
 synthetic subject fixture. Each owned demonstration customer uses that fixture
 with its own authenticated subject reference. Explicit current exclusions take
 precedence over inherited exclusions, including an empty array. The host locks
@@ -112,8 +130,9 @@ Catalogue drafts write only isolated authoring tables (packages/platform/sql/202
 opaque source/reference/revision/provenance tuples. The runtime maps the selected
 ID to that tuple before calling the native acquisition case port.
 
-Configured subscription cadences and their default are whole days from 1 through
-120, matching the native checkout. Checkout admits at most 50 selected lines and
+The current starter explicitly refuses cadence configuration above 90 days
+with `starter_database_cadence_limit`: historical SQL paths retain that bound.
+The package DTO representation bounds are broader; SQL widening is deferred. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and seeded unit prices fit
 PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is

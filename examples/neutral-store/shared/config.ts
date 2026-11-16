@@ -7,6 +7,8 @@ import { assertRecoveryConfiguration, type RecoveryConfiguration } from './recov
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 import { assertEditorConfig, type SubscriptionEditorConfig } from './subscription-edit.ts';
 
+import { assertSubscriptionOffer, type SubscriptionOffers } from './subscription-offer.ts';
+
 export type Locale = 'en' | 'pl';
 export type Localized = Record<Locale, string>;
 export type PurchaseMode = 'one_time' | 'subscription';
@@ -26,6 +28,7 @@ export interface Product extends SellableCatalogItem {
 export interface StoreConfig {
   id: string;
   subscriptionEditing: SubscriptionEditorConfig;
+  subscriptionOffers: SubscriptionOffers;
   renewal: RenewalConfig;
   recovery?: RecoveryConfiguration;
   /** Optional owned origin; absence preserves the two local HTTP authorities. */
@@ -106,12 +109,13 @@ export interface StoreConfig {
 
 export function assertConfig(config: StoreConfig): void {
   assertRenewalConfig(config.renewal);
+  for (const offer of Object.values(config.subscriptionOffers)) assertSubscriptionOffer(offer, config.subscriptionEditing.catalogue.map(product => product.sku));
   assertEditorConfig(config.subscriptionEditing);
   assertPublicOrigin(config);
   assertRecoveryConfiguration(config.recovery);
   assertSupportEmail(config);
   const offer = config.offer;
-  assertQuoteConfiguration(config.quote, offer.cadenceDays);
+  assertQuoteConfiguration(config.quote, config.subscriptionOffers.classic);
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
     || typeof config.market.currency !== 'string' || !/^[A-Z]{3}$/.test(config.market.currency)
     || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
@@ -138,8 +142,8 @@ export function assertConfig(config: StoreConfig): void {
     || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
-    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 120
-    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 120)) {
+    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 90
+    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 90)) {
     throw new Error('starter_offer_invalid');
   }
   const purchase = config.purchase;
