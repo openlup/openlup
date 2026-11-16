@@ -14,7 +14,9 @@ They are public source files delivered by ordinary contributions, not release
 assets: the [package publisher](../../scripts/packages/package-release.ts)
 requires immutable, assetless releases. Preserve every historical pair unchanged;
 add a new directory for another tag. The [starter recipe](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application)
-selects an immutable input commit separately from the released source commit.
+selects input commit `87dadb251b27b72a18718b08ac39951dd4f1fdd0` separately
+from the released source commit. Fetch both inputs from that exact commit,
+never from a moving branch or an independently resolved replacement lock.
 
 The [0.43.0 manifest](../../examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json)
 and [lock](../../examples/neutral-store/release-inputs/openlup-core-v0.43.0/package-lock.json)

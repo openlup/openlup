@@ -25,8 +25,10 @@ owns package, database and application-file upgrades.
 
 Installing packages requires no OpenLup clone. The separate
 [starter application](../how-to/build/customize-the-starter.md#prepare-the-application)
-is extracted source with its own local package-archive inputs; npm installation
-does not create it.
+has a separate recipe for downloading the exact 0.43.0 source archive and its
+immutable manifest/lock pair, extracting with `--mode released`, installing with
+`npm ci` and running `./lifecycle up`. npm installation alone does not create an
+application. Local candidate archives are a contributor workflow.
 
 ## Keep application ownership
 
