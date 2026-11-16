@@ -30,3 +30,13 @@ export interface PackageEditApplyResult<Action extends string = "update_package_
   subscriptionStatus: string; nextCycleAt: string | null; templateVersion: number; eventId: string | null;
   originalStatus?: "applied" | "noop";
 }
+
+/** Resulting terms for adopter-owned, effect-free admission. Throw to refuse before pricing or writes. */
+export interface SubscriptionEditTerms {
+  subscriptionId: string;
+  nominalPlanDays: number;
+  cadenceDays: number;
+  base: readonly { variantId: string; sku: string; qty: number }[];
+  addons: readonly { variantId: string; sku: string; qty: number }[];
+}
+export type SubscriptionTermsAdmission = (terms: SubscriptionEditTerms) => void | Promise<void>;

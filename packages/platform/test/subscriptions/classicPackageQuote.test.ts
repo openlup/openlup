@@ -164,3 +164,21 @@ it("uses live recurring prices for sellable comparison lines even when their agr
   vi.mocked(f.readPort.readLines).mockResolvedValue(lines);
   expect((await f.quote(request())).currentRecurringPrice).toEqual(money(1700));
 });
+
+it("admits only the normalized desired set, separating a nominal plan from extended cadence", async () => {
+  const f = fixture(), admit = vi.fn(async () => { throw new Error("subscription_reprice_terms_not_admitted"); });
+  vi.mocked(f.ports.quoteCatalogReadPort.listQuoteCatalogItems).mockResolvedValue([
+    { variantId: id, skuCode: "BASE", sellability: { subscription: true } },
+    { variantId: addon, skuCode: "EXTRA", sellability: { subscription: true } }]);
+  const quote = createClassicPackageRepricer({ ...f.ports, readPort: f.readPort, admitSubscriptionTerms: admit }).quote;
+  await expect(quote({ ...request(), base: [{ variantId: id, qty: 14.8 }], addons: [{ variantId: addon, qty: 3 }] }))
+    .rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(admit).toHaveBeenCalledExactlyOnceWith({ subscriptionId: id, nominalPlanDays: 14, cadenceDays: 30,
+    base: [{ variantId: id, sku: "BASE", qty: 14 }], addons: [{ variantId: addon, sku: "EXTRA", qty: 3 }] });
+  expect(f.ports.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+});
+it("keeps the classic quote byte-identical with no callback and with permissive admission", async () => {
+  const f = fixture(), original = await f.quote(request()), admit = vi.fn();
+  const admitted = await createClassicPackageRepricer({ ...f.ports, readPort: f.readPort, admitSubscriptionTerms: admit }).quote(request());
+  expect(JSON.stringify(admitted)).toBe(JSON.stringify(original)); expect(admit).toHaveBeenCalledOnce();
+});

@@ -40,6 +40,46 @@ in the host's server composition; inspect the selected handler before assuming
 it is independent of HTTP transport. Available source and exports do not prove
 that a route, job or adapter is enabled in your installation.
 
+## Admit application subscription terms
+
+Your application owns which subscription products, quantities and periods it
+sells, alongside its one-time offers. Compose the optional
+`admitSubscriptionTerms` callback on `PackageEditQuotePorts` (classic and exact
+editors) or `SizedHostPorts`. The platform supplies no business cadence list.
+This development-preview seam does not derive your offer configuration or UI.
+
+The callback receives `SubscriptionEditTerms`: subscription identity, the full
+resulting `base` and `addons` arrays with variant ID, SKU and quantity, plus
+`nominalPlanDays` and effective `cadenceDays`. A classic unchanged nominal plan
+can retain a longer cadence after delivery alignment. Exact edits use the
+host's constraint mapper for the nominal plan, or the selected plan-length
+lever. Sized terms use the normalized chosen cadence for both fields because
+the sized constraint stores unit count rather than a separate nominal plan.
+
+Keep the callback effect-free. Return normally to admit; throw
+`subscription_reprice_terms_not_admitted` to refuse. Check every resulting line,
+including unchanged add-ons. It runs after normalization and before pricing,
+quote-ledger writes or template writes, even when a sized edit preserves every
+frozen price. Without the callback, the existing edit behavior is unchanged.
+A quote wrapper alone cannot enforce this boundary: classic also quotes a
+comparison baseline, while sized pricing can omit all unchanged lines.
+
+Preview and fresh apply each evaluate current admission. A completed command
+instead authenticates ownership, takes the existing command-key lock and
+compares receipt identity before replaying its original result. Narrowing
+request bounds or withdrawing an offer does not invalidate a matching completed
+receipt; reusing its key with a different payload still refuses. Host bindings
+must also preserve this order rather than reject a replay using current rules.
+
+Checkout, quote, recovery and account DTOs admit positive PostgreSQL integer
+cadences, up to 2,147,483,647 days. This is a number representation bound,
+not an offered period or a guarantee that arbitrary date arithmetic fits.
+Hosts must check the resulting dates for the selected operation. The older
+SQL `customer_subscription_preview_bundle_as_actor` path and its quote-table
+CHECK still cap cadence at 90; lifecycle command quoting has a separate 90-day
+guard. Those historical paths need a later forward migration before they can
+serve longer periods. The public package and exact editors use separate writers.
+
 ## Lifecycle in durable storage
 
 The [engine status matrix and dunning continuity](subscription-engine.md#the-status-matrix-and-dunning-continuity)

@@ -375,7 +375,7 @@ export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWa
 export type { SubscriptionLifecycleTerms, SubscriptionCancelSurvey, SubscriptionSaveOffer, SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
-export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
+export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
 ```
@@ -507,6 +507,23 @@ export interface PackageEditApplyResult<Action extends string = "update_package_
     eventId: string | null;
     originalStatus?: "applied" | "noop";
 }
+/** Resulting terms for adopter-owned, effect-free admission. Throw to refuse before pricing or writes. */
+export interface SubscriptionEditTerms {
+    subscriptionId: string;
+    nominalPlanDays: number;
+    cadenceDays: number;
+    base: readonly {
+        variantId: string;
+        sku: string;
+        qty: number;
+    }[];
+    addons: readonly {
+        variantId: string;
+        sku: string;
+        qty: number;
+    }[];
+}
+export type SubscriptionTermsAdmission = (terms: SubscriptionEditTerms) => void | Promise<void>;
 ```
 ## dist/subscriptions/contracts/renewal.d.ts
 

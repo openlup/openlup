@@ -503,3 +503,31 @@ it.each(["activation", "graduation", "classic-package"])("keeps the existing %s 
   expect((await owner.query("SELECT configured_offer_version,status,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0])
     .toEqual({ configured_offer_version: "classic", status: "active", next_cycle_at: new Date(next) });
 });
+
+it("admits the full frozen sized result before any ledger write, rechecks apply and replays before narrowed policy", async () => {
+  const f = await fixture(); await bind(f);
+  const opts = options(f); opts.policy = { ...policy, allowedCadences: [...policy.allowedCadences] };
+  let allowed = false; const seen: unknown[] = [];
+  opts.admitSubscriptionTerms = terms => { seen.push(terms); if (!allowed) throw new Error("subscription_reprice_terms_not_admitted"); };
+  const editor = createPostgresSizedEditor(opts), input: SizedEditRequest = { subscriptionId: f.subscription, action: "update_bundle",
+    coreLines: [{ variantId: f.a, qty: 4 }], cadenceDays: 30, compositionConstraint: { kind: "unit_count", value: 4, dailyNeed: 4 } };
+  const before = await protectedState(f), quotes = f.quoted.length;
+  await expect(editor.preview(actor(f), input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  await expect(editor.apply(actor(f), "refused-sized-terms", input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(await protectedState(f)).toEqual(before); expect(f.quoted).toHaveLength(quotes);
+  expect(seen[0]).toEqual({ subscriptionId: f.subscription, nominalPlanDays: 30, cadenceDays: 30,
+    base: [{ variantId: f.a, sku: f.a, qty: 4 }], addons: [{ variantId: f.addon, sku: f.addon, qty: 1 }] });
+  allowed = true; const preview = await editor.preview(actor(f), input), accepted = { ...input, expectedTemplateVersion: preview.preview.templateVersion, acceptedQuoteHash: preview.quoteHash };
+  allowed = false; const afterPreview = await protectedState(f);
+  await expect(editor.apply(actor(f), "withdrawn-sized-terms", accepted)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(await protectedState(f)).toEqual(afterPreview);
+  allowed = true; const result = await editor.apply(actor(f), "completed-sized-terms", accepted);
+  allowed = false; opts.policy.maximumQuantity = 1; opts.policy.maximumCoreLines = 1; opts.policy.maximumAddonLines = 1; opts.policy.allowedCadences = [10];
+  const shrunk = createPostgresSizedEditor(opts), count = seen.length, completed = await protectedState(f);
+  expect(await shrunk.apply(actor(f), "completed-sized-terms", accepted)).toEqual({ ...result, status: "replayed", originalStatus: "applied" });
+  expect(seen).toHaveLength(count); expect(await protectedState(f)).toEqual(completed);
+  await expect(shrunk.apply(actor(f), "completed-sized-terms", { ...accepted, cadenceDays: 20 })).rejects.toThrow("subscription_command_idempotency_conflict");
+  expect(await protectedState(f)).toEqual(completed);
+  await expect(shrunk.apply(actor(f), "fresh-sized-terms", { ...accepted, expectedTemplateVersion: result.templateVersion })).rejects.toThrow("subscription_reprice_invalid_request");
+  expect(await protectedState(f)).toEqual(completed);
+}, 30_000);

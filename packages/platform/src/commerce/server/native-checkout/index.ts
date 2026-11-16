@@ -28,7 +28,7 @@ const { createQuoteResponseSchema } = createCommerceQuoteSchemas({
   productSlugSchema: z.string().trim().min(1),
   contextSchema: z.object({
     mode: z.enum(["one_time", "subscription"]),
-    cadenceDays: z.number().int().positive().max(120).nullable().optional(),
+    cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().optional(),
     promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
   }).passthrough(),
 });

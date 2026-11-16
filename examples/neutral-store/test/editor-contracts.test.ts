@@ -15,3 +15,14 @@ test('starter editor host and browser consumers fit the selected public package 
   const errors = ts.getPreEmitDiagnostics(program);
   assert.equal(errors.length,0,ts.formatDiagnosticsWithColorAndContext(errors,{ getCurrentDirectory: () => root,getCanonicalFileName: path => path,getNewLine: () => '\n' }));
 });
+
+test('starter editor cadence configuration uses number representation bounds instead of a business cap', async () => {
+  const { configurations } = await import('../owned/store.config.ts');
+  const { assertEditorConfig } = await import('../shared/subscription-edit.ts');
+  const config = structuredClone(Object.values(configurations)[0]!.subscriptionEditing);
+  config.planDays = [180]; config.sized.allowedCadences = [180];
+  assert.doesNotThrow(() => assertEditorConfig(config));
+  for (const days of [0, 1.5, 2_147_483_648]) {
+    config.planDays = [days]; assert.throws(() => assertEditorConfig(config), /starter_subscription_configuration_invalid/u);
+  }
+});

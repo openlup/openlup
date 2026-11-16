@@ -58,6 +58,16 @@ export function createExactSubscriptionRepricer(deps: PackageEditQuotePorts & {
       }
       lines = [...desired.map((line, index) => ({ lineId: null, variantId: line.variantId, quantity: line.qty, sortOrder: index, isAddon: false })), ...addons];
     }
+    if (deps.admitSubscriptionTerms) {
+      const resolve = (line: typeof lines[number]) => {
+        const sku = skus.get(line.variantId); if (!sku) throw new Error(`subscription_reprice_unknown_variant:${line.variantId}`);
+        return { variantId: line.variantId, sku, qty: line.quantity };
+      };
+      await deps.admitSubscriptionTerms({ subscriptionId: input.subscriptionId,
+        nominalPlanDays: input.action === "update_plan_length" ? input.planDays
+          : deps.constraintMapper.nominalPlanDays(constraint) ?? cadenceDays,
+        cadenceDays, base: lines.filter(line => !line.isAddon).map(resolve), addons: lines.filter(line => line.isAddon).map(resolve) });
+    }
     const { quote } = await deps.quotePort.createServerAuthoritativeQuote({ mode: "subscription", cadenceDays, compositionConstraint: constraint,
       promoCodes: [], lines: lines.map(line => {
         const sku = skus.get(line.variantId); if (!sku) throw new Error(`subscription_reprice_unknown_variant:${line.variantId}`);
