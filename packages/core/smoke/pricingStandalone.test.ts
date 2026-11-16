@@ -3,6 +3,8 @@ import {
   PRICING_AMOUNT_KINDS,
   PRICING_MODES,
   allocateBundleTargetPrice,
+  allocateCatalogueDiscountedGrossTotals,
+  cataloguePositionNetFromGross,
   assertBreakdownInvariant,
   buildOrderBreakdown,
   PricingResolverNotConfiguredError,
@@ -10,6 +12,11 @@ import {
 import { createNullPricingResolverPort } from "./nullAdapters.js";
 
 describe("pricing standalone smoke", () => {
+  it("exports the position money primitives through the pricing subpath", () => {
+    expect(cataloguePositionNetFromGross(12300, 2300)).toBe(10000);
+    expect(allocateCatalogueDiscountedGrossTotals([100, 100, 100], 299)).toEqual([99, 100, 100]);
+  });
+
   it("exposes neutral pricing primitives and resolver port behavior", async () => {
     expect(PRICING_MODES).toEqual(["one_time", "subscription", "any"]);
     expect(PRICING_AMOUNT_KINDS).toEqual(["gross", "net"]);

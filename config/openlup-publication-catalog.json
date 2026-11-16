@@ -3374,6 +3374,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/pricing/catalogueMoney.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/pricing/index.ts",
       "class": "public-output"
     },
@@ -3519,6 +3523,10 @@
     },
     {
       "path": "packages/core/test/catalogQuantities.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/catalogueMoney.test.ts",
       "class": "public-output"
     },
     {
