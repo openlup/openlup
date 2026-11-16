@@ -20,8 +20,12 @@ canonical snapshot, retaining non-enumerable own data and its rejection of gette
 symbols and unsupported prototypes. Explicit combination owner fields preserve non-enumerable data; closed fixture envelopes check all own
 keys rather than silently dropping hidden or symbol keys.
 
-The CLI now passes the exported subject itself. The checker reads its declared
-envelope inputs once on the original receiver, preserving receiver-dependent and
-private-field getters; the CLI changes only returned finding recheck text. One
-seven-form direct/CLI parity table covers the supported envelope forms and closed
-symbol-key refusal. Attribute data retains its own canonical JSON rules.
+The CLI passes the exported subject itself. Subject data and resolver answers
+cross one read-once snapshot boundary into plain frozen data, preserving
+receiver-dependent and private-field getters through explicit callback handles.
+The owner and checker share captured namespace/id/status answers. Unreadable
+resolver evidence returns exit 2; an unreadable subject declaration refuses with
+exit 1. Original objects remain unmodified; the CLI changes only returned finding
+recheck text. The existing parity table covers 17 subject/answer forms through
+both the direct checker and actual CLI. Attribute data retains its own canonical
+JSON rules.

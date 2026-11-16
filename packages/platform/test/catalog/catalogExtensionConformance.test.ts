@@ -135,6 +135,25 @@ describe("offline catalogue conformance", () => {
         expect(report.findings).toEqual([expect.objectContaining({ code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference" })]);
       }
     }
+    let statusReads = 0;
+    const answer = { namespace: "stationery:related", id: "owned", get status() {
+      if (++statusReads !== 1) throw Error("resolver answer reread"); return "private" as const;
+    } };
+    const resultSubject: CatalogConformanceSubject = { packs: [{ pack: ap, attributes: [{ ...referenceFixture, references: { resolve: async () => [answer] } }] }] };
+    const answerReport = await runCatalogExtensionConformance(resultSubject);
+    expect(statusReads).toBe(1); expect(Object.isFrozen(answer)).toBe(false); expect(Object.isFrozen(resultSubject)).toBe(false);
+    expect(answerReport.exitCode).toBe(1);
+    expect(answerReport.findings).toEqual([expect.objectContaining({ code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference" })]);
+    const throwingAnswer = await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [{ ...referenceFixture, references: { resolve: async () => [{ namespace: "stationery:related", id: "owned", get status() { throw Error("unreadable answer"); } }] } }] }] });
+    expect(throwingAnswer.exitCode).toBe(2);
+    expect(throwingAnswer.findings).toEqual([expect.objectContaining({ code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference" })]);
+    let duplicateReads = 0;
+    const duplicateAnswer = { namespace: "stationery:related", id: "owned", get status() {
+      if (++duplicateReads !== 1) throw Error("duplicate answer reread"); return "private" as const;
+    } };
+    const duplicateReport = await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [{ ...referenceFixture, references: { resolve: async () => [duplicateAnswer, duplicateAnswer] } }] }] });
+    expect(duplicateReads).toBe(1); expect(duplicateReport.exitCode).toBe(2);
+    expect(duplicateReport.findings).toEqual([expect.objectContaining({ code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference" })]);
     const referenceData = () => ({ reference: { namespace: "stationery:related", id: "owned" } });
     const snapshotCases: [string, CatalogAttributeInput, string, string][] = [
       ["non-enumerable own field", Object.defineProperty({ skus: [{ id }] }, "productAttributes", { value: referenceData() }), "attribute_reference_unresolved", "/productAttributes/reference"],
@@ -219,6 +238,10 @@ describe("offline catalogue conformance", () => {
     }
     expect((await runCatalogExtensionConformance({ packs: [{ pack: cp, attributes: projectionFixtures }] })).exitCode).toBe(0);
     const firstIdentity = canonicalizeCatalogCombinationV2({ definition: cp.types[0], axes: ["size"], options: options() });
+    const retainedFacts = validateCatalogCombinationChangesV2({ ...combination, definition: cp.types[0] });
+    expect((await runCatalogExtensionConformance({ packs: [{ pack: cp, combinations: [{ type: typeRef, input: { ...combination, retained: retainedFacts, incoming: [] } }] }] })).exitCode).toBe(0);
+    const hiddenFact = Object.defineProperties({}, Object.fromEntries(Object.entries(retainedFacts[0]).map(([key, value]) => [key, { value }])));
+    expect((await runCatalogExtensionConformance({ packs: [{ pack: cp, combinations: [{ type: typeRef, input: { ...combination, retained: [hiddenFact as typeof retainedFacts[number]], incoming: [] } }] }] })).exitCode).toBe(0);
     expect(canonicalizeCatalogCombinationV2({ definition: cp.types[0], axes: ["size"], options: options("openlup:kg", "1") })).toEqual(firstIdentity);
     expect((await runCatalogExtensionConformance({ packs: [{ pack: cp, combinations: [{ type: typeRef, input: combination }] }], requiredChecks: ["variant-combinations"] })).exitCode).toBe(0);
     for (const check of ["taxonomy", "tax-coverage", "profiles", "promotions"]) {

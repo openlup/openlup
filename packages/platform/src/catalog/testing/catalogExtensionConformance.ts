@@ -14,14 +14,119 @@ const pointer = (parts: readonly PropertyKey[]): string => parts.map(part => `/$
 const object = (value: unknown): boolean => value !== null && typeof value === "object" && !Array.isArray(value);
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
+/** Materialize executable-envelope fields on their original receivers, then retain
+ * only frozen data and explicit callable handles. JSON leaves keep owner admission.
+ */
+function snapshotSubject(subject: CatalogConformanceSubject): CatalogConformanceSubject {
+  const seen = new WeakMap<object, unknown>();
+  const jsonSeen = new WeakMap<object, unknown>();
+  function capture(value: unknown, path: readonly PropertyKey[], receiver?: object): unknown {
+    const leaf = path[path.length - 1];
+    if (typeof value === "function") {
+      const callback = value;
+      const originalReceiver = ["resolve", "run", "assertZeroEffects"].includes(String(leaf));
+      return Object.freeze(function(this: unknown, ...args: unknown[]) {
+        const result = Reflect.apply(callback, originalReceiver ? receiver : this, args);
+        return ["validateContent", "run", "assertZeroEffects"].includes(String(leaf))
+          ? capture(result, [...path, "result"]) : result;
+      });
+    }
+    if (value === null || typeof value !== "object") return value;
+    if ((path[2] === "attributes" && leaf === "input") || (path[2] === "drafts" && leaf === "sharedContent")) {
+      if (jsonSeen.has(value)) return jsonSeen.get(value);
+      let json: unknown;
+      try { json = freezeData(JSON.parse(canonicalCatalogDraftJson(value))); }
+      catch { json = NaN; } // The owner retains its canonical-input refusal and path.
+      jsonSeen.set(value, json); return json;
+    }
+    if (seen.has(value)) return seen.get(value);
+    if (value instanceof Uint8Array) {
+      const bytes: number[] = []; seen.set(value, bytes);
+      const length = value.length;
+      if (!Number.isSafeInteger(length) || length < 0) throw new TypeError("snapshot_array_length");
+      for (let i = 0; i < length; i++) bytes.push(value[i]);
+      return Object.freeze(bytes);
+    }
+    if (Array.isArray(value)) {
+      const items: unknown[] = []; seen.set(value, items);
+      const length = value.length;
+      if (!Number.isSafeInteger(length) || length < 0) throw new TypeError("snapshot_array_length");
+      for (let i = 0; i < length; i++) items.push(capture(value[i], [...path, i], value));
+      return Object.freeze(items);
+    }
+    if (path[path.length - 1] === "references") {
+      let resolve: unknown;
+      try { resolve = capture(Reflect.get(value, "resolve", value), [...path, "resolve"], value); }
+      catch { resolve = Object.freeze(async () => Object.freeze([])); }
+      const port = Object.freeze({ resolve }); seen.set(value, port); return port;
+    }
+    const data: Record<PropertyKey, unknown> = {}; seen.set(value, data);
+    const keys = new Set(Reflect.ownKeys(value));
+    const declared = path.length === 0 ? ["packs", "requiredChecks", "recheck"] : undefined;
+    if (declared) {
+      for (const key of declared) if (Reflect.has(value, key)) keys.add(key);
+    } else if (!["options", "optionValues"].includes(String(leaf))) {
+      // Schema records may expose declared fields through prototype getters.
+      // Dictionary keys retain own-property semantics instead.
+      const prototypes = new Set<object>();
+      for (let prototype = Object.getPrototypeOf(value); prototype && prototype !== Object.prototype && !prototypes.has(prototype); prototype = Object.getPrototypeOf(prototype)) {
+        prototypes.add(prototype);
+        for (const key of Reflect.ownKeys(prototype)) if (key !== "constructor") keys.add(key);
+      }
+    }
+    for (const key of keys) {
+      let child: unknown;
+      try { child = capture(Reflect.get(value, key, value), [...path, key], value); }
+      catch (error) {
+        if (path.length) throw error;
+        child = NaN; // Preserve other readable root fields, including recheck.
+      }
+      Object.defineProperty(data, key, { value: child, enumerable: Object.getOwnPropertyDescriptor(value, key)?.enumerable ?? false });
+    }
+    return Object.freeze(data);
+  }
+  return freezeData(capture(subject, []) as CatalogConformanceSubject);
+}
+function freezeData<T>(value: T, seen = new WeakSet<object>()): T {
+  if (value && typeof value === "object" && !seen.has(value)) {
+    seen.add(value);
+    for (const key of Reflect.ownKeys(value)) freezeData(Object.getOwnPropertyDescriptor(value, key)?.value, seen);
+    Object.freeze(value);
+  }
+  return value;
+}
+function snapshotReferenceAnswers(value: unknown): Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> {
+  const unavailable = Object.freeze([]);
+  try {
+    if (!Array.isArray(value)) return unavailable;
+    const answers: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>>[number][] = [];
+    const captured = new WeakMap<object, typeof answers[number]>();
+    const length = value.length;
+    if (!Number.isSafeInteger(length) || length < 0) return unavailable;
+    for (let i = 0; i < length; i++) {
+      const answer = value[i];
+      if (!answer || (typeof answer !== "object" && typeof answer !== "function")) return unavailable;
+      let snapshot = captured.get(answer);
+      if (!snapshot) {
+        const { namespace, id, status } = answer;
+        if (typeof namespace !== "string" || typeof id !== "string" || !["resolved", "dangling", "private", "unavailable"].includes(status)) return unavailable;
+        snapshot = Object.freeze({ namespace, id, status }); captured.set(answer, snapshot);
+      }
+      answers.push(snapshot); // Preserve multiplicity: aliased duplicates must still refuse.
+    }
+    return Object.freeze(answers);
+  } catch { return unavailable; } // An unreadable batch cannot establish a unique resolution.
+}
+
 /** Calls existing owners only. Unexpected callback failures propagate to the CLI's sanitized failure path. */
 export async function runCatalogExtensionConformance(subject: CatalogConformanceSubject): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false;
   let violated = false;
-  // Read the executable envelope on its original receiver exactly once.
-  const validSubject = object(subject);
-  const { packs, requiredChecks, recheck: requestedRecheck } = validSubject ? subject : {} as Partial<CatalogConformanceSubject>;
+  let capturedSubject: CatalogConformanceSubject | undefined;
+  try { capturedSubject = snapshotSubject(subject); } catch { /* Unreadable subject input refuses deterministically. */ }
+  const validSubject = object(capturedSubject);
+  const { packs, requiredChecks, recheck: requestedRecheck } = validSubject ? capturedSubject! : {} as Partial<CatalogConformanceSubject>;
   const recheck = typeof requestedRecheck === "string" ? requestedRecheck : command;
   const checks: readonly string[] | undefined = Array.isArray(requiredChecks) ? Array.from(requiredChecks) : undefined;
   function add(code: string, path: string, fixture = "", requiredEvidence = false): void {
@@ -38,7 +143,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
   }
   if (!validSubject || !Array.isArray(packs) || !packs.length
     || (requestedRecheck !== undefined && typeof requestedRecheck !== "string")
-    || Reflect.ownKeys(subject).some(key => typeof key !== "string" || !["packs", "requiredChecks", "recheck"].includes(key))
+    || Reflect.ownKeys(capturedSubject!).some(key => typeof key !== "string" || !["packs", "requiredChecks", "recheck"].includes(key))
     || (requiredChecks !== undefined && (!checks || checks.some(check => typeof check !== "string")))) {
     add("conformance_subject_invalid", ""); return finish();
   }
@@ -116,13 +221,12 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
           if (referenceOwner !== undefined && (!object(referenceOwner) || typeof resolveReferences !== "function")) {
             add("conformance_subject_invalid", `${path}/references`); continue;
           }
-          let referenceInput = suppliedInput;
-          try { referenceInput = JSON.parse(canonicalCatalogDraftJson(referenceInput)); }
-          catch { /* The attribute owner reports invalid canonical input with its own code/path. */ }
-          let resolved: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> = [];
+          const referenceInput = suppliedInput;
+          let resolved: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> = Object.freeze([]);
           const references: CatalogAttributeReferencePort | undefined = referenceOwner && {
             resolve: async batch => {
-              resolved = await resolveReferences!.call(referenceOwner, batch);
+              try { resolved = snapshotReferenceAnswers(await resolveReferences!.call(referenceOwner, batch)); }
+              catch { resolved = Object.freeze([]); }
               return resolved;
             },
           };
@@ -150,7 +254,16 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
             || !Array.isArray(retained) || !Array.isArray(incoming)) {
             add("conformance_subject_invalid", `${path}/input`); continue;
           }
-          try { validateCatalogCombinationChangesV2({ definition, axes, typed, retained, incoming, capacity }); }
+          // The immutable snapshot stores bytes as frozen number arrays. The owner
+          // requires typed byte carriers; create private views from captured data.
+          const ownerRetained = retained.map(({ skuId, state, optionValues, identity }) => Object.freeze({
+            skuId, state, optionValues, identity: identity && Object.freeze({
+              version: identity.version,
+              canonicalOptionBytes: Uint8Array.from(identity.canonicalOptionBytes),
+              combinationDigest: Uint8Array.from(identity.combinationDigest),
+            }),
+          }));
+          try { validateCatalogCombinationChangesV2({ definition, axes, typed, retained: ownerRetained, incoming, capacity }); }
           catch (error) {
             if (!(error instanceof CatalogCombinationError) && !(error instanceof CatalogQuantityError)) throw error;
             add(error.code, `${path}/input${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);

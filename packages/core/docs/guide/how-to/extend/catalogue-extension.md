@@ -22,7 +22,10 @@ Unknown fields refuse; they are never silently passed. Do not add typed attribut
 or combination fields to strict v1 drafts.
 
 The exported subject is an executable envelope, passed directly to the checker.
-Its declared inputs are read once on the original receiver. Plain, frozen,
+Its declared inputs are read once on the original receiver into an internal plain,
+frozen snapshot. Owners and the checker consume that snapshot; original objects
+are not frozen or mutated. An unreadable subject declaration refuses with
+`conformance_subject_invalid` (exit 1). Plain, frozen,
 non-enumerable, inherited and getter-based inputs are supported, including getters
 using private fields; unknown symbol keys refuse the closed subject shape. The
 CLI puts its recheck command on returned findings and never copies or mutates the
@@ -107,7 +110,14 @@ The revision is fixture data, never proof of a persisted publication. Reference
 resolution uses an optional trusted `references` port on this fixture, whose
 `resolve` callback supplies an allowlisted offline batch. The owner's `attribute_reference_unresolved` code keeps its exact path. Missing,
 failed, omitted, ambiguous or unavailable resolver evidence returns exit 2;
-a single positive `dangling` or `private` answer returns exit 1. Attribute values
+a single positive `dangling` or `private` answer returns exit 1. Each resolver
+answer's `namespace`, `id` and `status` are read once on its original receiver into
+a plain frozen record, shared by the owner and the checker. Stateful getters keep
+their first values. Throwing resolvers, unreadable answer getters, non-array batches
+and malformed answer fields make the batch unavailable evidence (exit 2). This
+prevents an unreadable duplicate from turning a batch into a false success. Aliased
+answer records are captured once while duplicate entries remain duplicates. Receiver/private-field getters are supported
+when their declared fields can be read. Attribute values
 outside the declared allowlist remain malformed supplied facts (exit 1). The checker uses the attribute owner's canonical JSON snapshot for both validation
 and reference evidence: non-enumerable own data is retained; getters, symbols and
 unsupported prototypes refuse. The checker does not contact a database to discover
