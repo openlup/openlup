@@ -97,6 +97,62 @@ result has `paused: false`, `pauseWindowId: null` and `terminal: true`. Call tha
 terminal branch only when `isDunningLadderExhausted` holds; early class
 termination must leave the case open without invoking it.
 
+## Pause a subscription after failed renewal retries are exhausted
+
+Automatic retry exhaustion leaves service active. If your application policy
+requires a pause after failed renewal retries are exhausted, compose
+`isDunningLadderExhausted` from `@openlup/core/subscription` with
+`createPostgresSubscriptionCommands` from `@openlup/platform/subscriptions`.
+`pauseSubscriptionForExpiredDunning` is a compatibility no-op at exhaustion;
+it does not implement this policy. A missing automatic setting is not a missing
+public command.
+
+Authorize the policy through trusted host evidence before invoking the adapter;
+actor identifiers alone grant no authority. In one transaction, lock the
+subscription and the current cycle/recovery evidence in the native lock order,
+then re-read active status, cycle identity, payment/recovery state and retry rung.
+Use the same trusted cadence as failure recording. A null `nextRetryAt` alone
+does not establish exhaustion. If recovery has succeeded or the cycle changed,
+skip the pause.
+
+The following helper assumes that authorization, locking and recheck have
+already succeeded. Its binding must reuse that locked transaction connection;
+`withTransaction` must not commit independently. Supply the host's pause preset,
+reason and a durable command key identifying this policy decision; retry the
+same decision with the same key and payload.
+
+```ts
+import { isDunningLadderExhausted } from "@openlup/core/subscription";
+import {
+  createPostgresSubscriptionCommands,
+  type NativeSubscriptionCommandBinding,
+} from "@openlup/platform/subscriptions";
+import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contracts";
+
+export async function pauseLockedExhaustedCycle(
+  binding: NativeSubscriptionCommandBinding,
+  cycle: Parameters<typeof isDunningLadderExhausted>[0],
+  cadence: Parameters<typeof isDunningLadderExhausted>[1],
+  command: Extract<SubscriptionCommand, { action: "pause" }>,
+) {
+  if (!isDunningLadderExhausted(cycle, cadence)) return;
+  const result = await createPostgresSubscriptionCommands(binding).apply(command);
+  if ("supported" in result || result.outcome === "refused") {
+    throw new Error("pause_policy_command_refused");
+  }
+  return result;
+}
+```
+
+A native pause closes recovery, revokes recovery tokens and terminalizes eligible
+unpaid artifacts. Let a refusal or exception escape the transaction callback so
+the entire policy transaction rolls back, including any policy bookkeeping;
+catch and report it only after rollback. Do not report a refused pause as success.
+Test exhaustion, replay, concurrent recovery and refusal rollback in your host.
+This recipe installs no automatic pause or scheduled job. In the starter, renewal
+composition is currently managed source; changing it requires the
+[source-copy ownership process](../how-to/build/customize-the-starter.md#change-a-page-or-add-a-route).
+
 ## Durable retry timing
 
 For the [retry ladder](subscription-engine.md#the-retry-ladder-terminates), the
