@@ -95,7 +95,7 @@ it.each(["wrong-refusal", "io"])("explains missing-selection preparation contrac
     }
     return prepare(input);
   };
-  await expect(run([value])).rejects.toThrow("prepare(providerRef:null) must return selection_required before I/O; refuse missing provider selection locally");
+  await expect(run([value])).rejects.toThrow("selection refusal before I/O: prepare(providerRef:null) must return selection_required; refuse missing provider selection locally");
   expect(calls).toBe(fault === "io" ? 1 : 0);
 });
 
