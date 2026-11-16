@@ -14,6 +14,16 @@ products. The pure breakdown builders turn supplied resolved prices, discounts
 and shipping into line and order components whose sums reconcile to the totals.
 They do not read prices or persist an order.
 
+For already validated position money, `cataloguePositionNetFromGross` derives
+included-VAT net using integer arithmetic. Supply a nonnegative safe integer
+gross amount and an integer rate from 0 to 10000 basis points. The existing
+`@openlup/core/pricing` subpath also exports
+`allocateCatalogueDiscountedGrossTotals`: supply gross position amounts and the
+charged total to receive effective gross amounts. Equal remainders follow input
+position, so preserve the original order. Tax and currency selection stay with
+the caller. Existing quote paths retain their arithmetic until a caller
+explicitly composes these helpers.
+
 For promotion candidates, `evaluatePromos` from `@openlup/core/promo` checks
 active time windows, region and cart eligibility, including coupon codes and
 stacking rules. Order discounts and free shipping use separate lanes.
