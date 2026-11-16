@@ -221,9 +221,29 @@ describe("offline catalogue conformance", () => {
   it("catalogue_check_cli_reports_stable_codes_and_exit", async () => {
     const folder = mkdtempSync(join(tmpdir(), "catalogue-cli-"));
     const bin = fileURLToPath(new URL("../../src/lifecycle/openlup.mjs", import.meta.url)), file = join(folder, "catalogue.json");
-    const call = (args: string[], nodeArgs: string[] = []) => {
-      const result = spawnSync(process.execPath, [...nodeArgs, bin, ...args, "--json"], { encoding: "utf8" });
+    const call = (args: string[], nodeArgs: string[] = [], subjects?: unknown[]) => {
+      // Reuse startup, not classification: each fixture executes the actual CLI with its own input and JSON report.
+      const fixtureLoop = `
+        import { readFileSync, writeFileSync } from "node:fs";
+        import { pathToFileURL } from "node:url";
+        const { bin, args, subjects } = JSON.parse(readFileSync(0, "utf8"));
+        for (const [i, subject] of subjects.entries()) {
+          writeFileSync(args[args.indexOf("--packs") + 1], JSON.stringify(subject));
+          // The ordinary entry handles the last fixture after this preload returns.
+          if (i < subjects.length - 1) await import(pathToFileURL(bin).href + "?fixture=" + i);
+        }
+      `;
+      const result = spawnSync(process.execPath, subjects ? [...nodeArgs, "--import", `data:text/javascript,${encodeURIComponent(fixtureLoop)}`, bin, ...args, "--json"] : [...nodeArgs, bin, ...args, "--json"], {
+        encoding: "utf8", input: subjects ? JSON.stringify({ bin, args, subjects }) : undefined,
+      });
       expect(result.stderr).not.toMatch(/SENSITIVE_CRYPTO_FAILURE|ERR_OSSL_EVP_UNSUPPORTED|SENSITIVE_HASH_SYNTAX|draft_json_invalid|combination_identity_integrity_failed/u);
+      if (subjects) {
+        const reports = result.stdout.trim().split("\n").map(line => JSON.parse(line));
+        expect(reports).toHaveLength(subjects.length);
+        expect(reports.at(-1).exitCode, result.stderr).toBe(result.status);
+        for (const report of reports) expect(report.formatVersion).toBe(1);
+        return reports;
+      }
       const report = JSON.parse(result.stdout); expect(report.formatVersion).toBe(1); expect(report.exitCode).toBe(result.status);
       expect(result.stdout.trim().split("\n")).toHaveLength(1); return report;
     };
@@ -242,20 +262,21 @@ describe("offline catalogue conformance", () => {
       expect(readdirSync(folder)).toEqual(["catalogue.json"]);
       expect(call(["catalogue", "check", "--packs", join(folder, "absent")]).exitCode).toBe(74);
       const p = pack(), type = { key: p.types[0].key, version: 1 };
-      // Independent fixture rows share one JSON subject and one CLI startup; every row retains CLI parity.
+      // Each fixture gets an isolated CLI invocation; the process startup and dependency imports are shared.
       const malformedCombinations = ["incoming", "retained"].flatMap(name => [{}, null, { skuId: "one", state: "active", optionValues: [] }, { skuId: "one", state: "active", optionValues: null, identity: {} }].map(row => ({
         type, input: { axes: [], typed: true, retained: [], incoming: [], [name]: [row] },
       })));
       const recheck = "npx --no -- openlup " + [...args, "--json"].join(" ");
-      const malformedText = JSON.stringify({ packs: [{ pack: p, combinations: malformedCombinations }], recheck }); writeFileSync(file, malformedText);
-      const malformedDirect = await runCatalogExtensionConformance(malformedText);
-      const { formatVersion: malformedVersion, command: malformedCommand, ...malformedCli } = call(args);
-      expect(malformedVersion).toBe(1); expect(malformedCommand).toBe("catalogue check");
-      expect(malformedCli).toEqual(malformedDirect);
-      for (const report of [malformedDirect, malformedCli]) {
-        expect(report.exitCode).toBe(1); expect(report.findings).toEqual(malformedCombinations.map((fixture, i) => expect.objectContaining({
-          code: "conformance_subject_invalid", path: `/packs/0/combinations/${i}/input/${fixture.input.incoming.length ? "incoming" : "retained"}/0`,
-        })));
+      const malformedSubjects = malformedCombinations.map(fixture => ({ packs: [{ pack: p, combinations: [fixture] }], recheck }));
+      const malformedReports = call(args, [], malformedSubjects);
+      for (const [i, fixture] of malformedCombinations.entries()) {
+        const { formatVersion, command, ...cli } = malformedReports[i];
+        expect(formatVersion).toBe(1); expect(command).toBe("catalogue check");
+        expect(cli.state).toBe("violated"); expect(cli.exitCode).toBe(1);
+        expect(cli.findings.map(({ code, path }: { code: string; path: string }) => ({ code, path }))).toEqual([{
+          code: "conformance_subject_invalid", path: `/packs/0/combinations/0/input/${fixture.input.incoming.length ? "incoming" : "retained"}/0`,
+        }]);
+        expect(cli).toEqual(await runCatalogExtensionConformance(JSON.stringify(malformedSubjects[i])));
       }
       const quantity = { dimension: "count", unit: "stationery:each", unscaled: "1", scale: 0 };
       const quantityRefusals: [string, { value: unknown; targetUnit?: unknown }, string][] = [];
@@ -272,16 +293,16 @@ describe("offline catalogue conformance", () => {
       ] as const) quantityRefusals.push([name, { value }, `/value${field ? "/" + field : ""}`]);
       quantityRefusals.push(["target unit object", { value: quantity, targetUnit: {} }, "/targetUnit"]);
       quantityRefusals.push(["allowlisted owner quantity input code", { value: { ...quantity, scale: -1 } }, "/value"]);
-      const quantityText = JSON.stringify({ packs: [{ pack: p, quantities: quantityRefusals.map(([, fixture]) => ({ type, ...fixture })) }],
-        recheck }); writeFileSync(file, quantityText);
-      const quantityDirect = await runCatalogExtensionConformance(quantityText);
-      const { formatVersion: quantityVersion, command: quantityCommand, ...quantityCli } = call(args);
-      expect(quantityVersion).toBe(1); expect(quantityCommand).toBe("catalogue check"); expect(quantityCli).toEqual(quantityDirect);
-      for (const report of [quantityDirect, quantityCli]) {
-        expect(report.exitCode).toBe(1); expect(report.findings).toHaveLength(quantityRefusals.length);
-        for (const [i, [name, , path]] of quantityRefusals.entries()) expect(report.findings, name).toContainEqual(expect.objectContaining({
-          code: "quantity_invalid", path: `/packs/0/quantities/${i}${path}`,
-        }));
+      const quantitySubjects = quantityRefusals.map(([, fixture]) => ({ packs: [{ pack: p, quantities: [{ type, ...fixture }] }], recheck }));
+      const quantityReports = call(args, [], quantitySubjects);
+      for (const [i, [name, , path]] of quantityRefusals.entries()) {
+        const { formatVersion, command, ...cli } = quantityReports[i];
+        expect(formatVersion, name).toBe(1); expect(command, name).toBe("catalogue check");
+        expect(cli.state, name).toBe("violated"); expect(cli.exitCode, name).toBe(1);
+        expect(cli.findings.map(({ code, path }: { code: string; path: string }) => ({ code, path })), name).toEqual([{
+          code: "quantity_invalid", path: `/packs/0/quantities/0${path}`,
+        }]);
+        expect(cli, name).toEqual(await runCatalogExtensionConformance(JSON.stringify(quantitySubjects[i])));
       }
       const refusals: [string, unknown, string, string, (() => unknown)?][] = [];
       for (const [name, id, retained] of [["NUL choice ID", "\u0000", false], ["unpaired surrogate ID", "\ud800", false], ["owner exception on retained input never becomes 74", "\u0000", true]] as const) {
