@@ -378,3 +378,24 @@ it("emits one package_changed notice for each exact real change and none for no-
     expect(kinds).toEqual(events.map(() => "subscription.package_changed"));
   } finally { await store.close(); }
 }, 30_000);
+
+it("refuses full-result admission without writes, rechecks after preview, and replays before shrunk limits", async () => {
+  const f = await fixture(), opts = options(f), seen: unknown[] = [];
+  let allowed = false;
+  opts.admitSubscriptionTerms = terms => { seen.push(terms); if (!allowed) throw new Error("subscription_reprice_terms_not_admitted"); };
+  const editor = createPostgresPackageEditor(opts), actor = { actorId: f.actor, clientId: f.client };
+  const input: ExactSubscriptionEditRequest = { subscriptionId: f.subscription, action: "update_addon_quantity", variantId: f.addon, qty: 5 };
+  await refuses(() => editor.preview(actor, input), "subscription_reprice_terms_not_admitted");
+  await refuses(() => editor.apply(actor, "refused-exact-terms", input), "subscription_reprice_terms_not_admitted");
+  expect(seen[0]).toEqual({ subscriptionId: f.subscription, nominalPlanDays: 28, cadenceDays: 28,
+    base: [{ variantId: f.sku, sku: f.sku, qty: 4 }], addons: [{ variantId: f.addon, sku: f.addon, qty: 5 }] });
+  allowed = true; const preview = await editor.preview(actor, input), accepted = { ...input, acceptedQuoteHash: preview.quoteHash };
+  allowed = false; await refuses(() => editor.apply(actor, "withdrawn-exact-terms", accepted), "subscription_reprice_terms_not_admitted");
+  allowed = true; const result = await editor.apply(actor, "completed-exact-terms", accepted);
+  allowed = false; opts.limits.maximumQuantity = 1; opts.limits.maximumPlanDays = 1;
+  const shrunk = createPostgresPackageEditor(opts), count = seen.length, before = await effects();
+  expect(await shrunk.apply(actor, "completed-exact-terms", accepted)).toEqual({ ...result, status: "replayed", originalStatus: "applied" });
+  expect(seen).toHaveLength(count); expect(await effects()).toEqual(before);
+  await refuses(() => shrunk.apply(actor, "completed-exact-terms", { ...accepted, qty: 6 }), "subscription_command_idempotency_conflict");
+  await refuses(() => shrunk.apply(actor, "fresh-exact-terms", accepted), "subscription_reprice_invalid_request");
+}, 30_000);

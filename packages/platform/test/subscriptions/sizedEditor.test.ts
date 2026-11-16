@@ -191,3 +191,19 @@ it("refuses unreadable/foreign host facts and invalid frozen need", async () => 
     await expect(quoteSizedEdit({ db, context: current, request: parcel(), policy, host: ports, point: "preview" })).rejects.toThrow(/subscription_reprice_sized_/u);
   }
 });
+
+it.each(["update_plan_length", "resize_bundle"] as const)("admits the whole sized $action result even with frozen prices", async action => {
+  const ports = host(), admit = vi.fn(() => { throw new Error("subscription_reprice_terms_not_admitted"); });
+  ports.admitSubscriptionTerms = admit;
+  const live = vi.spyOn(ports.quotePort, "createServerAuthoritativeQuote");
+  await expect(quoteSizedEdit({ db, context: context(), request: action === "resize_bundle" ? parcel()
+    : { subscriptionId: ids.subscription, action, planDays: 30 }, policy, host: ports, point: "preview" })).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(admit).toHaveBeenCalledExactlyOnceWith({ subscriptionId: ids.subscription, nominalPlanDays: action === "resize_bundle" ? 20 : 30,
+    cadenceDays: action === "resize_bundle" ? 20 : 30, base: [{ variantId: ids.a, sku: ids.a, qty: 4 }], addons: [{ variantId: ids.addon, sku: ids.addon, qty: 1 }] });
+  expect(live).not.toHaveBeenCalled();
+});
+it("keeps sized frozen pricing unchanged when admission is absent or permissive", async () => {
+  const input = { db, context: context(), request: parcel(), policy, host: host(), point: "preview" as const };
+  const original = await quoteSizedEdit(input), admit = vi.fn(); input.host.admitSubscriptionTerms = admit;
+  expect(await quoteSizedEdit(input)).toEqual(original); expect(admit).toHaveBeenCalledOnce();
+});

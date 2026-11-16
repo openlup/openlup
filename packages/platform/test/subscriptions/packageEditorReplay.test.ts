@@ -19,10 +19,11 @@ it("characterizes re-quote before durable replay: a completed apply can be repor
   expect(quote).toHaveBeenCalledOnce(); expect(durable).not.toHaveBeenCalled(); expect(saved.status).toBe("applied");
 });
 it("replays before re-quote or configuration and retains the originally recorded state", async () => {
-  const calls: string[] = [];
+  const calls: string[] = []; let matches = true;
   const quote = vi.fn(async (): Promise<never> => { throw new Error("subscription_reprice_prices_unavailable"); });
   const options: PackageEditorOptions = {
-    limits: { maximumPlanDays: 90, maximumBaseLines: 6, maximumAddonLines: 12, maximumQuantity: 99 }, now: () => "2027-01-01T00:00:00Z",
+    limits: { maximumPlanDays: 1, maximumBaseLines: 1, maximumAddonLines: 1, maximumQuantity: 1 }, now: () => "2027-01-01T00:00:00Z",
+    admitSubscriptionTerms: () => { throw new Error("admission must not run for replay"); },
     quotePort: { createServerAuthoritativeQuote: quote }, quoteCatalogReadPort: { listQuoteCatalogItems: vi.fn(async (): Promise<never> => { throw new Error("catalogue must not be read"); }) },
     compositionRulesPort: { validateComposition: vi.fn(async (): Promise<never> => { throw new Error("policy must not be read"); }), resizeComposition: async () => null },
     constraintMapper: { toCore: () => ({ kind: "configured", version: 1, data: {} }), fromCore: value => value.data, nominalPlanDays: () => null },
@@ -30,13 +31,18 @@ it("replays before re-quote or configuration and retains the originally recorded
       calls.push(sql);
       if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
       if (sql.startsWith("SELECT s.*")) return { rows: [{ id, status: "cancelled", template_version: 99, client_id: client }] };
-      if (sql.includes("FROM public.subscription_command_receipts")) return { rows: [{ matches: true, status: "applied", result: saved }] };
+      if (sql.includes("FROM public.subscription_command_receipts")) return { rows: [{ matches, status: "applied", result: saved }] };
       throw new Error("replay attempted a later read");
     } }); },
   };
   const result = await createPostgresPackageEditor(options).apply({ actorId: id, clientId: client }, "completed-package-key", {
-    subscriptionId: id, planDays: 28, base: [{ variantId: id, qty: 6 }], addons: [], expectedTemplateVersion: 1, acceptedQuoteHash: "a".repeat(64) });
+    subscriptionId: id, planDays: 28, base: [{ variantId: id, qty: 6 }, { variantId: client, qty: 2 }], addons: [], expectedTemplateVersion: 1, acceptedQuoteHash: "a".repeat(64) });
   expect(result).toEqual({ ...saved, status: "replayed", originalStatus: "applied" });
   expect(quote).not.toHaveBeenCalled(); expect(options.quoteCatalogReadPort.listQuoteCatalogItems).not.toHaveBeenCalled();
   expect(calls.some(sql => sql.includes("subscription_package_edit_apply("))).toBe(false);
+  expect(calls[0]).toContain("SELECT s.*"); expect(calls[1]).toContain("pg_advisory_xact_lock");
+  matches = false;
+  await expect(createPostgresPackageEditor(options).apply({ actorId: id, clientId: client }, "completed-package-key", {
+    subscriptionId: id, planDays: 29, base: [{ variantId: id, qty: 6 }], acceptedQuoteHash: "a".repeat(64) }))
+    .rejects.toThrow("subscription_command_idempotency_conflict");
 });

@@ -112,3 +112,24 @@ it("hashes only recurring quotes with empty promotions and refuses changed quote
   vi.mocked(f.ports.quotePort.createServerAuthoritativeQuote).mockResolvedValue({ quote: { lines: [], totalGross: money(0), subtotalGross: money(0), discountTotalGross: money(0) } });
   await expect(f.quote(request)).rejects.toThrow("subscription_reprice_line_count_mismatch");
 });
+
+it.each([
+  { action: "update_plan_length", planDays: 20 },
+  { action: "update_addon_quantity", variantId: addon, qty: 2 },
+] as const)("admits the complete exact $action result before pricing", async fields => {
+  const f = fixture(), admit = vi.fn(async () => { throw new Error("subscription_reprice_terms_not_admitted"); });
+  f.ports.admitSubscriptionTerms = admit;
+  await expect(f.quote(fields)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(admit).toHaveBeenCalledExactlyOnceWith({ subscriptionId: sub, nominalPlanDays: fields.action === "update_plan_length" ? 20 : 10,
+    cadenceDays: fields.action === "update_plan_length" ? 20 : 10,
+    base: [{ variantId: base, sku: base, qty: fields.action === "update_plan_length" ? 8 : 4 }],
+    addons: [{ variantId: addon, sku: addon, qty: fields.action === "update_plan_length" ? 3 : 2 }] });
+  expect(f.ports.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+});
+it("keeps the exact quote unchanged without admission and exposes nominal days independently of extended cadence", async () => {
+  const f = fixture(); f.subscription.cadenceDays = 35;
+  const fields = { action: "update_addon_quantity", variantId: addon, qty: 2 } as ExactSubscriptionEditRequest;
+  const original = await f.quote(fields), admit = vi.fn(); f.ports.admitSubscriptionTerms = admit;
+  expect(await f.quote(fields)).toEqual(original);
+  expect(admit.mock.calls[0][0]).toMatchObject({ nominalPlanDays: 10, cadenceDays: 35 });
+});

@@ -12,7 +12,7 @@ const snapshotSchema = z.object({
   contractVersion: z.literal("customer.subscription_control.v1"),
   subscriptions: z.array(z.object({
     subscriptionId: z.guid(), status: z.enum(["pending_activation", "active", "paused", "cancelled", "activation_failed", "completed"]),
-    cadenceDays: z.number().int().positive().max(90), nextCycleAt: instant.nullable(), editCutoffAt: instant.nullable(),
+    cadenceDays: z.number().int().positive().max(2_147_483_647), nextCycleAt: instant.nullable(), editCutoffAt: instant.nullable(),
     templateVersion: z.number().int().positive(), recurringTotal: money.nullable(),
     lines: z.array(z.object({ variantId: z.guid(), quantity: z.number().int().positive().max(99),
       isAddon: z.boolean(), sortOrder: z.number().int().nonnegative() }).strict()).max(18),

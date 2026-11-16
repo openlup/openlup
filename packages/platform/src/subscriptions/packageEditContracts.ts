@@ -1,5 +1,5 @@
-import type { PackageEditMoney, PackageEditQuoteLine } from "./contracts/packageEdit.js";
-export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
+import type { PackageEditMoney, PackageEditQuoteLine, SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
+export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
@@ -27,6 +27,9 @@ export interface PackageEditReadPort {
 /** Compose the existing quote engine with Q1/Q2 authority, no promotion or settings ports,
  * zero automatic/code promotions, and use its server-authoritative method. */
 export interface PackageEditQuotePorts {
+  /** Adopter admission of the complete normalized result, including unchanged lines.
+   * Must have no effects. Throw subscription_reprice_terms_not_admitted to refuse. */
+  admitSubscriptionTerms?: SubscriptionTermsAdmission;
   quoteCatalogReadPort: { listQuoteCatalogItems(): Promise<{ variantId: string; skuCode: string; sellability: { subscription: boolean } }[]> };
   quotePort: { createServerAuthoritativeQuote(request: {
     mode: "subscription"; cadenceDays: number; compositionConstraint: Record<string, unknown> | null; promoCodes: string[];

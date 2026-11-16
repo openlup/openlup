@@ -68,7 +68,7 @@ export function createCheckoutResponseSchemas<Quote extends z.ZodType, Expectati
       subscription: z
         .object({
           requested: z.boolean(),
-          cadenceDays: z.number().int().positive().max(120).nullable(),
+          cadenceDays: z.number().int().positive().max(2_147_483_647).nullable(),
           activationStatus: checkoutActivationStatusSchema,
         })
         .strict()

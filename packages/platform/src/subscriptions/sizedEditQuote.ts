@@ -74,6 +74,9 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
     return { lineId: prior?.lineId ?? null, variantId: line.variantId, sku: fact?.sku ?? prior!.sku,
       groupId: fact?.groupId ?? prior!.groupId, qty: line.qty, isAddon: line.isAddon ?? false };
   });
+  await host.admitSubscriptionTerms?.({ subscriptionId: context.subscriptionId, nominalPlanDays: cadenceDays, cadenceDays,
+    base: references.filter(line => !line.isAddon).map(({ variantId, sku, qty }) => ({ variantId, sku, qty })),
+    addons: references.filter(line => line.isAddon).map(({ variantId, sku, qty }) => ({ variantId, sku, qty })) });
   const quoteRequest = { mode: "subscription" as const, cadenceDays, compositionConstraint: coreConstraint.data,
     promoCodes: [], lines: references.map(line => ({ sku: line.sku, quantity: line.qty, modeAtLine: "subscription" as const, isAddon: line.isAddon })) };
   const split = splitBySubscriptionAgreement(quoteRequest, baseline);

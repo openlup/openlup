@@ -1,3 +1,4 @@
+import type { SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedQuoteRequest, SizedRecurringQuote } from "./contracts/sizedEdit.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
@@ -12,6 +13,8 @@ export interface SizedSubjectFacts {
   subscriptionId: string; clientId: string; subjectRef: string; exclusions: string[]; snapshot: Record<string, unknown>;
 }
 export interface SizedHostPorts {
+  /** Effect-free adopter admission, before even a wholly frozen quote. */
+  admitSubscriptionTerms?: SubscriptionTermsAdmission;
   /** Candidate discovery is advisory; preview/apply reread authenticated owned facts. Precedence is host-owned. */
   readFacts(db: SubscriptionQueryExecutor, context: SizedEditContext, point: "candidate" | "preview" | "apply"): Promise<SizedSubjectFacts>;
   /** Only opt-in derives fresh need. Ordinary edits use the stored dailyNeed carrier. */

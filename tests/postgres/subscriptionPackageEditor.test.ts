@@ -4,6 +4,7 @@ import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery } from "@openlup/platform/communications";
+import type { PackageEditorOptions } from "@openlup/platform/subscriptions";
 import { createPostgresLifecycleMessages, createPostgresPackageEditor } from "@openlup/platform/subscriptions";
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
@@ -371,4 +372,41 @@ it("prunes at most 500 old unaccepted previews and retains accepted pricing hist
     "2026-11-20T00:15:00Z", {}, {}, {}, "2026-11-20T00:00:00Z"]);
   expect(await countOld()).toBe(before - 500);
   expect((await owner.query("SELECT to_jsonb(q) AS row FROM public.subscription_quote_previews q WHERE status='accepted' ORDER BY id")).rows).toEqual(accepted);
+}, 30_000);
+
+
+it("refuses full classic terms atomically and preserves a completed receipt under smaller request bounds", async () => {
+  const f = await fixture(); let allowed = false; const seen: unknown[] = [];
+  const opts: PackageEditorOptions = { now: () => at,
+    limits: { maximumPlanDays: 365, maximumBaseLines: 6, maximumAddonLines: 12, maximumQuantity: 99 },
+    admitSubscriptionTerms(terms) { seen.push(terms); if (!allowed) throw new Error("subscription_reprice_terms_not_admitted"); },
+    quoteCatalogReadPort: { listQuoteCatalogItems: async () => [f.sku, f.addon].map(variantId => ({ variantId, skuCode: variantId, sellability: { subscription: true } })) },
+    quotePort: { async createServerAuthoritativeQuote(input) {
+      const lines = input.lines.map(line => ({ sku: line.sku, quantity: line.quantity, unitPriceGross: money(100), lineSubtotalGross: money(line.quantity * 100) }));
+      const total = money(lines.reduce((sum, line) => sum + line.lineSubtotalGross.amountMinor, 0));
+      return { quote: { lines, totalGross: total, subtotalGross: total, discountTotalGross: money(0) } };
+    } },
+    constraintMapper: { toCore: stored => ({ kind: "configured", version: 1, data: stored ?? {} }), fromCore: value => value.data, nominalPlanDays: () => null },
+    compositionRulesPort: { validateComposition: async () => ({ ok: true }), resizeComposition: async () => null },
+    async withTransaction(work) { const db = await runtime.connect();
+      try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
+      catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+    } };
+  const editor = createPostgresPackageEditor(opts), actor = { actorId: f.actor, clientId: f.client };
+  const input = { subscriptionId: f.subscription, planDays: 180, base: [{ variantId: f.sku, qty: 6 }], addons: [{ variantId: f.addon, qty: 3 }] };
+  await refuses(() => editor.preview(actor, input), "subscription_reprice_terms_not_admitted");
+  await refuses(() => editor.apply(actor, "refused-classic-terms", input), "subscription_reprice_terms_not_admitted");
+  expect(seen[0]).toEqual({ subscriptionId: f.subscription, nominalPlanDays: 180, cadenceDays: 180,
+    base: [{ variantId: f.sku, sku: f.sku, qty: 6 }], addons: [{ variantId: f.addon, sku: f.addon, qty: 3 }] });
+  allowed = true; const preview = await editor.preview(actor, input), accepted = { ...input, acceptedQuoteHash: preview.quoteHash };
+  allowed = false; await refuses(() => editor.apply(actor, "withdrawn-classic-terms", accepted), "subscription_reprice_terms_not_admitted");
+  allowed = true; const result = await editor.apply(actor, "completed-classic-terms", accepted);
+  expect((await owner.query("SELECT cadence_days,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0])
+    .toEqual({ cadence_days: 180, next_cycle_at: new Date(next) });
+  allowed = false; Object.assign(opts.limits, { maximumPlanDays: 1, maximumBaseLines: 1, maximumAddonLines: 1, maximumQuantity: 1 });
+  const shrunk = createPostgresPackageEditor(opts), count = seen.length, before = await effects();
+  expect(await shrunk.apply(actor, "completed-classic-terms", accepted)).toEqual({ ...result, status: "replayed", originalStatus: "applied" });
+  expect(seen).toHaveLength(count); expect(await effects()).toEqual(before);
+  await refuses(() => shrunk.apply(actor, "completed-classic-terms", { ...accepted, planDays: 181 }), "subscription_command_idempotency_conflict");
+  await refuses(() => shrunk.apply(actor, "fresh-classic-terms", accepted), "subscription_reprice_invalid_request");
 }, 30_000);

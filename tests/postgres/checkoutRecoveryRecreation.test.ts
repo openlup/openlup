@@ -27,7 +27,7 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
  const read=async(id:string)=>(await createPostgresCheckoutRecoveryOrderPort(env.runtime).getRecoveryOrder({orderId:id}))!;
  const simulator=()=>createPostgresSandboxPaymentSimulator(env.runtime,{dunningTemplateSlug:"dunning",recoveryUrlPath:"/recover",recoveryTemplateSlug:"recover"});
  const lane={run:async<T>(work:(db:unknown)=>Promise<T>)=>{const db=await env.runtime.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}}};
- async function subject(mode:'subscription'|'one_time'='subscription',stock=10,shared?:{sku:string;skuId:string;client:string;stockSource:string}){
+ async function subject(mode:'subscription'|'one_time'='subscription',stock=10,shared?:{sku:string;skuId:string;client:string;stockSource:string},cadenceDays=28){
   const {sku,skuId,client,stockSource}=shared??{sku:`RECOVERY-${randomUUID()}`,skuId:randomUUID(),client:randomUUID(),stockSource:randomUUID()};
   if(!shared){
   await env.owner.query('INSERT INTO public.clients(id,email)VALUES($1,$2)',[client,`${client}@example.invalid`]);
@@ -38,10 +38,10 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   await env.owner.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
    VALUES($1,$2,$3,$3,0,'sellable',clock_timestamp(),clock_timestamp()+interval '30 days','recovery',$1,$4)`,[stockSource,sku,stock,'a'.repeat(64)]);
   }
-  const frozen=quote(sku,mode),draft=await persistence().createOrderDraft({idempotencyKey:`source:${randomUUID()}`,quoteSnapshot:frozen},{clientId:client});
+  const frozen=quote(sku,mode);if(mode==='subscription')frozen.quote.context.cadenceDays=cadenceDays;const draft=await persistence().createOrderDraft({idempotencyKey:`source:${randomUUID()}`,quoteSnapshot:frozen},{clientId:client});
   const id=draft.orderDraft.orderId.replace(/^order_/,'');
   await call(env.runtime,'commerce_register_order_destination',[`destination:${id}`,id,{recipientName:'Example Buyer',line1:'Example 1',city:'Example',postalCode:'00000',country:'ZZ'},at()]);
-  if(mode==='subscription')await call(env.runtime,'subscription_declare_provisional_activation',[`declare:${id}`,id,28,at()]);
+  if(mode==='subscription')await call(env.runtime,'subscription_declare_provisional_activation',[`declare:${id}`,id,cadenceDays,at()]);
   const intent=await call(env.runtime,'commerce_open_settlement_intent',[`intent:${id}`,id,'sandbox',100,'XXX',{},at()]);
   const intentId=String((intent.settlement as {id:string}).id);
   const attempt=await simulator().beginAttempt({idempotencyKey:`attempt:${id}`,settlementIntentId:intentId,requestFingerprint:'a'.repeat(64),at:at()});
@@ -55,7 +55,7 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
  }
  type Subject=Awaited<ReturnType<typeof subject>>;
  function service(f:Subject,options:{unit?:number;supports?:boolean;fail?:boolean;afterPrepare?:()=>Promise<void>;beforeReserve?:(db:CheckoutRecoveryWriteExecutor)=>Promise<void>}={}){
-  const quotePort={createQuote:vi.fn(async()=>{const fresh=quote(f.sku,f.frozen.quote.context.mode,options.unit??100);Object.assign(fresh.quote.context,{requestTrace:randomUUID()});return fresh;})};
+  const quotePort={createQuote:vi.fn(async()=>{const fresh=quote(f.sku,f.frozen.quote.context.mode,options.unit??100);Object.assign(fresh.quote.context,{cadenceDays:f.frozen.quote.context.cadenceDays,requestTrace:randomUUID()});return fresh;})};
   const runtime=createPostgresExpiredCheckoutRuntime(lane,{stockSourceKey:f.stockSource,reservationLifetimeMs:1800000,channelKey:'sandbox',
    verifyPriorPayment:(input,db)=>createPostgresSandboxExpiredCheckoutSafety(db).verifyPriorPayment(input),
    reserveOrderItems:async(input,db)=>{await options.beforeReserve?.(db);return createPostgresPurchaseReservationPort(db).reserveOrderItems(input);},startPayment:async (input,db)=>{
@@ -83,6 +83,15 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   const activation=(await env.owner.query('SELECT state,subscription_id FROM public.subscription_activations WHERE order_id=$1',[child.id])).rows;
   expect(activation).toEqual(mode==='subscription'?[{state:'provisional',subscription_id:null}]:[]);
   expect((await env.owner.query('SELECT status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1',[child.id])).rows).toEqual([{status:'held'}]);
+ });
+ it('persists, reads back and recovers an adopter 180-day checkout through native ports',async()=>{
+  const f=await subject('subscription',10,undefined,180),before=await sourceRows(f);
+  expect(f.order.cadenceDays).toBe(180);
+  expect(f.order.quoteSnapshot).toMatchObject({quote:{context:{cadenceDays:180}}});
+  const attempt=await recreate(f),[child]=await children(f.id);
+  expect((await read(child.id)).cadenceDays).toBe(180);
+  expect((await env.owner.query('SELECT cadence_days FROM public.subscription_activations WHERE order_id=$1',[child.id])).rows).toEqual([{cadence_days:180}]);
+  expect(await recreate(f)).toMatchObject({id:attempt.id,replayed:true});expect(await sourceRows(f)).toEqual(before);
  });
  it.each(['profile','fallback'] as const)('keeps absent recreation buyer facts absent and freezes the %s selection',async source=>{
   const f=await subject('one_time'),profileId=randomUUID(),addressId=randomUUID();

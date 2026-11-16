@@ -18,23 +18,29 @@ const resultSchema = z.object({ status: z.enum(["applied", "replayed", "noop"]),
 export function createPostgresPackageEditor(options: PackageEditorOptions) {
   const limits = options.limits;
   if ([limits.maximumPlanDays, limits.maximumBaseLines, limits.maximumAddonLines, limits.maximumQuantity].some(value => !Number.isSafeInteger(value) || value <= 0)) throw new Error("subscription_reprice_limits_unavailable");
-  const line = z.object({ variantId: z.uuid(), qty: z.number().int().positive().max(limits.maximumQuantity) }).strict();
-  const schema = z.object({ subscriptionId: z.uuid(), planDays: z.number().int().positive().max(limits.maximumPlanDays),
-    base: z.array(line).min(1).max(limits.maximumBaseLines), addons: z.array(line).max(limits.maximumAddonLines).default([]),
+  const line = z.object({ variantId: z.uuid(), qty: z.number().int().positive() }).strict();
+  const schema = z.object({ subscriptionId: z.uuid(), planDays: z.number().int().positive(),
+    base: z.array(line).min(1), addons: z.array(line).default([]),
     expectedTemplateVersion: z.number().int().positive().optional(), acceptedQuoteHash: z.string().regex(/^[a-f0-9]{64}$/u).optional() }).strict();
   const acceptance = { subscriptionId: z.uuid(), expectedTemplateVersion: z.number().int().positive().optional(),
     acceptedQuoteHash: z.string().regex(/^[a-f0-9]{64}$/u).optional() };
   const exactSchema = z.discriminatedUnion("action", [
     z.object({ ...acceptance, action: z.literal("swap_base_line"), fromVariantId: z.uuid(), toVariantId: z.uuid() }).strict(),
-    z.object({ ...acceptance, action: z.literal("add_addon"), variantId: z.uuid(), qty: z.number().int().positive().max(limits.maximumQuantity) }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_addon_quantity"), variantId: z.uuid(), qty: z.number().int().positive().max(limits.maximumQuantity) }).strict(),
+    z.object({ ...acceptance, action: z.literal("add_addon"), variantId: z.uuid(), qty: z.number().int().positive() }).strict(),
+    z.object({ ...acceptance, action: z.literal("update_addon_quantity"), variantId: z.uuid(), qty: z.number().int().positive() }).strict(),
     z.object({ ...acceptance, action: z.literal("remove_addon"), variantId: z.uuid() }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_plan_length"), planDays: z.number().int().positive().max(limits.maximumPlanDays) }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_base_mix"), base: z.array(line).min(1).max(limits.maximumBaseLines) }).strict(),
+    z.object({ ...acceptance, action: z.literal("update_plan_length"), planDays: z.number().int().positive() }).strict(),
+    z.object({ ...acceptance, action: z.literal("update_base_mix"), base: z.array(line).min(1) }).strict(),
     z.object({ ...acceptance, action: z.literal("update_portion"), portionMode: z.string().min(1) }).strict(),
   ]);
   const parse = (input: SubscriptionEditRequest) => { const result = z.union([schema, exactSchema]).safeParse(input);
     if (!result.success) throw new Error("subscription_reprice_invalid_request"); return result.data; };
+  function assertRequestLimits(request: ReturnType<typeof parse>) {
+    const base = "base" in request ? request.base : [], addons = "addons" in request ? request.addons : [];
+    if (("planDays" in request && request.planDays > limits.maximumPlanDays) || base.length > limits.maximumBaseLines ||
+      addons.length > limits.maximumAddonLines || [...base, ...addons].some(line => line.qty > limits.maximumQuantity) ||
+      ("qty" in request && request.qty > limits.maximumQuantity)) throw new Error("subscription_reprice_invalid_request");
+  }
   async function owned(db: SubscriptionQueryExecutor, actor: PackageEditActor, id: string) {
     const row = (await db.query(`SELECT s.*,EXISTS(SELECT 1 FROM public.subscription_dunning_cases d
       WHERE d.subscription_id=s.id AND d.status='open') AS payment_blocked,
@@ -72,6 +78,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
   const editor = {
     async preview(actor: PackageEditActor, input: SubscriptionEditRequest): Promise<PackageEditPreview<EditAction>> {
       const request = parse(input), action: EditAction = "action" in request ? request.action : "update_package_template";
+      assertRequestLimits(request);
       if (request.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
       return options.withTransaction(async db => {
         const row = await owned(db, actor, request.subscriptionId), next = stamp(row.next_cycle_at);
@@ -114,10 +121,11 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
       const action: EditAction = "action" in request ? request.action : "update_package_template";
       if (idempotencyKey !== idempotencyKey.trim() || idempotencyKey.length < 8 || idempotencyKey.length > 180) throw new Error("subscription_command_invalid_input");
       return options.withTransaction(async db => {
-        await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, idempotencyKey]);
         await owned(db, actor, subscriptionId);
+        await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, idempotencyKey]);
         const stored = await replay(db, actor, subscriptionId, idempotencyKey, raw, action);
         if (stored) return stored;
+        assertRequestLimits(request);
         const quote = await quoteFor(db, request);
         if (quote && request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const enriched = { ...raw, request: raw, ...(quote ? evidence(request, quote) : {}) };

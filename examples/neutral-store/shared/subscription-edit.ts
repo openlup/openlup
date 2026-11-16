@@ -45,7 +45,7 @@ export function assertEditorConfig(config: SubscriptionEditorConfig): void {
   const positive = (value: number) => Number.isSafeInteger(value) && value > 0;
   if (!config || ![config.minimumBaseUnits, config.maximumBaseLines, config.maximumAddonLines,
     config.maximumQuantity, ...config.planDays, config.sized?.preferredSize, ...(config.sized?.nominalSizes ?? [])].every(positive)
-    || !config.planDays.length || config.planDays.some(days => days > 90) || config.maximumQuantity > 99
+    || !config.planDays.length || config.planDays.some(days => days > 2_147_483_647) || config.maximumQuantity > 99
     || !config.subject || !positive(config.subject.dailyNeed) || !positive(config.subject.revision)
     || ![config.subject.currentExclusions, config.subject.inheritedExclusions].every(list => Array.isArray(list) && list.every(key => typeof key === 'string' && key.length > 0))) {
     throw new Error('starter_subscription_configuration_invalid');
@@ -53,7 +53,7 @@ export function assertEditorConfig(config: SubscriptionEditorConfig): void {
   const policy = config.sized;
   if (![policy.minimumCoreUnits, policy.maximumCoreLines, policy.maximumAddonLines, policy.maximumQuantity,
     policy.maximumExclusions, policy.maximumCatalogExclusions, policy.fixedThroughCycle, policy.graduationCycle, ...policy.allowedCadences].every(positive)
-    || !policy.allowedCadences.length || policy.allowedCadences.some(days => days > 90)
+    || !policy.allowedCadences.length || policy.allowedCadences.some(days => days > 2_147_483_647)
     || policy.maximumQuantity > 99 || policy.graduationCycle <= policy.fixedThroughCycle
     || policy.portionModes.full.mode === policy.portionModes.reduced.mode
     || !policy.portionModes.full.mode || !policy.portionModes.reduced.mode
