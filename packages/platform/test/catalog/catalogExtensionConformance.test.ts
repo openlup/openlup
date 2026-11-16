@@ -151,6 +151,18 @@ describe("offline catalogue conformance", () => {
       expect(report.state, name).toBe("violated"); expect(report.exitCode, name).toBe(1);
       expect(report.findings).toEqual([expect.objectContaining({ code, path: `/packs/0/attributes/0/input${path}` })]);
     }
+    let packsReads = 0, checksReads = 0, recheckReads = 0;
+    const receiverRequirements = new WeakMap<object, readonly string[]>();
+    class SubjectWithSlots {
+      #entries = [{ pack: p }];
+      get packs() { expect(++packsReads).toBe(1); return this.#entries; }
+      get requiredChecks() { expect(++checksReads).toBe(1); return receiverRequirements.get(this); }
+      get recheck() { expect(++recheckReads).toBe(1); return "identical command"; }
+    }
+    const receiverSubject = new SubjectWithSlots(); receiverRequirements.set(receiverSubject, ["taxonomy"]);
+    const receiverReport = await runCatalogExtensionConformance(receiverSubject);
+    expect(receiverReport.exitCode).toBe(2);
+    expect(receiverReport.findings).toEqual([expect.objectContaining({ code: "conformance_owner_unavailable", path: "/requiredChecks/0", recheck: "identical command" })]);
     const mixedPack = pack();
     mixedPack.types[0].attributes = ["private", "unknown"].map(key => ({ ...baseAttribute, key, valueType: { kind: "reference", allowlist: ["stationery:related"] } }));
     const mixedInput = { productAttributes: { private: { namespace: "stationery:related", id: "private" }, unknown: { namespace: "stationery:related", id: "unknown" } }, skus: [{ id }] };

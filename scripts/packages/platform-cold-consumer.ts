@@ -2026,7 +2026,7 @@ const cases = [
    assert.equal(compiled.status, 0, compiled.stdout + compiled.stderr);
    assert.equal(invoke(command).exitCode, 0);
  } },
- { name: "catalogue_check_cli_reports_stable_codes_and_exit", run() {
+ { name: "catalogue_check_cli_reports_stable_codes_and_exit", async run() {
    assert.equal(invoke(["catalogue", "check", "--packs", registry, "--app", "unused"]).exitCode, 64);
    assert.equal(invoke(["verify", "--packs", registry]).exitCode, 64);
    assert.equal(invoke(["upgrade", "plan", "--packs", registry]).exitCode, 64);
@@ -2063,6 +2063,29 @@ const cases = [
    writeFileSync(join(owned, "owner-fixtures.ts"), hiddenReferenceSource);
    const hiddenReference = invoke(ownersCommand); assert.equal(hiddenReference.exitCode, 1);
    assert(hiddenReference.findings.some(f => f.code === "attribute_reference_unresolved" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/finish"));
+   // One table: original executable envelopes, direct and actual CLI (14 evaluations).
+   const subjectForms = [
+     ["plain", 'export default {packs,recheck};', 0, []],
+     ["non-enumerable", 'export default Object.defineProperties({}, {packs:{value:packs},recheck:{value:recheck}});', 0, []],
+     ["receiver-getter", 'const requirements=new WeakMap(); let reads=0; const subject={packs,recheck,get requiredChecks(){if(++reads!==1)throw Error("second read");return requirements.get(this)}};requirements.set(subject,["taxonomy"]);export default subject;', 2, ["conformance_owner_unavailable"]],
+     ["private-fields", 'class Subject {#entries=packs;#reads=0;recheck=recheck;get packs(){if(++this.#reads!==1)throw Error("second read");return this.#entries}}export default new Subject();', 0, []],
+     ["inherited", 'export default Object.create({packs},{recheck:{value:recheck}});', 0, []],
+     ["symbol-keyed", 'export default {packs,recheck,[Symbol("extra")]:true};', 1, ["conformance_subject_invalid"]],
+     ["frozen", 'export default Object.freeze({packs,recheck,requiredChecks:["taxonomy"]});', 2, ["conformance_owner_unavailable"]],
+   ];
+   for (const [name, source, expectedExit, codes] of subjectForms) {
+     const file = "subject-" + name + ".ts", relative = "./catalogue-skeleton/" + file;
+     const args = ["catalogue", "check", "--packs", relative];
+     const recheck = "npx --no -- openlup " + [...args, "--json"].join(" ");
+     writeFileSync(join(owned,file), 'import base from "./registry.ts";const packs=base.packs;const recheck=' + JSON.stringify(recheck) + ';' + source);
+     const {default: original} = await import(relative);
+     const direct = await runCatalogExtensionConformance(original);
+     const {formatVersion, command, ...cli} = invoke(args);
+     assert.equal(direct.exitCode, expectedExit, name); assert.equal(cli.exitCode, expectedExit, name);
+     assert.deepEqual(direct.findings.map(f=>f.code), codes, name);
+     assert.deepEqual(cli, direct, name);
+   }
+   console.log("catalogue subject forms: 7 rows, direct + CLI (14 evaluations) PASS");
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
    const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);
@@ -2085,7 +2108,7 @@ const cases = [
    }
  } },
 ];
-for (const test of cases) { test.run(); console.log(test.name + ": PASS"); }
+for (const test of cases) { await test.run(); console.log(test.name + ": PASS"); }
 const {default: subject} = await import("./catalogue-skeleton/registry.ts");
 const three = [1,2,3].map(index => {
  const entry = subject.packs[0], namespace = "synthetic" + index;

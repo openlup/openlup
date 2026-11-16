@@ -21,6 +21,13 @@ required-evidence-unavailable (2). `taxonomy`, `tax-coverage`, `profiles`,
 Unknown fields refuse; they are never silently passed. Do not add typed attribute
 or combination fields to strict v1 drafts.
 
+The exported subject is an executable envelope, passed directly to the checker.
+Its declared inputs are read once on the original receiver. Plain, frozen,
+non-enumerable, inherited and getter-based inputs are supported, including getters
+using private fields; unknown symbol keys refuse the closed subject shape. The
+CLI puts its recheck command on returned findings and never copies or mutates the
+subject. JSON attribute data follows the separate owner canonical rules below.
+
 The command imports trusted code, including callbacks, without a sandbox. Modules
 must not write stdout or start effects. The checker owns no database, network,
 seed or publish path. Installed versions, database references/cadence, listing

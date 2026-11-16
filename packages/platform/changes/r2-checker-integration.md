@@ -17,6 +17,11 @@ input, including option locations and SKU identities. No report fields are added
 
 Attribute validation and reference classification now share the attribute owner's
 canonical snapshot, retaining non-enumerable own data and its rejection of getters,
-symbols and unsupported prototypes. CLI subject descriptors and explicit combination
-owner fields preserve non-enumerable data; closed fixture envelopes check all own
+symbols and unsupported prototypes. Explicit combination owner fields preserve non-enumerable data; closed fixture envelopes check all own
 keys rather than silently dropping hidden or symbol keys.
+
+The CLI now passes the exported subject itself. The checker reads its declared
+envelope inputs once on the original receiver, preserving receiver-dependent and
+private-field getters; the CLI changes only returned finding recheck text. One
+seven-form direct/CLI parity table covers the supported envelope forms and closed
+symbol-key refusal. Attribute data retains its own canonical JSON rules.
