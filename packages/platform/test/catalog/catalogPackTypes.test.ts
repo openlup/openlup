@@ -5,6 +5,7 @@ import { catalogDraftPayloadSchema } from "../../src/catalog/draftSchemas.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import { catalogPackIssues } from "../../src/catalog/productTypeIssues.js";
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
+import type { VerifiedCatalogPublisher } from "../../src/catalog/publicationPorts.js";
 
 const flags = { scope: "variant", required: true, cardinality: { min: 1, max: 1 }, filterable: true, facetable: true, public: true, displayOrder: 0, labels: { en: "Example" } } as const;
 const text = { kind: "text", minLength: 1, maxLength: 80 } as const;
@@ -1939,4 +1940,43 @@ it("define_catalog_pack_types_reject_undeclared_keys", () => {
   const back: CatalogQuantity = platform;
   expect(back).toBe(core);
   expect(Object.isFrozen(p.types[0].attributes[0])).toBe(true);
+});
+
+it("define_catalog_pack_types_reject_undeclared_keys_v2_required_attributes", () => {
+  const pack = defineCatalogPack({ id: "example:v2", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: {}, taxClasses: [],
+    types: [{ key: "example:v2", version: 1, units: [{ code: "openlup:piece", dimension: "count", integral: true }], netContentUnits: ["openlup:piece"], dimensions: [],
+      attributes: [
+        { key: "title", scope: "product", valueType: { kind: "text", maxLength: 120 }, required: true, cardinality: { min: 1, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
+        { key: "enabled", scope: "variant", valueType: { kind: "boolean" }, required: true, cardinality: { min: 1, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
+      ], validateContent: () => [] }],
+  });
+  const product = { id: "10000000-0000-4000-8000-000000000001", type: { key: "example:v2", version: 1 }, dimensions: [] } as const;
+  const sku = { id: "20000000-0000-4000-8000-000000000001", productId: product.id, options: {} } as const;
+  const author = draftsFor(pack);
+  author([{ schemaVersion: 2, product: { ...product, attributes: { title: "Synthetic" } }, skus: [{ ...sku, attributes: { enabled: true } }] }]);
+  // @ts-expect-error inline v2 drafts require the product's declared required attribute.
+  author([{ schemaVersion: 2, product, skus: [{ ...sku, attributes: { enabled: true } }] }]);
+  const referenced = { schemaVersion: 2, product: { ...product, attributes: { title: "Synthetic" } }, skus: [sku] } as const;
+  // @ts-expect-error referenced v2 drafts require the variant's declared required attribute.
+  author([referenced]);
+  const readonlyDrafts = [{ schemaVersion: 2, product: { ...product, attributes: {} }, skus: [{ ...sku, attributes: { enabled: true } }] }] as const;
+  // @ts-expect-error readonly arrays do not hide missing required product keys.
+  author(readonlyDrafts);
+  const mutableDrafts = [{ schemaVersion: 2 as const, product: { ...product, attributes: { title: "Synthetic" } }, skus: [{ ...sku, attributes: {} }] }];
+  // @ts-expect-error mutable arrays do not hide missing required variant keys.
+  author(mutableDrafts);
+  // @ts-expect-error unknown product attribute keys are closed even on referenced objects.
+  author([{ schemaVersion: 2, product: { ...product, attributes: { title: "Synthetic", invented: "extra" } }, skus: [{ ...sku, attributes: { enabled: true } }] }]);
+  // @ts-expect-error a supplied variant value must match its declared kind.
+  author([{ schemaVersion: 2, product: { ...product, attributes: { title: "Synthetic" } }, skus: [{ ...sku, attributes: { enabled: "yes" } }] }]);
+  expect(pack.types[0].attributes.map(attribute => attribute.key)).toEqual(["title", "enabled"]);
+});
+it("catalog_publish_denies_machine_and_distributor", () => {
+  // @ts-expect-error a draft actor string cannot mint the opaque human publisher.
+  const draftActor: VerifiedCatalogPublisher = { actorId: "operator:synthetic" };
+  // @ts-expect-error a service credential cannot mint the opaque human publisher.
+  const service: VerifiedCatalogPublisher = { credential: "synthetic-service", machine: true };
+  // @ts-expect-error a distributor role cannot mint the opaque human publisher.
+  const distributor: VerifiedCatalogPublisher = { role: "distributor" };
+  expect([draftActor, service, distributor]).toHaveLength(3);
 });
