@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, installCatalogDefinitions, type CatalogDraftApplyResult, type CatalogDraftCommand } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, installCatalogDefinitions, type CatalogDraftStoredApplyResult as CatalogDraftApplyResult,
+  type CatalogDraftStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2 } from "@openlup/platform/catalog";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -46,6 +47,24 @@ beforeAll(async () => {
       expect(result).toMatchObject({ outcome: "committed", record: { actorId, fingerprint } });
       commands.push({ canonicalCommand, fingerprint, actorId, result });
     }
+  }
+  const draftId = randomUUID(), productId = randomUUID(), skuId = randomUUID();
+  const payload: CatalogDraftPayloadV2 = { schemaVersion: 2,
+    product: { id: productId, type: { key: "example:transfer-item", version: 1 }, dimensions: [], attributes: { "example:title": "Synthetic v2" } },
+    skus: [{ id: skuId, productId, code: `V2-${skuId}`, options: {}, attributes: { "example:enabled": true },
+      priceOperations: [{ schemaVersion: 1, commandKey: "price:v2", variantId: skuId, priceListId: randomUUID(), mode: "one_time", minQty: 1,
+        amountKind: "gross", unitPriceMinor: 1234, expected: { entryId: null, unitPriceMinor: null } }] }] };
+  for (const command of [
+    { schemaVersion: 2, action: "create", draftId, commandKey: "v2:create", expectedRevision: 0, payload },
+    { schemaVersion: 2, action: "revise", draftId, commandKey: "v2:revise", expectedRevision: 1,
+      payload: { ...payload, skus: payload.skus.map(sku => ({ ...sku, priceOperations: sku.priceOperations!.map(price => ({ ...price, unitPriceMinor: 2345 })) })) } },
+    { schemaVersion: 2, action: "abandon", draftId, commandKey: "v2:abandon", expectedRevision: 2 },
+    { schemaVersion: 2, action: "resume", draftId, commandKey: "v2:resume", expectedRevision: 3 },
+  ]) {
+    const canonicalCommand = canonicalCatalogDraftJson(command), fingerprint = createHash("sha256").update(canonicalCommand).digest("hex"), actorId = "operator:Synthetic-v2";
+    const result = await journeyRpc<CatalogDraftApplyResult>(source.runtime, "catalog_draft_apply", [canonicalCommand, fingerprint, actorId]);
+    expect(result).toMatchObject({ outcome: "committed", record: { payload: { schemaVersion: 2 } } });
+    commands.push({ canonicalCommand, fingerprint, actorId, result });
   }
   // A populated live catalogue proves preservation as well as absence of
   // accidental publication of the separate draft product/SKU identities.
@@ -95,10 +114,10 @@ beforeAll(async () => {
   expect(before.catalog_type_versions).toHaveLength(2);
   expect(before.catalog_definition_installs).toHaveLength(2);
   expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);
-  expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open"]);
-  expect(before.catalog_draft_revisions).toHaveLength(5);
-  expect(before.catalog_draft_command_receipts).toHaveLength(5);
-  expect(before.catalog_draft_sku_reservations).toHaveLength(2);
+  expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open", "open"]);
+  expect(before.catalog_draft_revisions).toHaveLength(9);
+  expect(before.catalog_draft_command_receipts).toHaveLength(9);
+  expect(before.catalog_draft_sku_reservations).toHaveLength(3);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
     .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(packet.outsideProfileCensus.find(entry => entry.relation === "public.catalog_attribute_projection"))
