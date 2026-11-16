@@ -21,6 +21,10 @@ export interface SubscriptionPricePolicyCanonicalInput extends SubscriptionPrice
 
 export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicyCanonicalInput {
   digest: string;
+  /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples. */
+  closedFromOpen?: boolean;
 }
 
-export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch";
+export type SubscriptionPricePolicyDigestRefusal =
+  | "subscription_price_policy_digest_mismatch"
+  | "subscription_price_policy_original_tuple_unverified";

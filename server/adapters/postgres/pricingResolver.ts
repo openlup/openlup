@@ -35,6 +35,7 @@ interface SubscriptionPricePolicyRow {
   rounding_quantum_minor: number;
   rounding_rule: string;
   digest: string;
+  closed_from_open: boolean;
   effective_from: string | Date;
   effective_to: string | Date | null;
 }
@@ -73,7 +74,7 @@ const STRICT_LEGACY_SUBSCRIPTION_ENTRY_SQL = `
 const SUBSCRIPTION_POLICY_SQL = `
   SELECT id, revision_no, price_list_id, region_code, currency, channel,
     discount_bps, rounding_quantum_minor, rounding_rule, digest,
-    effective_from, effective_to
+    effective_from, effective_to, closed_from_open
   FROM public.subscription_price_policy_revisions WHERE price_list_id = $1
     AND region_code = $2 AND currency = $3 AND channel = $4
   ORDER BY revision_no`;
@@ -267,6 +268,7 @@ function toSubscriptionPolicyRevision(row: SubscriptionPricePolicyRow) {
     roundingQuantumMinor: row.rounding_quantum_minor,
     roundingRule: row.rounding_rule,
     digest: row.digest,
+    ...(row.closed_from_open ? { closedFromOpen: true } : {}),
     effectiveFrom: iso(row.effective_from),
     effectiveTo: row.effective_to === null ? null : iso(row.effective_to),
   };

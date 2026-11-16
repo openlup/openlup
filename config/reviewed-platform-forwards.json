@@ -5320,6 +5320,25 @@
           "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_combination_digest_check CHECK (\n  combination_digest IS NULL OR octet_length(combination_digest) = 32) NOT VALID;",
           "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_combination_digest_check;"
         ]
+      },
+      {
+        "row": "catalogue-lc4a",
+        "path": "db/platform/migrations/20261122140000_subscription_price_policy_close_digest.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_price_policy_revisions_guard_mutation()",
+            "beforeSha256": "f99a2f7cfdf615ba39fbc046e82d5c6f5456987720a1d896e7cd5cc5f8931f6c",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.subscription_price_policy_revisions\n  ADD COLUMN closed_from_open boolean NOT NULL DEFAULT false;",
+          "ALTER TABLE public.subscription_price_policy_revisions\n  ADD CONSTRAINT subscription_price_policy_revisions_closed_from_open_check\n  CHECK (NOT closed_from_open OR effective_to IS NOT NULL) NOT VALID;",
+          "ALTER TABLE public.subscription_price_policy_revisions\n  VALIDATE CONSTRAINT subscription_price_policy_revisions_closed_from_open_check;"
+        ]
       }
     ]
   },
@@ -7386,6 +7405,17 @@
       "path": "db/platform/migrations/20261122130000_catalog_variant_axes.sql",
       "sha256": "48bc16639ca567aba31f2257f7cd79ca7c562be4cd4aedc4020aedf70e273c70",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261122140000_subscription_price_policy_close_digest.sql",
+      "sha256": "3a30959d1a0721fc48455242ec31d2c31d1f52694aefaca80531bac4b270eb78",
+      "functions": [
+        {
+          "signature": "public.subscription_price_policy_revisions_guard_mutation()",
+          "beforeSha256": "f99a2f7cfdf615ba39fbc046e82d5c6f5456987720a1d896e7cd5cc5f8931f6c",
+          "afterSha256": "b2b7568743a49d0263ce9fe3a0123857d78cc4f40444c166a58a92cb768870ef"
+        }
+      ]
     }
   ]
 }

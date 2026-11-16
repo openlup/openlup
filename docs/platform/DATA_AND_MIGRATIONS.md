@@ -636,6 +636,48 @@ private tables have RLS and only the existing service-role client-column census
 exception. They are outside the smaller compatible-row utility. The parcel-contact
 privacy contributor owns their export and erasure alongside parcel contacts.
 
+### Policy revision close compatibility
+
+The native `20261122140000_subscription_price_policy_close_digest.sql` forward
+adds `closed_from_open` to `subscription_price_policy_revisions` and replaces
+only its mutation guard. A successful one-time NULL-to-finite close sets the
+marker atomically; every original digest field and the stored digest remain
+unchanged. The existing overlap trigger and both native price readers use the
+same shortened `[effective_from, effective_to)` window. No new lock, writer,
+schedule, receipt or runtime privilege is introduced. See the
+[catalogue agreements](CANONICAL_CONTRACTS.md#catalogue-extension-agreements).
+
+The updated policy verifier uses NULL as the digest end only when the immutable
+marker records that original fact. A pre-forward row has marker false: it must
+verify against its stored tuple. An already-shortened row whose tuple does not
+verify refuses with `subscription_price_policy_original_tuple_unverified`.
+No backfill guesses the missing end or recomputes a historical stored digest.
+The migration itself does not adopt policies or enable serving. Verify retained
+history with the new reader before an adopter enables any later writer; resolve
+unverified originals from independently retained evidence under a separate
+reviewed repair rather than rewriting their digests.
+
+Apply the schema before the updated native readers, then verify readback before
+allowing a close. Old readers continue to read unchanged revisions; they refuse
+a shortened tuple whose digest covers its original NULL end. Once a close has
+occurred, code rollback therefore requires readers retaining original-tuple
+verification. Keep the forward and data in place; no down migration is supplied.
+The marker is AUTHORITATIVE data in the existing policy capture/restore entry,
+with unchanged restoration order and privacy classification. It adds no customer
+foreign key or absorption duty. The parameterized
+[round-trip witness](../../tests/postgres/policyCloseDigest.test.ts) compares full
+rows and commerce continuity through restore and replay.
+
+Managed divergence design: the managed rail does not supply this feature.
+A future twin adds the same marker and validated CHECK to the managed policy
+revision table, preserves existing RLS and grants, and updates the managed
+reader and mutation guard together. Administrative write grants and RLS must
+restrict closes and marker writes; browser roles receive no write authority.
+These permissions can express native owner-only writes without a native-only
+role assumption. No food-column relaxation applies to this policy-only change.
+The compatibility criterion is unchanged historical digests, the same shortened
+window and named refusal for unverifiable legacy originals on both rails.
+
 ## Human OMS admission
 
 `20261110160000_oms_human_operator_admission.sql` replaces only

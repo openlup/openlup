@@ -1442,6 +1442,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122140000_subscription_price_policy_close_digest.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4699,6 +4703,10 @@
     },
     {
       "path": "packages/platform/sql/20261122130000_catalog_variant_axes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122140000_subscription_price_policy_close_digest.sql",
       "class": "public-output"
     },
     {
@@ -30291,6 +30299,10 @@
     },
     {
       "path": "tests/postgres/platformManifestSuffix.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/policyCloseDigest.test.ts",
       "class": "public-output"
     },
     {

@@ -40,6 +40,7 @@ const owned = [
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   // Authoritative draft history and identity reservations, including abandoned drafts.
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
+  // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
   "communication_event_bindings", "communication_event_receipts", "communication_event_erasures",
   "communication_recipient_consents", "communication_native_sends", "communication_native_observations", "communication_native_sync_state",
