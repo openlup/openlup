@@ -1,7 +1,7 @@
 import type { Product } from '../shared/config.ts';
 import type { Cart, OfferQuote } from '../shared/offer.ts';
 import { isRecord } from '../shared/offer.ts';
-import { quoteCopy } from '../owned/quote-copy.ts';
+import { quoteCopy, quoteRefusalCopy, isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import type { PageContext } from './context.ts';
 import { act } from './api.ts';
 import { el } from './dom.ts';
@@ -32,7 +32,8 @@ export async function refreshLiveQuote(context: PageContext, cart: Cart, target:
   if (generations.get(target) !== own || !target.isConnected) return;
   if (!result.ok || !isOfferQuoteView(result.value)
     || result.value.currency !== context.config.market.currency) {
-    target.replaceChildren(el('p', {},quoteCopy[context.locale].unavailable)); return;
+    target.replaceChildren(el('p', {}, !result.ok && isQuoteRefusalCode(result.code)
+      ? quoteRefusalCopy[context.locale][result.code] : quoteCopy[context.locale].unavailable)); return;
   }
   render(result.value as unknown as OfferQuote);
 }

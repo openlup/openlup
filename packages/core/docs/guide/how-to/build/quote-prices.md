@@ -77,6 +77,31 @@ before trying again; choosing the newest overlapping row would hide the error.
 | Policy history exists but has no unique effective revision | `subscription_price_policy_not_effective`, `subscription_price_policy_ambiguous` |
 | Policy validation or digest check fails | `subscription_price_policy_invalid`, `subscription_price_policy_digest_mismatch` |
 
+When using `createDbBackedCommerceQuotePort`, a price-authority refusal is wrapped
+in `CommerceQuoteError` with `code: 'PRICE_NOT_CONFIGURED'`; its
+`details.reason` retains the price-authority code above. Preserve only an exact
+allowlist of these reasons at your host boundary. Do not return the exception
+message, arbitrary details, database queries or provider payloads to the browser.
+Unknown failures should show a generic unavailable-price message.
+
+The starter supplies English and Polish reason-and-repair copy in
+`owned/quote-copy.ts`. Missing base prices require an effective **one-time gross
+base entry**, including for subscription quotes. Correct missing or overlapping
+lists and entries for the requested market, currency and channel; repair invalid
+policy revisions and digests through the price authority's writer. A policy
+history with no effective revision needs corrected effective dates, not a legacy
+fallback.
+
+Existing `purchase_mode_unavailable` and `cadence_unavailable` refusals ask the
+reader to choose an offered mode, product or interval. A subscription quote in
+the database-free starter preview returns `host_binding_required`: run
+`./lifecycle up` from the prepared application to install and bind the local
+demonstration, then refresh. One-time estimates remain available in that preview;
+installed quotes serve both purchase modes. These diagnostics change no prices,
+purchase-mode eligibility or subscription terms. During a refresh, the starter
+withholds the previous amount; a failure or a late superseded response cannot
+restore it.
+
 ## Add advisory promotion reads
 
 If the quote also evaluates promotions, import

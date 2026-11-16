@@ -2,8 +2,82 @@ import { test, expect } from '@playwright/test';
 import { messageDestinations, routes } from '../shared/routes.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { copy } from '../owned/copy.ts';
+import { quoteCopy, quoteRefusalCopy } from '../owned/quote-copy.ts';
+import { configurations } from '../owned/store.config.ts';
+import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
+
+test('mixed-store installed quotes retain both purchase modes', async ({ request, baseURL }) => {
+  const { config } = await (await request.get('/api/config')).json();
+  const owned = configurations[config.id]!;
+  const product = owned.offer.products[0]!;
+  for (const mode of ['one_time', 'subscription'] as const) {
+    const response = await request.post('/api/actions/offer.validate', {
+      headers: { 'X-Starter-Request': '1', 'Idempotency-Key': crypto.randomUUID(), Origin: baseURL! },
+      data: { acquisitionCapability: 'subscription-acquisition.v1', cart: { schemaVersion: 1,configuration: owned.id,
+        mode,cadenceDays: mode === 'subscription' ? owned.offer.defaultCadenceDays : null,
+        lines: [{ sku: product.sku,quantity: owned.offer.minUnits }] } },
+    });
+    const result = await response.json();
+    expect(result.ok).toBe(true);
+    expect(result.value.mode).toBe(mode);
+    const unitMinor = mode === 'one_time' ? product.unitPrice.amountMinor : deriveSubscriptionUnitPrice(product.unitPrice.amountMinor, {
+      discountBps: owned.offer.subscriptionDiscountBps,roundingQuantumMinor: owned.offer.subscriptionRoundingQuantumMinor,roundingRule: 'FLOOR_TO_QUANTUM' });
+    expect(result.value.lines[0].unitMinor).toBe(unitMinor);
+    expect(result.value.totalMinor).toBeGreaterThan(0);
+  }
+});
 
 for (const locale of ['en', 'pl'] as const) {
+  test(`${locale}: quote refusals explain safe repairs and hide unknown payloads`, async ({ page }) => {
+    let code = 'host_binding_required';
+    await page.route('**/api/actions/offer.validate', route => route.fulfill({
+      status: 422,json: { ok: false,code,details: { sql: 'private SQL' },message: 'private message' },
+    }));
+    for (const reason of ['host_binding_required', 'base_price_not_found', 'purchase_mode_unavailable', 'cadence_unavailable', 'unknown: private payload'] as const) {
+      code = reason;
+      await page.goto(routes.builder[locale]);
+      await page.getByRole('spinbutton').first().fill('1');
+      const result = page.locator('form.builder > [aria-live="polite"]');
+      await expect(result).toHaveText(reason === 'unknown: private payload' ? quoteCopy[locale].unavailable : quoteRefusalCopy[locale][reason]);
+      await expect(result).not.toContainText('private');
+    }
+  });
+
+  test(`${locale}: failed quote refresh removes money and late success cannot restore it`, async ({ page }) => {
+    const late: import('@playwright/test').Route[] = [];
+    const { config } = await (await page.request.get('/api/config')).json();
+    const currency = config.market.currency;
+    await page.route('**/api/actions/offer.validate', async route => {
+      const { cart } = route.request().postDataJSON();
+      const quantity = cart.lines[0].quantity;
+      if (quantity === 2) { late.push(route); return; }
+      if (quantity === 3) { await route.fulfill({ json: { ok: false,code: 'base_price_not_found' } }); return; }
+      await route.fulfill({ json: { ok: true,value: { ...cart,currency,
+        lines: cart.lines.map((line: { sku: string; quantity: number }) => ({ ...line,baseUnitMinor: 1234,unitMinor: 1234,lineMinor: 1234 * line.quantity })),
+        subtotalMinor: 1234 * quantity,discountMinor: 0,modeDiscountMinor: 0,shippingMinor: 0,totalMinor: 1234 * quantity } } });
+    });
+    await page.goto(routes.builder[locale]);
+    const quantity = page.getByRole('spinbutton').first(), result = page.locator('form.builder > [aria-live="polite"]');
+    await quantity.fill('1');
+    await expect(result.locator('.summary')).toBeVisible();
+    await quantity.fill('2');
+    await expect(result).toHaveText(quoteCopy[locale].loading);
+    await expect(page.locator('.builder-row').first().locator('p')).toHaveText('');
+    await expect.poll(() => late.length).toBeGreaterThan(0);
+    await quantity.fill('3');
+    await expect(result).toHaveText(quoteRefusalCopy[locale].base_price_not_found);
+    const responses = late.map(route => route.request().response());
+    await Promise.all(late.map(route => route.fulfill({ json: { ok: true,value: {
+      mode: 'one_time',currency,lines: [{ sku: route.request().postDataJSON().cart.lines[0].sku,quantity: 2,baseUnitMinor: 1234,unitMinor: 1234,lineMinor: 2468 }],
+      subtotalMinor: 2468,discountMinor: 0,modeDiscountMinor: 0,shippingMinor: 0,totalMinor: 2468,
+    } } })));
+    await Promise.all(responses.map(async response => (await response)?.finished()));
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(result).toHaveText(quoteRefusalCopy[locale].base_price_not_found);
+    await expect(result.locator('.summary')).toHaveCount(0);
+    await expect(page.locator('.builder-row').first().locator('p')).toHaveText('');
+  });
+
   for (const destination of messageDestinations) {
     test(`${locale}: follows ${destination.id}`, async ({ page }) => {
       await page.goto(routes.destinations[locale]);

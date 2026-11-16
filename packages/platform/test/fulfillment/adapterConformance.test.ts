@@ -84,6 +84,21 @@ it("proves full and minimal offline fixture adapters plus G14/store reclaim/rema
   expect(JSON.stringify(evidence)).not.toMatch(/fixture-secret|fixture-body|fixture-signed-url|fixture-credential/);
 });
 
+it.each(["wrong-refusal", "io"])("explains missing-selection preparation contract: %s", async fault => {
+  const value = subject(false), prepare = value.adapter.dispatch.prepare, readIoCount = value.readIoCount;
+  let calls = 0;
+  value.readIoCount = () => readIoCount() + calls;
+  value.adapter.dispatch.prepare = async input => {
+    if (input.selection.providerRef === null) {
+      if (fault === "io") calls++;
+      else return { kind: "refused", refusal: { reason: "unsupported", phase: "selection", retryable: false } };
+    }
+    return prepare(input);
+  };
+  await expect(run([value])).rejects.toThrow("prepare(providerRef:null) must return selection_required before I/O; refuse missing provider selection locally");
+  expect(calls).toBe(fault === "io" ? 1 : 0);
+});
+
 it("rejects mismatched preparation I/O, leaked durable fields, false absence and outcome-key collisions", async () => {
   const mismatch = subject(false); const dispatch = mismatch.adapter.dispatch.dispatch;
   mismatch.adapter.dispatch.dispatch = async (input, proof) => proof.commandFingerprint.endsWith(":mismatch") ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: true } } : dispatch(input, proof);

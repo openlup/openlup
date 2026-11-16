@@ -884,6 +884,12 @@ fixture expectations. Scenario indices are integers, in range and distinct;
 status tuples execute in declared order. Baseline mode remains the
 default and grants no full-coverage claim.
 
+The selection probe calls `prepare` with `selection.providerRef: null`. It expects
+`{ kind: 'refused', refusal: { reason: 'selection_required', phase: 'selection',
+retryable: false } }` with zero I/O. An adapter must refuse missing selection
+locally before contacting its provider. A conformance failure names that input,
+expected refusal and repair; it does not request a live provider configuration.
+
 Executed refusal probes cover non-PDF formats, label create/void, provider-side
 cancel, independent split, provider-owned reservations, snapshot-only movements
 and pickup-point/locker execution, each with unchanged provider-call counts.
