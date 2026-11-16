@@ -797,6 +797,35 @@ it("maps only absent catalogue attribute values as NULL and preserves supplied v
   }
 });
 
+it("maps only absent catalogue combination fields as NULL and preserves supplied values and refusals", async () => {
+  const rows = (mapped: Awaited<ReturnType<typeof mapSource>>, table: string) => mapped.packet.owned
+    .find(entry => entry.table === table)!.rows.map(row => JSON.parse(row));
+  const absent = { option_values: null, canonical_option_bytes: null, combination_digest: null };
+  expect(rows(await mapSource(), "catalog_products")).toEqual([expect.objectContaining({ variant_axes: null })]);
+  expect(rows(await mapSource(), "catalog_skus")).toEqual([expect.objectContaining(absent)]);
+  await managed.owner.query("ALTER TABLE public.catalog_products ADD COLUMN variant_axes text[]");
+  await managed.owner.query("ALTER TABLE public.catalog_skus ADD COLUMN option_values jsonb, ADD COLUMN canonical_option_bytes bytea, ADD COLUMN combination_digest bytea");
+  try {
+    expect(rows(await mapSource(), "catalog_skus")).toEqual([expect.objectContaining(absent)]);
+    await managed.owner.query("UPDATE public.catalog_products SET variant_axes=ARRAY['finish','enabled']");
+    await managed.owner.query(`UPDATE public.catalog_skus SET option_values='{"enabled":false,"stable":"id"}'::jsonb,
+      canonical_option_bytes=decode('00ff80','hex'),combination_digest=decode(repeat('ab',32),'hex')`);
+    expect(rows(await mapSource(), "catalog_products")).toEqual([expect.objectContaining({ variant_axes: ["finish", "enabled"] })]);
+    expect(rows(await mapSource(), "catalog_skus")).toEqual([expect.objectContaining({
+      option_values: { enabled: false, stable: "id" }, canonical_option_bytes: "\\x00ff80", combination_digest: `\\x${"ab".repeat(32)}`,
+    })]);
+    await managed.owner.query(`UPDATE public.catalog_skus SET option_values='{"unsafe":123456789012345678901234567890}'::jsonb`);
+    await expect(mapSource()).rejects.toMatchObject({ code: "invalid_input" });
+    await managed.owner.query("UPDATE public.catalog_skus SET option_values=NULL");
+    await managed.owner.query("ALTER TABLE public.catalog_skus RENAME COLUMN title TO temporarily_missing_title");
+    try { await expect(mapSource()).rejects.toMatchObject({ code: "schema_conflict", table: "catalog_skus" }); }
+    finally { await managed.owner.query("ALTER TABLE public.catalog_skus RENAME COLUMN temporarily_missing_title TO title"); }
+  } finally {
+    await managed.owner.query("ALTER TABLE public.catalog_products DROP COLUMN variant_axes");
+    await managed.owner.query("ALTER TABLE public.catalog_skus DROP COLUMN option_values, DROP COLUMN canonical_option_bytes, DROP COLUMN combination_digest");
+  }
+});
+
 // Refusal fixtures need only the row to exist, so foreign keys to unrelated rails stay out of the way.
 async function unchecked(sql: string, params: unknown[]) {
   const client = await managed.owner.connect();

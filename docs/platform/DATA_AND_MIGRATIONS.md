@@ -321,6 +321,33 @@ SKU groups under the managed table's grants and RLS, with an administrative
 install principal and no runtime EXECUTE. Existing mandatory food-related
 columns and their later relaxation remain separate from this expansion.
 
+Product `variant_axes` and SKU `option_values`, `canonical_option_bytes` and
+`combination_digest` are AUTHORITATIVE fields in existing catalogue rows, with
+unchanged capture entries and restore order. Transfer compares declared axis
+order, exact bytes/digests and unmapped legacy NULLs through capture, restore and
+replay. Text and options follow the sensitive retained stream; there is no new
+relation, direct client FK, absorption entry or subject-erasure claim.
+Managed retained mapping supplies NULL only for absent new fields and preserves
+supplied values and all existing missing-column and exact-number refusals.
+
+The native axes forward adds nullable columns, object/digest-width CHECKs and
+active-SKU partial uniqueness on `(product_id, combination_digest)`; it preserves
+legacy rows, codes, ownership and constraints. Old readers ignore the expansion.
+Future V2 readers and publications require complete typed evidence. Code rollback
+keeps the expansion and retained data intact. The
+[package catalogue owner](../../packages/platform/README.md#catalog) describes
+the separate V2 trusted canonicalizer and pure conflict validator; SQL storage
+does not certify caller bytes or supply a publisher. Publication and lifecycle
+integration, including explicit legacy mapping and incremental capacity
+enforcement, remain pending. No agreement is changed or capability activated.
+
+The managed rail does not supply this feature. Its twin needs equivalent nullable
+columns, CHECKs and active-SKU partial uniqueness, preserving managed RLS and
+grants with restrictive administrative writer access. Managed grants/RLS can
+express the native ownership restriction. Existing format/content uniqueness
+and mandatory food columns remain until their separately proven publication
+and reader migration stages.
+
 Product and SKU `attribute_values` are AUTHORITATIVE, sensitive retained data in
 the existing catalogue capture entries and restore order. NULL means legacy
 absence; supplied objects have an independent 1 MiB PostgreSQL rendered-text

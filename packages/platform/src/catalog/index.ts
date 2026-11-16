@@ -63,3 +63,4 @@ export type { CatalogAttributeInput, CatalogAttributeValidation, CatalogAttribut
 export type { CatalogAttributeReference, CatalogAttributeReferenceResolution, CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 export { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 export type { CatalogAttributeProjectionRow, CatalogAttributeProjectionPreparation } from "./attributeProjection.js";
+export { CatalogCombinationError, canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, validateCatalogCombinationChangesV2 } from "./variantCombination.js";
