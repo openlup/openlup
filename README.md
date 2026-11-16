@@ -73,6 +73,13 @@ npm install --save-exact @openlup/core@<version>
 Use the same exact version for every `@openlup/*` package you install. See
 [installation and application instructions](packages/core/docs/guide/start/README.md#install-the-packages).
 
+### Run the starter store
+
+Follow [released-starter adoption](examples/neutral-store/README.md#start-from-an-exact-source-archive)
+for the exact 0.43.0 source archive and immutable manifest/lock inputs, released
+extraction, `npm ci` and `./lifecycle up`. The local demonstration supports both
+subscriptions and one-time purchases; it remains a development preview.
+
 ### A small example
 
 Calculate renewal-payment retry times with an application-supplied policy:

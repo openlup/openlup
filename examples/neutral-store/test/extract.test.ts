@@ -201,6 +201,44 @@ test('reconstruction requires an explicit reason and Git source identity must ma
 });
 
 type ReleaseFixture = Awaited<ReturnType<typeof releasedFixture>>;
+test('the frozen 0.43.0 inputs extract as released without copying source-only inputs or overwriting an application', async () => {
+  const f = await releasedFixture();
+  try {
+    const input = 'release-inputs/openlup-core-v0.43.0/';
+    const manifestBytes = await readFile(resolve(root, input, 'manifest.json'), 'utf8');
+    const lockBytes = await readFile(resolve(root, input, 'package-lock.json'), 'utf8');
+    const manifest = JSON.parse(manifestBytes), lock = JSON.parse(lockBytes);
+    const revision = '6facc3e72441ade5813397f65ac7edbe34fd1d0f';
+    assert.equal(manifest.commit, revision);
+    assert.equal(sha256(lockBytes), '1341821438e57653386bc6900130e3f0e60a33406091c3a917fcfef6a84a9353');
+    assert.deepEqual(manifest.packages.map((pkg: { name: string }) => pkg.name), f.names);
+    const application = structuredClone(lock.packages['']);
+    for (const name of f.names) {
+      application.dependencies[name] = `file:artifacts/${name.slice(9)}.tgz`;
+      await f.put(`packages/${name.slice(9)}/package.json`, { name, version: '0.43.0' });
+    }
+    await f.put('examples/neutral-store/package.json', application);
+    for (const [name, bytes] of [['manifest.json', manifestBytes], ['package-lock.json', lockBytes]] as const) {
+      await f.put(name, bytes);
+      await f.put(`examples/neutral-store/${input}${name}`, bytes);
+      f.ownership.sourceOnly.push(input + name);
+    }
+    await f.put('examples/neutral-store/ownership.json', f.ownership);
+    f.args.splice(0, f.args.length, ...f.args.map(value => value === f.version ? '0.43.0' : value === f.revision ? revision
+      : value === resolve(f.directory, 'lock.json') ? resolve(f.directory, 'package-lock.json') : value));
+    const target = f.run();
+    const identity = JSON.parse(await readFile(resolve(target, '.starter-origin.json'), 'utf8'));
+    assert.equal(identity.mode, 'released'); assert.equal(identity.setVersion, '0.43.0');
+    assert.equal(identity.sourceRevision, revision);
+    assert.equal(identity.lockfileSha256, sha256(lockBytes));
+    assert.equal(await readFile(resolve(target, 'package-lock.json'), 'utf8'), lockBytes);
+    assert.deepEqual(JSON.parse(await readFile(resolve(target, 'package.json'), 'utf8')).dependencies, lock.packages[''].dependencies);
+    await assert.rejects(access(resolve(target, 'release-inputs')));
+    assert.throws(() => f.run(), error => String((error as { stderr?: Buffer }).stderr).includes('starter_extract_directory_not_empty'));
+    assert.equal(await readFile(resolve(target, 'package-lock.json'), 'utf8'), lockBytes);
+  } finally { await rm(f.directory, { recursive: true, force: true }); }
+});
+
 const refusals: [string, (f: ReleaseFixture) => Promise<unknown> | void, string?, string?][] = [
   ['set_version_required', f => { f.args[3] = '^0.41.0'; }],
   ['source_revision_required', f => { f.args[5] = 'short'; }],

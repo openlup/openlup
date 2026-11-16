@@ -5,6 +5,32 @@ Status: historical record, 2026-11-09.
 Status: development-preview source tooling. No complete release outcome or
 supported installation is claimed.
 
+## Released starter inputs
+
+The source-only pairs under `examples/neutral-store/release-inputs/<tag>/`
+retain the exact `manifest.json` and `package-lock.json` bytes from
+`prepareReleasedStarter` in the [existing qualification producer](../../scripts/packages/exact-set-qualification.mjs).
+They are public source files delivered by ordinary contributions, not release
+assets: the [package publisher](../../scripts/packages/package-release.ts)
+requires immutable, assetless releases. Preserve every historical pair unchanged;
+add a new directory for another tag. The [starter recipe](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application)
+selects input commit `87dadb251b27b72a18718b08ac39951dd4f1fdd0` separately
+from the released source commit. Fetch both inputs from that exact commit,
+never from a moving branch or an independently resolved replacement lock.
+
+The [0.43.0 manifest](../../examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json)
+and [lock](../../examples/neutral-store/release-inputs/openlup-core-v0.43.0/package-lock.json)
+were produced with Node 24.21.0/npm 11.19.0 from `openlup-core-v0.43.0`, source
+commit `6facc3e72441ade5813397f65ac7edbe34fd1d0f`. The manifest binds that source
+revision and each exact npm package's SHA-512 integrity; the lock retains the
+complete registry dependency closure and matching root pins. Its SHA-256 is
+`1341821438e57653386bc6900130e3f0e60a33406091c3a917fcfef6a84a9353`.
+These files are extraction inputs, not a qualification receipt. Extraction
+records `mode: released` and a supplied archive revision, commits the lock, and
+performs no installation. Package provenance verification and the broader
+qualification result remain separate below. No publisher or producer behavior
+changes, and this does not close M19 A5 or the separate P1-SF DEMO conditions.
+
 ## Exact published-set qualification
 
 Added 2026-11-14. The post-publication

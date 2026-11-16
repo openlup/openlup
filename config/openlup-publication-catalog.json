@@ -2590,6 +2590,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/release-inputs/openlup-core-v0.43.0/package-lock.json",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/api.ts",
       "class": "public-output"
     },

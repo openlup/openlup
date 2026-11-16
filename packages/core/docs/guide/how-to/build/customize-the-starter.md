@@ -6,33 +6,50 @@ change reaches its structure or workflow.
 
 ## Prepare the application
 
-The starter is separate application source. Choose an immutable source archive
-and extract it before running the following command from that archive's root.
-Use Git and the toolchain pinned in the [starter source entry](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/README.md#neutral-store);
-the destination must be empty.
+The starter is separate application source; installing npm packages does not
+create it. For the released **0.43.0 development preview**, use Node 24,
+npm 11.19.0, Git, curl and tar. Start in a directory with no application named
+`my-store`; the extractor refuses a nonempty destination.
+
+This recipe selects source commit `6facc3e72441ade5813397f65ac7edbe34fd1d0f`
+(`openlup-core-v0.43.0`) and the manifest/lock pair from input commit
+`87dadb251b27b72a18718b08ac39951dd4f1fdd0`. The inputs were added after the release;
+they are ordinary public source files, not release assets. Keep the pair and
+source revision together. No author checkout, workspace install or package
+packing is needed.
+
+Use the [repository's released-starter entry](https://github.com/openlup/openlup#run-the-starter-store)
+for the download commands in `examples/neutral-store/README.md`, under “Start
+from an exact source archive”. Those commands download the exact source archive
+and both inputs at the commits above. In the download directory, after unpacking
+the archive, run:
 
 ```sh
-node examples/neutral-store/extract.mjs ../my-store
+node openlup-6facc3e72441ade5813397f65ac7edbe34fd1d0f/examples/neutral-store/extract.mjs ../my-store \
+  --mode released --set-version 0.43.0 \
+  --source-revision 6facc3e72441ade5813397f65ac7edbe34fd1d0f \
+  --manifest manifest.json --lockfile starter-package-lock.json
 cd ../my-store
-```
-
-The extractor copies the owned and managed inventory, creates an independent Git
-repository and materializes its application agent guide. It refuses a nonempty
-destination with `starter_extract_directory_not_empty`.
-
-The application manifest expects local package archives. Set `CORE_ARCHIVE`,
-`OUTBOX_ARCHIVE` and `PLATFORM_ARCHIVE` to the full paths of your selected package
-archives, then import them in this order:
-
-```sh
-./lifecycle candidate "$CORE_ARCHIVE" "$OUTBOX_ARCHIVE" "$PLATFORM_ARCHIVE"
 npm ci
 ```
 
-Import checks package names and equal versions, records artifact digests and
-generates the lockfile. These are local candidate inputs, not registry pins.
-For an application consuming npm packages directly, use
-[Adopt OpenLup from npm](../../start/adopt-from-npm.md) instead.
+The extractor copies only owned and managed files, materializes `AGENTS.md` and
+creates an independent Git repository with an initial commit. It pins the exact
+npm set and commits the supplied lock unchanged. `.starter-origin.json` must
+record `mode: released`, `setVersion: 0.43.0` and the source revision above;
+archive revision verification is recorded as `supplied`. Extraction checks the
+manifest revision, complete package set, npm integrities and lock root, but does
+not verify archive origin or package provenance. Follow the
+[adoption identity checks](../../start/adopt-from-npm.md#compare-at-first-adoption-and-upgrade)
+for those separate obligations.
+
+A mismatch refuses with `starter_release_*`; a nonempty destination refuses
+with `starter_extract_directory_not_empty`. Stop and check the selected source
+and input pair. Do not silently replace them with local tarballs, regenerate the
+lock or switch to candidate mode. The source archive and installed 0.43.0 docs
+retain their original instructions; use this recipe for acquiring this pair.
+Local candidates belong to the source starter README's separate contributor
+workflow; they do not replace these released inputs.
 
 ## Run the local demonstration
 

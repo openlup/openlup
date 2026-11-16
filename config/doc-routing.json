@@ -1341,6 +1341,15 @@
       "anchor": "#package-set-bom"
     },
     {
+      "id": "distribution-starter-inputs",
+      "when": "Immutable per-tag released-starter manifest and registry lock inputs",
+      "paths": [
+        "examples/neutral-store/release-inputs/**"
+      ],
+      "doc": "docs/platform/DISTRIBUTION_EVIDENCE.md",
+      "anchor": "#released-starter-inputs"
+    },
+    {
       "id": "starter-application",
       "when": "Independent starter application, owned customization and local sandbox composition",
       "paths": [
