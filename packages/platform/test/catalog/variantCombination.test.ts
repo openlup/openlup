@@ -100,6 +100,28 @@ it("prepares incremental changes while retaining omitted identities and withdraw
   expect(prepare([{ skuId: "a", state: "withdrawn" }, { skuId: "b", state: "active", optionValues: options }])).toHaveLength(2);
 });
 
+it("sku_identity_change_requires_new_sku", () => {
+  const fact = { skuId: "a", state: "active" as const, optionValues: options, identity: canonical() };
+  expect(() => validateCatalogCombinationChangesV2({ definition, axes, typed: true, retained: [fact],
+    incoming: [{ skuId: "a", state: "active", optionValues: { ...options, finish: { kind: "choice", value: "gloss" } } }] }))
+    .toThrow(expect.objectContaining({ code: "sku_identity_change_requires_new_sku", path: "a" }));
+});
+
+it.each(["inconsistent digest", "inconsistent bytes", "digest collision"] as const)(
+  "combination_identity_integrity_failed: %s", fault => {
+    const identity = canonical();
+    const different = canonical({ ...options, finish: { kind: "choice", value: "gloss" } });
+    const corrupted = fault === "inconsistent digest" ? { ...identity, combinationDigest: different.combinationDigest }
+      : { ...different, combinationDigest: identity.combinationDigest };
+    const fact = { skuId: "a", state: "active" as const, optionValues: options, identity: corrupted };
+    const retained = fault === "digest collision" ? [
+      { ...fact, skuId: "b", identity }, fact,
+    ] : [fact];
+    expect(() => validateCatalogCombinationChangesV2({ definition, axes, typed: fault !== "digest collision", retained, incoming: [] }))
+      .toThrow(expect.objectContaining({ code: "combination_identity_integrity_failed", path: "a" }));
+  },
+);
+
 it("distinguishes legacy absence from incomplete typed options and the empty identity", () => {
   const input = { definition, axes: [], typed: false, retained: [], incoming: [{ skuId: "a", state: "active" as const }] };
   expect(validateCatalogCombinationChangesV2(input)[0].identity).toBeNull();
