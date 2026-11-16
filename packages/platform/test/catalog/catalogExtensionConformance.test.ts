@@ -105,6 +105,7 @@ describe("offline catalogue conformance", () => {
       if (owner.prepared) throw Error("expected owner refusal");
       expect(owner.issues.some(issue => issue.code === code), code).toBe(true);
       const report = await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [{ type: typeRef, input, references, publicationRevision: "7" }] }] });
+      expect(report.exitCode).toBe(code === "attribute_reference_unresolved" ? 2 : 1);
       expect(report.findings.map(({ code, path }) => ({ code, path }))).toEqual(owner.issues.map(issue => ({ ...issue, path: `/packs/0/attributes/0/input${issue.path}` })).sort((a,b) => a.path.localeCompare(b.path) || a.code.localeCompare(b.code)));
     }
     const referenceFixture = { type: typeRef, input: { productAttributes: { reference: { namespace: "stationery:related", id: "owned" } }, skus: [{ id }] },
@@ -112,6 +113,35 @@ describe("offline catalogue conformance", () => {
     const referenceReport = await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [referenceFixture] }] });
     expect(referenceReport.exitCode).toBe(0);
     expect(await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [referenceFixture] }] })).toEqual(referenceReport);
+    const referenceCases: [string, CatalogAttributeReferencePort | undefined, 0 | 1 | 2][] = [
+      ["absent", undefined, 2],
+      ["unavailable", { resolve: async refs => refs.map(ref => ({ ...ref, status: "unavailable" })) }, 2],
+      ["rejected", { resolve: async () => { throw Error("offline evidence unavailable"); } }, 2],
+      ["omitted", { resolve: async () => [] }, 2],
+      ["ambiguous", { resolve: async refs => [0, 1].map(() => ({ ...refs[0], status: "private" })) }, 2],
+      ["dangling", { resolve: async refs => refs.map(ref => ({ ...ref, status: "dangling" })) }, 1],
+      ["private", { resolve: async refs => refs.map(ref => ({ ...ref, status: "private" })) }, 1],
+      ["resolved", referenceFixture.references, 0],
+    ];
+    for (const [name, references, exitCode] of referenceCases) {
+      const fixture = { ...referenceFixture, references };
+      const owner = prepareCatalogAttributeProjection(await validateCatalogAttributes(ap.types[0], fixture.input, references), "7");
+      const report = await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [fixture] }] });
+      expect(report.exitCode, name).toBe(exitCode);
+      expect(report.state, name).toBe(exitCode === 0 ? "satisfied" : exitCode === 1 ? "violated" : "unavailable");
+      if (owner.prepared) expect(report.findings).toEqual([]);
+      else {
+        expect(owner.issues).toEqual([{ code: "attribute_reference_unresolved", path: "/productAttributes/reference" }]);
+        expect(report.findings).toEqual([expect.objectContaining({ code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference" })]);
+      }
+    }
+    const mixedPack = pack();
+    mixedPack.types[0].attributes = ["private", "unknown"].map(key => ({ ...baseAttribute, key, valueType: { kind: "reference", allowlist: ["stationery:related"] } }));
+    const mixedInput = { productAttributes: { private: { namespace: "stationery:related", id: "private" }, unknown: { namespace: "stationery:related", id: "unknown" } }, skus: [{ id }] };
+    const mixed = await runCatalogExtensionConformance({ packs: [{ pack: mixedPack, attributes: [{ type: typeRef, input: mixedInput, publicationRevision: "7",
+      references: { resolve: async refs => refs.map(ref => ({ ...ref, status: ref.id === "private" ? "private" : "unavailable" })) } }] }] });
+    expect(mixed.exitCode).toBe(1); // A proven violation retains precedence over unavailable evidence.
+    expect(mixed.findings.map(({ code, path }) => ({ code, path }))).toEqual(["private", "unknown"].map(key => ({ code: "attribute_reference_unresolved", path: `/packs/0/attributes/0/input/productAttributes/${key}` })));
     const complete = { productAttributes: { flag: false }, skus: [{ id }] };
     const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(ap.types[0], complete), "7");
     expect(prepared).toMatchObject({ prepared: true, rows: [{ bool_value: false, publication_revision: "7", sku_id: id }] });
@@ -130,18 +160,20 @@ describe("offline catalogue conformance", () => {
     const options = (unit = "openlup:g", unscaled = "1000") => ({ size: { kind: "quantity" as const, value: { dimension: "mass" as const, unit, unscaled, scale: 0 } } });
     const combination: Omit<Parameters<typeof validateCatalogCombinationChangesV2>[0], "definition"> = { typed: true, axes: ["size"], retained: [], incoming: [{ skuId: id, state: "active" as const, optionValues: options() }] };
     const combinationCases: [string, typeof combination, string][] = [
-      ["axis_not_installed", { ...combination, axes: ["absent"] }, "/axes/0"],
-      ["duplicate_axis", { ...combination, axes: ["size", "size"] }, "/axes/1"],
-      ["option_missing", { ...combination, incoming: [{ ...combination.incoming[0], optionValues: {} }] }, ""],
-      ["duplicate_sku_id", { ...combination, incoming: [combination.incoming[0], combination.incoming[0]] }, "/incoming/0"],
-      ["duplicate_combination", { ...combination, incoming: [...combination.incoming, { skuId: "other", state: "active", optionValues: options("openlup:kg", "1") }] }, "/incoming/1"],
+      ["axis_not_installed", { ...combination, axes: ["absent"] }, "/axes/absent"],
+      ["duplicate_axis", { ...combination, axes: ["size", "size"] }, "/axes/size"],
+      ["option_missing", { ...combination, incoming: [{ ...combination.incoming[0], optionValues: {} }] }, "/options/size"],
+      ["duplicate_sku_id", { ...combination, incoming: [combination.incoming[0], combination.incoming[0]] }, `/${id}`],
+      ["duplicate_combination", { ...combination, incoming: [...combination.incoming, { skuId: "other", state: "active", optionValues: options("openlup:kg", "1") }] }, "/other"],
     ];
     for (const [code, input, expectedPath] of combinationCases) {
       let owner: CatalogCombinationError | undefined;
       try { validateCatalogCombinationChangesV2({ ...input, definition: cp.types[0] }); }
       catch (error) { if (!(error instanceof CatalogCombinationError)) throw error; owner = error; }
       expect(owner?.code).toBe(code);
+      expect(`/${owner!.path.replaceAll(".", "/")}`).toBe(expectedPath);
       const report = await runCatalogExtensionConformance({ packs: [{ pack: cp, combinations: [{ type: typeRef, input }] }] });
+      expect(report.exitCode).toBe(1);
       expect(report.findings).toEqual([expect.objectContaining({ code, path: `/packs/0/combinations/0/input${expectedPath}`, recipe: "how-to/extend/catalogue-extension.md#add-axis" })]);
     }
     const projectionFixtures = [options().size.value, options("openlup:kg", "1").size.value].map(value => ({

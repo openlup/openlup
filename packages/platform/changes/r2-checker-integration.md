@@ -9,3 +9,8 @@ The CLI awaits it automatically. Add optional `attributes` and `combinations`
 fixtures separately from unchanged v1 drafts; the installed recipe guide describes
 their shape. Report fields, exit codes, sorting and released imports are unchanged.
 No database migration, installation, publication or activation occurs.
+
+Reference issues retain their owner code/path while absent or unavailable resolver
+evidence reports exit 2; only a single positive dangling/private answer is a
+violation (exit 1). Combination owner paths are retained in full under the fixture
+input, including option locations and SKU identities. No report fields are added.

@@ -2051,7 +2051,14 @@ const cases = [
    assert(ownerFailure.findings.some(f => f.code === "attribute_unknown_key" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/unknown"));
    writeFileSync(join(owned, "owner-fixtures.ts"), ownerSource.replace('axes:["finish"],retained:[]', 'axes:["finish","finish"],retained:[]'));
    const axisFailure = invoke(ownersCommand); assert.equal(axisFailure.exitCode, 1);
-   assert(axisFailure.findings.some(f => f.code === "duplicate_axis" && f.path === "/packs/0/combinations/0/input/axes/1"));
+   assert(axisFailure.findings.some(f => f.code === "duplicate_axis" && f.path === "/packs/0/combinations/0/input/axes/finish"));
+   writeFileSync(join(owned, "owner-fixtures.ts"), ownerSource.replace('optionValues:{finish:{kind:"boolean",value:false}}', 'optionValues:{}'));
+   const optionFailure = invoke(ownersCommand); assert.equal(optionFailure.exitCode, 1);
+   assert(optionFailure.findings.some(f => f.code === "option_missing" && f.path === "/packs/0/combinations/0/input/options/finish"));
+   const referenceSource = ownerSource.replace('valueType:{kind:"boolean"}', 'valueType:{kind:"reference",allowlist:["stationery:related"]}').replace('attributes:{finish:false}', 'attributes:{finish:{namespace:"stationery:related",id:"owned"}}').replace(',combinations:[{type:ref,input:{typed:true,axes:["finish"],retained:[],incoming:[{skuId:"one",state:"active",optionValues:{finish:{kind:"boolean",value:false}}}]}}]', '').replace('requiredChecks:["attribute-values","variant-combinations"]', 'requiredChecks:["attribute-values"]').replace('dimensions:[{key:"finish",kind:"boolean"}],axes:[{key:"finish",attributeKey:"finish"}]', 'dimensions:[],axes:[]');
+   writeFileSync(join(owned, "owner-fixtures.ts"), referenceSource);
+   const referenceFailure = invoke(ownersCommand); assert.equal(referenceFailure.exitCode, 2);
+   assert(referenceFailure.findings.some(f => f.code === "attribute_reference_unresolved" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/finish"));
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
    const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);

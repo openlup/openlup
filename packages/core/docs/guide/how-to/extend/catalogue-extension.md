@@ -30,7 +30,9 @@ Exit codes: 0 satisfied within this scope, 1 violated, 2 required evidence unava
 `formatVersion: 1` object. Every finding has a code, path, rule/cause, fix, recipe,
 identical recheck command and evidence. Codes returned by trusted content validators
 retain their owner meanings; they use the general draft recipe when no platform
-rule record exists. Findings sort by JSON pointer, code and fixture name.
+rule record exists. Findings sort by JSON pointer, code and fixture name. Owner diagnostic paths are
+appended under the fixture input; combination dot-path segments become escaped
+JSON-pointer segments, including options, axes and SKU identities.
 
 ## New vertical
 
@@ -96,8 +98,10 @@ The checker awaits the validator and passes its result to projection preparation
 all malformed values and missing required publication facts report owner codes.
 The revision is fixture data, never proof of a persisted publication. Reference
 resolution uses an optional trusted `references` port on this fixture, whose
-`resolve` callback supplies an allowlisted offline batch. An unresolved, private
-or unavailable target refuses with the owner's code. The checker does not contact
+`resolve` callback supplies an allowlisted offline batch. The owner's `attribute_reference_unresolved` code keeps its exact path. Missing,
+failed, omitted, ambiguous or unavailable resolver evidence returns exit 2;
+a single positive `dangling` or `private` answer returns exit 1. Attribute values
+outside the declared allowlist remain malformed supplied facts (exit 1). The checker does not contact
 a database to discover references. Values remain excluded from v1 drafts;
 actual publication and generation serving remain pending. A new attribute kind
 is upstream work. Usual owner codes:

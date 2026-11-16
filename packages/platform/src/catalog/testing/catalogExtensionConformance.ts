@@ -5,6 +5,7 @@ import {
   catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
+import type { CatalogAttributeReferencePort } from "../attributeReferencePort.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
 const boundary = "Offline definitions, exact quantities, supplied v1 drafts, separate attribute validation/projection preparation and supplied V2 variant combination changes only. Supplied reference resolvers and retained combination facts are trusted fixture evidence, not proof of database state. Taxonomy, dated tax coverage, profile semantics and promotion grammar await their owners. Installed versions, existing database references, installed cadence, listing capacity, publication races and legal rate correctness are unobserved runtime facts. PASS grants no installation, migration, publication or activation authority. Trusted imported modules and callbacks are not sandboxed; the checker owns no database, network, seed or publish path.";
@@ -106,10 +107,31 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
           if (value.references !== undefined && (!object(value.references) || typeof value.references.resolve !== "function")) {
             add("conformance_subject_invalid", `${path}/references`); continue;
           }
-          const validation = await validateCatalogAttributes(definition, value.input, value.references);
+          let referenceInput = value.input;
+          let resolved: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> = [];
+          const references: CatalogAttributeReferencePort | undefined = value.references && {
+            resolve: async batch => {
+              // The owner calls this only after admitting JSON input. Capture it
+              // before the trusted callback can mutate the original fixture.
+              referenceInput = structuredClone(value.input);
+              resolved = await value.references!.resolve(batch);
+              return resolved;
+            },
+          };
+          const validation = await validateCatalogAttributes(definition, value.input, references);
           const prepared = prepareCatalogAttributeProjection(validation, value.publicationRevision);
-          if (!prepared.prepared) prepared.issues.forEach(issue => add(issue.code,
-            `${path}${issue.code === "attribute_publication_revision_invalid" ? "" : "/input"}${issue.path}`));
+          if (!prepared.prepared) prepared.issues.forEach(issue => {
+            let requiredEvidence = false;
+            if (issue.code === "attribute_reference_unresolved") {
+              const target = issue.path.split("/").slice(1).reduce<unknown>((node, key) =>
+                node !== null && typeof node === "object" ? (node as Record<string, unknown>)[key.replaceAll("~1", "/").replaceAll("~0", "~")] : undefined, referenceInput);
+              const reference = target as { namespace?: string; id?: string } | undefined;
+              const matches = Array.isArray(resolved) ? resolved.filter(item => item && reference
+                && item.namespace === reference.namespace && item.id === reference.id) : [];
+              requiredEvidence = matches.length !== 1 || !["dangling", "private"].includes(matches[0].status);
+            }
+            add(issue.code, `${path}${issue.code === "attribute_publication_revision_invalid" ? "" : "/input"}${issue.path}`, "", requiredEvidence);
+          });
         } else {
           const value = fixture as NonNullable<typeof entry.combinations>[number];
           const input = value.input;
@@ -121,20 +143,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
           try { validateCatalogCombinationChangesV2({ ...input, definition }); }
           catch (error) {
             if (!(error instanceof CatalogCombinationError) && !(error instanceof CatalogQuantityError)) throw error;
-            // Owner paths name axes or SKU identities, not array positions. Keep the
-            // report pointer inside the supplied fixture; option faults cover its input.
-            let at = `${path}/input`;
-            if (error instanceof CatalogCombinationError) {
-              const axis = error.path.startsWith("axes.") ? input.axes.lastIndexOf(error.path.slice(5)) : -1;
-              const incoming = input.incoming.findIndex(change => change?.skuId === error.path);
-              const retained = input.retained.findIndex(fact => fact?.skuId === error.path);
-              if (axis >= 0) at += `/axes/${axis}`;
-              else if (incoming >= 0) at += `/incoming/${incoming}`;
-              else if (retained >= 0) at += `/retained/${retained}`;
-              else if (["incoming", "capacity", "skus"].includes(error.path))
-                at += error.path === "skus" ? "" : `/${error.path}`;
-            }
-            add(error.code, at);
+            add(error.code, `${path}/input${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
           }
         }
       }
