@@ -110,13 +110,13 @@ export function validateCatalogCombinationChangesV2(input: {
       if (!fact.optionValues || !fact.identity) return refuse("option_missing", fact.skuId);
       const identity = canonicalizeCatalogCombinationV2({ ...input, options: fact.optionValues });
       if (classifyCatalogCombinationConflictV2(identity, fact.identity) !== "duplicate")
-        refuse("sku_identity_change_requires_new_sku", fact.skuId);
+        refuse("combination_identity_integrity_failed", fact.skuId);
     }
     if (fact.state !== "active" || !fact.identity) continue;
     const digest = Buffer.from(fact.identity.combinationDigest).toString("hex");
     const other = occupied.get(digest);
     if (other) refuse(classifyCatalogCombinationConflictV2(other, fact.identity) === "duplicate"
-      ? "duplicate_combination" : "combination_digest_collision", fact.skuId);
+      ? "duplicate_combination" : "combination_identity_integrity_failed", fact.skuId);
     occupied.set(digest, fact.identity);
   }
   return [...effective.values()];
