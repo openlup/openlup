@@ -1281,6 +1281,44 @@ server `catalogDraftPayloadSchema.parse(draft)`; the schema validates and return
 the v1 wire payload. Attribute definitions describe the closed value-kind grammar;
 attribute values and prices are not added to v1 drafts.
 
+Draft payload v2 adds product/SKU `attributes` and per-SKU `priceOperations` in
+place of `priceRef`. Each price operation is the complete version-1 immediate
+base command: `schemaVersion`, `commandKey`, `variantId`, `priceListId`, fixed
+`mode: "one_time"`, `minQty: 1`, `amountKind: "gross"`, positive integer
+`unitPriceMinor` and `expected: {entryId, unitPriceMinor}` (both null or both set).
+It changes no live price. Zero new prices and unknown payload versions refuse.
+`catalogDraftPayloadV2Schema` and `catalogDraftCommandV2Schema` validate that
+version; the original schemas and v1 bytes remain unchanged. The store and handler
+use the explicit `CatalogDraftStoredRecord` union and its stored-record/result
+schemas to read both versions. Upgrade readers before enabling v2 authoring.
+Stop v2 authoring before rolling back; retained v2 history still needs a v2 reader.
+`draftsFor` also types v2 values against their declared attribute scopes and kinds,
+including required attributes in inline, referenced, readonly and mutable inputs.
+For incomplete interactive authoring use the wire schema: missing required
+attributes remain saveable and `validateCatalogDraftV2` reports publication
+readiness issues through the existing attribute validator and reference resolver.
+
+The version-2 `resume` command takes no payload and reopens the same abandoned
+draft by appending an open revision with its retained payload and reservations.
+Legacy revise still refuses an abandoned head; every original receipt replays
+unchanged. The native forward writes only draft-owned rows. The managed rail
+does not supply this feature.
+
+`createCatalogCandidateService` takes authorized draft/definition/lineage readers,
+the composed registry and an optional price-owner validator. `prepareCandidate`
+returns issues and an impact summary without writes. Its self-contained reference
+is `v1:<draftId>@<revision>/<publicationId>@<headRevision>`, or `/unpublished`.
+Every reconstruction checks the current draft revision, resolves the full
+expected head including `documentDigest`, compares it with current lineage and
+checks the installed definition digest. The digest covers the parsed canonical
+payload, installed definition evidence and that complete expected head. No
+candidate table or cache is needed across process restarts. `validate(candidateRef)`
+reconstructs the preview; `compareCandidate` additionally checks the caller's
+complete expected head and digest. Required readiness issues and unavailable
+price validation block publication; a publisher must reconstruct and refuse all
+issues inside its own transaction. A draft actor or service credential cannot
+construct `VerifiedCatalogPublisher`. This change supplies no publisher or binding.
+
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,
 unit codes, type versions, tax-class keys and profile references retain literal

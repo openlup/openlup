@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 import {
-  canonicalCatalogDraftJson, catalogDraftApplyResultSchema, catalogDraftCommandSchema,
+  canonicalCatalogDraftJson,
   catalogDraftGetQuerySchema, catalogDraftListQuerySchema, catalogDraftPageSchema,
-  catalogDraftRecordSchema, catalogDraftRefusalSchema,
-  type CatalogDraftApplyResult, type CatalogDraftPage, type CatalogDraftRecord, type CatalogDraftRefusal,
+  catalogDraftRefusalSchema,
+  type CatalogDraftPage, type CatalogDraftRefusal,
 } from "./draftSchemas.js";
+import { catalogDraftStoredApplyResultSchema as catalogDraftApplyResultSchema, catalogDraftStoredCommandSchema as catalogDraftCommandSchema,
+  catalogDraftStoredRecordSchema as catalogDraftRecordSchema } from "./draftV2Schemas.js";
+import type { CatalogDraftStoredApplyResult as CatalogDraftApplyResult, CatalogDraftStoredRecord as CatalogDraftRecord } from "./contracts/draftV2.js";
+import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
+import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import {
   CatalogDraftStoreError, type CatalogDraftOperator, type CatalogDraftStorePort,
 } from "./draftPorts.js";
@@ -14,6 +19,7 @@ import { validateCatalogDraft, type CatalogDraftReadiness } from "./draftValidat
 export interface CatalogDraftHandlerDeps<Context> {
   store: CatalogDraftStorePort;
   registry: CatalogProductTypeRegistry;
+  attributeReferences?: CatalogAttributeReferencePort;
   authorizeOperator: (context: Context) => Promise<CatalogDraftOperator | null>;
 }
 export type CatalogDraftCommandResult = CatalogDraftApplyResult & {
@@ -62,7 +68,9 @@ export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps
         }
         let readiness: CatalogDraftReadiness | undefined;
         if (command.payload) {
-          const validation = validateCatalogDraft(command.payload, deps.registry);
+          const validation = command.payload.schemaVersion === 2
+            ? await validateCatalogDraftV2(command.payload, deps.registry, deps.attributeReferences)
+            : validateCatalogDraft(command.payload, deps.registry);
           if (!validation.valid) return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: validation.issues };
           readiness = validation.readiness;
         }

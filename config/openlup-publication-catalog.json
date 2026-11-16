@@ -1446,6 +1446,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122150000_catalog_drafts_v2.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4702,6 +4706,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122150000_catalog_drafts_v2.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5066,6 +5074,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/candidate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5114,6 +5126,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/candidate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5127,6 +5143,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/draft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/draftV2.ts",
       "class": "public-output"
     },
     {
@@ -5175,6 +5195,14 @@
     },
     {
       "path": "packages/platform/src/catalog/draftSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftV2Schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftV2Validation.ts",
       "class": "public-output"
     },
     {
@@ -9359,6 +9387,10 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogAttributeValidation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogCandidate.test.ts",
       "class": "public-output"
     },
     {
@@ -29531,6 +29563,10 @@
     },
     {
       "path": "tests/postgres/catalogDefinitionInstall.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogDraftV2.test.ts",
       "class": "public-output"
     },
     {

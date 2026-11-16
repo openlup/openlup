@@ -5339,6 +5339,20 @@
           "ALTER TABLE public.subscription_price_policy_revisions\n  ADD CONSTRAINT subscription_price_policy_revisions_closed_from_open_check\n  CHECK (NOT closed_from_open OR effective_to IS NOT NULL) NOT VALID;",
           "ALTER TABLE public.subscription_price_policy_revisions\n  VALIDATE CONSTRAINT subscription_price_policy_revisions_closed_from_open_check;"
         ]
+      },
+      {
+        "row": "catalogue-lc1",
+        "path": "db/platform/migrations/20261122150000_catalog_drafts_v2.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_draft_apply(text,text,text)",
+            "beforeSha256": "3c7855753981ee98018ba7000470b2275405a7db0c63e81429298a2c610c47d4",
+            "searchPath": "pg_catalog, public"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -7414,6 +7428,17 @@
           "signature": "public.subscription_price_policy_revisions_guard_mutation()",
           "beforeSha256": "f99a2f7cfdf615ba39fbc046e82d5c6f5456987720a1d896e7cd5cc5f8931f6c",
           "afterSha256": "b2b7568743a49d0263ce9fe3a0123857d78cc4f40444c166a58a92cb768870ef"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122150000_catalog_drafts_v2.sql",
+      "sha256": "3336df885007ea87d0d53d18edbf55ae444027cdfeee555486a1371ad23e6376",
+      "functions": [
+        {
+          "signature": "public.catalog_draft_apply(text,text,text)",
+          "beforeSha256": "3c7855753981ee98018ba7000470b2275405a7db0c63e81429298a2c610c47d4",
+          "afterSha256": "fd417168158be5d5b98bb2f6c56100ff6f1188c644585b368bd29b502f3fa562"
         }
       ]
     }

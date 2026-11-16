@@ -1,11 +1,11 @@
 import {
-  catalogDraftApplyResultSchema,
   catalogDraftGetQuerySchema,
   catalogDraftListQuerySchema,
   catalogDraftPageSchema,
-  catalogDraftRecordSchema,
   type CatalogDraftRefusal,
 } from "./draftSchemas.js";
+import { catalogDraftStoredApplyResultSchema as catalogDraftApplyResultSchema,
+  catalogDraftStoredRecordSchema as catalogDraftRecordSchema } from "./draftV2Schemas.js";
 import { CatalogDraftStoreError, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 
