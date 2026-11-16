@@ -19,3 +19,6 @@ export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
 export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetainedCombinationV2, CatalogCombinationChangeV2 } from "./variantAxes.js";
+export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2,
+  CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
+export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./candidate.js";

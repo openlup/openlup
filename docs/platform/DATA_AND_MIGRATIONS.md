@@ -476,6 +476,19 @@ products, SKUs or prices beyond the captured live catalogue. The parameterized
 [`transfer_round_trip_matrix`](../../tests/postgres/connectedStoreCatalogDrafts.test.ts)
 checks all four relations and command replay against real PostgreSQL.
 
+The versioned draft forward at position 147 changes only `catalog_draft_apply`.
+It admits v2 payloads beside unchanged v1 commands and receipts. V2 carries
+attribute values and complete immediate base-price commands as immutable data;
+it changes no live catalogue or commerce row. Its resume appends an open revision
+copying the abandoned payload and leaves reservations and abandonment receipts
+intact. These JSONB additions use the existing authoritative capture entries and
+restore order, with no trigger exception or new privacy/absorption class. The
+matrix covers two v2 price plans, abandonment, resume and original replay.
+Apply schema first, then compatible v1/v2 readers before enabling authoring.
+Rollback stops new v2 writes and retains a reader for existing v2 history.
+The managed rail does not supply this feature; the
+[migration note](../../packages/platform/changes/lc1.md) records its managed design.
+
 None of these four relations references `public.clients`, so no client
 absorption-policy entry applies. Revision `actor_id` is an opaque operator
 identifier and can be personal data; free-form draft payloads can also contain
