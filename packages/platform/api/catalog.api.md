@@ -3749,6 +3749,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly position: 145;
     readonly sha256: "48bc16639ca567aba31f2257f7cd79ca7c562be4cd4aedc4020aedf70e273c70";
     readonly url: URL;
+}, {
+    readonly id: "20261122140000_subscription_price_policy_close_digest";
+    readonly catalogPath: "db/platform/migrations/20261122140000_subscription_price_policy_close_digest.sql";
+    readonly position: 146;
+    readonly sha256: "3a30959d1a0721fc48455242ec31d2c31d1f52694aefaca80531bac4b270eb78";
+    readonly url: URL;
 }];
 ```
 ## dist/catalog/validation.d.ts
@@ -5049,7 +5055,7 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
     kind: "subscription_legacy";
     legacyResolved: ResolvedPrice;
 });
-export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch";
+export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/evidence.d.ts
 
@@ -5239,8 +5245,10 @@ export interface SubscriptionPricePolicyCanonicalInput extends SubscriptionPrice
 }
 export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicyCanonicalInput {
     digest: string;
+    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples. */
+    closedFromOpen?: boolean;
 }
-export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch";
+export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/provenance.d.ts
 
@@ -7395,6 +7403,7 @@ export declare const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
     effectiveFrom: z.ZodString;
     effectiveTo: z.ZodNullable<z.ZodString>;
     digest: z.ZodString;
+    closedFromOpen: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
 export declare class SubscriptionPricePolicyDigestError extends Error {
     readonly code: SubscriptionPricePolicyDigestRefusal;

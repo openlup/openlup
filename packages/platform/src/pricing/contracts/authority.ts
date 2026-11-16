@@ -40,5 +40,6 @@ export type CommercePriceAuthorityRefusal =
   | "subscription_price_policy_not_effective"
   | "subscription_price_policy_ambiguous"
   | "subscription_price_policy_invalid"
-  | "subscription_price_policy_digest_mismatch";
+  | "subscription_price_policy_digest_mismatch"
+  | "subscription_price_policy_original_tuple_unverified";
 

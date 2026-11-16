@@ -33,7 +33,12 @@ export const subscriptionPricePolicyCanonicalInputSchema = z.object(subscription
 
 export const subscriptionPricePolicyRevisionSchema = subscriptionPricePolicyCanonicalInputSchema.extend({
   digest: sha256DigestSchema,
-}).strict();
+  closedFromOpen: z.boolean().optional(),
+}).strict().superRefine((policy, context) => {
+  if (policy.closedFromOpen && policy.effectiveTo === null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["effectiveTo"], message: "a closed revision requires a finite end" });
+  }
+});
 
 
 export class SubscriptionPricePolicyDigestError extends Error {
@@ -57,7 +62,7 @@ export function canonicalSubscriptionPricePolicyTuple(
     currency: value.currency,
     channel: value.channel,
     effectiveFrom: value.effectiveFrom,
-    effectiveTo: value.effectiveTo,
+    effectiveTo: "closedFromOpen" in value && value.closedFromOpen ? null : value.effectiveTo,
     discountBps: value.discountBps,
     roundingQuantumMinor: value.roundingQuantumMinor,
     roundingRule: value.roundingRule,
@@ -80,7 +85,11 @@ export async function assertSubscriptionPricePolicyDigest(value: unknown): Promi
   const revision = subscriptionPricePolicyRevisionSchema.parse(value);
   const actual = await digestSubscriptionPricePolicy(revision);
   if (actual !== revision.digest) {
-    throw new SubscriptionPricePolicyDigestError("subscription_price_policy_digest_mismatch");
+    throw new SubscriptionPricePolicyDigestError(
+      revision.effectiveTo !== null && !revision.closedFromOpen
+        ? "subscription_price_policy_original_tuple_unverified"
+        : "subscription_price_policy_digest_mismatch",
+    );
   }
   return revision;
 }
@@ -107,7 +116,7 @@ export function deriveSubscriptionUnitPrice(
   return Number(resolved);
 }
 
-function parseCanonicalPolicyInput(value: unknown): SubscriptionPricePolicyCanonicalInput {
+function parseCanonicalPolicyInput(value: unknown): SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision {
   const persisted = subscriptionPricePolicyRevisionSchema.safeParse(value);
   return persisted.success ? persisted.data : subscriptionPricePolicyCanonicalInputSchema.parse(value);
 }

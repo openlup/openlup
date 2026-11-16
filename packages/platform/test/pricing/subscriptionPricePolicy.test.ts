@@ -79,4 +79,33 @@ describe("subscription price policy", () => {
     });
     await expect(assertSubscriptionPricePolicyDigest({ ...revision, digest: "not-a-digest" })).rejects.toThrow();
   });
+  it("policy_close_preserves_original_digest", async () => {
+    const original = { ...canonicalPolicyInput(), digest: await digestSubscriptionPricePolicy(canonicalPolicyInput()) };
+    const closed = { ...original, effectiveTo: "2026-09-01T00:00:00.000Z", closedFromOpen: true };
+    expect(await assertSubscriptionPricePolicyDigest(closed)).toEqual(closed);
+    expect(canonicalSubscriptionPricePolicyTuple(closed)).toBe(canonicalSubscriptionPricePolicyTuple(original));
+    expect(await digestSubscriptionPricePolicy(closed)).toBe(original.digest);
+    await expect(assertSubscriptionPricePolicyDigest({ ...closed, closedFromOpen: false }))
+      .rejects.toMatchObject({ code: "subscription_price_policy_original_tuple_unverified" });
+    const finite = { ...canonicalPolicyInput(), effectiveTo: closed.effectiveTo };
+    await expect(assertSubscriptionPricePolicyDigest({ ...finite, digest: await digestSubscriptionPricePolicy(finite) }))
+      .resolves.toEqual({ ...finite, digest: await digestSubscriptionPricePolicy(finite) });
+  });
+
+  it.each([
+    { id: "33333333-3333-4333-8333-333333333333" }, { revisionNo: 2 },
+    { priceListId: "33333333-3333-4333-8333-333333333333" }, { regionCode: "YY" },
+    { currency: "YYY" }, { channel: "OTHER" }, { effectiveFrom: "2026-08-28T00:00:00.000Z" },
+    { discountBps: 999 }, { roundingQuantumMinor: 1 }, { digest: "b".repeat(64) },
+  ])("refuses a tampered original tuple after close: %j", async change => {
+    const digest = await digestSubscriptionPricePolicy(canonicalPolicyInput());
+    await expect(assertSubscriptionPricePolicyDigest({ ...policy(), digest, effectiveTo: "2026-09-01T00:00:00.000Z", closedFromOpen: true, ...change }))
+      .rejects.toMatchObject({ code: "subscription_price_policy_digest_mismatch" });
+  });
+
+  it.each([null, "2026-08-27T00:00:00.000Z", "2026-08-26T00:00:00.000Z", "invalid"])(
+    "refuses a malformed close window: %s", async effectiveTo => {
+      const digest = await digestSubscriptionPricePolicy(canonicalPolicyInput());
+      await expect(assertSubscriptionPricePolicyDigest({ ...policy(), digest, effectiveTo, closedFromOpen: true })).rejects.toThrow();
+    });
 });

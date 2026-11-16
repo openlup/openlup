@@ -76,7 +76,7 @@ export function createCommercePriceAuthorityPort(
       } catch (error) {
         throw new CommercePriceAuthorityError(
           error instanceof SubscriptionPricePolicyDigestError
-            ? "subscription_price_policy_digest_mismatch"
+            ? error.code
             : "subscription_price_policy_invalid",
         );
       }
@@ -141,7 +141,7 @@ export function createConcurrentCommercePriceAuthorityPort(
       } catch (error) {
         throw new CommercePriceAuthorityError(
           error instanceof SubscriptionPricePolicyDigestError
-            ? "subscription_price_policy_digest_mismatch"
+            ? error.code
             : "subscription_price_policy_invalid",
         );
       }
