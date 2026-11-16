@@ -998,17 +998,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2663670,
-      "maxFiles": 4490
+      "maxPackedBytes": 2836436,
+      "maxFiles": 4654
     },
     "docs": {
       "maxPackedBytes": 109679,
       "maxFiles": 8
     },
-    "maxPackedBytes": 3420000,
-    "maxUnpackedBytes": 16288207,
-    "maxFiles": 4655,
-    "capReason": "The owner approved tightening the portable payments part to ceil(measured x 1.05) after the 0.42.0 cold release-set check: code 2536828 B / 4276 files, total 3212959 B packed / 15512578 B unpacked / 4433 files. Against the measured bases of 2491197 B code and 3110045 B total, growth is 45631 B and 102914 B, both below 60% (129024 B) of the 215040 B forecast. Set code caps to 2663670 B / 4490 files and total caps to 3373607 B packed / 16288207 B unpacked / 4655 files. Preserve docs caps (109679 B / 8 files), browser-entry limits, the published 0.41.0 baseline and every other inherited limit.",
+    "maxPackedBytes": 3593399,
+    "maxUnpackedBytes": 17231110,
+    "maxFiles": 4830,
+    "capReason": "Under the coordinator-approved budget rule, canonical cold main d1e1641d7 measures total 3376821 B packed / 16281505 B unpacked / 4588 files and code 2649353 B packed / 4420 files. The A2 per-row upper forecasts, including the edit-consent TypeScript work and the small combination-integrity fix, sum to total +181000 B packed / +779000 B unpacked / +195 files and code +159000 B packed / +188 files. Paired total caps are 3593399 B packed (3376821 + 181000 + 35578) and 17231110 B unpacked (16281505 + 779000 + 170605); total files are 4830 (4588 + 195 + 47). Code caps are 2836436 B packed (2649353 + 159000 + 28083) and 4654 files (4420 + 188 + 46). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Code has no unpacked limit, so pairing is vacuous there. Preserve docs and browser limits, the published baseline and every other inherited limit. This budgets unbound 0.44.0 work and activates no capability.",
     "baseline": {
       "version": "0.42.0",
       "packedBytes": 3212990

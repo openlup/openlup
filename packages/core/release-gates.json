@@ -278,10 +278,10 @@
       "maxPackedBytes": 206848,
       "maxFiles": 70
     },
-    "maxPackedBytes": 412672,
-    "maxUnpackedBytes": 1585089,
+    "maxPackedBytes": 421724,
+    "maxUnpackedBytes": 1620846,
     "maxFiles": 420,
-    "capReason": "The owner approved raising only the Core unpacked cap once to ceil(measured x 1.05) for the 0.43.0 preparation: the cold release-set check measured 1509608 B against 1463927 B, so the new cap is 1585089 B. The reader guide adds native fulfillment, provider-profile and qualification upgrade guidance. Preserve packed 412672 B, total files 420, code 276480 B / 400 files, docs 49152 B / 20 files, guide 206848 B / 70 files, the published 0.42.0 baseline and every other inherited limit.",
+    "capReason": "Under the coordinator-approved budget rule, canonical cold main d1e1641d7 measures total 409885 B packed / 1566025 B unpacked / 375 files and code 183731 B packed / 296 files. The committed pure money port adds 2064 B packed / 6774 B unpacked / 4 files and code 1568 B packed / 4 files. Per-row upper forecasts for generated reader-guide growth from the A2 catalogue contracts and the small combination-integrity fix add 5600 B packed / 32000 B unpacked / no files. The total forecast is +7664 B packed / +38774 B unpacked / +4 files. Paired total caps are 421724 B packed (409885 + 7664 + 4175) and 1620846 B unpacked (1566025 + 38774 + 16047). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Preserve total files 420, code 276480 B / 400 files, docs 49152 B / 20 files, guide 206848 B / 70 files and the published baseline; all remain within forecast. Code has no unpacked limit, so pairing is vacuous there. This budgets unbound 0.44.0 work and activates no capability.",
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",
