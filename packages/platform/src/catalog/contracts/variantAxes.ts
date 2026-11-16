@@ -10,6 +10,7 @@ export interface CatalogCombinationIdentityV2 {
 export type CatalogCombinationCode = "axis_not_installed" | "duplicate_axis" | "option_not_selected"
   | "option_missing" | "option_invalid" | "unit_factor_missing" | "sku_identity_change_requires_new_sku"
   | "duplicate_combination" | "combination_digest_collision" | "duplicate_sku_id"
+  | "combination_identity_integrity_failed"
   | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid";
 /** Retained facts come from authoritative rows/history, scoped to one product. */
 export interface CatalogRetainedCombinationV2 {

@@ -1487,6 +1487,14 @@ Both refuse without merging identities. Payloads contain at most 10,000 SKUs;
 the product capacity parameter defaults to 50,000 retained plus incoming SKUs.
 This is pure preparation, not persisted capacity enforcement or publication.
 
+An incoming mapped identity change reports `sku_identity_change_requires_new_sku`.
+Inconsistent authoritative identity evidence or colliding derived digests report
+`combination_identity_integrity_failed`; investigate these integrity failures
+without rewriting retained identities. The earlier `combination_digest_collision`
+code remains in the exported union and guidance record for compatibility; this
+owner now reports the integrity code for that condition. Conditions and validation
+order are unchanged.
+
 LC2 must bind definitions and recompute evidence within the human-authorized
 publication transaction, apply the
 [catalogue lock order](https://github.com/openlup/openlup/blob/main/docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order),
