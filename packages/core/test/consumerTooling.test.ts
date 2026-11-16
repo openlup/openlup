@@ -176,8 +176,8 @@ describe("packed consumer dependency roots", () => {
 
   it("accepts only the closed copied catalogue skeleton", () => {
     const base = "docs/guide/how-to/extend/catalogue-pack-skeleton/";
-    for (const name of ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json"]) auditPackedFixture("none", "", {}, undefined, [...requiredPackFiles, base + name]);
-    for (const name of ["extra.ts", "install.mjs", "nested/pack.ts"]) auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, base + name]);
+    for (const name of ["catalogue.json"]) auditPackedFixture("none", "", {}, undefined, [...requiredPackFiles, base + name]);
+    for (const name of ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts"]) auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, base + name]);
   });
 
   it("accepts nested guide pages", () => {

@@ -10,4 +10,3 @@ const types: CatalogProductTypeInput[] = [{
     ? [] : [{ path: 'title', code: 'title_required' }],
 }];
 export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);
-export default { packs: [{ pack: { id: 'starter', namespace: 'starter', version: 1, openlupRange: '^0.44.0', capabilities: {}, taxClasses: [], types } }] };

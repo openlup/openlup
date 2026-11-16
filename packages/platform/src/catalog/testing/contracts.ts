@@ -1,18 +1,29 @@
-import type { CatalogPackInput, CatalogProductTypeRef, CatalogQuantity } from "../contracts/index.js";
+import type { CatalogAttributeInput } from "../attributeValidation.js";
+import type { CatalogAttributeReferenceResolution } from "../attributeReferencePort.js";
+import type { CatalogPackInput, CatalogProductTypeRef, CatalogQuantity, CatalogCombinationChangeV2 } from "../contracts/index.js";
 
-/** Explicit trusted, synchronous fixtures. Callbacks are not sandboxed. */
+/** Recorded observations, checked for consistency; no refusal code is executed. */
 export interface CatalogRefusalFixture {
   name: string;
   capability: string;
   expectedCode: string;
-  run: () => { code: string };
-  assertZeroEffects: () => boolean;
+  observedCode: string;
+  zeroEffects: boolean;
 }
+/** JSON fixture data only. Application content validators are unavailable offline. */
 export interface CatalogConformanceSubject {
   packs: readonly {
-    pack: CatalogPackInput;
+    pack: Omit<CatalogPackInput, "types"> & { types: readonly Omit<CatalogPackInput["types"][number], "validateContent">[] };
     drafts?: readonly unknown[];
     quantities?: readonly { type: CatalogProductTypeRef; value: CatalogQuantity; targetUnit?: string }[];
+    attributes?: readonly { type: CatalogProductTypeRef; input: CatalogAttributeInput;
+      publicationRevision: string; references?: readonly CatalogAttributeReferenceResolution[] }[];
+    /** Retained identities are derived from fixture options, never persisted identity bytes. */
+    combinations?: readonly { type: CatalogProductTypeRef; input: {
+      axes: readonly string[]; typed: boolean; capacity?: number;
+      retained: readonly (Omit<CatalogCombinationChangeV2, "optionValues"> & { optionValues: NonNullable<CatalogCombinationChangeV2["optionValues"]> | null })[];
+      incoming: readonly CatalogCombinationChangeV2[];
+    } }[];
     refusals?: readonly CatalogRefusalFixture[];
   }[];
   /** Requests whose owner has not landed refuse with required evidence unavailable. */
@@ -20,7 +31,7 @@ export interface CatalogConformanceSubject {
   recheck?: string;
 }
 export interface CatalogConformanceFinding {
-  /** Shared owner code, including application-owned validateContent codes. */
+  /** Exact shared owner code; application content validation stays unavailable. */
   code: string;
   severity: "error" | "warning";
   path: string;
