@@ -1,3 +1,4 @@
+import { set, range } from '../shared/subscription-offer.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classicDraft, classicChanged, changeClassicQuantity, removeClassicLine, addClassicLine, distributeClassic, toggleClassicAddon,
@@ -8,7 +9,9 @@ import { configurations } from '../owned/store.config.ts';
 import type { EditorCandidate, EditorSubscription } from '../shared/subscription-edit.ts';
 import type { SizedEditContext } from '@openlup/platform/subscriptions/contracts';
 
-const config = configurations.supplements!,policy = config.subscriptionEditing.sized;
+const config = configurations.supplements!,policy = structuredClone(config.subscriptionEditing.sized);
+policy.offer.bySku = Object.fromEntries([1,2,4,5].map(n => [`ITEM-${n}`,[{ days: set(14,28,56),quantities: range(1,99,1) }]]));
+policy.offer.days = set(14,28,56); policy.allowedCadences = [14,28,56];
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const subscription: EditorSubscription = { subscriptionId: id(90),status: 'active',cadenceDays: 28,
   nextCycleAt: '2026-12-20T12:00:00.000Z',editCutoffAt: '2026-12-17T12:00:00.000Z',templateVersion: 3,
@@ -109,7 +112,7 @@ test('sized withdrawn lines keep their exact agreement and cannot change count',
   const draft = sized(); draft.lines[0]!.withdrawn = true; draft.lines[0]!.sellable = false;
   assert.equal(changeSizedQuantity(draft,id(1),-1,policy),null);
   assert.equal(changeSizedQuantity(draft,id(1),1,policy),null);
-  assert.ok(toggleSizedGroup(draft,candidate(1).groupId,catalog(),{ ...policy,minimumCoreUnits: 4 }));
+  assert.ok(toggleSizedGroup(draft,candidate(1).groupId,catalog(),{ ...policy,minimumCoreUnits: 4,offer: { ...policy.offer,minimumBaseUnits: 4 } }));
 });
 test('sized known shortage recovers only to a configured nominal sibling; unknown stock keeps the exact SKU', () => {
   const facts = catalog(); facts[0]!.sellableNow = 0;
@@ -146,4 +149,30 @@ test('sized graduation baseline is frozen core, while ordinary baseline uses the
   current.marker = { basisTemplateVersion: 3,graduation: { cadenceDays: 56,sizeConstraint: { kind: 'unit_count',value: 6,dailyNeed: 20 },lines: [] } };
   current.graduationLines = [{ ...current.lines[0]!,qty: 6 }];
   const draft = sizedBaseline(current,catalog(),policy)!; assert.equal(draft.cadenceDays,56); assert.equal(units(draft.lines),6);
+});
+
+test('owned per-SKU quantities govern editor steps and candidates; cadence changes preserve the draft', () => {
+  const custom = structuredClone(policy);
+  custom.offer.bySku = { 'ITEM-1': [{ days: set(28),quantities: set(2,4,10) },{ days: set(56),quantities: set(2,4) }],
+    'ITEM-2': [{ days: set(28,56),quantities: range(1,99,1) }],
+    'ITEM-5': [{ days: set(28),quantities: set(2,4) }] };
+  const draft = sized();
+  assert.equal(changeSizedQuantity(draft,id(1),-1,custom)!.lines[0]!.qty,4);
+  assert.equal(preferredSized(catalog(),candidate(1).groupId,custom,10,true,id(1)),null);
+  const added = toggleSizedGroup(draft,candidate(5,3).groupId,catalog(),custom)!;
+  assert.equal(added.lines.at(-1)!.qty,2);
+  const changed = { ...draft,cadenceDays: 56 };
+  assert.deepEqual(changed.lines,draft.lines);
+  assert.equal(changeSizedQuantity(changed,id(1),1,custom),null);
+  const retained = context(); retained.cadenceDays = 35; retained.lines[0]!.qty = 100;
+  assert.ok(sizedBaseline(retained,catalog(),custom));
+});
+
+test('several incompatible sized quantities can be repaired explicitly without automatic scaling', () => {
+  const custom = structuredClone(policy),draft = sized();
+  custom.offer.bySku = Object.fromEntries(['ITEM-1','ITEM-2'].map(sku => [sku,[{ days: set(28),quantities: set(3,6) }]]));
+  const first = changeSizedQuantity(draft,id(1),-1,custom)!;
+  assert.equal(first.lines[0]!.qty,6); assert.equal(first.lines[1]!.qty,4);
+  const second = changeSizedQuantity(first,id(2),1,custom)!;
+  assert.deepEqual(second.lines.map(line => line.qty),[6,6]);
 });

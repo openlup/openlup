@@ -4,6 +4,7 @@ import type { PageContext } from '../context.ts';
 import { el, link } from '../dom.ts';
 import { routes } from '../../shared/routes.ts';
 import { isRecord } from '../../shared/offer.ts';
+import { admitsLine } from '../../shared/subscription-offer.ts';
 import { units } from '../editors/classic-model.ts';
 import { sizedBaseline, sizedChanged, sizedFacts, sizedRequest, validSized, changeSizedQuantity, chooseSizedSize,
   toggleSizedGroup, recoverSizedCatalog, sizedSizeAllowed, type SizedDraft } from '../editors/sized-model.ts';
@@ -91,7 +92,7 @@ export function sizedEditorPage(context: PageContext): HTMLElement {
         const select = el('select',{ 'aria-label': text(context,'size',{ name }),'data-focus': `size-${line.groupId}` });
         for (const product of catalog.filter(item => item.groupId === line.groupId).sort((a,b) => a.physicalSize-b.physicalSize)) {
           const option = el('option',{ value: product.variantId },text(context,'sizeValue',{ size: product.physicalSize }));
-          option.selected = product.variantId === line.variantId; option.disabled = !sizedSizeAllowed(line,product); select.append(option);
+          option.selected = product.variantId === line.variantId; option.disabled = !sizedSizeAllowed(line,product) || !admitsLine(policy.offer,product.sku,draft.cadenceDays,line.qty); select.append(option);
         }
         if (![...select.options].some(option => option.value === line.variantId)) select.append(el('option',{ value: line.variantId,selected: true },text(context,'sizeValue',{ size: line.physicalSize })));
         select.disabled = busy;

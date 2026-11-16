@@ -1,3 +1,5 @@
+import { admitsTerms, quantityChoices, type SubscriptionOffer } from '../../shared/subscription-offer.ts';
+import type { EditorCandidate } from '../../shared/subscription-edit.ts';
 import type { PackageEditLine, PackageEditRequest } from '@openlup/platform/subscriptions/contracts';
 import type { EditorSubscription } from '../../shared/subscription-edit.ts';
 
@@ -14,18 +16,21 @@ const equalLines = (left: readonly PackageEditLine[],right: readonly PackageEdit
 export function classicChanged(before: ClassicDraft,after: ClassicDraft): boolean {
   return before.planDays !== after.planDays || !equalLines(before.base,after.base) || !equalLines(before.addons,after.addons);
 }
-export function changeClassicQuantity(draft: ClassicDraft,id: string,direction: -1 | 1,minimum: number,maximum: number): ClassicDraft {
+export function changeClassicQuantity(draft: ClassicDraft,id: string,direction: -1 | 1,minimum: number,maximum: number, offer?: SubscriptionOffer, catalog: readonly EditorCandidate[] = []): ClassicDraft {
   const line = draft.base.find(item => item.variantId === id);
   if (!line || direction < 0 && (line.qty <= 1 || units(draft.base) <= minimum) || direction > 0 && line.qty >= maximum) return draft;
-  return { ...draft,base: draft.base.map(item => item === line ? { ...item,qty: item.qty+direction } : item) };
+  const quantities = offer ? quantityChoices(offer,catalog.find(item => item.variantId === id)?.sku ?? '',draft.planDays) : [];
+  const quantity = offer ? (direction > 0 ? quantities.find(qty => qty > line.qty) : quantities.findLast(qty => qty < line.qty)) : line.qty+direction;
+  if (quantity === undefined || units(draft.base)-line.qty+quantity < minimum) return draft;
+  return { ...draft,base: draft.base.map(item => item === line ? { ...item,qty: quantity } : item) };
 }
 export function removeClassicLine(draft: ClassicDraft,id: string,minimum: number): ClassicDraft | null {
   const next = draft.base.filter(line => line.variantId !== id);
   return next.length < 1 || units(next) < minimum ? null : { ...draft,base: next };
 }
-export function addClassicLine(draft: ClassicDraft,id: string,maximumLines: number): ClassicDraft {
+export function addClassicLine(draft: ClassicDraft,id: string,maximumLines: number, quantity = 1): ClassicDraft {
   return draft.base.length >= maximumLines || draft.base.some(line => line.variantId === id) ? draft
-    : { ...draft,base: [...draft.base,{ variantId: id,qty: 1 }] };
+    : { ...draft,base: [...draft.base,{ variantId: id,qty: quantity }] };
 }
 export function distributeClassic(draft: ClassicDraft): ClassicDraft {
   const total = units(draft.base),count = draft.base.length,base = Math.floor(total/count),remainder = total-base*count;
@@ -40,4 +45,9 @@ export function toggleClassicAddon(draft: ClassicDraft,baseline: ClassicDraft,id
 export function classicRequest(subscription: EditorSubscription,draft: ClassicDraft,hash?: string): PackageEditRequest {
   return { subscriptionId: subscription.subscriptionId,planDays: draft.planDays,base: draft.base,addons: draft.addons,
     expectedTemplateVersion: subscription.templateVersion,...(hash ? { acceptedQuoteHash: hash } : {}) };
+}
+
+export function validClassic(draft: ClassicDraft, offer: SubscriptionOffer, catalog: readonly Pick<EditorCandidate,'variantId' | 'sku'>[]): boolean {
+  const resolve = (line: PackageEditLine) => ({ sku: catalog.find(item => item.variantId === line.variantId)?.sku ?? '',qty: line.qty });
+  return admitsTerms(offer,draft.planDays,draft.base.map(resolve),draft.addons.map(resolve));
 }

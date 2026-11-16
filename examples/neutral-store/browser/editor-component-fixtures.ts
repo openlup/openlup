@@ -1,3 +1,5 @@
+import { subscriptionEditing } from '../owned/subscription-editing.ts';
+import { choices, range, set } from '../shared/subscription-offer.ts';
 import type { Page, Route } from '@playwright/test';
 import type { EditorCandidate, EditorSubscription } from '../shared/subscription-edit.ts';
 import type { SizedEditContext } from '@openlup/platform/subscriptions/contracts';
@@ -30,6 +32,18 @@ export async function editorComponent(page: Page,options: { sized?: boolean; opt
     requests: [] as { operation: string; payload: Record<string,unknown>; key: string }[],
     previewReply: null as null | ((route: Route) => Promise<void>),marker: null as SizedEditContext['marker'],paidCycleCount: 4 };
   const reply = (route: Route,value: unknown,status = 200) => route.fulfill({ status,contentType: 'application/json',body: JSON.stringify(value) });
+  // Synthetic API identities need their own explicit commercial rules, independent of the demonstration's offers.
+  await page.route('**/api/config',async route => {
+    const response = await route.fetch(),body = await response.json(),config = body.config;
+    const days = set(14,28,56), common = { days,defaultDays: 28,minimumBaseUnits: 6,maximumUnits: 1782,
+      maximumBaseLines: 6,maximumAddonLines: 12,
+      bySku: Object.fromEntries([1,2,3,4,5,8].map(n => [`ITEM-${n}`,[{ days,quantities: range(1,99,1) }]])) };
+    config.subscriptionOffers = { classic: common,sized: structuredClone(common) };
+    config.offer.cadenceDays = choices(days);
+    const products = [...config.offer.products,...[1,2,3,4,5,8].map(n => ({ ...config.offer.products[0],sku: `ITEM-${n}` }))];
+    config.subscriptionEditing = subscriptionEditing(products,config.subscriptionOffers);
+    await route.fulfill({ response,json: body });
+  });
   await page.route('**/api/actions/*',async route => {
     const request = route.request(),operation = new URL(request.url()).pathname.split('/').at(-1)!;
     state.requests.push({ operation,payload: request.postDataJSON(),key: request.headers()['idempotency-key']! });

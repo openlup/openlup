@@ -1,3 +1,4 @@
+import { choices } from '../shared/subscription-offer.ts';
 import type { Pool } from 'pg';
 import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore,
   computeEditState, editCutoff, isCustomerVisibleSubscription, recurringPrice } from '@openlup/platform/account-support';
@@ -72,9 +73,9 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
     };
     const ports = editorQuotePorts(db,config), values = config.subscriptionEditing;
     const classic = createPostgresPackageEditor({ ...ports,withTransaction: transaction(true),now,
-      limits: { maximumPlanDays: Math.max(...values.planDays),maximumBaseLines: values.maximumBaseLines,
+      limits: { maximumPlanDays: Math.max(...choices(config.subscriptionOffers.classic.days)),maximumBaseLines: values.maximumBaseLines,
         maximumAddonLines: values.maximumAddonLines,maximumQuantity: values.maximumQuantity } });
-    const sized = createPostgresSizedEditor({ ...sizedHostPorts(config,now),quotePort: ports.quotePort,policy: values.sized,withTransaction: transaction(false),now });
+    const sized = createPostgresSizedEditor({ ...sizedHostPorts(config,now,db),quotePort: ports.quotePort,policy: values.sized,withTransaction: transaction(false),now });
     const dispatched = createOfferDispatchedSubscriptionEditor({ classic,sized,
       readBinding: (_actor,id) => owned(db,context,id) });
     return { ...dispatched,sized,ports };

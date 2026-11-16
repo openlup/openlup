@@ -15,7 +15,7 @@ import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfil
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
 import { ACQUISITION_TERMS_CAPABILITY, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import type { ApplicationBindings, ActionContext } from './bindings.ts';
-import { validateCart, isRecord } from '../shared/offer.ts';
+import { parseCart, isRecord } from '../shared/offer.ts';
 import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
 import { readCheckoutGuidance } from './checkout-recovery.ts';
 import type { PurchaseRecovery } from './checkout-recovery.ts';
@@ -89,24 +89,34 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         : key === 'phone' ? context.config.purchase.inputLimits.phone
           : ['firstName', 'lastName'].includes(key) ? context.config.purchase.inputLimits.name : context.config.purchase.inputLimits.text))
       || (payload.line2 !== undefined && (typeof payload.line2 !== 'string' || payload.line2.length > context.config.purchase.inputLimits.text))
-      || payload.configuration !== context.config.id || payload.country !== context.config.market.country) return refused('starter_input_invalid');
-    const offer = validateCart(context.config, payload.cart);
+      || payload.configuration !== context.config.id || typeof payload.country !== 'string' || !/^[A-Z]{2}$/.test(payload.country)) return refused('starter_input_invalid');
+    const offer = parseCart(context.config.id, payload.cart);
     if (!offer.ok) return refused(offer.issues[0]!.code);
     if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
-    if (payload.termsAccepted !== true || payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
+    if (payload.termsAccepted !== true) return refused('starter_terms_required');
     if (payload.locale !== 'en' && payload.locale !== 'pl') return refused('starter_input_invalid');
     const email = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef, context.actor.principalRef])).rows[0]?.email
       : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
     if (!text(email, context.config.purchase.inputLimits.email) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return refused('starter_email_invalid');
     const key = command(context, 'checkout');
-    const prior = (await db.query(`SELECT o.metadata->'quoteSnapshot' AS snapshot FROM public.commerce_order_draft_receipts r
+    const priorOrder = (await db.query(`SELECT o.id,o.status,o.total_amount_minor,o.currency_code,o.metadata->'quoteSnapshot' AS snapshot,
+      EXISTS(SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.channel_key='sandbox') AS completed FROM public.commerce_order_draft_receipts r
       JOIN public.commerce_orders o ON o.id=r.order_id JOIN public.clients c ON c.id=o.client_id
       WHERE r.idempotency_key=$1 AND ($2::uuid IS NOT NULL AND c.id=$2 OR $2::uuid IS NULL AND lower(btrim(c.email))=$3)`,
-    [key,context.actor.customerRef,email])).rows[0]?.snapshot as CreateQuoteResponse | undefined;
+    [key,context.actor.customerRef,email])).rows[0];
+    const prior = priorOrder?.snapshot as CreateQuoteResponse | undefined;
     let observed;
     try {
       observed = await quotes.quote(payload, context, prior);
+      // The intent is opened after destination, stock hold and provisional activation.
+      // Only a completed checkout can bypass resuming those installation-bound steps.
+      if (prior && priorOrder?.completed === true) {
+        if (!['pending_payment','paid'].includes(priorOrder.status) || !await isInitialCheckoutOrder(db,priorOrder.id)) return refused('starter_checkout_not_payable');
+        return { ...success(present(priorOrder)),replayed: true };
+      }
+      if (!prior && payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
+      if (!prior && payload.country !== context.config.market.country) return refused('starter_input_invalid');
       if (!prior) quotes.verify(observed, payload);
       if (observed.terms) renewal.assertAvailable(observed.snapshot);
     } catch (error) { return refused(quoteFailure(error)); }

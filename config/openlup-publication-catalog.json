@@ -2646,6 +2646,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/subscription-offer.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/starter-release.json",
       "class": "public-output"
     },
@@ -2751,6 +2755,10 @@
     },
     {
       "path": "examples/neutral-store/test/subscription-models.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-offer.test.ts",
       "class": "public-output"
     },
     {

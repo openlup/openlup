@@ -72,6 +72,25 @@ async function call(page: Page, operation: string, data: Record<string, unknown>
     headers: { Origin: material.baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': key } });
   return response.json();
 }
+test('owned offer admission refuses forged fresh checkout requests without durable writes',async ({ page }) => {
+  const config = configurations[material.id]!;
+  const snapshot = async () => (await owner.query(`SELECT
+    (SELECT count(*) FROM public.commerce_orders) AS orders,
+    (SELECT count(*) FROM public.clients) AS clients,
+    (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts`)).rows[0];
+  const before = await snapshot();
+  const input = { locale: 'en',configuration: config.id,country: config.market.country,
+    termsAccepted: true,termsRevision: config.legal.revision,acquisitionCapability: 'subscription-acquisition.v1',
+    email: 'forged-offer@example.test',firstName: 'Example',lastName: 'Buyer',phone: '00000',line1: '1 Example Lane',city: 'Example',postalCode: '00000' };
+  for (const cart of [
+    { schemaVersion: 1,configuration: config.id,mode: 'subscription',cadenceDays: 35,lines: [{ sku: config.offer.products[0]!.sku,quantity: 1 }] },
+    { schemaVersion: 1,configuration: config.id,mode: 'subscription',cadenceDays: 28,lines: [{ sku: 'FORGED-SKU',quantity: 1 }] },
+    { schemaVersion: 1,configuration: config.id,mode: 'subscription',cadenceDays: 28,lines: [{ sku: config.offer.products[0]!.sku,quantity: 13 }] },
+  ]) for (const operation of ['offer.validate','checkout.create']) {
+    expect((await call(page,operation,{ ...input,cart })).ok).toBe(false);
+    expect(await snapshot()).toEqual(before);
+  }
+});
 async function purchase(page: Page): Promise<Purchase> {
   const config = configurations[material.id]!;
   const email = `care-${randomUUID()}@example.test`;

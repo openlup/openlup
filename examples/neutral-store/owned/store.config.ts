@@ -2,12 +2,22 @@ import { quoteConfigurations } from './quote.config.ts';
 import { demoRenewalConfig } from './renewal.config.ts';
 import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import type { StoreConfig } from '../shared/config.ts';
+import { choices, set, range, type Numbers, type SubscriptionOffers } from '../shared/subscription-offer.ts';
 import { subscriptionEditing } from './subscription-editing.ts';
+
+/** Explicit SKU expansion: new catalogue variants receive no commercial admission automatically. */
+function offers(days: Numbers, defaultDays: number, skus: readonly string[]): SubscriptionOffers {
+  const common = { days, defaultDays, maximumUnits: 1782, maximumBaseLines: 6, maximumAddonLines: 12,
+    bySku: Object.fromEntries(skus.map(sku => [sku, [{ days, quantities: range(1, 99, 1) }]])) };
+  return { classic: { ...common, minimumBaseUnits: 6, checkoutMinimumBaseUnits: 1 }, sized: { ...common, minimumBaseUnits: 6 } };
+}
 
 /** Change this single input to personalize the running application. */
 const inputs = {
   supplements: {
     id: 'supplements',
+    subscriptionOffers: offers(set(28, 56), 28, ['ASTER-DAWN-60', 'ASTER-DAWN-60-L', 'ASTER-DAWN-60-EXTRA',
+      'ASTER-NOON-60', 'ASTER-NOON-60-L', 'ASTER-DUSK-30', 'ASTER-DUSK-30-L']),
     quote: quoteConfigurations.supplements,
     renewal: demoRenewalConfig('supplements'),
     recovery: structuredClone(demoRecoveryConfiguration),
@@ -41,8 +51,6 @@ const inputs = {
       shippingMinor: 640,
       freeShippingFromMinor: 1000,
       subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
-      cadenceDays: [28, 56],
-      defaultCadenceDays: 28,
       products: [
         {
           sku: 'ASTER-DAWN-60', slug: 'dawn', title: 'Dawn',
@@ -107,6 +115,8 @@ const inputs = {
   },
   coffee: {
     id: 'coffee',
+    subscriptionOffers: offers(set(14, 28, 56), 28, ['PEBBLE-LIGHT-250', 'PEBBLE-LIGHT-250-L', 'PEBBLE-LIGHT-250-EXTRA',
+      'PEBBLE-MEDIUM-250', 'PEBBLE-MEDIUM-250-L', 'PEBBLE-DARK-250', 'PEBBLE-DARK-250-L']),
     quote: quoteConfigurations.coffee,
     renewal: demoRenewalConfig('coffee'),
     recovery: structuredClone(demoRecoveryConfiguration),
@@ -133,7 +143,6 @@ const inputs = {
     offer: {
       layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 640,
       freeShippingFromMinor: 1000, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
-      cadenceDays: [14, 28, 56], defaultCadenceDays: 28,
       products: [
         {
           sku: 'PEBBLE-LIGHT-250', slug: 'light-roast', title: 'Light roast',
@@ -196,10 +205,15 @@ const inputs = {
     legal: { revision: 'demo-1', returnsDays: 14, demoOnly: true },
     features: { reviews: true, acquisition: true, research: true, partners: true, risk: false, normalizedIngest: true },
   },
-} satisfies Record<string, Omit<StoreConfig, 'subscriptionEditing'>>;
+} satisfies Record<string, Omit<StoreConfig, 'subscriptionEditing' | 'offer'> & { offer: Omit<StoreConfig['offer'], 'cadenceDays' | 'defaultCadenceDays'> }>;
 
 export const configurations: Record<string, StoreConfig> = Object.fromEntries(Object.entries(inputs)
-  .map(([id, config]) => [id, { ...config, subscriptionEditing: subscriptionEditing(config.offer.products) }]));
+  .map(([id, config]) => {
+    const editing = subscriptionEditing(config.offer.products, config.subscriptionOffers);
+    return [id, { ...config, offer: { ...config.offer, cadenceDays: choices(config.subscriptionOffers.classic.checkoutDays ?? config.subscriptionOffers.classic.days),
+      defaultCadenceDays: config.subscriptionOffers.classic.defaultDays },
+      subscriptionEditing: editing }];
+  }));
 
 /** The application owns its default identity and registry, including additional brands. */
 export const defaultConfigurationId = 'supplements';

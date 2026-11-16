@@ -139,6 +139,43 @@ Invalid document, return or hold settings refuse with
 `starter_order_controls_configuration_invalid`. A control being absent from a
 page does not make its configuration optional.
 
+## Configure subscription offers
+
+In the current source candidate, edit `subscriptionOffers` in
+`owned/store.config.ts`. The released archive above retains its original behavior;
+these additions need the matching source candidate and admission ports.
+The managed typed helper accepts sets and stepped ranges:
+
+```text
+{ days: set(28, 56), defaultDays: 28, minimumBaseUnits: 6,
+  checkoutMinimumBaseUnits: 1, maximumUnits: 120,
+  maximumBaseLines: 6, maximumAddonLines: 12,
+  bySku: {
+    'SAMPLE-A': [{ days: set(28), quantities: set(1, 2) },
+      { days: set(56), quantities: set(2, 4) }],
+    'SAMPLE-B': [{ days: set(28, 56), quantities: range(1, 99, 1) }],
+  } }
+```
+
+Each line must satisfy both the plan's cadence domain and its concrete SKU rule.
+List each variant explicitly; missing rules refuse. Overlapping cadence rules
+and defaults outside the domain refuse configuration. Optional `checkoutDays`
+and `preferredDays` distinguish acquisition choices and visible recommendations
+within `days`. Defaults and recommendations never grant admission. One-time
+purchases keep their own purchase-mode and cart limits.
+
+The same input derives checkout choices, editor candidates and quantity controls,
+and admits the full resulting set through the classic, exact and sized ports.
+Changing cadence preserves quantities. Existing active commitments remain as
+agreed; completed matching receipts replay before fresh offer admission. New
+commands still require current rules, authentication, locks and quote/fact guards.
+Graduation retains its own cadence and must admit the purchased lines separately.
+
+Reapply the demonstration installation and restart after changing the servicing
+minimum; runtime admission refuses installed-minimum drift. The current starter
+refuses configuration above 90 days because historical SQL still has that limit.
+Wider package DTOs alone do not establish database support for longer cadences.
+
 ## Change identity and an offer rule
 
 Edit `brand.name`, its localized `brand.strapline`, `offer.layout` (`list` or
@@ -184,11 +221,9 @@ nodes for configuration and copy rather than interpreting them as HTML.
 
 ## Configure subscription editing
 
-`owned/subscription-editing.ts` builds `StoreConfig.subscriptionEditing`. Change
-classic minimum base units, plan choices and quantity or line bounds there.
-Size-aware settings include the core minimum, allowed cadences, group and line
-limits, preferred and nominal physical sizes, portion modes and factors, and
-synthetic need and exclusion facts. The extra editor catalogue is installed for
+`owned/subscription-editing.ts` derives `StoreConfig.subscriptionEditing` from
+the owned subscription offers above. Keep physical-size preferences, portion modes
+and synthetic need/exclusion facts in that file. The extra editor catalogue is installed for
 servicing; it does not add a size-aware purchase flow to checkout.
 
 Installation writes `subscription_minimum_base_units` as text in

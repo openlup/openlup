@@ -14,7 +14,7 @@ import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQ
 import { verifyProductDocument } from './editor-catalogue.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
-import { isRecord, validateCart, type OfferQuote } from '../shared/offer.ts';
+import { isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
 
@@ -23,7 +23,8 @@ export const pricingPolicy = { offerPolicyVersion: 'commerce.offer-policy.v2', p
 const acceptance = createPromotionQuoteAcceptance<Request>({ projectRequest: request => request });
 const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
 // Preserve existing technical refusals without accepting arbitrary prefixed messages.
-const quoteErrorCodes = new Set(['starter_promotion_codes_unsupported', 'starter_command_conflict', 'starter_quote_acceptance_key_required',
+const quoteErrorCodes = new Set(['cart_invalid','cart_configuration_changed','cart_empty','unknown_sku','quantity_invalid','duplicate_sku','minimum_units','maximum_units',
+  'starter_promotion_codes_unsupported', 'starter_command_conflict', 'starter_quote_acceptance_key_required',
   'starter_acquisition_eligibility_binding_required', 'starter_acquisition_admission_binding_required',
   'catalog_authority_unavailable', 'catalog_authority_changed', 'catalog_revision_invalid', 'catalog_document_schema_invalid',
   'catalog_document_digest_mismatch', 'catalog_primary_trade_item_invalid', 'catalog_cursor_invalid', 'catalog_cardinality_exceeded']);
@@ -39,7 +40,7 @@ export function quoteFailure(error: unknown): string {
 export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
   async function quote(payload: Record<string, unknown>, context: ActionContext, replay?: CreateQuoteResponse, atTime = new Date().toISOString()) {
     const config = context.config;
-    const selected = validateCart(config, payload.cart);
+    const selected = parseCart(config.id, payload.cart);
     if (!selected.ok) throw new Error(selected.issues[0]!.code);
     if (selected.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) {
       throw new AcquisitionTermsError('acquisition_terms_capability_required');
@@ -59,6 +60,8 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       return { request, snapshot: replay, token: null, terms: (replay.quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms }).acquisitionTerms,
         projection: projectQuote(replay, config.quote.acquisition.minimumProductPayableMinor) };
     }
+    const admitted = validateCart(config,payload.cart);
+    if (!admitted.ok) throw new Error(admitted.issues[0]!.code);
     const eligibility = selected.cart.mode === 'subscription' && email !== null
       ? await predecessors.eligibility(db).resolve(email) : { clientId: context.actor.customerRef };
     const financialPolicy = createAcquisitionFinancialPolicy();
@@ -90,6 +93,8 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     const snapshot = await port.createServerAuthoritativeQuote(request, { clientId: eligibility.clientId, pricingPolicy });
     const terms = snapshot.quote.context.acquisitionTerms;
     if (terms) {
+      const graduation = validateCart(config,{ ...selected.cart,cadenceDays: config.quote.acquisition.graduationCadenceDays },'graduation');
+      if (!graduation.ok) throw new Error(graduation.issues[0]!.code);
       const view = projectQuote(snapshot, config.quote.acquisition.minimumProductPayableMinor);
       if (view.secondTotalMinor === undefined) throw new Error('starter_quote_refresh_required');
       const linePricing = snapshot.quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity,

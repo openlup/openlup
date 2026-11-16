@@ -57,7 +57,7 @@ test('J-C6: an agreed extra is removed and restored with its saved quantity',asy
   const saved = (await f.read()).lines.find(line => line.isAddon)!;
   await f.open(); await page.getByRole('button',{ name: `Remove ${saved.title} (3)`,exact: true }).click();
   await page.getByRole('button',{ name: `Restore ${saved.title} (3)`,exact: true }).click();
-  await page.getByRole('button',{ name: 'Every 14 days',exact: true }).click(); await f.confirm();
+  await page.getByRole('button',{ name: `Every ${f.config.subscriptionEditing.planDays.find(day => day !== f.sub.cadenceDays)!} days`,exact: true }).click(); await f.confirm();
   expect((await f.read()).lines.find(line => line.isAddon)!.qty).toBe(3);
 });
 test('J-C7: test-only native notice capture sees one package-change mail and none for a no-op',async ({ page,baseURL,composeProject }) => {
@@ -134,7 +134,7 @@ test('J-S5: withdrawn new/increased SKUs refuse while exact retained quantities 
   try {
     f.sql(`UPDATE public.catalog_skus SET sellable_in_subscription=false WHERE id IN ('${retained}','${f.uuid(novel.variantId)}')`);
     const exact = await f.sizedRequest(); if (exact.action !== 'resize_bundle') throw new Error('fixture');
-    exact.cadenceDays = 14; await f.apply(exact);
+    exact.cadenceDays = f.config.subscriptionEditing.sized.allowedCadences.find(day => day !== f.sub.cadenceDays)!; await f.apply(exact);
     const changed = await f.sizedRequest(); if (changed.action !== 'resize_bundle' || changed.resizeLever.kind !== 'subscription.sized.parcel') throw new Error('fixture');
     changed.resizeLever.value.coreLines[0]!.qty++; changed.compositionConstraint.value = 9;
     expect((await f.action('subscription.preview',{ request: changed })).body.ok).toBe(false);
@@ -151,7 +151,7 @@ test('J-S6: a matching completed key replays after a later subject-fact change',
   try {
     // A cadence-only request preserves agreed prices, so catalogue drift must be fenced independently.
     const request = await f.sizedRequest(); if (request.action !== 'resize_bundle') throw new Error('fixture');
-    request.cadenceDays = 14;
+    request.cadenceDays = f.config.subscriptionEditing.sized.allowedCadences.find(day => day !== f.sub.cadenceDays)!;
     const preview = await f.accepted(request),before = await f.read();
     const document = structuredClone(product.document_payload) as { revisionNo: number; variants: { skuId: string; exclusions: string[] }[] };
     document.revisionNo = Number(f.rows(`SELECT max(revision_no)::int AS revision FROM public.catalog_product_document_revisions WHERE product_id='${f.uuid(String(product.id))}'`)[0]!.revision)+1;
@@ -169,7 +169,7 @@ test('J-S6: a matching completed key replays after a later subject-fact change',
     expect((await f.read()).templateVersion).toBe(before.templateVersion);
     expect((await f.read()).cadenceDays).toBe(before.cadenceDays);
     const fresh = await f.apply(request);
-    expect(fresh.result.status).toBe('applied'); expect((await f.read()).cadenceDays).toBe(14);
+    expect(fresh.result.status).toBe('applied'); expect((await f.read()).cadenceDays).toBe(request.cadenceDays);
     f.setSubject({ ...JSON.parse(original),revision: 2,currentExclusions: ['demo-restricted'] });
     const events = f.rows(`SELECT id FROM public.subscription_events WHERE subscription_id='${f.id}'`);
     const replay = await f.action('subscription.command',{ request: applied.request },applied.key);

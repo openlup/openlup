@@ -30,7 +30,7 @@ export function buildDemoSeed(config: StoreConfig) {
       amount_kind: 'gross', active: true, valid_from: '2000-01-01T00:00:00.000Z' };
   }));
   const settings = [
-    { key: 'subscription_minimum_base_units', value: String(config.subscriptionEditing.minimumBaseUnits) },
+    { key: 'subscription_minimum_base_units', value: String(config.subscriptionOffers.classic.minimumBaseUnits) },
     { key: 'subscription_sized_intro_phase', value: JSON.stringify({ fixedThroughCycle: config.subscriptionEditing.sized.fixedThroughCycle,
       graduationCycle: config.subscriptionEditing.sized.graduationCycle }) },
     { key: `starter_sized_subject:${config.id}`, value: JSON.stringify(config.subscriptionEditing.subject) },

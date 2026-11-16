@@ -157,7 +157,9 @@
     "playwright.editors.config.ts",
     "shared/subscription-edit.ts",
     "dev.mjs",
-    "browser/dev-loop.proof.ts"
+    "browser/dev-loop.proof.ts",
+    "shared/subscription-offer.ts",
+    "test/subscription-offer.test.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md",
