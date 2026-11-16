@@ -20,7 +20,7 @@ export function createConfiguratorIntentSchemas(skuSchema: z.ZodType<string, str
     version: z.literal(CONFIGURATOR_INTENT_VERSION),
     idempotencyKey: commerceIdempotencyKeySchema,
     mode: configuratorModeSchema,
-    cadenceDays: z.number().int().positive().max(120).nullable().default(null),
+    cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().default(null),
     promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
     visitorId: z.string().trim().min(1).max(120).optional(),
     contact: configuratorContactSchema,

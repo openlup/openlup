@@ -29,7 +29,7 @@ const checkoutCommandV1Schema = z
       country: z.string().trim().regex(/^[A-Z]{2}$/),
     }).strict(),
     currency: isoCurrencySchema,
-    cadenceDays: z.number().int().positive().max(120).optional(),
+    cadenceDays: z.number().int().positive().max(2_147_483_647).optional(),
   })
   .strict()
   .superRefine((command, ctx) => {

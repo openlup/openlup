@@ -1999,15 +1999,15 @@ process.exit(0);
   }
 }
 
-/** Packed offline checker, copied skeleton and recipe links; no database or repository imports. */
-export function proveCatalogConformanceConsumer(consumer: string, compiler: string): void {
+/** Packed JSON checker, copied static skeleton and recipe links; no database or repository imports. */
+export function proveCatalogConformanceConsumer(consumer: string): void {
   console.log(consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { runCatalogExtensionConformance } from "@openlup/platform/catalog/testing";
-import { CATALOG_CONFORMANCE_RULES } from "@openlup/platform/catalog";
+import { CATALOG_CONFORMANCE_RULES, validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError } from "@openlup/platform/catalog";
 const guideRoot = join(process.cwd(), "node_modules/@openlup/core/docs/guide");
 const owned = join(process.cwd(), "catalogue-skeleton");
 cpSync(join(guideRoot, "how-to/extend/catalogue-pack-skeleton"), owned, { recursive: true });
@@ -2018,63 +2018,87 @@ const invoke = args => {
  const report = JSON.parse(result.stdout); assert.equal(report.formatVersion, 1); assert.equal(report.exitCode, result.status);
  assert.equal(result.stdout.trim().split("\\n").length, 1); return report;
 };
-const registry = "./catalogue-skeleton/registry.ts";
+const registry = "./catalogue-skeleton/catalogue.json";
 const command = ["catalogue", "check", "--packs", registry];
+const text = readFileSync(join(owned, "catalogue.json"), "utf8"), subject = JSON.parse(text);
+const write = (name, value) => { const path = join(owned, name); writeFileSync(path, JSON.stringify(value)); return ["catalogue", "check", "--packs", path]; };
 const cases = [
- { name: "guide_skeleton_pack_passes_checker", run() {
-   const compiled = spawnSync(process.execPath, [process.argv[2], "-p", join(owned, "tsconfig.json")], { encoding: "utf8" });
-   assert.equal(compiled.status, 0, compiled.stdout + compiled.stderr);
-   assert.equal(invoke(command).exitCode, 0);
+ { name: "guide_skeleton_pack_passes_checker", async run() {
+   assert.equal((await runCatalogExtensionConformance(text)).exitCode, 0); assert.equal(invoke(command).exitCode, 0);
  } },
- { name: "catalogue_check_cli_reports_stable_codes_and_exit", run() {
-   assert.equal(invoke(["catalogue", "check", "--packs", registry, "--app", "unused"]).exitCode, 64);
+ { name: "catalogue_check_cli_reports_stable_codes_and_exit", async run() {
+   assert.equal(invoke([...command, "--app", "unused"]).exitCode, 64);
    assert.equal(invoke(["verify", "--packs", registry]).exitCode, 64);
    assert.equal(invoke(["upgrade", "plan", "--packs", registry]).exitCode, 64);
    for (const flag of ["--root", "--from", "--to", "--schema-version"]) assert.equal(invoke([...command, flag, "unused"]).exitCode, 64);
-   writeFileSync(join(owned, "unavailable.ts"), 'import subject from "./registry.ts"; export default {...subject, requiredChecks:["taxonomy"]};');
-   assert.equal(invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/unavailable.ts"]).exitCode, 2);
-   writeFileSync(join(owned, "invalid.ts"), 'import subject from "./registry.ts"; export default {packs:[{pack:{...subject.packs[0].pack, types:[...subject.packs[0].pack.types,...subject.packs[0].pack.types]}}]};');
-   const invalidArgs = ["catalogue", "check", "--packs", "./catalogue-skeleton/invalid.ts"];
-   const invalid = invoke(invalidArgs); assert.equal(invalid.exitCode, 1);
-   assert(invalid.findings.some(f => f.code === "definition_duplicate_identity"));
-   assert.deepEqual(invalid, invoke(invalidArgs));
-   writeFileSync(join(owned, "invalid-reference.ts"), 'import subject from "./registry.ts"; export default {packs:[{...subject.packs[0], quantities:[{type:{key:"stationery:notebook",version:"1"},value:{dimension:"count",unit:"stationery:each",unscaled:"1",scale:0}}]}]};');
-   const malformedReference = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/invalid-reference.ts"]);
-   assert.equal(malformedReference.exitCode, 1);
-   assert(malformedReference.findings.some(f => f.code === "definition_version_invalid" && f.path === "/packs/0/quantities/0/type/version"));
+   assert.equal(invoke(write("unavailable.json", {...subject, requiredChecks:["taxonomy"]})).exitCode, 2);
+   const invalidSubject = structuredClone(subject); invalidSubject.packs[0].pack.types.push(invalidSubject.packs[0].pack.types[0]);
+   const invalidArgs = write("invalid.json", invalidSubject), invalid = invoke(invalidArgs);
+   assert.equal(invalid.exitCode, 1); assert(invalid.findings.some(f => f.code === "definition_duplicate_identity")); assert.deepEqual(invalid, invoke(invalidArgs));
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
-   writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
-   const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);
-   assert.equal(failure.exitCode, 74); assert(!JSON.stringify(failure).includes("SENSITIVE_LOAD_DETAIL"));
-   assert.equal(invoke(["catalogue", "check", "--packs", "./absent.ts"]).exitCode, 74);
+   const source = 'import {writeFileSync} from "node:fs"; writeFileSync("catalogue-effect", "effect"); export default {packs:[]}; // SENSITIVE_LOAD_DETAIL';
+   writeFileSync(join(owned,"executable.mjs"), source);
+   await assert.rejects(runCatalogExtensionConformance(source), SyntaxError);
+   const failure = invoke(["catalogue", "check", "--packs", join(owned,"executable.mjs")]);
+   assert.equal(failure.exitCode, 64); assert(!JSON.stringify(failure).includes("SENSITIVE_LOAD_DETAIL")); assert(!existsSync("catalogue-effect"));
+   assert.equal(invoke(["catalogue", "check", "--packs", "./absent.json"]).exitCode, 74);
    assert.equal(invoke(["catalogue", "check"]).exitCode, 64);
+   let reads = 0; const inspect = () => { reads++; throw Error("inspection"); };
+   const promise = Promise.resolve(); Object.defineProperty(promise,"constructor",{get:inspect});
+   const species = Promise.resolve(); Object.defineProperty(species,"constructor",{value:Object.defineProperty({},Symbol.species,{get:inspect})});
+   for (const value of [promise,species,new Proxy({},{get:inspect,getPrototypeOf:inspect,ownKeys:inspect}),Object("{}"),Object.defineProperty({},"packs",{get:inspect})]) {
+     const report = await runCatalogExtensionConformance(value); assert.equal(report.exitCode,1); assert.equal(report.findings[0].path,""); assert.equal(report.findings[0].code,"conformance_subject_invalid");
+   }
+   assert.equal(reads,0);
+   for (const field of ["incoming","retained"]) for (const row of [{},null]) {
+     const malformed = {packs:[{pack:subject.packs[0].pack,combinations:[{type:{key:"stationery:notebook",version:1},input:{axes:[],typed:true,incoming:[],retained:[],[field]:[row]}}]}]};
+     for (const report of [await runCatalogExtensionConformance(JSON.stringify(malformed)),invoke(write("malformed.json",malformed))]) {
+       assert.equal(report.exitCode,1); assert.equal(report.findings[0].code,"conformance_subject_invalid"); assert.equal(report.findings[0].path,"/packs/0/combinations/0/input/"+field+"/0");
+     }
+   }
+ } },
+ { name: "conformance_reuses_row_validators", async run() {
+   const pack = structuredClone(subject.packs[0].pack), type = {key:pack.types[0].key,version:1};
+   pack.types[0].attributes = [{key:"flag",scope:"variant",valueType:{kind:"boolean"},required:false,cardinality:{min:0,max:1},filterable:true,facetable:true,public:true,displayOrder:0,labels:{}}];
+   pack.types[0].dimensions = [{key:"flag",kind:"boolean"}]; pack.types[0].axes = [{key:"flag",attributeKey:"flag"}];
+   const definition = {...pack.types[0],validateContent:()=>[{code:"conformance_owner_unavailable",path:""}]};
+   const input = {productAttributes:{flag:true},skus:[{id:"00000000-0000-4000-8000-000000000002"}]};
+   const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition,input),"7"); assert.equal(prepared.prepared,false);
+   const attributes = {packs:[{pack,attributes:[{type,input,publicationRevision:"7"}]}]};
+   for (const report of [await runCatalogExtensionConformance(JSON.stringify(attributes)),invoke(write("attributes.json",attributes))]) {
+     assert.deepEqual(report.findings.map(({code,path})=>({code,path})),prepared.issues.map(issue=>({...issue,path:"/packs/0/attributes/0/input"+issue.path})));
+   }
+   const changes = {axes:["flag"],typed:true,retained:[],incoming:[{skuId:"one",state:"active",optionValues:{flag:{kind:"boolean",value:true}}},{skuId:"two",state:"active",optionValues:{flag:{kind:"boolean",value:true}}}]};
+   let issue; try {validateCatalogCombinationChangesV2({...changes,definition});} catch(error) {assert(error instanceof CatalogCombinationError);issue=error;}
+   assert(issue);
+   const combinations={packs:[{pack,combinations:[{type,input:changes}]}]};
+   for (const report of [await runCatalogExtensionConformance(JSON.stringify(combinations)),invoke(write("combinations.json",combinations))]) {
+     assert.deepEqual(report.findings.map(({code,path})=>({code,path})),[{code:issue.code,path:"/packs/0/combinations/0/input/"+issue.path.replaceAll(".","/")}]);
+   }
  } },
  { name: "catalogue_codes_link_existing_recipes", run() {
    const guide = readFileSync(join(guideRoot, "how-to/extend/catalogue-extension.md"), "utf8");
    const codes = readFileSync(join(guideRoot, "reference/refusal-codes.md"), "utf8");
    const anchors = new Set([...guide.matchAll(/^## (.+)$/gm)].map(match => match[1].toLowerCase().replace(/[^a-z0-9 -]/g, "").replaceAll(" ", "-")));
    for (const [code, rule] of Object.entries(CATALOG_CONFORMANCE_RULES)) {
-     assert(anchors.has(rule.recipe.split("#")[1]), code);
-     assert(codes.includes("[\`" + code + "\`](../" + rule.recipe + ")"), code);
+     assert(anchors.has(rule.recipe.split("#")[1]), code); assert(codes.includes("[\`" + code + "\`](../" + rule.recipe + ")"), code);
    }
    for (const fragment of codes.split("[\`")) {
      if (!fragment.includes("\`](../how-to/extend/catalogue-extension.md#")) continue;
-     const [code, rest] = fragment.split("\`](../");
-     assert.equal(CATALOG_CONFORMANCE_RULES[code]?.recipe, rest.split(")")[0]);
+     const [code, rest] = fragment.split("\`](../"); assert.equal(CATALOG_CONFORMANCE_RULES[code]?.recipe, rest.split(")")[0]);
    }
  } },
 ];
-for (const test of cases) { test.run(); console.log(test.name + ": PASS"); }
-const {default: subject} = await import("./catalogue-skeleton/registry.ts");
+for (const test of cases) { await test.run(); console.log(test.name + ": PASS"); }
 const three = [1,2,3].map(index => {
  const entry = subject.packs[0], namespace = "synthetic" + index;
  const type = {...entry.pack.types[0], key:namespace + ":notebook"};
  return {...entry, pack:{...entry.pack, id:namespace, namespace, types:[type]}, drafts:entry.drafts.map(draft => ({...draft, product:{...draft.product, type:{key:type.key, version:type.version}}}))};
 });
-const start = performance.now(); const report = runCatalogExtensionConformance({packs:three});
-// Synthetic A1 timing only, not full reference-pack completion or a timing gate.
-console.log("synthetic A1 three-pack warm check ms=" + (performance.now()-start).toFixed(3)); assert.equal(report.exitCode, 0);
-`, [compiler]).trim());
+const start = performance.now(); const report = await runCatalogExtensionConformance(JSON.stringify({packs:three}));
+// Synthetic fixture timing only, not full reference-pack completion or a timing gate.
+console.log("synthetic three-pack warm check ms=" + (performance.now()-start).toFixed(3)); assert.equal(report.exitCode, 0);
+`).trim());
 }
 
 /** SDK-absent catalog operations and inert structural contribution, reused by the selected P7 case. */
@@ -2496,7 +2520,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveLifecycleConsumer(consumer);
     proveDistributionCliConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
-    proveCatalogConformanceConsumer(consumer, compiler);
+    proveCatalogConformanceConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);

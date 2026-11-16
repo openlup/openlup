@@ -619,6 +619,23 @@ export interface PackageEditApplyResult<Action extends string = "update_package_
     eventId: string | null;
     originalStatus?: "applied" | "noop";
 }
+/** Resulting terms for adopter-owned, effect-free admission. Throw to refuse before pricing or writes. */
+export interface SubscriptionEditTerms {
+    subscriptionId: string;
+    nominalPlanDays: number;
+    cadenceDays: number;
+    base: readonly {
+        variantId: string;
+        sku: string;
+        qty: number;
+    }[];
+    addons: readonly {
+        variantId: string;
+        sku: string;
+        qty: number;
+    }[];
+}
+export type SubscriptionTermsAdmission = (terms: SubscriptionEditTerms) => void | Promise<void>;
 ```
 ## dist/subscriptions/contracts/renewal.d.ts
 
@@ -1559,7 +1576,7 @@ export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
 export { mapPackageEditError } from "./packageEditErrors.js";
 export type { PackageEditErrorMapping } from "./packageEditErrors.js";
-export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./contracts/exactEdit.js";
 export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
@@ -1783,8 +1800,8 @@ export declare function nativeSubscriptionSchema(catalogue: {
 ## dist/subscriptions/packageEditContracts.d.ts
 
 ```ts
-import type { PackageEditMoney, PackageEditQuoteLine } from "./contracts/packageEdit.js";
-export type { PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
+import type { PackageEditMoney, PackageEditQuoteLine, SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
+export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
@@ -1817,6 +1834,9 @@ export interface PackageEditReadPort {
 /** Compose the existing quote engine with Q1/Q2 authority, no promotion or settings ports,
  * zero automatic/code promotions, and use its server-authoritative method. */
 export interface PackageEditQuotePorts {
+    /** Adopter admission of the complete normalized result, including unchanged lines.
+     * Must have no effects. Throw subscription_reprice_terms_not_admitted to refuse. */
+    admitSubscriptionTerms?: SubscriptionTermsAdmission;
     quoteCatalogReadPort: {
         listQuoteCatalogItems(): Promise<{
             variantId: string;
@@ -2843,6 +2863,7 @@ export declare function mapSizedEditError(error: unknown, phase: "preview" | "ap
 ## dist/subscriptions/sizedEditPorts.d.ts
 
 ```ts
+import type { SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedQuoteRequest, SizedRecurringQuote } from "./contracts/sizedEdit.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** Host verifies its current documents and translates physical, demand and exclusion facts.
@@ -2869,6 +2890,8 @@ export interface SizedSubjectFacts {
     snapshot: Record<string, unknown>;
 }
 export interface SizedHostPorts {
+    /** Effect-free adopter admission, before even a wholly frozen quote. */
+    admitSubscriptionTerms?: SubscriptionTermsAdmission;
     /** Candidate discovery is advisory; preview/apply reread authenticated owned facts. Precedence is host-owned. */
     readFacts(db: SubscriptionQueryExecutor, context: SizedEditContext, point: "candidate" | "preview" | "apply"): Promise<SizedSubjectFacts>;
     /** Only opt-in derives fresh need. Ordinary edits use the stored dailyNeed carrier. */

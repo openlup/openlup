@@ -118,7 +118,7 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
       path.startsWith("smoke/") ||
       // The reader guide includes Markdown and the closed copied catalogue sample.
       (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md" && !/^docs\/guide\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/u.test(path)
-        && !/^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/(?:(?:pack|catalogue|fixtures|registry)\.ts|tsconfig\.json)$/u.test(path)) ||
+        && !/^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/catalogue\.json$/u.test(path)) ||
       path.startsWith(".context/") ||
       path === "vitest.config.ts" ||
       path.startsWith("tsconfig."),

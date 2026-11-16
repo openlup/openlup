@@ -148,3 +148,23 @@ it("maps exact durable conflicts and plan unservable errors without mapping depe
   expect(mapPackageEditError(new Error("subscription_reprice_plan_length_unservable"), "preview", "update_plan_length"))
     .toMatchObject({ status: 400, message: "plan_length_unavailable" });
 });
+
+it.each(["classic", "exact"] as const)("refuses %s admission on preview and fresh apply before ledger or writer", async kind => {
+  const f = fixture(); f.options.admitSubscriptionTerms = vi.fn(() => { throw new Error("subscription_reprice_terms_not_admitted"); });
+  const editor = createPostgresPackageEditor(f.options), input = kind === "classic" ? request
+    : { subscriptionId: id, action: "update_plan_length" as const, planDays: 21 };
+  f.options.compositionRulesPort.resizeComposition = async value => ({ coreLines: value.coreLines, constraint: value.constraint });
+  await expect(editor.preview(actor, input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  await expect(editor.apply(actor, "refused-admission", input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+  expect(f.calls.some(call => /subscription_(?:quote_preview_record|package_edit_apply|line_edit_apply)\(/u.test(call.sql))).toBe(false);
+});
+it("rechecks admission on apply after a successful preview even when the quote would be identical", async () => {
+  const f = fixture(); let allowed = true;
+  f.options.admitSubscriptionTerms = () => { if (!allowed) throw new Error("subscription_reprice_terms_not_admitted"); };
+  const editor = createPostgresPackageEditor(f.options), preview = await editor.preview(actor, request); allowed = false;
+  await expect(editor.apply(actor, "withdrawn-after-preview", { ...request, acceptedQuoteHash: preview.quoteHash })).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  expect(f.calls.filter(call => call.sql.includes("subscription_quote_preview_record("))).toHaveLength(1);
+  expect(f.calls.some(call => call.sql.includes("subscription_package_edit_apply("))).toBe(false);
+  expect(mapPackageEditError(new Error("subscription_reprice_terms_not_admitted"), "preview")).toMatchObject({ status: 400, reason: "subscription_reprice_terms_not_admitted" });
+});

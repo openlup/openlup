@@ -59,6 +59,14 @@ export function createClassicPackageRepricer(deps: PackageEditQuotePorts & { rea
     const constraint = normalized ? constraintMapper.fromCore(normalized.constraint) : subscription.compositionConstraint;
     const cadenceDays = input.planDays === nominal ? subscription.cadenceDays : input.planDays;
     const desired = [...base.map(line => bundleLine(line, false)), ...addons.map(line => bundleLine(line, true))];
+    if (deps.admitSubscriptionTerms) {
+      const resolve = (line: PackageEditLine) => {
+        const sku = skus.get(line.variantId); if (!sku) throw new Error(`subscription_reprice_unknown_variant:${line.variantId}`);
+        return { ...line, sku };
+      };
+      await deps.admitSubscriptionTerms({ subscriptionId: input.subscriptionId, nominalPlanDays: input.planDays,
+        cadenceDays, base: base.map(resolve), addons: addons.map(resolve) });
+    }
     const quotes = await Promise.allSettled([currentPrice(skus, subscription.cadenceDays, subscription.compositionConstraint, current),
       quoteLines(skus, cadenceDays, constraint, desired)]);
     const before = value(quotes[0]), after = value(quotes[1]).quote;

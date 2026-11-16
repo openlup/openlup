@@ -17,14 +17,14 @@ const rules = (entries: TarballEntry[]) => checkTarballEntries(entry, entries, r
 describe("tarball gate", () => {
   it("admits only tracked bytes of the closed copied catalogue sample", () => {
     const base = "docs/guide/how-to/extend/catalogue-pack-skeleton/";
-    for (const file of ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json"]) {
+    for (const file of ["catalogue.json"]) {
       const path = base + file;
       const read = (key: string) => key === "packages/core/" + path ? encode("sample") : readTracked(key);
       expect(checkTarballEntries(entry, packed([[path, "sample"]]), read)).toEqual([]);
       expect(checkTarballEntries(entry, packed([[path, "changed"]]), read).map(f => f.rule)).toEqual(["changed-file"]);
       expect(rules(packed([[path, "sample"]]))).toEqual(["unlisted-file"]);
     }
-    for (const path of [base + "extra.ts", base + "install.mjs", "docs/guide/other/pack.ts"]) expect(rules(packed([[path, "sample"]]))).toEqual(["package-content-allowlist"]);
+    for (const path of [... ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json", "extra.ts", "install.mjs"].map(file => base + file), "docs/guide/other/pack.ts"]) expect(rules(packed([[path, "sample"]]))).toEqual(["package-content-allowlist"]);
   });
   it("actual npm files lists exclude fragments for every admitted package; the tarball gate refuses a leak", () => {
     for (const name of ["core", "outbox", "platform"]) {

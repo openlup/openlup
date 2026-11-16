@@ -10,6 +10,21 @@ in the source repository.
 
 ## [Unreleased]
 
+- Add optional effect-free `admitSubscriptionTerms` to classic, exact and sized
+  subscription editor ports. It checks the full normalized base/add-on set with
+  nominal plan and effective cadence before pricing or durable writes, including
+  edits retaining frozen prices. Completed receipts replay before current limits
+  and admission; mismatched payloads still conflict. Omitting the callback keeps
+  existing behavior.
+- Replace the checkout/quote/recovery/account DTO cadence caps of 90/120 days
+  with positive PostgreSQL integer bounds. Historical generic SQL bundle and
+  lifecycle quoting still cap cadence at 90; longer periods on those paths
+  require a separate forward migration. Package/exact writers are separate.
+
+Migration: no database migration in this change. Hosts may compose the optional
+callback with adopter-owned rules; no default offer list or starter derivation
+is supplied. Check date representation for the selected operation.
+
 Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
 
 Migration: apply the complete native catalogue through `20261122110000_catalog_quantities.sql`, then call `backfillCatalogNetContent` with the install executor and batch size. Old grams and readers stay unchanged; the managed rail does not supply this feature.

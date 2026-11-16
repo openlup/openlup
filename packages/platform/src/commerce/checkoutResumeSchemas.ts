@@ -30,7 +30,7 @@ export function createCheckoutResumeSchemas<Section extends z.ZodType<string>, R
     .object({
       version: z.literal(CHECKOUT_RESUME_CONTRACT_VERSION),
       mode: checkoutResumeModeSchema.nullable().default(null),
-      cadenceDays: z.number().int().positive().max(120).nullable().default(null),
+      cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().default(null),
       cart: z
         .object({
           items: z

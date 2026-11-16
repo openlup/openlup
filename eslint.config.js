@@ -373,12 +373,4 @@ export default tseslint.config(
     })),
   ...workspacePackages.filter(({ name }) => name === "@openlup/platform").flatMap((pkg) =>
     Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) => platformModuleRules(pkg, module))),
-  // Copied documentation material has application imports; Core production remains isolated.
-  {
-    files: ["packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/{pack,catalogue,fixtures,registry}.ts"],
-    rules: boundaryRules([packageExports, {
-      message: "The copied catalogue sample imports only its local files and the two documented platform entries.",
-      regexes: ["^(?!(?:@openlup/platform/catalog/(?:contracts|testing)|\\./(?:pack|catalogue|fixtures)\\.ts)$)"],
-    }]),
-  },
 );

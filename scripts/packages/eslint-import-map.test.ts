@@ -801,15 +801,3 @@ describe("account-support module graph addition", () => {
     )).toContainEqual(expect.stringContaining('module "account-support"'));
   });
 });
-
-it("keeps copied catalogue documentation imports narrow and Core production isolated", async () => {
-  const config = await loadConfig();
-  const file = "packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/pack.ts";
-  for (const specifier of ["@openlup/platform/catalog/contracts", "@openlup/platform/catalog/testing", "./pack.ts", "./catalogue.ts", "./fixtures.ts"]) {
-    expect(await boundaryMessages(config, `import value from "${specifier}";`, file)).toEqual([]);
-  }
-  for (const specifier of ["node:fs", "pg", "@openlup/platform/catalog", "../../../../src/index.ts"]) {
-    expect((await boundaryMessages(config, `import value from "${specifier}";`, file)).length).toBeGreaterThan(0);
-  }
-  expect((await boundaryMessages(config, 'import value from "@openlup/platform/catalog/contracts";', "packages/core/src/catalog/sample.ts")).length).toBeGreaterThan(0);
-});

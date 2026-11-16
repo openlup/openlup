@@ -18,7 +18,7 @@ export class ExpiredCheckoutRecoveryError extends Error {
   }
 }
 const { createQuoteResponseSchema } = createCommerceQuoteSchemas({ currencySchema: z.string().regex(/^[A-Z]{3}$/),productSlugSchema: z.string().min(1),
-  contextSchema: z.object({ mode: z.enum(['one_time','subscription']),cadenceDays:z.number().int().positive().max(120).nullable().optional(),promoCodes:z.array(z.string()).default([]) }).passthrough() });
+  contextSchema: z.object({ mode: z.enum(['one_time','subscription']),cadenceDays:z.number().int().positive().max(2_147_483_647).nullable().optional(),promoCodes:z.array(z.string()).default([]) }).passthrough() });
 
 function orderedJson(value:unknown):unknown {
  if(Array.isArray(value))return value.map(orderedJson);

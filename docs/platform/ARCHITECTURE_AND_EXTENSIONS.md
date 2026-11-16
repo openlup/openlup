@@ -1868,6 +1868,28 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+The owner decision of 2026-11-15 admits adopter-configured subscription cadence
+under §1.3.6: an application may sell subscriptions and one-time purchases and
+owns which products and quantities apply in each period. The platform owns no
+business list. `SubscriptionEditTerms` and the optional effect-free
+`admitSubscriptionTerms` port expose the complete normalized future set for
+classic, exact and sized editing. The
+[reader contract](../../packages/core/docs/guide/concepts/subscriptions.md#admit-application-subscription-terms)
+explains nominal versus effective cadence and refusal behavior. Admission runs
+before pricing and durable preview/apply work, including frozen-price and
+cadence-only edits. Omitting it preserves existing behavior; no offer registry,
+policy engine or core-engine change is introduced.
+
+Apply structurally parses identity before authentication, then checks owned
+subscription access, locks the existing actor/key, compares the durable receipt
+fingerprint and returns a completed replay before current request limits,
+admission, normalization or pricing. A different payload still conflicts even
+when current limits would also refuse it. Preview and a fresh apply independently
+run current admission. Adopter callbacks and outer HTTP bindings must have no
+write effects and must preserve this replay order. This hook is admission of
+future edits, not a rewrite of existing obligations or a catalogue publication
+fence. Delivery alignment retains its later-only, non-stacking clamp.
+
 The opt-in sized editor is `createPostgresSizedEditor`, composed through
 `createOfferDispatchedSubscriptionEditor` alongside the existing classic binding.
 Its agreed-plan policy preserves complete quote lines for unchanged exact
@@ -3106,8 +3128,10 @@ Catalogue checks share this executable through the explicit `catalogue check
 ordinary catalog cannot import testing. The installed
 [catalogue guide](../../packages/core/docs/guide/how-to/extend/catalogue-extension.md)
 owns the subject, refusal fixtures, exit codes and pending owners. This branch
-loads trusted code without a sandbox and has no database, installation, seed or
-publication path. An offline PASS grants no activation authority.
+reads JSON text without importing user code and has no database, installation,
+seed or publication path. Attribute/projection and combination owners receive only
+parsed fixture data; content validation is unavailable. Reference/refusal records
+and derived retained identities are fixture evidence, never runtime qualification. An offline PASS grants no activation authority.
 
 The tool-only Node executable
 [`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside

@@ -1,3 +1,9 @@
+import { z } from 'zod';
+import { createCheckoutCommandSchemas } from '../../src/commerce/checkoutCommandSchemas.js';
+import { createConfiguratorIntentSchemas } from '../../src/commerce/configuratorIntentSchemas.js';
+import { createCheckoutResponseSchemas } from '../../src/commerce/checkoutSchemas.js';
+import { createCheckoutResumeSchemas } from '../../src/commerce/checkoutResumeSchemas.js';
+import { createCommerceQuoteSchemas } from '../../src/pricing/quoteSchemas.js';
 import { expect,it,vi } from 'vitest';
 import { createExpiredCheckoutRecoveryService,ExpiredCheckoutRecoveryError } from '../../src/commerce/server/expiredCheckoutRecovery.js';
 import { checkoutRecoveryExecutionFingerprint } from '../../src/commerce/server/nativeExpiredCheckoutRecovery.js';
@@ -72,4 +78,26 @@ it('binds execution identity to its four stable fields independently of object k
  const input={idempotencyKey:'key',settlementIntentId:'intent',orderId:'order',clientId:'client'};
  expect(checkoutRecoveryExecutionFingerprint(input)).toBe(checkoutRecoveryExecutionFingerprint({clientId:'client',orderId:'order',settlementIntentId:'intent',idempotencyKey:'key',quoteId:'transient'} as typeof input));
  expect(checkoutRecoveryExecutionFingerprint({...input,clientId:'other'})).not.toBe(checkoutRecoveryExecutionFingerprint(input));
+});
+
+it('admits long cadences through checkout DTOs while retaining PostgreSQL integer representation bounds',()=>{
+ const text=z.string();
+ const {checkoutCommandV1Schema}=createCheckoutCommandSchemas({sku:text,paymentIntentStatus:text,paymentAttemptStatus:text});
+ const {configuratorIntentCoreSchema}=createConfiguratorIntentSchemas(text);
+ const {createQuoteRequestSchema}=createCommerceQuoteSchemas({currencySchema:text,productSlugSchema:text,contextSchema:z.unknown()});
+ const {checkoutResumeDraftStateSchema}=createCheckoutResumeSchemas({sectionSchema:text,redactedFieldSchema:text,completionSchema:z.object({}),productSlugSchema:text,skuSchema:text});
+ const {checkoutResponseSchema}=createCheckoutResponseSchemas({quoteSchema:z.unknown(),quoteExpectationSchema:z.unknown(),clientActionSchema:z.unknown(),paymentIntentStatusSchema:text,paymentAttemptStatusSchema:text,failureDisplaySchema:z.unknown()});
+ const cadenceSchemas=[checkoutCommandV1Schema.shape.cadenceDays,configuratorIntentCoreSchema.shape.cadenceDays,
+  createQuoteRequestSchema.shape.cadenceDays,checkoutResumeDraftStateSchema.shape.cadenceDays,
+  checkoutResponseSchema.options[0].shape.subscription.unwrap().shape.cadenceDays];
+ for(const schema of cadenceSchemas){
+  for(const days of [121,180,365,2_147_483_647])expect(schema.parse(days)).toBe(days);
+  for(const days of [0,-1,1.5,NaN,Infinity,2_147_483_648])expect(schema.safeParse(days).success).toBe(false);
+ }
+});
+it('recreates a checkout with an adopter cadence above 120 without changing its retained terms',async()=>{
+ const f=fixture(),frozen=quote();frozen.quote.context.cadenceDays=180;f.order.cadenceDays=180;f.order.quoteSnapshot=frozen;
+ f.deps.quotePort.createQuote.mockResolvedValue(structuredClone(frozen));
+ expect(await f.service.validate(f.order)).toBe(true);expect(await f.recreate()).toEqual({status:'processing'});
+ expect(f.deps.orderDraftPort.createOrderDraft.mock.calls[0][0].quoteSnapshot.quote.context.cadenceDays).toBe(180);
 });
