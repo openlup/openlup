@@ -80,3 +80,11 @@ describe("dark draft use case", () => {
     expect(await handler.get({ draftId, revision: 1, commandKey: "first" }, {})).toMatchObject({ outcome: "validation_issue" });
   });
 });
+
+it("keeps version two behind explicit composition", async () => {
+  const { handler, store } = setup();
+  expect(await handler.execute({ ...command, schemaVersion: 2, payload: { ...command.payload, schemaVersion: 2 } }, {}))
+    .toEqual({ outcome: "validation_issue", reason: "draft_input_invalid" });
+  expect(store.get).not.toHaveBeenCalled();
+  expect(store.apply).not.toHaveBeenCalled();
+});

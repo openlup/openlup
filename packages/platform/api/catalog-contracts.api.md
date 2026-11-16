@@ -712,11 +712,11 @@ type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
 } : unknown) : V extends CatalogAttributeValueType | CatalogAttributeScalarType ? string : never;
 type RequiredAttribute<A> = A extends {
     required: true;
-} | {
+} ? A : A extends {
     cardinality: {
-        min: 1;
+        min: infer N extends number;
     };
-} ? A : never;
+} ? number extends N ? never : N extends 0 ? never : A : never;
 type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = {
     readonly [A in Attribute<T, Scope> as A extends {
         key: infer K extends string;

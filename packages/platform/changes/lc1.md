@@ -11,7 +11,8 @@ expected entry ID and amount. A zero new amount refuses. Unknown payload and
 command versions refuse; later versions cannot reinterpret or rewrite v2 bytes.
 There are no price writes in this change.
 
-Upgrade native draft adapters/readers together: the store and handler now return
+Opt in with `createPostgresCatalogDraftStoreV2` and `createCatalogDraftHandlerV2`;
+the original factories retain v1 admission and result types. These new factories return
 `CatalogDraftStoredRecord` / `CatalogDraftStoredApplyResult`, whose payload is the
 explicit v1-or-v2 union. Version-specific schemas remain available. `draftsFor`
 adds definition-typed v2 attributes and required-key checking; the wire schema
@@ -44,8 +45,9 @@ Managed divergence design: the managed rail does not supply this feature.
 A future twin replaces the existing managed draft apply routine with the same
 version discrimination, retained receipts and resume semantics on its four
 existing draft relations. It derives the actor from verified session membership,
-retains their RLS/default-deny browser access and human-admin routine checks,
-and continues to exclude service credentials from publication authority. Native
+retains their RLS/default-deny browser access and operator-session checks for
+drafts. Publication retains its separate human-admin boundary and excludes
+service credentials. Native
 owner/runtime invoker authorization maps to managed routine grants plus RLS;
 no native-only authorization role semantics are introduced. No live product/SKU
 column, including industry-specific nullable fields, is changed or relaxed here.

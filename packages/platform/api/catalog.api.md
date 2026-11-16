@@ -1142,10 +1142,13 @@ export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryE
 ## dist/catalog/catalogDraftStore.d.ts
 
 ```ts
+import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import { type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
-/** Dark owner-only storage. Composition must verify the operator before use. */
+/** Existing v1 reader/adapter. A v2 command requires the explicit v2 adapter. */
 export declare function createPostgresCatalogDraftStore(client: PgQueryExecutor): CatalogDraftStorePort;
+/** Opt-in native reader/adapter for retained v1 and v2 payloads. */
+export declare function createPostgresCatalogDraftStoreV2(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftStoredRecord>;
 ```
 ## dist/catalog/catalogPackManifest.d.ts
 
@@ -1913,11 +1916,11 @@ type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
 } : unknown) : V extends CatalogAttributeValueType | CatalogAttributeScalarType ? string : never;
 type RequiredAttribute<A> = A extends {
     required: true;
-} | {
+} ? A : A extends {
     cardinality: {
-        min: 1;
+        min: infer N extends number;
     };
-} ? A : never;
+} ? number extends N ? never : N extends 0 ? never : A : never;
 type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = {
     readonly [A in Attribute<T, Scope> as A extends {
         key: infer K extends string;
@@ -2596,14 +2599,14 @@ export interface CatalogCombinationChangeV2 {
 ## dist/catalog/draftHandler.d.ts
 
 ```ts
-import { type CatalogDraftPage, type CatalogDraftRefusal } from "./draftSchemas.js";
-import type { CatalogDraftStoredApplyResult as CatalogDraftApplyResult, CatalogDraftStoredRecord as CatalogDraftRecord } from "./contracts/draftV2.js";
+import { type CatalogDraftApplyResult, type CatalogDraftRecord, type CatalogDraftPage, type CatalogDraftRefusal } from "./draftSchemas.js";
+import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { type CatalogDraftOperator, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { type CatalogDraftReadiness } from "./draftValidation.js";
-export interface CatalogDraftHandlerDeps<Context> {
-    store: CatalogDraftStorePort;
+export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftStoredRecord = CatalogDraftRecord> {
+    store: CatalogDraftStorePort<Record>;
     registry: CatalogProductTypeRegistry;
     attributeReferences?: CatalogAttributeReferencePort;
     authorizeOperator: (context: Context) => Promise<CatalogDraftOperator | null>;
@@ -2612,35 +2615,62 @@ export type CatalogDraftCommandResult = CatalogDraftApplyResult & {
     issues?: readonly CatalogDraftIssue[];
     readiness?: CatalogDraftReadiness;
 };
-/** Dark use case: mounting requires a verified operator authorizer at composition. */
+/** Existing v1 composition and wire admission stay unchanged. */
 export declare function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps<Context>): {
-    execute(input: unknown, context: Context): Promise<CatalogDraftCommandResult>;
-    get(input: unknown, context: Context): Promise<{
+    execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
+        outcome: "committed" | "replayed";
+        record: CatalogDraftRecord;
+    }) & {
+        issues?: readonly CatalogDraftIssue[];
+        readiness?: CatalogDraftReadiness;
+    }>;
+    get(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
         outcome: "found";
         record: CatalogDraftRecord | null;
-    } | CatalogDraftRefusal>;
-    list(input: unknown, context: Context): Promise<{
+    }>;
+    list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
         outcome: "listed";
         page: CatalogDraftPage;
-    } | CatalogDraftRefusal>;
+    }>;
+};
+/** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed. */
+export declare function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftStoredRecord>): {
+    execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
+        outcome: "committed" | "replayed";
+        record: CatalogDraftStoredRecord;
+    }) & {
+        issues?: readonly CatalogDraftIssue[];
+        readiness?: CatalogDraftReadiness;
+    }>;
+    get(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
+        outcome: "found";
+        record: CatalogDraftStoredRecord | null;
+    }>;
+    list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
+        outcome: "listed";
+        page: CatalogDraftPage;
+    }>;
 };
 ```
 ## dist/catalog/draftPorts.d.ts
 
 ```ts
-import type { CatalogDraftGetQuery, CatalogDraftListQuery, CatalogDraftPage, CatalogDraftRefusal } from "./draftSchemas.js";
-import type { CatalogDraftStoredApplyResult, CatalogDraftStoredRecord } from "./contracts/draftV2.js";
+import type { CatalogDraftGetQuery, CatalogDraftListQuery, CatalogDraftPage, CatalogDraftRefusal, CatalogDraftRecord } from "./draftSchemas.js";
+import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 /** Portable adapters accept this actor only after the injected operator authorizer succeeds. */
 export interface CatalogDraftOperator {
     actorId: string;
 }
-export interface CatalogDraftStorePort {
+export interface CatalogDraftStorePort<Record extends CatalogDraftStoredRecord = CatalogDraftRecord> {
     apply(input: {
         canonicalCommand: string;
         fingerprint: string;
         actorId: string;
-    }): Promise<CatalogDraftStoredApplyResult>;
-    get(query: CatalogDraftGetQuery, actorId: string): Promise<CatalogDraftStoredRecord | null>;
+    }): Promise<{
+        outcome: "committed" | "replayed";
+        record: Record;
+    } | CatalogDraftRefusal>;
+    get(query: CatalogDraftGetQuery, actorId: string): Promise<Record | null>;
     list(query: CatalogDraftListQuery, actorId: string): Promise<CatalogDraftPage>;
 }
 export declare class CatalogDraftStoreError extends Error {
@@ -3299,6 +3329,8 @@ export { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalo
 export { validateCatalogDraftV2 } from "./draftV2Validation.js";
 export { createCatalogCandidateService, CatalogCandidateError } from "./candidate.js";
 export type { CatalogCandidateDeps } from "./candidate.js";
+export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
+export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 

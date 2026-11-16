@@ -64,7 +64,8 @@ type AttributeValue<V, T extends CatalogProductTypeInput> = V extends { kind: "l
   : V extends { kind: "localized_text"; locales: readonly string[] }
     ? { readonly [K in V["locales"][number]]?: string } & (V extends { requiredLocales: readonly string[] } ? { readonly [K in V["requiredLocales"][number]]: string } : unknown)
   : V extends CatalogAttributeValueType | CatalogAttributeScalarType ? string : never;
-type RequiredAttribute<A> = A extends { required: true } | { cardinality: { min: 1 } } ? A : never;
+type RequiredAttribute<A> = A extends { required: true } ? A : A extends { cardinality: { min: infer N extends number } }
+  ? number extends N ? never : N extends 0 ? never : A : never;
 type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = {
   readonly [A in Attribute<T, Scope> as A extends { key: infer K extends string } ? K : never]?: A extends { valueType: infer V } ? AttributeValue<V, T> : never;
 } & {

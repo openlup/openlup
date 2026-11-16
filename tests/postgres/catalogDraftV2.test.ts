@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, createCatalogDraftHandler, createCatalogProductTypeRegistry, createPostgresCatalogDraftStore,
+import { canonicalCatalogDraftJson, createCatalogDraftHandlerV2, createCatalogDraftHandler, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV2, createPostgresCatalogDraftStore,
   type CatalogDraftPayload, type CatalogDraftPayloadV2, type CatalogDraftStoredCommand, type CatalogDraftStoredApplyResult } from "@openlup/platform/catalog";
 import { journeyCensus } from "../helpers/storeJourney.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -79,11 +79,11 @@ afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
 it("catalog_draft_v2_roundtrip_preserves_prices", async () => {
   const before = await commerce(), draftId = randomUUID(), payload = v2();
   const command = { schemaVersion: 2 as const, action: "create" as const, draftId, commandKey: "create:v2", expectedRevision: 0, payload };
-  const handler = createCatalogDraftHandler({ store: createPostgresCatalogDraftStore(owner), registry, authorizeOperator: async () => ({ actorId }) });
+  const handler = createCatalogDraftHandlerV2({ store: createPostgresCatalogDraftStoreV2(owner), registry, authorizeOperator: async () => ({ actorId }) });
   const created = await handler.execute(command, null);
   expect(created).toMatchObject({ outcome: "committed", record: { payload }, readiness: { publication: { status: "incomplete" }, commercial: { status: "inactive" } } });
   const reconnect = new Pool({ connectionString }); pools.push(reconnect);
-  const reader = createPostgresCatalogDraftStore(reconnect);
+  const reader = createPostgresCatalogDraftStoreV2(reconnect);
   expect((await reader.get({ draftId, revision: 1 }, actorId))?.payload).toEqual(payload);
   const revised = structuredClone(payload); revised.skus[0].priceOperations![0].unitPriceMinor = 2345;
   revised.skus[0].priceOperations![0].expected = { entryId: randomUUID(), unitPriceMinor: 0 };

@@ -1288,15 +1288,18 @@ base command: `schemaVersion`, `commandKey`, `variantId`, `priceListId`, fixed
 `unitPriceMinor` and `expected: {entryId, unitPriceMinor}` (both null or both set).
 It changes no live price. Zero new prices and unknown payload versions refuse.
 `catalogDraftPayloadV2Schema` and `catalogDraftCommandV2Schema` validate that
-version; the original schemas and v1 bytes remain unchanged. The store and handler
+version; the original schemas and v1 bytes remain unchanged. The opt-in `createPostgresCatalogDraftStoreV2` and `createCatalogDraftHandlerV2`
 use the explicit `CatalogDraftStoredRecord` union and its stored-record/result
-schemas to read both versions. Upgrade readers before enabling v2 authoring.
+schemas to read both versions. The original factories retain v1 admission and
+result types. Upgrade readers before enabling v2 authoring.
 Stop v2 authoring before rolling back; retained v2 history still needs a v2 reader.
 `draftsFor` also types v2 values against their declared attribute scopes and kinds,
 including required attributes in inline, referenced, readonly and mutable inputs.
 For incomplete interactive authoring use the wire schema: missing required
 attributes remain saveable and `validateCatalogDraftV2` reports publication
 readiness issues through the existing attribute validator and reference resolver.
+Complete axis options reuse the v2 combination owner, so equivalent units cannot
+hide duplicate combinations; missing options remain publication readiness issues.
 
 The version-2 `resume` command takes no payload and reopens the same abandoned
 draft by appending an open revision with its retained payload and reservations.

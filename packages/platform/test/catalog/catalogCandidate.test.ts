@@ -109,4 +109,19 @@ describe("self-contained catalogue preview", () => {
     expect(catalogDraftStoredCommandSchema.safeParse({ schemaVersion: 3, action: "create", draftId, commandKey: "future", expectedRevision: 0, payload: payload() }).success).toBe(false);
     expect(catalogDraftPayloadV2Schema.safeParse({ ...payload(), schemaVersion: 3 }).success).toBe(false);
   });
+  it("reuses installed axis identity for equivalent-unit duplicates", async () => {
+    const sized = { ...definition, units: [...definition.units,
+      { code: "openlup:g", dimension: "mass" as const, integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } },
+      { code: "openlup:kg", dimension: "mass" as const, integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "1000", scale: 0 } }],
+    dimensions: [{ key: "size", kind: "quantity" as const, dimension: "mass" as const, units: ["openlup:g", "openlup:kg"] }],
+    axes: [{ key: "size", attributeKey: "size" }], attributes: [...definition.attributes,
+      { key: "size", scope: "variant" as const, valueType: { kind: "quantity" as const, dimension: "mass" as const, units: ["openlup:g", "openlup:kg"] },
+        required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 1, labels: {} }] };
+    const draft = payload(); draft.product.dimensions = ["size"];
+    draft.skus[0].options = { size: { kind: "quantity", value: { dimension: "mass", unit: "openlup:g", unscaled: "1000", scale: 0 } } };
+    draft.skus.push({ ...draft.skus[0], id: listId, code: "SYNTHETIC-TWO", priceOperations: [],
+      options: { size: { kind: "quantity", value: { dimension: "mass", unit: "openlup:kg", unscaled: "1", scale: 0 } } } });
+    expect(await validateCatalogDraftV2(draft, createCatalogProductTypeRegistry([sized])))
+      .toEqual({ valid: false, issues: [{ path: "skus.1.options", code: "duplicate_combination" }] });
+  });
 });

@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import {
   canonicalCatalogDraftJson,
+  catalogDraftApplyResultSchema, catalogDraftCommandSchema, catalogDraftRecordSchema,
   catalogDraftGetQuerySchema, catalogDraftListQuerySchema, catalogDraftPageSchema,
   catalogDraftRefusalSchema,
-  type CatalogDraftPage, type CatalogDraftRefusal,
+  type CatalogDraftApplyResult, type CatalogDraftRecord, type CatalogDraftPage, type CatalogDraftRefusal,
 } from "./draftSchemas.js";
-import { catalogDraftStoredApplyResultSchema as catalogDraftApplyResultSchema, catalogDraftStoredCommandSchema as catalogDraftCommandSchema,
-  catalogDraftStoredRecordSchema as catalogDraftRecordSchema } from "./draftV2Schemas.js";
-import type { CatalogDraftStoredApplyResult as CatalogDraftApplyResult, CatalogDraftStoredRecord as CatalogDraftRecord } from "./contracts/draftV2.js";
+import { catalogDraftStoredApplyResultSchema, catalogDraftStoredCommandSchema, catalogDraftStoredRecordSchema } from "./draftV2Schemas.js";
+import type { CatalogDraftStoredCommand, CatalogDraftStoredRecord } from "./contracts/draftV2.js";
+import type { z } from "./validation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import {
@@ -16,8 +17,8 @@ import {
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { validateCatalogDraft, type CatalogDraftReadiness } from "./draftValidation.js";
 
-export interface CatalogDraftHandlerDeps<Context> {
-  store: CatalogDraftStorePort;
+export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftStoredRecord = CatalogDraftRecord> {
+  store: CatalogDraftStorePort<Record>;
   registry: CatalogProductTypeRegistry;
   attributeReferences?: CatalogAttributeReferencePort;
   authorizeOperator: (context: Context) => Promise<CatalogDraftOperator | null>;
@@ -36,7 +37,11 @@ function failure(error: unknown): CatalogDraftRefusal {
 }
 
 /** Dark use case: mounting requires a verified operator authorizer at composition. */
-export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps<Context>) {
+function draftHandler<Context, Record extends CatalogDraftStoredRecord>(deps: CatalogDraftHandlerDeps<Context, Record>, schemas: {
+  command: z.ZodType<CatalogDraftStoredCommand>; record: z.ZodType<Record>;
+  result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
+}) {
+  const { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
   async function actor(context: Context): Promise<CatalogDraftOperator | CatalogDraftRefusal> {
     try {
       const operator = await deps.authorizeOperator(context);
@@ -47,7 +52,9 @@ export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps
     } catch { return unavailable(); }
   }
   return {
-    async execute(input: unknown, context: Context): Promise<CatalogDraftCommandResult> {
+    async execute(input: unknown, context: Context): Promise<({ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal) & {
+      issues?: readonly CatalogDraftIssue[]; readiness?: CatalogDraftReadiness;
+    }> {
       const operator = await actor(context);
       if ("outcome" in operator) return operator;
       let canonicalCommand: string;
@@ -83,7 +90,7 @@ export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps
         return result;
       } catch (error) { return failure(error); }
     },
-    async get(input: unknown, context: Context): Promise<{ outcome: "found"; record: CatalogDraftRecord | null } | CatalogDraftRefusal> {
+    async get(input: unknown, context: Context): Promise<{ outcome: "found"; record: Record | null } | CatalogDraftRefusal> {
       const operator = await actor(context);
       if ("outcome" in operator) return operator;
       const parsed = catalogDraftGetQuerySchema.safeParse(input);
@@ -110,4 +117,13 @@ export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps
       } catch (error) { return failure(error); }
     },
   };
+}
+
+/** Existing v1 composition and wire admission stay unchanged. */
+export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps<Context>) {
+  return draftHandler(deps, { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema });
+}
+/** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed. */
+export function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftStoredRecord>) {
+  return draftHandler(deps, { command: catalogDraftStoredCommandSchema, record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema });
 }
