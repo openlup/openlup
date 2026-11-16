@@ -21,15 +21,29 @@ required-evidence-unavailable (2). `taxonomy`, `tax-coverage`, `profiles`,
 Unknown fields refuse; they are never silently passed. Do not add typed attribute
 or combination fields to strict v1 drafts.
 
-The exported subject is an executable envelope, passed directly to the checker.
-Its declared inputs are read once on the original receiver into an internal plain,
-frozen snapshot. Owners and the checker consume that snapshot; original objects
-are not frozen or mutated. An unreadable subject declaration refuses with
-`conformance_subject_invalid` (exit 1). Plain, frozen,
-non-enumerable, inherited and getter-based inputs are supported, including getters
-using private fields; unknown symbol keys refuse the closed subject shape. The
-CLI puts its recheck command on returned findings and never copies or mutates the
-subject. JSON attribute data follows the separate owner canonical rules below.
+The subject's data and every callback result must be plain data: strings, finite
+numbers, booleans, null, dense arrays with `Array.prototype`, and objects with
+`Object.prototype` or null prototypes. Every own property must have a string key
+and a data descriptor. Frozen objects and non-enumerable data are accepted.
+Omit optional fields instead of setting them to `undefined`. Accessors, symbol
+keys/values, functions in data, class instances, other prototypes, typed arrays,
+Map/Set/Date, non-finite numbers, array holes and cycles refuse with
+`conformance_input_not_plain_data` at the exact JSON pointer (exit 1). Getters are
+never invoked. A throwing inspection trap has the same refusal. Symbol-key paths
+use the escaped string representation, such as `/Symbol(extra)`.
+
+One descriptor walk captures each object's prototype and descriptors once, using
+one identity cache across the input graph and callback results. Aliases are
+captured once; array length comes from its single data descriptor, never a live
+property read. Enumerability comes from that same descriptor. The resulting fresh
+plain data is frozen, and only this snapshot reaches owner validators and JSON
+canonicalization. Original objects are not modified. The CLI passes the exported
+subject itself and puts its command on returned findings.
+
+Only the existing `pack.types[].validateContent`, `attributes[].references.resolve`,
+`refusals[].run` and `refusals[].assertZeroEffects` slots accept trusted functions.
+Their returned data crosses the same boundary; callbacks receive snapshot data.
+These are explicit executable handles, not data fields or discovered plugins.
 
 The command imports trusted code, including callbacks, without a sandbox. Modules
 must not write stdout or start effects. The checker owns no database, network,
@@ -80,7 +94,7 @@ For every `capabilities: {feature: false}` declaration add a trusted refusal fix
 Only the exact expected owner code plus `assertZeroEffects() === true` satisfies
 it. This is instrumented evidence, not sandbox protection. Usual codes:
 `pack_type_namespace_mismatch`, `definition_key_invalid`, `draft_input_invalid`,
-`draft_payload_invalid`, `conformance_subject_invalid`, `conformance_owner_unavailable`,
+`draft_payload_invalid`, `conformance_input_not_plain_data`, `conformance_subject_invalid`, `conformance_owner_unavailable`,
 `conformance_refusal_fixture_missing`, `conformance_refusal_fixture_invalid`,
 `conformance_refusal_fixture_mismatch`. Custom attribute kinds, quantity dimensions,
 and promotion benefit/target kinds require upstream changes to the closed grammar.
@@ -108,19 +122,18 @@ The checker awaits the validator and passes its result to projection preparation
 all malformed values and missing required publication facts report owner codes.
 The revision is fixture data, never proof of a persisted publication. Reference
 resolution uses an optional trusted `references` port on this fixture, whose
-`resolve` callback supplies an allowlisted offline batch. The owner's `attribute_reference_unresolved` code keeps its exact path. Missing,
-failed, omitted, ambiguous or unavailable resolver evidence returns exit 2;
-a single positive `dangling` or `private` answer returns exit 1. Each resolver
-answer's `namespace`, `id` and `status` are read once on its original receiver into
-a plain frozen record, shared by the owner and the checker. Stateful getters keep
-their first values. Throwing resolvers, unreadable answer getters, non-array batches
-and malformed answer fields make the batch unavailable evidence (exit 2). This
-prevents an unreadable duplicate from turning a batch into a false success. Aliased
-answer records are captured once while duplicate entries remain duplicates. Receiver/private-field getters are supported
-when their declared fields can be read. Attribute values
-outside the declared allowlist remain malformed supplied facts (exit 1). The checker uses the attribute owner's canonical JSON snapshot for both validation
-and reference evidence: non-enumerable own data is retained; getters, symbols and
-unsupported prototypes refuse. The checker does not contact a database to discover
+`resolve` callback supplies an allowlisted offline batch. The owner's
+`attribute_reference_unresolved` code keeps its exact path. Each resolver answer
+is recursively checked and frozen before the owner consumes it. Missing, failed,
+omitted, ambiguous or explicitly unavailable plain evidence returns 2;
+a single positive `dangling` or `private` answer returns 1;
+non-plain answers instead return `conformance_input_not_plain_data` (1), including
+accessors, unsupported prototypes and throwing inspection traps. Aliases retain
+duplicate entries, so an ambiguous batch cannot become a unique resolution.
+Attribute values outside the declared allowlist remain malformed supplied facts
+(exit 1). Plain attribute data retains the owner's canonical JSON rules, including
+non-enumerable own data and the existing depth and byte bounds.
+The checker does not contact a database to discover
 references. Values remain excluded from v1 drafts;
 actual publication and generation serving remain pending. A new attribute kind
 is upstream work. Usual owner codes:
@@ -171,9 +184,13 @@ combinations: [{ type: { key: "stationery:notebook", version: 1 },
 ```
 
 The checker calls the version 2 change validator with the selected type. It checks only
-supplied incoming changes and retained fixture facts; it never enumerates possible
+supplied incoming changes and plain retained fixture facts; it never enumerates possible
 combinations or reads live capacity. Exact equivalent units share an identity;
-active duplicates refuse. `retained` facts and optional `capacity` describe the
+active duplicates refuse. Native binary identities contain typed arrays and are
+outside the checker’s plain-data contract: they refuse with
+`conformance_input_not_plain_data` rather than being converted. Use the server
+combination owner directly for authoritative binary retained identities; an offline
+checker PASS does not cover that evidence. `retained` facts and optional `capacity` describe the
 fixture, not the installation. Request `requiredChecks: ["variant-combinations"]`
 to refuse when a pack entry supplies no combination fixtures.
 New attribute kinds/dimensions are upstream work. Usual codes:

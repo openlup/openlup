@@ -1,31 +1,20 @@
 Wire separate attribute/projection and V2 combination fixtures into the existing
-offline checker using their owner validators and unchanged issue codes. Supplied
-references and retained facts remain trusted offline evidence. Later validators
-and requested checks without fixtures return required-evidence-unavailable.
+offline checker using their owner validators and unchanged owner codes/paths.
+Later validators and requested checks without fixtures return required evidence
+unavailable; missing/unavailable plain reference evidence returns 2, and unique
+positive dangling/private answers return 1.
 
 Migration: For the unreleased 0.44.0 set, await the single
 `runCatalogExtensionConformance(subject): Promise<CatalogConformanceReport>` entry.
-The CLI awaits it automatically. Add optional `attributes` and `combinations`
-fixtures separately from unchanged v1 drafts; the installed recipe guide describes
-their shape. Report fields, exit codes, sorting and released imports are unchanged.
+The CLI awaits it automatically. Supply plain data recursively: finite primitives,
+dense arrays with Array.prototype, and Object.prototype/null-prototype objects
+with string-keyed own data descriptors. Frozen/non-enumerable data remains valid;
+omit optional fields rather than supplying undefined. Accessors, symbols, other
+prototypes, typed arrays, functions in data, non-finite values, holes, cycles and
+throwing inspection traps return `conformance_input_not_plain_data` at the exact
+JSON pointer, exit 1. Getters are never invoked. Existing explicit callback slots
+remain trusted code; their results use the same descriptor snapshot and identity
+cache as the subject. Owners consume only frozen captured data. Native binary
+retained identities require the server owner directly; the checker never converts
+them. Report fields, exit-code vocabulary, ordering and v1 bytes remain unchanged.
 No database migration, installation, publication or activation occurs.
-
-Reference issues retain their owner code/path while absent or unavailable resolver
-evidence reports exit 2; only a single positive dangling/private answer is a
-violation (exit 1). Combination owner paths are retained in full under the fixture
-input, including option locations and SKU identities. No report fields are added.
-
-Attribute validation and reference classification now share the attribute owner's
-canonical snapshot, retaining non-enumerable own data and its rejection of getters,
-symbols and unsupported prototypes. Explicit combination owner fields preserve non-enumerable data; closed fixture envelopes check all own
-keys rather than silently dropping hidden or symbol keys.
-
-The CLI passes the exported subject itself. Subject data and resolver answers
-cross one read-once snapshot boundary into plain frozen data, preserving
-receiver-dependent and private-field getters through explicit callback handles.
-The owner and checker share captured namespace/id/status answers. Unreadable
-resolver evidence returns exit 2; an unreadable subject declaration refuses with
-exit 1. Original objects remain unmodified; the CLI changes only returned finding
-recheck text. The existing parity table covers 17 subject/answer forms through
-both the direct checker and actual CLI. Attribute data retains its own canonical
-JSON rules.

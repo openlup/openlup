@@ -2003,7 +2003,7 @@ process.exit(0);
 export function proveCatalogConformanceConsumer(consumer: string, compiler: string): void {
   console.log(consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { cpSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { runCatalogExtensionConformance } from "@openlup/platform/catalog/testing";
@@ -2063,41 +2063,45 @@ const cases = [
    writeFileSync(join(owned, "owner-fixtures.ts"), hiddenReferenceSource);
    const hiddenReference = invoke(ownersCommand); assert.equal(hiddenReference.exitCode, 1);
    assert(hiddenReference.findings.some(f => f.code === "attribute_reference_unresolved" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/finish"));
-   // One table: subject and resolver-result boundaries, direct and actual CLI.
+   // One table: admitted plain data, stable refusals and the four review reproductions.
+   const plainRefusal = "conformance_input_not_plain_data";
    const subjectForms = [
-     ["plain", 'export default {packs,recheck};', 0, []],
-     ["non-enumerable", 'export default Object.defineProperties({}, {packs:{value:packs},recheck:{value:recheck}});', 0, []],
-     ["receiver-getter", 'const requirements=new WeakMap(); let reads=0; const subject={packs,recheck,get requiredChecks(){if(++reads!==1)throw Error("second read");return requirements.get(this)}};requirements.set(subject,["taxonomy"]);export default subject;', 2, ["conformance_owner_unavailable"]],
-     ["private-fields", 'class Subject {#entries=packs;#reads=0;recheck=recheck;get packs(){if(++this.#reads!==1)throw Error("second read");return this.#entries}}export default new Subject();', 0, []],
-     ["inherited", 'export default Object.create({packs},{recheck:{value:recheck}});', 0, []],
-     ["symbol-keyed", 'export default {packs,recheck,[Symbol("extra")]:true};', 1, ["conformance_subject_invalid"]],
-     ["frozen", 'export default Object.freeze({packs,recheck,requiredChecks:["taxonomy"]});', 2, ["conformance_owner_unavailable"]],
-     ["throwing-subject", 'export default {recheck,get packs(){throw Error("UNTRUSTED_DETAIL")}};', 1, ["conformance_subject_invalid"]],
-     ["resolver-plain", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",status:"private"}]};export default resolverSubject;', 1, ["attribute_reference_unresolved"]],
-     ["resolver-stateful", 'let reads=0;resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",get status(){return ++reads===1?"private":"unavailable"}}]};export default resolverSubject;', 1, ["attribute_reference_unresolved"]],
-     ["resolver-throwing-getter", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",get status(){throw Error("UNTRUSTED_DETAIL")}}]};export default resolverSubject;', 2, ["attribute_reference_unresolved"]],
-     ["resolver-receiver", 'class Answer{#data={namespace:"stationery:related",id:"owned",status:"private"};#reads={};#read(key){this.#reads[key]=(this.#reads[key]??0)+1;if(this.#reads[key]!==1)throw Error("second read");return this.#data[key]}get namespace(){return this.#read("namespace")}get id(){return this.#read("id")}get status(){return this.#read("status")}}resolverSubject.packs[0].attributes[0].references={resolve:async()=>[new Answer()]};export default resolverSubject;', 1, ["attribute_reference_unresolved"]],
-     ["resolver-second-read-throws", 'let reads=0;resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",get status(){if(++reads!==1)throw Error("UNTRUSTED_DETAIL");return "private"}}]};export default resolverSubject;', 1, ["attribute_reference_unresolved"]],
-     ["resolver-rejection", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>{throw Error("UNTRUSTED_DETAIL")}};export default resolverSubject;', 2, ["attribute_reference_unresolved"]],
-     ["resolver-non-array", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>new Date(0)};export default resolverSubject;', 2, ["attribute_reference_unresolved"]],
-     ["resolver-aliased-duplicate", 'let reads=0;const answer={namespace:"stationery:related",id:"owned",get status(){if(++reads!==1)throw Error("UNTRUSTED_DETAIL");return "private"}};resolverSubject.packs[0].attributes[0].references={resolve:async()=>[answer,answer]};export default resolverSubject;', 2, ["attribute_reference_unresolved"]],
-     ["resolver-mixed-unreadable", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",status:"resolved"},{namespace:"stationery:related",id:"owned",get status(){throw Error("UNTRUSTED_DETAIL")}}]};export default resolverSubject;', 2, ["attribute_reference_unresolved"]],
+     ["plain", 'export default {packs,recheck};', 0, [], []],
+     ["frozen", 'export default Object.freeze({packs,recheck,requiredChecks:["taxonomy"]});', 2, ["conformance_owner_unavailable"], ["/requiredChecks/0"]],
+     ["non-enumerable", 'export default Object.defineProperties({}, {packs:{value:packs},recheck:{value:recheck}});', 0, [], []],
+     ["null-prototype", 'export default Object.assign(Object.create(null),{packs,recheck});', 0, [], []],
+     ["receiver-getter", 'const requirements=new WeakMap();const subject={packs,recheck,get requiredChecks(){throw Error("UNTRUSTED_DETAIL")}};requirements.set(subject,["taxonomy"]);export default subject;', 1, [plainRefusal], ["/requiredChecks"]],
+     ["private-fields", 'class Subject{#entries=packs;get packs(){return this.#entries}}export default new Subject();', 1, [plainRefusal], [""]],
+     ["other-prototype", 'export default Object.create({packs},{recheck:{value:recheck}});', 1, [plainRefusal], [""]],
+     ["symbol-keyed", 'export default {packs,recheck,[Symbol("extra")]:true};', 1, [plainRefusal], ["/Symbol(extra)"]],
+     ["typed-array-dimensions", 'const pack={...packs[0].pack,types:[{...packs[0].pack.types[0],dimensions:new Uint8Array()}]};export default {packs:[{pack}],recheck};', 1, [plainRefusal], ["/packs/0/pack/types/0/dimensions"]],
+     ["self-deleting-validator", 'const type={...packs[0].pack.types[0]};Object.defineProperty(type,"validatorRef",{enumerable:true,configurable:true,get(){delete this.validatorRef;return "not-a-sha256"}});export default {packs:[{pack:{...packs[0].pack,types:[type]}}],recheck};', 1, [plainRefusal], ["/packs/0/pack/types/0/validatorRef"]],
+     ["resolver-aliased-proxy", 'let idReads=0,idDescriptors=0;const reference=new Proxy({namespace:"stationery:related",id:"owned"},{get(target,key,receiver){if(key==="id"&&++idReads>1)throw Error("UNTRUSTED_DETAIL");return Reflect.get(target,key,receiver)},getOwnPropertyDescriptor(target,key){if(key==="id"&&++idDescriptors>1)throw Error("UNTRUSTED_DETAIL");return Reflect.getOwnPropertyDescriptor(target,key)}});const fixture=resolverSubject.packs[0].attributes[0];fixture.input.skus=[{id:"00000000-0000-4000-8000-000000000001",attributes:{finish:reference}},{id:"00000000-0000-4000-8000-000000000002",attributes:{finish:reference}}];fixture.references={resolve:async refs=>{assert.equal(idReads,0);assert.equal(idDescriptors,1);return refs.map(ref=>({...ref,status:"private"}))}};export default resolverSubject;', 1, ["attribute_reference_unresolved","attribute_reference_unresolved"], ["/packs/0/attributes/0/input/skus/0/attributes/finish","/packs/0/attributes/0/input/skus/1/attributes/finish"]],
+     ["resolver-changing-array-length", 'let lengthReads=0,lengthDescriptors=0;const fixture=resolverSubject.packs[0].attributes[0];fixture.input.skus[0].attributes.bogus=true;fixture.input.skus=new Proxy(fixture.input.skus,{get(target,key,receiver){return key==="length"?(++lengthReads===1?1:0):Reflect.get(target,key,receiver)},getOwnPropertyDescriptor(target,key){if(key==="length"&&++lengthDescriptors>1)throw Error("UNTRUSTED_DETAIL");return Reflect.getOwnPropertyDescriptor(target,key)}});fixture.references={resolve:async refs=>{assert.equal(lengthReads,0);assert.equal(lengthDescriptors,1);return refs.map(ref=>({...ref,status:"resolved"}))}};export default resolverSubject;', 1, ["attribute_unknown_key"], ["/packs/0/attributes/0/input/skus/0/attributes/bogus"]],
+     ["resolver-plain", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",status:"private"}]};export default resolverSubject;', 1, ["attribute_reference_unresolved"], ["/packs/0/attributes/0/input/skus/0/attributes/finish"]],
+     ["resolver-resolved", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",status:"resolved"}]};export default resolverSubject;', 0, [], []],
+     ["resolver-stateful", 'let reads=0;resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",get status(){return ++reads===1?"private":"unavailable"}}]};export default resolverSubject;', 1, [plainRefusal], ["/packs/0/attributes/0/references/resolve/result/0/status"]],
+     ["resolver-throwing-getter", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[{namespace:"stationery:related",id:"owned",get status(){throw Error("UNTRUSTED_DETAIL")}}]};export default resolverSubject;', 1, [plainRefusal], ["/packs/0/attributes/0/references/resolve/result/0/status"]],
+     ["resolver-receiver", 'class Answer{#status="private";namespace="stationery:related";id="owned";get status(){return this.#status}}resolverSubject.packs[0].attributes[0].references={resolve:async()=>[new Answer()]};export default resolverSubject;', 1, [plainRefusal], ["/packs/0/attributes/0/references/resolve/result/0"]],
+     ["resolver-rejection", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>{throw Error("UNTRUSTED_DETAIL")}};export default resolverSubject;', 2, ["attribute_reference_unresolved"], ["/packs/0/attributes/0/input/skus/0/attributes/finish"]],
+     ["resolver-duplicate", 'const answer={namespace:"stationery:related",id:"owned",status:"private"};resolverSubject.packs[0].attributes[0].references={resolve:async()=>[answer,answer]};export default resolverSubject;', 2, ["attribute_reference_unresolved"], ["/packs/0/attributes/0/input/skus/0/attributes/finish"]],
+     ["resolver-throwing-trap", 'resolverSubject.packs[0].attributes[0].references={resolve:async()=>[new Proxy({namespace:"stationery:related",id:"owned",status:"resolved"},{getOwnPropertyDescriptor(){throw Error("UNTRUSTED_DETAIL")}})]};export default resolverSubject;', 1, [plainRefusal], ["/packs/0/attributes/0/references/resolve/result/0/namespace"]],
    ];
-   for (const [name, source, expectedExit, codes] of subjectForms) {
-     const file = "subject-" + name + ".ts", relative = "./catalogue-skeleton/" + file;
-     const args = ["catalogue", "check", "--packs", relative];
-     const recheck = "npx --no -- openlup " + [...args, "--json"].join(" ");
-     const resolverSetup = name.startsWith("resolver-") ? referenceSource.replace('export default {packs:', 'const resolverSubject={packs:') + ';resolverSubject.recheck=recheck;' : '';
-     writeFileSync(join(owned,file), 'import base from "./registry.ts";const packs=base.packs;const recheck=' + JSON.stringify(recheck) + ';' + resolverSetup + source);
-     const {default: original} = await import(relative);
-     const direct = await runCatalogExtensionConformance(original);
-     const {formatVersion, command, ...cli} = invoke(args);
-     assert.equal(direct.exitCode, expectedExit, name); assert.equal(cli.exitCode, expectedExit, name);
-     assert.deepEqual(direct.findings.map(f=>f.code), codes, name);
-     assert.deepEqual(cli, direct, name);
-     assert(!JSON.stringify(cli).includes("UNTRUSTED_DETAIL"), name);
+   const tableFolder=join(process.cwd(),"owned");mkdirSync(tableFolder,{recursive:true});
+   for (const [name, source, expectedExit, codes, paths] of subjectForms) {
+     const relative="./owned/catalogue.ts", args=["catalogue","check","--packs",relative];
+     const recheck="npx --no -- openlup " + [...args,"--json"].join(" ");
+     const resolverSetup=name.startsWith("resolver-") ? referenceSource.replace('import subject from "./registry.ts";', 'import subject from "../catalogue-skeleton/registry.ts";').replace('export default {packs:', 'const resolverSubject={packs:')+';resolverSubject.recheck=recheck;' : '';
+     writeFileSync(join(tableFolder,"catalogue.ts"), 'import assert from "node:assert/strict";import base from "../catalogue-skeleton/registry.ts";const packs=base.packs;const recheck='+JSON.stringify(recheck)+';'+resolverSetup+source);
+     const {default: original}=await import(relative+"?"+name);
+     const direct=await runCatalogExtensionConformance(original);
+     const {formatVersion, command, ...cli}=invoke(args);
+     assert.equal(direct.exitCode,expectedExit,name);assert.equal(cli.exitCode,expectedExit,name);
+     assert.deepEqual(direct.findings.map(f=>f.code),codes,name);
+     assert.deepEqual(direct.findings.map(f=>f.path),paths,name);
+     assert.deepEqual(cli,direct,name);assert(!JSON.stringify(cli).includes("UNTRUSTED_DETAIL"),name);
    }
-   console.log("catalogue boundary forms: 17 rows, direct + CLI (34 evaluations) PASS");
+   console.log("catalogue boundary forms: 20 rows, direct + CLI (40 evaluations) PASS");
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
    const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);

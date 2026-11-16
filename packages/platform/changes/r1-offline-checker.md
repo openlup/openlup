@@ -16,3 +16,7 @@ owner before resolution; malformed keys/versions report existing definition code
 Refusal capability keys must be own string keys, and pack versions share the
 installer's existing positive bounded integer rule. Valid inputs are unchanged;
 malformed fixtures and pack versions that could pass offline now refuse.
+
+Checker data and callback results now require recursively plain data. Non-plain
+inputs refuse with `conformance_input_not_plain_data` (exit 1), with no getter
+execution or typed-array conversion; see the installed catalogue recipe.

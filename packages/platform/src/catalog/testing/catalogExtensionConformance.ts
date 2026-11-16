@@ -1,7 +1,7 @@
 import { CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import {
   CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
-  canonicalCatalogDraftJson, validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError,
+  validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError,
   catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
   type CatalogConformanceCode,
 } from "../index.js";
@@ -14,108 +14,76 @@ const pointer = (parts: readonly PropertyKey[]): string => parts.map(part => `/$
 const object = (value: unknown): boolean => value !== null && typeof value === "object" && !Array.isArray(value);
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 
-/** Materialize executable-envelope fields on their original receivers, then retain
- * only frozen data and explicit callable handles. JSON leaves keep owner admission.
- */
-function snapshotSubject(subject: CatalogConformanceSubject): CatalogConformanceSubject {
+const plainDataErrors = new WeakSet<object>();
+class PlainDataError extends Error {
+  constructor(readonly path: string) { super("conformance_input_not_plain_data"); plainDataErrors.add(this); }
+  static is(value: unknown): value is PlainDataError {
+    return value !== null && typeof value === "object" && plainDataErrors.has(value);
+  }
+}
+
+/** One identity cache and descriptor walk, shared by subject data and callback results. */
+function plainDataSnapshot() {
   const seen = new WeakMap<object, unknown>();
-  const jsonSeen = new WeakMap<object, unknown>();
-  function capture(value: unknown, path: readonly PropertyKey[], receiver?: object): unknown {
-    const leaf = path[path.length - 1];
-    if (typeof value === "function") {
-      const callback = value;
-      const originalReceiver = ["resolve", "run", "assertZeroEffects"].includes(String(leaf));
-      return Object.freeze(function(this: unknown, ...args: unknown[]) {
-        const result = Reflect.apply(callback, originalReceiver ? receiver : this, args);
-        return ["validateContent", "run", "assertZeroEffects"].includes(String(leaf))
-          ? capture(result, [...path, "result"]) : result;
-      });
-    }
-    if (value === null || typeof value !== "object") return value;
-    if ((path[2] === "attributes" && leaf === "input") || (path[2] === "drafts" && leaf === "sharedContent")) {
-      if (jsonSeen.has(value)) return jsonSeen.get(value);
-      let json: unknown;
-      try { json = freezeData(JSON.parse(canonicalCatalogDraftJson(value))); }
-      catch { json = NaN; } // The owner retains its canonical-input refusal and path.
-      jsonSeen.set(value, json); return json;
-    }
-    if (seen.has(value)) return seen.get(value);
-    if (value instanceof Uint8Array) {
-      const bytes: number[] = []; seen.set(value, bytes);
-      const length = value.length;
-      if (!Number.isSafeInteger(length) || length < 0) throw new TypeError("snapshot_array_length");
-      for (let i = 0; i < length; i++) bytes.push(value[i]);
-      return Object.freeze(bytes);
-    }
-    if (Array.isArray(value)) {
-      const items: unknown[] = []; seen.set(value, items);
-      const length = value.length;
-      if (!Number.isSafeInteger(length) || length < 0) throw new TypeError("snapshot_array_length");
-      for (let i = 0; i < length; i++) items.push(capture(value[i], [...path, i], value));
-      return Object.freeze(items);
-    }
-    if (path[path.length - 1] === "references") {
-      let resolve: unknown;
-      try { resolve = capture(Reflect.get(value, "resolve", value), [...path, "resolve"], value); }
-      catch { resolve = Object.freeze(async () => Object.freeze([])); }
-      const port = Object.freeze({ resolve }); seen.set(value, port); return port;
-    }
-    const data: Record<PropertyKey, unknown> = {}; seen.set(value, data);
-    const keys = new Set(Reflect.ownKeys(value));
-    const declared = path.length === 0 ? ["packs", "requiredChecks", "recheck"] : undefined;
-    if (declared) {
-      for (const key of declared) if (Reflect.has(value, key)) keys.add(key);
-    } else if (!["options", "optionValues"].includes(String(leaf))) {
-      // Schema records may expose declared fields through prototype getters.
-      // Dictionary keys retain own-property semantics instead.
-      const prototypes = new Set<object>();
-      for (let prototype = Object.getPrototypeOf(value); prototype && prototype !== Object.prototype && !prototypes.has(prototype); prototype = Object.getPrototypeOf(prototype)) {
-        prototypes.add(prototype);
-        for (const key of Reflect.ownKeys(prototype)) if (key !== "constructor") keys.add(key);
+  const active = new WeakSet<object>();
+  function capture(value: unknown, path: string): unknown {
+    try {
+      if (value === null || typeof value === "string" || typeof value === "boolean"
+        || (typeof value === "number" && Number.isFinite(value))) return value;
+      // Only the existing executable fixture slots accept opaque callable handles.
+      if (typeof value === "function" && /^\/packs\/\d+\/(?:pack\/types\/\d+\/validateContent|attributes\/\d+\/references\/resolve|refusals\/\d+\/(?:run|assertZeroEffects))$/u.test(path)) {
+        const callback = value;
+        return Object.freeze(function(this: unknown, ...args: unknown[]) {
+          const result = Reflect.apply(callback, this, args);
+          if (!path.endsWith("/resolve")) return capture(result, `${path}/result`);
+          // The native promise transport is opaque; do not assimilate arbitrary
+          // thenables before their data descriptors have been checked.
+          try { return Promise.prototype.then.call(result, (answer: unknown) => capture(answer, `${path}/result`)); }
+          catch { return capture(result, `${path}/result`); }
+        });
       }
-    }
-    for (const key of keys) {
-      let child: unknown;
-      try { child = capture(Reflect.get(value, key, value), [...path, key], value); }
-      catch (error) {
-        if (path.length) throw error;
-        child = NaN; // Preserve other readable root fields, including recheck.
+      if (typeof value !== "object") throw new PlainDataError(path);
+      if (active.has(value)) throw new PlainDataError(path);
+      if (seen.has(value)) return seen.get(value);
+      const prototype = Object.getPrototypeOf(value);
+      const array = Array.isArray(value);
+      if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null)
+        throw new PlainDataError(path);
+      const descriptors = new Map<string, PropertyDescriptor>();
+      for (const key of Reflect.ownKeys(value)) {
+        const at = `${path}${pointer([key])}`;
+        if (typeof key !== "string") throw new PlainDataError(at);
+        let descriptor: PropertyDescriptor | undefined;
+        try { descriptor = Object.getOwnPropertyDescriptor(value, key); }
+        catch { throw new PlainDataError(at); }
+        if (!descriptor || !Object.hasOwn(descriptor, "value")) throw new PlainDataError(at);
+        descriptors.set(key, descriptor);
       }
-      Object.defineProperty(data, key, { value: child, enumerable: Object.getOwnPropertyDescriptor(value, key)?.enumerable ?? false });
+      const data = array ? [] : Object.create(prototype);
+      if (array) {
+        const length = descriptors.get("length")?.value;
+        if (!Number.isSafeInteger(length) || length < 0 || length > 4_294_967_295) throw new PlainDataError(`${path}/length`);
+        for (const key of descriptors.keys()) {
+          const index = Number(key);
+          if (String(index) === key && Number.isInteger(index) && index >= 0 && index < 4_294_967_295 && index >= length)
+            throw new PlainDataError(`${path}/${key}`);
+        }
+        for (let i = 0; i < length; i++) if (!descriptors.has(String(i))) throw new PlainDataError(`${path}/${i}`);
+        data.length = length;
+      }
+      seen.set(value, data); active.add(value);
+      for (const [key, descriptor] of descriptors) {
+        if (array && key === "length") continue;
+        Object.defineProperty(data, key, { value: capture(descriptor.value, `${path}${pointer([key])}`), enumerable: descriptor.enumerable });
+      }
+      active.delete(value);
+      return Object.freeze(data);
+    } catch (error) {
+      if (PlainDataError.is(error)) throw error;
+      throw new PlainDataError(path);
     }
-    return Object.freeze(data);
   }
-  return freezeData(capture(subject, []) as CatalogConformanceSubject);
-}
-function freezeData<T>(value: T, seen = new WeakSet<object>()): T {
-  if (value && typeof value === "object" && !seen.has(value)) {
-    seen.add(value);
-    for (const key of Reflect.ownKeys(value)) freezeData(Object.getOwnPropertyDescriptor(value, key)?.value, seen);
-    Object.freeze(value);
-  }
-  return value;
-}
-function snapshotReferenceAnswers(value: unknown): Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> {
-  const unavailable = Object.freeze([]);
-  try {
-    if (!Array.isArray(value)) return unavailable;
-    const answers: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>>[number][] = [];
-    const captured = new WeakMap<object, typeof answers[number]>();
-    const length = value.length;
-    if (!Number.isSafeInteger(length) || length < 0) return unavailable;
-    for (let i = 0; i < length; i++) {
-      const answer = value[i];
-      if (!answer || (typeof answer !== "object" && typeof answer !== "function")) return unavailable;
-      let snapshot = captured.get(answer);
-      if (!snapshot) {
-        const { namespace, id, status } = answer;
-        if (typeof namespace !== "string" || typeof id !== "string" || !["resolved", "dangling", "private", "unavailable"].includes(status)) return unavailable;
-        snapshot = Object.freeze({ namespace, id, status }); captured.set(answer, snapshot);
-      }
-      answers.push(snapshot); // Preserve multiplicity: aliased duplicates must still refuse.
-    }
-    return Object.freeze(answers);
-  } catch { return unavailable; } // An unreadable batch cannot establish a unique resolution.
+  return capture;
 }
 
 /** Calls existing owners only. Unexpected callback failures propagate to the CLI's sanitized failure path. */
@@ -123,8 +91,11 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false;
   let violated = false;
+  const snapshot = plainDataSnapshot();
   let capturedSubject: CatalogConformanceSubject | undefined;
-  try { capturedSubject = snapshotSubject(subject); } catch { /* Unreadable subject input refuses deterministically. */ }
+  let inputError: PlainDataError | undefined;
+  try { capturedSubject = snapshot(subject, "") as CatalogConformanceSubject; }
+  catch (error) { if (!(PlainDataError.is(error))) throw error; inputError = error; }
   const validSubject = object(capturedSubject);
   const { packs, requiredChecks, recheck: requestedRecheck } = validSubject ? capturedSubject! : {} as Partial<CatalogConformanceSubject>;
   const recheck = typeof requestedRecheck === "string" ? requestedRecheck : command;
@@ -141,6 +112,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
     findings.sort((a, b) => compare(a.path, b.path) || compare(a.code, b.code) || compare(a.fixture, b.fixture));
     return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0, boundary, findings };
   }
+  if (inputError) { add("conformance_input_not_plain_data", inputError.path); return finish(); }
   if (!validSubject || !Array.isArray(packs) || !packs.length
     || (requestedRecheck !== undefined && typeof requestedRecheck !== "string")
     || Reflect.ownKeys(capturedSubject!).some(key => typeof key !== "string" || !["packs", "requiredChecks", "recheck"].includes(key))
@@ -174,7 +146,12 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
       if (!parsed.success) {
         parsed.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); return;
       }
-      const validation = validateCatalogDraft(parsed.data, registry);
+      let validation: ReturnType<typeof validateCatalogDraft>;
+      try { validation = validateCatalogDraft(parsed.data, registry); }
+      catch (error) {
+        if (!(PlainDataError.is(error))) throw error;
+        add("conformance_input_not_plain_data", error.path); return;
+      }
       // Draft readiness is not publication readiness. Missing runtime facts stay in boundary.
       if (!validation.valid) validation.issues.forEach(issue => add(issue.code, `${path}${pointer(issue.path.split("."))}`));
     });
@@ -223,14 +200,19 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
           }
           const referenceInput = suppliedInput;
           let resolved: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> = Object.freeze([]);
+          let resolverInputError = false;
           const references: CatalogAttributeReferencePort | undefined = referenceOwner && {
             resolve: async batch => {
-              try { resolved = snapshotReferenceAnswers(await resolveReferences!.call(referenceOwner, batch)); }
-              catch { resolved = Object.freeze([]); }
+              try { resolved = await resolveReferences!.call(referenceOwner, batch); }
+              catch (error) {
+                if (PlainDataError.is(error)) { add("conformance_input_not_plain_data", error.path); resolverInputError = true; }
+                resolved = Object.freeze([]);
+              }
               return resolved;
             },
           };
           const validation = await validateCatalogAttributes(definition, referenceInput, references);
+          if (resolverInputError) continue;
           const prepared = prepareCatalogAttributeProjection(validation, publicationRevision);
           if (!prepared.prepared) prepared.issues.forEach(issue => {
             let requiredEvidence = false;
@@ -254,16 +236,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
             || !Array.isArray(retained) || !Array.isArray(incoming)) {
             add("conformance_subject_invalid", `${path}/input`); continue;
           }
-          // The immutable snapshot stores bytes as frozen number arrays. The owner
-          // requires typed byte carriers; create private views from captured data.
-          const ownerRetained = retained.map(({ skuId, state, optionValues, identity }) => Object.freeze({
-            skuId, state, optionValues, identity: identity && Object.freeze({
-              version: identity.version,
-              canonicalOptionBytes: Uint8Array.from(identity.canonicalOptionBytes),
-              combinationDigest: Uint8Array.from(identity.combinationDigest),
-            }),
-          }));
-          try { validateCatalogCombinationChangesV2({ definition, axes, typed, retained: ownerRetained, incoming, capacity }); }
+          try { validateCatalogCombinationChangesV2({ definition, axes, typed, retained, incoming, capacity }); }
           catch (error) {
             if (!(error instanceof CatalogCombinationError) && !(error instanceof CatalogQuantityError)) throw error;
             add(error.code, `${path}/input${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
@@ -282,8 +255,12 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
         || capabilities.get(capability) !== false || typeof run !== "function" || typeof assertZeroEffects !== "function") {
         add("conformance_refusal_fixture_invalid", path); return;
       }
-      const result = run.call(fixture);
-      const zeroEffects = assertZeroEffects.call(fixture);
+      let result: ReturnType<typeof run>, zeroEffects: boolean;
+      try { result = run.call(fixture); zeroEffects = assertZeroEffects.call(fixture); }
+      catch (error) {
+        if (!(PlainDataError.is(error))) throw error;
+        add("conformance_input_not_plain_data", error.path); return;
+      }
       if (!object(result) || result.code !== expectedCode || zeroEffects !== true) add("conformance_refusal_fixture_mismatch", path, name);
     });
     for (const [capability, supported] of capabilities) if (!supported && !witnessedCapabilities.has(capability))
