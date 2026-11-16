@@ -113,6 +113,12 @@ For a different configuration or port, use
 `npm start -- --configuration coffee --port 4320`. On macOS and Linux,
 `npm run dev` provides the [watched edit loop](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
 This preview does not bind database-backed purchase or account actions.
+Subscription price previews explain `host_binding_required` in the active
+language and point to `./lifecycle up` for the installed local demonstration.
+One-time estimates still work; installed quotes serve both purchase modes.
+Known price refusals explain the repair through the allowlist in
+`owned/quote-copy.ts`; unknown failures remain generic. Refreshing withholds the
+previous price, including when a superseded success arrives after a failure.
 
 From the repository root, candidate extraction preserves local tarball pins:
 
@@ -122,6 +128,9 @@ cd ../candidate-store
 ./lifecycle candidate "$CORE_ARCHIVE" "$OUTBOX_ARCHIVE" "$PLATFORM_ARCHIVE"
 npm ci
 ```
+
+Successful `./lifecycle candidate` import ends with `next: npm ci`: import prepares
+the lockfile; run `npm ci` to install it before starting the application.
 
 Set the three archive variables to full paths of the selected candidate packages
 in core, outbox, platform order. The importer checks package names, equal set

@@ -5,7 +5,7 @@ import type { Pool } from 'pg';
 import { createHash } from 'node:crypto';
 import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
-import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError,
+import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError, CommerceQuoteError,
   ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
   type AcquisitionQuoteRequest, type ResolvedAcquisitionTerms, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQuotePromotionV2,
@@ -13,6 +13,7 @@ import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQ
   createPromotionQuoteAcceptance, type PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import { verifyProductDocument } from './editor-catalogue.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
+import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { isRecord, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
@@ -21,10 +22,17 @@ interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unk
 export const pricingPolicy = { offerPolicyVersion: 'commerce.offer-policy.v2', promotionEngineVersion: 'promotion-engine.v2' } as const;
 const acceptance = createPromotionQuoteAcceptance<Request>({ projectRequest: request => request });
 const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
+// Preserve existing technical refusals without accepting arbitrary prefixed messages.
+const quoteErrorCodes = new Set(['starter_promotion_codes_unsupported', 'starter_command_conflict', 'starter_quote_acceptance_key_required',
+  'starter_acquisition_eligibility_binding_required', 'starter_acquisition_admission_binding_required',
+  'catalog_authority_unavailable', 'catalog_authority_changed', 'catalog_revision_invalid', 'catalog_document_schema_invalid',
+  'catalog_document_digest_mismatch', 'catalog_primary_trade_item_invalid', 'catalog_cursor_invalid', 'catalog_cardinality_exceeded']);
 
 export function quoteFailure(error: unknown): string {
   if (error instanceof AcquisitionTermsError) return error.reason;
-  if (error instanceof Error && /^(starter_|catalog_|base_price_|subscription_price_|active_price_)/.test(error.message)) return error.message;
+  if (error instanceof CommerceQuoteError && error.code === 'PRICE_NOT_CONFIGURED'
+    && isQuoteRefusalCode(error.details.reason)) return error.details.reason;
+  if (error instanceof Error && (isQuoteRefusalCode(error.message) || quoteErrorCodes.has(error.message))) return error.message;
   return 'starter_quote_unavailable';
 }
 

@@ -3,13 +3,14 @@ import { dispatchAction, pendingBindings } from '../host/bindings.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
-import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError } from '@openlup/platform/pricing';
+import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError } from '@openlup/platform/pricing';
 import { createPromotionQuoteAcceptance } from '@openlup/platform/promotions';
 import type { PromotionRow } from '@openlup/core/promo';
 import { configurations } from '../owned/store.config.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { composePurchaseCapabilities } from '../host/purchase-composition.ts';
-import { createNativeQuoteService } from '../host/quote-composition.ts';
+import { createNativeQuoteService, quoteFailure } from '../host/quote-composition.ts';
+import { quoteRefusalCopy, isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { createAcquisitionRenewalBinding, type AcquisitionPredecessors } from '../host/acquisition-predecessors.ts';
 import { validateCart } from '../shared/offer.ts';
 
@@ -23,6 +24,37 @@ const payload = { cart, configuration: config.id, country: config.market.country
 const unavailable: AcquisitionPredecessors = {
   eligibility() { throw new Error('eligibility must not run'); }, checkout() { throw new Error('draft must not run'); },
 };
+
+test('quote failures preserve exact public reasons without exposing arbitrary details', () => {
+  for (const reason of ['base_price_not_found', 'subscription_price_policy_not_effective', 'active_price_list_ambiguous']) {
+    assert.equal(quoteFailure(new CommerceQuoteError('PRICE_NOT_CONFIGURED', 'private query', { reason, sql: 'private SQL' })), reason);
+    assert.ok(isQuoteRefusalCode(reason));
+    for (const locale of ['en', 'pl'] as const) assert.ok(quoteRefusalCopy[locale][reason as keyof typeof quoteRefusalCopy.en].length > 20);
+  }
+  for (const error of [new Error('starter_private_query: secret'), new Error('base_price_private_payload'), new Error('catalog_private_payload'),
+    new CommerceQuoteError('PRICE_NOT_CONFIGURED', 'private query', { reason: 'unknown: secret' }),
+    new CommerceQuoteError('PRICING_INVARIANT_VIOLATION', 'private query', { reason: 'base_price_not_found' }),
+    { code: 'PRICE_NOT_CONFIGURED', details: { reason: 'base_price_not_found' } }]) {
+    assert.equal(quoteFailure(error), 'starter_quote_unavailable');
+  }
+  for (const code of ['host_binding_required', 'purchase_mode_unavailable', 'cadence_unavailable', 'starter_quote_refresh_required',
+    'catalog_authority_unavailable', 'starter_acquisition_eligibility_binding_required', 'starter_acquisition_admission_binding_required']) {
+    assert.equal(quoteFailure(new Error(code)), code);
+  }
+  assert.equal(isQuoteRefusalCode('toString'), false);
+});
+
+test('mixed-store preview preserves one-time quotes and explains the missing subscription binding', async () => {
+  for (const config of Object.values(configurations)) {
+    const selected = { ...cart,configuration: config.id,cadenceDays: config.offer.defaultCadenceDays,
+      lines: [{ sku: config.offer.products[0]!.sku,quantity: config.offer.minUnits }] };
+    const oneTime = await dispatchAction(pendingBindings(), 'offer.validate', { cart: { ...selected,mode: 'one_time',cadenceDays: null } }, { ...context,config });
+    assert.ok(oneTime.ok); assert.ok(isOfferQuoteView(oneTime.value));
+    assert.equal(oneTime.value.lines[0]!.unitMinor, config.offer.products[0]!.unitPrice.amountMinor);
+    assert.deepEqual(await dispatchAction(pendingBindings(), 'offer.validate',
+      { cart: selected,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY }, { ...context,config }), { ok: false,code: 'host_binding_required' });
+  }
+});
 
 for (const capability of [undefined, 'wrong-protocol']) {
   test(`unsupported acquisition caller refuses quote and checkout before effects: ${capability}`, async () => {

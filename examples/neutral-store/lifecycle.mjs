@@ -52,6 +52,7 @@ if (command === 'candidate') {
     schemaVersion: 1, kind: 'local-candidate', artifacts: artifacts.map(({ source, ...artifact }) => artifact),
   }, null, 2) + '\n');
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
+  process.stdout.write('next: npm ci\n');
 } else if (command === 'up') {
   const { selectConfiguration } = await import('./owned/store.config.ts');
   const { assertConfig } = await import('./shared/config.ts');

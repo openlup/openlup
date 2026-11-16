@@ -117,7 +117,8 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Subjec
       return actual as z.output<(typeof results)[O]>;
     };
     const first = fixtures.dispatch[0]!;
-    await witness({ op: "prepare", capability: "selection", slotId: "selection", input: [{ ...first.input, selection: { ...first.input.selection, providerRef: null } }], expected: { kind: "refused", refusal: { reason: "selection_required", phase: "selection", retryable: false } }, zero: "selection refusal before I/O", label: "adapter selection_required" }); passed("default-off and selection_required");
+    const selectionDiagnostic = "selection refusal before I/O: prepare(providerRef:null) must return selection_required; refuse missing provider selection locally";
+    await witness({ op: "prepare", capability: "selection", slotId: "selection", input: [{ ...first.input, selection: { ...first.input.selection, providerRef: null } }], expected: { kind: "refused", refusal: { reason: "selection_required", phase: "selection", retryable: false } }, zero: selectionDiagnostic, label: selectionDiagnostic }); passed("default-off and selection_required");
     for (const [index, row] of fixtures.dispatch.entries()) {
       const prepared = await witness({ op: "prepare", capability: row.input.selection.deliveryKind === "parcel-locker" && row.expectedPrepare.kind === "refused" ? "pickupPoint" : "preparation", slotId: kit?.dispatch?.addressBeforeSubmission === index ? "prepare:addressBefore" : `prepare:${index}`, input: [row.input], expected: row.expectedPrepare, zero: "prepare before I/O", label: "prepare fixture" });
       if (prepared.kind === "refused") { passed("dispatch refused before I/O"); continue; }
