@@ -14,3 +14,9 @@ Reference issues retain their owner code/path while absent or unavailable resolv
 evidence reports exit 2; only a single positive dangling/private answer is a
 violation (exit 1). Combination owner paths are retained in full under the fixture
 input, including option locations and SKU identities. No report fields are added.
+
+Attribute validation and reference classification now share the attribute owner's
+canonical snapshot, retaining non-enumerable own data and its rejection of getters,
+symbols and unsupported prototypes. CLI subject descriptors and explicit combination
+owner fields preserve non-enumerable data; closed fixture envelopes check all own
+keys rather than silently dropping hidden or symbol keys.

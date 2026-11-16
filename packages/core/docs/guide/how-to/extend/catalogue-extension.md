@@ -101,8 +101,10 @@ resolution uses an optional trusted `references` port on this fixture, whose
 `resolve` callback supplies an allowlisted offline batch. The owner's `attribute_reference_unresolved` code keeps its exact path. Missing,
 failed, omitted, ambiguous or unavailable resolver evidence returns exit 2;
 a single positive `dangling` or `private` answer returns exit 1. Attribute values
-outside the declared allowlist remain malformed supplied facts (exit 1). The checker does not contact
-a database to discover references. Values remain excluded from v1 drafts;
+outside the declared allowlist remain malformed supplied facts (exit 1). The checker uses the attribute owner's canonical JSON snapshot for both validation
+and reference evidence: non-enumerable own data is retained; getters, symbols and
+unsupported prototypes refuse. The checker does not contact a database to discover
+references. Values remain excluded from v1 drafts;
 actual publication and generation serving remain pending. A new attribute kind
 is upstream work. Usual owner codes:
 `attribute_projection_text_too_large`, `attribute_storage_too_large`, `attribute_values_invalid`, `attribute_value_invalid`,

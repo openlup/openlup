@@ -135,6 +135,22 @@ describe("offline catalogue conformance", () => {
         expect(report.findings).toEqual([expect.objectContaining({ code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference" })]);
       }
     }
+    const referenceData = () => ({ reference: { namespace: "stationery:related", id: "owned" } });
+    const snapshotCases: [string, CatalogAttributeInput, string, string][] = [
+      ["non-enumerable own field", Object.defineProperty({ skus: [{ id }] }, "productAttributes", { value: referenceData() }), "attribute_reference_unresolved", "/productAttributes/reference"],
+      ["null prototype", Object.assign(Object.create(null), { skus: [{ id }], productAttributes: referenceData() }), "attribute_reference_unresolved", "/productAttributes/reference"],
+      ["getter rejected", Object.defineProperty({ skus: [{ id }] }, "productAttributes", { get: referenceData }), "attribute_values_invalid", ""],
+      ["inherited field rejected", Object.assign(Object.create({ productAttributes: referenceData() }), { skus: [{ id }] }), "attribute_values_invalid", ""],
+      ["symbol rejected", { skus: [{ id }], productAttributes: referenceData(), [Symbol("hidden")]: true }, "attribute_values_invalid", ""],
+    ];
+    for (const [name, input, code, path] of snapshotCases) {
+      const references: CatalogAttributeReferencePort = { resolve: async refs => refs.map(ref => ({ ...ref, status: "private" })) };
+      const owner = await validateCatalogAttributes(ap.types[0], input, references);
+      expect(owner, name).toMatchObject({ valid: false, issues: [{ code, path }] });
+      const report = await runCatalogExtensionConformance({ packs: [{ pack: ap, attributes: [{ type: typeRef, input, references, publicationRevision: "7" }] }] });
+      expect(report.state, name).toBe("violated"); expect(report.exitCode, name).toBe(1);
+      expect(report.findings).toEqual([expect.objectContaining({ code, path: `/packs/0/attributes/0/input${path}` })]);
+    }
     const mixedPack = pack();
     mixedPack.types[0].attributes = ["private", "unknown"].map(key => ({ ...baseAttribute, key, valueType: { kind: "reference", allowlist: ["stationery:related"] } }));
     const mixedInput = { productAttributes: { private: { namespace: "stationery:related", id: "private" }, unknown: { namespace: "stationery:related", id: "unknown" } }, skus: [{ id }] };
@@ -176,6 +192,13 @@ describe("offline catalogue conformance", () => {
       expect(report.exitCode).toBe(1);
       expect(report.findings).toEqual([expect.objectContaining({ code, path: `/packs/0/combinations/0/input${expectedPath}`, recipe: "how-to/extend/catalogue-extension.md#add-axis" })]);
     }
+    const hiddenCapacity = Object.defineProperty({ ...combination }, "capacity", { value: 0, enumerable: false });
+    expect(() => validateCatalogCombinationChangesV2(Object.assign(Object.create(hiddenCapacity), { definition: cp.types[0] }))).toThrow("product_capacity_invalid");
+    const hiddenReport = await runCatalogExtensionConformance({ packs: [{ pack: cp, combinations: [{ type: typeRef, input: hiddenCapacity }] }] });
+    expect(hiddenReport.exitCode).toBe(1);
+    expect(hiddenReport.findings).toEqual([expect.objectContaining({ code: "product_capacity_invalid", path: "/packs/0/combinations/0/input/capacity" })]);
+    const hiddenUnknown = Object.defineProperty({ packs: [{ pack: p }] }, "notAdmitted", { value: true });
+    expect((await runCatalogExtensionConformance(hiddenUnknown)).findings).toEqual([expect.objectContaining({ code: "conformance_subject_invalid", path: "" })]);
     const projectionFixtures = [options().size.value, options("openlup:kg", "1").size.value].map(value => ({
       type: typeRef, input: { skus: [{ id, attributes: { size: value } }] }, publicationRevision: "7" }));
     for (const fixture of projectionFixtures) {

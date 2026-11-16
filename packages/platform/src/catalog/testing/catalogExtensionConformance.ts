@@ -1,7 +1,7 @@
 import { CatalogQuantityError, canonicalizeCatalogQuantity, convertCatalogQuantity } from "@openlup/core/catalog";
 import {
   CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
-  validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError,
+  canonicalCatalogDraftJson, validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError,
   catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
@@ -34,7 +34,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
   }
   if (!object(subject) || !Array.isArray(subject.packs) || !subject.packs.length
     || (subject.recheck !== undefined && typeof subject.recheck !== "string")
-    || Object.keys(subject).some(key => !["packs", "requiredChecks", "recheck"].includes(key))
+    || Reflect.ownKeys(subject).some(key => typeof key !== "string" || !["packs", "requiredChecks", "recheck"].includes(key))
     || (subject.requiredChecks !== undefined && (!Array.isArray(subject.requiredChecks) || subject.requiredChecks.some(check => typeof check !== "string")))) {
     add("conformance_subject_invalid", ""); return finish();
   }
@@ -48,7 +48,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
   for (const [index, rawEntry] of Array.from(subject.packs).entries()) {
     const entry: CatalogConformanceSubject["packs"][number] = rawEntry;
     const at = `/packs/${index}`;
-    if (!object(entry) || Object.keys(entry).some(key => !["pack", "drafts", "quantities", "attributes", "combinations", "refusals"].includes(key))
+    if (!object(entry) || Reflect.ownKeys(entry).some(key => typeof key !== "string" || !["pack", "drafts", "quantities", "attributes", "combinations", "refusals"].includes(key))
       || [entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(value => value !== undefined && !Array.isArray(value))) {
       add("conformance_subject_invalid", at); continue;
     }
@@ -71,7 +71,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
     Array.from(entry.quantities ?? []).forEach((fixture, i) => {
       const path = `${at}/quantities/${i}`;
       if (!object(fixture) || !object(fixture.value)
-        || Object.keys(fixture).some(key => !["type", "value", "targetUnit"].includes(key))) {
+        || Reflect.ownKeys(fixture).some(key => typeof key !== "string" || !["type", "value", "targetUnit"].includes(key))) {
         add("conformance_subject_invalid", path); return;
       }
       const referenceIssues = catalogProductTypeRefIssues(fixture.type);
@@ -94,7 +94,7 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
       for (const [i, fixture] of (entry[field] ?? []).entries()) {
         const path = `${at}/${field}/${i}`;
         const allowed = field === "attributes" ? ["type", "input", "publicationRevision", "references"] : ["type", "input"];
-        if (!object(fixture) || Object.keys(fixture).some(key => !allowed.includes(key))) {
+        if (!object(fixture) || Reflect.ownKeys(fixture).some(key => typeof key !== "string" || !allowed.includes(key))) {
           add("conformance_subject_invalid", path); continue;
         }
         const referenceIssues = catalogProductTypeRefIssues(fixture.type);
@@ -108,17 +108,16 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
             add("conformance_subject_invalid", `${path}/references`); continue;
           }
           let referenceInput = value.input;
+          try { referenceInput = JSON.parse(canonicalCatalogDraftJson(referenceInput)); }
+          catch { /* The attribute owner reports invalid canonical input with its own code/path. */ }
           let resolved: Awaited<ReturnType<CatalogAttributeReferencePort["resolve"]>> = [];
           const references: CatalogAttributeReferencePort | undefined = value.references && {
             resolve: async batch => {
-              // The owner calls this only after admitting JSON input. Capture it
-              // before the trusted callback can mutate the original fixture.
-              referenceInput = structuredClone(value.input);
               resolved = await value.references!.resolve(batch);
               return resolved;
             },
           };
-          const validation = await validateCatalogAttributes(definition, value.input, references);
+          const validation = await validateCatalogAttributes(definition, referenceInput, references);
           const prepared = prepareCatalogAttributeProjection(validation, value.publicationRevision);
           if (!prepared.prepared) prepared.issues.forEach(issue => {
             let requiredEvidence = false;
@@ -135,12 +134,15 @@ export async function runCatalogExtensionConformance(subject: CatalogConformance
         } else {
           const value = fixture as NonNullable<typeof entry.combinations>[number];
           const input = value.input;
-          if (!object(input) || Object.keys(input).some(key => !["axes", "typed", "retained", "incoming", "capacity"].includes(key))
+          if (!object(input) || Reflect.ownKeys(input).some(key => typeof key !== "string" || !["axes", "typed", "retained", "incoming", "capacity"].includes(key))
             || !Array.isArray(input.axes) || input.axes.some(key => typeof key !== "string") || typeof input.typed !== "boolean"
             || !Array.isArray(input.retained) || !Array.isArray(input.incoming)) {
             add("conformance_subject_invalid", `${path}/input`); continue;
           }
-          try { validateCatalogCombinationChangesV2({ ...input, definition }); }
+          // Explicit owner fields preserve non-enumerable/inherited properties;
+          // nested option values and retained facts go to the owner unchanged.
+          const { axes, typed, retained, incoming, capacity } = input;
+          try { validateCatalogCombinationChangesV2({ definition, axes, typed, retained, incoming, capacity }); }
           catch (error) {
             if (!(error instanceof CatalogCombinationError) && !(error instanceof CatalogQuantityError)) throw error;
             add(error.code, `${path}/input${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);

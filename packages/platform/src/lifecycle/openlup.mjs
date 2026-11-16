@@ -94,7 +94,10 @@ try {
     const loaded = await import(pathToFileURL(resolve(values.packs)).href);
     if (!loaded.default || typeof loaded.default !== "object") throw new TypeError("missing_conformance_subject");
     const recheck = "npx --no -- openlup " + process.argv.slice(2).map(value => /^[A-Za-z0-9_./=-]+$/u.test(value) ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
-    const report = await runCatalogExtensionConformance({ ...loaded.default, recheck });
+    const subject = Object.create(Object.getPrototypeOf(loaded.default), {
+      ...Object.getOwnPropertyDescriptors(loaded.default), recheck: { value: recheck, enumerable: true },
+    });
+    const report = await runCatalogExtensionConformance(subject);
     emit({ command: "catalogue check", ...report }, `catalogue check: ${report.state}\n${report.boundary}\n${report.findings.map(renderFinding).join("\n")}`.trimEnd());
   } else {
     refuse(64, "OPENLUP_E_CLI_INPUT", "Command or required options do not match the public syntax.", "Use openlup --help and explicit input paths.");

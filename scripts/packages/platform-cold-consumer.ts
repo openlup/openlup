@@ -2059,6 +2059,10 @@ const cases = [
    writeFileSync(join(owned, "owner-fixtures.ts"), referenceSource);
    const referenceFailure = invoke(ownersCommand); assert.equal(referenceFailure.exitCode, 2);
    assert(referenceFailure.findings.some(f => f.code === "attribute_reference_unresolved" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/finish"));
+   const hiddenReferenceSource = referenceSource.replace('export default {packs:', 'const checkSubject={packs:') + '; const fixture=checkSubject.packs[0].attributes[0]; Object.defineProperty(fixture.input,"skus",{value:fixture.input.skus,enumerable:false}); fixture.references={resolve:async refs=>refs.map(ref=>({...ref,status:"private"}))}; const exported={}; Object.defineProperty(exported,"packs",{value:checkSubject.packs,enumerable:false}); Object.defineProperty(exported,"requiredChecks",{value:checkSubject.requiredChecks,enumerable:false}); export default exported;';
+   writeFileSync(join(owned, "owner-fixtures.ts"), hiddenReferenceSource);
+   const hiddenReference = invoke(ownersCommand); assert.equal(hiddenReference.exitCode, 1);
+   assert(hiddenReference.findings.some(f => f.code === "attribute_reference_unresolved" && f.path === "/packs/0/attributes/0/input/skus/0/attributes/finish"));
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    writeFileSync(join(owned, "failure.ts"), 'throw new Error("SENSITIVE_LOAD_DETAIL");');
    const failure = invoke(["catalogue", "check", "--packs", "./catalogue-skeleton/failure.ts"]);
