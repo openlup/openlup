@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { z } from "zod";
 import { sumCanonicalInvoicePositions } from "./invoicePositionSnapshot.js";
+
+const moneyGoldenFixture: { rows: { id: string; operation: string; input: unknown; expected: unknown }[] } =
+  JSON.parse(readFileSync(new URL("../../../packages/core/test/fixtures/catalogue-money.v1.json", import.meta.url), "utf8"));
+const positionMinor = z.string().regex(/^(0|[1-9]\d*)$/).transform(Number);
+
+it.each(moneyGoldenFixture.rows.filter(row => row.operation === "position_net"))("$id (L2 independent fiscal owner)", row => {
+  const input = z.object({ grossMinor: positionMinor, vatRateBps: positionMinor, vatRate: z.string() }).parse(row.input);
+  const expected = z.object({ netMinor: positionMinor }).parse(row.expected);
+  expect(sumCanonicalInvoicePositions([{
+    positionKind: "item", orderItemId: row.id, allocationOrdinal: 1, quantity: 1,
+    totalGrossMinor: input.grossMinor, unitGrossMinor: input.grossMinor,
+    totalNetMinor: expected.netMinor, unitNetMinor: expected.netMinor,
+    catalogTotalGrossMinor: input.grossMinor, discountAllocatedMinor: 0,
+    vatRate: input.vatRate, vatRateBps: input.vatRateBps,
+  }])).toMatchObject({ valid: true, grossCents: input.grossMinor, netCents: expected.netMinor });
+});
 
 describe("canonical invoice position snapshot", () => {
   it("validates and sums canonical item allocations and discounted delivery", () => {

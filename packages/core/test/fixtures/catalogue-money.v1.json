@@ -139,6 +139,153 @@
         "vatMinor": "2410"
       },
       "expected": { "success": false, "issue": { "path": ["lines"], "message": "mixed VAT rates are not supported by quote discount and shipping tax allocation" } }
+    },
+    {
+      "id": "allocation_tie_uses_input_position_reversed_keys",
+      "kind": "quote_money",
+      "ruleRef": "legacy.discount-largest-remainder-input-order",
+      "operation": "discount_allocation",
+      "donor": {
+        "revision": "8f554844f8c8196635c6a027614a78185ff2455a",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:211-239",
+        "witness": "server/domains/platform/invoicePositionSnapshot.test.ts:keeps allocation ties in ordinal order when item identifiers sort in reverse"
+      },
+      "input": {
+        "lineTotalsMinor": [
+          "100",
+          "100"
+        ],
+        "chargedTotalMinor": "199",
+        "lineKeys": [
+          "z",
+          "a"
+        ]
+      },
+      "expected": {
+        "linePayablesMinor": [
+          "99",
+          "100"
+        ]
+      }
+    },
+    {
+      "id": "allocation_zero_discount_preserves_positions",
+      "kind": "quote_money",
+      "ruleRef": "legacy.discount-largest-remainder-input-order",
+      "operation": "discount_allocation",
+      "donor": {
+        "revision": "8f554844f8c8196635c6a027614a78185ff2455a",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:211-239",
+        "witness": "server/domains/platform/invoicePositionSnapshot.test.ts:preserves $name in discounted position allocation [zero discount]"
+      },
+      "input": {
+        "lineTotalsMinor": [
+          "100",
+          "200"
+        ],
+        "chargedTotalMinor": "300"
+      },
+      "expected": {
+        "linePayablesMinor": [
+          "100",
+          "200"
+        ]
+      }
+    },
+    {
+      "id": "allocation_zero_weights_preserve_zero",
+      "kind": "quote_money",
+      "ruleRef": "legacy.discount-largest-remainder-input-order",
+      "operation": "discount_allocation",
+      "donor": {
+        "revision": "8f554844f8c8196635c6a027614a78185ff2455a",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:211-239",
+        "witness": "server/domains/platform/invoicePositionSnapshot.test.ts:preserves $name in discounted position allocation [zero weights]"
+      },
+      "input": {
+        "lineTotalsMinor": [
+          "0",
+          "0"
+        ],
+        "chargedTotalMinor": "0"
+      },
+      "expected": {
+        "linePayablesMinor": [
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "id": "allocation_fractional_remainders_choose_largest_weight",
+      "kind": "quote_money",
+      "ruleRef": "legacy.discount-largest-remainder-input-order",
+      "operation": "discount_allocation",
+      "donor": {
+        "revision": "8f554844f8c8196635c6a027614a78185ff2455a",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:211-239",
+        "witness": "server/domains/platform/invoicePositionSnapshot.test.ts:preserves $name in discounted position allocation [fractional remainders]"
+      },
+      "input": {
+        "lineTotalsMinor": [
+          "100",
+          "200",
+          "300"
+        ],
+        "chargedTotalMinor": "599"
+      },
+      "expected": {
+        "linePayablesMinor": [
+          "100",
+          "200",
+          "299"
+        ]
+      }
+    },
+    {
+      "id": "allocation_zero_weight_receives_no_discount",
+      "kind": "quote_money",
+      "ruleRef": "legacy.discount-largest-remainder-input-order",
+      "operation": "discount_allocation",
+      "donor": {
+        "revision": "8f554844f8c8196635c6a027614a78185ff2455a",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:211-239",
+        "witness": "server/domains/platform/invoicePositionSnapshot.test.ts:preserves $name in discounted position allocation [a zero-weight position]"
+      },
+      "input": {
+        "lineTotalsMinor": [
+          "0",
+          "100",
+          "100"
+        ],
+        "chargedTotalMinor": "199"
+      },
+      "expected": {
+        "linePayablesMinor": [
+          "0",
+          "99",
+          "100"
+        ]
+      }
+    },
+    {
+      "id": "included_vat_safe_integer_limit",
+      "kind": "quote_money",
+      "ruleRef": "legacy.position-included-vat-integer",
+      "operation": "position_net",
+      "donor": {
+        "revision": "5a89d18b0574583080ee9ff5ef5758890fbd0408",
+        "location": "server/domains/platform/invoicePositionSnapshot.ts:183-185",
+        "witness": "server/domains/platform/invoicePositionSnapshot.test.ts:computes VAT net and unit rounding exactly at the safe-integer boundary"
+      },
+      "input": {
+        "grossMinor": "9007199254740991",
+        "vatRateBps": "800",
+        "vatRate": "8"
+      },
+      "expected": {
+        "netMinor": "8339999309945362"
+      }
     }
   ]
 }

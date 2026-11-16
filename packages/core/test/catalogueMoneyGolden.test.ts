@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { evaluatePromotionAdjustmentsV2 } from "../src/promo/index.js";
+import { allocateCatalogueDiscountedGrossTotals, cataloguePositionNetFromGross } from "../src/pricing/index.js";
 
 const decimal = z.string().regex(/^(0|[1-9]\d*)$/).refine(value => Number.isSafeInteger(Number(value)));
 const minor = decimal.transform(Number);
@@ -29,8 +30,13 @@ const rowSchema = z.discriminatedUnion("operation", [
     input: z.object({ grossMinor: minor, vatRateBps: minor }).strict(),
     expected: z.object({ netMinor: minor, vatMinor: minor }).strict(),
   }).strict(),
+  z.object({ ...metadata, kind: z.literal("quote_money"), operation: z.literal("position_net"),
+    input: z.object({ grossMinor: minor, vatRateBps: minor, vatRate: text }).strict(),
+    expected: z.object({ netMinor: minor }).strict(),
+  }).strict(),
   z.object({ ...metadata, kind: z.literal("quote_money"), operation: z.literal("discount_allocation"),
-    input: z.object({ lineTotalsMinor: z.array(minor).min(1), chargedTotalMinor: minor }).strict(),
+    input: z.object({ lineTotalsMinor: z.array(minor).min(1), chargedTotalMinor: minor,
+      lineKeys: z.array(text).optional() }).strict(),
     expected: z.object({ linePayablesMinor: z.array(minor).min(1) }).strict(),
   }).strict(),
   z.object({ ...metadata, kind: z.literal("promotion"), operation: z.literal("promotion_v2"),
@@ -89,5 +95,20 @@ describe("catalogue money V2 promotion owners (L2)", () => {
         ({ promotionId, source, amountOffMinor, floorApplied })),
       rejectedCodes: result.rejectedCodes,
     }).toEqual(row.expected);
+  });
+});
+
+describe("catalogue money position owners (L2)", () => {
+  it.each(rows.filter(row => row.operation === "included_vat" || row.operation === "position_net"))("$id", row => {
+    expect(cataloguePositionNetFromGross(row.input.grossMinor, row.input.vatRateBps)).toBe(row.expected.netMinor);
+  });
+
+  it.each(rows.filter(row => row.operation === "discount_allocation"))("$id", row => {
+    const actual = allocateCatalogueDiscountedGrossTotals(row.input.lineTotalsMinor, row.input.chargedTotalMinor);
+    expect(actual).toEqual(row.expected.linePayablesMinor);
+    if (row.input.lineKeys) {
+      expect(row.input.lineKeys.map((key, index) => [key, actual[index]]))
+        .toEqual(row.input.lineKeys.map((key, index) => [key, row.expected.linePayablesMinor[index]]));
+    }
   });
 });
