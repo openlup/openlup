@@ -6,3 +6,5 @@ export * from "./ports.js";
 export * from "./pricingBreakdown.js";
 /** @beta */
 export * from "./targetPriceAllocation.js";
+/** @beta */
+export * from "./catalogueMoney.js";
