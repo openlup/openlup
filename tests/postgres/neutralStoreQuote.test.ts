@@ -281,7 +281,8 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
         config.quote.acquisition.minimumProductPayableMinor=minimum+1;
         try {await refused('checkout.create',accepted,'starter_quote_refresh_required');} finally {config.quote.acquisition.minimumProductPayableMinor=minimum;}
         const graduation=config.quote.acquisition.graduationCadenceDays;
-        config.quote.acquisition.graduationCadenceDays=config.offer.cadenceDays.find(value=>value!==graduation);
+        const {choices}=await import('./application/shared/subscription-offer.ts');
+        config.quote.acquisition.graduationCadenceDays=choices(config.subscriptionOffers.classic.days).find(value=>value!==graduation);
         try {await refused('checkout.create',accepted,'starter_quote_refresh_required');} finally {config.quote.acquisition.graduationCadenceDays=graduation;}
         const key=crypto.randomUUID();const made=(await call('checkout.create',accepted,key)).body;
         assert.equal(made.ok,true,made.code);assert.equal(made.replayed,false);

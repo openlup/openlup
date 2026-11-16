@@ -191,11 +191,15 @@ existing configuration values; test the transition as well as each action.
 ## Staged native-boundary and proof-location repair
 
 A complete sweep of forwarded configuration and required-job prerequisites
-preceded this repair. Cadence choices and the default are restricted to 1..120;
+preceded this historical repair. At that stage, cadence choices and the default
+were restricted to 1..120;
 admission independently refuses unsupported cadences before contact resolution.
 The same sweep aligns per-line quantities (99), selected lines (50), stock and
 seeded price integer ranges, tax legal-basis length (200), and the shared legal
 revision (trimmed, 1..64) with their native consumers. Catalog size is unchanged.
+
+Current cadence ownership and the deferred SQL 90-day limit are documented in
+the [starter limits](../../../examples/neutral-store/docs/limits.md#interim-subscription-mode-price).
 
 The root PostgreSQL regression no longer launches a browser or reads ignored UI
 output. Existing source tests prove create/replay/completion/reload credential

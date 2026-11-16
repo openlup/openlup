@@ -106,9 +106,8 @@ for (const original of Object.values(configurations)) test(`${original.id}: nati
   valid.purchase.stock.quantities[valid.offer.products[0]!.sku] = 2147483647;
   assertConfig(valid);
   for (const mutate of [
-    (config: typeof valid) => { config.subscriptionOffers.classic.days = set(91); config.subscriptionOffers.classic.defaultDays = 91; },
-    (config: typeof valid) => { config.offer.cadenceDays = [120, 121]; },
-    (config: typeof valid) => { config.offer.defaultCadenceDays = 121; },
+    (config: typeof valid) => { config.offer.cadenceDays = [90, 91]; },
+    (config: typeof valid) => { config.offer.defaultCadenceDays = 91; },
     (config: typeof valid) => { config.purchase.stock.quantities[config.offer.products[0]!.sku] = 2147483648; },
     (config: typeof valid) => { config.offer.products[0]!.unitPrice.amountMinor = 2147483648; },
     (config: typeof valid) => { config.offer.subscriptionDiscountBps = 10000; },
@@ -118,5 +117,13 @@ for (const original of Object.values(configurations)) test(`${original.id}: nati
   ]) {
     const invalid = structuredClone(valid); mutate(invalid);
     assert.throws(() => assertConfig(invalid), /starter_(?:(?:offer|purchase_configuration|product|configuration|quote_configuration)_invalid|database_cadence_limit)/);
+  }
+  for (const mode of ['classic', 'sized'] as const) {
+    const invalid = structuredClone(valid);
+    invalid.subscriptionOffers[mode].days = set(90, 91);
+    assert.throws(() => assertConfig(invalid), /^Error: starter_database_cadence_limit$/);
+    invalid.subscriptionOffers[mode].days = set(90);
+    invalid.subscriptionOffers[mode].defaultDays = 91;
+    assert.throws(() => assertConfig(invalid), /^Error: starter_subscription_offer_invalid$/);
   }
 });

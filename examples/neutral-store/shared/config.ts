@@ -142,8 +142,8 @@ export function assertConfig(config: StoreConfig): void {
     || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
-    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 120
-    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 120)) {
+    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 90
+    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 90)) {
     throw new Error('starter_offer_invalid');
   }
   const purchase = config.purchase;

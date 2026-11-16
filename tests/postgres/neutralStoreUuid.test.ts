@@ -14,6 +14,7 @@ import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfil
 import { applyDemoSeed, demonstrationMarker } from '../../examples/neutral-store/installation/install.ts';
 import type { ActionResult, Operation } from '../../examples/neutral-store/shared/api.ts';
 import { isRecord } from '../../examples/neutral-store/shared/offer.ts';
+import { choices, set, type SubscriptionOffers } from '../../examples/neutral-store/shared/subscription-offer.ts';
 import {
   closePostgres, dockerAvailable, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer,
@@ -70,14 +71,14 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
     return { ...capable, quoteAcceptance: quoted.value.quoteAcceptance, expectedTotal: quoted.value.expectedTotal };
   }
 
-  async function control(permissive: boolean | null, emailLimit?: number, cadenceDays?: number[]) {
+  async function control(permissive: boolean | null, emailLimit?: number, subscriptionOffers?: SubscriptionOffers) {
     return new Promise<{ registrations: number }>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('host_control_timeout')), 5_000);
       host!.once('message', message => {
         clearTimeout(timer);
         resolve(message as { registrations: number });
       });
-      host!.send({ permissive, emailLimit, cadenceDays });
+      host!.send({ permissive, emailLimit, subscriptionOffers });
     });
   }
 
@@ -177,7 +178,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       let registrations = 0;
       const contacts = { ensureContactClient: input => { registrations++; return registrar.ensureContactClient(input); }, close: async () => {} };
       process.on('message', message => {
-        if (message.cadenceDays !== undefined) config.offer.cadenceDays = message.cadenceDays;
+        if (message.subscriptionOffers !== undefined) config.subscriptionOffers = message.subscriptionOffers;
         if (message.emailLimit !== undefined) config.purchase.inputLimits.email = message.emailLimit;
         if (message.permissive !== null) {
           config.purchase.attemptLimits = { ...config.purchase.attemptLimits, maxPerEmail: 2, maxPerRequester: 2, maxEntries: 8 };
@@ -280,21 +281,29 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
   }
 
   // New cases measured locally; each retains the existing 30 s hosted bound.
-  it('native cadence boundary accepts 120 and refuses 121 before contact resolution', async () => {
+  it('owned cadence maximum accepts 89 with readback and refuses 90 before contact resolution', async () => {
     const before = Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count);
+    const registrations = (await control(null)).registrations;
     try {
-      // Bypass configuration validation to exercise the independent HTTP admission guard.
-      await control(null, undefined, [120, 121]);
+      // Both days fit the native 90-day limit. Only the owned offer admits 89;
+      // exercise HTTP admission independently of startup validation and the UI projection.
+      const offers = structuredClone(config.subscriptionOffers), plan = offers.classic;
+      plan.days = set(...choices(plan.days), 89);
+      plan.checkoutDays = plan.days;
+      plan.bySku = Object.fromEntries(Object.entries(plan.bySku).map(([sku, rules]) =>
+        [sku, rules.map(rule => ({ ...rule, days: set(...choices(rule.days), 89) }))]));
+      await control(null, undefined, offers);
       const input = checkout(`cadence-${config.id}@example.test`);
-      const refused = await call('checkout.create', { ...input, acquisitionCapability: 'subscription-acquisition.v1', cart: { ...input.cart, mode: 'subscription', cadenceDays: 121 } });
+      const refused = await call('checkout.create', { ...input, acquisitionCapability: 'subscription-acquisition.v1', cart: { ...input.cart, mode: 'subscription', cadenceDays: 90 } });
       expect(refused).toEqual({ ok: false, code: 'cadence_unavailable' });
       expect(Number((await owner!.query('SELECT count(*) AS count FROM public.clients')).rows[0].count)).toBe(before);
-      const accepted = await call('checkout.create', await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 120 } }));
+      expect((await control(null)).registrations).toBe(registrations);
+      const accepted = await call('checkout.create', await quotedSubscription({ ...input, cart: { ...input.cart, mode: 'subscription', cadenceDays: 89 } }));
       expect(accepted.ok).toBe(true);
       if (!accepted.ok || !isRecord(accepted.value)) throw new Error('cadence_purchase_required');
       const read = await call('checkout.read', { orderRef: accepted.value.orderRef, token: accepted.value.token });
-      expect(read.ok && isRecord(read.value) && read.value.cadenceDays).toBe(120);
-    } finally { await control(null, undefined, [...config.offer.cadenceDays]); }
+      expect(read.ok && isRecord(read.value) && read.value.cadenceDays).toBe(89);
+    } finally { await control(null, undefined, config.subscriptionOffers); }
   }, 30_000);
 
   it('padded customer challenge email preserves the normalized address, public shape and floor', async () => {
