@@ -58,4 +58,9 @@ export type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
 export { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 export { catalogPackIssues } from "./productTypeIssues.js";
 export { backfillCatalogNetContent } from "./backfillCatalogNetContent.js";
+export { validateCatalogAttributes, catalogAttributesReadyForPublication } from "./attributeValidation.js";
+export type { CatalogAttributeInput, CatalogAttributeValidation, CatalogAttributeProjectionValue } from "./attributeValidation.js";
+export type { CatalogAttributeReference, CatalogAttributeReferenceResolution, CatalogAttributeReferencePort } from "./attributeReferencePort.js";
+export { prepareCatalogAttributeProjection } from "./attributeProjection.js";
+export type { CatalogAttributeProjectionRow, CatalogAttributeProjectionPreparation } from "./attributeProjection.js";
 export { CatalogCombinationError, canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, validateCatalogCombinationChangesV2 } from "./variantCombination.js";

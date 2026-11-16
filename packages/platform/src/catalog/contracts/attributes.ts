@@ -1,4 +1,4 @@
-/** Definition grammar only. Attribute value validation belongs to publication. */
+/** Definition grammar. Owner validation prepares values for later publication integration. */
 export type CatalogAttributeScalarType =
   | { kind: "text"; maxLength: number; minLength?: number }
   | { kind: "localized_text"; maxLength: number; locales: readonly string[]; requiredLocales?: readonly string[] }

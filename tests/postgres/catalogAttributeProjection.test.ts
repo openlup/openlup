@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { validateCatalogAttributes, prepareCatalogAttributeProjection, type CatalogProductTypeInput } from "@openlup/platform/catalog";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
@@ -112,3 +114,53 @@ it("catalog_attribute_updates_coexist_with_referenced_key_share", async () => {
   }
 });
 
+it("catalog_attribute_projection_text_index_bound", async () => {
+  const db = await catalogue.connect();
+  try {
+    await db.query("BEGIN");
+    expect((await db.query("SHOW block_size")).rows).toEqual([{ block_size: "8192" }]);
+    const index = (await db.query(`SELECT pg_get_indexdef(i.indexrelid) AS definition, i.indpred IS NULL AS unconditional
+      FROM pg_index i WHERE i.indexrelid='public.catalog_attribute_projection_text_idx'::regclass`)).rows[0];
+    expect(index).toEqual({ definition: expect.stringContaining("USING btree (attribute_key, definition_version, text_value, sku_id)"), unconditional: true });
+    const sample = Array.from({ length: 256 }, (_, i) => createHash("sha256").update(String(i)).digest("hex")).join("");
+    let revision = 1;
+    let inserted = 0;
+    for (const kind of ["text", "localized_text"] as const) for (const scope of ["product", "variant"] as const) {
+      for (const filterable of [false, true]) for (const bytes of [2_047, 2_048, 2_049]) {
+        const valueType = kind === "text" ? { kind, maxLength: 16_384 } : { kind, maxLength: 16_384, locales: ["en"] };
+        // Exercise the largest admitted key and version in the landed composite index.
+        const key = "a".repeat(64);
+        const definition: CatalogProductTypeInput = {
+          key: "example:item", version: 2_147_483_647,
+          units: [{ code: "openlup:g", dimension: "mass", integral: false }], netContentUnits: ["openlup:g"], dimensions: [], validateContent: () => [],
+          attributes: [{ key, scope, valueType, required: false, cardinality: { min: 0, max: 1 }, filterable, facetable: filterable, public: true, displayOrder: 0, labels: {} }],
+        };
+        const value = kind === "text" ? sample.slice(0, bytes) : { en: sample.slice(0, bytes - 9) };
+        const input = scope === "product" ? { productAttributes: { [key]: value }, skus: [{ id: attributeSku }] }
+          : { skus: [{ id: attributeSku, attributes: { [key]: value } }] };
+        const validation = await validateCatalogAttributes(definition, input);
+        const prepared = prepareCatalogAttributeProjection(validation, String(revision++));
+        if (bytes > 2_048) {
+          expect(prepared).toMatchObject({ prepared: false, issues: [{ code: "attribute_projection_text_too_large" }] });
+          continue;
+        }
+        if (!prepared.prepared) throw new Error("index-safe value refused preparation");
+        const row = prepared.rows[0];
+        const persisted = (await db.query(`INSERT INTO public.catalog_attribute_projection
+          (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
+          VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING octet_length(text_value) AS bytes`,
+        [row.sku_id, row.publication_revision, row.attribute_key, row.definition_version, row.value_ordinal, row.value_kind, row.text_value])).rows[0];
+        expect(persisted.bytes).toBe(bytes); inserted++;
+      }
+    }
+    expect((await db.query("SELECT count(*)::int AS count FROM public.catalog_attribute_projection")).rows).toEqual([{ count: inserted }]);
+    expect(inserted).toBe(16);
+    // Bypassing the owner reproduces the real index failure on an incompressible value.
+    await db.query("SAVEPOINT bypass_owner");
+    await expect(db.query(`INSERT INTO public.catalog_attribute_projection
+      (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
+      VALUES($1,$2,$3,2147483647,0,'text',$4)`, [attributeSku, revision, "a".repeat(64), sample.slice(0, 4_096)]))
+      .rejects.toMatchObject({ code: "54000", message: expect.stringContaining("catalog_attribute_projection_text_idx") });
+    await db.query("ROLLBACK TO SAVEPOINT bypass_owner");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
