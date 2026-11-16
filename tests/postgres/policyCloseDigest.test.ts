@@ -89,6 +89,9 @@ afterAll(async () => { await closePostgres(containers, pools); await resources.c
 
 it("policy_close_preserves_original_digest", async () => {
   const policy = await insert(source.owner, input("close"));
+  const persisted = await createPostgresCommercePriceAuthorityReadPort(source.runtime)
+    .listSubscriptionPolicyHistory({ ...context, priceListId: list });
+  expect(await assertSubscriptionPricePolicyDigest(persisted[0].value)).toEqual(policy);
   const before = await continuity();
   for (const table of ["subscriptions", "subscription_lines", "subscription_cycles", "subscription_renewal_terms",
     "subscription_renewal_term_lines", "commerce_orders", "commerce_order_items"]) expect(before[table].length).toBeGreaterThan(0);
@@ -151,6 +154,11 @@ it("keeps policy mutation and its marker unavailable to the runtime login", asyn
     .rejects.toMatchObject({ code: "55000" });
   await expect(source.owner.query("DELETE FROM public.subscription_price_policy_revisions WHERE id=$1", [open.id]))
     .rejects.toMatchObject({ code: "55000" });
+  await expect(source.owner.query(`INSERT INTO public.subscription_price_policy_revisions
+    (price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,
+      rounding_rule,effective_from,digest,closed_from_open)
+    VALUES($1,'ZZ','XXX','invalid-window',1,1000,10,'FLOOR_TO_QUANTUM',$2,$3,true)`, [list, from, open.digest]))
+    .rejects.toMatchObject({ code: "23514", constraint: "subscription_price_policy_revisions_closed_from_open_check" });
 });
 
 it.each([false, true])("transfer_round_trip_matrix preserves the original policy tuple and close marker: %s", async closedFromOpen => {
