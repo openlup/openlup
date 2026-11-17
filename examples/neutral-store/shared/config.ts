@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
 import { assertQuoteConfiguration, type QuoteConfiguration } from './quote-config.ts';
@@ -142,8 +143,8 @@ export function assertConfig(config: StoreConfig): void {
     || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
-    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 90
-    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 90)) {
+    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > MAX_CADENCE_DAYS
+    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > MAX_CADENCE_DAYS)) {
     throw new Error('starter_offer_invalid');
   }
   const purchase = config.purchase;

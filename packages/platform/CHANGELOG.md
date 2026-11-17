@@ -20,17 +20,19 @@ in the source repository.
   whole days through `MAX_CADENCE_DAYS` from `@openlup/core/subscription`.
   Transport, resume/recovery/account reads, editor contexts, retained renewal
   terms and frozen snapshots keep PostgreSQL integer representation. Completed
-  checkout/editor receipts replay before current limits with ownership and
-  fingerprint checks intact. Fresh native renewal creation and starter graduation
+  editor, native draft and renewal receipts replay before current limits with
+  ownership and fingerprint checks intact. Checkout-command and saga-fallback
+  paths can quote before replay and may still refuse stored cadence above 3660;
+  this affects unreleased development data only and remains a follow-up. Fresh
+  native renewal creation and starter graduation
   above 3660 return `NativeRenewalCadenceError` with `cadence_limit_exceeded` and
   the allowed maximum; historical frozen operations remain readable/replayable.
-  Generic SQL bundle/lifecycle quoting retains its 90-day guards.
 
-Migration: no database migration in this change. Hosts may compose the optional
-callback with adopter-owned rules; no default offer list or starter derivation
+Migration: hosts may compose the optional callback with adopter-owned rules; no default offer list or starter derivation
 is supplied. Check date representation for the selected operation.
-Fresh cadence admission above 3660 days now refuses; completed receipts
-continue to replay before current limits.
+Fresh cadence admission above 3660 days now refuses. Completed editor, native
+draft and renewal receipts replay before current limits; checkout-command and
+saga-fallback replay above 3660 remains a follow-up for unreleased development data.
 
 Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
 

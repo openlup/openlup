@@ -36,5 +36,5 @@ Fresh subscription future-terms commands admit supplied cadence/plan days after
 receipt replay and before host translation or native preview/apply dispatch,
 so an out-of-range preview cannot persist a refusal receipt.
 
-Migration: no SQL changes. Existing 90-day SQL guards and the starter's
-`starter_database_cadence_limit` refusal above 90 remain pending a separate slice.
+Migration: apply the complete native catalogue for the separately recorded SQL
+and starter widening in `subscription-sql-cadence.md`.

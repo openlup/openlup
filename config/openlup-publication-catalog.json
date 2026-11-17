@@ -1462,6 +1462,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4791,6 +4795,10 @@
     },
     {
       "path": "packages/platform/sql/20261122180000_catalog_base_price_writer.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122190000_subscription_cadence_bound.sql",
       "class": "public-output"
     },
     {

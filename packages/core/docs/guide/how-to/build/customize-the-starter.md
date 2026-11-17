@@ -172,9 +172,11 @@ commands still require current rules, authentication, locks and quote/fact guard
 Graduation retains its own cadence and must admit the purchased lines separately.
 
 Reapply the demonstration installation and restart after changing the servicing
-minimum; runtime admission refuses installed-minimum drift. The current starter
-refuses configuration above 90 days because historical SQL still has that limit.
-Wider package DTOs alone do not establish database support for longer cadences.
+minimum; runtime admission refuses installed-minimum drift. The current source
+starter admits whole-day cadences from 1 through `MAX_CADENCE_DAYS` (3660).
+Apply the complete native catalogue, including
+`20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
+This forward is unreleased; use the matching installed package's migration guide.
 
 ## Compose shipping quotes
 

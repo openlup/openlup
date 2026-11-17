@@ -1,3 +1,5 @@
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
+
 /** Application-owned commercial domains. Defaults and preferred choices never widen admission. */
 export type Numbers = { kind: 'set'; values: readonly number[] }
   | { kind: 'range'; min: number; max: number; step: number };
@@ -47,8 +49,7 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
     } else if (![domain.min,domain.max,domain.step].every(positive) || domain.max < domain.min) invalid();
   };
   numbers(offer.days);
-  // The current starter database still has the historical 90-day SQL boundary.
-  if (maximum(offer.days) > 90) throw new Error('starter_database_cadence_limit');
+  if (maximum(offer.days) > MAX_CADENCE_DAYS) invalid();
   for (const domain of [offer.checkoutDays,offer.preferredDays]) if (domain) {
     numbers(domain); if (maximum(domain) > maximum(offer.days)) invalid();
     if (choices(domain).some(day => !contains(offer.days,day))) invalid();

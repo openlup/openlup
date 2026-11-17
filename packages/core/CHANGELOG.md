@@ -17,8 +17,10 @@ in the source repository.
 
 Migration: fresh quotes, drafts and editor results above 3660 days now refuse;
 historical transport, stored data and completed receipts retain integer
-representation. Completed receipts replay before current limits. SQL and starter guards
-retain their 90-day limit pending a separate migration.
+representation. Completed editor, native draft and renewal receipts replay before
+current limits. Checkout-command and saga-fallback paths can quote before replay
+and may still refuse stored cadence above 3660; this affects unreleased development
+data only and remains a follow-up.
 
 ## [0.43.0]
 

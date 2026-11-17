@@ -10,5 +10,5 @@ representation. Completed editor, native draft and renewal receipts replay befor
 current limits; replay above 3660 is not guaranteed on checkout-command or
 saga-fallback paths that quote before replay. No released data can contain such
 values: no published version admitted cadence above 120, and PR4a's widening is
-unreleased. Existing SQL and starter guards still refuse above 90 pending a
-separate migration.
+unreleased. The SQL and starter widening is recorded separately in
+`subscription-sql-cadence.md`.
