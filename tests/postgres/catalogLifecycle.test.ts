@@ -93,6 +93,7 @@ it("catalog_archive_refuses_outstanding_obligations", async () => {
   const f = await seed(), order = randomUUID();
   await db.query("WITH o AS (INSERT INTO public.commerce_orders(id,status,currency_code,total_amount_minor) VALUES($1,'fulfilled','XXX',617) RETURNING id) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) SELECT id,$2,1,1,617,617 FROM o", [order, f.sku]);
   expect(await obligations(f.sku)).toMatchObject({ outcome: "complete", obligations: [{ family: "outstanding_order", sourceId: order }] });
+  expect(await archive(f)).toMatchObject({ reason: "catalog_archive_refuses_outstanding_obligations" });
 });
 it("same-SKU binding refuses a foreign revision and preserves historical NULL", async () => {
   const f = await seed(), foreign = randomUUID();

@@ -32,6 +32,8 @@ schedule is rewritten.
 
 Native transfer retains authoritative lifecycle and acceptance bytes through
 existing row inventories and restores revisions before subscription bindings.
+The generic row utility continues to refuse INSERT-guarded acceptance tables;
+the connected native owner path verifies and restores them.
 Transient lifecycle write capabilities are excluded and nonempty capabilities
 refuse capture. Managed ingress supplies NULL for absent native acceptance
 carriers and never manufactures lineage.
