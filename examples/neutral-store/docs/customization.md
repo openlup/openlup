@@ -130,9 +130,10 @@ Catalogue drafts write only isolated authoring tables (packages/platform/sql/202
 opaque source/reference/revision/provenance tuples. The runtime maps the selected
 ID to that tuple before calling the native acquisition case port.
 
-The current starter explicitly refuses cadence configuration above 90 days
-with `starter_database_cadence_limit`: historical SQL paths retain that bound.
-The package DTO representation bounds are broader; SQL widening is deferred. Checkout admits at most 50 selected lines and
+The starter admits configured whole-day cadences from 1 through 3660 using
+`MAX_CADENCE_DAYS` from `@openlup/core/subscription`. Apply the complete native
+catalogue, including `20261122190000_subscription_cadence_bound.sql`, before
+using longer cadences. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and seeded unit prices fit
 PostgreSQL integers; each offered mode must have a positive seeded unit price.
 Tax legal-basis text is at most 200 characters and the shared legal revision is

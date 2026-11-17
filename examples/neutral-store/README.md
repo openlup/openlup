@@ -510,8 +510,9 @@ cannot exceed the native destination bounds. Browser fields use those same limit
 
 The owned `subscriptionOffers` input defines subscription cadences, defaults and
 per-SKU quantity rules; `offer.cadenceDays` is a derived UI projection. Configured
-days are whole numbers from 1 through 90. The starter refuses values above 90
-with `starter_database_cadence_limit` until the historical SQL limit is widened.
+days are whole numbers from 1 through 3660, using `MAX_CADENCE_DAYS` from
+`@openlup/core/subscription`. Apply the complete native migration catalogue,
+including `20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
 Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and seeded unit prices fit
 PostgreSQL integers; each offered mode must have a positive seeded unit price.
