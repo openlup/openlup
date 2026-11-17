@@ -14,6 +14,19 @@ function input(): ReadinessInput {
     schemaProbe: { observe: async (req) => ({ database: "db-1", version: req.version, objects: req.objects.map((object) => ({ object, present: true })) }) },
   };
 }
+it("admits stable release versions and refuses leading zeros and prereleases", async () => {
+  for (const version of ["1.0.0", "1.2.3", "01.0.0", "1.0.0-rc.1"]) {
+    const i = input();
+    i.loadedPackages = i.loadedPackages.map(pkg => ({ ...pkg, version }));
+    i.contributions[0].manifest.version = version;
+    const report = await evaluateReadiness(i);
+    if (version === "1.0.0" || version === "1.2.3") expect(report.state).toBe("ready");
+    else {
+      expect(report.state).not.toBe("ready");
+      expect(report.issues.map(issue => issue.subject)).toEqual(expect.arrayContaining(["loaded-package", "manifest"]));
+    }
+  }
+});
 // B0 legacy corpus: these existing cases and the inert factory/admission shapes
 // below capture full reports, including array/property order, before source changes.
 describe("candidate readiness", () => {

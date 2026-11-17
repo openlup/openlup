@@ -14,6 +14,8 @@ in the source repository.
 
 - Publishable on the npm `latest` dist-tag as `1.0.0`, from tag
   `openlup-core-v1.0.0`.
+- Accept stable MAJOR.MINOR.PATCH package versions in readiness declarations;
+  continue to refuse leading zeros and prerelease suffixes.
 
 Label declaration occurrences as unverified public-import leads. Resolve the
 selected application's reachable declared OpenLup packages and required Core
