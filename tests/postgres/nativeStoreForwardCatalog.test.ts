@@ -275,7 +275,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } else if (def !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
-  // Only declared fresh-column FK actions may extend an existing table. Read the
+  // Declared fresh-column FK actions and the closed same-SKU pair extend an existing table. Read the
   // actual target, key, action and validation state from PostgreSQL, not SQL history.
   const foreignKeys = nativeStoreAddedForeignKeys(slot.existingTableStatements ?? []);
   const installedKeys = (await db.query(`SELECT c.conrelid::int AS relation, c.conname AS name,
@@ -283,18 +283,19 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     c.confmatchtype::text AS match, c.convalidated AS validated, c.condeferrable AS deferrable,
     c.condeferred AS deferred, c.conkey::int[] AS columns, c.confkey::int[] AS keys
     FROM pg_constraint c WHERE c.contype='f'`)).rows;
-  const freshKeys = installedKeys.filter(key => oldRelations.has(key.relation) && !before.constraints.some(old => old.rel === oldRelations.get(key.relation)!.name && old.name === key.name) && ["c", "n"].includes(key.deletion));
+  const freshKeys = installedKeys.filter(key => oldRelations.has(key.relation) && !before.constraints.some(old => old.rel === oldRelations.get(key.relation)!.name && old.name === key.name) && (["c", "n"].includes(key.deletion) || key.name === "subscription_lines_catalog_sku_revision_fkey"));
   if (freshKeys.length !== foreignKeys.length) fail("FK delete actions differ from the slot's existing-table list");
   for (const key of foreignKeys) {
     const table = before.relations.find(row => row.name === key.table && row.kind === "r");
     const installed = freshKeys.find(row => row.relation === table?.oid && row.name === key.name);
     const column = after.columns.find(row => row.rel === key.table && row.name === key.column);
     const target = after.relations.find(row => row.name === key.reference && row.kind === "r");
-    const targetKey = after.columns.find(row => row.rel === key.reference && row.name === key.key);
+    const sourceColumns = key.columns.map(name => after.columns.find(row => row.rel === key.table && row.name === name)?.attrs.attnum);
+    const targetColumns = key.keys.map(name => after.columns.find(row => row.rel === key.reference && row.name === name)?.attrs.attnum);
     if (!table || !column || before.columns.some(row => row.rel === key.table && row.name === key.column)) fail("FK delete action requires a fresh column on an existing table");
-    if (!installed || !target || !targetKey || installed.target !== target.oid || installed.deletion !== key.deletion || installed.validated !== key.validated
+    if (!installed || !target || sourceColumns.includes(undefined) || targetColumns.includes(undefined) || installed.target !== target.oid || installed.deletion !== key.deletion || installed.validated !== key.validated
       || installed.update !== "a" || installed.match !== "s" || installed.deferrable || installed.deferred
-      || JSON.stringify(installed.columns) !== JSON.stringify([column!.attrs.attnum]) || JSON.stringify(installed.keys) !== JSON.stringify([targetKey!.attrs.attnum])) fail("FK target, key, delete action or validation state differs from its entry");
+      || JSON.stringify(installed.columns) !== JSON.stringify(sourceColumns) || JSON.stringify(installed.keys) !== JSON.stringify(targetColumns)) fail("FK target, key, delete action or validation state differs from its entry");
     for (const old of before.columns.filter(row => row.rel === key.table)) if (JSON.stringify(after.columns.find(row => row.rel === old.rel && row.name === old.name)) !== JSON.stringify(old)) fail(`FK table column ${old.rel}.${old.name} changed`);
   }
 
@@ -916,6 +917,83 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     // The pre-existing-column case installs it before the snapshot, then only adds the FK.
     const actual=label==="a pre-existing column"?addedFk:sql;
     await expect(checkForward(pool,label==="an unlisted action"?SYNTHETIC_SLOT:fkSlot,forward(CREATED_OK,actual),false,setup)).rejects.toThrow(message);
+  });
+  const sameSkuColumn = "ALTER TABLE public.subscription_lines ADD COLUMN catalog_sku_revision_id uuid;";
+  const sameSkuFk = "ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;";
+  const sameSkuValidate = "ALTER TABLE public.subscription_lines VALIDATE CONSTRAINT subscription_lines_catalog_sku_revision_fkey;";
+  const sameSkuSlot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], existingTableStatements: [sameSkuColumn, sameSkuFk] };
+  const sameSkuBase = `CREATE TABLE public.subscription_lines (id int PRIMARY KEY, variant_id uuid NOT NULL, other_id uuid);
+    CREATE TABLE public.catalog_sku_revisions (sku_id uuid NOT NULL, id uuid PRIMARY KEY, other_id uuid, UNIQUE (sku_id, id), UNIQUE (id, sku_id), UNIQUE (other_id, id));
+    CREATE TABLE public.cat_other_lines (LIKE public.subscription_lines);
+    ALTER TABLE public.cat_other_lines ADD COLUMN catalog_sku_revision_id uuid;
+    CREATE TABLE public.cat_other_revisions (sku_id uuid, id uuid, UNIQUE (sku_id, id));
+    INSERT INTO public.subscription_lines (id, variant_id) VALUES (1, '00000000-0000-0000-0000-000000000001');
+    INSERT INTO public.catalog_sku_revisions (sku_id, id) VALUES
+      ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011'),
+      ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000012');`;
+  it("proves ordered same-SKU keys, RESTRICT, validation and historical NULL preservation", async () => {
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query(sameSkuBase);
+      const historical = (await db.query("SELECT * FROM public.subscription_lines ORDER BY id")).rows;
+      const before = await pinned(db, () => snapshot(db));
+      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      await db.query(sameSkuColumn + sameSkuFk);
+      await pinned(db, async () => assertSlotCatalog(db, sameSkuSlot, before, await snapshot(db), migrationRole));
+      expect((await db.query("SELECT convalidated, confdeltype FROM pg_constraint WHERE conname='subscription_lines_catalog_sku_revision_fkey'")).rows)
+        .toEqual([{ convalidated: false, confdeltype: "r" }]);
+      await db.query(sameSkuValidate);
+      const validatedSlot = { ...sameSkuSlot, existingTableStatements: [sameSkuColumn, sameSkuFk, sameSkuValidate] };
+      await pinned(db, async () => assertSlotCatalog(db, validatedSlot, before, await snapshot(db), migrationRole));
+      expect((await db.query("SELECT convalidated FROM pg_constraint WHERE conname='subscription_lines_catalog_sku_revision_fkey'")).rows[0].convalidated).toBe(true);
+      expect((await db.query("SELECT * FROM public.subscription_lines ORDER BY id")).rows)
+        .toEqual(historical.map(row => ({ ...row, catalog_sku_revision_id: null })));
+      await db.query("UPDATE public.subscription_lines SET catalog_sku_revision_id='00000000-0000-0000-0000-000000000011' WHERE id=1");
+      for (const denied of [
+        "UPDATE public.subscription_lines SET catalog_sku_revision_id='00000000-0000-0000-0000-000000000012' WHERE id=1",
+        "UPDATE public.subscription_lines SET variant_id='00000000-0000-0000-0000-000000000002' WHERE id=1",
+        "DELETE FROM public.catalog_sku_revisions WHERE id='00000000-0000-0000-0000-000000000011'",
+        "UPDATE public.catalog_sku_revisions SET sku_id='00000000-0000-0000-0000-000000000002' WHERE id='00000000-0000-0000-0000-000000000011'",
+      ]) {
+        await db.query("SAVEPOINT denied");
+        await expect(db.query(denied)).rejects.toMatchObject({ code: "23503", constraint: "subscription_lines_catalog_sku_revision_fkey" });
+        await db.query("ROLLBACK TO SAVEPOINT denied");
+      }
+      await db.query("INSERT INTO public.subscription_lines (id, variant_id) VALUES (2, '00000000-0000-0000-0000-000000000002')");
+      expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE id=2")).rows[0].catalog_sku_revision_id).toBeNull();
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each([
+    ["source arity", sameSkuFk.replace("variant_id, ", "")],
+    ["target arity", sameSkuFk.replace("sku_id, ", "")],
+    ["both arities", sameSkuFk.replace("variant_id, ", "").replace("sku_id, ", "")],
+    ["source order", sameSkuFk.replace("variant_id, catalog_sku_revision_id", "catalog_sku_revision_id, variant_id")],
+    ["target order", sameSkuFk.replace("sku_id, id", "id, sku_id")],
+    ["both orders", sameSkuFk.replace("variant_id, catalog_sku_revision_id", "catalog_sku_revision_id, variant_id").replace("sku_id, id", "id, sku_id")],
+    ["other source column", sameSkuFk.replace("(variant_id,", "(other_id,")],
+    ["other target column", sameSkuFk.replace("(sku_id,", "(other_id,")],
+    ["other source relation", sameSkuFk.replace("public.subscription_lines", "public.cat_other_lines")],
+    ["other target relation", sameSkuFk.replace("public.catalog_sku_revisions", "public.cat_other_revisions")],
+    ["other constraint", sameSkuFk.replace("subscription_lines_catalog_sku_revision_fkey", "other_fkey")],
+    ["VALID on add", sameSkuFk.replace(" NOT VALID", "")],
+    ["implicit NO ACTION", sameSkuFk.replace(" ON DELETE RESTRICT", "")],
+    ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`ON DELETE ${action}`, sameSkuFk.replace("DELETE RESTRICT", `DELETE ${action}`)]),
+    ...["RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"].map(action => [`ON UPDATE ${action}`, sameSkuFk.replace(" NOT VALID", ` ON UPDATE ${action} NOT VALID`)]),
+    ["deferrable", sameSkuFk.replace(" NOT VALID", " DEFERRABLE NOT VALID")],
+    ["MATCH FULL", sameSkuFk.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+    ["unlisted validation", sameSkuFk + sameSkuValidate],
+    ["appended column mutation", sameSkuFk + "ALTER TABLE public.subscription_lines ALTER COLUMN variant_id SET DEFAULT gen_random_uuid();"],
+    ["appended grant", sameSkuFk + "GRANT SELECT ON TABLE public.subscription_lines TO authenticated;"],
+  ])("refuses installed same-SKU FK drift: %s", async (_label, statement) => {
+    await expect(checkForward(pool, sameSkuSlot, sameSkuColumn + statement, false, sameSkuBase))
+      .rejects.toThrow(/catalog:|number of referencing and referenced columns/u);
+  });
+  it("refuses a missing, unlisted or pre-existing same-SKU binding and missing validation", async () => {
+    await expect(checkForward(pool, sameSkuSlot, sameSkuColumn, false, sameSkuBase)).rejects.toThrow(/FK delete actions differ/u);
+    await expect(checkForward(pool, { ...sameSkuSlot, existingTableStatements: [] }, sameSkuColumn + sameSkuFk, false, sameSkuBase)).rejects.toThrow(/FK delete actions differ/u);
+    await expect(checkForward(pool, sameSkuSlot, sameSkuFk, false, sameSkuBase + sameSkuColumn)).rejects.toThrow(/fresh column/u);
+    await expect(checkForward(pool, { ...sameSkuSlot, existingTableStatements: [sameSkuColumn, sameSkuFk, sameSkuValidate] }, sameSkuColumn + sameSkuFk, false, sameSkuBase)).rejects.toThrow(/validation state/u);
   });
   const freshTrigger=TRIGGER_BEFORE.replace("public.cat_existing_table","public.cat_trigger_table");
   const freshCreate="CREATE TABLE public.cat_trigger_table(id int,owner_ref uuid); REVOKE ALL ON TABLE public.cat_trigger_table FROM PUBLIC;";

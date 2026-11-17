@@ -2147,6 +2147,17 @@ only after the same ordered list adds that column (including an ADD COLUMN and
 named constraint companion in one ALTER). The catalogue proves the column did
 not exist before the slot, the exact referenced table/key, delete action and
 validation state, with prior columns, constraints and ACLs unchanged.
+One composite exception admits the single-action statement
+`ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;`.
+The revision column must be added earlier in the same slot's ordered list.
+The existing listed `VALIDATE CONSTRAINT` action may follow it; the catalogue
+proof checks that final validation state, ordered `conkey`/`confkey`, RESTRICT,
+default update and match actions, and non-deferrability. PostgreSQL witnesses
+prove same-SKU pairing and preservation of historical NULL bindings. Other
+arity, column order, columns, relations, actions, validation on add and appended
+statements refuse. Only the exact FK action is masked before the existing generic
+guards; their other refusals remain in force. This control change installs no
+binding, changes no agreement and activates no catalogue capability.
 SET NULL/CASCADE on pre-existing columns and dropped or rewritten foreign keys
 remain refused. Other drops, column type changes, renames and ownership changes
 refuse even when listed. Every listed statement must appear once in order, with internal bytes unchanged; an unlisted
