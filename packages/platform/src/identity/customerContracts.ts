@@ -22,7 +22,7 @@ export const customerMeResponseSchema = z.object({
         .object({
           subscriptionId: z.guid(),
           status: z.string().min(1),
-          cadenceDays: z.number().int().positive(),
+          cadenceDays: z.number().int().positive().max(2_147_483_647),
           nextCycleAt: z.string().datetime({ offset: true }).nullable(),
           paymentMethodKind: z.string().nullable(),
         })

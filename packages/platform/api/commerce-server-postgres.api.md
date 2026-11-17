@@ -7842,7 +7842,7 @@ export declare class CommerceQuoteSnapshotError extends Error {
     readonly details: Record<string, unknown>;
     constructor(code: CommerceQuoteSnapshotErrorCode, message: string, details?: Record<string, unknown>);
 }
-export type CommerceQuoteErrorCode = "UNKNOWN_SKU" | "PRICE_NOT_CONFIGURED" | "UNSUPPORTED_TAX_PROFILE" | "PRICING_INVARIANT_VIOLATION";
+export type CommerceQuoteErrorCode = "cadence_limit_exceeded" | "UNKNOWN_SKU" | "PRICE_NOT_CONFIGURED" | "UNSUPPORTED_TAX_PROFILE" | "PRICING_INVARIANT_VIOLATION";
 export declare class CommerceQuoteError extends Error {
     readonly code: CommerceQuoteErrorCode;
     readonly details: Record<string, unknown>;

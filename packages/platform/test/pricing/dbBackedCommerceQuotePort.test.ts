@@ -19,6 +19,26 @@ import { createDbBackedCommerceQuotePort } from "./quoteEngineFixtures.js";
 const COVERAGE_CONSTRAINT = { kind: "usage_days" as const, value: 21, dailyUsageOverride: 328 };
 const settlementProfile = readSettlementProfile();
 
+it.each([0, 1, 3660, 3661])("admits fresh quote cadence %i before invoking any pricing dependency", async cadenceDays => {
+  const catalogReadPort = createCatalogReadPort();
+  const pricingResolverPort = createPricingResolver({
+    "variant-item-alpha-400:subscription": price({ mode: "subscription", unitPriceMinor: 100 }),
+    "variant-item-alpha-400:one_time": price({ mode: "one_time", unitPriceMinor: 100 }),
+  });
+  const now = vi.fn(() => "2026-06-05T10:00:00.000Z");
+  const port = createDbBackedCommerceQuotePort({ catalogReadPort, pricingResolverPort, now });
+  for (const create of [port.createQuote, port.createServerAuthoritativeQuote!]) {
+    const result = create({ mode: "subscription", cadenceDays, promoCodes: [], lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }] });
+    if (cadenceDays === 0 || cadenceDays === 3661) {
+      await expect(result).rejects.toMatchObject({ name: "CommerceQuoteError", code: "cadence_limit_exceeded",
+        details: { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: 3660 } });
+      expect(now).not.toHaveBeenCalled();
+      for (const method of Object.values(catalogReadPort)) if (vi.isMockFunction(method)) expect(method).not.toHaveBeenCalled();
+      expect(pricingResolverPort.resolvePrice).not.toHaveBeenCalled();
+    } else await expect(result).resolves.toMatchObject({ quote: { context: { cadenceDays } } });
+  }
+});
+
 const exampleTaxProfile = {
   included: true,
   country: "QZ",

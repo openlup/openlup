@@ -9604,10 +9604,12 @@ import type { z } from "zod";
 import type { ConfiguratorIntentPersistencePort } from "../contracts/ports.js";
 import type { CheckoutCommandPersistencePort } from "../contracts/runtimePorts.js";
 import type { RpcError } from "../contracts/omsTypes.js";
+interface CompletedIntentRow {
+    response_payload?: unknown;
+    request_fingerprint?: string | null;
+}
 interface ConfiguratorIntentIdentityQueryResult {
-    data: Array<{
-        response_payload?: unknown;
-    }> | null;
+    data: CompletedIntentRow[] | null;
     error: RpcError | null;
 }
 interface ConfiguratorIntentIdentityQuery {
@@ -9833,9 +9835,9 @@ export interface ExpiredCheckoutRecoveryWritePort {
     }>;
 }
 export declare class ExpiredCheckoutRecoveryError extends Error {
-    readonly reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed';
+    readonly reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed' | 'cadence_limit_exceeded';
     readonly code?: "native_prepared_attempt_store_unsupported" | undefined;
-    constructor(reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed', code?: "native_prepared_attempt_store_unsupported" | undefined, options?: ErrorOptions);
+    constructor(reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed' | 'cadence_limit_exceeded', code?: "native_prepared_attempt_store_unsupported" | undefined, options?: ErrorOptions);
 }
 /** Internal normalization preserves JSON values across JSONB key ordering. */
 export declare function parseRecoveryRecreationQuote(value: unknown): CreateQuoteResponse | null;
@@ -17410,7 +17412,7 @@ export declare class CommerceQuoteSnapshotError extends Error {
     readonly details: Record<string, unknown>;
     constructor(code: CommerceQuoteSnapshotErrorCode, message: string, details?: Record<string, unknown>);
 }
-export type CommerceQuoteErrorCode = "UNKNOWN_SKU" | "PRICE_NOT_CONFIGURED" | "UNSUPPORTED_TAX_PROFILE" | "PRICING_INVARIANT_VIOLATION";
+export type CommerceQuoteErrorCode = "cadence_limit_exceeded" | "UNKNOWN_SKU" | "PRICE_NOT_CONFIGURED" | "UNSUPPORTED_TAX_PROFILE" | "PRICING_INVARIANT_VIOLATION";
 export declare class CommerceQuoteError extends Error {
     readonly code: CommerceQuoteErrorCode;
     readonly details: Record<string, unknown>;

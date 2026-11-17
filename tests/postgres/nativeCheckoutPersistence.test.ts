@@ -160,6 +160,27 @@ finally { await db.end(); }`);
   await refusesWithoutWrite(() => port().createOrderDraft(input, { clientId: otherClientId }), { name: "CommerceOrderDraftConflictError", details: { code: "23505" } });
 }, 30_000);
 
+it.each([3661, 2_147_483_647])("replays a completed historical %i-day draft through SQL before current admission", async cadenceDays => {
+  const input = request(); input.quoteSnapshot.quote.context!.cadenceDays = cadenceDays;
+  const q = input.quoteSnapshot.quote;
+  // Simulate the pre-limit boundary through the real SQL writer, including its
+  // durable fingerprint, client ownership and response payload (no mocked receipt).
+  const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
+    currency: q.currency, taxIncluded: q.taxIncluded, lines: q.lines, discounts: q.discounts, context: q.context,
+    totals: { subtotalGross: q.subtotalGross, discountTotalGross: q.discountTotalGross, shippingGross: q.shippingGross,
+      shippingDiscountGross: q.shippingDiscountGross, totalGross: q.totalGross, netTotal: q.netTotal, taxTotal: q.taxTotal } };
+  const first = (await runtime.query(`SELECT public.commerce_create_promoted_order_draft_with_outbox($1,$2::jsonb,$3::jsonb,$4::uuid) AS response`,
+    [input.idempotencyKey, JSON.stringify(input.quoteSnapshot), JSON.stringify(draft), clientId])).rows[0].response;
+  const before = await effects();
+  expect(await port().createOrderDraft(input, { clientId })).toEqual({ ...first, orderDraft: { ...first.orderDraft, replayed: true } });
+  expect(await effects()).toEqual(before);
+  const changed = structuredClone(input); changed.quoteSnapshot.quote.context!.cadenceDays = cadenceDays - 1;
+  await refusesWithoutWrite(() => port().createOrderDraft(changed, { clientId }), { name: "CommerceOrderDraftConflictError", details: { code: "23505" } });
+  await refusesWithoutWrite(() => port().createOrderDraft(input, { clientId: otherClientId }), { name: "CommerceOrderDraftConflictError", details: { code: "23505" } });
+  await refusesWithoutWrite(() => port().createOrderDraft({ ...input, idempotencyKey: `fresh-cadence:${randomUUID()}` }, { clientId }),
+    { name: "CommerceOrderDraftPersistenceError", details: { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: 3660 } });
+});
+
 it("refuses catalogue drift and an unprivileged caller without partial effects", async () => {
   await refusesWithoutWrite(() => port().createOrderDraft({ ...request(), quoteSnapshot: quote("subscription", [201, 320]) }, { clientId }), { name: "CommerceOrderDraftPriceChangedError", details: { code: "22023" } });
   await refusesWithoutWrite(() => installed.createPostgresNativeCheckoutPersistence(untrusted).createOrderDraft(request(), { clientId }), { name: "CommerceOrderDraftPersistenceError", details: { code: "42501" } });

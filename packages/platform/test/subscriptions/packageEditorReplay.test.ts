@@ -18,7 +18,7 @@ it("characterizes re-quote before durable replay: a completed apply can be repor
   await expect(referenceEntry({ acceptedQuoteHash: "a".repeat(64) }, quote, durable)).rejects.toThrow("subscription_reprice_quote_not_accepted");
   expect(quote).toHaveBeenCalledOnce(); expect(durable).not.toHaveBeenCalled(); expect(saved.status).toBe("applied");
 });
-it("replays before re-quote or configuration and retains the originally recorded state", async () => {
+it.each([28, 3661, 2_147_483_647])("replays a completed %i-day command before current limits or re-quote", async days => {
   const calls: string[] = []; let matches = true;
   const quote = vi.fn(async (): Promise<never> => { throw new Error("subscription_reprice_prices_unavailable"); });
   const options: PackageEditorOptions = {
@@ -36,13 +36,13 @@ it("replays before re-quote or configuration and retains the originally recorded
     } }); },
   };
   const result = await createPostgresPackageEditor(options).apply({ actorId: id, clientId: client }, "completed-package-key", {
-    subscriptionId: id, planDays: 28, base: [{ variantId: id, qty: 6 }, { variantId: client, qty: 2 }], addons: [], expectedTemplateVersion: 1, acceptedQuoteHash: "a".repeat(64) });
+    subscriptionId: id, planDays: days, base: [{ variantId: id, qty: 6 }, { variantId: client, qty: 2 }], addons: [], expectedTemplateVersion: 1, acceptedQuoteHash: "a".repeat(64) });
   expect(result).toEqual({ ...saved, status: "replayed", originalStatus: "applied" });
   expect(quote).not.toHaveBeenCalled(); expect(options.quoteCatalogReadPort.listQuoteCatalogItems).not.toHaveBeenCalled();
   expect(calls.some(sql => sql.includes("subscription_package_edit_apply("))).toBe(false);
   expect(calls[0]).toContain("SELECT s.*"); expect(calls[1]).toContain("pg_advisory_xact_lock");
   matches = false;
   await expect(createPostgresPackageEditor(options).apply({ actorId: id, clientId: client }, "completed-package-key", {
-    subscriptionId: id, planDays: 29, base: [{ variantId: id, qty: 6 }], acceptedQuoteHash: "a".repeat(64) }))
+    subscriptionId: id, planDays: days + 1, base: [{ variantId: id, qty: 6 }], acceptedQuoteHash: "a".repeat(64) }))
     .rejects.toThrow("subscription_command_idempotency_conflict");
 });

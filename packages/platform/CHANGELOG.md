@@ -16,14 +16,21 @@ in the source repository.
   edits retaining frozen prices. Completed receipts replay before current limits
   and admission; mismatched payloads still conflict. Omitting the callback keeps
   existing behavior.
-- Replace the checkout/quote/recovery/account DTO cadence caps of 90/120 days
-  with positive PostgreSQL integer bounds. Historical generic SQL bundle and
-  lifecycle quoting still cap cadence at 90; longer periods on those paths
-  require a separate forward migration. Package/exact writers are separate.
+- Bound fresh subscription quotes, order drafts and editor results to 1..3660
+  whole days through `MAX_CADENCE_DAYS` from `@openlup/core/subscription`.
+  Transport, resume/recovery/account reads, editor contexts, retained renewal
+  terms and frozen snapshots keep PostgreSQL integer representation. Completed
+  checkout/editor receipts replay before current limits with ownership and
+  fingerprint checks intact. Fresh native renewal creation and starter graduation
+  above 3660 return `NativeRenewalCadenceError` with `cadence_limit_exceeded` and
+  the allowed maximum; historical frozen operations remain readable/replayable.
+  Generic SQL bundle/lifecycle quoting retains its 90-day guards.
 
 Migration: no database migration in this change. Hosts may compose the optional
 callback with adopter-owned rules; no default offer list or starter derivation
 is supplied. Check date representation for the selected operation.
+Fresh cadence admission above 3660 days now refuses; completed receipts
+continue to replay before current limits.
 
 Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
 

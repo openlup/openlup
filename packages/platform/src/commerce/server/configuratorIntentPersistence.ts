@@ -1,11 +1,15 @@
 import type { z } from "zod";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import type { ConfiguratorIntentPersistencePort } from "../contracts/ports.js";
 import type { CheckoutCommandPersistencePort } from "../contracts/runtimePorts.js";
 import type { RpcError } from "../contracts/omsTypes.js";
 import { ConfiguratorIntentPersistenceConflictError } from "./configuratorIntentPersistenceHandler.js";
+import { configuratorIntentReplayFingerprint } from "./configuratorIntentReplayFingerprint.js";
+
+interface CompletedIntentRow { response_payload?: unknown; request_fingerprint?: string | null }
 
 interface ConfiguratorIntentIdentityQueryResult {
-  data: Array<{ response_payload?: unknown }> | null;
+  data: CompletedIntentRow[] | null;
   error: RpcError | null;
 }
 
@@ -58,6 +62,10 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
     async persistIntent(
       request: Request,
     ): Promise<Response> {
+      const replay = await completedReplayCandidate(request);
+      if (replay) {
+        return bindings.responseSchema.parse(authenticateCompletedReplay(replay, withVerifiedSubject(withCanonicalIntentPhone(request), identity)));
+      }
       const { data, error } = await client.rpc("commerce_configurator_persist_intent", {
         p_intent: withVerifiedSubject(withCanonicalIntentPhone(request), identity),
       });
@@ -67,6 +75,10 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
     },
 
     async persistCheckoutCommand(command) {
+      const replay = await completedReplayCandidate(command);
+      if (replay) {
+        return bindings.decodeCommandResponse(authenticateCompletedReplay(replay, withVerifiedSubject(withCanonicalCommandPhone(command), identity)));
+      }
       const { data, error } = await client.rpc("commerce_configurator_persist_intent", {
         p_intent: withVerifiedSubject(withCanonicalCommandPhone(command), identity),
       });
@@ -102,6 +114,34 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
       return parsed.success ? parsed.data : null;
     },
   };
+
+  function cadenceRefusal(payload: object): Error {
+    return new ConfiguratorIntentPersistenceConflictError(
+      `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days before persisting a fresh checkout identity`,
+      { reason: "cadence_limit_exceeded", cadenceDays: (payload as { cadenceDays?: unknown }).cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+  }
+
+  async function completedReplayCandidate(payload: object): Promise<CompletedIntentRow | null> {
+    const { cadenceDays, idempotencyKey } = payload as { cadenceDays?: number | null; idempotencyKey?: string };
+    if (cadenceDays == null || (Number.isInteger(cadenceDays) && cadenceDays >= 1 && cadenceDays <= MAX_CADENCE_DAYS)) return null;
+    // Receipt existence permits only read-only authentication. The
+    // writing RPC reopens changed completed keys, so it must never run here.
+    if (!idempotencyKey) throw cadenceRefusal(payload);
+    const { data, error } = await client.from("commerce_idempotency_keys").select("response_payload, request_fingerprint")
+      .eq("scope", CONFIGURATOR_INTENT_SCOPE).eq("idempotency_key", idempotencyKey).eq("status", "completed").limit(1);
+    if (error) throw mapRpcError(error);
+    if (!data?.[0]?.response_payload) throw cadenceRefusal(payload);
+    return data[0];
+  }
+
+  function authenticateCompletedReplay(row: CompletedIntentRow, payload: PersistIntentPayload<Request, Command>): unknown {
+    // Fingerprint and response came from one SELECT snapshot. Never call the
+    // writer after this read: a concurrent edit must not reopen an invalid key.
+    if (!row.request_fingerprint || row.request_fingerprint !== configuratorIntentReplayFingerprint(payload)) {
+      throw new ConfiguratorIntentPersistenceConflictError("Configurator intent replay conflict", { code: "23505" });
+    }
+    return { ...(row.response_payload as object), replayed: true };
+  }
 
   // Canonicalization is fail-open: an unparseable non-empty phone is preserved verbatim.
   function canonicalPhoneRewrite(contact: unknown, address: unknown): string | null {
