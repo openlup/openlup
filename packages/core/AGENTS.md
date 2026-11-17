@@ -11,11 +11,14 @@ process: an application binds its ports and composes it.
 
 ## Installed context lookup
 
-From the application root, run:
+With an application-local installation, run from the application root:
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
+
+For npm workspace hoisting, use the installed-manifest executable recipe in
+[lookup settings](README.md#agent-context-lookup) from the selected application root.
 
 The command searches core's installed reader guide under `docs/guide/`, package
 `AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade

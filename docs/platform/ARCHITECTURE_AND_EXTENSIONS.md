@@ -1364,7 +1364,7 @@ Evidence: historical record, 2026-11-13. Not reader guidance.
 | Shipments overview | `host_binding_required`; overview requires host-owned overview data unavailable in native shipment rows | Host overview reader; shipment counts cannot substitute for that dataset |
 | Customer delivery alignment | `createPostgresCustomerAlignmentRowsReader` selects protected/aligned raw rows by update time for `readFulfillmentDelay` | Authorized subscription IDs and current next-cycle schedules; obsolete aligned history is hidden by the existing mapper |
 | Dispatch preparation writer | Selected `nativeDispatch` composes recorded candidates, locked contact preparation and final commerce admission; explicit host preparation remains available | Transaction lane, selected adapter, keys and readiness; disabled and capability refusals precede all worker writes |
-| Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. The native renewal binding supplies the runner; the host selects and schedules it explicitly |
+| Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | `createNativeSubscriptionBinding` already installs the decorator. A host composing a raw store/runner must wrap the store itself; keep an unwrapped path at off or shadow. The host selects and schedules the binding explicitly |
 
 Install the complete native catalogue before selecting the operator port. Its
 replacement command retains actor-bound replay matching, the one-undispatched-
@@ -1714,13 +1714,14 @@ mode and existing protection after later control changes.
 
 Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
 `subscription_delivery_alignment_admit_renewal` before inserting the cycle.
-The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-does not call it; a host that composes the native automatic-renewal runner wraps
-that store port with the
+[`createNativeSubscriptionBinding`](../../packages/platform/src/subscriptions/nativeSubscriptionBinding.ts)
+already wraps its store with `withNativeDeliveryAlignmentRenewalAdmission`.
+A host composing the [raw native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+directly must add the
 [renewal admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts).
-Without the decorator, an enforcing mode halts every autonomous renewal with
-`subscription_delivery_alignment_admission_required`, so native installs keep
-mode `off` or `shadow` until the host wraps the port.
+Without admission, an enforcing mode halts autonomous renewal with
+`subscription_delivery_alignment_admission_required`; keep a direct unwrapped
+composition at `off` or `shadow`. The host still selects and schedules the binding.
 
 In enforcing modes, a subscription whose paid history has no activation or
 renewal link, such as imported data, holds every due renewal for manual review.

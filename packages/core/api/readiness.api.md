@@ -214,7 +214,9 @@ export interface ReadinessReport {
     loadedPackages: readonly LoadedPackage[];
     issues: readonly ReadinessIssue[];
 }
-/** @beta Read-only live product type references and the composed registry's matching digests. */
+/** @beta Read-only live product type references and the composed registry's matching digests.
+ * @experimental
+ */
 export interface CatalogRegistryObservation {
     database: string;
     /** False means row visibility is incomplete; omission preserves existing observations. */

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCustomerJourneyDiagnosticReporterForTests } from "./customerJourneyReporter";
 import { startCheckoutDiagnostic } from "./customerJourneyCheckoutProducer";
@@ -24,10 +24,11 @@ describe("customer journey diagnostic producers", () => {
   it("keeps one action key and the submit-time bearer token across settlement", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 409 }));
     vi.stubGlobal("fetch", fetcher);
+    const { reporter, actionKey } = enabledDiagnosticInputs();
     const diagnostic = startCheckoutDiagnostic(
       new Headers({ Authorization: "Bearer customer-at-submit" }),
-      loadCustomerDiagnosticReporterWhenEnabled!(),
-      createCustomerDiagnosticActionKeyWhenEnabled!()!,
+      reporter,
+      actionKey,
     );
     diagnostic.settle("succeeded");
 
@@ -43,10 +44,11 @@ describe("customer journey diagnostic producers", () => {
   it("forwards only a real BFF request reference while preserving the original failure", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 409 }));
     vi.stubGlobal("fetch", fetcher);
+    const { reporter, actionKey } = enabledDiagnosticInputs();
     const diagnostic = startCheckoutDiagnostic(
       undefined,
-      loadCustomerDiagnosticReporterWhenEnabled!(),
-      createCustomerDiagnosticActionKeyWhenEnabled!()!,
+      reporter,
+      actionKey,
     );
     const bffError = new BffClientError(
       { code: "UPSTREAM_UNAVAILABLE", message: "checkout unavailable" },
@@ -62,10 +64,11 @@ describe("customer journey diagnostic producers", () => {
       action: "checkout_submit", phase: "settled", code: "unknown", relatedRequestId: "checkout-request",
     });
 
+    const localInputs = enabledDiagnosticInputs();
     const localDiagnostic = startCheckoutDiagnostic(
       undefined,
-      loadCustomerDiagnosticReporterWhenEnabled!(),
-      createCustomerDiagnosticActionKeyWhenEnabled!()!,
+      localInputs.reporter,
+      localInputs.actionKey,
     );
     const localError = { reason: "local" };
     expect(localDiagnostic.failure(localError, "rejected")).toBe(localError);
@@ -191,6 +194,16 @@ describe("customer journey diagnostic producers", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
+
+function enabledDiagnosticInputs() {
+  assert.isNotNull(loadCustomerDiagnosticReporterWhenEnabled);
+  assert.isNotNull(createCustomerDiagnosticActionKeyWhenEnabled);
+  const reporter = loadCustomerDiagnosticReporterWhenEnabled();
+  const actionKey = createCustomerDiagnosticActionKeyWhenEnabled();
+  assert.isNotNull(reporter);
+  assert.isDefined(actionKey);
+  return { reporter, actionKey };
+}
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;

@@ -21,6 +21,7 @@ const json: z.ZodType<CatalogPublicationJson> = z.json();
 const facts: z.ZodType<CatalogPublicationFacts> = z.record(z.string(), json);
 const skuFacts = z.object({ skuCode: code, title: text, minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), facts }).strict();
 const membership = z.object({ skuCode: code, offerVersion: reference, admitted: z.boolean() }).strict();
+/** @experimental */
 export const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3> = z.object({
   schemaVersion: z.literal(1), catalogAction: z.enum(["create", "revise"]), document: facts.optional(), presentation: facts,
   offerMemberships: z.array(membership).max(10_000),
@@ -33,10 +34,12 @@ export const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedCont
     if (new Set(codes).size !== codes.length) context.addIssue({ code: "custom", path: [key], message: "SKU intents must be unique" });
   }
 });
+/** @experimental */
 export const catalogDraftProvenanceV3Schema: z.ZodType<CatalogDraftProvenanceV3> = z.discriminatedUnion("source", [
   z.object({ source: z.literal("current_draft") }).strict(),
   z.object({ source: z.literal("retained_draft"), draftId: id, draftRevision: revision, draftCommandKey: reference, draftFingerprint: digest }).strict(),
 ]);
+/** @experimental */
 export const catalogDraftPublicationOperationV3Schema: z.ZodType<CatalogDraftPublicationOperationV3> = z.discriminatedUnion("op", [
   z.object({ op: z.literal("create_product"), productId: id, productSlug: slug, name: text }).strict(),
   z.object({ op: z.literal("register_document_revision"), productSlug: slug, revisionId: id, revisionNo: documentRevision,
@@ -55,6 +58,7 @@ export const catalogDraftPublicationOperationV3Schema: z.ZodType<CatalogDraftPub
   z.object({ op: z.literal("set_sku_metadata"), skuCode: code, logisticsRef: reference.nullable() }).strict(),
   z.object({ op: z.literal("set_derived_sku_facts"), skuCode: code, documentRevisionNo: documentRevision, netContent: catalogQuantitySchema, facts }).strict(),
 ]);
+/** @experimental */
 export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublicationInputsV3> = z.object({
   kind: z.enum(["release", "compensation"]), operations: z.array(catalogDraftPublicationOperationV3Schema),
   evidence: z.object({
@@ -99,6 +103,7 @@ export function catalogDraftV3ValidationPayload(payload: CatalogDraftPayloadV3) 
   const { publication: _publication, ...base } = payload;
   return { ...base, schemaVersion: 2 as const };
 }
+/** @experimental */
 export const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3> = z.object({
   schemaVersion: z.literal(3), product: catalogDraftProductV2Schema.extend({ sharedContent: catalogDraftSharedContentV3Schema }).strict(),
   skus: z.array(catalogDraftSkuV2Schema).max(10_000), publication: catalogDraftPublicationInputsV3Schema,
@@ -107,6 +112,7 @@ export const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3> = z.o
   const base = catalogDraftPayloadV2Schema.safeParse(catalogDraftV3ValidationPayload(payload));
   if (!base.success) for (const issue of base.error.issues) context.addIssue({ code: "custom", path: issue.path, message: issue.message });
 });
+/** @experimental */
 export const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3> = z.object({
   schemaVersion: z.literal(3), action: z.enum(["create", "revise", "abandon", "resume"]),
   draftId: id, commandKey: reference,
@@ -117,20 +123,28 @@ export const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3> = z.o
   if ((command.action === "create") !== (command.expectedRevision === 0))
     context.addIssue({ code: "custom", path: ["expectedRevision"], message: "create starts at revision zero; other commands require a persisted revision" });
 });
+/** @experimental */
 export const catalogDraftPublicationStoredPayloadSchema: z.ZodType<CatalogDraftPublicationStoredPayload> = z.union([catalogDraftStoredPayloadSchema, catalogDraftPayloadV3Schema]);
+/** @experimental */
 export const catalogDraftPublicationStoredCommandSchema: z.ZodType<CatalogDraftPublicationStoredCommand> = z.union([catalogDraftStoredCommandSchema, catalogDraftCommandV3Schema]);
+/** @experimental */
 export const catalogDraftPublicationStoredRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogDraftPublicationStoredPayloadSchema }).strict()
   .refine(record => record.productId === record.payload.product.id, "record product must own payload");
+/** @experimental */
 export const catalogDraftPublicationStoredApplyResultSchema: z.ZodType<CatalogDraftPublicationStoredApplyResult> = z.union([
   z.object({ outcome: z.enum(["committed", "replayed"]), record: catalogDraftPublicationStoredRecordSchema }).strict(), catalogDraftRefusalSchema,
 ]);
-/** Exact typed extraction: no path guessing, coercion, defaults, operation sorting or collapsing. */
+/** Exact typed extraction: no path guessing, coercion, defaults, operation sorting or collapsing.
+ * @experimental
+ */
 export function extractCatalogDraftPublicationInputs(payload: unknown): { content: CatalogDraftSharedContentV3; publication: CatalogDraftPublicationInputsV3 } {
   canonicalCatalogDraftJson(payload);
   const parsed = catalogDraftPayloadV3Schema.parse(payload);
   return { content: parsed.product.sharedContent, publication: parsed.publication };
 }
-/** Resolves the current source only after persistence; retained tuples still require authority verification at publication. */
+/** Resolves the current source only after persistence; retained tuples still require authority verification at publication.
+ * @experimental
+ */
 export function resolveCatalogDraftProvenance(provenance: CatalogDraftProvenanceV3, record: CatalogDraftPublicationStoredRecord) {
   const parsed = catalogDraftProvenanceV3Schema.parse(provenance);
   if (parsed.source === "retained_draft") { const { source: _source, ...tuple } = parsed; return tuple; }

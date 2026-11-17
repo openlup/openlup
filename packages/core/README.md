@@ -203,36 +203,73 @@ Nested Markdown headings return separate spans. Read the installed package versi
 and cited source before changing a contract; a result locates evidence and grants
 no application policy or execution authority.
 
+A declaration hit is a textual occurrence with an unverified public import. It
+may be internal, imported, aliased, type-only or ambiguous. Read the installed
+manifest's exports and that version's examples to establish the public specifier
+and type/value usage; a declaration path is not a legal deep-import recipe.
+
+Run from the selected application's `package.json` directory. Lookup selects its
+reachable declared OpenLup dependencies plus required Core through Node's normal
+`node_modules` resolution, including npm workspace hoisting and linked package
+roots. It does not select another application's undeclared packages. Without an
+application manifest, local `node_modules/@openlup` installations remain usable.
+Node package self-references from a checkout are refused: source bytes are not
+installed dependency evidence. Run from an adopter application root.
+Uninstalled non-Core declarations are skipped; lookup does not validate a complete
+application installation.
+Selected versions must agree with each other and with their entries in the
+application's owning `package-lock.json`, when present. Layouts without Node-resolvable
+`node_modules` packages are unsupported. `--code` always scans only the current
+application directory; hoisting does not widen that source boundary.
+
+When npm hoists Core, resolve its installed manifest and declared executable from
+the application root, then invoke it directly with Node:
+
+```sh
+OPENLUP_CONTEXT_BIN="$(node --input-type=module -e '
+import { findPackageJSON } from "node:module";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+const manifest = findPackageJSON("@openlup/core", `${process.cwd()}/package.json`);
+const bin = JSON.parse(readFileSync(manifest, "utf8")).bin["openlup-context"];
+console.log(resolve(dirname(manifest), bin));
+')" && node "$OPENLUP_CONTEXT_BIN" search "subscription renewal"
+```
+
+This reads installed metadata only, requires no public `package.json` export, and
+uses neither a registry nor an npm command cache. Core must already be installed.
+
 ## Agent context over MCP
 
 Connect an MCP client to the installed context tool over stdio. Set the working
-directory to your application root (the directory containing `node_modules`):
+directory to your application root (the directory containing its `package.json`):
 
 ```json
 {
   "mcpServers": {
     "openlup-context": {
-      "command": "npx",
-      "args": ["openlup-context", "mcp"],
+      "command": "node",
+      "args": ["/path/to/installed-core/src/openlup-context.js", "mcp"],
       "cwd": "/path/to/your-application"
     }
   }
 }
 ```
 
-The example assumes core is already installed; use the local executable
-`./node_modules/.bin/openlup-context mcp` directly if your client must never let
-`npx` fetch a missing command. Configure the working directory in your client's
+Replace the first argument with the installed executable path resolved above
+(`OPENLUP_CONTEXT_BIN`). A local installation can also run
+`./node_modules/.bin/openlup-context mcp` directly. Configure the working directory in your client's
 settings if it does not accept `cwd`.
 
 Use `search_openlup_context` when the owner or extension seam is unclear, then
 `read_openlup_file` with the returned application-relative path and optional
 inclusive `startLine`/`endLine` (starting at 1). Search also returns structured
 results; `includeApplicationCode` and `includePackageCode` opt into the same
-bounded scans as the CLI flags. Read accepts only ordinary installed
-`node_modules/@openlup/<name>/` files up to 200,000 bytes. Symlinked package roots
+bounded scans as the CLI flags. Read accepts only ordinary selected installed
+`node_modules/@openlup/<name>/` files up to 200,000 bytes, including the exact
+prefix returned by search, including a hoisted or sibling installation. Symlinked package roots
 are supported; file realpaths must stay inside the resolved package root. Read
-refuses traversal and never fetches release-tag source URLs. These checks guard
+refuses other traversal and never fetches release-tag source URLs. These checks guard
 against wrong paths and links present when the file is read; they do not defend
 against a process that rewrites `node_modules` during the read, which can already
 change the code the application runs. Read repository-only sources and application source hits with your client's own

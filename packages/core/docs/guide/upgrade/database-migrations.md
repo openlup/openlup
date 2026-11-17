@@ -118,6 +118,42 @@ whole selected chain is already installed. A pending dry-run does not certify
 the final inventory. Inventory rejection can occur after migrations have
 committed; it does not roll back the whole upgrade.
 
+### Session and ledger admission
+
+A trusted migration source may supply `assertSession` to observe host facts
+once under the advisory lock, after exact ledger-prefix admission and before
+status, dry-run or pending SQL. This callback neither provisions nor qualifies
+a hosted installation.
+
+Every source uses catalog-bound locks and admits only the canonical baseline
+ledger catalog shape before reading its exact prefix. The fingerprint stays
+exact except for numeric `pg_attver` column version markers in a nonempty,
+one-dimensional array starting at index 1; every other attribute option refuses.
+A pending unit locks an installed ledger before its first catalog read in that
+transaction and preserves the connection's isolation setting.
+
+## Find the current function definition
+
+Read the installed platform package's `sql/manifest.json`, selecting the same
+installation generation as the runner. Follow its baseline and ordered forwards,
+or the applied prefix reported by `status()` when investigating a database that
+is behind. Module SQL lists and a filename search alone do not establish the
+effective definition.
+
+Search for an anchored `CREATE FUNCTION` or `CREATE OR REPLACE FUNCTION`, then
+read the complete argument signature and body. Follow later replacements and
+`DROP FUNCTION` for that same signature in catalogue order. Overloads are separate
+functions; calls, grants and dated release notes are not declarations. Keep the
+installed package version separate from a different source checkout.
+
+For native `subscription_auto_resume_due(integer,timestamptz)`, the forward
+`20261114110000_payment_method_refs.sql` replaces earlier auto-resume definitions.
+Its assignment takes the later of the stored next cycle plus the actual pause
+duration and execution time. It never brings the next cycle earlier. Follow
+[timed pauses](../concepts/subscriptions.md#timed-pauses)
+for eligibility and effects; a textual search for a clamp is not an invariant
+proof.
+
 ## Check application compatibility
 
 A compatible change lets the application continue reading and writing its
