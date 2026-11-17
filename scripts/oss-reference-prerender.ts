@@ -7,12 +7,6 @@ import { loadSiteRouteManifest } from "./site-routes.mjs";
 const DEFAULT_DIST = process.env.OPENLUP_BUILD_OUT_DIR ?? "dist";
 const DEFAULT_SSR_ENTRY = `${process.env.OPENLUP_SSR_OUT_DIR ?? "dist-public-reference-ssr"}/entry-server.js`;
 
-type PublicReferenceManifest = {
-  siteLifecycle: string;
-  siteOrigin: string;
-  routes: Array<{ path: string; canonicalPath: string }>;
-};
-
 type PrerenderOptions = { distDir?: string; ssrEntry?: string };
 
 function documentFor(template: string, markup: string, canonical: string): string {
@@ -32,7 +26,7 @@ function destination(dist: string, routePath: string): string {
 
 /** Render the explicit public-reference SSG list and nothing inferred from the source application. */
 export async function prerenderPublicReference(root = process.cwd(), options: PrerenderOptions = {}) {
-  const manifest = loadSiteRouteManifest(root) as PublicReferenceManifest;
+  const manifest = loadSiteRouteManifest(root);
   if (manifest.siteLifecycle !== "public-reference") {
     throw new Error("Public reference prerender requires the projected public reference route manifest");
   }

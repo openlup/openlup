@@ -130,13 +130,13 @@ function resolveInsidePackage(path) {
 }
 
 function assertChangelogChanged() {
-  const status = execFileSync("git", ["status", "--porcelain=v1", "--", "CHANGELOG.md"], {
+  const status = execFileSync("git", ["status", "--porcelain=v1", "--", ":(glob)changes/*.md", "CHANGELOG.md"], {
     cwd: packageRoot,
     encoding: "utf8",
   });
   assert(
-    status.trim().length > 0,
-    "API snapshots changed; update CHANGELOG.md before completing npm run api:update",
+    status.split("\n").some((line) => /[AM?]/.test(line.slice(0, 2))),
+    "API snapshots changed; add or modify changes/*.md (or update CHANGELOG.md) before completing npm run api:update",
   );
 }
 

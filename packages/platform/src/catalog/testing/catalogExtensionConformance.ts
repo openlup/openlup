@@ -27,7 +27,9 @@ const OWNER_INPUT_CODES = new Set([
   "draft_json_invalid", "draft_json_depth", "draft_payload_too_large", "invalid_catalog_type_definition",
 ]);
 
-/** Parse JSON text without a reviver; non-string arguments are refused without inspection. Syntax errors reject. */
+/** Parse JSON text without a reviver; non-string arguments are refused without inspection. Syntax errors reject.
+ * @experimental
+ */
 export async function runCatalogExtensionConformance(jsonText: string): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;

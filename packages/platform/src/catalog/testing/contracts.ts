@@ -2,7 +2,9 @@ import type { CatalogAttributeInput } from "../attributeValidation.js";
 import type { CatalogAttributeReferenceResolution } from "../attributeReferencePort.js";
 import type { CatalogPackInput, CatalogProductTypeRef, CatalogQuantity, CatalogCombinationChangeV2 } from "../contracts/index.js";
 
-/** Recorded observations, checked for consistency; no refusal code is executed. */
+/** Recorded observations, checked for consistency; no refusal code is executed.
+ * @experimental
+ */
 export interface CatalogRefusalFixture {
   name: string;
   capability: string;
@@ -10,7 +12,9 @@ export interface CatalogRefusalFixture {
   observedCode: string;
   zeroEffects: boolean;
 }
-/** JSON fixture data only. Application content validators are unavailable offline. */
+/** JSON fixture data only. Application content validators are unavailable offline.
+ * @experimental
+ */
 export interface CatalogConformanceSubject {
   packs: readonly {
     pack: Omit<CatalogPackInput, "types"> & { types: readonly Omit<CatalogPackInput["types"][number], "validateContent">[] };
@@ -30,6 +34,7 @@ export interface CatalogConformanceSubject {
   requiredChecks?: readonly string[];
   recheck?: string;
 }
+/** @experimental */
 export interface CatalogConformanceFinding {
   /** Exact shared owner code; application content validation stays unavailable. */
   code: string;
@@ -43,6 +48,7 @@ export interface CatalogConformanceFinding {
   recheck: string;
   evidence: { declared: string; bound: string; checked: string; unknown: string[] };
 }
+/** @experimental */
 export interface CatalogConformanceReport {
   state: "satisfied" | "violated" | "unavailable";
   exitCode: 0 | 1 | 2;

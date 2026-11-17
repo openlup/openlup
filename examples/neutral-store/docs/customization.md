@@ -1,6 +1,6 @@
 # Customize the running store
 
-Status: maintainer implementation notes. Reader guidance: [OpenLup guide](../../../packages/core/docs/guide/how-to/build/customize-the-starter.md). Sections marked "Evidence" are frozen historical records.
+Status: maintainer implementation notes. Reader guidance: [OpenLup guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md). Sections marked "Evidence" are frozen historical records.
 
 `dev.mjs` owns the source build/watch and host restart loop.
 

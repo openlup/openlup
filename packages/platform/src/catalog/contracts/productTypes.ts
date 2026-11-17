@@ -33,6 +33,7 @@ export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units"
     | { key: string; kind: "boolean" }
   )[];
 };
+/** @experimental */
 export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "validateContent"> {
   validatorRef: string;
   attributes: readonly AttributeDefinition[];

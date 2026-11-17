@@ -2,13 +2,39 @@
   "schemaVersion": 5,
   "kind": "rail",
   "compatibilityPolicies": {
-    "internal-candidate": "Development-preview API; no stable compatibility claim."
+    "stable": "Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise.",
+    "experimental": "Experimental API; may change in any minor release.",
+    "testing": "Test support only; not a runtime compatibility promise."
+  },
+  "packageRelease": {
+    "phase": "platform-monorepo-phase-5",
+    "publicStability": "stable-semver",
+    "artifactChannel": "npm-stable",
+    "versionRule": "MAJOR.MINOR.PATCH"
+  },
+  "evidence": {
+    "packageSmokeEvidence": {
+      "state": "required",
+      "meaning": "Hermetic build, import, pack and directory publish-refusal proof for this package."
+    },
+    "conformanceEvidence": {
+      "state": "required-for-declared-ports",
+      "meaning": "A framework-free port/adapter suite is required only when this package declares that seam."
+    },
+    "dogfoodEvidence": {
+      "state": "first-party-production",
+      "meaning": "A first-party production deployment consumes package seams; this is first-party evidence only."
+    },
+    "externalConsumerEvidence": {
+      "state": "first-party-npm-and-production",
+      "meaning": "A first-party demo store installed from npm and a first-party production deployment provide consumer evidence. No independent adoption is claimed."
+    }
   },
   "packageSurface": {
     "./fulfillment/native": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/fulfillment/nativePreparation.test.ts",
         "test/fulfillment/nativeCommerceReads.test.ts"
@@ -18,8 +44,8 @@
     },
     "./bff": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/bff/dispatch.test.ts"
@@ -29,8 +55,8 @@
     },
     "./blob": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/blob/binding.test.ts"
@@ -40,8 +66,8 @@
     },
     "./catalog": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/catalog/catalogDraftHandler.test.ts",
@@ -65,8 +91,8 @@
     },
     "./catalog/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/catalog/catalogFoundationContracts.test.ts",
@@ -80,8 +106,8 @@
     },
     "./commerce": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/commerce/portFit.test.ts",
@@ -94,8 +120,8 @@
     },
     "./commerce/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/commerce/portFit.test.ts",
@@ -108,8 +134,8 @@
     },
     "./commerce/server/destinations": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts"
       ],
@@ -118,8 +144,8 @@
     },
     "./commerce/server": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/commerce/browserBoundary.test.ts",
@@ -133,8 +159,8 @@
     },
     "./commerce/server/native-checkout": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts"
       ],
@@ -143,8 +169,8 @@
     },
     "./communications": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/communications/sql.test.ts",
@@ -159,8 +185,8 @@
     },
     "./communications/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/communications/contracts.test.ts",
@@ -173,7 +199,7 @@
     "./communications/klaviyo": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/communications/klaviyo/portConformance.test.ts",
         "test/communications/klaviyo/protocol.test.ts",
@@ -185,7 +211,7 @@
     "./communications/resend": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/communications/resend/egress.test.ts",
         "test/communications/resend/protocol.test.ts"
@@ -195,8 +221,8 @@
     },
     "./composition": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/composition/composeBundle.test.ts"
@@ -206,8 +232,8 @@
     },
     "./data": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/data/binding.test.ts"
@@ -217,8 +243,8 @@
     },
     "./http": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/http/runtime.test.ts",
@@ -229,8 +255,8 @@
     },
     "./identity": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/identity/adminConformance.test.ts"
@@ -241,7 +267,7 @@
     "./identity/contracts": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/identity/contracts.test.ts"
@@ -251,8 +277,8 @@
     },
     "./inventory": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/inventory/contracts.test.ts",
@@ -267,8 +293,8 @@
     },
     "./inventory/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/inventory/contracts.test.ts",
@@ -281,8 +307,8 @@
     },
     "./job-ledger": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/job-ledger/postgres.test.ts"
@@ -292,8 +318,8 @@
     },
     "./kernel": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/kernel/platformKernel.test.ts"
@@ -303,8 +329,8 @@
     },
     "./migrations": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/migrations/postgresRunner.test.ts"
@@ -314,8 +340,8 @@
     },
     "./pricing": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/pricing/commercePriceAuthority.test.ts",
@@ -344,8 +370,8 @@
     },
     "./pricing/browser": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/commerce/browserBoundary.test.ts",
@@ -357,8 +383,8 @@
     },
     "./pricing/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/pricing/subscriptionPricePolicy.test.ts",
@@ -370,8 +396,8 @@
     },
     "./promotions": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/promotions/applicationConformance.test.ts",
@@ -398,7 +424,7 @@
     "./promotions/contracts": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/promotions/applicationConformance.test.ts",
@@ -410,8 +436,8 @@
     },
     "./scheduler": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/scheduler/jobs.test.ts"
@@ -421,8 +447,8 @@
     },
     "./shipping": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/shipping/deliveryConformance.test.ts",
@@ -435,8 +461,8 @@
     },
     "./shipping/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/shipping/deliveryConformance.test.ts",
@@ -448,8 +474,8 @@
     },
     "./payments": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/payments/preparedAttempt.test.ts",
@@ -468,8 +494,8 @@
     },
     "./payments/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/payments/contracts.test.ts",
@@ -485,8 +511,8 @@
     },
     "./payments/stripe": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/payments/stripe/conformance.test.ts",
         "test/payments/stripe/factory.test.ts",
@@ -498,8 +524,8 @@
     },
     "./payments/tpay": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/payments/tpay/factory.test.ts",
         "test/payments/tpay/conformance.test.ts",
@@ -511,8 +537,8 @@
     },
     "./fulfillment": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/fulfillment/capturedAdapter.test.ts",
         "test/packageBoundary.test.ts",
@@ -528,8 +554,8 @@
     },
     "./fulfillment/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
@@ -540,8 +566,8 @@
     },
     "./fulfillment/omnipack": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/fulfillment/omnipack/conformance.test.ts",
         "test/fulfillment/omnipack/factory.test.ts",
@@ -552,8 +578,8 @@
     },
     "./subscriptions": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/subscriptions/contracts.test.ts",
@@ -566,8 +592,8 @@
     },
     "./subscriptions/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/subscriptions/contracts.test.ts",
@@ -579,8 +605,8 @@
     },
     "./invoicing": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/invoicing/contracts.test.ts",
@@ -605,8 +631,8 @@
     },
     "./invoicing/postgres": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/invoicing/nativePostgres.test.ts"
       ],
@@ -616,7 +642,7 @@
     "./invoicing/contracts": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/invoicing/contracts.test.ts",
@@ -627,8 +653,8 @@
     },
     "./account-support": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/account-support/postgresAccountReads.test.ts",
         "test/account-support/contracts.test.ts",
@@ -642,7 +668,7 @@
     "./account-support/contracts": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/account-support/contracts.test.ts",
         "test/account-support/accountReadFacade.test.ts",
@@ -654,8 +680,8 @@
     },
     "./operations": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/operations/controlPlaneHandler.test.ts",
@@ -667,8 +693,8 @@
     },
     "./operations/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/operations/controlPlaneHandler.test.ts",
@@ -680,8 +706,8 @@
     },
     "./operations/server": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/operations/controlPlaneHandler.test.ts",
@@ -693,8 +719,8 @@
     },
     "./marketing": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/marketing/schemas.test.ts",
@@ -712,8 +738,8 @@
     },
     "./marketing/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/marketing/schemas.test.ts",
@@ -731,8 +757,8 @@
     },
     "./marketing/server": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/marketing/browserBoundary.test.ts",
@@ -750,8 +776,8 @@
     },
     "./marketing/server/postgres": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/marketing/server/postgres/acquisitionCaseRoutines.test.ts",
@@ -764,7 +790,7 @@
     "./portability": {
       "role": "rail",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/portability/objects.test.ts",
@@ -776,8 +802,8 @@
     },
     "./risk": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/risk/contracts.test.ts",
         "test/risk/orderPaidRiskPort.test.ts",
@@ -789,8 +815,8 @@
     },
     "./risk/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/risk/contracts.test.ts",
         "test/risk/orderPaidRiskPort.test.ts",
@@ -802,8 +828,8 @@
     },
     "./risk/server": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/risk/contracts.test.ts",
         "test/risk/orderPaidRiskPort.test.ts",
@@ -816,7 +842,7 @@
     "./lifecycle": {
       "role": "rail",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/lifecycle/appUpgrade.test.ts",
@@ -827,8 +853,8 @@
     },
     "./company-identity": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/company-identity/companyIdentityService.test.ts",
@@ -841,8 +867,8 @@
     },
     "./company-identity/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/company-identity/companyIdentityService.test.ts",
@@ -855,8 +881,8 @@
     },
     "./company-identity/server": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/company-identity/companyIdentityService.test.ts",
@@ -869,8 +895,8 @@
     },
     "./market-packs": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/market-packs/fiscalProfile.test.ts",
@@ -884,8 +910,8 @@
     },
     "./channels": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/channels/channelIngestCharacterization.test.ts",
@@ -900,8 +926,8 @@
     },
     "./channels/contracts": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/channels/channelIngestCharacterization.test.ts",
@@ -916,8 +942,8 @@
     },
     "./channels/server": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/channels/channelIngestCharacterization.test.ts",
@@ -932,8 +958,8 @@
     },
     "./commerce/server/postgres": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/commerce/nativePostgres.test.ts"
       ],
@@ -942,8 +968,8 @@
     },
     "./account-support/postgres": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/account-support/nativePostgres.test.ts"
       ],
@@ -953,7 +979,7 @@
     "./account-support/read-contracts": {
       "role": "capability",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/account-support/readContracts.test.ts",
         "test/account-support/readContractsBrowserSafety.test.ts"
@@ -963,8 +989,8 @@
     },
     "./payments/testing": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
       "packageSmokeEvidence": [
         "test/payments/scriptedFake.test.ts",
         "test/payments/stripe/conformance.test.ts",
@@ -975,8 +1001,8 @@
     },
     "./fulfillment/testing": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
       "packageSmokeEvidence": [
         "test/fulfillment/scriptedFake.test.ts",
         "test/fulfillment/certification.test.ts",
@@ -987,8 +1013,8 @@
     },
     "./catalog/testing": {
       "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "testing",
+      "compatibilityPolicy": "testing",
       "packageSmokeEvidence": [
         "test/catalog/catalogExtensionConformance.test.ts"
       ],

@@ -1,6 +1,6 @@
 # Application ownership
 
-Status: maintainer implementation notes. Reader guidance: [OpenLup guide](../../../packages/core/docs/guide/concepts/starter-ownership.md). Sections marked "Evidence" are frozen historical records.
+Status: maintainer implementation notes. Reader guidance: [OpenLup guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/starter-ownership.md). Sections marked "Evidence" are frozen historical records.
 
 `ownership.json` is the machine-readable split. Its `owned` and `managed`
 arrays contain exact application-relative paths. `sourceMappings` maps application

@@ -6,9 +6,9 @@ for package policy definitions and release boundaries.
 <!-- generated:compatibility-policies -->
 | Maturity | Compatibility policy |
 | --- | --- |
-| `candidate` | `internal-candidate` |
-| `experimental` | `internal-candidate` |
-| `testing` | `testing-internal` |
+| `experimental` | `experimental` |
+| `stable` | `stable` |
+| `testing` | `testing` |
 
 [Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/scripts/public-api-config.ts)
 <!-- /generated:compatibility-policies -->
@@ -18,23 +18,23 @@ for package policy definitions and release boundaries.
 <!-- generated:maturity:core -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `./bundle` | kernel | candidate |
-| `./catalog` | kernel | candidate |
+| `./bundle` | kernel | stable |
+| `./catalog` | kernel | stable |
 | `./company-identity` | kernel | experimental |
-| `./fulfillment` | kernel | experimental |
-| `./inventory` | kernel | candidate |
+| `./fulfillment` | kernel | stable |
+| `./inventory` | kernel | stable |
 | `./marketing/research` | kernel | experimental |
-| `./outbox` | kernel | experimental |
-| `./partners` | kernel | experimental |
-| `./payment` | kernel | experimental |
-| `./platform-runtime` | kernel | experimental |
-| `./pricing` | kernel | candidate |
-| `./promo` | kernel | candidate |
-| `./readiness` | kernel | experimental |
-| `./risk` | kernel | candidate |
-| `./shipping` | kernel | candidate |
+| `./outbox` | kernel | stable |
+| `./partners` | kernel | stable |
+| `./payment` | kernel | stable |
+| `./platform-runtime` | kernel | stable |
+| `./pricing` | kernel | stable |
+| `./promo` | kernel | stable |
+| `./readiness` | kernel | stable |
+| `./risk` | kernel | stable |
+| `./shipping` | kernel | stable |
 | `./standard-schema` | kernel | experimental |
-| `./subscription` | kernel | candidate |
+| `./subscription` | kernel | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:core -->
 
@@ -43,8 +43,8 @@ for package policy definitions and release boundaries.
 <!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `.` | rail | experimental |
-| `./postgres` | rail | experimental |
+| `.` | rail | stable |
+| `./postgres` | rail | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:outbox -->
 
@@ -53,73 +53,73 @@ for package policy definitions and release boundaries.
 <!-- generated:maturity:platform -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `./account-support` | capability | experimental |
+| `./account-support` | capability | stable |
 | `./account-support/contracts` | capability | experimental |
-| `./account-support/postgres` | capability | experimental |
+| `./account-support/postgres` | capability | stable |
 | `./account-support/read-contracts` | capability | experimental |
-| `./bff` | rail | experimental |
-| `./blob` | rail | experimental |
-| `./catalog` | capability | experimental |
-| `./catalog/contracts` | capability | experimental |
-| `./catalog/testing` | capability | experimental |
-| `./channels` | capability | experimental |
-| `./channels/contracts` | capability | experimental |
-| `./channels/server` | capability | experimental |
-| `./commerce` | capability | experimental |
-| `./commerce/contracts` | capability | experimental |
-| `./commerce/server` | capability | experimental |
-| `./commerce/server/destinations` | capability | experimental |
-| `./commerce/server/native-checkout` | capability | experimental |
-| `./commerce/server/postgres` | capability | experimental |
-| `./communications` | capability | experimental |
-| `./communications/contracts` | capability | experimental |
+| `./bff` | rail | stable |
+| `./blob` | rail | stable |
+| `./catalog` | capability | stable |
+| `./catalog/contracts` | capability | stable |
+| `./catalog/testing` | capability | testing |
+| `./channels` | capability | stable |
+| `./channels/contracts` | capability | stable |
+| `./channels/server` | capability | stable |
+| `./commerce` | capability | stable |
+| `./commerce/contracts` | capability | stable |
+| `./commerce/server` | capability | stable |
+| `./commerce/server/destinations` | capability | stable |
+| `./commerce/server/native-checkout` | capability | stable |
+| `./commerce/server/postgres` | capability | stable |
+| `./communications` | capability | stable |
+| `./communications/contracts` | capability | stable |
 | `./communications/klaviyo` | capability | experimental |
-| `./company-identity` | capability | experimental |
-| `./company-identity/contracts` | capability | experimental |
-| `./company-identity/server` | capability | experimental |
-| `./composition` | rail | experimental |
-| `./data` | rail | experimental |
-| `./fulfillment` | capability | experimental |
-| `./fulfillment/contracts` | capability | experimental |
-| `./fulfillment/native` | capability | experimental |
-| `./fulfillment/testing` | capability | experimental |
-| `./http` | rail | experimental |
-| `./identity` | capability | experimental |
+| `./company-identity` | capability | stable |
+| `./company-identity/contracts` | capability | stable |
+| `./company-identity/server` | capability | stable |
+| `./composition` | rail | stable |
+| `./data` | rail | stable |
+| `./fulfillment` | capability | stable |
+| `./fulfillment/contracts` | capability | stable |
+| `./fulfillment/native` | capability | stable |
+| `./fulfillment/testing` | capability | testing |
+| `./http` | rail | stable |
+| `./identity` | capability | stable |
 | `./identity/contracts` | capability | experimental |
-| `./inventory` | capability | experimental |
-| `./inventory/contracts` | capability | experimental |
-| `./invoicing` | capability | experimental |
+| `./inventory` | capability | stable |
+| `./inventory/contracts` | capability | stable |
+| `./invoicing` | capability | stable |
 | `./invoicing/contracts` | capability | experimental |
-| `./invoicing/postgres` | capability | experimental |
-| `./job-ledger` | rail | experimental |
-| `./kernel` | rail | experimental |
+| `./invoicing/postgres` | capability | stable |
+| `./job-ledger` | rail | stable |
+| `./kernel` | rail | stable |
 | `./lifecycle` | rail | experimental |
-| `./market-packs` | capability | experimental |
-| `./marketing` | capability | experimental |
-| `./marketing/contracts` | capability | experimental |
-| `./marketing/server` | capability | experimental |
-| `./marketing/server/postgres` | capability | experimental |
-| `./migrations` | rail | experimental |
-| `./operations` | capability | experimental |
-| `./operations/contracts` | capability | experimental |
-| `./operations/server` | capability | experimental |
-| `./payments` | capability | experimental |
-| `./payments/contracts` | capability | experimental |
-| `./payments/testing` | capability | experimental |
+| `./market-packs` | capability | stable |
+| `./marketing` | capability | stable |
+| `./marketing/contracts` | capability | stable |
+| `./marketing/server` | capability | stable |
+| `./marketing/server/postgres` | capability | stable |
+| `./migrations` | rail | stable |
+| `./operations` | capability | stable |
+| `./operations/contracts` | capability | stable |
+| `./operations/server` | capability | stable |
+| `./payments` | capability | stable |
+| `./payments/contracts` | capability | stable |
+| `./payments/testing` | capability | testing |
 | `./portability` | rail | experimental |
-| `./pricing` | capability | experimental |
-| `./pricing/browser` | capability | experimental |
-| `./pricing/contracts` | capability | experimental |
-| `./promotions` | capability | experimental |
+| `./pricing` | capability | stable |
+| `./pricing/browser` | capability | stable |
+| `./pricing/contracts` | capability | stable |
+| `./promotions` | capability | stable |
 | `./promotions/contracts` | capability | experimental |
-| `./risk` | capability | experimental |
-| `./risk/contracts` | capability | experimental |
-| `./risk/server` | capability | experimental |
-| `./scheduler` | rail | experimental |
-| `./shipping` | capability | experimental |
-| `./shipping/contracts` | capability | experimental |
-| `./subscriptions` | capability | experimental |
-| `./subscriptions/contracts` | capability | experimental |
+| `./risk` | capability | stable |
+| `./risk/contracts` | capability | stable |
+| `./risk/server` | capability | stable |
+| `./scheduler` | rail | stable |
+| `./shipping` | capability | stable |
+| `./shipping/contracts` | capability | stable |
+| `./subscriptions` | capability | stable |
+| `./subscriptions/contracts` | capability | stable |
 
 4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity:platform -->

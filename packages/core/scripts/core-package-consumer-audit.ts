@@ -52,7 +52,7 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
     { id: "packed-env", category: "legacy-env", mode: "environment-prefix", terms: ["VELIPET_"] },
   ],
 };
-const approvedDogfoodEvidence = "A private product currently imports candidate package seams; this does not establish a public platform adopter seam.";
+const approvedDogfoodEvidence = "A first-party production deployment consumes package seams; this is first-party evidence only.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const approvedPublicSecurityContact = "dev@openlup.com";
 const approvedPublishConfig = { access: "public", provenance: true, tag: "preview" };
@@ -134,7 +134,7 @@ function assertPublishablePackageAudit({
   assert((packageJson.private ?? false) === false, "core package must be publishable, not private");
   assert(
     isSetVersion(packageJson.version),
-    `core package version must be a set version ${setVersionRule} below 1.0, not ${packageJson.version}`,
+    `core package version must be a set version ${setVersionRule}, not ${packageJson.version}`,
   );
   assert(
     isDeepStrictEqual(packageJson.publishConfig, approvedPublishConfig),
@@ -148,9 +148,9 @@ function assertPublishablePackageAudit({
   assert(packageJson.files?.includes("LICENSE") === true, "core package files must include LICENSE");
   assert(packageJson.scripts?.prepack === "npm run build", "core package must build before pack");
   assert(packageReadme.includes("| Export | Role | Maturity | Package smoke |"), "README maturity table must identify package smoke evidence");
-  assert(packageReadme.includes("| `./subscription` | kernel | candidate |"), "subscription must stay a candidate kernel surface");
-  assert(packageReadme.includes("| `./bundle` | kernel | candidate |"), "bundle must stay a candidate kernel surface");
-  assert(packageReadme.includes("| `./pricing` | kernel | candidate |"), "pricing must stay a candidate kernel surface");
+  assert(packageReadme.includes("| `./subscription` | kernel | stable |"), "subscription must stay a stable kernel surface");
+  assert(packageReadme.includes("| `./bundle` | kernel | stable |"), "bundle must stay a stable kernel surface");
+  assert(packageReadme.includes("| `./pricing` | kernel | stable |"), "pricing must stay a stable kernel surface");
   assert(FIXED_BOX_CONSUMER_MARKER === "fixed-box packed consumer ok", "fixed-box consumer marker drifted");
 
   const dependencySpecs = [
@@ -212,6 +212,6 @@ function normalizeApprovedDogfoodEvidence(source: string): string {
     meaning === approvedDogfoodEvidence,
     "packed release-gates.json dogfood evidence must retain its exact approved wording",
   );
-  releaseGates.evidence!.dogfoodEvidence!.meaning = "APPROVED_PRIVATE_DOGFOOD_EVIDENCE";
+  releaseGates.evidence!.dogfoodEvidence!.meaning = "APPROVED_FIRST_PARTY_DOGFOOD_EVIDENCE";
   return JSON.stringify(releaseGates);
 }
