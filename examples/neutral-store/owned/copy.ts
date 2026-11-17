@@ -570,7 +570,7 @@ export const copy = {
     language: "Język",
     skip: "Przejdź do treści",
     demo: "Lokalna piaskownica · fikcyjne dane · bez prawdziwych płatności",
-    preview: "Wersja rozwojowa",
+    preview: "Przykładowy sklep",
     buy: "Dodaj do koszyka",
     details: "Zobacz produkt",
     oneTime: "Zakup jednorazowy",
