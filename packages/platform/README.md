@@ -1717,6 +1717,24 @@ await an owner decision. Pricing VAT calculation retains
 both exported helpers and their signatures: `calculateIncludedVat` delegates to
 `splitIncludedVat` through a distinct named wrapper using the same arithmetic.
 
+### Native offer-policy readiness inputs
+
+The catalogue SQL descriptor includes native-only, unbound readiness inputs for
+price-writer integration. Installation distinguishes existing subscriptions
+from future pending acquisition and records the original cohort marking; it
+never performs the operator's audit or captures the rollout baseline.
+
+After auditing every legacy non-fixture subscription, including paused and
+cancelled rows, service authority can explicitly invoke
+`commerce_capture_offer_policy_v2_legacy_baseline()`. Capture takes no caller
+count or fingerprint and never overwrites an existing baseline. A zero baseline
+requires empty installation provenance and a currently empty cohort. Missing
+provenance, changed membership and incomplete financial or historical order
+proof fail closed. The internal helpers only read; they grant no writer,
+provider, deployment or activation capability. Existing TypeScript readiness
+contracts and subscription agreement/schedule behavior remain unchanged.
+See the [migration and transfer owner](../../docs/platform/DATA_AND_MIGRATIONS.md#native-offer-policy-inputs).
+
 ## Scheduled jobs
 
 See [scheduling selected work](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/operate/self-host.md#select-background-work).

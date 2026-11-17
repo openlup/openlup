@@ -55,7 +55,9 @@ beforeAll(async()=>{
  await upgrade.query("INSERT INTO public.communication_recipient_consents(recipient_fingerprint,purpose,state) VALUES ($1,'marketing_newsletter','denied')",[hash(email)]);
  before=await snapshot(upgrade);
  // Later forwards add editor defaults and nullable saved-address pointers.
- before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null,configured_offer_version:"classic",shipping_saved_address_id:null,billing_saved_address_id:null}}));
+ before.subscriptions=before.subscriptions.map(({row})=>({row:{...row,composition_constraint:null,configured_offer_version:"classic",shipping_saved_address_id:null,billing_saved_address_id:null,
+  offer_policy_version:"commerce.offer-policy.v1",promotion_engine_version:"promotion-engine.v1",
+  offer_policy_assignment_state:"legacy_frozen",is_test_fixture:false}}));
  await runner(fresh).apply();
  await fresh.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'admin@example.invalid')",[A]);
  await fresh.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now())",[A]);
