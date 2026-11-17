@@ -2,8 +2,8 @@
 
 Status: historical record, 2026-11-09.
 
-Status: development-preview source tooling. No complete release outcome or
-supported installation is claimed.
+Status: qualification evidence for the one supported stable 1.x installation
+composition: the npm starter, PostgreSQL and the qualified image.
 
 ## Released starter inputs
 
@@ -452,8 +452,8 @@ qualification dependency blocks image publication on a failed canary. Compose
 cleanup runs on success and failure; the job's existing `always()` cleanup also
 removes containers and volumes labelled with a `canary-*` Compose project after
 cancellation or a step timeout.
-This is development-preview qualification, not provider certification or stable
-support. The first-party demo store is separate adoption evidence.
+This is qualification evidence for the one supported stable 1.x installation
+composition, not provider certification. The first-party demo store is separate adoption evidence.
 
 A local 2026-11-14 rehearsal on the qualified 0.41.0 set passed archive loading
 and identity, lifecycle installation/readiness (30.857 seconds), the existing
