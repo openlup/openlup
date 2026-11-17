@@ -12,6 +12,9 @@ in the source repository.
 
 ## [1.0.0]
 
+- Preserve the experimental registry readiness code annotation in emitted declarations;
+  the seven established readiness codes retain their stable contracts.
+
 - Publishable on the npm `latest` dist-tag as `1.0.0`, from tag
   `openlup-core-v1.0.0`.
 - Accept stable MAJOR.MINOR.PATCH package versions in readiness declarations;

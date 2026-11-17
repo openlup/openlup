@@ -1,27 +1,21 @@
 import { z } from "./validation.js";
 import { validateCatalogUnitFactor } from "@openlup/core/catalog";
 import type { CatalogConformanceCode, CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
-/** @experimental */
 export const catalogNamespacedKeySchema = z.string().max(120).regex(/^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u);
-/** @experimental */
 export const catalogDimensionKeySchema = z.string().max(64).regex(/^[a-z][a-z0-9_-]*$/u)
   .refine((key) => !["__proto__", "constructor", "prototype"].includes(key));
-/** @experimental */
 export const catalogQuantityDimensionSchema = z.enum(["mass", "volume", "count"]);
-/** @experimental */
 export const catalogQuantitySchema = z.object({
   dimension: catalogQuantityDimensionSchema,
   unscaled: z.string().regex(/^[1-9][0-9]{0,39}$/u),
   scale: z.number().int().min(0).max(12),
   unit: catalogNamespacedKeySchema,
 }).strict();
-/** @experimental */
 export const catalogOptionValueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("choice"), value: z.string().min(1).max(120) }).strict(),
   z.object({ kind: z.literal("quantity"), value: catalogQuantitySchema }).strict(),
   z.object({ kind: z.literal("boolean"), value: z.boolean() }).strict(),
 ]);
-/** @experimental */
 export const catalogProductTypeRefSchema = z.object({
   key: catalogNamespacedKeySchema,
   version: z.number().int().positive().max(2_147_483_647),

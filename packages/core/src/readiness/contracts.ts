@@ -1,9 +1,11 @@
 import type { OutboxHandlerDescriptor } from "../outbox/index.js";
 import type { EventVocabularyEntry } from "../outbox/vocabulary.js";
 /** @beta */
-export const READINESS_CODES = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING",
-  /** @experimental */
-  "registry_missing_referenced_version"] as const;
+export const READINESS_CODES: readonly ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING",
+  /** Reports the experimental catalogRegistry observation.
+   * @experimental
+   */
+  "registry_missing_referenced_version"] = ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_EVENT_UNHANDLED", "OPENLUP_E_EVENT_DUPLICATE", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND", "OPENLUP_E_SET_MISMATCH", "OPENLUP_E_ENV_MISSING", "registry_missing_referenced_version"] as const;
 /** @beta */
 export type ReadinessCode = typeof READINESS_CODES[number];
 /** @beta */

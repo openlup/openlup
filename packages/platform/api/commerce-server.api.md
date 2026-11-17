@@ -18729,6 +18729,7 @@ export declare const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
     effectiveFrom: z.ZodString;
     effectiveTo: z.ZodNullable<z.ZodString>;
     digest: z.ZodString;
+    /** @experimental */
     closedFromOpen: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
 export declare class SubscriptionPricePolicyDigestError extends Error {
