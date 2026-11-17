@@ -224,6 +224,9 @@ first hosted qualification, which must remeasure the step's bound.
 
 ## Public outcome projection
 
+The projection uses the release tooling's coherent-set rule: `0.N.P` with N at
+least 1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1; prereleases are refused.
+
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,
 class counts, API snapshots and executable proof links from `config/openlup-packages.json`,
 the package manifests and each code export's existing `packageSmokeEvidence`
@@ -260,6 +263,11 @@ not an input to this file. The [task record](plans/oss-m19-g16.md) retains that
 requirements for a later complete claim.
 
 ## Package-set BOM
+
+Both BOM formats use the same coherent-set rule as release preparation. Their
+`posture` follows the selected version: `development-preview` for 0.x and
+`stable` from 1.0.0. Re-qualifying a historical 0.x tag preserves its preview
+posture; a stable version alone supplies no execution or provenance evidence.
 
 The BOM generator consumes the existing exact-commit `packages-manifest.json`
 and its retained tarballs. The package producer owns building, packing and its
