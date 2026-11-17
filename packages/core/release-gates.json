@@ -282,7 +282,7 @@
     "maxPackedBytes": 457249,
     "maxUnpackedBytes": 1755355,
     "maxFiles": 420,
-    "capReason": "The owner approved raising each failing cap once to ceil(measured x 1.05) for the 1.0.0 preparation. The cold release-set check measured guide 217622 B against 209770 B, tarball 435475 B against 421729 B and unpacked 1671766 B against 1621192 B; the new caps are 228504 B, 457249 B and 1755355 B respectively. The first stable upgrade guide covers eight native forwards, experimental catalogue tools and rollback limits. Preserve code 276480 B / 400 files, root docs 49152 B / 20 files, guide files 70, total files 420, browser limits, the published 0.43.0 baseline and every other limit.",
+    "capReason": "The owner approved raising each failing cap once to ceil(measured x 1.05) for the 1.0.0 preparation. The cold release-set check measured guide 217622 B against 209770 B, tarball 435475 B against 421729 B and unpacked 1671766 B against 1621192 B; the new caps are 228504 B, 457249 B and 1755355 B respectively. The first stable upgrade guide covers nine native forwards, experimental catalogue tools and rollback limits. Preserve code 276480 B / 400 files, root docs 49152 B / 20 files, guide files 70, total files 420, browser limits, the published 0.43.0 baseline and every other limit.",
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",

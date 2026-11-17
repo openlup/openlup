@@ -360,8 +360,8 @@ The source-preview descendant check retains its strict snapshot equality.
 The prepared `1.0.0` set begins the stable compatibility line and adds experimental
 exact catalogue quantities, pricing helpers and registry observations, installed
 lookup improvements and offline catalogue guidance. Its reader guide covers
-Platform's eight native forwards at slots 142–149, explicit migration/backfill
-steps and code-rollback limits. Upgrade the complete set together and read
+Platform's nine native forwards at slots 142–150, explicit migration/backfill
+steps, the experimental base-price writer and code-rollback limits. Upgrade the complete set together and read
 [the set notes](../../packages/core/CHANGELOG.md#100); Core introduces no schema migration.
 Size comparison uses the published `0.43.0` tarball; releases before `0.42.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
