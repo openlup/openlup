@@ -125,6 +125,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, idempotencyKey]);
         const stored = await replay(db, actor, subscriptionId, idempotencyKey, raw, action);
         if (stored) return stored;
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [subscriptionId, actor.clientId]);
         assertRequestLimits(request);
         const quote = await quoteFor(db, request);
         if (quote && request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");

@@ -1907,9 +1907,13 @@ new apply. For the five sized bundle/mix/plan/portion commands,
 rows and optional opt-in need, and reread all selected SKU catalogue facts, on
 the supplied transaction connection before SQL apply. It compares those reads
 with the apply quote's evidence; subject locks hold until commit. Catalogue rows
-are reread, not locked, because a restricted runtime may only read them;
-serializing an apply against a concurrent catalogue publication is the named
-publication-fence limit. Catalogue evidence includes variant,
+are reread, not locked, because a restricted runtime may only read them.
+After exact replay, the native editors lock the owned subscription before quoting
+and before the host's subject locks. The native SQL apply prelocks its existing
+commerce targets before the catalogue assertion. Governed version 3 evidence uses
+the [native admission fence](../../packages/platform/README.md#catalog); legacy
+catalogue inputs retain their existing route. No host port is bound by installation.
+Catalogue evidence includes variant,
 SKU and group identity, add-on/sellable flags, document revision and digest,
 verification, physical size, demand per unit, exclusion keys and `sellableNow`.
 Selected facts are ordered by canonical variant UUID and exclusion keys are

@@ -313,6 +313,26 @@ price with a subsequent expected-base command.
 
 ## Compatible data transfer
 
+The native admission forward preserves all six replaced routine signatures and
+adds one service-callable assertion with a fixed search path. Plain and promoted
+purchase entrypoints require lineage only for native version 3 publication facts;
+existing legacy inputs retain their results. The lifecycle write fence and current
+publication writer refuse a downgrade to the legacy route. Completed commands
+replay before current checks. Effectful subscription edits prelock the exact
+existing lines and terms they will mutate before the shared catalogue barrier.
+The publisher retains its nonblocking busy refusal. New public admission symbols
+are experimental and installation changes no capability or agreement.
+
+No table or transfer classification is added by this forward: the existing
+authoritative line, order, event and retained-term carriers retain the accepted
+reference bytes. Historical NULL bindings remain unknown. Apply the full native
+selection before composing the assertion, keep old readers for historical formats,
+and retain the lifecycle-aware reader while its accepted references are in use.
+The managed rail does not supply this feature; the package migration fragment
+describes the separate RLS-preserving twin. See the
+[catalogue contract](../../packages/platform/README.md#catalog) for evidence carriers
+and [lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order) for acquisition rules.
+
 Governed catalogue lifecycle facts use publication/product/SKU version 3 beside
 the retained version 2 format. The native lifecycle forward adds a nullable
 `subscription_lines.catalog_sku_revision_id` with the validated same-SKU composite

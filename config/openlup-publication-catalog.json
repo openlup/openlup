@@ -1470,6 +1470,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122210000_catalog_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4790,6 +4794,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122210000_catalog_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5094,6 +5102,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/admission.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/attributeProjection.ts",
       "class": "public-output"
     },
@@ -5191,6 +5203,10 @@
     },
     {
       "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/admission.ts",
       "class": "public-output"
     },
     {
@@ -29743,6 +29759,10 @@
     },
     {
       "path": "tests/postgres/bundleNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdmission.test.ts",
       "class": "public-output"
     },
     {

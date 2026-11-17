@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it } from "vitest";
 import { createPostgresCatalogPublication, installCatalogDefinitions, catalogDefinitionDigest, assertCatalogAcceptedReferenceV2, catalogAcceptedReferenceV2Schema, createCatalogProductTypeRegistry, type CatalogPublicationRules } from "@openlup/platform/catalog";
-import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogHeadRef, type CatalogPublishCommand, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
+import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogDraftPayloadV4, type CatalogHeadRef, type CatalogPublishCommand, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 const productId = "10000000-0000-4000-8000-000000000001", skuId = "20000000-0000-4000-8000-000000000001";
 const draftId = "30000000-0000-4000-8000-000000000001", documentId = "40000000-0000-4000-8000-000000000001";
@@ -54,8 +54,8 @@ beforeEach(async () => {
   actor = (await authority.authorize(null))!;
 });
 afterEach(async () => { await db.query("ROLLBACK"); db.release(); });
-async function publish(payload: CatalogDraftPayloadV4, revision = 0, head: CatalogHeadRef | null = null) {
-  const command = { schemaVersion: 4, action: revision ? "revise" : "create", draftId,
+async function publish(payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4, revision = 0, head: CatalogHeadRef | null = null) {
+  const command = { schemaVersion: payload.schemaVersion, action: revision ? "revise" : "create", draftId,
     commandKey: `draft:${revision}`, expectedRevision: revision, payload }, text = canonicalCatalogDraftJson(command);
   const saved = (await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [text, createHash("sha256").update(text).digest("hex")])).rows[0].result;
   expect(saved.outcome, JSON.stringify(saved)).toBe("committed");
@@ -116,6 +116,50 @@ it("refuses old raw status writes against lifecycle-governed facts", async () =>
   await expect(db.query("UPDATE public.catalog_skus SET status='active' WHERE id=$1", [f.sku])).rejects.toMatchObject({ code: "42501", message: "catalog_lifecycle_raw_status_fenced" });
   await db.query("ROLLBACK TO SAVEPOINT raw_status");
   expect(await authority.publish(f.first.command, actor)).toMatchObject({ outcome: "replayed", receipt: "receipt" in f.first.result ? f.first.result.receipt : null });
+});
+
+it("catalog_v3_to_legacy_downgrade_refuses", async () => {
+  const f = await seed();
+  if (!("receipt" in f.first.result)) throw new Error("Missing first head");
+  const before = (await db.query(`SELECT 'product' AS kind,id,publication_facts,status FROM public.catalog_products WHERE id=$1
+    UNION ALL SELECT 'sku',id,publication_facts,status FROM public.catalog_skus WHERE id=$2 ORDER BY kind`, [f.product,f.sku])).rows;
+  for (const table of ["catalog_products", "catalog_skus"]) {
+    for (const change of ["publication_facts=NULL", "publication_facts=publication_facts-'schemaVersion'", "publication_facts=jsonb_set(publication_facts,'{schemaVersion}','2')", "status='active'"]) {
+      await db.query("SAVEPOINT downgrade");
+      await expect(db.query(`UPDATE public.${table} SET ${change} WHERE id=$1`, [table === "catalog_products" ? f.product : f.sku]))
+        .rejects.toMatchObject({ code: "42501", message: "catalog_lifecycle_raw_status_fenced" });
+      await db.query("ROLLBACK TO SAVEPOINT downgrade");
+    }
+  }
+  const oldPayload: CatalogDraftPayloadV3 = { ...structuredClone(f.payload), schemaVersion: 3,
+    publication: { kind: "release", evidence: {}, operations: [] } };
+  oldPayload.product.sharedContent.catalogAction = "revise";
+  expect((await publish(oldPayload,1,f.first.result.receipt.head)).result)
+    .toMatchObject({ outcome: "validation_issue", reason: "catalog_lifecycle_raw_status_fenced" });
+  expect((await db.query(`SELECT 'product' AS kind,id,publication_facts,status FROM public.catalog_products WHERE id=$1
+    UNION ALL SELECT 'sku',id,publication_facts,status FROM public.catalog_skus WHERE id=$2 ORDER BY kind`, [f.product,f.sku])).rows).toEqual(before);
+  expect(await authority.publish(f.first.command, actor)).toMatchObject({ outcome: "replayed", receipt: f.first.result.receipt });
+});
+
+it.each(["commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox"])("catalog_v3_purchase_without_lineage_refuses: %s", async routine => {
+  const f = await seed(), money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const quote = { context: { mode: "one_time", offerVersion: "classic" }, lines: [{ sku: f.code, quantity: 1,
+    unitPriceGross: money(617), lineSubtotalGross: money(617) }], totalGross: money(617) };
+  const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
+    currency: "XXX", context: quote.context, lines: quote.lines, discounts: [],
+    totals: { totalGross: money(617), subtotalGross: money(617), discountTotalGross: money(0), shippingGross: money(0), shippingDiscountGross: money(0) } };
+  const snapshot = async () => {
+    const result: Record<string, unknown> = {};
+    for (const { tablename } of (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows)
+      result[tablename] = (await db.query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]') AS rows FROM public."${tablename}" t`)).rows[0].rows;
+    return result;
+  };
+  const before = await snapshot();
+  await db.query("SAVEPOINT admission");
+  await expect(db.query(`SELECT public.${routine}($1,$2::jsonb,$3::jsonb,$4::uuid)`, [randomUUID(),JSON.stringify({ quote }),JSON.stringify(draft),f.client]))
+    .rejects.toMatchObject({ code: "22023", message: "commerce_order_draft_catalog_anchor_missing" });
+  await db.query("ROLLBACK TO SAVEPOINT admission");
+  expect(await snapshot()).toEqual(before);
 });
 
 it.each([

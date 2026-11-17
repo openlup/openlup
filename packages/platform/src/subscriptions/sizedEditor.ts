@@ -125,6 +125,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, key]);
         const stored = await replay(db, actor, key, parsed);
         if (stored) return stored;
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
         assertRequestLimits(parsed);
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
         const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply");

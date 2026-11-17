@@ -90,3 +90,5 @@ export { createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
 
 export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
+export { createPostgresCatalogAdmission } from "./admission.js";
+export type { CatalogAdmissionPort } from "./admission.js";

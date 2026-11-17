@@ -1457,6 +1457,27 @@ its old-dialect replay and agreed money remain unchanged. New freezes require
 complete accepted references. The host's commerce-first acceptance fence owns
 capture; installation composes no acceptance or publication service.
 
+The experimental `createPostgresCatalogAdmission()` supplies
+`CatalogAdmissionPort.assertCurrent(db, evidence)` for the accepting transaction.
+The native order and edit writers use that same assertion after replay and commerce
+prelocking. Supply `CatalogAdmissionInput` beside existing server quote provenance:
+complete immutable SKU references and quantities, current product heads, native
+offer evidence and exact consulted price-row versions. Package, exact and sized
+edit previews retain it at `quote_snapshot.catalogAdmission`; the legacy bundle
+lane binds it through `compositionConstraint.catalogAdmission` and its existing
+request fingerprint. Order snapshots carry it at `quoteSnapshot.catalogAdmission`.
+These are trusted server carriers; they are not browser admission or a second quote.
+The accepting connection holds the shared guards through commit or rollback.
+Missing or stale evidence refuses before mutation. Purchases of products and SKUs
+without native version 3 publication facts retain their existing behavior;
+governed facts cannot be downgraded through an old writer. Sized retained selections
+resolve immutable accepted facts, and current admission applies to fresh or
+increased selections. Lane pricing and frozen renewal/retry servicing keep their
+existing rules. A publisher contending with an edit retains its
+`catalog_publication_busy` refusal; after the edit commits, a new attempt can run.
+Installation activates nothing and does not qualify archive. Follow the
+[catalogue lock order](../../docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order).
+
 The unpaginated native `catalog_bound_obligations_v2` query is the common archive
 and withdrawal-impact owner. It requires unfiltered evidence across every
 obligation family; legacy NULL revisions still preserve known SKU obligations.
@@ -2653,7 +2674,10 @@ by canonical variant UUID with sorted exclusion keys. The ledger records them in
 `subjectFacts.catalogFacts`; existing SQL equality compares preview and apply
 evidence. The host compares these current reads with apply evidence and holds its
 subject locks through commit; catalogue rows and stock are reread, not locked or
-reserved, and concurrent catalogue publication is the publication-fence limit.
+reserved by this host check. After replay, the editors lock the owned subscription
+before quoting and the host's subject checks. Governed version 3 SQL acceptance
+then uses the [catalogue admission fence](#catalog) after its commerce prelocks;
+legacy catalogue inputs retain their existing route.
 Individual add-on edits keep the existing exact writer boundary. Preview never binds; accepted opt-in binds atomically, including when
 contents are unchanged. Direct/reverse binding writes refuse. Current SKU
 admission is transactional; publication-head fencing and sized acquisition are

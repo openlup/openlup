@@ -403,6 +403,23 @@ export interface AdminBundleWritePort {
     deactivate(actorId: string, input: DeactivateBundleRequest): Promise<BundleWriteResult>;
 }
 ```
+## dist/catalog/admission.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogAdmissionInput } from "./contracts/admission.js";
+/** Call on the accepting transaction, after commerce prelocking and replay.
+ * The shared guards remain held until that same connection commits or rolls back.
+ * @experimental
+ */
+export interface CatalogAdmissionPort {
+    assertCurrent(db: PgQueryExecutor, input: CatalogAdmissionInput): Promise<void>;
+}
+/** The native SQL assertion is the single admission authority.
+ * @experimental
+ */
+export declare function createPostgresCatalogAdmission(): CatalogAdmissionPort;
+```
 ## dist/catalog/attributeProjection.d.ts
 
 ```ts
@@ -1273,6 +1290,47 @@ export interface PostgresCommerceQuoteCatalogReadOptions {
  * head. Each call scans afresh; hosts may share a promise within one request.
  */
 export declare function createPostgresCommerceQuoteCatalogReadPort(executor: PgQueryExecutor, options: PostgresCommerceQuoteCatalogReadOptions): CommerceQuoteCatalogReadPort;
+```
+## dist/catalog/contracts/admission.d.ts
+
+```ts
+import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
+import type { CatalogHeadRef } from "./lifecycle.js";
+/** Immutable publication evidence beside the existing pricing provenance.
+ * @experimental
+ */
+export interface CatalogAdmissionSelection {
+    reference: CatalogAcceptedReferenceV2;
+    quantity: number;
+}
+/** Native price identity and exact consulted state; no price calculation occurs here.
+ * @experimental
+ */
+export interface CatalogAdmissionPriceContext {
+    skuId: string;
+    priceListId: string;
+    entryId: string;
+    entry: Record<string, unknown>;
+}
+/** A trusted server supplies this evidence; an account baseline is read under its subscription lock.
+ * @experimental
+ */
+export interface CatalogAdmissionInput {
+    heads: readonly {
+        productId: string;
+        head: CatalogHeadRef;
+    }[];
+    skuRevisions: readonly CatalogAdmissionSelection[];
+    mode: "one_time" | "subscription";
+    offerEvidence: {
+        offerVersion: string;
+        subscriptionId?: string;
+        lane?: "classic" | "exact" | "sized" | "legacy";
+        optIn?: boolean;
+    };
+    priceContextVersions: readonly CatalogAdmissionPriceContext[];
+    purpose: "order" | "account";
+}
 ```
 ## dist/catalog/contracts/attributes.d.ts
 
@@ -2572,6 +2630,7 @@ export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishe
 export type { CatalogLifecycleStateV2, CatalogLifecycleOperationV2, CatalogDraftPublicationOperationV4, CatalogDraftPayloadV4, CatalogDraftCommandV4, CatalogLifecycleStoredPayload, CatalogLifecycleStoredCommand, CatalogLifecycleStoredRecord, CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogProductState, CatalogSkuState, CatalogAcceptedReferenceV2, CatalogObligationFamilyV2, CatalogBoundObligationV2, CatalogBoundObligationsV2 } from "./lifecycleV2.js";
 export type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 export type { CatalogFullPublicationV3 } from "./lifecycleV2.js";
+export type { CatalogAdmissionSelection, CatalogAdmissionPriceContext, CatalogAdmissionInput } from "./admission.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -4121,6 +4180,8 @@ export { catalogLifecycleStateV2Schema, catalogLifecycleOperationV2Schema, catal
 export { createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
+export { createPostgresCatalogAdmission } from "./admission.js";
+export type { CatalogAdmissionPort } from "./admission.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -5127,6 +5188,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261122200001_catalog_lifecycle.sql";
     readonly position: 152;
     readonly sha256: "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50";
+    readonly url: URL;
+}, {
+    readonly id: "20261122210000_catalog_admission";
+    readonly catalogPath: "db/platform/migrations/20261122210000_catalog_admission.sql";
+    readonly position: 153;
+    readonly sha256: "4bca45fd7baf03972eaf46a6c55eab6872cdffc3749cfdf987bab6fa0b1399c1";
     readonly url: URL;
 }];
 ```

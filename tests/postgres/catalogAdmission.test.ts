@@ -1,0 +1,724 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { Pool, type PoolClient } from "pg";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
+  createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
+  type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
+import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
+import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore, createPostgresStockWaitStore } from "@openlup/platform/subscriptions";
+import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
+import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
+  type PostgresContainer } from "../helpers/postgresContainer.js";
+
+const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
+  netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
+const registry = createCatalogProductTypeRegistry([definition]);
+const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson,
+  deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }), validateProduct: () => [], classifySkuChange: () => "compatible" };
+let container: PostgresContainer | undefined, pool: Pool;
+const administrator = randomUUID();
+const packs = ["supplements", "cosmetics", "pet-food"] as const;
+const lanes = ["classic", "exact", "sized", "legacy"] as const;
+type Lane = typeof lanes[number];
+beforeAll(async () => {
+  container = await runPostgresContainer({ name: `catalog-admission-${process.pid}`, password: "synthetic-admission" });
+  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Admission requires real PostgreSQL");
+  pool = new Pool({ connectionString: container.connectionString });
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
+  await installCatalogDefinitions(pool, { id: "example:admission", namespace: "example", version: 1, openlupRange: "0.44.x",
+    capabilities: { publish: false }, types: [definition], taxClasses: [] });
+  await pool.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'admission@example.invalid')", [administrator]);
+  await pool.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [administrator]);
+  await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1')");
+}, postgresSetupTimeoutMs);
+afterAll(() => closePostgres(container, [pool]), postgresTeardownTimeoutMs);
+const rpc = async (db: Pool | PoolClient, name: string, args: unknown[]) =>
+  (await db.query(`SELECT public.${name}(${args.map((_, index) => `$${index + 1}`).join(",")}) AS result`, args)).rows[0].result;
+
+function publisher(connection: PoolClient, afterQuery?: (sql: string, values: unknown[]) => Promise<void>) {
+  return createPostgresCatalogPublication({ registry, rules,
+    authorizeHuman: async () => ({ ok: true, userId: administrator, role: "admin", isMachineActor: false }),
+    readiness: async () => ({ ready: true, reasons: [] }), globalReadiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => true,
+    transactions: { async run(work) {
+      await connection.query("BEGIN");
+      try {
+        const result = await work({ async query(sql, values = []) {
+          const result = await connection.query(sql, values); await afterQuery?.(sql, values); return result;
+        } });
+        await connection.query("COMMIT"); return result;
+      } catch (error) { await connection.query("ROLLBACK"); throw error; }
+    } },
+  });
+}
+function payload(product: string, sku: string, pack: string): CatalogDraftPayloadV4 {
+  const code = `ARTICLE-${sku}`, slug = `article-${product}`, documentId = randomUUID();
+  const digits = (BigInt(`0x${sku.replaceAll("-","").slice(0,14)}`) % 1_000_000_000_000n).toString().padStart(12,"0");
+  const gtin = digits + String((10 - [...digits].reduce((sum,digit,index) => sum + Number(digit) * (index % 2 ? 3 : 1),0) % 10) % 10);
+  const document = { schemaVersion: 1, derived: 12, pack }, canonicalText = canonicalCatalogDraftJson(document);
+  const facts = { skuCode: code, title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
+  return { schemaVersion: 4, product: { id: product, type: { key: definition.key, version: 1 }, dimensions: [], slug, primarySkuId: sku,
+    documentRevision: { id: documentId, productId: product, revisionNo: 1, schemaId: "example:document.v1", documentRef: "example:document", sourceRef: "example:source", digest: digest(canonicalText) },
+    sharedContent: { schemaVersion: 1, catalogAction: "create", document, presentation: {}, publicationSkus: [facts], requestedModes: [{ skuCode: code, modes: [] }], offerMemberships: [] } },
+    skus: [{ id: sku, productId: product, code, options: {}, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
+      grossMass: { dimension: "mass", unit: "openlup:g", unscaled: "120", scale: 0 }, logisticsRef: "example:logistics",
+      identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit" }] }],
+    publication: { kind: "release", evidence: {}, operations: [
+      { op: "create_product", productId: product, productSlug: slug, name: "Synthetic article" },
+      { op: "register_document_revision", productSlug: slug, revisionId: documentId, revisionNo: 1, documentRef: "example:document", sourceRef: "example:source", canonicalText, digest: digest(canonicalText), provenance: { source: "current_draft" } },
+      { op: "move_document_pointer", productSlug: slug, documentRevisionNo: 1 }, { op: "create_sku", productSlug: slug, documentRevisionNo: 1, skuId: sku, ...facts },
+      { op: "create_identifier", skuCode: code, scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null },
+      { op: "set_primary_sku", productSlug: slug, skuCode: code }, { op: "set_product_presentation", productSlug: slug, presentation: {} },
+      { op: "set_sku_metadata", skuCode: code, logisticsRef: "example:logistics" },
+    ] } };
+}
+async function candidate(db: PoolClient, value: CatalogDraftPayloadV4, draft: string, revision: number, head: CatalogHeadRef | null) {
+  const command = { schemaVersion: 4, action: revision ? "revise" : "create", draftId: draft,
+    commandKey: `draft:${revision}`, expectedRevision: revision, payload: value }, text = canonicalCatalogDraftJson(command);
+  expect((await rpc(db, "catalog_draft_apply", [text,digest(text),"operator:synthetic"])).outcome).toBe("committed");
+  const candidateRef = `v1:${draft}@${revision + 1}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
+  const candidateDigest = digest('["catalog-candidate",1,' + canonicalCatalogDraftJson(value) + ','
+    + canonicalCatalogDraftJson([{ ...value.product.type, definitionDigest: catalogDefinitionDigest(definition) }]) + ',' + canonicalCatalogDraftJson(head) + ']');
+  const authority = publisher(db), actor = (await authority.authorize(null))!;
+  const publication: CatalogPublishCommand = { productId: value.product.id, commandKey: `publish:${revision}`, candidateRef, candidateDigest, expectedHead: head, changes: [] };
+  expect(await authority.decision({ schemaVersion: 2, action: "approve", productId: value.product.id,
+    commandKey: `approve:${revision}`, candidateRef, candidateDigest, reason: "Exact synthetic candidate" }, actor)).toMatchObject({ outcome: "committed" });
+  return { authority, actor, publication };
+}
+async function fixture(pack: string) {
+  const product = randomUUID(), sku = randomUUID(), draft = randomUUID(), client = randomUUID(), subscription = randomUUID(), actor = randomUUID();
+  const value = payload(product,sku,pack), db = await pool.connect();
+  try {
+    const initial = await candidate(db,value,draft,0,null), published = await initial.authority.publish(initial.publication,initial.actor);
+    if (!("receipt" in published)) throw new Error(JSON.stringify(published));
+    await db.query("BEGIN");
+    // Installed standing facts, as in the lifecycle servicing fixture. Activation is not this witness.
+    const old = (await db.query("SELECT * FROM public.catalog_publications WHERE id=$1", [published.receipt.head.publicationId])).rows[0];
+    const manifest = JSON.parse(old.canonical_state), ref = manifest.skus[0];
+    const prior = (await db.query("SELECT * FROM public.catalog_sku_revisions WHERE id=$1", [ref.revisionId])).rows[0];
+    const facts = { ...JSON.parse(prior.full_facts), lifecycleState: "active", status: "active", sellableStandalone: true, sellableInSubscription: true,
+      memberships: [{ offerVersion: "classic", admitted: true }, { offerVersion: "sized.v1", admitted: true }] };
+    manifest.product = { ...manifest.product, lifecycleState: "active", status: "active" };
+    const publication = randomUUID(), revision = randomUUID(), fullFacts = canonicalCatalogDraftJson(facts), factsDigest = digest(fullFacts);
+    manifest.skus = [{ ...ref, revisionId: revision, revision: 2, digest: factsDigest }];
+    const canonical = canonicalCatalogDraftJson(manifest), hash = digest(canonical);
+    await db.query("INSERT INTO public.catalog_lifecycle_write_capabilities VALUES(pg_current_xact_id(),$1,$2)", [product,hash]);
+    await db.query("UPDATE public.catalog_products SET status='active',publication_facts=$2::jsonb WHERE id=$1", [product,manifest.product]);
+    await db.query("UPDATE public.catalog_skus SET status='active',sellable_standalone=true,sellable_in_subscription=true,publication_facts=$2::jsonb WHERE id=$1", [sku,facts]);
+    await db.query("INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id) VALUES($1,$2,2,$3,$4,1,$5,$6,$7,$8,$6,$9)",
+      [publication,product,old.id,draft,`standing:${publication}`,hash,old.document_revision_id,canonical,administrator]);
+    await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,2,$4,$5,$6)", [revision,sku,product,publication,fullFacts,factsDigest]);
+    await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=2 WHERE product_id=$1", [product,publication]);
+    await db.query("DELETE FROM public.catalog_lifecycle_write_capabilities WHERE product_id=$1", [product]);
+    const head = { ...published.receipt.head, publicationId: publication, revision: 2 };
+    const reference: CatalogAcceptedReferenceV2 = { schemaVersion: 2, skuId: sku, skuCode: facts.code, skuRevisionId: revision,
+      publicationHead: head, typeRef: manifest.product.type, definitionDigest: manifest.product.definitionDigest, optionDigest: facts.optionDigest, netContent: facts.netContent };
+    await db.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)", [client,`${client}@example.invalid`,actor]);
+    const priceList = randomUUID(), entry = randomUUID();
+    await db.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp()-interval '1 day')", [priceList]);
+    await db.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'any',617,clock_timestamp()-interval '1 day')", [entry,priceList,sku]);
+    await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,started_at,currency_code,price_list_id) VALUES($1,$2,28,clock_timestamp()+interval '28 days',clock_timestamp()-interval '56 days','XXX',$3)", [subscription,client,priceList]);
+    await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,1,0,617,'XXX',$3)", [subscription,sku,revision]);
+    await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [subscription,{ schemaVersion: 2, lines: [reference] }]);
+    await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,1,617)", [subscription,facts.code]);
+    await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscription]);
+    const instants = (await db.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at,to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS anchor FROM public.subscriptions WHERE id=$1", [subscription])).rows[0];
+    const at = instants.at as string, anchor = instants.anchor as string;
+    const price = (await db.query("SELECT to_jsonb(p) AS row FROM public.price_entries p WHERE id=$1", [entry])).rows[0].row;
+    await db.query("COMMIT");
+    const admission: CatalogAdmissionInput = { heads: [{ productId: product, head }], skuRevisions: [{ reference, quantity: 2 }], mode: "subscription",
+      offerEvidence: { offerVersion: "classic" }, priceContextVersions: [{ skuId: sku,priceListId: priceList,entryId: entry,entry: price }], purpose: "account" };
+    return { product,sku,draft,client,subscription,actor,value,head,reference,admission,at,anchor,code: facts.code as string };
+  } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+}
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+async function edit(f: Fixture, lane: Lane = "classic") {
+  const key = randomUUID(), hash = digest(key), line = { variantId: f.sku,qty: 2,isAddon: false,
+    quoteLine: { sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234) } };
+  const core = [{ variantId: f.sku,qty: 2 }];
+  if (lane === "legacy") {
+    const db = await pool.connect(), constraint = { catalogAdmission: f.admission };
+    try {
+      await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)", [f.actor]);
+      await db.query("SELECT set_config('request.jwt.claims',$1,false)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+      const quoted = await rpc(db,"customer_subscription_preview_bundle_as_actor",[f.subscription,key,JSON.stringify(core),"[]",constraint,28,1]);
+      return { key,hash: quoted.preview.quoteHash as string,action: "update_bundle",payload: {},
+        invoke: (connection: PoolClient) => rpc(connection,"customer_subscription_apply_bundle_as_actor",[f.subscription,key,quoted.preview.quoteHash,JSON.stringify(core),"[]",constraint,28,1]) };
+    } finally { await db.query("RESET request.jwt.claim.sub"); await db.query("RESET request.jwt.claims"); db.release(); }
+  }
+  const action = lane === "classic" ? "update_package_template" : lane === "exact" ? "update_plan_length" : "resize_bundle";
+  const request = lane === "classic" ? { planDays: 28,base: core,addons: [],expectedTemplateVersion: 1,acceptedQuoteHash: hash }
+    : lane === "exact" ? { action,planDays: 30,expectedTemplateVersion: 1,acceptedQuoteHash: hash }
+      : { action,cadenceDays: 28,compositionConstraint: { kind: "unit_count",value: 2,dailyNeed: 1 },expectedTemplateVersion: 1,acceptedQuoteHash: hash,
+        resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: core,optInToSized: true } } };
+  const constraint = lane === "sized" ? { kind: "unit_count",value: 2,dailyNeed: 1 } : null;
+  const cadenceDays = lane === "exact" ? 30 : 28;
+  const evidence = lane === "classic" ? { baseLines: [line],addonLines: [],compositionConstraint: constraint,catalogAdmission: f.admission }
+    : { lines: [line],cadenceDays,compositionConstraint: constraint,catalogAdmission: f.admission,subjectFacts: { revision: 1 },optInFacts: { revision: 1 } };
+  const totals = { currentRecurringPrice: money(617),newRecurringPrice: money(1234),delta: money(617) };
+  await rpc(pool,"subscription_quote_preview_record",[f.actor,f.client,f.subscription,action,hash,1,
+    (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at", [f.at])).rows[0].at,
+    lane === "classic" ? { planDays: 28,base: core,addons: [] } : Object.fromEntries(Object.entries(request).filter(([key]) => !["expectedTemplateVersion","acceptedQuoteHash"].includes(key))),evidence,totals,f.at]);
+  const payload = { ...request,request,expectedTemplateVersion: 1,acceptedQuoteHash: hash,
+    ...(lane === "classic" ? { planDays: 28,base: core,addons: [],...evidence,...totals } : { ...evidence,cadenceDays }) };
+  return { key,hash,action,payload,invoke: (connection: PoolClient) => rpc(connection,lane === "classic" ? "subscription_package_edit_apply" : lane === "exact" ? "subscription_line_edit_apply" : "subscription_sized_edit_apply",
+    [f.actor,f.client,key,f.subscription,...(lane === "exact" ? [action] : []),payload,f.at]) };
+}
+async function snapshot() {
+  const result: Record<string, unknown> = {};
+  for (const { tablename } of (await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows)
+    result[tablename] = (await pool.query(`SELECT coalesce(jsonb_agg(jsonb_build_object('row',to_jsonb(t),'xmin',xmin::text) ORDER BY to_jsonb(t)::text),'[]') AS rows FROM public."${tablename}" t`)).rows[0].rows;
+  return result;
+}
+const tracked = <T>(work: Promise<T>) => work.then(value => ({ ok: true as const,value }),error => ({ ok: false as const,error }));
+async function session() { const db = await pool.connect(); await db.query("BEGIN"); return db; }
+const pid = async (db: PoolClient) => Number((await db.query("SELECT pg_backend_pid() AS id")).rows[0].id);
+async function blocker(observer: PoolClient, waiter: number, holder: number) {
+  await expect.poll(async () => (await observer.query("SELECT $2::integer=ANY(pg_blocking_pids($1)) AS blocked", [waiter,holder])).rows[0].blocked).toBe(true);
+}
+async function assertNoCatalogGuard(observer: PoolClient, backend: number) {
+  expect((await observer.query("SELECT count(*)::integer AS count FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND ((classid::bigint<<32)|objid::bigint)=hashtextextended('catalog-publication-global',0)", [backend])).rows[0].count,
+    "catalogue guard held before subscription").toBe(0);
+}
+async function gate(observer: PoolClient) {
+  const key = BigInt(`0x${randomUUID().replaceAll("-","").slice(0,14)}`).toString();
+  await observer.query("SELECT pg_advisory_lock($1::bigint)", [key]);
+  return { key,release: () => observer.query("SELECT pg_advisory_unlock($1::bigint)", [key]),
+    sql: `PERFORM pg_advisory_lock(${key}::bigint); PERFORM pg_advisory_unlock(${key}::bigint);` };
+}
+async function hook(signature: string, boundary: string, insertion: string, mutate?: (body: string) => string) {
+  const before = (await pool.query("SELECT pg_get_functiondef(oid) AS ddl,prosrc,proconfig,proacl::text AS acl FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows[0];
+  const body = mutate ? mutate(before.prosrc) : before.prosrc;
+  expect(body.split(boundary)).toHaveLength(2);
+  await pool.query(before.ddl.replace(before.prosrc,() => body.replace(boundary,() => boundary+insertion)));
+  const installed = (await pool.query("SELECT prosrc,proconfig,proacl::text AS acl FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows[0];
+  expect(installed.prosrc.replace(insertion,"")).toBe(body); expect(installed.proconfig).toEqual(before.proconfig); expect(installed.acl).toBe(before.acl);
+  return async () => { await pool.query(before.ddl); expect((await pool.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure", [signature])).rows[0].prosrc).toBe(before.prosrc); };
+}
+const packageSignature = "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)";
+const takeSignature = "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)";
+const subscriptionBoundary = "SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;";
+it("F6 subscription precedes its owned preview, with the old-order cycle control", async () => {
+  const f = await fixture(packs[0]), command = await edit(f), observer = await pool.connect(), t = await session(), e = await session();
+  const gateT = await gate(observer), tPid = await pid(t), ePid = await pid(e), hPid = await pid(observer);
+  let restore = async () => {};
+  try {
+    restore = await hook(takeSignature,subscriptionBoundary,gateT.sql);
+    const taking = tracked(rpc(t,"subscription_quote_preview_take",[f.actor,f.client,f.subscription,command.action,command.hash,1,randomUUID(),f.at]));
+    await blocker(observer,tPid,hPid);
+    const editing = tracked(command.invoke(e)); await blocker(observer,ePid,tPid);
+    expect((await observer.query("SELECT count(*)::integer AS count FROM pg_locks WHERE pid=$1 AND relation='public.subscription_quote_previews'::regclass", [ePid])).rows[0].count).toBe(0);
+    await gateT.release(); const taken = await taking; expect(taken.ok).toBe(true); await t.query("COMMIT");
+    const edited = await editing; if (!edited.ok) throw edited.error; expect(edited.value).toMatchObject({ status: "applied",templateVersion: 2 }); await e.query("COMMIT");
+    expect((await pool.query("SELECT status,accepted_idempotency_key FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription])).rows)
+      .toEqual([{ status: "accepted",accepted_idempotency_key: command.key }]);
+  } finally { await gateT.release(); await restore(); await t.query("ROLLBACK"); await e.query("ROLLBACK"); t.release(); e.release(); observer.release(); }
+  const mutant = await fixture(packs[1]), mutation = await edit(mutant), h = await pool.connect(), t2 = await session(), e2 = await session();
+  const stop = await gate(h), tp = await pid(t2), ep = await pid(e2), hp = await pid(h);
+  const oldOrder = `PERFORM 1 FROM public.subscription_quote_previews WHERE subscription_id=p_subscription_id AND quote_hash=p_payload->>'acceptedQuoteHash' FOR UPDATE;\n `;
+  let restoreTake = async () => {};
+  try {
+    restoreTake = await hook(takeSignature,subscriptionBoundary,stop.sql);
+    restore = await hook(packageSignature,subscriptionBoundary,"",body => body.replace(subscriptionBoundary,() => oldOrder+subscriptionBoundary));
+    const taking = tracked(rpc(t2,"subscription_quote_preview_take",[mutant.actor,mutant.client,mutant.subscription,mutation.action,mutation.hash,1,randomUUID(),mutant.at]));
+    await blocker(h,tp,hp); const editing = tracked(mutation.invoke(e2)); await blocker(h,ep,tp); await stop.release();
+    await blocker(h,tp,ep);
+    const first = await Promise.race([taking.then(result => ({ db: t2,result })),editing.then(result => ({ db: e2,result }))]);
+    expect(first.result.ok).toBe(false); if (!first.result.ok) expect(first.result.error).toMatchObject({ code: "40P01" });
+    await first.db.query("ROLLBACK"); const results = await Promise.all([taking,editing]);
+    expect(results.filter(result => !result.ok)).toHaveLength(1);
+    await t2.query("ROLLBACK"); await e2.query("ROLLBACK");
+  } finally { await stop.release(); await restoreTake(); await restore(); await t2.query("ROLLBACK"); await e2.query("ROLLBACK"); t2.release(); e2.release(); h.release(); }
+});
+
+it("F6 reverse: preview-take refuses the old template after the edit commits", async () => {
+  const f = await fixture(packs[2]), command = await edit(f), h = await pool.connect(), e = await session(), t = await session();
+  const stop = await gate(h), ep = await pid(e), tp = await pid(t), hp = await pid(h);
+  let restore = async () => {};
+  try {
+    restore = await hook(packageSignature,subscriptionBoundary,stop.sql);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,hp);
+    const taking = tracked(rpc(t,"subscription_quote_preview_take",[f.actor,f.client,f.subscription,command.action,command.hash,1,randomUUID(),f.at]));
+    await blocker(h,tp,ep); await stop.release(); expect((await editing).ok).toBe(true); await e.query("COMMIT");
+    const result = await taking; expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatchObject({ code: "22023",message: "subscription_edit_stale_template" });
+    await t.query("ROLLBACK");
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_command_receipts WHERE subscription_id=$1", [f.subscription])).rows[0].count).toBe(1);
+  } finally { await stop.release(); await e.query("ROLLBACK"); await t.query("ROLLBACK"); await restore(); e.release(); t.release(); h.release(); }
+});
+
+const admissionSignature = "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)";
+const sharedBoundary = "PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0));";
+async function payment(f: Fixture) {
+  const cycle = randomUUID(), order = randomUUID();
+  await pool.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3::timestamptz-interval '28 days','planned')", [cycle,f.subscription,f.at]);
+  await pool.query("WITH o AS (INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'pending_payment','XXX',617) RETURNING id) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) SELECT id,$4,1,1,617,617 FROM o", [order,f.client,cycle,f.sku]);
+  const options = { dunningTemplateSlug: "failed",recoveryUrlPath: "/recover",recoveryTemplateSlug: "recovered" };
+  await rpc(pool,"payment_method_ref_upsert",[`method:${f.subscription}`,f.client,f.subscription,"example_rail","card",
+    `customer:${f.client}`,`method:${f.subscription}`,null,"active",true,null,{ recurringModel: "O" },{}]);
+  const control = createPostgresProviderPaymentControlPort(pool,options);
+  const intent = await control.createIntent({ idempotencyKey: `intent:${order}`,targetKind: "subscription_cycle",orderId: order,
+    subscriptionId: f.subscription,subscriptionCycleId: cycle,amountMinor: 617,currency: "XXX",metadata: {},channelKey: "example_rail",at: f.at });
+  const prepare = { idempotencyKey: `prepare:${order}`,paymentIntentId: intent.id,provider: "example_rail",providerIdempotencyKey: `provider:${order}`,
+    providerRequestFingerprint: digest(order),providerFlow: "one_time_payment",paymentMethodRef: null,requestPayload: { source: "fixture" } };
+  const attempt = await control.prepareProviderAttempt(prepare);
+  await control.finalizeProviderAttempt({ idempotencyKey: `finalize:${order}`,paymentIntentId: intent.id,paymentAttemptId: attempt.paymentAttemptId,
+    providerIdempotencyKey: prepare.providerIdempotencyKey,providerRequestFingerprint: prepare.providerRequestFingerprint,
+    providerAttemptId: `attempt:${order}`,providerSessionId: `session:${order}`,attemptStatus: "processing",nextActionKind: null,
+    requestPayload: {},responsePayload: { providerCall: true } });
+  const event = await createPostgresPaymentWebhookControlPort(pool,options).ingestPaymentEvent({ provider: "example_rail",providerEventId: `event:${order}`,
+    providerPaymentId: `attempt:${order}`,eventType: "payment.succeeded",paymentIntentId: intent.id,amountMinor: 617,currency: "XXX",occurredAt: f.at,rawPayload: { kind: "payment.succeeded" } });
+  return { cycle,order,intent: intent.id,
+    invoke: (db: PoolClient,settlement = false) => settlement
+      ? rpc(db,"commerce_record_settlement",[`settle:${order}`,intent.id,"succeeded",`event:${order}`,{},f.at])
+      : createPostgresProviderPaymentControlPort(db,options).applyPaymentResult({ idempotencyKey: `result:${order}`,paymentIntentId: intent.id,
+        paymentEventId: event.paymentEventId,resultStatus: "succeeded",occurredAt: f.at,failureReason: null }) };
+}
+async function assertPrelocked(db: PoolClient, f: Fixture, lane: Lane) {
+  for (const table of ["subscription_lines",...(lane === "legacy" ? [] : ["subscription_renewal_term_lines"])]) {
+    await db.query("SAVEPOINT probe");
+    let refused = false;
+    try { await db.query(`SELECT 1 FROM public.${table} WHERE subscription_id=$1 FOR KEY SHARE NOWAIT`, [f.subscription]); }
+    catch (error) { expect(error).toMatchObject({ code: "55P03" }); refused = true; }
+    await db.query("ROLLBACK TO SAVEPOINT probe");
+    if (!refused) throw new Error(`existing commerce row unheld after first catalogue lock: ${table}`);
+  }
+}
+const applySignature = (lane: Lane) => lane === "classic" ? packageSignature : lane === "exact"
+  ? "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)" : lane === "sized"
+    ? "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)"
+    : "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)";
+async function assertAgreement(f: Fixture, command: Awaited<ReturnType<typeof edit>>, lane: Lane, paymentMayExtend = false) {
+  expect((await pool.query(`SELECT status,currency_code,cadence_days,next_cycle_at${paymentMayExtend ? ">=" : "="}$2::timestamptz AS anchor FROM public.subscriptions WHERE id=$1`, [f.subscription,f.anchor])).rows[0])
+    .toMatchObject({ status: "active",currency_code: "XXX",cadence_days: lane === "exact" ? 30 : 28,anchor: true });
+  expect((await pool.query("SELECT quantity,unit_price_minor,catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription])).rows)
+    .toEqual([{ quantity: 2,unit_price_minor: "617",catalog_sku_revision_id: f.reference.skuRevisionId }]);
+  expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_events WHERE subscription_id=$1 AND event_type LIKE 'subscription.customer_self_service.%'", [f.subscription])).rows[0].count).toBe(1);
+  if (lane !== "legacy") expect((await pool.query("SELECT status FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2", [f.actor,command.key])).rows).toEqual([{ status: "applied" }]);
+}
+it.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settlement"].map(rail => ({ pack,lane,rail })))))("F1 lock_matrix_races_native_payment_settlement $pack $lane $rail", async ({ pack,lane,rail }) => {
+  const f = await fixture(pack), command = await edit(f,lane), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
+  const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
+  let restore = async () => {};
+  try {
+    await e.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    restore = await hook(admissionSignature,sharedBoundary,stop.sql);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,hp); await assertPrelocked(p,f,lane);
+    const paying = tracked(paid.invoke(p,rail === "settlement")); await blocker(h,pp,ep);
+    await stop.release(); const edited = await editing; if (!edited.ok) throw edited.error;
+    const returnedAnchor = lane === "legacy" ? edited.value.subscriptionAction.nextCycleAt : edited.value.nextCycleAt;
+    expect((await h.query("SELECT $1::timestamptz=$2::timestamptz AS same", [returnedAnchor,f.anchor])).rows[0].same).toBe(true);
+    await e.query("COMMIT");
+    const result = await paying; if (!result.ok) throw result.error; await p.query("COMMIT");
+    await assertAgreement(f,command,lane,true);
+    expect((await pool.query("SELECT status,total_amount_minor FROM public.commerce_orders WHERE id=$1", [paid.order])).rows).toEqual([{ status: "paid",total_amount_minor: "617" }]);
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [paid.intent])).rows[0].count).toBe(1);
+  } finally { await stop.release(); await e.query("ROLLBACK"); await p.query("ROLLBACK"); await restore(); e.release(); p.release(); h.release(); }
+});
+it("F1 control: removing only the new prelocks makes the existing-row witness fail", async () => {
+  const f = await fixture(packs[0]), command = await edit(f), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
+  const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
+  let restoreGuard = async () => {}, restoreApply = async () => {};
+  try {
+    restoreApply = await hook(packageSignature,subscriptionBoundary,"",body => {
+      const mutant = body.replace(/ {2}PERFORM 1 FROM public\.subscription_(?:lines|renewal_term_lines) WHERE subscription_id=s\.id ORDER BY (?:id|line_ordinal) FOR UPDATE;\n/gu,"");
+      expect(mutant).not.toBe(body); return mutant;
+    });
+    restoreGuard = await hook(admissionSignature,sharedBoundary,stop.sql);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,hp);
+    await expect(assertPrelocked(p,f,"classic")).rejects.toThrow("existing commerce row unheld after first catalogue lock");
+    const paying = tracked(paid.invoke(p)); await blocker(h,pp,ep);
+    await stop.release(); expect((await editing).ok).toBe(true); await e.query("COMMIT"); expect((await paying).ok).toBe(true); await p.query("COMMIT");
+  } finally { await stop.release(); await e.query("ROLLBACK"); await p.query("ROLLBACK"); await restoreGuard(); await restoreApply(); e.release(); p.release(); h.release(); }
+});
+it.each(["provider", "settlement"])("F2 payment owns the subscription before the edit acquires any catalogue guard: %s", async rail => {
+  const f = await fixture(packs[1]), command = await edit(f), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
+  const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
+  let restore = async () => {};
+  try {
+    restore = await hook("public.payment_provider_lock_aggregate(uuid)","PERFORM 1 FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE;",stop.sql);
+    const paying = tracked(paid.invoke(p,rail === "settlement")); await blocker(h,pp,hp);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,pp);
+    await assertNoCatalogGuard(h,ep);
+    await stop.release(); expect((await paying).ok).toBe(true); await p.query("COMMIT");
+    f.anchor = (await pool.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS anchor FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].anchor;
+    const edited = await editing; if (!edited.ok) throw edited.error; await e.query("COMMIT"); await assertAgreement(f,command,"classic");
+  } finally { await stop.release(); await p.query("ROLLBACK"); await e.query("ROLLBACK"); await restore(); e.release(); p.release(); h.release(); }
+});
+
+it("F2 control: a catalogue-first edit fails the lock-order witness", async () => {
+  const f = await fixture(packs[0]), command = await edit(f), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
+  const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
+  let restorePayment = async () => {}, restoreEdit = async () => {}, restoreAdmission = async () => {};
+  try {
+    restorePayment = await hook("public.payment_provider_lock_aggregate(uuid)","PERFORM 1 FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE;",stop.sql);
+    restoreEdit = await hook(packageSignature,subscriptionBoundary,"",body => body.replace(subscriptionBoundary,() => sharedBoundary+"\n "+subscriptionBoundary));
+    restoreAdmission = await hook(admissionSignature,"RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;","",body => body.replace(sharedBoundary,""));
+    const paying = tracked(paid.invoke(p)); await blocker(h,pp,hp);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,pp);
+    await expect(assertNoCatalogGuard(h,ep)).rejects.toThrow("catalogue guard held before subscription");
+    await stop.release(); expect((await paying).ok).toBe(true); await p.query("COMMIT");
+    const edited = await editing; if (!edited.ok) throw edited.error; await e.query("COMMIT");
+  } finally { await stop.release(); await p.query("ROLLBACK"); await e.query("ROLLBACK"); await restorePayment(); await restoreEdit(); await restoreAdmission(); e.release(); p.release(); h.release(); }
+});
+
+async function changedDocument(f: Fixture) {
+  const value = structuredClone(f.value), document = { schemaVersion: 1,derived: 12,label: "Equal-money editorial revision" };
+  const canonicalText = canonicalCatalogDraftJson(document), revisionId = randomUUID();
+  value.product.sharedContent = { ...value.product.sharedContent,catalogAction: "revise",document };
+  value.product.documentRevision = { ...value.product.documentRevision!,id: revisionId,revisionNo: 2,digest: digest(canonicalText) };
+  value.publication.operations = [
+    { op: "register_document_revision",productSlug: value.product.slug!,revisionId,revisionNo: 2,documentRef: "example:document",sourceRef: "example:source",canonicalText,digest: digest(canonicalText),provenance: { source: "current_draft" } },
+    { op: "move_document_pointer",productSlug: value.product.slug!,documentRevisionNo: 2 },
+  ];
+  const db = await pool.connect();
+  try { return { value,...await candidate(db,value,f.draft,1,f.head) }; } finally { db.release(); }
+}
+async function publishOn(db: PoolClient, publication: CatalogPublishCommand, afterQuery?: (sql: string,values: unknown[]) => Promise<void>) {
+  const authority = publisher(db,afterQuery), actor = (await authority.authorize(null))!;
+  return authority.publish(publication,actor);
+}
+it.each(packs.flatMap(pack => lanes.map(lane => ({ pack,lane }))))("F4 subscription_edit_refuses_publication_race; subscription_equal_money_document_drift_refuses $pack $lane", async ({ pack,lane }) => {
+  const f = await fixture(pack), command = await edit(f,lane), next = await changedDocument(f);
+  const h = await pool.connect(), w = await pool.connect(), e = await session(), stop = await gate(h);
+  const wp = await pid(w), ep = await pid(e), hp = await pid(h);
+  let reached = false;
+  try {
+    await e.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    const publishing = tracked(publishOn(w,next.publication,async (sql,values) => {
+      if (!reached && sql.includes("pg_advisory_xact_lock(hashtextextended($1,0))") && values[0]===`catalog-lineage:${f.product}`) {
+        reached = true; await w.query("SELECT pg_advisory_lock($1::bigint)", [stop.key]); await w.query("SELECT pg_advisory_unlock($1::bigint)", [stop.key]);
+      }
+    }));
+    await blocker(h,wp,hp); const editing = tracked(command.invoke(e)); await blocker(h,ep,wp);
+    const templateBefore = (await pool.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows;
+    await stop.release(); const written = await publishing; if (!written.ok) throw written.error;
+    expect(written.value.outcome).toBe("committed"); const afterPublication = await snapshot();
+    const refused = await editing; expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error).toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" });
+    await e.query("ROLLBACK"); expect(await snapshot()).toEqual(afterPublication);
+    expect((await pool.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows).toEqual(templateBefore);
+    expect(reached).toBe(true);
+  } finally { await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); e.release(); w.release(); h.release(); }
+});
+it("subscription_edit_refuses_publication_race", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), command = await edit(f), next = await changedDocument(f), h = await pool.connect(), w = await pool.connect(), e = await session();
+    const stop = await gate(h), wp = await pid(w), ep = await pid(e), hp = await pid(h); let reached = false;
+    try {
+      const publishing = tracked(publishOn(w,next.publication,async (sql,values) => {
+        if (!reached && sql.includes("pg_advisory_xact_lock(hashtextextended($1,0))") && values[0]===`catalog-lineage:${f.product}`) {
+          reached = true; await w.query("SELECT pg_advisory_lock($1::bigint)", [stop.key]); await w.query("SELECT pg_advisory_unlock($1::bigint)", [stop.key]);
+        }
+      }));
+      await blocker(h,wp,hp); const editing = tracked(command.invoke(e)); await blocker(h,ep,wp); await stop.release();
+      const written = await publishing; if (!written.ok) throw written.error; expect(written.value.outcome).toBe("committed");
+      const before = await snapshot(), result = await editing; expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" });
+      await e.query("ROLLBACK"); expect(await snapshot()).toEqual(before);
+    } finally { await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); e.release(); w.release(); h.release(); }
+  }
+});
+it("F4 control: removing only the guarded head check admits an equal-money stale preview", async () => {
+  const f = await fixture(packs[0]), command = await edit(f), next = await changedDocument(f), h = await pool.connect(), w = await pool.connect(), e = await session();
+  const stop = await gate(h), wp = await pid(w), ep = await pid(e), hp = await pid(h); let reached = false, restore = async () => {};
+  try {
+    restore = await hook(admissionSignature,sharedBoundary,"",body => {
+      const mutant = body.replace(/ {2}IF publication\.id IS NULL[\s\S]*?RAISE EXCEPTION '%',moved USING ERRCODE='40001'; END IF;/u,"");
+      expect(mutant).not.toBe(body); return mutant;
+    });
+    const publishing = tracked(publishOn(w,next.publication,async (sql,values) => {
+      if (!reached && sql.includes("pg_advisory_xact_lock(hashtextextended($1,0))") && values[0]===`catalog-lineage:${f.product}`) {
+        reached = true; await w.query("SELECT pg_advisory_lock($1::bigint)", [stop.key]); await w.query("SELECT pg_advisory_unlock($1::bigint)", [stop.key]);
+      }
+    }));
+    await blocker(h,wp,hp); const editing = tracked(command.invoke(e)); await blocker(h,ep,wp); await stop.release();
+    const written = await publishing; if (!written.ok) throw written.error; expect(written.value.outcome).toBe("committed");
+    const result = await editing; if (!result.ok) throw result.error; expect(result.value.status).toBe("applied"); await e.query("ROLLBACK");
+    expect(result.value.status,"stale-refusal witness fails when its guarded head comparison is removed").not.toBe("refused");
+  } finally { await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); await restore(); e.release(); w.release(); h.release(); }
+});
+async function assertBusy(result: unknown, before: Record<string, unknown>) {
+  expect(result).toMatchObject({ outcome: "conflict",reason: "catalog_publication_busy" });
+  expect(await snapshot()).toEqual(before);
+}
+it.each(packs.flatMap(pack => lanes.map(lane => ({ pack,lane }))))("F5 edit excludes publication with donor busy refusal, then publisher retry succeeds $pack $lane", async ({ pack,lane }) => {
+  const f = await fixture(pack), command = await edit(f,lane), next = await changedDocument(f);
+  const h = await pool.connect(), e = await session(), w = await pool.connect(), stop = await gate(h);
+  const ep = await pid(e), hp = await pid(h); let restore = async () => {};
+  try {
+    await e.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    restore = await hook(admissionSignature,sharedBoundary,stop.sql);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,hp); const before = await snapshot();
+    await assertBusy(await publishOn(w,next.publication),before);
+    await stop.release(); const edited = await editing; if (!edited.ok) throw edited.error; await e.query("COMMIT");
+    await assertAgreement(f,command,lane);
+    const agreed = (await pool.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows;
+    const retry = await publishOn(w,next.publication); expect(retry.outcome).toBe("committed");
+    expect((await pool.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows).toEqual(agreed);
+    await e.query("BEGIN");
+    await e.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    const replayed = await command.invoke(e); await e.query("COMMIT");
+    expect(lane === "legacy" ? replayed.subscriptionAction.status : replayed.status).toBe("replayed");
+  } finally { await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); await restore(); e.release(); w.release(); h.release(); }
+});
+it("F5 control: removing only the edit shared guard lets the publisher proceed", async () => {
+  const f = await fixture(packs[0]), command = await edit(f), next = await changedDocument(f);
+  const h = await pool.connect(), e = await session(), w = await pool.connect(), stop = await gate(h);
+  const ep = await pid(e), hp = await pid(h); let restore = async () => {};
+  try {
+    const boundary = "RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;";
+    restore = await hook(admissionSignature,boundary,stop.sql,body => {
+      expect(body.split(sharedBoundary)).toHaveLength(2); return body.replace(sharedBoundary,"");
+    });
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,hp); const before = await snapshot();
+    const published = await publishOn(w,next.publication); expect(published.outcome).toBe("committed");
+    await expect(assertBusy(published,before)).rejects.toThrow();
+    await stop.release(); const refused = await editing; expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error).toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" });
+    await e.query("ROLLBACK");
+    expect((await pool.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual([{ template_version: 1 }]);
+  } finally { await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); await restore(); e.release(); w.release(); h.release(); }
+});
+
+async function renewal(f: Fixture, stage: "claim" | "prepare" | "retry") {
+  const paidCycle = randomUUID(), order = randomUUID();
+  await pool.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) SELECT $1,id,started_at,'paid' FROM public.subscriptions WHERE id=$2", [paidCycle,f.subscription]);
+  await pool.query("WITH o AS (INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'paid','XXX',617) RETURNING id) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) SELECT id,$4,1,1,617,617 FROM o", [order,f.client,paidCycle,f.sku]);
+  await pool.query("INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at) VALUES($1,$2,$3,28,'active',$4,$5,$6,$7)", [order,f.client,f.subscription,digest(order),`active:${order}`,`declare:${order}`,f.at]);
+  await pool.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,$4)", [order,f.subscription,
+    { templateId: "synthetic",shippingAmountMinor: 0,acquisitionRef: null,renewalTerms: { version: "native.renewal-terms.v1" } },f.at]);
+  const now = (await pool.query("SELECT to_char((next_cycle_at+interval '1 second') AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].at as string;
+  const codec = createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value));
+  const builder = createPostgresRenewalStore(pool,codec,work => work(pool));
+  const due = (await builder.listDue(1000,now)).find(value => value.subscriptionId===f.subscription);
+  if (!due) throw new Error("Missing recorded due subscription");
+  const frozen = await builder.buildCycleSnapshots(due), encoded = codec.encode(frozen);
+  const claim = (db: PoolClient | Pool) => createPostgresRenewalStore(db,codec).claimDue({ snapshot: frozen,workerId: "admission-fixture",now });
+  if (stage === "claim") return { invoke: (db: PoolClient) => claim(db),signature: "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+    boundary: "SELECT * INTO v_subscription\n    FROM public.subscriptions\n   WHERE id = v_subscription_id\n   FOR UPDATE;",encoded,codec,now };
+  const operation = await claim(pool);
+  await pool.query("INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES('synthetic',$1,100,100,0,'sellable',$2,$3::timestamptz+interval '7 days',$4,$4,$5)", [f.code,f.at,now,`stock:${f.sku}`,digest(f.sku)]);
+  await rpc(pool,"fulfillment_reserve_subscription_renewal",[operation.operationId,operation.claimToken,900,now]);
+  const prepare = (db: PoolClient | Pool) => rpc(db,"commerce_prepare_subscription_renewal",[operation.operationId,operation.claimToken,now]);
+  if (stage === "prepare") return { invoke: (db: PoolClient) => prepare(db),signature: "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
+    boundary: "PERFORM id FROM public.subscriptions\n   WHERE id = v_operation.subscription_id FOR UPDATE;",encoded,codec,now };
+  const prepared = await prepare(pool);
+  await rpc(pool,"commerce_acknowledge_subscription_renewal_attempt",[operation.operationId,operation.operationFingerprint,`attempt:${operation.operationId}`,now]);
+  const raw = encoded as Record<string, unknown>, cycle = raw.cycle as { logicalCycleNumber: number };
+  await rpc(pool,"subscription_retry_apply_failure",[operation.operationId,`failure:${operation.operationId}`,
+    { attemptSequence: 0,logicalCycleNumber: cycle.logicalCycleNumber,occurredAt: now,failureClass: "temporary",reason: "declined",externalRef: `attempt:${operation.operationId}`,
+      evidenceKey: `failure-evidence:${operation.operationId}`,firstRecordedAt: now }]);
+  // A retained unpaid obligation may belong to an earlier scheduled cycle. Its
+  // exact frozen basket remains independent of the future editable template.
+  await pool.query("UPDATE public.subscriptions SET next_cycle_at=next_cycle_at+interval '28 days' WHERE id=$1", [f.subscription]);
+  f.anchor = (await pool.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS anchor FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].anchor;
+  const retryNow = (await pool.query("SELECT to_char(next_retry_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1", [operation.operationId])).rows[0].at as string;
+  f.at = retryNow;
+  const input = { paymentIntentId: prepared.settlementIntentId,orderRef: prepared.orderId,amountMinor: 617,currency: "XXX",idempotencyKey: randomUUID(),
+    providerIdempotencyKey: randomUUID(),providerRequestFingerprint: digest(operation.operationId),paymentMethodRef: "synthetic-method" };
+  return { invoke: (db: PoolClient) => rpc(db,"subscription_retry_prepare",[operation.operationId,`retry:${operation.operationId}`,input,retryNow]),
+    signature: "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
+    boundary: "PERFORM 1 FROM public.subscriptions WHERE id=(SELECT subscription_id FROM public.subscription_renewal_operations WHERE id=p_operation_id) FOR UPDATE;",encoded,codec,now: retryNow };
+}
+it.each(["claim", "prepare", "retry"] as const)("F3 renewal/retry owns subscription before edit: %s", async stage => {
+  const f = await fixture(packs[0]), renew = await renewal(f,stage), command = await edit(f), h = await pool.connect(), r = await session(), e = await session();
+  const stop = await gate(h), rp = await pid(r), ep = await pid(e), hp = await pid(h); let restore = async () => {};
+  try {
+    restore = await hook(renew.signature,renew.boundary,stop.sql);
+    const renewing = tracked(renew.invoke(r)); await blocker(h,rp,hp); const editing = tracked(command.invoke(e)); await blocker(h,ep,rp);
+    expect((await h.query("SELECT count(*)::integer AS count FROM pg_locks WHERE pid=$1 AND locktype='advisory' AND ((classid::bigint<<32)|objid::bigint)=hashtextextended('catalog-publication-global',0)", [ep])).rows[0].count).toBe(0);
+    await stop.release(); const result = await renewing; if (!result.ok) throw result.error; await r.query("COMMIT");
+    const afterRenewal = await snapshot(), edited = await editing;
+    if (stage === "prepare") {
+      expect(edited.ok).toBe(false); if (!edited.ok) expect(edited.error).toMatchObject({ message: "subscription_lifecycle_payment_blocked" });
+      await e.query("ROLLBACK"); expect(await snapshot()).toEqual(afterRenewal);
+    } else { if (!edited.ok) throw edited.error; await e.query("COMMIT"); await assertAgreement(f,command,"classic"); }
+    expect((await pool.query("SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ cycle_snapshot: renew.encoded }]);
+  } finally { await stop.release(); await r.query("ROLLBACK"); await e.query("ROLLBACK"); await restore(); r.release(); e.release(); h.release(); }
+});
+it.each(["claim", "prepare", "retry"] as const)("F3 edit prelocks before frozen renewal/retry, reverse: %s", async stage => {
+  const f = await fixture(packs[1]), renew = await renewal(f,stage), command = await edit(f), h = await pool.connect(), r = await session(), e = await session();
+  const stop = await gate(h), rp = await pid(r), ep = await pid(e), hp = await pid(h); let restore = async () => {};
+  try {
+    restore = await hook(admissionSignature,sharedBoundary,stop.sql);
+    const editing = tracked(command.invoke(e)); await blocker(h,ep,hp); await assertPrelocked(r,f,"classic");
+    const renewing = tracked(renew.invoke(r)); await blocker(h,rp,ep);
+    await stop.release(); const edited = await editing; if (!edited.ok) throw edited.error; await e.query("COMMIT");
+    const result = await renewing; if (!result.ok) throw result.error; await r.query("COMMIT"); await assertAgreement(f,command,"classic");
+    expect((await pool.query("SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ cycle_snapshot: renew.encoded }]);
+  } finally { await stop.release(); await e.query("ROLLBACK"); await r.query("ROLLBACK"); await restore(); r.release(); e.release(); h.release(); }
+});
+
+async function businessSnapshot() {
+  const rows = await snapshot();
+  for (const name of Object.keys(rows)) if (/^(catalog_|price_)/u.test(name)) delete rows[name];
+  rows.outbox_events = (rows.outbox_events as { row: { event_type: string } }[]).filter(entry => entry.row.event_type !== "catalog.publication.committed");
+  return rows;
+}
+it("catalog_change_never_advances_cycle", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), before = await businessSnapshot(), next = await changedDocument(f), db = await pool.connect();
+    try { expect((await publishOn(db,next.publication)).outcome).toBe("committed"); } finally { db.release(); }
+    expect(await businessSnapshot()).toEqual(before);
+  }
+});
+it("subscription_equal_money_document_drift_refuses", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), command = await edit(f), next = await changedDocument(f), w = await pool.connect();
+    try { expect((await publishOn(w,next.publication)).outcome).toBe("committed"); } finally { w.release(); }
+    const before = await snapshot(), db = await session();
+    try { await expect(command.invoke(db)).rejects.toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" }); }
+    finally { await db.query("ROLLBACK"); db.release(); }
+    expect(await snapshot()).toEqual(before);
+  }
+});
+it("subscription_renewal_ignores_new_catalog_prices", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), renew = await renewal(f,"claim"), db = await session();
+    let operation: { operationId: string; claimToken: string | null };
+    try { operation = await renew.invoke(db); await db.query("COMMIT"); } finally { await db.query("ROLLBACK"); db.release(); }
+    // Fixture changes the current price; price-writer qualification belongs to its existing witness.
+    await pool.query("UPDATE public.price_entries SET unit_price_minor=999 WHERE variant_id=$1", [f.sku]);
+    expect((await pool.query("SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1", [operation.operationId])).rows).toEqual([{ cycle_snapshot: renew.encoded }]);
+    expect(renew.encoded).toMatchObject({ totalAmountMinor: 617,lines: [{ sku: f.code,quantity: 1,unitAmountMinor: 617 }] });
+    const replay = await session();
+    try { expect(await renew.invoke(replay)).toMatchObject({ operationId: operation.operationId,replayed: true }); await replay.query("COMMIT"); }
+    finally { await replay.query("ROLLBACK"); replay.release(); }
+  }
+});
+it("subscription_stock_wait_keeps_exact_obligation", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), renew = await renewal(f,"claim"), db = await session();
+    let operation: { operationId: string; claimToken: string | null };
+    try { operation = await renew.invoke(db); await db.query("COMMIT"); } finally { await db.query("ROLLBACK"); db.release(); }
+    await pool.query("INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint) VALUES('synthetic',$1,0,0,0,'sellable',$2,$3::timestamptz+interval '7 days',$4,$4,$5)", [f.code,f.at,renew.now,`stock:${f.sku}`,digest(f.sku)]);
+    const store = createPostgresStockWaitStore({ executor: pool,codec: renew.codec,workerId: "catalog-admission-stock",
+      async withTransaction(work) { const connection = await session(); try { const value = await work(connection); await connection.query("COMMIT"); return value; }
+        catch (error) { await connection.query("ROLLBACK"); throw error; } finally { connection.release(); } } });
+    const waiting = await store.admit({ operationId: operation.operationId,claimToken: operation.claimToken!,snapshot: renew.codec.decode(renew.encoded),now: renew.now });
+    expect(waiting.waiting).toBe(true);
+    const before = (await pool.query("SELECT cycle_snapshot,fingerprint,scheduled_at FROM public.subscription_stock_wait_cases WHERE id=$1", [waiting.caseId])).rows;
+    const next = await changedDocument(f), w = await pool.connect();
+    try { expect((await publishOn(w,next.publication)).outcome).toBe("committed"); } finally { w.release(); }
+    expect((await pool.query("SELECT cycle_snapshot,fingerprint,scheduled_at FROM public.subscription_stock_wait_cases WHERE id=$1", [waiting.caseId])).rows).toEqual(before);
+    expect(before[0].cycle_snapshot).toEqual(renew.encoded);
+    expect((await pool.query("SELECT status,next_cycle_at=$2::timestamptz AS anchor FROM public.subscriptions WHERE id=$1", [f.subscription,f.anchor])).rows).toEqual([{ status: "active",anchor: true }]);
+  }
+});
+it("CatalogAdmissionPort asserts through the native transaction and refuses incomplete evidence", async () => {
+  const f = await fixture(packs[0]), port = createPostgresCatalogAdmission(), db = await session();
+  const input: CatalogAdmissionInput = { ...f.admission,offerEvidence: { offerVersion: "classic",subscriptionId: f.subscription,lane: "classic" } };
+  try {
+    await db.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscription]);
+    const before = await snapshot(); await port.assertCurrent(db,input); expect(await snapshot()).toEqual(before);
+    for (const delta of [{ heads: [] },{ skuRevisions: [] },{ priceContextVersions: [] }]) {
+      await db.query("SAVEPOINT evidence"); await expect(port.assertCurrent(db,{ ...input,...delta })).rejects.toMatchObject({ severity: "ERROR" });
+      await db.query("ROLLBACK TO SAVEPOINT evidence"); expect(await snapshot()).toEqual(before);
+    }
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("subscription_swap_target_withdrawn_after_preview", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), target = await fixture(pack), key = randomUUID(), hash = digest(key);
+    const request = { action: "swap_base_line",fromVariantId: f.sku,toVariantId: target.sku,expectedTemplateVersion: 1,acceptedQuoteHash: hash };
+    const lines = [{ variantId: target.sku,qty: 1,isAddon: false,lineId: (await pool.query("SELECT id FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription])).rows[0].id,
+      quoteLine: { sku: target.code,quantity: 1,unitPriceGross: money(617),lineSubtotalGross: money(617) } }];
+    const entry = randomUUID(), priceListId = f.admission.priceContextVersions[0]!.priceListId;
+    await pool.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'any',617,$4::timestamptz-interval '1 day')", [entry,priceListId,target.sku,f.at]);
+    const entryFacts = (await pool.query("SELECT to_jsonb(p) AS row FROM public.price_entries p WHERE id=$1", [entry])).rows[0].row;
+    const admission = { ...target.admission,skuRevisions: [{ reference: target.reference,quantity: 1 }],
+      priceContextVersions: [{ skuId: target.sku,priceListId,entryId: entry,entry: entryFacts }] };
+    const evidence = { lines,cadenceDays: 28,compositionConstraint: null,catalogAdmission: admission };
+    await rpc(pool,"subscription_quote_preview_record",[f.actor,f.client,f.subscription,"swap_base_line",hash,1,
+      (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at", [f.at])).rows[0].at,
+      { action: request.action,fromVariantId: f.sku,toVariantId: target.sku },evidence,{},f.at]);
+    const trial = await session();
+    try {
+      expect(await rpc(trial,"subscription_line_edit_apply",[f.actor,f.client,key,f.subscription,"swap_base_line",{ ...request,request,...evidence },f.at])).toMatchObject({ status: "applied" });
+      expect((await trial.query("SELECT variant_id,catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription])).rows)
+        .toEqual([{ variant_id: target.sku,catalog_sku_revision_id: target.reference.skuRevisionId }]);
+    } finally { await trial.query("ROLLBACK"); trial.release(); }
+    const value = structuredClone(target.value); value.product.sharedContent.catalogAction = "revise";
+    value.publication.operations = [{ op: "set_product_lifecycle",productSlug: value.product.slug!,expectedState: "active",state: "withdrawn",
+      children: [{ skuCode: target.code,expectedState: "active" }] }];
+    const writer = await pool.connect();
+    try { const next = await candidate(writer,value,target.draft,1,target.head); expect((await next.authority.publish(next.publication,next.actor)).outcome).toBe("committed"); }
+    finally { writer.release(); }
+    const before = await snapshot(), db = await session();
+    try { await expect(rpc(db,"subscription_line_edit_apply",[f.actor,f.client,key,f.subscription,"swap_base_line",{ ...request,request,...evidence },f.at]))
+      .rejects.toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" }); }
+    finally { await db.query("ROLLBACK"); db.release(); }
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
+it.each(["one_time", "subscription"] as const)("governed purchase records acceptance and replays after publication in both native writers: %s", async mode => {
+  for (const pack of packs) for (const routine of ["commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox"]) {
+    const f = await fixture(pack), key = randomUUID(), context = { mode,offerVersion: "classic" };
+    const lines = [{ sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234) }];
+    const quote = { quote: { context,lines,totalGross: money(1234) },catalogAdmission: { ...f.admission,mode,purpose: "order" } };
+    const draft = { contractVersion: "commerce.v0",source: "commerce.order_draft.bff.v0",status: "draft",paymentStatus: "not_started",currency: "XXX",context,lines,discounts: [],
+      totals: { subtotalGross: money(1234),totalGross: money(1234),discountTotalGross: money(0),shippingGross: money(0),shippingDiscountGross: money(0) } };
+    const first = await session(), firstPid = await pid(first);
+    let original: { orderDraft: { orderId: string; replayed: boolean } };
+    try { original = await rpc(first,routine,[key,quote,draft,f.client]); await first.query("COMMIT"); }
+    finally { await first.query("ROLLBACK"); first.release(true); }
+    expect(original.orderDraft.replayed).toBe(false);
+    const orderId = original.orderDraft.orderId.replace(/^order_/u,"");
+    expect((await pool.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [orderId])).rows)
+      .toEqual([{ catalog_acceptance: { schemaVersion: 2,lines: [f.reference] } }]);
+    const next = await changedDocument(f), writer = await pool.connect();
+    try { expect((await publishOn(writer,next.publication)).outcome).toBe("committed"); } finally { writer.release(); }
+    const before = await snapshot(), connection = await session();
+    try {
+      expect(await pid(connection)).not.toBe(firstPid);
+      expect(await rpc(connection,routine,[key,quote,draft,f.client])).toMatchObject({ orderDraft: { orderId: original.orderDraft.orderId,replayed: true } });
+      await connection.query("COMMIT"); expect(await snapshot()).toEqual(before);
+      await connection.query("BEGIN"); await expect(rpc(connection,routine,[randomUUID(),quote,draft,f.client]))
+        .rejects.toMatchObject({ code: "40001",message: "commerce_order_draft_catalog_head_moved" });
+      await connection.query("ROLLBACK"); expect(await snapshot()).toEqual(before);
+    } finally { await connection.query("ROLLBACK"); connection.release(); }
+  }
+});
+
+it("sized retained reduction survives withdrawal while increased demand refuses", async () => {
+  for (const pack of packs) {
+    const f = await fixture(pack), optIn = await edit(f,"sized"), initial = await session();
+    try { expect(await optIn.invoke(initial)).toMatchObject({ status: "applied",templateVersion: 2 }); await initial.query("COMMIT"); }
+    finally { await initial.query("ROLLBACK"); initial.release(); }
+    const value = structuredClone(f.value); value.product.sharedContent.catalogAction = "revise";
+    value.publication.operations = [{ op: "set_product_lifecycle",productSlug: value.product.slug!,expectedState: "active",state: "withdrawn",
+      children: [{ skuCode: f.code,expectedState: "active" }] }];
+    const w = await pool.connect(); let head: CatalogHeadRef;
+    try {
+      const next = await candidate(w,value,f.draft,1,f.head), written = await next.authority.publish(next.publication,next.actor);
+      if (!("receipt" in written)) throw new Error(JSON.stringify(written)); head = written.receipt.head;
+    } finally { w.release(); }
+    for (const quantity of [3,1]) {
+      const key = randomUUID(), hash = digest(key), constraint = { kind: "unit_count",value: quantity,dailyNeed: 1 };
+      const request = { action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,expectedTemplateVersion: 2,acceptedQuoteHash: hash,
+        resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: quantity }] } } };
+      const line = { variantId: f.sku,qty: quantity,isAddon: false,quoteLine: { sku: f.code,quantity,unitPriceGross: money(617),lineSubtotalGross: money(617*quantity) } };
+      const evidence = { lines: [line],cadenceDays: 28,compositionConstraint: constraint,subjectFacts: { revision: 1 },optInFacts: null,
+        catalogAdmission: { ...f.admission,heads: [{ productId: f.product,head }],skuRevisions: [{ reference: f.reference,quantity }] } };
+      await rpc(pool,"subscription_quote_preview_record",[f.actor,f.client,f.subscription,request.action,hash,2,
+        (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at", [f.at])).rows[0].at,
+        Object.fromEntries(Object.entries(request).filter(([name]) => !["expectedTemplateVersion","acceptedQuoteHash"].includes(name))),evidence,{},f.at]);
+      const before = await snapshot(), db = await session();
+      try {
+        const applying = rpc(db,"subscription_sized_edit_apply",[f.actor,f.client,key,f.subscription,{ ...request,request,...evidence },f.at]);
+        if (quantity===3) { await expect(applying).rejects.toMatchObject({ code: "55000",message: "customer_self_service_invalid_offer_membership" }); await db.query("ROLLBACK"); expect(await snapshot()).toEqual(before); }
+        else { expect(await applying).toMatchObject({ status: "applied",templateVersion: 3 }); await db.query("COMMIT"); }
+      } finally { await db.query("ROLLBACK"); db.release(); }
+    }
+    expect((await pool.query("SELECT quantity,unit_price_minor,catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription])).rows)
+      .toEqual([{ quantity: 1,unit_price_minor: "617",catalog_sku_revision_id: f.reference.skuRevisionId }]);
+    expect((await pool.query("SELECT status,next_cycle_at=$2::timestamptz AS anchor FROM public.subscriptions WHERE id=$1", [f.subscription,f.anchor])).rows).toEqual([{ status: "active",anchor: true }]);
+  }
+});
