@@ -78,6 +78,20 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
+/** The packaged 1.0 migration, before the proof adds its owned customizations. */
+export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
+  if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
+    writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
+  if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;
+  for (const path of ["owned/quote-shipping.ts", "owned/renewal-policy.ts", "owned/catalogue.json"]) {
+    assert(!Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path), "migration_owned_snapshot_overlap");
+    to.files[path] = readFileSync(join(target, path), "utf8");
+  }
+  for (const path of ["owned/store.config.ts", "owned/quote-copy.ts", "owned/subscription-editing.ts", "owned/catalogue.ts"]) {
+    writeFileSync(join(app, path), readFileSync(join(target, path)));
+  }
+}
+
 export function assertUpgradeConflict(report: { state: string; applied: string[]; conflicts: { path: string; reason: string }[] }, path: string): void {
   assert.equal(report.state, "refused"); assert.deepEqual(report.applied, []);
   assert.deepEqual(report.conflicts, [{ path, reason: "current bytes match neither predecessor nor candidate" }]);
@@ -100,6 +114,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  phase("migrate-owned-contracts", () => migrateStarterOwned(app, pair.to, from, to));
   phase("customize-owned", () => {
     const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
     for (const [path, before, after] of [
