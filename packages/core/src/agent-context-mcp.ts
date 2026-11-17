@@ -22,7 +22,7 @@ const tools = [
   },
   {
     name: "read_openlup_file",
-    description: "Read numbered lines from a selected installed node_modules/@openlup/<name> file, using its application-relative search path, including a hoisted package's exact ancestor prefix. Inclusive line numbers start at 1. Only ordinary files up to 200,000 bytes are allowed; symlinked package roots are supported, while other traversal, repository URLs and file realpaths outside the resolved package root are refused. Checks apply to the filesystem as it stands at read time, not to concurrent rewrites of node_modules. Application source hits must be read with the client's own file tool. Incoming message lines are limited to 1 MiB; search tasks to 1,000 characters.",
+    description: "Read numbered lines from a selected installed OpenLup package file, using the exact application-relative search path, including hoisted or sibling installations. Inclusive line numbers start at 1. Only ordinary files up to 200,000 bytes are allowed; symlinked package roots are supported, while other traversal, repository URLs and file realpaths outside the resolved package root are refused. Checks apply to the filesystem as it stands at read time, not to concurrent rewrites of node_modules. Application source hits must be read with the client's own file tool. Incoming message lines are limited to 1 MiB; search tasks to 1,000 characters.",
     inputSchema: {
       type: "object", properties: {
         path: { type: "string" },
@@ -75,15 +75,18 @@ function readOrdinaryFile(path: string, packagePath: string, packageRoot: string
 
 function readInstalledFile(cwd: string, path: string, startLine = 1, endLine?: number, hooks: ReadHooks = {}): string {
   if (/^https?:\/\//iu.test(path)) throw new Error("This source URL is not installed. Read an installed file using its application-relative path; no URL is fetched.");
-  const match = path.match(/^(?:\.\.\/)*node_modules\/@openlup\/([a-z0-9][a-z0-9-]*)\/(.+)$/u);
-  const parts = match?.[2].split("/");
-  if (isAbsolute(path) || win32.isAbsolute(path) || path.includes("\\") || path.includes("\0") ||
-      !parts || parts.some(part => !part || part === "." || part === "..")) {
-    throw new Error("Use a relative node_modules/@openlup/<name>/<file> path without traversal");
+  const pathError = "Use the exact application-relative search path for a selected node_modules/@openlup/<name> file; other traversal is refused";
+  if (isAbsolute(path) || win32.isAbsolute(path) || path.includes("\\") || path.includes("\0")) {
+    throw new Error(pathError);
   }
-  const installed = installedPackageRoots(cwd).find(item => item.name === `@openlup/${match![1]}`);
-  if (!installed || path !== `${relative(cwd, installed.root).split(sep).join("/")}/${parts.join("/")}`) {
-    throw new Error("Use a selected relative node_modules/@openlup/<name>/<file> search path; other traversal is refused");
+  const installed = installedPackageRoots(cwd).map(item => {
+    const prefix = relative(cwd, item.root).split(sep).join("/");
+    return { ...item, prefix: prefix ? `${prefix}/` : "" };
+  }).sort((left, right) => right.prefix.length - left.prefix.length).find(item => path.startsWith(item.prefix));
+  if (!installed) throw new Error(pathError);
+  const parts = path.slice(installed.prefix.length).split("/");
+  if (parts.some(part => !part || part === "." || part === "..")) {
+    throw new Error(pathError);
   }
   const packagePath = installed.root;
   const packageRoot = realpathSync(packagePath);

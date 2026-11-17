@@ -269,7 +269,7 @@ inclusive `startLine`/`endLine` (starting at 1). Search also returns structured
 results; `includeApplicationCode` and `includePackageCode` opt into the same
 bounded scans as the CLI flags. Read accepts only ordinary selected installed
 `node_modules/@openlup/<name>/` files up to 200,000 bytes, including the exact
-ancestor prefix returned for a hoisted package. Symlinked package roots
+prefix returned by search, including a hoisted or sibling installation. Symlinked package roots
 are supported; file realpaths must stay inside the resolved package root. Read
 refuses other traversal and never fetches release-tag source URLs. These checks guard
 against wrong paths and links present when the file is read; they do not defend

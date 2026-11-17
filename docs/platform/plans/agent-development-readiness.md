@@ -216,9 +216,10 @@ declaration edges. Do not add ambient any, exclusions or weakened flags to hide
 them. Exact residual diagnostics and actual compiler exits travel in the PR evidence.
 A passing ordinary typecheck is not a passing strict inventory.
 
-At the inspection pin, PR6 was beginning in its own local worktree; PR7 and PR8
-had no submitted implementation. The latest listed package set was 0.43.0,
-published before PR1–5. Source-candidate hooks and local tarballs do not close
+At the 2026-11-17 inspection of main `f37e977f36b7aba44ca3a18f41fd35f2a5b5cb2a`,
+PR6 #751 was merged and PR7 was in progress in its own worktree, without a
+submitted pull request. PR8 remained pending after PR7. The latest listed package
+set was 0.43.0, published before PR1–6. Source-candidate hooks and local tarballs do not close
 the separate blind adopter A5 journey, PR8 regression or P1-SF/DEMO acceptance.
 A5 identifiers in other programmes refer to their own outcomes.
 

@@ -25,6 +25,22 @@ function install(root: string, name: string, version = "0.31.0"): string {
 }
 
 describe("installed agent context", () => {
+  it.each(["node_modules/shop", "node_modules/@fixture/shop", "node_modules/@openlup/core/consumer", "node_modules/@openlup/core"])("resolves the installed slot from selected package %s", (location) => {
+    const root = realpathSync(fixture());
+    const core = join(root, "node_modules/@openlup/core");
+    const cwd = join(root, location);
+    if (cwd !== core) {
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "fixture-shop", private: true, dependencies: { "@openlup/core": "0.31.0" } }));
+    }
+    const found = searchContext(cwd, "nextRetryAttemptAt");
+    expect(found.version).toBe("0.31.0");
+    expect(found.hits.some(hit => hit.file === join(core, "dist/subscription.d.ts"))).toBe(true);
+    const cli = spawnSync(process.execPath, [fileURLToPath(new URL("../src/openlup-context.js", import.meta.url)), "search", "nextRetryAttemptAt", "--json"], { cwd, encoding: "utf8" });
+    expect(cli.status, cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout).hits.some((hit: { file: string }) => hit.file === join(core, "dist/subscription.d.ts"))).toBe(true);
+  });
+
   it.each([false, true])("refuses source-package self-resolution even with an installed copy: %s", (installed) => {
     const root = fixture();
     if (!installed) rmSync(join(root, "node_modules"), { recursive: true });

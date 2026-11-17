@@ -47,6 +47,35 @@ async function toolError(cwd: string, message: unknown, expected: RegExp, hooks:
 }
 
 describe("installed context MCP protocol", () => {
+  it.each(["node_modules/shop", "node_modules/@fixture/shop", "node_modules/@openlup/core/consumer", "node_modules/@openlup/core"])("reuses the selected installed path from %s and refuses siblings", async (location) => {
+    const root = temporaryRoot();
+    const core = install(root);
+    const outbox = install(root, "outbox", "0.36.0");
+    writeFileSync(join(core, "package.json"), JSON.stringify({ name: "@openlup/core", version: "0.37.0", exports: { ".": "./dist/index.js" } }));
+    const cwd = join(root, location);
+    if (cwd !== core) {
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "fixture-shop", private: true, dependencies: { "@openlup/core": "0.37.0" } }));
+    }
+    const found = (await result(cwd, search())).result.structuredContent;
+    expect(found.packages).toEqual(["@openlup/core"]);
+    const path = relative(cwd, join(core, "docs/guide/retry.md")).split("\\").join("/");
+    expect(found.hits[0].file).toBe(path);
+    expect((await result(cwd, read(path))).result.content[0].text).toContain("1: ## Retry policy");
+    await toolError(cwd, read(relative(cwd, join(outbox, "README.md")).split("\\").join("/")), /relative.*node_modules/);
+    await toolError(cwd, read(path.replace("retry.md", "../README.md")), /relative.*node_modules/);
+  });
+
+  it("binds a nested selected package to its most specific root", async () => {
+    const outer = temporaryRoot();
+    const core = install(outer);
+    const platform = install(core, "platform");
+    writeFileSync(join(core, "package.json"), JSON.stringify({ name: "@openlup/core", version: "0.37.0", exports: { ".": "./dist/index.js" }, dependencies: { "@openlup/platform": "0.37.0" } }));
+    writeFileSync(join(core, "core-only.md"), "Core-only content\n");
+    symlinkSync(join(core, "core-only.md"), join(platform, "escape.md"));
+    await toolError(core, read("node_modules/@openlup/platform/escape.md"), /escapes the installed package root/);
+  });
+
   it.each([false, true])("refuses source-package self-resolution for search and read with an installed copy: %s", async (installed) => {
     const root = temporaryRoot();
     if (installed) install(root);
@@ -217,7 +246,7 @@ describe("MCP installed context search", () => {
     for (const path of [
       `${prefix}README.md`, `../../../${prefix}README.md`,
       "../../node_modules/@openlup/outbox/README.md", `../../${prefix}docs/../README.md`,
-    ]) await toolError(app, read(path), /relative node_modules/);
+    ]) await toolError(app, read(path), /relative.*node_modules/);
     const outside = join(root, "outside.md");
     writeFileSync(outside, "outside secret");
     symlinkSync(outside, join(root, prefix, "escape.md"));
@@ -301,7 +330,7 @@ describe("MCP installed file reader", () => {
   });
 
   it.each(["", "/etc/passwd", "C:/secret.txt", "C:\\secret.txt", "//host/share", "checkout.ts", "node_modules/zod/package.json", "node_modules/@openlup/core", `${prefix}../other/secret`, `${prefix}./README.md`, `${prefix}src/../../secret`, `${prefix}/README.md`, `${prefix}README.md/`, `${prefix}README.md\0`, `${prefix}src\\secret`, "node_modules/@openlup/.hidden/file"])("refuses path %j as a tool error", async path => {
-    await toolError(fixture(), read(path), /relative node_modules/);
+    await toolError(fixture(), read(path), /relative.*node_modules/);
   });
 
   it("refuses directories, missing files, non-directory parents and invalid ranges", async () => {

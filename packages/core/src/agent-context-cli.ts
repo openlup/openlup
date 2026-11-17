@@ -57,8 +57,7 @@ export function installedPackageRoots(cwd: string): { name: string; root: string
       throw new Error("No installed @openlup/core found for this application; @openlup/core is required. Install Core with an npm node_modules layout; unsupported package-manager layouts cannot be searched.");
     }
     const root = dirname(manifestPath);
-    const location = relative(cwd, root).split(sep).join("/").replace(/^(?:\.\.\/)*/u, "");
-    if (location !== `node_modules/${name}`) {
+    if (!root.endsWith(`${sep}node_modules${sep}${name.split("/").join(sep)}`)) {
       throw new Error(`Installed dependency lookup for ${name} resolved outside node_modules; source self-references are not installed package evidence. Run from an application root with installed @openlup/* packages.`);
     }
     return [{ name, root }];
