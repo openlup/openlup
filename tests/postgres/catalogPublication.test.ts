@@ -431,6 +431,9 @@ it.each([
   const data = await draft(); await commit(data.publication);
   for (const table of ["catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions"])
     await expect(db.query(`UPDATE public.${table} SET ${table === "catalog_publications" || table === "catalog_publication_decisions" ? "id=id" : table === "catalog_sku_revisions" ? "id=id" : "command_key=command_key"}`)).rejects.toMatchObject({ code: "55000" });
+  for (const signature of ["public.catalog_price_setup_prepare(text,text)", "public.catalog_price_setup_apply_prelocked(jsonb)",
+    "public.catalog_price_setup_prelock(uuid,uuid,jsonb)", "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)"])
+    expect((await db.query("SELECT has_function_privilege('authenticated',$1,'EXECUTE') AS allowed", [signature])).rows).toEqual([{ allowed: false }]);
   const role = `publication_reader_${process.pid}`, client = await db.connect();
   try {
     await client.query(`CREATE ROLE ${role} NOLOGIN`); await client.query(`SET ROLE ${role}`);
