@@ -105,22 +105,27 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       END AS response FROM receipt`, [...values, preview, !!futureTerms]);
     if (stored.rows[0]?.response) return commandResult(subscriptionRecord(stored.rows[0].response));
     if (binding.admitSubscriptionCommand) {
-      // Lock the owned subscription as native dispatch does. These are read-only
-      // facts; SQL still owns every state, in-flight payment and delivery fence.
-      const { rows } = await executor.query(`SELECT s.status,
+      // Acquire the lock before taking the payment-facts statement snapshot:
+      // a dunning writer can commit after we start waiting without updating s.
+      const subscription = await executor.query(`SELECT status FROM public.subscriptions
+        WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE`, [input.subscriptionId, input.clientId]);
+      if (!subscription.rows[0]) throw new Error("subscription_command_forbidden");
+      const { rows } = await executor.query(`SELECT current_setting('transaction_isolation') AS isolation,
         COALESCE((SELECT CASE d.status WHEN 'open' THEN 'payment_blocked' ELSE 'payment_expired' END
-          FROM public.subscription_dunning_cases d WHERE d.subscription_id=s.id AND d.status IN ('open','expired')
+          FROM public.subscription_dunning_cases d WHERE d.subscription_id=$1::uuid AND d.status IN ('open','expired')
           ORDER BY (d.status='open') DESC,d.updated_at DESC,d.id DESC LIMIT 1),
-          (SELECT 'payment_failed' FROM public.subscription_cycles c WHERE c.subscription_id=s.id
-            AND c.status IN ('payment_failed','retry_scheduled') LIMIT 1)) AS payment_blocker
-        FROM public.subscriptions s WHERE s.id=$1::uuid AND s.client_id=$2::uuid FOR UPDATE OF s`,
-      [input.subscriptionId, input.clientId]);
+          (SELECT 'payment_failed' FROM public.subscription_cycles c WHERE c.subscription_id=$1::uuid
+            AND c.status IN ('payment_failed','retry_scheduled') LIMIT 1)) AS payment_blocker`, [input.subscriptionId]);
       const row = rows[0];
-      if (!row) throw new Error("subscription_command_forbidden");
+      // Higher isolation retains a pre-lock transaction snapshot. PostgreSQL's
+      // READ UNCOMMITTED uses READ COMMITTED's statement snapshots as well.
+      if (row.isolation !== "read committed" && row.isolation !== "read uncommitted") {
+        throw new Error("subscription_command_admission_isolation_unsupported");
+      }
       await binding.admitSubscriptionCommand({ action: admissionAction(input.action),
         pausePreset: typeof input.payload.pausePreset === "string" ? input.payload.pausePreset : null,
         reason: typeof input.payload.reason === "string" ? input.payload.reason : null,
-        subscriptionStatus: String(row.status), paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
+        subscriptionStatus: String(subscription.rows[0].status), paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
     }
     if (["update_package_template", "update_bundle", "resize_bundle", "update_plan_length"].includes(input.action)
       && [input.payload.cadenceDays, input.payload.planDays]

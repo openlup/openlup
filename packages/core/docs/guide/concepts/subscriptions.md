@@ -103,6 +103,14 @@ otherwise failed/retry-scheduled cycles are `payment_failed`, otherwise null.
 Native skip/slide names map to `skip`/`slide`; native bundle and add-on edits map
 to `edit_future_terms`.
 
+Use READ COMMITTED in `withTransaction`. Payment facts are read in a separate
+statement after the subscription lock is acquired, so they include a dunning
+case committed while the command waited. PostgreSQL also gives READ UNCOMMITTED
+these statement snapshots. REPEATABLE READ and SERIALIZABLE retain the older
+transaction snapshot; fresh admission throws
+`subscription_command_admission_isolation_unsupported` before the callback or
+writes. Completed receipt replay still returns before this isolation check.
+
 Return normally to admit or throw an error with a named application code to
 refuse. The error propagates through the transaction, before host term translation,
 pricing, quotes, receipts, events or other durable writes. Keep this callback

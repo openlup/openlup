@@ -7,6 +7,12 @@ errors propagate with no durable refusal receipt. Native lifecycle, payment and
 delivery fences remain unconditional. Completed matching commands replay after
 policy narrows; payload conflicts still refuse before admission.
 
+Admission reads payment facts in a fresh statement after acquiring the
+subscription lock. Use READ COMMITTED (READ UNCOMMITTED has the same PostgreSQL
+behavior); fresh admission refuses REPEATABLE READ and SERIALIZABLE with
+`subscription_command_admission_isolation_unsupported` before the callback or
+writes. Completed receipts still replay before this check.
+
 The source starter owns account action lists and pause choices in
 `owned/renewal.config.ts`. The account pause form preselects the preset default
 (`2_weeks` in the demo) and the cancellation save offer keeps its own

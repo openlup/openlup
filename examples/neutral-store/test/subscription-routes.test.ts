@@ -33,7 +33,8 @@ test('mounted care replays a removed preset and returns named fresh admission re
     if (['BEGIN','COMMIT','ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
     if (sql.includes('WITH stored AS')) return { rows: replay ? [{ response: { status: 'replayed',subscriptionId: id(1),subscriptionStatus: 'paused',
       templateVersion: 2,nextCycleAt: null,eventId: id(4),commandFingerprint: 'a'.repeat(64) } }] : [] };
-    if (sql.includes('SELECT s.status')) return { rows: [{ status: 'active',payment_blocker: null }] };
+    if (sql.includes('SELECT status FROM public.subscriptions')) return { rows: [{ status: 'active' }] };
+    if (sql.includes('AS payment_blocker')) return { rows: [{ isolation: 'read committed',payment_blocker: null }] };
     throw Error('must_not_dispatch_a_refused_command');
   } };
   const command = composeSubscriptionCare({ async query() { return { rows: [{ id: id(1) }] }; },async connect() { return db; } } as unknown as Pool);
