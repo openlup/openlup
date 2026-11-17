@@ -31,7 +31,24 @@ export const subscriptionPricePolicyCanonicalInputSchema = z.object(subscription
   }
 });
 
-export const subscriptionPricePolicyRevisionSchema = subscriptionPricePolicyCanonicalInputSchema.extend({
+export const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
+  discountBps: z.ZodNumber;
+  roundingQuantumMinor: z.ZodNumber;
+  roundingRule: z.ZodEnum<{
+    FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+  }>;
+  id: z.ZodGUID;
+  revisionNo: z.ZodNumber;
+  priceListId: z.ZodGUID;
+  regionCode: z.ZodString;
+  currency: z.ZodString;
+  channel: z.ZodString;
+  effectiveFrom: z.ZodString;
+  effectiveTo: z.ZodNullable<z.ZodString>;
+  digest: z.ZodString;
+  /** @experimental */
+  closedFromOpen: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strict> = subscriptionPricePolicyCanonicalInputSchema.extend({
   digest: sha256DigestSchema,
   closedFromOpen: z.boolean().optional(),
 }).strict().superRefine((policy, context) => {

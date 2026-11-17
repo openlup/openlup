@@ -80,16 +80,16 @@ Each finding includes an observation, cause, fix and recheck instruction.
 ## Per-release notes
 
 Each release's notes are the packages' changelogs, linked at the release tag:
-[core](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/CHANGELOG.md),
-[outbox](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/outbox/CHANGELOG.md)
-and [platform](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/CHANGELOG.md).
-[Upgrading to 0.43.0](v0-43-0.md), [Upgrading to 0.42.0](v0-42-0.md), [Upgrading to 0.41.0](v0-41-0.md) and
+[core](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/core/CHANGELOG.md),
+[outbox](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/outbox/CHANGELOG.md)
+and [platform](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/CHANGELOG.md).
+[Upgrading to 1.0.0](v1-0-0.md), [Upgrading to 0.43.0](v0-43-0.md), [Upgrading to 0.42.0](v0-42-0.md), [Upgrading to 0.41.0](v0-41-0.md) and
 [Upgrading to 0.40.0](v0-40-0.md) each gather
 that release's notes and API report changes.
 
 ## Preparing for native provider profiles
 
-The unreleased 0.43.0 source candidate replaces native provider identity
+The 0.43.0 release replaces native provider identity
 predicates with immutable profile data. Apply the complete selected catalogue,
 including `20261121090000_payment_provider_profiles.sql`, through your existing
 migration runner. Do not replace historical slots or rewrite stored payment

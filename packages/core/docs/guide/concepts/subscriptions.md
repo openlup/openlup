@@ -16,7 +16,7 @@ PostgreSQL bindings. Constructing a binding does not mount a runner or select a
 payment provider. Your application supplies authorization, durable storage,
 scheduling and provider bindings, using matching installed `@openlup/*`
 versions. Check the installed exports and
-[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/subscriptions.api.md)
+[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/api/subscriptions.api.md)
 before selecting a seam.
 
 The engine returns models and events. Durable admission decides whether a new
@@ -105,7 +105,7 @@ uncollected cycle. These duties are not performed by a pure engine call.
 
 The managed win-back and historical recovery functions assign the requested
 instant plus the implementation’s restart lead unconditionally; consult the
-[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
+[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
 for the durable timing boundary. Unlike the core restart, they do not
 preserve a later stored date: a subscription paid through a later date can
 therefore receive an earlier next charge on this path. Account for that
@@ -261,9 +261,9 @@ and 11 after the initial decline if each runs and fails when due. Days 1, 3 and
 Sandbox observation recording is separate from provider-result recording;
 configuring the starter sandbox does not establish provider retry timing.
 The current definitions are `payment_provider_result_apply` in
-[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
+[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
 and both failure overloads in
-[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
+[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Verify your selected catalogue or applied prefix with the
 [current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).
 
@@ -427,7 +427,7 @@ contention can still roll capture back; redelivery converges after contention
 clears, without an automatic retry dispatcher.
 
 Operators find review-marked events with the read-only query on the
-[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
+[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
 run through an authorized native PostgreSQL session; pass a returned event ID to
 the truth port's `readEvent` for details. The query records no review decision
 and no money or order transition.

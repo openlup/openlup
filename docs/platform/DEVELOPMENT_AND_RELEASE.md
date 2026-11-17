@@ -357,15 +357,15 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Core release preparation
 
-The prepared `0.43.0` set removes provider trace columns from Core's shared
-fulfillment status-map JSON; adapter-owned dictionaries retain translation and
-existing status/customer-step results. Its reader guide covers Platform's seven
-new native migration slots 135–141, fulfillment composition, provider profiles
-and qualification limits. Upgrade all packages together and read
-[the set notes](../../packages/core/CHANGELOG.md#0430); Core introduces no schema migration.
-Size comparison uses the published `0.42.0` tarball; releases before `0.41.0`
+The prepared `1.0.0` set begins the stable compatibility line and adds experimental
+exact catalogue quantities, pricing helpers and registry observations, installed
+lookup improvements and offline catalogue guidance. Its reader guide covers
+Platform's nine native forwards at slots 142–150, explicit migration/backfill
+steps, the experimental base-price writer and code-rollback limits. Upgrade the complete set together and read
+[the set notes](../../packages/core/CHANGELOG.md#100); Core introduces no schema migration.
+Size comparison uses the published `0.43.0` tarball; releases before `0.42.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
-npm publication.
+npm publication or exact-set qualification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Oversized constrained collections fail before per-element errors accumulate;
@@ -377,11 +377,12 @@ types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.43.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.43.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.43.0 notes](../../packages/outbox/CHANGELOG.md#0430).
-Releases before `0.41.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.42.0` tarball; preparation grants no
+The prepared `1.0.0` set declares Outbox's stable runtime subpaths and testing
+exclusion, with unchanged runtime, exports and SQL, and an exact
+`@openlup/core@1.0.0` peer. Upgrade the complete set together; no Outbox schema
+migration is introduced. Read [1.0.0 notes](../../packages/outbox/CHANGELOG.md#100).
+Releases before `0.42.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.43.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Cutting an optional source preview

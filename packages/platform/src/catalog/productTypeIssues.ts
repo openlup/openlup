@@ -51,6 +51,7 @@ const attributeSchema = z.object({
   required: z.boolean(), cardinality: z.object({ min: bound, max: bound }).strict(),
   filterable: z.boolean(), facetable: z.boolean(), public: z.boolean(), displayOrder: bound, labels,
 }).strict();
+/** @experimental */
 export const catalogDefinitionMetadataSchema = catalogProductTypeRefSchema.extend({
   units: z.array(unitSchema).max(64),
   netContentUnits: z.array(catalogNamespacedKeySchema).min(1).max(64),

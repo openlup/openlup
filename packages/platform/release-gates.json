@@ -1036,8 +1036,8 @@
     "maxFiles": 5330,
     "capReason": "Measured on merged main 90c2d2ee0 (Node 24.22.2, npm 11.19.1): total 3441892 B packed / 16636303 B unpacked / 4637 files; code 2690387 B packed / 4464 files; docs 106726 B packed. Owner 2026-11-17: Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs, and these Platform caps held only 4-7%; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 3958000 B packed / 19132000 B unpacked / 5330 files; code 3094000 B / 5130 files; docs 123000 B. This activates no capability.",
     "baseline": {
-      "version": "0.42.0",
-      "packedBytes": 3212990
+      "version": "0.43.0",
+      "packedBytes": 3319432
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

@@ -39,6 +39,13 @@ this package's declarations and changelogs and source at the matching release
 tag. A current-`main` link establishes no compatibility or support guarantee.
 See [CHANGELOG.md](CHANGELOG.md) for release changes and migration precautions.
 
+The prepared `1.0.0` set is the first stable package set. It includes experimental
+catalogue definition, quantity, attribute, variant and versioned-draft tools,
+nine native SQL forwards, the immediate base-price writer, optional subscription
+admission and offline catalogue checks. Read [the set notes](CHANGELOG.md#100) and the
+[upgrade guide](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/core/docs/guide/upgrade/v1-0-0.md).
+Preparation establishes no publication, exact-set qualification or integration activation.
+
 The `subscriptions` entry also exposes `createPostgresSubscriptionAutoResume`:
 bind its `run(limit, now)` method to the host scheduler and job ledger after
 installing the complete selected catalogue. Due finite pauses resume only when
@@ -1917,16 +1924,9 @@ committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
 
-The `release-gates.json` pack caps are 2,029,568 tarball bytes, 9,447,424
-unpacked bytes, 2,712 total files, 1,743,872 code gzip bytes and 2,656 code files.
-The [M15 budget decision](../../docs/platform/plans/oss-m15-generic-risk-controls.md#cd-m15-6-platform-pack-budget--2026-10-27)
-sized R1's original allocation from the measured full M15 stack after M14 #397,
-with approximately 2% for S1 and repairs. The later lifecycle integration takes
-the higher parent value for each cap: M14 supplies the three current byte caps,
-while M15 retains its higher file caps. Documentation caps remain 73,728 gzip
-bytes and 10 files; browser caps and the release baseline are unchanged.
-Every candidate still needs its actual artifact check; later growth needs its
-own measured budget decision.
+Current measured caps and the published release baseline are owned by
+`release-gates.json`; [Package artifact limits](#package-artifact-limits) describes
+the checks.
 
 The source-checkout binding `npm run test:consumer` runs
 [`platform-cold-consumer.ts`](https://github.com/openlup/openlup/blob/main/scripts/packages/platform-cold-consumer.ts).
@@ -2023,7 +2023,9 @@ See the [communications recipe](https://github.com/openlup/openlup/blob/main/doc
 The monorepo's package artifact checker enforces this package's
 `release-gates.json` caps and packed content allowlist. Only
 `--release-set <version>` checks compressed growth against the last released
-baseline, with explanations in the new set's changelog section and release body. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
+baseline, with explanations in the new set's changelog section and release body.
+For the prepared `1.0.0` set, comparison uses the published `0.43.0` tarball;
+releases before `0.42.0` remain in the source-only `CHANGELOG-HISTORY.md`. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
 [package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no
