@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
+/** @experimental */
 export interface CatalogPackManifest {
   readonly id: string; readonly namespace: string; readonly version: number; readonly openlupRange: string;
   readonly capabilities: Readonly<Record<string, boolean>>;
@@ -10,7 +11,9 @@ export interface CatalogPackManifest {
   readonly subscriptionProfiles: readonly { readonly key: string; readonly version: number }[];
   readonly digest: string;
 }
-/** A derived in-memory projection; no manifest or digest is accepted from a client. */
+/** A derived in-memory projection; no manifest or digest is accepted from a client.
+ * @experimental
+ */
 export function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest {
   const projection = {
     id: pack.id, namespace: pack.namespace, version: pack.version, openlupRange: pack.openlupRange,

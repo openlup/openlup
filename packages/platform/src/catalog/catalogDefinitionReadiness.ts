@@ -3,7 +3,9 @@ import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 
-/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables. */
+/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables.
+ * @experimental
+ */
 export async function observeCatalogDefinitionReadiness(
   readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string,
 ): Promise<CatalogRegistryObservation> {
@@ -23,7 +25,9 @@ export async function observeCatalogDefinitionReadiness(
   }) };
 }
 
-/** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called. */
+/** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called.
+ * @experimental
+ */
 export function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry) {
   return async <T>(write: () => Promise<T>): Promise<T> => {
     const observation = await observeCatalogDefinitionReadiness(readExecutor, registry, "catalogue-write");
