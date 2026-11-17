@@ -18,7 +18,7 @@ history. Managed-to-native ingress defaults only absent product/SKU publication
 projections to NULL and never creates publication history. Keep the new reader
 while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
-The price boundary uses the existing donor command through the price owner's
+The price boundary uses the existing version 2 command through the price owner's
 same-transaction writer; installed binding and its price-dependent proofs await
 that writer.
 

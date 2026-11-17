@@ -4343,7 +4343,7 @@ export declare function assertCatalogPublicationMassInputs(payload: unknown, def
 export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3): void;
 /** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic. */
 export declare function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void;
-/** Ordered donor compiler adapted to installed definitions; never persists or calls commerce. */
+/** Ordered publication compiler using installed definitions; never persists or calls commerce. */
 export declare function compileCatalogPublication(input: CatalogPublicationCompileInput): {
     product: CatalogPublishedProduct;
     skus: CatalogPublishedSku[];

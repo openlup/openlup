@@ -133,7 +133,7 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
     need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
   } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
 }
-/** Ordered donor compiler adapted to installed definitions; never persists or calls commerce. */
+/** Ordered publication compiler using installed definitions; never persists or calls commerce. */
 export function compileCatalogPublication(input: CatalogPublicationCompileInput): { product: CatalogPublishedProduct; skus: CatalogPublishedSku[]; documents: CatalogPublicationDocument[]; activation: boolean; changed: boolean } {
   canonicalCatalogDraftJson(input.payload);
   // Check the temporary numeric domain before strict positive-quantity decoding,
