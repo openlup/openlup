@@ -258,9 +258,11 @@ it("keeps sized frozen pricing unchanged when admission is absent or permissive"
 it("reads a historical sized context but refuses a fresh edit retaining its cadence", async () => {
   const current = context(), ports = host(); current.cadenceDays = 3661;
   const live = vi.spyOn(ports.quotePort, "createServerAuthoritativeQuote");
+  const facts = vi.spyOn(ports, "readFacts"), catalog = vi.spyOn(ports, "readCatalog"), need = vi.spyOn(ports, "resolveOptInNeed");
   await expect(quoteSizedEdit({db, context:current, request:{subscriptionId:ids.subscription,action:"update_base_mix",base:[{variantId:ids.a,qty:4}]},policy,host:ports,point:"preview"}))
     .rejects.toThrow("subscription_reprice_invalid_plan_length");
   expect(live).not.toHaveBeenCalled();
+  expect(facts).not.toHaveBeenCalled(); expect(catalog).not.toHaveBeenCalled(); expect(need).not.toHaveBeenCalled();
   expect(await quoteSizedEdit({db,context:current,request:{subscriptionId:ids.subscription,action:"update_plan_length",planDays:30},policy,host:ports,point:"preview"}))
     .toMatchObject({cadenceDays:30});
 });

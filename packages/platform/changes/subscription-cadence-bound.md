@@ -17,5 +17,12 @@ and `maximumCadenceDays`; choose an executable cadence before starting a new
 renewal. Historical frozen operations remain readable and replayable. Quantity,
 revision and money bounds are unchanged.
 
+Identity persistence admits fresh cadence before its writing RPC. Historical
+completed retries authenticate a single read snapshot of the stored response and
+the writer's canonical JSONB fingerprint, including the route-verified identity,
+and refuse changed payloads without reopening the key. Fresh quote execution and unfinished resume writes
+also admit cadence before dependencies; expired recreation checks both stored
+cadences before provider I/O and returns `cadence_limit_exceeded`.
+
 Migration: no SQL changes. Existing 90-day SQL guards and the starter's
 `starter_database_cadence_limit` refusal above 90 remain pending a separate slice.

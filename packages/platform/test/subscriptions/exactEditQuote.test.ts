@@ -15,7 +15,7 @@ function fixture() {
   ];
   const subscription = { cadenceDays: 10, templateVersion: 5, compositionConstraint: { kind: "plan_days", value: 10, need: 4 } as Record<string, unknown> };
   const minimum = vi.fn(async () => { throw new Error("unexpected minimum read"); });
-  const readPort: PackageEditReadPort = { readLines: async () => current, readSubscription: async () => subscription, readMinimumBaseUnits: minimum };
+  const readPort: PackageEditReadPort = { readLines: vi.fn(async () => current), readSubscription: vi.fn(async () => subscription), readMinimumBaseUnits: minimum };
   const composition = createSubscriptionSizingRules({ portionModes: modes, readDailyNeed: constraint => Number(constraint.data.need),
     isPlanLengthConstraint: constraint => constraint.data.kind === "plan_days",
     readUnitFacts: async ids => ids.filter(id => id === base || id === other).map(variantId => ({ variantId, demandPerUnit: 10, maximumQuantity: 99 })),
@@ -23,14 +23,14 @@ function fixture() {
   const catalog = [base, addon, other].map(variantId => ({ variantId, skuCode: variantId, sellability: { subscription: true } }));
   const ports: PackageEditQuotePorts = { compositionRulesPort: composition,
     constraintMapper: { toCore: stored => ({ kind: "configured", version: 1, data: stored ?? {} }), fromCore: constraint => constraint.data, nominalPlanDays: () => 10 },
-    quoteCatalogReadPort: { listQuoteCatalogItems: async () => catalog },
+    quoteCatalogReadPort: { listQuoteCatalogItems: vi.fn(async () => catalog) },
     quotePort: { createServerAuthoritativeQuote: vi.fn(async input => {
       const lines = input.lines.map(line => ({ sku: line.sku, quantity: line.quantity, unitPriceGross: money(input.cadenceDays === 20 ? 131 : 137),
         lineSubtotalGross: money(line.quantity * (input.cadenceDays === 20 ? 131 : 137)) }));
       const total = money(lines.reduce((sum, line) => sum + line.lineSubtotalGross.amountMinor, 0));
       return { quote: { lines, totalGross: total, subtotalGross: total, discountTotalGross: money(0) } };
     }) } };
-  return { current, subscription, ports, catalog, minimum, quote: (request: Omit<ExactSubscriptionEditRequest, "subscriptionId">) =>
+  return { current, subscription, ports, catalog, minimum, readPort, quote: (request: Omit<ExactSubscriptionEditRequest, "subscriptionId">) =>
     createExactSubscriptionRepricer({ ...ports, portionModes: modes, readPort }).quote({ ...request, subscriptionId: sub } as ExactSubscriptionEditRequest) };
 }
 it("swaps in place preserving identity, quantity, classification and order, including an add-on source", async () => {
@@ -138,6 +138,15 @@ it("refuses a fresh edit retaining an historical cadence while allowing a valid 
   const f = fixture(); f.subscription.cadenceDays = 3661;
   await expect(f.quote({ action: "add_addon", variantId: other, qty: 1 } as ExactSubscriptionEditRequest))
     .rejects.toThrow("subscription_reprice_invalid_plan_length");
+  expect(f.ports.quoteCatalogReadPort.listQuoteCatalogItems).not.toHaveBeenCalled();
   expect(f.ports.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
   expect(await f.quote({ action: "update_plan_length", planDays: 20 } as ExactSubscriptionEditRequest)).toMatchObject({cadenceDays:20});
+});
+
+it.each([0, 3661])("refuses direct fresh exact cadence %i before dependency reads", async planDays => {
+  const f = fixture();
+  await expect(f.quote({ action: "update_plan_length", planDays } as ExactSubscriptionEditRequest)).rejects.toThrow("subscription_reprice_invalid_plan_length");
+  expect(f.readPort.readSubscription).not.toHaveBeenCalled(); expect(f.readPort.readLines).not.toHaveBeenCalled();
+  expect(f.ports.quoteCatalogReadPort.listQuoteCatalogItems).not.toHaveBeenCalled();
+  expect(f.ports.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
 });

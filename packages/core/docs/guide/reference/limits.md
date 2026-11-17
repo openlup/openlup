@@ -34,6 +34,11 @@ whole days** (ten years). `MAX_CADENCE_DAYS` is exported from
 integer overflows, with room for lateness. Applications choose offered cadences
 in owned configuration.
 
+Fresh checkout identity persistence, resume-draft writes and expired checkout
+recreation use the same limit before writes or provider calls. A readable stored
+cadence does not authorize fresh recovery work; recreation refuses it with
+`ExpiredCheckoutRecoveryError`, reason `cadence_limit_exceeded`.
+
 Checkout transport, resume/recovery/account reads, editor contexts, retained
 renewal terms and frozen snapshots preserve **1 through 2147483647** integer
 representation. Completed checkout/editor receipts replay before current limits,
@@ -42,6 +47,12 @@ starter graduation above 3660 returns `NativeRenewalCadenceError` with reason
 `cadence_limit_exceeded` and `maximumCadenceDays`; choose an executable cadence
 before starting a new renewal. Reading or replaying a frozen operation does not
 apply this new-admission limit.
+
+Managed checkout identity retries above the admission limit authenticate the
+complete canonical payload and verified subject against the stored fingerprint.
+The adapter reads the fingerprint and completed response together and returns
+that snapshot without entering the writer; conflicting retries cannot reopen
+the key.
 
 The current SQL subscription preview and edit-quote guards retain their **90-day**
 limit pending a separate migration. The starter also refuses configured cadences

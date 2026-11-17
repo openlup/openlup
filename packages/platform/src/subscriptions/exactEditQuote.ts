@@ -8,10 +8,13 @@ export function createExactSubscriptionRepricer(deps: PackageEditQuotePorts & {
   readPort: PackageEditReadPort; portionModes?: SubscriptionPortionModes;
 }) {
   return { async quote(input: ExactSubscriptionEditRequest): Promise<ExactSubscriptionEditQuote | null> {
+    if (input.action === "update_plan_length" && (!Number.isInteger(input.planDays) || input.planDays < 1 || input.planDays > MAX_CADENCE_DAYS)) throw new Error("subscription_reprice_invalid_plan_length");
     const reads = await Promise.allSettled([deps.readPort.readSubscription(input.subscriptionId), deps.readPort.readLines(input.subscriptionId)]);
     if (reads[0].status === "rejected") throw reads[0].reason;
     if (reads[1].status === "rejected") throw reads[1].reason;
     const subscription = reads[0].value, current = reads[1].value;
+    const effectiveCadence = input.action === "update_plan_length" ? input.planDays : subscription.cadenceDays;
+    if (effectiveCadence > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
     const skus = new Map((await deps.quoteCatalogReadPort.listQuoteCatalogItems()).filter(item => item.sellability.subscription)
       .map(item => [item.variantId, item.skuCode]));
     let lines: (Omit<PackageEditCurrentLine, "lineId"> & { lineId: string | null })[] = current.map(line => ({ ...line }));

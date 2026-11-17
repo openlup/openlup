@@ -6,7 +6,7 @@ import { createCheckoutResumeSchemas } from '../../src/commerce/checkoutResumeSc
 import { createCommerceQuoteSchemas } from '../../src/pricing/quoteSchemas.js';
 import { expect,it,vi } from 'vitest';
 import { createExpiredCheckoutRecoveryService,ExpiredCheckoutRecoveryError,parseRecoveryRecreationQuote } from '../../src/commerce/server/expiredCheckoutRecovery.js';
-import { createPostgresNativeCheckoutPersistence } from '../../src/commerce/server/native-checkout/index.js';
+import { createPostgresAcquisitionCheckoutPersistence, createPostgresNativeCheckoutPersistence } from '../../src/commerce/server/native-checkout/index.js';
 import { createPostgresCheckoutRecoveryOrderPort } from '../../src/commerce/server/postgresCheckoutRecoveryOrderPort.js';
 import { checkoutRecoveryExecutionFingerprint } from '../../src/commerce/server/nativeExpiredCheckoutRecovery.js';
 import type { NativeCheckoutRecoveryOrder } from '../../src/commerce/server/checkoutRecoveryInspection.js';
@@ -31,6 +31,24 @@ it('keeps the reference safety, frozen quote, draft, lineage and runtime order',
  expect(f.deps.quotePort.createQuote).toHaveBeenCalledWith({opaque:'adopter'},{clientId:'client',pricingPolicy:{version:1},offerVersion:{id:'frozen'}});
  expect(f.deps.orderDraftPort.createOrderDraft).toHaveBeenCalledWith({idempotencyKey:'checkout-recovery-recreate:source',quoteSnapshot:quote()},{clientId:'client'});
  expect(f.deps.runtimePort.startRuntime).toHaveBeenCalledWith(expect.objectContaining({source:f.order,clientId:'client',idempotencyKey:'checkout-recovery-recreate:source'}));
+});
+it.each([0,1,3660,3661])('admits recreation cadence %i before provider, quote or write calls',async cadenceDays=>{
+ for(const source of ['order','quote','both']){
+  const f=fixture(),snapshot=quote();
+  if(source!=='quote')f.order.cadenceDays=cadenceDays;
+  if(source!=='order')snapshot.quote.context.cadenceDays=cadenceDays;
+  f.order.quoteSnapshot=snapshot;f.deps.quotePort.createQuote.mockResolvedValue(structuredClone(snapshot));
+  if(cadenceDays===0||cadenceDays===3661){
+   await expect(f.recreate()).rejects.toMatchObject({name:'ExpiredCheckoutRecoveryError',reason:'cadence_limit_exceeded'});
+   expect(f.events).toEqual([]);expect(f.deps.supports).not.toHaveBeenCalled();expect(f.deps.quoteRequest).not.toHaveBeenCalled();
+   expect(f.deps.orderDraftPort.createOrderDraft).not.toHaveBeenCalled();expect(f.deps.recoveryPort.prepareReplacement).not.toHaveBeenCalled();
+  }else await expect(f.recreate()).resolves.toEqual({status:'processing'});
+ }
+});
+it('treats readable historical 3661 cadence as non-executable during validation',async()=>{
+ const f=fixture(),snapshot=quote();snapshot.quote.context.cadenceDays=3661;f.order.quoteSnapshot=snapshot;
+ expect(parseRecoveryRecreationQuote(snapshot)).not.toBeNull();
+ expect(await f.service.validate(f.order)).toBe(false);expect(f.events).toEqual([]);expect(f.deps.quoteRequest).not.toHaveBeenCalled();
 });
 it('retains frozen offer evidence while excluding transient quote identity from the comparison',async()=>{
  const f=fixture(),fresh=quote();fresh.quote.context.offerVersion={id:'current'};fresh.quote.context.offerEvidence={id:'current'};
@@ -126,6 +144,15 @@ it('refuses a fresh 3661-day native draft after checking receipts without callin
  await expect(createPostgresNativeCheckoutPersistence({query}).createOrderDraft({idempotencyKey:'fresh-cadence-boundary',quoteSnapshot:snapshot}))
   .rejects.toMatchObject({name:'CommerceOrderDraftPersistenceError',details:{reason:'cadence_limit_exceeded',maximumCadenceDays:3660}});
  expect(query).toHaveBeenCalledOnce();expect(query.mock.calls[0]).toEqual(['SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1',['fresh-cadence-boundary']]);
+});
+it.each([0,3661])('refuses fresh acquisition draft cadence %i before policy or writing RPC calls',async cadenceDays=>{
+ const snapshot=quote();snapshot.quote.context.cadenceDays=cadenceDays;
+ const query=vi.fn(async(_sql:string)=>({rows:[]})),release=vi.fn(),isAcquisitionDiscount=vi.fn(()=>false);
+ const port=createPostgresAcquisitionCheckoutPersistence({connect:async()=>({query,release})},{regionCode:'ZZ',financialPolicy:{} as never,isAcquisitionDiscount});
+ await expect(port.createOrderDraft({idempotencyKey:'fresh-acquisition-cadence',quoteSnapshot:snapshot})).rejects.toThrow();
+ expect(isAcquisitionDiscount).not.toHaveBeenCalled();
+ expect(query.mock.calls.some(([sql])=>/promotion|commerce_create|has_paid/i.test(sql))).toBe(false);
+ expect(release).toHaveBeenCalledOnce();
 });
 
 it.each([0,1,3660,3661,2_147_483_647])('reads historical recovery order snapshots at %i days',async cadenceDays=>{
