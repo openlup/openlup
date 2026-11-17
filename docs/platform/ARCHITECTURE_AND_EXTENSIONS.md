@@ -1868,6 +1868,10 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+Native package, exact, sized and transaction-local legacy edit previews include a versioned per-line agreement disclosure. The complete current renewal-term baseline, currency and original lane digest bind the accepted hash. Missing or ambiguous terms and unavailable currency refuse; currency differences refuse without conversion. Added and removed sides are null, while a real zero remains numeric. Existing lane pricing, historical successful replay and subscription timing stay with their owners. The legacy bridge requires one authenticated transaction connection. These additions are experimental and unbound.
+
+The native preview-prune helper accepts a retention and batch limit, returns the deleted count and retains accepted history. The recorder delegates with its existing seven-day/500-row values; deployments own any independent invocation. See the [migration note](../../packages/platform/changes/lc9.md) for installation and managed-rail limits.
+
 The owner decision of 2026-11-15 admits adopter-configured subscription cadence
 under §1.3.6: an application may sell subscriptions and one-time purchases and
 owns which products and quantities apply in each period. The platform owns no

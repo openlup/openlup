@@ -89,3 +89,8 @@ export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./contract
 
 export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
 export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
+
+export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
+
+export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
+export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";

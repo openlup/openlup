@@ -2744,6 +2744,8 @@ published complete migration chain. See the
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
+Native editor previews expose experimental `editConsent` data with the complete agreed-to-proposed per-line comparison and accepted hash. `createPostgresLegacyEditConsentBridge` supplies this comparison around the original legacy bundle transaction. Compose it with one authenticated transaction connection; construction activates nothing. Missing agreement evidence refuses rather than substituting current catalogue prices. See [subscription contracts](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor and the sized parcel lever value;
 `./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)

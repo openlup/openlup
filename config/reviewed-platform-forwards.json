@@ -5773,6 +5773,30 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalogue-lc9",
+        "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
+            "beforeSha256": "afe8e1b42e512157fa45b211859a35b2d091696a78fd68b8c0c82114bf6579cf",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
+            "beforeSha256": "37a21a9a47c15b509f13e1a0826c9ca48945180c3aee38d6152b042666879e68",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.customer_self_service_prune_subscription_quote_previews(pg_catalog.interval,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8175,6 +8199,27 @@
           "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
           "beforeSha256": null,
           "afterSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+      "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a",
+      "functions": [
+        {
+          "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
+          "beforeSha256": "afe8e1b42e512157fa45b211859a35b2d091696a78fd68b8c0c82114bf6579cf",
+          "afterSha256": "9167db0d2c0a70337b5733bdecae7ff2ebd839152c5d7e687572233a216243f0"
+        },
+        {
+          "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
+          "beforeSha256": "37a21a9a47c15b509f13e1a0826c9ca48945180c3aee38d6152b042666879e68",
+          "afterSha256": "432bc36e85f7412e7e92ff795e4b8259d8aaf0886d3f140c4988c5eb9ff82bb1"
+        },
+        {
+          "signature": "public.customer_self_service_prune_subscription_quote_previews(pg_catalog.interval,integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "5b863ab37de33ebfba7b7a65a9d0e3edb84b92a219a32cc6be6721f7f1270d0e"
         }
       ]
     }

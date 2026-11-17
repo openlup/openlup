@@ -1,3 +1,4 @@
+import type { SubscriptionEditConsent } from "./editConsent.js";
 /** Data-only classic package quote and command envelopes. Identity and execution stay in the server entry. */
 export interface PackageEditMoney { amountMinor: number; currency: string }
 export interface PackageEditLine { variantId: string; qty: number }
@@ -17,6 +18,8 @@ export interface PackageEditQuote {
 }
 export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
 export interface PackageEditPreview<Action extends string = "update_package_template"> {
+  /** @experimental */
+  editConsent?: SubscriptionEditConsent;
   preview: { subscriptionId: string; action: Action; canApply: boolean; blockedReason: PackageEditBlockedReason | null;
     nextCycleAt: string | null; editCutoffAt: string | null; templateVersion: number };
   lockedCycle: { locked: boolean; status: "blocked_preflight" | "dunning" | null };

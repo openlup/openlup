@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
+import { readCompleteEditBaseline, type EditAgreementBaseline } from "./editConsentBaseline.js";
 import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
 import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
@@ -67,9 +69,14 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
     return { ...result, status: "replayed", originalStatus: prior.status } as SizedEditApplyResult;
   }
   const scope = (db: SubscriptionQueryExecutor, actor: PackageEditActor) => createSizedEditContextScope((id, optIn) => readSizedEditContext(db, actor.clientId, id, optIn));
-  async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply") {
+  async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply", retained?: EditAgreementBaseline) {
     if (request.expectedTemplateVersion !== undefined && request.expectedTemplateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
-    return quoteSizedEdit({ db, context, request, point, host: options, policy });
+    const baseline = retained ?? await readCompleteEditBaseline(db, request.subscriptionId);
+    const quote = await quoteSizedEdit({ db, context, request, point, host: options, policy });
+    const editConsent = buildEditConsent(baseline, quote.quoteHash, quote.lines);
+    return { ...quote, editConsent, quoteHash: hashEditConsent(editConsent),
+      currentRecurringPrice: { amountMinor: editConsent.agreedTotalMinor, currency: editConsent.currency },
+      delta: { amountMinor: editConsent.subtotalDeltaMinor, currency: editConsent.currency } };
   }
   function blocked(row: Record<string, unknown>, request: SizedEditRequest): SizedEditPreview {
     const next = row.next_cycle_at instanceof Date ? row.next_cycle_at.toISOString() : row.next_cycle_at == null ? null : String(row.next_cycle_at);
@@ -102,16 +109,19 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
       if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
       return options.withTransaction(async db => {
         const row = await owned(db, actor, parsed.subscriptionId);
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
+        const eligibility = blocked(row, parsed);
+        if (!eligibility.preview.canApply) return eligibility;
+        const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
         const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request);
-        if (!preview.preview.canApply) return preview;
-        const priced = await quote(db, context, request, "preview"), { subscriptionId: _id, ...raw } = request;
+        const priced = await quote(db, context, request, "preview", baseline), { subscriptionId: _id, ...raw } = request;
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
         await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
           [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
+            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
             { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
-        return { ...preview, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
+        return { ...preview, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
           newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
             newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,
             effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
@@ -125,10 +135,20 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, key]);
         const stored = await replay(db, actor, key, parsed);
         if (stored) return stored;
-        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
+        const locked = (await db.query(`SELECT s.id,s.template_version,
+          public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,starterPack}' AS marker,
+          (SELECT count(*) FROM public.subscription_cycles c WHERE c.subscription_id=s.id AND c.status='paid') AS paid
+          FROM public.subscriptions s WHERE s.id=$1::uuid AND s.client_id=$2::uuid FOR UPDATE`, [parsed.subscriptionId, actor.clientId])).rows[0];
+        // Resolve only graduation's effective action here; complete baseline/context validation follows take.
+        const marker = locked?.marker == null ? null : subscriptionRecord(locked.marker);
+        const graduation = marker && Number(locked?.paid) + 1 === policy.graduationCycle && locked?.template_version === marker.basisTemplateVersion;
+        const action = graduation && ["update_portion", "update_base_mix", "update_bundle"].includes(parsed.action) ? "resize_bundle" : parsed.action;
+        await db.query("SELECT subscription_id FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [parsed.subscriptionId]);
+        await takeEditConsent(db, actor, parsed.subscriptionId, action, parsed.acceptedQuoteHash, Number(locked?.template_version), key, options.now());
         assertRequestLimits(parsed);
+        const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
-        const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply");
+        const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply", baseline);
         if (request.acceptedQuoteHash !== priced.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const addon = ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action);
         if (!addon) await options.assertCurrentFacts(db, context, priced.subjectFacts, priced.optInFacts, priced.catalogFacts);

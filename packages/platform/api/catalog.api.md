@@ -5195,6 +5195,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly position: 153;
     readonly sha256: "45188d7a73aa01dc5bc57147d04c58a4d5d0bdf1af3869f89dbbd20588ceb2a0";
     readonly url: URL;
+}, {
+    readonly id: "20261122220000_subscription_edit_consent";
+    readonly catalogPath: "db/platform/migrations/20261122220000_subscription_edit_consent.sql";
+    readonly position: 154;
+    readonly sha256: "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a";
+    readonly url: URL;
 }];
 ```
 ## dist/catalog/validation.d.ts

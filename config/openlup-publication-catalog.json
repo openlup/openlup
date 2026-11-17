@@ -1474,6 +1474,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4795,6 +4799,10 @@
     },
     {
       "path": "packages/platform/sql/20261122210000_catalog_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122220000_subscription_edit_consent.sql",
       "class": "public-output"
     },
     {
@@ -9162,6 +9170,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/editConsent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/exactEdit.ts",
       "class": "public-output"
     },
@@ -9187,6 +9199,18 @@
     },
     {
       "path": "packages/platform/src/subscriptions/contracts/stockWait.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/editConsent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/editConsentBaseline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/editConsentLegacyBridge.ts",
       "class": "public-output"
     },
     {
@@ -11635,6 +11659,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/editConsent.test.ts",
       "class": "public-output"
     },
     {
@@ -30707,6 +30735,10 @@
     },
     {
       "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionEditConsent.test.ts",
       "class": "public-output"
     },
     {

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
+import { readCompleteEditBaseline } from "./editConsentBaseline.js";
 import { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
 import { createClassicPackageRepricer } from "./classicPackageQuote.js";
@@ -64,8 +66,17 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
   }
   const repricer = (db: SubscriptionQueryExecutor) => createClassicPackageRepricer({ ...options, readPort: createPostgresPackageEditReadPort(db) });
   const exactRepricer = (db: SubscriptionQueryExecutor) => createExactSubscriptionRepricer({ ...options, readPort: createPostgresPackageEditReadPort(db) });
-  function quoteFor(db: SubscriptionQueryExecutor, request: ReturnType<typeof parse>) {
-    return "action" in request ? exactRepricer(db).quote(request) : repricer(db).quote(request);
+  async function quoteFor(db: SubscriptionQueryExecutor, request: ReturnType<typeof parse>) {
+    const baseline = await readCompleteEditBaseline(db, request.subscriptionId);
+    const quote = await ("action" in request ? exactRepricer(db).quote(request) : repricer(db).quote(request));
+    if (!quote) return null;
+    const desired = "lines" in quote ? quote.lines : [...quote.baseLines.map(line => ({ ...line, isAddon: false })),
+      ...quote.addonLines.map(line => ({ ...line, isAddon: true }))];
+    const editConsent = buildEditConsent(baseline, quote.quoteHash, desired);
+    const currentRecurringPrice = { amountMinor: editConsent.agreedTotalMinor, currency: editConsent.currency };
+    return { ...quote, editConsent, quoteHash: hashEditConsent(editConsent), currentRecurringPrice,
+      newRecurringPrice: { amountMinor: editConsent.newTotalMinor, currency: editConsent.currency },
+      delta: { amountMinor: editConsent.subtotalDeltaMinor, currency: editConsent.currency } };
   }
   function evidence(request: ReturnType<typeof parse>, quote: PackageEditQuote | ExactSubscriptionEditQuote) {
     if ("lines" in quote) return quote;
@@ -96,21 +107,22 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
           futureTemplate: { templateVersion: Number(row.template_version), effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" },
         };
         if (reason) return preview;
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [request.subscriptionId, actor.clientId]);
         const quote = await quoteFor(db, request);
         if (!quote) throw new Error("subscription_preview_reprice_unavailable");
         const { subscriptionId: _subscriptionId, ...originalRequest } = request;
         const exact = "lines" in quote;
         const ledgerRequest = exact ? originalRequest : { ...originalRequest, planDays: quote.cadenceDays,
           nominalPlanDays: "planDays" in request ? request.planDays : undefined };
-        const snapshot = exact ? { lines: quote.lines, cadenceDays: quote.cadenceDays, compositionConstraint: quote.compositionConstraint,
+        const snapshot = exact ? { editConsent: quote.editConsent, lines: quote.lines, cadenceDays: quote.cadenceDays, compositionConstraint: quote.compositionConstraint,
           ...(quote.portionModes ? { portionModes: quote.portionModes } : {}) }
-          : { baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
+          : { editConsent: quote.editConsent, baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
         const totals = exact ? {} : { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta };
         await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)`,
           [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,
             ledgerRequest, snapshot, totals, options.now()]);
-        if (exact) return { ...preview, quoteHash: quote.quoteHash, quoteExpiresAt: expires };
-        return { ...preview, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
+        if (exact) return { ...preview, editConsent: quote.editConsent, currentTotal: quote.currentRecurringPrice, newTotal: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash, quoteExpiresAt: expires };
+        return { ...preview, editConsent: quote.editConsent, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
           newTotal: quote.newRecurringPrice, delta: quote.delta, packageEdit: { currentRecurringPrice: quote.currentRecurringPrice,
             newRecurringPrice: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash,
             effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" } };
@@ -125,7 +137,9 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, idempotencyKey]);
         const stored = await replay(db, actor, subscriptionId, idempotencyKey, raw, action);
         if (stored) return stored;
-        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [subscriptionId, actor.clientId]);
+        const locked = (await db.query("SELECT id,template_version FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [subscriptionId, actor.clientId])).rows[0];
+        await db.query("SELECT subscription_id FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [subscriptionId]);
+        await takeEditConsent(db, actor, subscriptionId, action, request.acceptedQuoteHash, Number(locked?.template_version), idempotencyKey, options.now());
         assertRequestLimits(request);
         const quote = await quoteFor(db, request);
         if (quote && request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");

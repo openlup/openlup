@@ -11,6 +11,7 @@ function fixture() {
   const calls: { sql: string; values?: unknown[] }[] = [];
   const row = { id, status: "active", next_cycle_at: "2026-12-01T00:00:00Z", edit_window_hours: 72, template_version: 1,
     cadence_days: 20, composition_constraint: null, method_healthy: true, payment_blocked: false, cycle_locked: false };
+  let ledger: Record<string, unknown> = { quote_snapshot: { editConsent: { version: 1 } } };
   let missing = false;
   let replayAction: string | null = null;
   const options: PackageEditorOptions = {
@@ -19,6 +20,12 @@ function fixture() {
       calls.push({ sql, values });
       if (sql.startsWith("SELECT r.*") && replayAction) return { rows: [{ matches: true, status: "applied", result: {
         status: "applied", action: replayAction, subscriptionId: id, subscriptionStatus: "active", nextCycleAt: "2026-12-01T00:00:00Z", templateVersion: 2, eventId: id } }] };
+      if (sql.includes("subscription_quote_preview_record")) ledger = { quote_snapshot: values?.[7] };
+      if (sql.includes("subscription_quote_preview_take")) return { rows: [{ preview: ledger }] };
+      if (sql.startsWith("SELECT id,template_version")) return { rows: [row] };
+      if (sql.startsWith("SELECT s.template_version")) return { rows: [{ template_version: 1,template_currency: "XXX",agreement_currency: "XXX",
+        accepted_lines: [{ lineId: id,variantId: id,sku: "REFILL",isAddon: false,quantity: 4,unitMinor: 100,currency: "XXX" }],
+        term_lines: [{ ordinal: 1,sku: "REFILL",quantity: 4,unitMinor: 100 }] }] };
       if (sql.startsWith("SELECT s.*")) return { rows: missing ? [] : [row] };
       if (sql.startsWith("SELECT cadence_days")) return { rows: [row] };
       if (sql.startsWith("SELECT l.*")) return { rows: [{ id, variant_id: id, quantity: 4, sort_order: 0, is_addon: false, frozen_gross: "400", frozen_currency: "XXX" }] };
@@ -48,12 +55,12 @@ it("admits ownership before any pricing or durable preview work", async () => {
 it("records a content-keyed preview with effective request, complete snapshots, totals and pre-quote expiry", async () => {
   const f = fixture(), preview = await f.editor.preview(actor, request);
   expect(preview).toMatchObject({ preview: { canApply: true, templateVersion: 1 }, quoteExpiresAt: "2026-11-05T00:15:00.000Z",
-    packageEdit: { currentRecurringPrice: money(548), newRecurringPrice: money(822), delta: money(274), effectiveCycleAt: "2026-12-01T00:00:00Z" } });
+    packageEdit: { currentRecurringPrice: money(400), newRecurringPrice: money(822), delta: money(422), effectiveCycleAt: "2026-12-01T00:00:00Z" } });
   const record = f.calls.find(call => call.sql.includes("subscription_quote_preview_record"))!;
   expect(record.values).toEqual([id, client, id, preview.quoteHash, 1, "2026-11-05T00:15:00.000Z",
     { planDays: 20, nominalPlanDays: 20, base: request.base, addons: [], expectedTemplateVersion: 1 },
-    { baseLines: [{ ...request.base[0], quoteLine: { sku: "REFILL", quantity: 6, unitPriceGross: money(137), lineSubtotalGross: money(822) } }], addonLines: [], compositionConstraint: null },
-    { currentRecurringPrice: money(548), newRecurringPrice: money(822), delta: money(274) }, "2026-11-05T00:00:00Z"]);
+    { editConsent: preview.editConsent, baseLines: [{ ...request.base[0], quoteLine: { sku: "REFILL", quantity: 6, unitPriceGross: money(137), lineSubtotalGross: money(822) } }], addonLines: [], compositionConstraint: null },
+    { currentRecurringPrice: money(400), newRecurringPrice: money(822), delta: money(422) }, "2026-11-05T00:00:00Z"]);
   const applied = await f.editor.apply(actor, "independent-apply-key", { ...request, acceptedQuoteHash: preview.quoteHash });
   expect(applied.status).toBe("applied");
   expect(f.calls.find(call => call.sql.includes("SELECT public.subscription_package_edit_apply"))!.values?.[2]).toBe("independent-apply-key");

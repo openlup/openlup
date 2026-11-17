@@ -21,6 +21,8 @@ Moved to [Versioning and stability](../packages/core/docs/guide/reference/stabil
 Keep a deprecation bridge through at least one supported stable minor, and
 remove it no earlier than the next major with explicit upgrade notes.
 
+A 1.x minor may refuse an input that was never a supported contract when this closes a security gap, and the changelog names it.
+
 ## Support window
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#support-window).

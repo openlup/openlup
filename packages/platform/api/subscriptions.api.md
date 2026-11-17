@@ -424,6 +424,57 @@ export interface RenewalFailureHandoffPort {
     }>;
 }
 ```
+## dist/subscriptions/contracts/editConsent.d.ts
+
+```ts
+/** Per-line agreement disclosure. Missing sides are absent prices, including for zero-priced lines.
+ * @experimental
+ */
+export interface SubscriptionEditDisclosureLine {
+    kind: "retained" | "added" | "removed";
+    variantId: string;
+    sku: string;
+    isAddon: boolean;
+    agreedQuantity: number | null;
+    newQuantity: number | null;
+    agreedUnitMinor: number | null;
+    newUnitMinor: number | null;
+    deltaMinor: number | null;
+    subtotalDeltaMinor: number;
+    reason: "unchanged" | "price_changed" | "quantity_changed" | "added" | "removed";
+}
+/** Versioned disclosure bound to the original lane quote and complete current agreement.
+ * @experimental
+ */
+export interface SubscriptionEditConsent {
+    version: 1;
+    currency: string;
+    baselineFingerprint: string;
+    innerQuoteHash: string;
+    lines: readonly SubscriptionEditDisclosureLine[];
+    agreedTotalMinor: number;
+    newTotalMinor: number;
+    subtotalDeltaMinor: number;
+}
+/** Legacy desired-set inputs; money and identity are supplied on the server.
+ * @experimental
+ */
+export interface LegacyEditConsentRequest {
+    subscriptionId: string;
+    coreLines: {
+        variantId: string;
+        qty: number;
+    }[];
+    addonLines?: {
+        variantId: string;
+        qty: number;
+    }[];
+    compositionConstraint?: Record<string, unknown>;
+    cadenceDays?: number;
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+```
 ## dist/subscriptions/contracts/exactEdit.d.ts
 
 ```ts
@@ -541,6 +592,7 @@ export interface SubscriptionLifecycleMessagePort {
 ## dist/subscriptions/contracts/packageEdit.d.ts
 
 ```ts
+import type { SubscriptionEditConsent } from "./editConsent.js";
 /** Data-only classic package quote and command envelopes. Identity and execution stay in the server entry. */
 export interface PackageEditMoney {
     amountMinor: number;
@@ -581,6 +633,8 @@ export interface PackageEditQuote {
 }
 export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
 export interface PackageEditPreview<Action extends string = "update_package_template"> {
+    /** @experimental */
+    editConsent?: SubscriptionEditConsent;
     preview: {
         subscriptionId: string;
         action: Action;
@@ -1505,6 +1559,24 @@ export interface StockWaitStorePort {
     }>;
 }
 ```
+## dist/subscriptions/editConsentLegacyBridge.d.ts
+
+```ts
+import type { PackageEditActor } from "./packageEditContracts.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+/** One authenticated native connection owns both quote ledgers and the original legacy transaction.
+ * RPC-only composition cannot provide this boundary.
+ * @experimental
+ */
+export declare function createPostgresLegacyEditConsentBridge(options: {
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    now(): string;
+}): {
+    preview(actor: PackageEditActor, key: string, input: LegacyEditConsentRequest): Promise<Record<string, unknown>>;
+    apply(actor: PackageEditActor, key: string, input: LegacyEditConsentRequest): Promise<Record<string, unknown>>;
+};
+```
 ## dist/subscriptions/exactEditQuote.d.ts
 
 ```ts
@@ -1598,6 +1670,9 @@ export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
 export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./contracts/renewal.js";
 export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
 export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
+export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
+export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
+export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 

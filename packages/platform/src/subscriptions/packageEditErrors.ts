@@ -5,6 +5,8 @@ export interface PackageEditErrorMapping {
 export function mapPackageEditError(error: unknown, phase: "preview" | "apply", action?: string): PackageEditErrorMapping {
   const message = error instanceof Error ? error.message : phase === "apply" && error && typeof error === "object" && "message" in error
     ? String(error.message) : String(error);
+  const agreement = /(?:^|\W)(agreement_baseline_unavailable|agreement_currency_unavailable|agreement_currency_mismatch)(?:$|\W)/u.exec(message);
+  if (agreement) return { status: 409, code: "CONFLICT", message: "Subscription agreement cannot be compared", reason: agreement[1] };
   if (message.startsWith("subscription_reprice_") && !message.endsWith("_unavailable") && !message.endsWith("_undefined")) {
     return { status: 400, code: "BAD_REQUEST", message: message === "subscription_reprice_quote_not_accepted"
       ? "subscription_quote_not_accepted" : action === "update_plan_length" ? "plan_length_unavailable" : "subscription_edit_reprice_failed", reason: message };
