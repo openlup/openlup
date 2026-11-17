@@ -23,28 +23,26 @@ example and application ownership rules.
 
 | Export | Role | Maturity | Package smoke |
 | --- | --- | --- | --- |
-| `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
-| `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
+| `./bundle` | kernel | stable | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./catalog` | kernel | stable | `smoke/catalogStandalone.test.ts` |
 | `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
-| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
-| `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
+| `./fulfillment` | kernel | stable | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
+| `./inventory` | kernel | stable | `smoke/inventoryStandalone.test.ts` |
 | `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
-| `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |
-| `./payment` | kernel | experimental | `smoke/paymentStandalone.test.ts` |
-| `./platform-runtime` | kernel | experimental | `smoke/platformRuntimeStandalone.test.ts` |
-| `./pricing` | kernel | candidate | `smoke/pricingStandalone.test.ts` |
-| `./promo` | kernel | candidate | `smoke/promoStandalone.test.ts` |
-| `./risk` | kernel | candidate | `smoke/riskStandalone.test.ts` |
-| `./shipping` | kernel | candidate | `smoke/shippingStandalone.test.ts` |
-| `./subscription` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
-| `./outbox` | kernel | experimental | `smoke/outboxStandalone.test.ts` |
-| `./readiness` | kernel | experimental | `smoke/readinessStandalone.test.ts` |
+| `./partners` | kernel | stable | `smoke/partnersStandalone.test.ts` |
+| `./payment` | kernel | stable | `smoke/paymentStandalone.test.ts` |
+| `./platform-runtime` | kernel | stable | `smoke/platformRuntimeStandalone.test.ts` |
+| `./pricing` | kernel | stable | `smoke/pricingStandalone.test.ts` |
+| `./promo` | kernel | stable | `smoke/promoStandalone.test.ts` |
+| `./risk` | kernel | stable | `smoke/riskStandalone.test.ts` |
+| `./shipping` | kernel | stable | `smoke/shippingStandalone.test.ts` |
+| `./subscription` | kernel | stable | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./outbox` | kernel | stable | `smoke/outboxStandalone.test.ts` |
+| `./readiness` | kernel | stable | `smoke/readinessStandalone.test.ts` |
 | `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
 | `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
 
-Every current code export is an internal candidate, experimental kernel, or
-testing surface; the `./package.json` export is the manifest itself. Its declaration snapshot is a reviewable drift proof, not a public API
-promise.
+The table follows `release-gates.json`: stable exports use SemVer from 1.0.0; experimental and testing exports are excluded; `./package.json` exports the manifest itself.
 
 `release-gates.json` records four distinct evidence classes:
 
