@@ -53,7 +53,8 @@ and `normalizedTtlMinutes(value, policy?)` from `@openlup/platform/inventory`
 accept a `CheckoutReservationLifetimePolicy` with `minMinutes`, `maxMinutes` and
 `defaultMinutes`. Omission preserves the 1440–2160-minute clamp and 1440-minute
 fallback. Each call validates positive integers up to 5270400 minutes (ten
-years, so every expiry stays representable) and
+years, so expiries stay representable for any realistic clock; a `now` within
+ten years of the JavaScript Date limit still throws a `RangeError`) and
 `minMinutes <= defaultMinutes <= maxMinutes`; invalid policy throws
 `reservation_policy_invalid`, including for non-checkout kinds.
 
