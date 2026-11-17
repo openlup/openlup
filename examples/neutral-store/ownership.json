@@ -23,7 +23,8 @@
     "owned/subscription-editing.ts",
     "owned/acquisition-policy.ts",
     "owned/quote.config.ts",
-    "owned/quote-copy.ts"
+    "owned/quote-copy.ts",
+    "owned/quote-shipping.ts"
   ],
   "managed": [
     "host/account-renewal.ts",
@@ -136,6 +137,7 @@
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",
+    "test/quote-shipping.test.ts",
     "client/live-quote.ts",
     "host/paid-mail-artifact.ts",
     "host/paid-mail.ts",

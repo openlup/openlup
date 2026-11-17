@@ -1454,6 +1454,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -2534,6 +2538,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/quote-shipping.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote.config.ts",
       "class": "public-output"
     },
@@ -2743,6 +2751,10 @@
     },
     {
       "path": "examples/neutral-store/test/private-capture.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/quote-shipping.test.ts",
       "class": "public-output"
     },
     {
@@ -4735,6 +4747,10 @@
     },
     {
       "path": "packages/platform/sql/20261122160000_catalog_drafts_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql",
       "class": "public-output"
     },
     {
@@ -11235,6 +11251,10 @@
     },
     {
       "path": "packages/platform/test/pricing/handlerFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/nativeReadinessInputs.test.ts",
       "class": "public-output"
     },
     {
@@ -30251,6 +30271,14 @@
     },
     {
       "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/offerPolicyReadinessInputs.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/offerPolicyReadinessTransfer.test.ts",
       "class": "public-output"
     },
     {

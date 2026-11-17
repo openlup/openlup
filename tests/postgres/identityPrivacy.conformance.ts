@@ -38,7 +38,9 @@ export function registerIdentityPrivacyConformance(): void {
       await seed(pools[1]);
       const beforeRows = await snapshot(pools[1]);
       // Later forwards add editor defaults and nullable saved-address pointers.
-      beforeRows.subscriptions = beforeRows.subscriptions.map(row => ({ ...row, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null }));
+      beforeRows.subscriptions = beforeRows.subscriptions.map(row => ({ ...row, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null,
+        offer_policy_version: "commerce.offer-policy.v1", promotion_engine_version: "promotion-engine.v1",
+        offer_policy_assignment_state: "legacy_frozen", is_test_fixture: false }));
       await runner(0).apply();
       expect((await runner(1).apply()).applied).toEqual(current.forward.slice(index).map(entry => entry.file));
       expect(await snapshot(pools[1])).toEqual(beforeRows);

@@ -4568,3 +4568,45 @@ recorded parcel sequence to the adapter's outbound-identity codec. Each replaced
 function has its own before/after pin; no table or capture/restore membership is
 added. The [fulfillment recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-replacement-and-customer-alignment)
 owns host composition.
+
+## Native offer-policy inputs
+
+The native `20261122170000_offer_policy_readiness_inputs` unit supplies unbound
+read-only inputs for a later price writer. It marks existing subscriptions as
+legacy, switches future ordinary inserts to pending acquisition, and records
+installation-time count, sorted-ID fingerprint and database time separately from
+the operator's later audited baseline. It changes no agreed price, quantity,
+status, cadence, renewal operation, order or delivery clock.
+
+The parameterless `commerce_capture_offer_policy_v2_legacy_baseline()` routine is
+an explicit service-authorized audit step. It is never run by installation or
+restore. All legacy non-fixture statuses participate. The insert-once baseline
+retains its original fingerprint/time on replay. An audited zero requires empty
+marking provenance, an empty current cohort and no positive baseline replacement;
+a populated cohort becoming empty retains the original empty-baseline error.
+Native RLS grants service SELECT/INSERT on baselines only; browser access and
+ordinary service UPDATE/DELETE are denied. Marking has no service DML grant.
+
+The connected transfer profile carries both authoritative evidence tables and
+the subscription evidence columns. Its existing pristine-target transaction
+reconciles the target marking row against actual installation data, then restores
+the source marking and baseline without recapture. The baseline INSERT guard
+rechecks zero provenance after the subscriptions are restored. Owner-controlled
+transfer remains outside the runtime catalogue lock order.
+
+Promotion projection validates consumed scalar, nullable, range, coupling,
+reference and uniqueness facts before casts or selection. Financial predicates
+retain their acquisition and bundle semantics. Current order metadata or a
+current publication head cannot prove historical admission or frozen money
+protection. Order-backed agreement quotes, including retained renewal lines,
+validate their governing policy pair regardless of age and refuse unproved
+historical admission before projecting quote lines. Graduation and sized edit
+events can copy or merge retained purchase quotes, so their event identity does
+not establish independence. Only complete fresh package quotes and classic
+base-line swaps supply independent event evidence; their amounts must still
+match the current template and renewal bindings. Order money utilities are not
+called by readiness before admission. Qualifying unestablished contexts raise
+hard refusals independently
+of ordinary readiness reasons. Readiness calls no capture or commerce writer
+and takes no commerce row/advisory lock. The managed rail does not supply this
+feature; the migration fragment describes the separate RLS-preserving twin.

@@ -120,6 +120,14 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+The native profile also carries offer-policy installation marking and its separate
+audited baseline as authoritative data. Restore reconciles the actual pristine
+marking row, preserves the source audit timestamps/fingerprint and restores the
+baseline after subscriptions. It never recaptures or converts a positive baseline
+to zero. The INSERT guard still validates zero provenance on restore; see the
+[native input owner](../../docs/platform/DATA_AND_MIGRATIONS.md#native-offer-policy-inputs).
+
+
 The finite native profile includes open and accepted `subscription_quote_previews`.
 Capture retains their request, quote, totals and acceptance references under the
 existing cumulative row/byte limits. Restore inserts clients, subscriptions and
