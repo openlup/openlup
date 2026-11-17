@@ -122,7 +122,7 @@ export const copy = {
     language: "Language",
     skip: "Skip to content",
     demo: "Local sandbox · fictional data · no real money",
-    preview: "Development preview",
+    preview: "Example storefront",
     buy: "Add to cart",
     details: "View product",
     oneTime: "One-time purchase",
