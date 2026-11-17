@@ -389,4 +389,42 @@ describe('six real Git witnesses', () => {
     await expect(captureSessionCandidate(f.cwd, pin, { env: {}, runGit: pinGit })).rejects.toThrow('fork point changed');
     await expect(captureSessionCandidate(f.cwd, undefined, { env: { OPENLUP_STACK_BASE: 'bad' }, runGit: pinGit })).rejects.toThrow('full commit digest');
   });
+  it('supports --help without a session or directory creation and status --explain without writing Git objects or state', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const empty = await mkdtemp(join(tmpdir(), 'native-review-help-')); directories.push(empty);
+    await expect(sessionMain(['--help'], { cwd: empty, env: {} })).resolves.toBe(0);
+    expect(console.log).toHaveBeenLastCalledWith(expect.stringContaining('status [--explain]'));
+    expect(await readdir(empty)).toEqual([]);
+    await expect(sessionMain(['--help', 'extra'], { cwd: empty, env: {} })).rejects.toThrow('without extra arguments');
+
+    const f = await fixture(); const session = await f.review();
+    const listObjects = async (dir: string): Promise<string[]> => {
+      const entries = await readdir(dir, { withFileTypes: true });
+      const nested = await Promise.all(entries.map(entry => entry.isDirectory() ? listObjects(join(dir, entry.name)) : [join(dir, entry.name)]));
+      return nested.flat().sort();
+    };
+    const objectsBefore = await listObjects(join(f.cwd, '.git', 'objects'));
+    const sessionBytesBefore = await readFile(f.statePath, 'utf8');
+    await expect(f.cli('status')).resolves.toBe(0);
+    expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toEqual(session);
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(explained).toMatchObject({
+      version: 2, status: 'verify_required', verified: false,
+      candidate: { status: 'clean', matchesSession: true, clean: true, stale: false },
+      requirements: { floor: 1, acceptedReports: 1, missingReports: 0, reviewers: ['cold-reviewer'] },
+      openFindings: [],
+    });
+    await writeFile(join(f.cwd, 'source.txt'), 'dirty working tree\n');
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const dirtyExplained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(dirtyExplained).toMatchObject({
+      status: 'dirty', verified: false,
+      candidate: { status: 'dirty', matchesSession: false, clean: false, stale: false },
+    });
+    expect(await listObjects(join(f.cwd, '.git', 'objects'))).toEqual(objectsBefore);
+    expect(await readFile(f.statePath, 'utf8')).toBe(sessionBytesBefore);
+    expect(await readdir(join(f.scratch, 'agent-review'))).toEqual(['session.json']);
+    await expect(f.cli('status', '--unknown')).rejects.toThrow('use status [--explain]');
+  });
 });

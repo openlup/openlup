@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { admit, candidateFloor, classifyRisk, digest, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { admit, candidateFloor, classifyRisk, digest, explainSession, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 
 const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
@@ -244,5 +244,126 @@ describe('native review decisions', () => {
     expect(summary.sessionDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(summary).not.toHaveProperty('history');
     expect(() => receiptSummary(passed(), 0, time)).toThrow('PR number');
+  });
+  it.each([
+    ['v3 floor 0 Markdown', { changedPaths: ['docs/platform/README.md'], intent: { ...intent, risk: 'prose' }, rules: { version: 3 } }, 0, []],
+    ['v3 floor 1 routine code', { changedPaths: ['source.txt'], rules: { version: 3 } }, 1, []],
+    ['v3 floor 2 protected path', { changedPaths: ['config/settings.json'], rules: { version: 3 } }, 2, ['config/settings.json']],
+    ['v2 floor 1 routine code', { changedPaths: ['source.txt'] }, 1, []],
+    ['v2 floor 2 sensitive path', { changedPaths: ['config/settings.json'] }, 2, ['config/settings.json']],
+  ])('explains %s requirements without claiming verify completion', (_label, extra, floor, twoReviewerPaths) => {
+    const session = prepare(extra);
+    const explained = explainSession(session, session.candidate, time);
+    expect(explained.verified).toBe(false);
+    expect(explained.status).toBe(floor === 0 ? 'verify_required' : 'needs_agent_review');
+    expect(explained.candidate).toMatchObject({ status: 'clean', matchesSession: true, clean: true, stale: false });
+    expect(explained.requirements).toMatchObject({ floor, acceptedReports: 0, missingReports: floor, reviewers: [], twoReviewerPaths });
+    expect(explained.verifyChecksPending.length).toBeGreaterThan(0);
+    if (floor === 0) expect(explained.nextAction).toContain('verify');
+    else expect(explained.nextAction).toContain(`Record ${floor} independent cold PASS report(s)`);
+  });
+  it('explains dirty, stale and unreadable candidate states and open material findings', () => {
+    let session = recordReport(prepare({ rules: { version: 3 } }), report({
+      verdict: 'FAIL',
+      findings: [
+        { id: 'F1', summary: 'broken clamp', material: true },
+        { id: 'A1', summary: 'minor naming', material: false },
+      ],
+    }), time);
+    expect(explainSession(session, { ...observed, clean: false }, time)).toMatchObject({
+      status: 'dirty', verified: false,
+      candidate: { status: 'dirty', matchesSession: false, clean: false, stale: false },
+      openFindings: [{ id: 'F1', summary: 'broken clamp', material: true }],
+    });
+    expect(explainSession(session, { ...observed, head: 'd'.repeat(40) }, time)).toMatchObject({
+      status: 'stale', verified: false,
+      candidate: { status: 'stale', matchesSession: false, clean: true, stale: true },
+    });
+    expect(explainSession(session, { error: 'OPENLUP_STACK_BASE must be a full commit digest' }, time)).toMatchObject({
+      status: 'invalid', verified: false,
+      candidate: { status: 'unreadable', matchesSession: false, error: 'OPENLUP_STACK_BASE must be a full commit digest' },
+    });
+    expect(explainSession(session, observed, time)).toMatchObject({
+      status: 'needs_agent_review',
+      requirements: { floor: 1, acceptedReports: 0, missingReports: 1 },
+      openFindings: [{ id: 'F1', summary: 'broken clamp', material: true }],
+    });
+    session = recordReport(session, report({ reviewer: 'reviewer-2', closes: ['F1'] }), time + 1);
+    expect(explainSession(session, observed, time + 1)).toMatchObject({
+      status: 'verify_required', verified: false,
+      requirements: { floor: 1, acceptedReports: 1, missingReports: 0, reviewers: ['reviewer-2'] },
+      openFindings: [],
+    });
+  });
+  it('explains repair delta scope and switches to full candidate floor when a full report is recorded', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    let prior = prepare({ changedPaths: ['config/settings.json', 'source.txt'], rules });
+    prior = recordReport(prior, report({ reviewer: 'r1' }), time);
+    prior = recordReport(prior, report({ reviewer: 'r2' }), time);
+    const deltaDigest = '3'.repeat(64);
+    const repairCandidate = {
+      ...observed, head: 'd'.repeat(40), tree: 'e'.repeat(40),
+      changedPaths: ['config/settings.json', 'source.txt'], rules,
+      coverage: {
+        kind: 'repair', previous: digest(prior.history),
+        from: { base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree },
+        delta: deltaDigest, proof: { paths: ['source.txt'], modeChanged: false },
+      },
+    };
+    const repaired = prepareCandidate(prior, { ...repairCandidate, intent, authorSessionId: 'author' }, time + 1);
+    const beforeReport = explainSession(repaired, repaired.candidate, time + 1);
+    expect(beforeReport).toMatchObject({
+      status: 'needs_agent_review', verified: false,
+      requirements: { scope: 'repair-delta', floor: 1, acceptedReports: 0, missingReports: 1, twoReviewerPaths: [] },
+      coverage: { kind: 'repair', scope: 'repair-delta', delta: deltaDigest, paths: ['source.txt'], ordinaryAllowed: true },
+    });
+    expect(beforeReport.nextAction).toContain(`ordinary: true, delta: ${deltaDigest}`);
+    // Recording a full report (ordinary !== true) switches the requirement from deltaFloor (1) to candidateFloor (2).
+    const withFullReport = recordReport(repaired, report({ reviewer: 'r3', tree: repairCandidate.tree }), time + 2);
+    const afterFullReport = explainSession(withFullReport, withFullReport.candidate, time + 2);
+    expect(afterFullReport).toMatchObject({
+      status: 'needs_agent_review', verified: false,
+      requirements: { scope: 'full', floor: 2, acceptedReports: 1, missingReports: 1, reviewers: ['r3'], twoReviewerPaths: ['config/settings.json'] },
+      coverage: { kind: 'repair', scope: 'full', delta: deltaDigest, paths: ['source.txt'], ordinaryAllowed: false },
+    });
+    expect(verdict(withFullReport, withFullReport.candidate, time + 2).code).toBe('needs_agent_review');
+    // Recording an ordinary delta report instead satisfies the 1-reviewer delta floor.
+    const withDeltaReport = recordReport(repaired, report({ reviewer: 'r3', tree: repairCandidate.tree, ordinary: true, delta: deltaDigest }), time + 2);
+    expect(explainSession(withDeltaReport, withDeltaReport.candidate, time + 2)).toMatchObject({
+      status: 'verify_required', verified: false,
+      requirements: { scope: 'repair-delta', floor: 1, acceptedReports: 1, missingReports: 0, reviewers: ['r3'] },
+    });
+    expect(verdict(withDeltaReport, withDeltaReport.candidate, time + 2).ok).toBe(true);
+  });
+  it.each(['git', 'registry-union', 'derived', 'resolution'])('explains v3 %s integration requirements', kind => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    const prior = recordReport(prepare({ rules }), report({ reviewer: 'r1' }), time);
+    const nextCandidate = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), rules };
+    const integration = integrationReviewContext(prior, { ...nextCandidate, intent, authorSessionId: 'author' }, { parents: [prior.candidate.head, nextCandidate.base], baseAncestor: true, mechanical: kind === 'git' }, time + 1);
+    const deltaDigest = '4'.repeat(64);
+    const session = prepareCandidate(prior, {
+      ...nextCandidate, intent, authorSessionId: 'author', integration,
+      coverage: {
+        kind: 'integration', previous: digest(prior.history),
+        from: { base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree },
+        delta: deltaDigest,
+        proof: { kind, tree: nextCandidate.tree, ...(kind === 'resolution' ? { resolution: ['source.txt'], modeChanged: false } : {}) },
+      },
+    }, time + 1);
+    const explained = explainSession(session, session.candidate, time + 1);
+    expect(explained.verified).toBe(false);
+    if (kind === 'resolution') {
+      expect(explained).toMatchObject({
+        status: 'needs_agent_review',
+        requirements: { scope: 'resolution-delta', floor: 1, acceptedReports: 0, missingReports: 1 },
+        coverage: { kind: 'integration', proofKind: 'resolution', scope: 'resolution-delta', delta: deltaDigest, paths: ['source.txt'], ordinaryAllowed: true },
+      });
+    } else {
+      expect(explained).toMatchObject({
+        status: 'verify_required',
+        requirements: { scope: kind, floor: 0, acceptedReports: 0, missingReports: 0 },
+        coverage: { kind: 'integration', proofKind: kind, scope: kind, delta: deltaDigest, paths: [], ordinaryAllowed: false },
+      });
+    }
   });
 });
