@@ -1,10 +1,7 @@
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
+import { contains, choices, maximum, type Numbers } from './policy.ts';
+export { set, range, contains, choices, maximum, type Numbers } from './policy.ts';
 
-/** Application-owned commercial domains. Defaults and preferred choices never widen admission. */
-export type Numbers = { kind: 'set'; values: readonly number[] }
-  | { kind: 'range'; min: number; max: number; step: number };
-export const set = (...values: number[]): Numbers => ({ kind: 'set', values });
-export const range = (min: number, max: number, step: number): Numbers => ({ kind: 'range', min, max, step });
 export interface SubscriptionOffer {
   days: Numbers;
   checkoutDays?: Numbers;
@@ -18,12 +15,6 @@ export interface SubscriptionOffer {
   bySku: Readonly<Record<string, readonly { days: Numbers; quantities: Numbers }[]>>;
 }
 export type SubscriptionOffers = { classic: SubscriptionOffer; sized: SubscriptionOffer };
-export const contains = (domain: Numbers, value: number): boolean => Number.isSafeInteger(value) && (domain.kind === 'set'
-  ? domain.values.includes(value) : value >= domain.min && value <= domain.max && (value-domain.min)%domain.step === 0);
-export const maximum = (domain: Numbers): number => domain.kind === 'set' ? Math.max(...domain.values) : domain.max;
-export function choices(domain: Numbers): number[] {
-  return domain.kind === 'set' ? [...domain.values] : Array.from({ length: Math.floor((domain.max-domain.min)/domain.step)+1 }, (_, index) => domain.min+index*domain.step);
-}
 export function quantityChoices(offer: SubscriptionOffer, sku: string, days: number): number[] {
   if (!contains(offer.days,days)) return [];
   return [...new Set((Object.hasOwn(offer.bySku,sku) ? offer.bySku[sku]! : [])

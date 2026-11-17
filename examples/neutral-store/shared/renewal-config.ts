@@ -45,6 +45,7 @@ export function assertRenewalConfig(config: RenewalConfig): void {
     || Object.values(config.notices.copy).some(copy => copyKeys.some(key => typeof copy[key] !== 'string' || !copy[key].trim()))) {
     throw new Error('starter_renewal_configuration_invalid');
   }
+  if (config.retryBackoffHours.length !== 3) throw new Error('starter_database_retry_budget');
   assertSubscriptionCare(config.subscriptionCare);
 }
 
@@ -55,6 +56,7 @@ export interface SubscriptionCareConfig {
   recovered: { windowSeconds: number };
   terms: SubscriptionLifecycleTerms;
   retentionReasons: readonly string[];
+  retention: { offerByReason: Readonly<Record<string, SaveOfferKind>>; defaultOffer: SaveOfferKind };
   rescheduleOfferDays: number;
   dispatch: Required<NonNullable<NativeLifecycleMessagesOptions['dispatch']>>;
   notices: Required<NonNullable<NativeLifecycleMessagesOptions['notices']>>;
@@ -96,8 +98,18 @@ export function careAvailability(row: PortalSubscription, action: CareAction, no
   if (!row.nextCycleAt || row.editCutoffAt && Date.parse(row.editCutoffAt) <= now) return 'edit_window_closed';
   return null;
 }
-export function saveOfferKind(reason: string): 'skip' | 'reschedule' | 'pause' {
-  return reason === 'too_much_product' ? 'skip' : reason === 'delivery_issue' ? 'reschedule' : 'pause';
+export type SaveOfferKind = 'skip' | 'reschedule' | 'pause';
+export function assertRetention(config: SubscriptionCareConfig): void {
+  const policy = config.retention;
+  const kinds: readonly SaveOfferKind[] = ['skip', 'reschedule', 'pause'];
+  if (!policy || !policy.offerByReason || typeof policy.offerByReason !== 'object' || Array.isArray(policy.offerByReason)
+    || !kinds.includes(policy.defaultOffer) || Object.entries(policy.offerByReason).some(([reason, kind]) =>
+      !config.retentionReasons.includes(reason) || !kinds.includes(kind))) {
+    throw new Error('starter_retention_configuration_invalid');
+  }
+}
+export function saveOfferKind(reason: string, config: SubscriptionCareConfig): SaveOfferKind {
+  return Object.hasOwn(config.retention.offerByReason, reason) ? config.retention.offerByReason[reason]! : config.retention.defaultOffer;
 }
 /** Freeze this once when opening the offer: visible date and submitted target stay identical. */
 export function saveRescheduleTarget(nextCycleAt: string | null, config: SubscriptionCareConfig, now = new Date()): string {

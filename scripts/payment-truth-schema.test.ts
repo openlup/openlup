@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { nativeStoreFunctionDefinitions, sqlStatements } from "./reviewed-platform-forward.ts";
+
 const MIGRATION = "db/platform/migrations/20260815150000_payment_truth_reconciliation.sql";
 const sql = readFileSync(MIGRATION, "utf8");
 const executable = sql.replace(/^--.*$/gm, "");
@@ -24,5 +26,21 @@ describe("payment truth public forward", () => {
   it("treats currency as data", () => {
     expect(sql).toContain("currency_code ~ '^[A-Z]{3}$'");
     expect(sql).not.toMatch(/currency_code\s*=\s*'PLN'|DEFAULT\s+'PLN'/);
+  });
+});
+
+// Follow the current portable catalogue, so a later replacement also changes this witness.
+describe("provider-recorded renewal retry timing", () => {
+  it("uses the three-argument failure overload and its SQL default of [24,72,168] hours", () => {
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+    const statements = [manifest.baseline, ...manifest.forward].flatMap(({ file }: { file: string }) =>
+      sqlStatements(readFileSync(file, "utf8"), true));
+    const definition = (signature: string) => statements.filter(statement =>
+      /^CREATE (?:OR REPLACE )?FUNCTION /u.test(statement)
+      && nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature)).at(-1);
+    const provider = definition("public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)");
+    expect(provider).toMatch(/retry_result:=public\.subscription_retry_apply_failure\(renewal\.id,p_idempotency_key\|\|':truth',\s*jsonb_build_object\([\s\S]*?'firstRecordedAt',COALESCE\(e\.created_at,a\.updated_at\)\)\);/u);
+    const failure = definition("public.subscription_retry_apply_failure(uuid,text,jsonb)");
+    expect(failure).toMatch(/RETURN public\.subscription_retry_apply_failure\(p_operation_id,p_key,p_input,'\{"backoffHours":\[24,72,168\]\}'::jsonb\);/u);
   });
 });

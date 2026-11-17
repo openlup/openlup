@@ -2678,6 +2678,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/quote-config.ts",
       "class": "public-output"
     },
@@ -2783,6 +2787,10 @@
     },
     {
       "path": "examples/neutral-store/test/origin-policy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/policy.test.ts",
       "class": "public-output"
     },
     {

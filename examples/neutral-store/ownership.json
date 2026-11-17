@@ -162,6 +162,8 @@
     "shared/subscription-edit.ts",
     "dev.mjs",
     "browser/dev-loop.proof.ts",
+    "shared/policy.ts",
+    "test/policy.test.ts",
     "shared/subscription-offer.ts",
     "test/subscription-offer.test.ts"
   ],

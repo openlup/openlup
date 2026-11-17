@@ -236,7 +236,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         if (action === 'slide') return { ...common, newNextCycleAt: new Date(`${String(values.newNextCycleAt)}T12:00:00`).toISOString() };
         if (action === 'pause') return { ...common, reason: `pause_duration=${String(values.pausePreset)}` };
         if (action !== 'cancel') return common;
-        const reason = String(values.reasonCode), kind = saveOfferKind(reason), preset = String(values.pausePreset);
+        const reason = String(values.reasonCode), kind = saveOfferKind(reason, context.config.renewal.subscriptionCare), preset = String(values.pausePreset);
         const note = String(values.comment).trim();
         const offerId = kind === 'pause' ? `pause-${preset}` : kind;
         if (accepted && kind === 'skip') return { subscriptionRef: row.subscriptionId, action: 'skip', reason: `save_offer=skip;cancel_reason=${reason}` };
@@ -255,7 +255,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
       const offerButton = el('button', { type: 'submit' }, context.t('careAccept'));
       form.addEventListener('submit', event => { accepted = (event as SubmitEvent).submitter === offerButton; }, { capture: true });
       const update = () => {
-        const kind = saveOfferKind(chooser.value);
+        const kind = saveOfferKind(chooser.value, context.config.renewal.subscriptionCare);
         offered.textContent = `${context.t('careOffer')}: ${context.t(kind === 'skip' ? 'careSkip' : kind === 'reschedule' ? 'reschedule' : 'carePause')}${kind === 'reschedule' ? ` — ${targetDate}` : ''}`;
         presets.parentElement!.hidden = kind !== 'pause';
         const refusal = kind === 'skip' || kind === 'reschedule' ? careAvailability(row, kind === 'skip' ? 'skip' : 'slide') : careAvailability(row, 'pause');
