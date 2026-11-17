@@ -74,7 +74,7 @@ export function EmailSendDetailPanel({ send, events }: EmailSendDetailPanelProps
                     {eventTypeLabel(evt.event_type ?? '')}
                   </Badge>
                   <span className="text-xs text-text-muted">
-                    {new Date(evt.timestamp).toLocaleDateString('pl-PL', {
+                    {new Date(evt.timestamp === null ? 0 : evt.timestamp).toLocaleDateString('pl-PL', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',
