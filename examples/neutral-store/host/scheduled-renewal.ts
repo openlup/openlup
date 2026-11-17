@@ -14,6 +14,7 @@ import { assertRenewalConfig, assertSubscriptionCare } from '../shared/renewal-c
 import { createRenewalJob, renewalLedgerReady } from './renewal-job.ts';
 import { composeRenewalSandbox } from './renewal-sandbox.ts';
 import { createPaidMailHost } from './paid-mail.ts';
+import { renewalPolicy } from '../owned/renewal-policy.ts';
 
 /** One invocation from the existing lifecycle command; construction starts no scheduler. */
 export async function runScheduledRenewal(connectionString: string, config: StoreConfig) {
@@ -43,7 +44,7 @@ export async function runScheduledRenewal(connectionString: string, config: Stor
     const sandbox = composeRenewalSandbox({ executor: pool, withTransaction, codec, config: config.renewal,
       now: () => new Date().toISOString(), failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
       recoveredTemplate: config.purchase.sandbox.recoveryTemplateSlug, recoveryPath: config.purchase.sandbox.recoveryUrlPath });
-    const binding = createRenewalJob({ config: config.renewal, withSession, beforeRun: sandbox.refresh,
+    const binding = createRenewalJob({ config: config.renewal, withSession, beforeRun: sandbox.refresh, afterRun: renewalPolicy,
       native: { executor: pool, withTransaction, codec, settlement: db => createPostgresRenewalSettlementPort(db, codec, withTransaction),
         inventory: createPostgresRenewalReservationPort(pool), paymentRails: sandbox.paymentRails,
         policy: sandbox.policy, retry: sandbox.retry, failureTemplate: config.purchase.sandbox.dunningTemplateSlug,

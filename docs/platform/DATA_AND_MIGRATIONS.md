@@ -2136,6 +2136,21 @@ database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
 Adding columns or new CHECKs to an existing table retains the expand-only path.
 A new table may declare foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; only those actions are masked before the default expand-only check, with all other expression and statement refusals retained.
+A separate closed shape admits only a new
+`public.catalog_sku_successors` table with three `uuid NOT NULL` columns:
+`predecessor_sku_id` and `successor_sku_id` each reference
+`public.catalog_skus(id)`, and `publication_id` references
+`public.catalog_publications(id)`, all with explicit `ON DELETE RESTRICT`.
+Its primary key is `(predecessor_sku_id, successor_sku_id)`, in that order,
+and its sole check is `predecessor_sku_id <> successor_sku_id`. Only this
+complete statement gains the RESTRICT action and inequality syntax before the
+existing generic expression and statement guards. Other tables, targets,
+arities, key orders, nullable columns, actions, extra clauses and smuggled or
+appended destructive SQL refuse. The real PostgreSQL catalogue proof adds exact
+installed FK targets, ordered keys, `confdeltype='r'`, default update/match
+actions, validation and non-deferrability, the primary key and check, while
+retaining every existing ownership, ACL and catalogue guard. This admission
+control adds no feature SQL, publication binding or catalogue capability.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT

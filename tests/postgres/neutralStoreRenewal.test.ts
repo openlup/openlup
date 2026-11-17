@@ -59,6 +59,35 @@ it('observes the selected native job-ledger installation without claiming or wid
   expect((await runtime.query("SELECT to_regprocedure('public.platform_claim_job_run_v3(text,text,text,integer,jsonb)') AS claim")).rows[0].claim).toBeTruthy();
 });
 
+it('preserves the default scheduled renewal transcript and query count', async () => {
+  await retire();
+  const queries: string[] = [];
+  const trace = (db: typeof executor): typeof executor => ({ async query(sql, values) {
+    queries.push(sql); return db.query(sql, values);
+  } });
+  const db = trace(executor);
+  const withTransaction: typeof transaction = work => transaction(session => work(trace(session)));
+  const config = structuredClone(configurations.supplements!.renewal); config.enabled = true; config.population = 'demo:default-transcript';
+  const codec = api.createNativeRenewalCodec();
+  const sandbox = composeRenewalSandbox({ executor: db, withTransaction, codec, config,
+    now: () => now, failureTemplate: 'failed', recoveredTemplate: 'recovered', recoveryPath: '/recover' });
+  const job = createRenewalJob({ config, beforeRun: sandbox.refresh,
+    async withSession(work) {
+      const session = await runtime.connect(); try { return await work(trace(session)); } finally { session.release(); }
+    },
+    native: { executor: db, withTransaction, codec, settlement: session => api.createPostgresRenewalSettlementPort(session, codec),
+      inventory: inventory.createPostgresRenewalReservationPort(db), paymentRails: sandbox.paymentRails,
+      policy: sandbox.policy, retry: sandbox.retry, failureTemplate: 'failed', recoveryPath: '/recover', workerId: 'default-transcript',
+      now: () => now, catalogue: { version: 'complete-test-catalogue', migration: 'native-test-catalogue' },
+      readiness: async () => ({ state: 'ready', candidate: { artifact: 'fixture', configuration: 'supplements',
+        environment: 'disposable', database: 'fixture', schema: 'complete' }, loadedPackages: [], issues: [] }) },
+  });
+  expect(await job.services.run()).toEqual({ retries: [], renewals: [] });
+  // Frozen on the unchanged host before adding the owned hook (base 167c03d0d).
+  expect({ count: queries.length, sha256: createHash('sha256').update(JSON.stringify(queries)).digest('hex') })
+    .toEqual({ count: 9, sha256: 'd184fa9cf0bdc44a81ac167a36a516aacef0835553e6bb845d5270010e59eb06' });
+});
+
 it('projects uppercase owned account identity from actual frozen and retained facts without a rich account assembler', async () => {
   await retire(); await stock(1000);
   const purchase = await active(), d = await deps(purchase.subscriptionId, 'declined');
