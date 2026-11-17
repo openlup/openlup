@@ -57,7 +57,7 @@ export type InteractivePreparedAttemptRuntimePort = Core.InteractivePreparedAtte
 export type PreparedProviderAttemptRuntimePort = Core.PreparedProviderAttemptRuntimePort<PaymentVocabulary, ApplyHiddenCheckoutPaymentResultRequest, TrustedInteractivePreparedAttemptReopenEvidence>;
 export type CommerceRuntimeReadinessPort = Core.CommerceRuntimeReadinessPort<HiddenCheckoutRuntimeReadiness>;
 export type CommerceCheckoutRuntimePort = Core.CommerceCheckoutRuntimePort<StartHiddenCheckoutRuntimeRequest, StartHiddenCheckoutRuntimeResponse, ApplyHiddenCheckoutPaymentResultRequest, ApplyHiddenCheckoutPaymentResultResponse>;
-export type CheckoutCommandPersistencePort = Core.CheckoutCommandPersistencePort<CheckoutCommandV1, CheckoutCommandPersistenceResult, CreateQuoteResponse>;
+export type CheckoutCommandPersistencePort = Core.CheckoutCommandPersistencePort<CheckoutCommandV1, CheckoutCommandPersistenceResult>;
 type CheckoutCommandRequestCore = Core.CheckoutCommandRuntimeRequest<CheckoutCommandV1, PaymentExecutionProvider>;
 export interface CheckoutCommandRuntimeRequest extends CheckoutCommandRequestCore {
   paymentAttemptSequence?: number;

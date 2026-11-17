@@ -6,7 +6,7 @@ import type { RpcError } from "../contracts/omsTypes.js";
 import { ConfiguratorIntentPersistenceConflictError } from "./configuratorIntentPersistenceHandler.js";
 import { configuratorIntentReplayFingerprint } from "./configuratorIntentReplayFingerprint.js";
 
-interface CompletedIntentRow { response_payload?: unknown; request_fingerprint?: string | null; invalidated_at?: string | null }
+interface CompletedIntentRow { response_payload?: unknown; request_fingerprint?: string | null }
 
 interface ConfiguratorIntentIdentityQueryResult {
   data: CompletedIntentRow[] | null;
@@ -43,41 +43,22 @@ export interface ConfiguratorIntentRpcQueryClient<Request, Command> {
     functionName: "commerce_configurator_persist_intent",
     args: { p_intent: PersistIntentPayload<Request, Command> },
   ): PromiseLike<{ data: unknown; error: RpcError | null }>;
-  from(tableName: "commerce_idempotency_keys" | "commerce_order_draft_receipts"): ConfiguratorIntentIdentityTable;
+  from(tableName: "commerce_idempotency_keys"): ConfiguratorIntentIdentityTable;
 }
 
 /** Scope used by the persist-intent RPC for its idempotency-key rows. */
 const CONFIGURATOR_INTENT_SCOPE = "commerce_configurator_intent";
 
-export function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence, Quote = unknown>(
+export function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence>(
   client: ConfiguratorIntentRpcQueryClient<Request, Command>,
   bindings: {
     responseSchema: z.ZodType<Response>;
     decodeCommandResponse(data: unknown): Persistence;
-    /** Historical quote parser; it must preserve stored cadence representation. */
-    decodeCommandQuote?(data: unknown): Quote;
     normalizePhoneToE164(phone: string, country: unknown): string | null;
   },
   identity: ConfiguratorIntentPersistenceIdentity = { authenticatedUserId: null },
-): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence, Quote> {
-  const decodeCommandQuote = bindings.decodeCommandQuote;
+): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence> {
   return {
-    ...(decodeCommandQuote ? { async findCompletedCheckoutCommand(command: Command) {
-      const { idempotencyKey } = command as { idempotencyKey?: string };
-      if (!idempotencyKey) return null;
-      const row = await readCompletedReceipt(CONFIGURATOR_INTENT_SCOPE, idempotencyKey);
-      if (!row?.response_payload) return null;
-      const persistence = bindings.decodeCommandResponse(authenticateCompletedReplay(row,
-        withVerifiedSubject(withCanonicalCommandPhone(command), identity)));
-      const { data, error } = await client.from("commerce_order_draft_receipts").select("response_payload, invalidated_at")
-        .eq("idempotency_key", idempotencyKey).limit(1);
-      if (error) throw mapRpcError(error);
-      const draft = data?.[0];
-      if (draft?.invalidated_at != null) return null;
-      const quoteSnapshot = (draft?.response_payload as { orderDraft?: { quoteSnapshot?: unknown } } | undefined)?.orderDraft?.quoteSnapshot;
-      if (!quoteSnapshot) return null;
-      return { persistence, quoteSnapshot: decodeCommandQuote(quoteSnapshot) };
-    } } : {}),
     async persistIntent(
       request: Request,
     ): Promise<Response> {
@@ -146,16 +127,11 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
     // Receipt existence permits only read-only authentication. The
     // writing RPC reopens changed completed keys, so it must never run here.
     if (!idempotencyKey) throw cadenceRefusal(payload);
-    const row = await readCompletedReceipt(CONFIGURATOR_INTENT_SCOPE, idempotencyKey);
-    if (!row?.response_payload) throw cadenceRefusal(payload);
-    return row;
-  }
-
-  async function readCompletedReceipt(scope: string, idempotencyKey: string): Promise<CompletedIntentRow | null> {
     const { data, error } = await client.from("commerce_idempotency_keys").select("response_payload, request_fingerprint")
-      .eq("scope", scope).eq("idempotency_key", idempotencyKey).eq("status", "completed").limit(1);
+      .eq("scope", CONFIGURATOR_INTENT_SCOPE).eq("idempotency_key", idempotencyKey).eq("status", "completed").limit(1);
     if (error) throw mapRpcError(error);
-    return data?.[0] ?? null;
+    if (!data?.[0]?.response_payload) throw cadenceRefusal(payload);
+    return data[0];
   }
 
   function authenticateCompletedReplay(row: CompletedIntentRow, payload: PersistIntentPayload<Request, Command>): unknown {

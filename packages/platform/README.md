@@ -860,16 +860,6 @@ resume and customer-default schema cores and factories. Bind existing pricing
 schemas and explicit host vocabulary, then extend the object cores with local
 locale, profile, sizing, fiscal and provider policy. The reference retains those
 extensions; it does not publish that policy into the package.
-Checkout command execution calls an optional
-`persistencePort.findCompletedCheckoutCommand` before fresh cadence admission
-or quoting. The lookup must authenticate the complete command and return its
-retained quote using SELECTs only; a conflicting payload must refuse. The
-configurator RPC adapter supplies this lookup when bound with
-`decodeCommandQuote`, a historical quote parser that preserves stored cadence
-representation. Its query client needs SELECT access to completed
-`commerce_idempotency_keys` and non-invalidated `commerce_order_draft_receipts`.
-Only fresh work requests a quote and passes its currency check before writes.
-The existing draft/runtime replay protocols still own later execution.
 The intent factory accepts a SKU schema with string input and output, preserving
 string SKU inputs when hosts infer request types. Resume and availability bindings
 also preserve string SKU and product-slug inputs. When composing host fields,

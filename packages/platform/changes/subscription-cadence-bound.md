@@ -5,7 +5,7 @@ owned configuration.
 
 Checkout command/intent transport, resume, recovery and account reads, editor
 contexts, retained renewal terms and frozen renewal snapshots keep PostgreSQL
-integer representation bounds (1..2147483647). Native checkout and editor
+integer representation bounds (1..2147483647). Editor and native draft
 completed receipts replay before current limits; SQL ownership and fingerprint
 checks still refuse changed payloads. Fresh edits also check the resulting
 cadence when inherited from stored data. Classic historical price comparisons
@@ -24,12 +24,15 @@ and refuse changed payloads without reopening the key. Fresh quote execution and
 also admit cadence before dependencies; expired recreation checks both stored
 cadences before provider I/O and returns `cadence_limit_exceeded`.
 
-Checkout command execution checks authenticated completed identity and retained
-draft-quote receipts through `findCompletedCheckoutCommand` before fresh quote
-admission. Matching history reuses its stored quote; missing or invalidated
-drafts require fresh admission. Bind a historical `decodeCommandQuote` parser
-and SELECT access to `commerce_order_draft_receipts` for this lookup. Fresh
-subscription future-terms commands admit supplied cadence/plan days after
+Fresh work is bounded at 1..3660 whole days. Replay of completed commands above
+3660 is preserved on editor, native draft and renewal paths, but is not guaranteed
+on the checkout-command and saga-fallback paths: checkout command execution
+quotes before identity and draft replay, and `commercePaidOrderOrchestration`
+re-quotes before draft replay when no quote is supplied. Those two paths remain
+a follow-up. No published version admitted cadence above 120 days; PR4a's
+widening is unreleased, so no released data can contain values above 3660.
+
+Fresh subscription future-terms commands admit supplied cadence/plan days after
 receipt replay and before host translation or native preview/apply dispatch,
 so an out-of-range preview cannot persist a refusal receipt.
 

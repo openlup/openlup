@@ -1800,13 +1800,7 @@ export interface CommerceCheckoutRuntimePort<StartRequest, StartResponse, Result
     startRuntime(request: StartRequest): Promise<StartResponse>;
     applyPaymentResult(request: ResultRequest): Promise<ResultResponse>;
 }
-export interface CheckoutCommandPersistencePort<Command, Persistence, Quote = unknown> {
-    /** SELECT only: authenticate the complete command and return its retained quote.
-     * Missing identity/draft receipts mean fresh work; conflicts must refuse. */
-    findCompletedCheckoutCommand?(command: Command): Promise<{
-        persistence: Persistence;
-        quoteSnapshot: Quote;
-    } | null>;
+export interface CheckoutCommandPersistencePort<Command, Persistence> {
     persistCheckoutCommand(command: Command): Promise<Persistence>;
 }
 export interface CheckoutCommandRuntimeRequest<Command, Provider> {

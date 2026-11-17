@@ -1,7 +1,6 @@
 import type { z } from "zod";
-import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import type { CreateQuoteRequest, PricingPolicySnapshot } from "../../pricing/index.js";
-import type { CheckoutJourney, CommerceOrderDraftWritePort, CheckoutCommandRuntimeResult, CheckoutCommandPersistencePort } from "../contracts/index.js";
+import type { CheckoutJourney, CommerceOrderDraftWritePort, CheckoutCommandRuntimeResult } from "../contracts/index.js";
 import type { CommerceQuotePort } from "../ports.js";
 import type { CheckoutCommandV1, CheckoutCommandPersistenceResult } from "../checkoutCommandSchemas.js";
 import { buildOrderDeliveryContact } from "../checkoutHelpers.js";
@@ -61,7 +60,7 @@ export function createCheckoutCommandExecutor<Provisioned extends { clientId: st
 }) {
   type CheckoutCommandExecutionDeps = {
     quotePort?: CommerceQuotePort<CheckoutCommandQuoteRequest, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
-    persistencePort?: CheckoutCommandPersistencePort<CheckoutCommandV1, CheckoutCommandPersistenceResult, Snapshot>;
+    persistencePort?: { persistCheckoutCommand(command: CheckoutCommandV1): Promise<CheckoutCommandPersistenceResult> };
     orderDraftPort?: CommerceOrderDraftWritePort<{ idempotencyKey: string; quoteSnapshot: Snapshot }, Draft>;
     resolveExecutionPort?: (provider: string) => ExecutionPort;
     compensationPort?: CheckoutCompensationPort; now?: () => Date;
@@ -89,22 +88,6 @@ async function executeCheckoutCommand(
     );
   }
 
-  // Authenticate completed history with SELECTs before any current admission
-  // or dependency call. Reuse its retained quote rather than repricing history.
-  const replay = await persistencePort.findCompletedCheckoutCommand?.(command.data);
-  if (replay && ((replay.quoteSnapshot.quote.context?.mode ?? "one_time") !== command.data.mode
-    || (replay.quoteSnapshot.quote.context?.cadenceDays ?? null) !== (command.data.cadenceDays ?? null)
-    || replay.quoteSnapshot.quote.lines.length !== command.data.lines.length
-    || replay.quoteSnapshot.quote.lines.some((line, index) => line.sku !== command.data.lines[index].sku
-      || line.quantity !== command.data.lines[index].quantity))) {
-    throw new CommerceRuntimeConflictError("Completed checkout quote does not match command");
-  }
-  const cadenceDays = command.data.cadenceDays;
-  if (!replay && cadenceDays != null && (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS)) {
-    throw new CommerceRuntimeConflictError(`Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days before starting a fresh checkout`,
-      { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
-  }
-
   const adapter = resolveExecutionPort(request.paymentProvider) as unknown;
   if (typeof adapter !== "object" || adapter === null || !("execute" in adapter) || typeof adapter.execute !== "function") {
     throw new CommerceRuntimePersistenceError("Checkout command payment provider adapter is unavailable");
@@ -113,7 +96,7 @@ async function executeCheckoutCommand(
   const journey = checkoutCommandJourney(command.data, request.metadata);
   // Quote and its currency guard stay ahead of every write: a mismatched
   // currency must not leave a persisted client, address, or draft behind.
-  const quoteSnapshot = replay?.quoteSnapshot ?? await quotePort.createQuote(journey.createQuoteRequest());
+  const quoteSnapshot = await quotePort.createQuote(journey.createQuoteRequest());
   if (quoteSnapshot.quote.currency !== command.data.currency) {
     throw new CommerceRuntimeConflictError("Checkout command currency does not match quote", {
       commandCurrency: command.data.currency,
@@ -121,7 +104,7 @@ async function executeCheckoutCommand(
     });
   }
 
-  const persistence = replay?.persistence ?? await persistencePort.persistCheckoutCommand(command.data);
+  const persistence = await persistencePort.persistCheckoutCommand(command.data);
   if (persistence.subjectId !== null) {
     throw new CommerceRuntimePersistenceError("Checkout command persistence returned an unexpected subject");
   }
