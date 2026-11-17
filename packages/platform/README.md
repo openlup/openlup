@@ -1132,6 +1132,27 @@ Omission preserves incumbent behavior. See [parity seams](https://github.com/ope
 
 ## Pricing
 
+The unbound `createCatalogPriceSetupHandler` and
+`createPostgresCatalogPriceSetupStore` provide human-authorized preview, apply and
+receipt readback for one immediate positive gross base at minimum quantity one.
+Portable DTOs live in `./pricing/contracts`; schemas and canonical-byte encoding
+live in `./pricing`. The command matches the price operations retained in draft
+v2/v3. Hosts bind the same verified administrator session to authorization and
+SQL execution. No route, capability or runtime binding is installed.
+
+Apply serializes receipt before price context, checks the expected base and
+closes/inserts at one database statement instant. Replay precedes target reads;
+key reuse or another operator refuses. The read-only readiness routine validates
+native input domains, actual financial definitions, retained agreements and the
+independently audited cohort. Unproven evidence hard-refuses before and after the
+provisional write. Preview restores every provisional price row. Existing
+subscriber agreements and clocks are unchanged. The known aggregate-reason defect
+is retained: an existing invalid-SKU reason can hide a second invalid SKU.
+See [native base-price writes](../../docs/platform/DATA_AND_MIGRATIONS.md#native-base-price-writes)
+for installation, transfer and managed-rail limits. Scheduling, list lifecycle,
+context-version operations, zero-price writes and broader price plans remain
+reserved for a later command version.
+
 The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
 reader described under [Catalog](#catalog); the quote engine consumes its
 existing `CommerceQuoteCatalogReadPort`.

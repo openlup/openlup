@@ -5499,6 +5499,31 @@
             "sha256": "449b1eab480cf59f945ac6eee0624e0b56898ce095f1989edf0a136d9bc700c7"
           }
         ]
+      },
+      {
+        "row": "LC3",
+        "path": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_price_setup_require_human_admin()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.commerce_offer_policy_v2_readiness()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_price_setup_preview(uuid,uuid,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_price_setup_apply(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -7712,6 +7737,32 @@
           "signature": "public.catalog_price_setup_readiness_inputs()",
           "afterSha256": "0741e066588ca7008c2bc05db21e5a6fc4ada9c941d1fd9d22a05c81a512910e",
           "beforeSha256": null
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
+      "sha256": "5fb2377b6b66dfa5a75265fc78ba544c73809a66190d9ec27849f9091dc93ddc",
+      "functions": [
+        {
+          "signature": "public.catalog_price_setup_require_human_admin()",
+          "beforeSha256": null,
+          "afterSha256": "860e87ca517fd8f53a76b30c8c6cf83a560b4f34d4197bb0ce3879421000cd82"
+        },
+        {
+          "signature": "public.commerce_offer_policy_v2_readiness()",
+          "beforeSha256": null,
+          "afterSha256": "b8e3c923efa55b0b45cd1cad76ada853cea29d2272fa306359b8e72a1ed41a59"
+        },
+        {
+          "signature": "public.catalog_price_setup_preview(uuid,uuid,integer)",
+          "beforeSha256": null,
+          "afterSha256": "0abdda851e2eed09194f47e7fa81c103f21b68d108f222232b3a58fa3430a53c"
+        },
+        {
+          "signature": "public.catalog_price_setup_apply(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "49e8cce6b3212d7200be5d57abb3a6e602affcf79f47e5a4c2cc6c1dd16048be"
         }
       ]
     }

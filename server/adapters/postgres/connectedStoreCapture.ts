@@ -68,6 +68,8 @@ const owned = [
   "subscription_notice_refusals",
   // AUTHORITATIVE installation marking and the separate, audited baseline.
   "commerce_offer_policy_cohort_marking", "commerce_offer_policy_rollout_baselines",
+  // AUTHORITATIVE catalogue-local exact-command replay evidence.
+  "catalog_price_setup_receipts",
 ] as const;
 
 // Intentionally not carried: single-use authorization state must stay in its
