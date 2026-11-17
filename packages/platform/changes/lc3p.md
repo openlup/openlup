@@ -3,13 +3,17 @@ Existing subscriptions receive the legacy policy pair and a default-false fixtur
 marker; future ordinary inserts default to pending acquisition. Installation
 records immutable marking-time count, membership fingerprint and database time.
 The separately audited, parameterless service capture inserts its baseline once.
-A fresh installation can capture zero only with genuine empty marking provenance;
-a populated marking becoming empty retains the empty-baseline refusal.
+The audited-zero admission is a deliberate platform-forced delta: “a fresh install
+has nothing to protect.” It requires genuine empty marking provenance; a populated
+marking becoming empty retains the empty-baseline refusal.
 
 Migration: Apply the complete native migration catalogue. Old readers ignore the
 additive evidence columns. New price-writer integration must call the read-only
 input checks on its transaction before and after provisional prices, propagate
-hard domain/provenance refusals, and retain ordinary acquisition reasons. Audit
+hard domain/provenance refusals, and retain ordinary acquisition reasons.
+Graduation and edits that can preserve old quotes retain the governing purchase
+order provenance; an event name never turns those copies into independent quotes.
+Audit
 the complete legacy non-fixture cohort, including paused and cancelled rows,
 before explicitly invoking `commerce_capture_offer_policy_v2_legacy_baseline()`
 through the existing service SQL boundary. Installation and transfer never

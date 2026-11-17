@@ -92,6 +92,25 @@ async function genuinePurchase(db: Pool) {
     renewalTerms: { version: "native.renewal-terms.v1", linePricing: [{ sku: line.sku, quantity: 2, unitAmountMinor: 137, isAddon: false, quoteLine: line }] } });
   const activation = await rpc(db, "subscription_activate_from_captured_payment", [`activate:${order}`, order, createHash("sha256").update(reference).digest("hex")]);
   await writer.complete(order);
+  // Obtain independent governing quote evidence through the real accepted-edit
+  // producer. Purchase-backed quotes alone have no historical admission proof.
+  const edit = (await db.query(`SELECT template_version,
+    to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,
+    to_char((statement_timestamp()+interval '15 minutes') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS expires
+    FROM public.subscriptions WHERE id=$1`, [activation.subscriptionId])).rows[0];
+  const base = [{ variantId: sku, qty: 2 }], addons: never[] = [];
+  const compositionConstraint = { kind: "plan_days", value: 56 };
+  const request = { planDays: 56, nominalPlanDays: 56, base, addons, compositionConstraint };
+  const snapshot = { baseLines: [{ ...base[0], quoteLine: line }], addonLines: [], compositionConstraint };
+  const totals = { currentRecurringPrice: money(274), newRecurringPrice: money(274), delta: money(0) };
+  const hash = createHash("sha256").update(JSON.stringify({ request, snapshot, totals })).digest("hex"), editActor = randomUUID();
+  await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','2') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+  await rpc(db, "subscription_quote_preview_record", [editActor, client, activation.subscriptionId, "update_package_template",
+    hash, edit.template_version, edit.expires, request, snapshot, totals, edit.at]);
+  const payload = { ...request, ...snapshot, ...totals, expectedTemplateVersion: edit.template_version, acceptedQuoteHash: hash,
+    request: { ...request, expectedTemplateVersion: edit.template_version, acceptedQuoteHash: hash } };
+  expect(await rpc(db, "subscription_package_edit_apply", [editActor, client, randomUUID(), activation.subscriptionId, payload, edit.at]))
+    .toMatchObject({ status: "applied" });
   const next = (await db.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value FROM public.subscriptions WHERE id=$1", [activation.subscriptionId])).rows[0].value;
   // Historical accepted purchase: the clock-relative fixture predates the
   // bounded recent-order census; retained terms carry its actual quote lines.

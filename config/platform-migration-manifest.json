@@ -599,14 +599,14 @@
     },
     {
       "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
-      "sha256": "62c1d428c8f0ebc6115bcae40ec7884587110b5b95e8a9d8d800c3794c06b98c"
+      "sha256": "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f"
     },
     {
       "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
       "sha256": "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65"
     }
   ],
-  "objectInventorySha256": "daf905d8deeb8ce0cdccfda3eb094a19892db38a106c052bc945cfdb970811f4",
+  "objectInventorySha256": "a026ddb88a79a8dd7ccaea21cb6c2d8f0e8345814719711805df799f7a86e46c",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1227,7 +1227,7 @@
       },
       {
         "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
-        "sha256": "62c1d428c8f0ebc6115bcae40ec7884587110b5b95e8a9d8d800c3794c06b98c"
+        "sha256": "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f"
       },
       {
         "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
@@ -1236,10 +1236,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "e9194d2c50b31024ac4771b2b5d4b91e24bfd219cce51a54cb48699840d81a6d"
+        "withRestore": "c9959f0ceaaf919c6de9806e6e86d18f1f656d5e2fd27f54cf00f2ebf48430fa"
       },
       "separateMigrator": {
-        "withRestore": "f6d02cebb8d5c38a72405e61116eaaa4977ce05d2f7f8b9f5ee13e1ed9c21338"
+        "withRestore": "4070f0fff6d4b076fd49bc2ed1aac995de4298f69a393f63125491b22eb1a40f"
       }
     }
   },
@@ -1859,7 +1859,7 @@
       },
       {
         "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
-        "sha256": "62c1d428c8f0ebc6115bcae40ec7884587110b5b95e8a9d8d800c3794c06b98c"
+        "sha256": "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f"
       },
       {
         "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
@@ -1867,8 +1867,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "fb22edd2a7274d0c1c8d920d7e61f0be51f841bf9bb1d730a25cc9485f1e68c6",
-      "operatorProvisioned": "e5c8af331dd3b8727ca1661518619040d73548efca3e7a05087690ea9c1dac32"
+      "installerManaged": "6cd6ba09443d54e16910096cf952fd5baa42a0ea828506e26e37991964e40e23",
+      "operatorProvisioned": "16dd85fa6996a97093aba0eec3b84a24d77d50397490b57c599ab6eb1fe142f8"
     }
   }
 }

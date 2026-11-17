@@ -2542,6 +2542,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/quote-shipping.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote.config.ts",
       "class": "public-output"
     },
@@ -2751,6 +2755,10 @@
     },
     {
       "path": "examples/neutral-store/test/private-capture.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/quote-shipping.test.ts",
       "class": "public-output"
     },
     {
