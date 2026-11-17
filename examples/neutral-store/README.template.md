@@ -39,7 +39,7 @@ After a successful candidate import prints `next: npm ci`, run `npm ci` before
 starting the application.
 
 `owned/store.config.ts` composes domain inputs including `owned/renewal.config.ts`
-(cancellation offers and retry timing) and `owned/quote.config.ts`. Follow the
+(account actions, pause presets, cancellation offers and retry timing) and `owned/quote.config.ts`. Follow the
 installed starter guide's business-configuration convention when editing them.
 
 `AGENTS.md` holds the instructions for coding agents working in this

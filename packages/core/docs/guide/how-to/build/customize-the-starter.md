@@ -176,6 +176,39 @@ from `assertConfig`, refuses unknown keys or kinds with
 the displayed offer and its submitted kind. Reason codes, accepted-offer IDs
 and native command authorization keep their existing meaning.
 
+## Configure account actions and pauses
+
+In the unreleased source candidate, `renewal.subscriptionCare` is composed from
+`owned/renewal.config.ts`. Its `actions.active`, `actions.paused` and
+`actions.cancelled` lists choose account controls; `whilePaymentBlocked` and
+`whilePaymentExpired` narrow those choices during payment recovery. Use only
+`skip`, `slide`, `order_now`, `pause`, `cancel`, `resume` and `reactivate`.
+Empty lists disable choices. Unknown or duplicate actions and missing lists
+refuse startup with `starter_subscription_actions_invalid`.
+
+Set `pausePresets` with the starter-local `choice(default, ...allowed)` helper.
+The native preset vocabulary is `2_weeks`, `1_month` and `indefinite`; durations
+still come from owned lifecycle `terms`. `assertChoice` refuses an empty,
+duplicate or unknown selection, or a default outside it, with
+`starter_pause_presets_invalid`. The account pause and cancellation save-offer
+forms both read `allowed` and `default`. The demonstration default is `2_weeks`;
+previously the save-offer form independently selected `1_month`.
+
+The managed host binds the same data through
+[command admission](../../concepts/subscriptions.md#admit-account-commands).
+Fresh disabled actions throw `starter_subscription_action_not_admitted` and
+unavailable presets throw `starter_pause_preset_not_admitted` before any write;
+the host returns these named refusals. Completed matching receipts replay even
+after you remove a choice. Restart after changing owned configuration; no
+installation write is needed. Keep managed host, shared and account-page files
+unchanged when customizing these values.
+
+Native state and payment fences still apply. Reactivation keeps its own payment
+and confirmation checks and remains available for a cancelled subscription
+despite historical account payment messages. The starter's saved-address
+selector is a separate port, outside this action vocabulary. No skip-count
+limit is introduced.
+
 ## Configure subscription offers
 
 In the current source candidate, edit `subscriptionOffers` in

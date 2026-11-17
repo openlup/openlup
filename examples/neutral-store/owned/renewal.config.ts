@@ -1,5 +1,6 @@
 import type { RenewalConfig, SubscriptionCareConfig } from '../shared/renewal-config.ts';
 import { renewalNoticeCopy } from './renewal-copy.ts';
+import { choice } from '../shared/policy.ts';
 
 export function demoRenewalConfig(configuration: string): RenewalConfig {
   return { subscriptionCare: demoSubscriptionCare(), enabled: false, retryBackoffHours: [24, 48, 72], population: `demo:${configuration}`, cadenceSeconds: 90,
@@ -16,6 +17,9 @@ export function demoSubscriptionCare(): SubscriptionCareConfig {
       orderNowDelayMinutes: 5, reactivateDelayDays: 2 },
     retentionReasons: ['too_much_product', 'delivery_issue', 'too_expensive', 'not_a_good_fit', 'other'],
     retention: { offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause' },
+    actions: { active: ['skip', 'slide', 'order_now', 'pause', 'cancel'], paused: ['resume', 'cancel'], cancelled: ['reactivate'],
+      whilePaymentBlocked: ['pause', 'cancel'], whilePaymentExpired: ['cancel', 'resume'] },
+    pausePresets: choice('2_weeks', '2_weeks', '1_month', 'indefinite'),
     rescheduleOfferDays: 14,
     dispatch: { leaseSeconds: 60, maxAttempts: 6, transientBackoffSeconds: 900 },
     notices: { renewalMinSeconds: 259200, renewalMaxSeconds: 432000, ordinaryFreshnessSeconds: 432000,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import type { Pool } from 'pg';
 import { composeSubscriptionEditors } from '../host/subscription-editors.ts';
-import { composeSubscriptionCommands } from '../host/native-composition.ts';
+import { composeSubscriptionCare, composeSubscriptionCommands } from '../host/native-composition.ts';
 import { dispatchAction, type VerifiedActor } from '../host/bindings.ts';
 import { createApplication } from '../host/server.ts';
 import { configurations } from '../owned/store.config.ts';
@@ -23,6 +23,29 @@ function fixture(owned = true) {
   return { calls,actions,releases: () => releases };
 }
 const actor: VerifiedActor = { customerRef: id(2),principalRef: id(3),operatorRef: null };
+test('mounted care replays a removed preset and returns named fresh admission refusals',async () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  config.renewal.subscriptionCare.pausePresets = { allowed: ['2_weeks'],default: '2_weeks' };
+  let replay = true;
+  const calls: string[] = [];
+  const db = { release() {},async query(sql: string) {
+    calls.push(sql);
+    if (['BEGIN','COMMIT','ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) return { rows: [] };
+    if (sql.includes('WITH stored AS')) return { rows: replay ? [{ response: { status: 'replayed',subscriptionId: id(1),subscriptionStatus: 'paused',
+      templateVersion: 2,nextCycleAt: null,eventId: id(4),commandFingerprint: 'a'.repeat(64) } }] : [] };
+    if (sql.includes('SELECT s.status')) return { rows: [{ status: 'active',payment_blocker: null }] };
+    throw Error('must_not_dispatch_a_refused_command');
+  } };
+  const command = composeSubscriptionCare({ async query() { return { rows: [{ id: id(1) }] }; },async connect() { return db; } } as unknown as Pool);
+  const input = { subscriptionRef: id(1),action: 'pause',pausePreset: '1_month' };
+  const context = { actor,config,commandKey: 'removed-pause-preset' };
+  assert.equal((await command(input,context)).ok,true);
+  replay = false; calls.length = 0;
+  assert.deepEqual(await command(input,{ ...context,commandKey: 'fresh-pause-preset' }),{ ok: false,code: 'starter_pause_preset_not_admitted' });
+  assert.equal(calls.at(-1),'ROLLBACK');
+  config.renewal.subscriptionCare.actions.active = ['cancel'];
+  assert.deepEqual(await command({ ...input,pausePreset: '2_weeks' },{ ...context,commandKey: 'disabled-pause-action' }),{ ok: false,code: 'starter_subscription_action_not_admitted' });
+});
 test('all three editor operations refuse a missing customer session before database access',async () => {
   const f = fixture();
   for (const operation of ['subscription.preview','subscription.command','subscription.catalog'] as const) {

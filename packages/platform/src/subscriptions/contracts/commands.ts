@@ -29,6 +29,14 @@ export type SubscriptionCommand = SubscriptionCommandContext & (
       compositionConstraint: string }
 );
 export interface SubscriptionBundleLine { sku: string; quantity: number }
+/** Optional, effect-free host admission for a fresh native command. Runs after
+ * ownership/key/fingerprint checks and completed replay, before pricing or writes.
+ * Return to admit; throw an error with a named code to refuse. Never authorize,
+ * perform I/O or replace the unconditional native lifecycle/payment/delivery fences. */
+export type SubscriptionCommandAdmission = (facts: {
+  action: SubscriptionCommand["action"]; pausePreset: string | null; reason: string | null;
+  subscriptionStatus: string; paymentBlocker: string | null;
+}) => void | Promise<void>;
 export interface SubscriptionCommandReceipt {
   actorId: string; idempotencyKey: string; commandFingerprint: string;
   outcome: "applied" | "replayed" | "noop"; subscriptionId: string;

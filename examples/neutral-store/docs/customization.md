@@ -11,7 +11,7 @@ Status: maintainer implementation notes. Reader guidance: [OpenLup guide](https:
 `shared/config.ts`. The host and lifecycle share that registry. The managed
 `assertConfig` validator admits lowercase alphanumeric IDs with single hyphens,
 at most 80 characters, and checks required document, return and hold settings.
-Domain inputs include `owned/renewal.config.ts` (cancellation offers and retry
+Domain inputs include `owned/renewal.config.ts` (account actions, pause presets, cancellation offers and retry
 timing) and `owned/quote.config.ts`. Follow the reader guide's
 [business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
