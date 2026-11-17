@@ -833,8 +833,10 @@ the new-cycle insertion guard uses `subscription_delivery_alignment_admission_re
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
 owns the static terms gate; the
 [admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-owns delivery admission. The supplied boundary stops at the decorator, with no
-runner composer, factory or production entrypoint.
+owns delivery admission. The native composer
+[`createNativeSubscriptionBinding`](../../packages/platform/src/subscriptions/nativeSubscriptionBinding.ts)
+wraps its renewal store with that decorator, so a host composing the native
+runner through it gets delivery admission installed.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
