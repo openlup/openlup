@@ -42,7 +42,9 @@ export interface ReadinessInput {
   loadedPackages: readonly LoadedPackage[]; contributions: readonly Contribution[];
   vocabulary: readonly EventVocabularyEntry[]; exemptions: readonly EventExemption[];
   bindings: { ports: Readonly<Record<string, unknown>>; triggers: Readonly<Record<string, unknown>>; routes: Readonly<Record<string, unknown>>; env: Readonly<Record<string, string | undefined>> };
-  /** Optional observed catalogue bindings; absence keeps existing readiness behaviour. */
+  /** Optional observed catalogue bindings; absence keeps existing readiness behaviour.
+   * @experimental
+   */
   catalogRegistry?: CatalogRegistryObservation;
   schemaProbe: SchemaProbePort; probeTimeoutMs?: number;
 }

@@ -183,7 +183,9 @@ export interface ReadinessInput {
         routes: Readonly<Record<string, unknown>>;
         env: Readonly<Record<string, string | undefined>>;
     };
-    /** Optional observed catalogue bindings; absence keeps existing readiness behaviour. */
+    /** Optional observed catalogue bindings; absence keeps existing readiness behaviour.
+     * @experimental
+     */
     catalogRegistry?: CatalogRegistryObservation;
     schemaProbe: SchemaProbePort;
     probeTimeoutMs?: number;

@@ -2,6 +2,7 @@
  * @experimental
  */
 export type CatalogQuantityDimension = "mass" | "volume" | "count";
+/** @experimental */
 export interface CatalogQuantity { dimension: CatalogQuantityDimension; unscaled: string; scale: number; unit: string }
 /** @experimental */
 export type CatalogCanonicalUnit = "openlup:g" | "openlup:ml" | "openlup:piece";

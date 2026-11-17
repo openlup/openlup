@@ -99,6 +99,7 @@ export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublic
   }
 });
 /** Removes only the additive carrier/version for existing scalar, attribute and price validation. */
+/** @experimental */
 export function catalogDraftV3ValidationPayload(payload: CatalogDraftPayloadV3) {
   const { publication: _publication, ...base } = payload;
   return { ...base, schemaVersion: 2 as const };

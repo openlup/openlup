@@ -24,6 +24,7 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
   validateContent: (content: unknown) => readonly CatalogDraftIssue[];
 }
 /** Readonly authoring counterpart; the existing mutable definition API stays compatible. */
+/** @experimental */
 export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units" | "netContentUnits" | "dimensions"> & {
   units: readonly CatalogProductTypeDefinition["units"][number][];
   netContentUnits: readonly string[];
