@@ -64,7 +64,7 @@ export type SetRelease = { version: string; target: string; note: string };
 
 /** The dispatch inputs of a set release, PACKAGE `all`: a set version, the target and the note. */
 export function setReleaseInputs(version: string, target: string, note: string): SetRelease {
-  if (!SET_VERSION.test(version)) throw new Error("version must be a set version 0.N.P below 1.0 for a set release");
+  if (!SET_VERSION.test(version)) throw new Error("version must be a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1) for a set release");
   if (!/^[a-f0-9]{40}$/u.test(target)) throw new Error("target_commit must be a full lowercase commit SHA");
   if (note.trim() === "" || note.includes("\0")) throw new Error("notes must contain the reviewed UTF-8 release body");
   return { version, target, note };
@@ -171,14 +171,14 @@ function appReleaseTags(root: string, directory: string, pattern: string): Array
 }
 
 /**
- * A patch set `0.N.P`, P above 0, only fixes: the package's API snapshot (`<directory>/api/`) at
- * `target` equals the one at its previous set, the highest release tag `openlup-<package>-v0.N.<p>`
- * with p below P that the release App made. A package with no such tag joins the set at a minor set.
+ * A patch set `MAJOR.MINOR.PATCH`, PATCH above 0, only fixes: the package's API snapshot (`<directory>/api/`) at
+ * `target` equals the one at its previous set, the highest release tag `openlup-<package>-vMAJOR.MINOR.<p>`
+ * with p below PATCH that the release App made. A package with no such tag joins the set at a minor set.
  */
 export function assertPatchSetApiUnchanged(root: string, directory: string, version: string, target: string): void {
-  const set = /^0\.([1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
-  if (!set) throw new Error(`${version} is not a set version 0.N.P below 1.0`);
-  const minor = `0.${set[1]}.`, patch = Number(set[2]);
+  const set = SET_VERSION.test(version) ? version.split(".") : undefined;
+  if (!set) throw new Error(`${version} is not a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)`);
+  const minor = `${set[0]}.${set[1]}.`, patch = Number(set[2]);
   if (patch === 0) return;
   const name = directory.slice("packages/".length);
   const earlier = appReleaseTags(root, directory, `openlup-${name}-v${minor}*`).flatMap(({ tag, version: other }) => {

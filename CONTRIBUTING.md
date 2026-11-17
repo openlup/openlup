@@ -114,6 +114,11 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Release tooling shares one coherent-set version rule: `0.N.P` with N at least
+1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1, without leading zeros or a
+prerelease. Patch sets compare API snapshots with the latest earlier patch in
+the same major and minor; an API change still requires a minor or major set.
+
 [Development, diagnostics and preview releases](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 explains CI triggers, diagnostics and release mechanics. The commands below
 describe CI and optional full local feedback; required verification runs in hosted CI under

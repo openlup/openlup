@@ -1,7 +1,7 @@
 import { createSourceReleaseContract, deriveSourceReleaseContract } from "../oss-source-release-contract.ts";
 import { isGuidePage } from "../oss-publication-policy.ts";
-// Seeded falsifiers for set releases: below 1.0 every publishable package ships at one set
-// version 0.N.P from one commit. Each control is a behaviour of a committed module, checked
+// Seeded falsifiers for set releases: every publishable package ships at one set
+// version MAJOR.MINOR.PATCH from one commit. Each control is a behaviour of a committed module, checked
 // against real Git fixtures and a recorded GitHub and npm API. Each planted defect edits that
 // module's source, loads the edited copy with its relative imports bound to the committed
 // modules, and must turn its control red.
@@ -146,11 +146,11 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(m.policy.checkSetVersions(config, versions("0.4.0", "0.4.0", "2.0.0")), "a private package keeps its own version").toEqual([]);
     expect(m.policy.checkSetVersions(config, versions("0.4.0", "0.5.0"))).toEqual([{ subject: policy.PACKAGES_CONFIG_PATH, rule: "set-version", detail: "every publishable package carries one set version, not @openlup/core@0.4.0, @openlup/kit@0.5.0; run npm run release:bump -- --set <version>" }]);
   },
-  "a publishable package carries a set version 0.N.P below 1.0": async (m) => {
+  "a publishable package carries a coherent set version": async (m) => {
     const config = m.policy.parsePackagesConfig(readFileSync(join(fixture().root, policy.PACKAGES_CONFIG_PATH), "utf8"));
     const both = (version: string) => m.policy.checkSetVersions(config, new Map([["@openlup/core", version], ["@openlup/kit", version], ["@openlup/demo", "1.0.0"]]));
-    for (const version of ["0.4.0", "0.12.1", "0.99.10"]) expect(both(version), version).toEqual([]);
-    for (const version of ["1.0.0", "1.12.0", "0.0.3", "2.0.1"]) expect(both(version), version).toEqual(["core", "kit"].map((name) => ({ subject: `@openlup/${name}`, rule: "set-version", detail: `${version} is not a set version 0.N.P below 1.0` })));
+    for (const version of ["0.4.0", "0.12.1", "0.99.10", "1.0.0", "1.2.3", "1.12.0", "2.0.1"]) expect(both(version), version).toEqual([]);
+    for (const version of ["0.0.3"]) expect(both(version), version).toEqual(["core", "kit"].map((name) => ({ subject: `@openlup/${name}`, rule: "set-version", detail: `${version} is not a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)` })));
   },
   "no package directory takes the set's dispatch name": async (m) => {
     const config = (packages: unknown[], unreleased: unknown[] = []) => JSON.stringify({ schemaVersion: 2, packages, unreleased });
@@ -163,7 +163,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     const { root, write, read } = fixture();
     expect(m.check.runPackagesCheck(root, ["--manifest-only"])).toBe(0);
     const kit = read("packages/kit/package.json");
-    for (const [why, core, other] of [["two versions", "0.4.0", "0.5.0"], ["1.0.0", "1.0.0", "1.0.0"]] as const) {
+    for (const [why, core, other] of [["two versions", "0.4.0", "0.5.0"], ["0.0.3", "0.0.3", "0.0.3"]] as const) {
       write("packages/core/package.json", json(publishable("core", core)));
       write("packages/kit/package.json", kit.replace('"version": "0.4.0"', `"version": "${other}"`).replace('"@openlup/core": "0.4.0"', `"@openlup/core": "${core}"`));
       write("packages/demo/package.json", read("packages/demo/package.json").replace(/"@openlup\/core": "[^"]+"/u, `"@openlup/core": "${core}"`));
@@ -201,7 +201,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(JSON.parse(read("packages/kit/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } } } });
     quiet();
     expect(committed.check.runPackagesCheck(root, ["--manifest-only"]), "the bumped tree passes packages:check").toBe(0);
-    for (const version of ["0.5.0", "0.4.9", "1.0.0", "0.0.9"]) expect(() => m.bump.bumpSet(root, version, published), version).toThrow(/is not a set version|the next set version must be above it/u);
+    for (const version of ["0.5.0", "0.4.9", "0.0.9"]) expect(() => m.bump.bumpSet(root, version, published), version).toThrow(/is not a set version|the next set version must be above it/u);
     const skewed = fixture();
     skewed.write("packages/kit/package.json", skewed.read("packages/kit/package.json").replace('"version": "0.4.0"', '"version": "0.3.0"'));
     const before = skewed.read("packages/core/package.json");
@@ -218,7 +218,9 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     const both = fixture();
     expect(() => m.bump.bumpRelease(both.root, "core", "0.5.0", published)).toThrow("@openlup/core moves with its set: npm run release:bump -- --set <version>");
     const alone = fixture({ kitPublishable: false });
-    expect(() => m.bump.bumpRelease(alone.root, "core", "1.0.0", published)).toThrow("@openlup/core is publishable, so its next version is a set version 0.N.P below 1.0, not 1.0.0");
+    alone.write("packages/core/package.json", alone.read("packages/core/package.json").replace('"version": "0.4.0"', '"version": "0.0.0"'));
+    expect(() => m.bump.bumpRelease(alone.root, "core", "0.0.1", published)).toThrow("@openlup/core is publishable, so its next version is a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1), not 0.0.1");
+    alone.write("packages/core/package.json", alone.read("packages/core/package.json").replace('"version": "0.0.0"', '"version": "0.4.0"'));
     expect(m.bump.bumpRelease(alone.root, "core", "0.5.0", published)).toContain("packages/core/package.json");
     expect(JSON.parse(alone.read("packages/kit/package.json")).peerDependencies).toEqual({ "@openlup/core": "0.5.0" });
   },
@@ -287,7 +289,11 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(() => guard("0.4.6", change), "a lightweight, a hand-made and a misworded tag are not the previous set").not.toThrow();
     expect(() => guard("0.4.6", fix)).toThrow(/differs from openlup-core-v0\.4\.1;/u);
     expect(() => guard("0.6.1", change)).toThrow("0.6.1 is a patch set, but core has no earlier 0.6.<p> set tag; a package joins the set at a minor set");
-    expect(() => guard("1.0.1", change)).toThrow(/is not a set version/u);
+    appTag(repository.root, "core", "1.2.0", fix); appTag(repository.root, "core", "1.2.1", change);
+    appTag(repository.root, "core", "1.1.9", fix); appTag(repository.root, "core", "2.2.2", fix);
+    expect(() => guard("1.2.3", change)).not.toThrow();
+    expect(() => guard("1.2.3", fix)).toThrow(/differs from openlup-core-v1\.2\.1;/u);
+    expect(() => guard("1.0.1", change)).toThrow(/has no earlier 1\.0/u);
   },
   "the plan refuses a stale source snapshot and accepts a fresh exact target": async (m) => {
     const repository = fixture(), packs = mkdtempSync(join(scratch, "snapshot-packs-"));
@@ -407,9 +413,9 @@ const DEFECTS: Defect[] = [
   { control: "skip and resume preserve the exact reviewed release-note bytes", plant: "a completed release ignores reviewed note bytes", in: "release", from: '  assertReleaseBody(release, input.note, "completed");\n', to: "" },
   { control: "publishable packages carry one set version", plant: "two versions admitted", in: "policy", from: "if (new Set(publishable.map(({ name }) => versions.get(name))).size > 1) {", to: "if (false) {" },
   { control: "publishable packages carry one set version", plant: "a private package held to the set", in: "policy", from: "  const publishable = config.packages.filter(({ publish }) => publish);\n  const findings: Finding[] = [];", to: "  const publishable = config.packages;\n  const findings: Finding[] = [];" },
-  { control: "a publishable package carries a set version 0.N.P below 1.0", plant: "any release version admitted", in: "policy", from: "&& !SET_VERSION.test(version)) findings.push", to: "&& false) findings.push" },
-  { control: "a publishable package carries a set version 0.N.P below 1.0", plant: "1.0.0 admitted", in: "policy", from: String.raw`export const SET_VERSION = /^0\.[1-9]\d*\.(?:0|[1-9]\d*)$/u;`, to: String.raw`export const SET_VERSION = /^(?:0|1)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u;` },
-  { control: "a publishable package carries a set version 0.N.P below 1.0", plant: "0.0.P admitted", in: "policy", from: String.raw`export const SET_VERSION = /^0\.[1-9]\d*\.`, to: String.raw`export const SET_VERSION = /^0\.\d+\.` },
+  { control: "a publishable package carries a coherent set version", plant: "any release version admitted", in: "policy", from: "&& !SET_VERSION.test(version)) findings.push", to: "&& false) findings.push" },
+  { control: "a publishable package carries a coherent set version", plant: "stable versions refused", in: "policy", from: String.raw`export const SET_VERSION = /^(?:0\.[1-9]\d*|[1-9]\d*\.(?:0|[1-9]\d*))\.(?:0|[1-9]\d*)$/u;`, to: String.raw`export const SET_VERSION = /^0\.[1-9]\d*\.(?:0|[1-9]\d*)$/u;` },
+  { control: "a publishable package carries a coherent set version", plant: "0.0.P admitted", in: "policy", from: String.raw`export const SET_VERSION = /^(?:0\.[1-9]\d*|`, to: String.raw`export const SET_VERSION = /^(?:0\.\d+|` },
   { control: "no package directory takes the set's dispatch name", plant: "packages/all admitted", in: "policy", from: "  if (directories.includes(`packages/${SET_DISPATCH}`)) fail(", to: "  if (false) fail(" },
   { control: "packages:check refuses a tree outside the set rule", plant: "the set rule never runs", in: "check", from: "  findings.push(...checkSetVersions(config, versions));\n", to: "" },
   { control: "--release-set packs every publishable package, each at the set version", plant: "a package behind the set version admitted", in: "check", from: "const behind = publishable.filter(({ name }) => versions.get(name) !== version)", to: "const behind = publishable.filter(() => false)" },
@@ -427,7 +433,7 @@ const DEFECTS: Defect[] = [
   { control: "the Publishable line opens a new version section below Unreleased", plant: "the line inside Unreleased, as before", in: "bump", from: "return `${text.slice(0, end)}## [${version}]\\n\\n- Publishable", to: "return `${text.slice(0, end)}- Publishable" },
   { control: "the Publishable line opens a new version section below Unreleased", plant: "a second section of one version", in: "bump", from: "if (text.includes(`\\n## [${version}]`)) throw", to: "if (false) throw" },
   { control: "a publishable package moves only with its set, at a set version", plant: "one package of several bumped alone", in: "bump", from: "if (entry.publish && config.packages.some((row) => row.publish && row !== entry)) throw", to: "if (false) throw" },
-  { control: "a publishable package moves only with its set, at a set version", plant: "1.0.0 admitted", in: "bump", from: "if (entry.publish && !SET_VERSION.test(version)) throw", to: "if (false) throw" },
+  { control: "a publishable package moves only with its set, at a set version", plant: "0.0.1 admitted", in: "bump", from: "if (entry.publish && !SET_VERSION.test(version)) throw", to: "if (false) throw" },
   { control: "a package's tag, release and npm state decide skip, resume or full", plant: "a missing npm version taken as published", in: "release", from: "if (!held.includes(input.version)) return \"resume\";", to: "if (!held.includes(input.version)) return \"skip\";" },
   { control: "a package's tag, release and npm state decide skip, resume or full", plant: "every complete release resumed", in: "release", from: "  return \"skip\";\n}", to: "  return \"resume\";\n}" },
   { control: "every other state stops the set", plant: "a half-made release admitted", in: "release", from: "if (tag === undefined || release === undefined) throw", to: "if (false) throw" },

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GithubFetch } from "../source-preview-release.ts";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
-import { RELEASE_APP, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
+import { RELEASE_APP, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, setReleaseInputs, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
 
 
 /** Minimal committed source snapshot for release falsifiers; classification stays explicit. */
@@ -235,9 +235,10 @@ describe("the command line", () => {
     expect(run(["registry"], { RELEASE_TAG: "openlup-source-preview/11" })).toMatchObject({ status: 1, stderr: expect.stringContaining("not a package release tag") });
   });
   it("takes package all as the set only in the preflight and the plan, and only at a set version", () => {
+    for (const version of ["1.0.0", "1.2.3"]) expect(setReleaseInputs(version, target, "note")).toEqual({ version, target, note: "note" });
     const set = { PACKAGE: "all", VERSION: "0.12.1", TARGET_COMMIT: target, RELEASE_NOTES: "note" };
     for (const args of [["plan"], ["plan", "a", "b"], ["preflight", "a"]]) expect(run(args, set), args.join(" ")).toMatchObject({ status: 1, stderr: expect.stringContaining("expected one phase: preflight, plan <packs directory>, prepare") });
-    for (const version of ["1.0.0", "0.0.1", "0.12"]) expect(run(["preflight"], { ...set, VERSION: version }), version).toMatchObject({ status: 1, stderr: expect.stringContaining("version must be a set version 0.N.P below 1.0 for a set release") });
+    for (const version of ["1.0", "01.0.0", "1.0.0-rc.1", "0.0.1", "0.12"]) expect(run(["preflight"], { ...set, VERSION: version }), version).toMatchObject({ status: 1, stderr: expect.stringContaining("version must be a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1) for a set release") });
     for (const phase of ["prepare", "check-draft", "verify"]) expect(run([phase], set), phase).toMatchObject({ status: 1, stderr: expect.stringContaining(`phase ${phase} releases one package`) });
     expect(run(["plan", tmpdir()], { ...set, GITHUB_OUTPUT: "" })).toMatchObject({ status: 1, stderr: expect.stringContaining("plan writes its packages to GITHUB_OUTPUT") });
     expect(() => packageReleaseInputs("all", "0.12.1", target, "note")).toThrow("package all names the whole set, not one package");

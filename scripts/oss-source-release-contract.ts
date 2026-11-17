@@ -55,7 +55,7 @@ export function createSourceReleaseContract(input: SourceReleaseContractInput, i
     policy: { registryDigest: input.policyRegistryDigest, publicationCatalogDigest: input.publicationCatalogDigest },
     ...(compatibility === undefined ? {} : { compatibility }),
     repository: activationRepository(identity),
-    release: { posture: "development-preview", stability: fixture ? "unstable" : "preview", evidenceClass: identity.evidenceClass },
+    release: { posture: fixture ? "development-preview" : "stable", stability: fixture ? "unstable" : "stable", evidenceClass: identity.evidenceClass },
   }, null, 2)}\n`;
   return { contents, digest: digest(contents) };
 }
@@ -71,11 +71,11 @@ export function validateSourceReleaseContract(source: string): void {
   const runtime = raw.runtime;
   const release = raw.release;
   const repository = raw.repository;
-  if (!object(runtime) || runtime.node !== "24.x" || runtime.npm !== "11.19.0" || !object(release) || release.posture !== "development-preview" || !object(repository)) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: invalid release posture`);
+  if (!object(runtime) || runtime.node !== "24.x" || runtime.npm !== "11.19.0" || !object(release) || !object(repository)) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: invalid release posture`);
   if (release.evidenceClass === SOURCE_RELEASE_EVIDENCE_CLASS) {
-    if (release.stability !== "unstable" || repository.coordinate !== RESERVED_FIXTURE_COORDINATE || repository.securityRoute !== RESERVED_FIXTURE_SECURITY_ROUTE) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: pre-act identity must use the exact reserved .invalid coordinates`);
+    if (release.posture !== "development-preview" || release.stability !== "unstable" || repository.coordinate !== RESERVED_FIXTURE_COORDINATE || repository.securityRoute !== RESERVED_FIXTURE_SECURITY_ROUTE) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: local fixtures require development-preview/unstable posture and the exact reserved .invalid coordinates`);
   } else if (release.evidenceClass === "activation-candidate") {
-    if (release.stability !== "preview" || !validActivationRepository(repository)) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: activation-candidate requires canonical non-placeholder owner identity`);
+    if (release.posture !== "stable" || release.stability !== "stable" || !validActivationRepository(repository)) throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: activation-candidate requires stable posture and canonical non-placeholder owner identity`);
   } else throw new Error(`${SOURCE_RELEASE_CONTRACT_PATH}: unknown evidence class`);
   const inventory = raw.inventory as JsonObject | undefined;
   const packages = raw.packages as JsonObject | undefined;
@@ -175,7 +175,7 @@ const SCHEMA_BEARING_PATHS = new Set<string>([MIGRATION_MANIFEST_PATH, DATABASE_
 /** A path subject to the frozen-schema or append-only-forward release rules: it carries the platform database or policy schema. */
 const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARING_PATHS.has(path) || path.startsWith("db/platform/migrations/") || path.startsWith("supabase/migrations/") || (path.startsWith("db/bootstrap/") && path.toLowerCase().endsWith(".sql"));
 /** Contract fields a descendant keeps from the previous release; the validator separately fixes `runtime`. */
-const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest.path", "databaseSchema", "policy.registryDigest", "repository", "release"] as const;
+const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest.path", "databaseSchema", "policy.registryDigest", "repository", "release.evidenceClass"] as const;
 const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
 /** Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently). */
 export function assertAdmittedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
