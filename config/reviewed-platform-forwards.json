@@ -8142,11 +8142,6 @@
       "sha256": "4bca45fd7baf03972eaf46a6c55eab6872cdffc3749cfdf987bab6fa0b1399c1",
       "functions": [
         {
-          "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
-          "beforeSha256": null,
-          "afterSha256": "67086fdd9d3f8f659859fed383f32610bdceb98f9ff2c2212c8a48dfcc476fab"
-        },
-        {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
           "beforeSha256": "687fdfb48ad2fa9400832407e0a12b5d59126df0ce06732e04e761ef6c450c8d",
           "afterSha256": "818d99ca6ca930955e5dc0cda238aa01dc0d9eeb5b9ad3d3e1225c8b8a741805"
@@ -8175,6 +8170,11 @@
           "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "ab9b88623f7f2c742ed70cc06a3664952bba444148404fa645b00d6b1f904837",
           "afterSha256": "9f5cc769b9b95b1c818f24b971bdb44a681f359f5d85debc38a57ae64d947ac6"
+        },
+        {
+          "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "67086fdd9d3f8f659859fed383f32610bdceb98f9ff2c2212c8a48dfcc476fab"
         }
       ]
     }
