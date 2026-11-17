@@ -162,6 +162,18 @@ resume, replay and owned-byte preservation all passed. This uses the migration
 now documented for 1.1.0; it does not replace the failed hosted 1.0.0 record or
 establish post-publication qualification of 1.1.0.
 
+The local 2026-11-17 1.0.0→1.1.0 published-to-candidate proof also passed
+through the same CLI pair harness and shared locked-input consumer checks.
+The 1.0.0 owned files matched the immutable source tag; its published package
+provenance was verified. The 1.1.0 target used verified local cold tarballs.
+Both baselines and the upgraded application passed application tests,
+typecheck, build and development-loop checks. The exact target lock moved
+unchanged; conflict refusal, interruption, incomplete-state refusal, resume,
+replay and owned customizations passed. The old store configuration imports
+remained in place, with the documented retention migration in
+`owned/renewal.config.ts`. This is local file/dependency evidence; 1.1.0 registry
+provenance and exact-set qualification remain post-publication obligations.
+
 For 0.40.0→0.41.0 the only changing managed file is the extracted
 `package.json` with exact package pins. The kill therefore interrupts the CLI
 after that replacement, and resume recognizes it as already applied; dependency
