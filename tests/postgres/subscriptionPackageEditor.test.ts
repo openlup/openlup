@@ -395,7 +395,7 @@ it("refuses full classic terms atomically and preserves a completed receipt unde
   const editor = createPostgresPackageEditor(opts), actor = { actorId: f.actor, clientId: f.client };
   const input = { subscriptionId: f.subscription, planDays: 180, base: [{ variantId: f.sku, qty: 6 }], addons: [{ variantId: f.addon, qty: 3 }] };
   await refuses(() => editor.preview(actor, input), "subscription_reprice_terms_not_admitted");
-  await refuses(() => editor.apply(actor, "refused-classic-terms", input), "subscription_reprice_terms_not_admitted");
+  await refuses(() => editor.apply(actor, "refused-classic-terms", input), "subscription_edit_quote_required");
   expect(seen[0]).toEqual({ subscriptionId: f.subscription, nominalPlanDays: 180, cadenceDays: 180,
     base: [{ variantId: f.sku, sku: f.sku, qty: 6 }], addons: [{ variantId: f.addon, sku: f.addon, qty: 3 }] });
   allowed = true; const preview = await editor.preview(actor, input), accepted = { ...input, acceptedQuoteHash: preview.quoteHash };

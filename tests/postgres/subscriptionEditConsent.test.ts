@@ -93,14 +93,14 @@ it.each(["package","line","sized"] as const)("edit_consent_unwrapped_actor_equal
   expect(await edit.invoke(f.actor,"same-actor-apply")).toEqual({ ...result,status: "replayed",originalStatus: "applied" });
   expect((await snapshot(f)).subscription_events).toEqual(accepted.subscription_events);
 });
-function editor(f: Fixture) {
+function editor(f: Fixture, unit: (sku: string) => number = () => 137, afterQuery?: (db: PoolClient,sql: string) => Promise<void>) {
   const options: PackageEditorOptions = { now: () => f.at,limits: { maximumPlanDays: 100,maximumBaseLines: 5,maximumAddonLines: 5,maximumQuantity: 100 },
-    withTransaction: async work => { const db = await pool.connect(); await db.query("BEGIN"); try { const value = await work(db); await db.query("COMMIT"); return value; }
+    withTransaction: async work => { const db = await pool.connect(); await db.query("BEGIN"); try { const value = await work({ query: async (sql,values) => { const result = await db.query(sql,values); await afterQuery?.(db,sql); return result; } }); await db.query("COMMIT"); return value; }
       catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); } },
     quoteCatalogReadPort: { listQuoteCatalogItems: async () => (await pool.query("SELECT id,sku FROM public.catalog_skus WHERE sellable_in_subscription")).rows.map(row => ({ variantId: String(row.id),skuCode: String(row.sku),sellability: { subscription: true } })) },
     portionModes: { full: { mode: "full",factor: 1 },reduced: { mode: "reduced",factor: 0.5 } },
     quotePort: { createServerAuthoritativeQuote: async request => {
-      const lines = request.lines.map(line => ({ sku: line.sku,quantity: line.quantity,unitPriceGross: money(137),lineSubtotalGross: money(137*line.quantity) }));
+      const lines = request.lines.map(line => ({ sku: line.sku,quantity: line.quantity,unitPriceGross: money(unit(line.sku)),lineSubtotalGross: money(unit(line.sku)*line.quantity) }));
       const total = money(lines.reduce((sum,line) => sum+line.lineSubtotalGross.amountMinor,0));
       return { quote: { lines,totalGross: total,subtotalGross: total,discountTotalGross: money(0) } };
     } },compositionRulesPort: { validateComposition: async () => ({ ok: true }),resizeComposition: async input => ({ coreLines: input.coreLines,constraint: input.lever.kind === "portionMode"
@@ -241,17 +241,17 @@ const recorderCases = [
   ["parity_LC9_01373_sql_code",{ action: "update_bundle" },null],
   ...["01366_sql_guard","01374_sql_code","01375_sql_raise"].map(id => [`parity_LC9_${id}`,{ action: "unsupported" },"subscription_command_unsupported_action"]),
   ...["01376_sql_guard","01377_sql_code","01378_sql_raise"].map(id => [`parity_LC9_${id}`,{ digest: "invalid" },"subscription_edit_quote_required"]),
-  ...["01379_sql_guard","01380_sql_code","01381_sql_raise"].map(id => [`parity_LC9_${id}`,{ version: 0 },"subscription_edit_stale_template"]),
+  ...["01379_sql_guard","01380_sql_code","01381_sql_raise"].map(id => [`parity_LC9_${id}`,{ version: null },"subscription_edit_stale_template"]),
   ...["01382_sql_guard","01383_sql_code","01384_sql_raise"].map(id => [`parity_LC9_${id}`,{ expired: true },"subscription_edit_quote_expired"]),
   ...["01385_sql_guard","01386_sql_code","01387_sql_raise"].map(id => [`parity_LC9_${id}`,{ client: null },"subscription_command_invalid_input"]),
   ...["01388_sql_guard","01389_sql_code","01390_sql_raise"].map(id => [`parity_LC9_${id}`,{ foreign: true },"subscription_command_forbidden"]),
   ...["01391_sql_guard","01392_sql_code","01393_sql_raise"].map(id => [`parity_LC9_${id}`,{ version: 2 },"subscription_edit_stale_template"]),
 ] as const;
 it.each(recorderCases)("%s",async (_name,patch,reason) => {
-  const f = await fixture(), p = patch as { action?: string; digest?: string; version?: number; expired?: boolean; client?: null; foreign?: boolean };
+  const f = await fixture(), p = patch as { action?: string; digest?: string; version?: number | null; expired?: boolean; client?: null; foreign?: boolean };
   const expiry = p.expired ? f.at : (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at",[f.at])).rows[0].at;
   const digest = p.digest ?? hash(randomUUID()), action = p.action ?? "update_bundle";
-  const args = [f.actor,p.foreign ? f.other : p.client === null ? null : f.client,f.subscription,action,digest,p.version ?? 1,expiry,{},{},{},f.at];
+  const args = [f.actor,p.foreign ? f.other : p.client === null ? null : f.client,f.subscription,action,digest,p.version === undefined ? 1 : p.version,expiry,{},{},{},f.at];
   const before = await snapshot(f);
   if (reason) { await expect(rpc(pool,"subscription_quote_preview_record",args)).rejects.toMatchObject({ message: reason,code: "22023" }); expect(await snapshot(f)).toEqual(before); }
   else expect(await rpc(pool,"subscription_quote_preview_record",args)).toMatchObject({ subscription_id: f.subscription,client_id: f.client,actor_id: f.actor,action,quote_hash: digest,template_version: 1,status: "previewed" });
@@ -370,4 +370,80 @@ it("edit_consent_actor_id_every_writer",async () => {
   expect(writers.map(row => row.proname)).toEqual(["subscription_quote_preview_record"]);
   expect(writers[0].prosrc).toContain("actor_id=EXCLUDED.actor_id");
   expect(writers[0].prosrc).toContain("VALUES(s.id,p_client_id,p_actor_id");
+});
+
+it("edit_consent_wrapped_fresh_noop_uses_shared_take",async () => {
+  for (const lane of ["classic","exact","sized"] as const) {
+    const f = await fixture(),actor = { actorId: f.actor,clientId: f.client };
+    if (lane === "sized") {
+      const initial = await laneCommand(f); await initial.invoke(f.actor,"noop-sized-opt-in");
+      const api = sizedEditor(f),input = { subscriptionId: f.subscription,expectedTemplateVersion: 2,action: "update_bundle" as const,
+        cadenceDays: 30,coreLines: [{ variantId: f.sku,qty: 2 }],compositionConstraint: { kind: "unit_count",value: 2,dailyNeed: 1 } };
+      const preview = await api.preview(actor,input),before = await snapshot(f);
+      await expect(api.apply({ ...actor,actorId: f.other },"noop-other-actor",{ ...input,acceptedQuoteHash: preview.quoteHash })).rejects.toMatchObject({ message: "subscription_edit_quote_actor_mismatch" });
+      expect(await snapshot(f)).toEqual(before); expect((await api.apply(actor,"noop-same-actor",{ ...input,acceptedQuoteHash: preview.quoteHash })).status).toBe("noop");
+    } else {
+      const api = editor(f),input = lane === "classic" ? { subscriptionId: f.subscription,planDays: 28,base: [{ variantId: f.sku,qty: 2 }] }
+        : { subscriptionId: f.subscription,action: "update_plan_length" as const,planDays: 28 };
+      const preview = await api.preview(actor,input),before = await snapshot(f);
+      await expect(api.apply({ ...actor,actorId: f.other },"noop-other-actor",{ ...input,acceptedQuoteHash: preview.quoteHash })).rejects.toMatchObject({ message: "subscription_edit_quote_actor_mismatch" });
+      expect(await snapshot(f)).toEqual(before); expect((await api.apply(actor,"noop-same-actor",{ ...input,acceptedQuoteHash: preview.quoteHash })).status).toBe("noop");
+    }
+  }
+});
+const laneCommand = (f: Fixture) => lane(f,"sized");
+it("edit_consent_unwrapped_acceptance_uses_shared_take",async () => {
+  for (const name of ["package","line","sized"] as const) {
+    const f = await fixture(),edit = await lane(f,name),before = await snapshot(f);
+    await expect(edit.invoke(f.other,"unwrapped-other-actor")).rejects.toMatchObject({ message: "subscription_edit_quote_actor_mismatch" });
+    expect(await snapshot(f)).toEqual(before); expect((await edit.invoke(f.actor,"unwrapped-same-actor")).status).toBe("applied");
+  }
+});
+it("edit_consent_competing_equal_total_edits",async () => {
+  const f = await fixture(),addon = await extraSku(f,true,true);
+  await pool.query("UPDATE public.subscription_lines SET unit_price_minor=200 WHERE subscription_id=$1 AND variant_id=$2",[f.subscription,addon]);
+  await pool.query("UPDATE public.subscription_renewal_term_lines SET unit_amount_minor=200 WHERE subscription_id=$1 AND sku=$2",[f.subscription,addon]);
+  const observer = await pool.connect(),key = BigInt(`0x${randomUUID().replaceAll("-","").slice(0,14)}`).toString();
+  await observer.query("SELECT pg_advisory_lock($1::bigint)",[key]);
+  const price = (sku: string) => sku === f.sku ? 150 : 100;
+  let armed = false,ep = 0,fp = 0;
+  const firstApi = editor(f,price,async (db,sql) => {
+    if (armed && sql.startsWith("SELECT s.template_version")) {
+      ep = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      await db.query("SELECT pg_advisory_lock($1::bigint)",[key]); await db.query("SELECT pg_advisory_unlock($1::bigint)",[key]);
+    }
+  });
+  const secondApi = editor(f,price,async db => { if (!fp) fp = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid; });
+  const actor = { actorId: f.actor,clientId: f.client },input = { subscriptionId: f.subscription,planDays: 30,expectedTemplateVersion: 1,base: [{ variantId: f.sku,qty: 2 }],addons: [{ variantId: addon,qty: 1 }] };
+  const preview = await firstApi.preview(actor,input),anchor = (await pool.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1",[f.subscription])).rows;
+  expect(preview.editConsent).toMatchObject({ agreedTotalMinor: 400,newTotalMinor: 400,subtotalDeltaMinor: 0 });
+  armed = true;
+  const accepted = { ...input,acceptedQuoteHash: preview.quoteHash };
+  const first = firstApi.apply(actor,"equal-total-first",accepted).then(value => ({ ok: true as const,value }),error => ({ ok: false as const,error }));
+  let second: ReturnType<typeof firstApi.apply> | undefined;
+  try {
+    await expect.poll(async () => ep > 0 && (await observer.query("SELECT cardinality(pg_blocking_pids($1))>0 AS blocked",[ep])).rows[0].blocked).toBe(true);
+    second = secondApi.apply(actor,"equal-total-second",accepted);
+    const rejected = second.then(value => ({ ok: true as const,value }),error => ({ ok: false as const,error }));
+    await expect.poll(async () => fp > 0 && (await observer.query("SELECT $2::integer=ANY(pg_blocking_pids($1)) AS blocked",[fp,ep])).rows[0].blocked).toBe(true);
+    await observer.query("SELECT pg_advisory_unlock($1::bigint)",[key]);
+    expect((await first).ok).toBe(true);
+    const other = await rejected; expect(other.ok).toBe(false); if (!other.ok) expect(other.error).toMatchObject({ message: "subscription_edit_quote_required" });
+    expect((await pool.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1",[f.subscription])).rows).toEqual(anchor);
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_command_receipts WHERE subscription_id=$1",[f.subscription])).rows[0].count).toBe(1);
+    const next = await editor(f,price).preview(actor,{ ...input,expectedTemplateVersion: 2 });
+    expect(next.editConsent?.innerQuoteHash).toBe(preview.editConsent?.innerQuoteHash);
+    expect(next.quoteHash).not.toBe(preview.quoteHash);
+  } finally { await observer.query("SELECT pg_advisory_unlock($1::bigint)",[key]); await Promise.allSettled([first,...(second ? [second] : [])]); observer.release(); }
+  // Isolate the fresh baseline hash check from the independent template-version fence.
+  const drift = await fixture(),side = await extraSku(drift,true,true),driftApi = editor(drift,sku => sku === drift.sku ? 150 : 100);
+  await pool.query("UPDATE public.subscription_lines SET unit_price_minor=200 WHERE subscription_id=$1 AND variant_id=$2",[drift.subscription,side]);
+  await pool.query("UPDATE public.subscription_renewal_term_lines SET unit_amount_minor=200 WHERE subscription_id=$1 AND sku=$2",[drift.subscription,side]);
+  const request = { subscriptionId: drift.subscription,expectedTemplateVersion: 1,planDays: 30,base: [{ variantId: drift.sku,qty: 2 }],addons: [{ variantId: side,qty: 1 }] };
+  const verified = { actorId: drift.actor,clientId: drift.client },stale = await driftApi.preview(verified,request);
+  await pool.query("UPDATE public.subscription_lines SET unit_price_minor=CASE WHEN variant_id=$2 THEN 150 ELSE 100 END WHERE subscription_id=$1",[drift.subscription,drift.sku]);
+  await pool.query("UPDATE public.subscription_renewal_term_lines SET unit_amount_minor=CASE WHEN sku=$2 THEN 150 ELSE 100 END WHERE subscription_id=$1",[drift.subscription,drift.sku]);
+  const before = await snapshot(drift);
+  await expect(driftApi.apply(verified,"equal-total-baseline-drift",{ ...request,acceptedQuoteHash: stale.quoteHash })).rejects.toMatchObject({ message: "subscription_reprice_quote_not_accepted" });
+  expect(await snapshot(drift)).toEqual(before);
 });

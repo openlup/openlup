@@ -386,7 +386,7 @@ it("refuses full-result admission without writes, rechecks after preview, and re
   const editor = createPostgresPackageEditor(opts), actor = { actorId: f.actor, clientId: f.client };
   const input: ExactSubscriptionEditRequest = { subscriptionId: f.subscription, action: "update_addon_quantity", variantId: f.addon, qty: 5 };
   await refuses(() => editor.preview(actor, input), "subscription_reprice_terms_not_admitted");
-  await refuses(() => editor.apply(actor, "refused-exact-terms", input), "subscription_reprice_terms_not_admitted");
+  await refuses(() => editor.apply(actor, "refused-exact-terms", input), "subscription_edit_quote_required");
   expect(seen[0]).toEqual({ subscriptionId: f.subscription, nominalPlanDays: 28, cadenceDays: 28,
     base: [{ variantId: f.sku, sku: f.sku, qty: 4 }], addons: [{ variantId: f.addon, sku: f.addon, qty: 5 }] });
   allowed = true; const preview = await editor.preview(actor, input), accepted = { ...input, acceptedQuoteHash: preview.quoteHash };

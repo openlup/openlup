@@ -513,7 +513,7 @@ it("admits the full frozen sized result before any ledger write, rechecks apply 
     coreLines: [{ variantId: f.a, qty: 4 }], cadenceDays: 30, compositionConstraint: { kind: "unit_count", value: 4, dailyNeed: 4 } };
   const before = await protectedState(f), quotes = f.quoted.length;
   await expect(editor.preview(actor(f), input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
-  await expect(editor.apply(actor(f), "refused-sized-terms", input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  await expect(editor.apply(actor(f), "refused-sized-terms", input)).rejects.toThrow("subscription_edit_quote_required");
   expect(await protectedState(f)).toEqual(before); expect(f.quoted).toHaveLength(quotes);
   expect(seen[0]).toEqual({ subscriptionId: f.subscription, nominalPlanDays: 30, cadenceDays: 30,
     base: [{ variantId: f.a, sku: f.a, qty: 4 }], addons: [{ variantId: f.addon, sku: f.addon, qty: 1 }] });

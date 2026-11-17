@@ -206,7 +206,7 @@ async function hook(signature: string, boundary: string, insertion: string, muta
 const packageSignature = "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)";
 const takeSignature = "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)";
 const subscriptionBoundary = "SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;";
-it("F6 subscription precedes its owned preview, with the old-order cycle control", async () => {
+async function consentTakeEditLockOrder() {
   const f = await fixture(packs[0]), command = await edit(f), observer = await pool.connect(), t = await session(), e = await session();
   const gateT = await gate(observer), tPid = await pid(t), ePid = await pid(e), hPid = await pid(observer);
   let restore = async () => {};
@@ -237,7 +237,9 @@ it("F6 subscription precedes its owned preview, with the old-order cycle control
     expect(results.filter(result => !result.ok)).toHaveLength(1);
     await t2.query("ROLLBACK"); await e2.query("ROLLBACK");
   } finally { await stop.release(); await restoreTake(); await restore(); await t2.query("ROLLBACK"); await e2.query("ROLLBACK"); t2.release(); e2.release(); h.release(); }
-});
+}
+it("F6 subscription precedes its owned preview, with the old-order cycle control", consentTakeEditLockOrder);
+it("edit_consent_take_edit_lock_order", consentTakeEditLockOrder);
 
 it("F6 reverse: preview-take refuses the old template after the edit commits", async () => {
   const f = await fixture(packs[2]), command = await edit(f), h = await pool.connect(), e = await session(), t = await session();
@@ -304,8 +306,7 @@ async function assertAgreement(f: Fixture, command: Awaited<ReturnType<typeof ed
   expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_events WHERE subscription_id=$1 AND event_type LIKE 'subscription.customer_self_service.%'", [f.subscription])).rows[0].count).toBe(1);
   if (lane !== "legacy") expect((await pool.query("SELECT status FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2", [f.actor,command.key])).rows).toEqual([{ status: "applied" }]);
 }
-describe.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settlement"].map(rail => ({ pack,lane,rail })))))("F1 $pack $lane $rail", ({ pack,lane,rail }) => {
- it("lock_matrix_races_native_payment_settlement", async () => {
+async function consentEditBeforePayment(pack: string, lane: Lane, rail: string) {
   const f = await fixture(pack), command = await edit(f,lane), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
   const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
   let restore = async () => {};
@@ -323,8 +324,11 @@ describe.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settleme
     expect((await pool.query("SELECT status,total_amount_minor FROM public.commerce_orders WHERE id=$1", [paid.order])).rows).toEqual([{ status: "paid",total_amount_minor: "617" }]);
     expect((await pool.query("SELECT count(*)::integer AS count FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [paid.intent])).rows[0].count).toBe(1);
   } finally { await stop.release(); await e.query("ROLLBACK"); await p.query("ROLLBACK"); await restore(); e.release(); p.release(); h.release(); }
+}
+describe.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settlement"].map(rail => ({ pack,lane,rail })))))("F1 $pack $lane $rail", ({ pack,lane,rail }) => {
+  it("lock_matrix_races_native_payment_settlement", () => consentEditBeforePayment(pack,lane,rail));
  });
-});
+
 it("F1 control: removing only the new prelocks makes the existing-row witness fail", async () => {
   const f = await fixture(packs[0]), command = await edit(f), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
   const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
@@ -341,7 +345,7 @@ it("F1 control: removing only the new prelocks makes the existing-row witness fa
     await stop.release(); expect((await editing).ok).toBe(true); await e.query("COMMIT"); expect((await paying).ok).toBe(true); await p.query("COMMIT");
   } finally { await stop.release(); await e.query("ROLLBACK"); await p.query("ROLLBACK"); await restoreGuard(); await restoreApply(); e.release(); p.release(); h.release(); }
 });
-it.each(["provider", "settlement"])("F2 payment owns the subscription before the edit acquires any catalogue guard: %s", async rail => {
+async function consentPaymentBeforeEdit(rail: string) {
   const f = await fixture(packs[1]), command = await edit(f), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
   const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
   let restore = async () => {};
@@ -354,6 +358,11 @@ it.each(["provider", "settlement"])("F2 payment owns the subscription before the
     f.anchor = (await pool.query("SELECT to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS anchor FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].anchor;
     const edited = await editing; if (!edited.ok) throw edited.error; await e.query("COMMIT"); await assertAgreement(f,command,"classic");
   } finally { await stop.release(); await p.query("ROLLBACK"); await e.query("ROLLBACK"); await restore(); e.release(); p.release(); h.release(); }
+}
+it.each(["provider", "settlement"])("F2 payment owns the subscription before the edit acquires any catalogue guard: %s", consentPaymentBeforeEdit);
+it("edit_consent_payment_edit_serialization_both_directions", async () => {
+  await consentEditBeforePayment(packs[0],"classic","provider");
+  await consentPaymentBeforeEdit("provider");
 });
 
 it("F2 control: a catalogue-first edit fails the lock-order witness", async () => {
@@ -452,7 +461,7 @@ async function assertBusy(result: unknown, before: Record<string, unknown>) {
   expect(result).toMatchObject({ outcome: "conflict",reason: "catalog_publication_busy" });
   expect(await snapshot()).toEqual(before);
 }
-it.each(packs.flatMap(pack => lanes.map(lane => ({ pack,lane }))))("F5 edit excludes publication with donor busy refusal, then publisher retry succeeds $pack $lane", async ({ pack,lane }) => {
+async function consentPublisherBusyThenRetry(pack: string, lane: Lane) {
   const f = await fixture(pack), command = await edit(f,lane), next = await changedDocument(f);
   const h = await pool.connect(), e = await session(), w = await pool.connect(), stop = await gate(h);
   const ep = await pid(e), hp = await pid(h); let restore = async () => {};
@@ -471,7 +480,11 @@ it.each(packs.flatMap(pack => lanes.map(lane => ({ pack,lane }))))("F5 edit excl
     const replayed = await command.invoke(e); await e.query("COMMIT");
     expect(lane === "legacy" ? replayed.subscriptionAction.status : replayed.status).toBe("replayed");
   } finally { await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); await restore(); e.release(); w.release(); h.release(); }
-});
+}
+it.each(packs.flatMap(pack => lanes.map(lane => ({ pack,lane }))))("F5 edit excludes publication with donor busy refusal, then publisher retry succeeds $pack $lane",
+  ({ pack,lane }) => consentPublisherBusyThenRetry(pack,lane));
+it("edit_consent_publisher_busy_then_retry", () => consentPublisherBusyThenRetry(packs[0],"classic"));
+
 it("F5 control: removing only the edit shared guard lets the publisher proceed", async () => {
   const f = await fixture(packs[0]), command = await edit(f), next = await changedDocument(f);
   const h = await pool.connect(), e = await session(), w = await pool.connect(), stop = await gate(h);

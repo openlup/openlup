@@ -21,7 +21,10 @@ function fixture() {
       if (sql.startsWith("SELECT r.*") && replayAction) return { rows: [{ matches: true, status: "applied", result: {
         status: "applied", action: replayAction, subscriptionId: id, subscriptionStatus: "active", nextCycleAt: "2026-12-01T00:00:00Z", templateVersion: 2, eventId: id } }] };
       if (sql.includes("subscription_quote_preview_record")) ledger = { quote_snapshot: values?.[7] };
-      if (sql.includes("subscription_quote_preview_take")) return { rows: [{ preview: ledger }] };
+      if (sql.includes("subscription_quote_preview_take")) {
+        if (!values?.[4]) throw new Error("subscription_edit_quote_required");
+        return { rows: [{ preview: ledger }] };
+      }
       if (sql.startsWith("SELECT id,template_version")) return { rows: [row] };
       if (sql.startsWith("SELECT s.template_version")) return { rows: [{ template_version: 1,template_currency: "XXX",agreement_currency: "XXX",
         accepted_lines: [{ lineId: id,variantId: id,sku: "REFILL",isAddon: false,quantity: 4,unitMinor: 100,currency: "XXX" }],
@@ -162,7 +165,7 @@ it.each(["classic", "exact"] as const)("refuses %s admission on preview and fres
     : { subscriptionId: id, action: "update_plan_length" as const, planDays: 21 };
   f.options.compositionRulesPort.resizeComposition = async value => ({ coreLines: value.coreLines, constraint: value.constraint });
   await expect(editor.preview(actor, input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
-  await expect(editor.apply(actor, "refused-admission", input)).rejects.toThrow("subscription_reprice_terms_not_admitted");
+  await expect(editor.apply(actor, "refused-admission", input)).rejects.toThrow("subscription_edit_quote_required");
   expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
   expect(f.calls.some(call => /subscription_(?:quote_preview_record|package_edit_apply|line_edit_apply)\(/u.test(call.sql))).toBe(false);
 });

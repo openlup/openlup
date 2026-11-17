@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { buildEditConsent, hashEditConsent, type EditConsentPricedLine } from "../../src/subscriptions/editConsent.js";
+import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, type EditConsentPricedLine } from "../../src/subscriptions/editConsent.js";
 import { readCompleteEditBaseline, type EditAgreementBaseline } from "../../src/subscriptions/editConsentBaseline.js";
 import { createClassicPackageRepricer, hashPackageEditQuote } from "../../src/subscriptions/classicPackageQuote.js";
 import { createExactSubscriptionRepricer } from "../../src/subscriptions/exactEditQuote.js";
@@ -129,4 +129,14 @@ it("edit_consent_dependency_failure_is_not_missing_baseline", async () => {
 it("edit_consent_graduation_is_not_current_baseline", async () => {
   const row = state(); Object.assign(row,{ graduationLines: [{ ...row.term_lines[0],unitMinor: 999 }] });
   expect((await read(row)).lines[0].unitMinor).toBe(100);
+});
+
+it("edit_consent_summary_currency_mismatch_refuses", () => {
+  for (const field of ["totalGross","subtotalGross","discountTotalGross"] as const) {
+    const quote = { totalGross: money(100),subtotalGross: money(100),discountTotalGross: money(0) };
+    quote[field].currency = "YYY";
+    expect(() => assertEditQuoteCurrency("XXX",quote)).toThrow("agreement_currency_mismatch");
+    quote[field].currency = "";
+    expect(() => assertEditQuoteCurrency("XXX",quote)).toThrow("agreement_currency_unavailable");
+  }
 });

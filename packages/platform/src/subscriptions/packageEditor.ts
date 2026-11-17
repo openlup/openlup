@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
+import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline } from "./editConsentBaseline.js";
 import { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
@@ -64,11 +64,15 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
     if (prior.status !== "applied" && prior.status !== "noop") throw new Error("subscription_command_idempotency_conflict");
     return resultSchema.parse({ ...subscriptionRecord(prior.result), status: "replayed", originalStatus: prior.status });
   }
-  const repricer = (db: SubscriptionQueryExecutor) => createClassicPackageRepricer({ ...options, readPort: createPostgresPackageEditReadPort(db) });
-  const exactRepricer = (db: SubscriptionQueryExecutor) => createExactSubscriptionRepricer({ ...options, readPort: createPostgresPackageEditReadPort(db) });
+  const repricer = (db: SubscriptionQueryExecutor, quotePort: PackageEditorOptions["quotePort"]) => createClassicPackageRepricer({ ...options, quotePort, readPort: createPostgresPackageEditReadPort(db) });
+  const exactRepricer = (db: SubscriptionQueryExecutor, quotePort: PackageEditorOptions["quotePort"]) => createExactSubscriptionRepricer({ ...options, quotePort, readPort: createPostgresPackageEditReadPort(db) });
   async function quoteFor(db: SubscriptionQueryExecutor, request: ReturnType<typeof parse>) {
     const baseline = await readCompleteEditBaseline(db, request.subscriptionId);
-    const quote = await ("action" in request ? exactRepricer(db).quote(request) : repricer(db).quote(request));
+    const quotePort: PackageEditorOptions["quotePort"] = { async createServerAuthoritativeQuote(input) {
+      const result = await options.quotePort.createServerAuthoritativeQuote(input);
+      assertEditQuoteCurrency(baseline.currency, result.quote); return result;
+    } };
+    const quote = await ("action" in request ? exactRepricer(db, quotePort).quote(request) : repricer(db, quotePort).quote(request));
     if (!quote) return null;
     const desired = "lines" in quote ? quote.lines : [...quote.baseLines.map(line => ({ ...line, isAddon: false })),
       ...quote.addonLines.map(line => ({ ...line, isAddon: true }))];
@@ -138,9 +142,9 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         const stored = await replay(db, actor, subscriptionId, idempotencyKey, raw, action);
         if (stored) return stored;
         const locked = (await db.query("SELECT id,template_version FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [subscriptionId, actor.clientId])).rows[0];
+        assertRequestLimits(request);
         await db.query("SELECT subscription_id FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [subscriptionId]);
         await takeEditConsent(db, actor, subscriptionId, action, request.acceptedQuoteHash, Number(locked?.template_version), idempotencyKey, options.now());
-        assertRequestLimits(request);
         const quote = await quoteFor(db, request);
         if (quote && request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const enriched = { ...raw, request: raw, ...(quote ? evidence(request, quote) : {}) };

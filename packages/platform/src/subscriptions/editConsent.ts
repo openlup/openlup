@@ -1,11 +1,18 @@
 import { createHash } from "node:crypto";
 import type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
-import type { PackageEditQuoteLine } from "./contracts/packageEdit.js";
+import type { PackageEditMoney, PackageEditQuoteLine } from "./contracts/packageEdit.js";
 import { safeMinor, exactMinor, type EditAgreementBaseline } from "./editConsentBaseline.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 
 export interface EditConsentPricedLine { variantId: string; qty: number; isAddon: boolean; quoteLine: PackageEditQuoteLine }
+/** Check summary currency before a lane's existing projection discards it. */
+export function assertEditQuoteCurrency(currency: string, quote: { totalGross: PackageEditMoney; subtotalGross: PackageEditMoney; discountTotalGross: PackageEditMoney }): void {
+  for (const money of [quote.totalGross,quote.subtotalGross,quote.discountTotalGross]) {
+    if (!money || typeof money.currency !== "string" || !/^[A-Z]{3}$/u.test(money.currency)) throw new Error("agreement_currency_unavailable");
+    if (money.currency !== currency) throw new Error("agreement_currency_mismatch");
+  }
+}
 /** The original lane digest remains byte-for-byte intact inside this fixed projection. */
 export function hashEditConsent(consent: SubscriptionEditConsent): string {
   return createHash("sha256").update(JSON.stringify([consent.version,consent.innerQuoteHash,consent.currency,consent.baselineFingerprint,
