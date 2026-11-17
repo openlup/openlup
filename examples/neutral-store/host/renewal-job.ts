@@ -2,8 +2,9 @@ import { findPackageJSON } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { createSubscriptionContribution } from '@openlup/platform/composition';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
-import { createNativeSubscriptionBinding } from '@openlup/platform/subscriptions';
+import { createNativeSubscriptionBinding, createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
 import { assertRenewalConfig, type RenewalConfig } from '../shared/renewal-config.ts';
+import { renewalPolicy, type RenewalPolicy } from '../owned/renewal-policy.ts';
 
 type NativeInput = Parameters<typeof createNativeSubscriptionBinding>[0];
 type Executor = NativeInput['executor'];
@@ -32,6 +33,8 @@ export function createRenewalJob(input: {
   withSession: WithSession;
   /** Refresh server method/authorization facts only after acquiring the population. */
   beforeRun(): Promise<void>;
+  /** Trusted application composition only; never selected through a request. */
+  afterRun?: RenewalPolicy;
 }) {
   assertRenewalConfig(input.config);
   const config = input.config;
@@ -59,6 +62,13 @@ export function createRenewalJob(input: {
           try {
             await input.beforeRun();
             value = await work();
+            await (input.afterRun ?? renewalPolicy)({ db, result: value, createCommands: createPostgresSubscriptionCommands,
+              async withTransaction(policyWork) {
+                await db.query('BEGIN');
+                try { const result = await policyWork(db); await db.query('COMMIT'); return result; }
+                catch (error) { await db.query('ROLLBACK'); throw error; }
+              },
+            });
           } catch (error) {
             await ledger.finishJobRun(jobName, claim.runId, invocation, 'failed', {
               checked: 0, updated: 0, failures: 1, skipped: false, reason: 'renewal_run_unavailable',

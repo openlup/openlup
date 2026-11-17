@@ -2546,6 +2546,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/renewal-policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/renewal.config.ts",
       "class": "public-output"
     },
@@ -2755,6 +2759,10 @@
     },
     {
       "path": "examples/neutral-store/test/recovery-entry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/renewal-policy.test.ts",
       "class": "public-output"
     },
     {
@@ -30243,6 +30251,10 @@
     },
     {
       "path": "tests/postgres/neutralStoreRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/neutralStoreRenewalPolicy.test.ts",
       "class": "public-output"
     },
     {

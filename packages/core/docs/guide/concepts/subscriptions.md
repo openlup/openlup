@@ -189,9 +189,21 @@ unpaid artifacts. Let a refusal or exception escape the transaction callback so
 the entire policy transaction rolls back, including any policy bookkeeping;
 catch and report it only after rollback. Do not report a refused pause as success.
 Test exhaustion, replay, concurrent recovery and refusal rollback in your host.
-This recipe installs no automatic pause or scheduled job. In the starter, renewal
-composition is currently managed source; changing it requires the
-[source-copy ownership process](../how-to/build/customize-the-starter.md#change-a-page-or-add-a-route).
+This recipe installs no automatic pause or scheduled job. In the current starter
+source candidate, put this composition in `owned/renewal-policy.ts`; the default
+is a no-op. The managed host invokes it after native renewal work, while holding
+the population advisory lock and job-ledger claim, before finishing the run.
+It supplies the trusted database session, native result, public command factory
+and a lazy transaction callback on that session. The population lease excludes
+other renewal passes; it does not exclude customer recovery. Lock and recheck
+inside the transaction as described above. Bind commands to that callback's
+connection without starting or committing an independent transaction.
+
+A hook exception fails the job run; previously committed native renewal work is
+retained. Make each policy decision replayable with its own durable command key.
+The released 0.43.0 starter retains its original managed composition; select a
+candidate containing the hook. See [compose post-renewal policy](../how-to/build/customize-the-starter.md#compose-post-renewal-policy)
+for the owned file and verification routes.
 
 ## Durable retry timing
 

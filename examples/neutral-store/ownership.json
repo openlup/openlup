@@ -24,7 +24,8 @@
     "owned/acquisition-policy.ts",
     "owned/quote.config.ts",
     "owned/quote-copy.ts",
-    "owned/quote-shipping.ts"
+    "owned/quote-shipping.ts",
+    "owned/renewal-policy.ts"
   ],
   "managed": [
     "host/account-renewal.ts",
@@ -35,6 +36,7 @@
     "host/scheduled-renewal.ts",
     "shared/renewal-config.ts",
     "test/renewal.test.ts",
+    "test/renewal-policy.test.ts",
     "test/notice-artifact.test.ts",
     ".dockerignore",
     ".gitignore",
