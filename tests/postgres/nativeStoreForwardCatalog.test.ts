@@ -94,6 +94,16 @@ const checkValues = (def: string, column: string) => {
   const shape = new RegExp(`^CHECK \\(\\(${column} = ANY \\(ARRAY\\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\\]\\)\\)\\)$`, "u");
   const match = shape.exec(def); return match ? quotedValues(match[1]!) : null;
 };
+// PostgreSQL deparses BETWEEN into these two comparisons. Negative int4
+// constants are emitted as quoted literals with an explicit integer cast.
+const checkRange = (def: string, column: string) => {
+  const literal = "([0-9]+|'-[0-9]+'::integer)";
+  const match = new RegExp(`^CHECK \\(\\(\\(${column} >= ${literal}\\) AND \\(${column} <= ${literal}\\)\\)\\)$`, "u").exec(def);
+  if (!match) return null;
+  const bounds = [match[1]!, match[2]!].map(value => Number(value.replace(/'|::integer/gu, "")));
+  return bounds.every(value => Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) && bounds[0]! <= bounds[1]!
+    ? { lower: bounds[0]!, upper: bounds[1]! } : null;
+};
 const PURPOSE_SHAPE = /^CHECK \(\(purpose = ANY \(ARRAY\[((?:'(?:[^']|'')*'::text)(?:, '(?:[^']|'')*'::text)*)\]\)\)\)$/u;
 const purposeValues = (def: string) => { const match = PURPOSE_SHAPE.exec(def); return match ? quotedValues(match[1]!) : null; };
 const uniqueDefinition = (def: string) => {
@@ -248,6 +258,17 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     const old = before.constraints.find(old => old.rel === entry.table && old.name === entry.constraint);
     const current = after.constraints.find(row => row.rel === entry.table && row.name === entry.constraint);
     if (old && current && old.validated !== current.validated) fail(`CHECK changed its validation state: ${entry.table}.${entry.constraint}`);
+    if ("range" in entry) {
+      if (!old || sqlSha256(old.def) !== entry.beforeSha256) fail(`range CHECK preimage mismatch: ${entry.table}.${entry.constraint}`);
+      const column = before.columns.find(row => row.rel === entry.table && row.name === entry.column);
+      if (column?.attrs.atttypid !== "23" || !before.relations.some(row => row.name === entry.table && row.kind === "r")) fail("range CHECK requires an existing integer column on an ordinary table");
+      const range = (row: Snapshot["constraints"][number] | undefined) => row ? checkRange(row.validated ? row.def : row.def.replace(/ NOT VALID$/u, ""), entry.column) : null;
+      const oldRange = range(old), newRange = range(current);
+      if (!oldRange || !newRange || newRange.lower !== entry.range.lower || newRange.upper !== entry.range.upper
+        || newRange.lower > oldRange.lower || newRange.upper < oldRange.upper
+        || (newRange.lower === oldRange.lower && newRange.upper === oldRange.upper)) fail(`range CHECK changed beyond its listed strict widening: ${current?.def}`);
+      continue;
+    }
     const values = (row: Snapshot["constraints"][number] | undefined) => row ? checkValues(row.validated ? row.def : row.def.replace(/ NOT VALID$/u, ""), entry.column) : null;
     const oldValues = values(old), newValues = values(current);
     if (!oldValues || !newValues || oldValues.some(value => !newValues.includes(value)) || sorted(entry.values) !== sorted(newValues)) fail(`CHECK changed beyond its listed widening: ${current?.def}`);
@@ -582,6 +603,12 @@ const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
 const PARAMETER_CHECKS = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed','paused')); ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_kind; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_kind CHECK (kind IN ('first','second','third'));";
 const UNVALIDATED_PARAMETER_SETUP = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_status; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_status CHECK (status IN ('open','closed')) NOT VALID;";
 const UNVALIDATED_PARAMETER_CHECKS = PARAMETER_CHECKS.replace("('open','closed','paused'));", "('open','closed','paused')) NOT VALID;");
+const RANGE_DEFINITION = "CHECK (((days >= 1) AND (days <= 90)))";
+const RANGE_SETUP = "CREATE TABLE public.cat_range (days integer, other_days integer, CONSTRAINT cat_days CHECK (days BETWEEN 1 AND 90)); GRANT SELECT(days) ON public.cat_range TO authenticated;";
+const rangeReplacement = (expression = "days BETWEEN 1 AND 3660", tail = "") => `ALTER TABLE public.cat_range DROP CONSTRAINT cat_days;
+ALTER TABLE public.cat_range ADD CONSTRAINT cat_days CHECK (${expression})${tail};`;
+const rangeSlot = (lower = 1, upper = 3660, preimage = RANGE_DEFINITION): CatalogSlot => ({ createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [],
+  checkSupersets: [{ table: "public.cat_range", constraint: "cat_days", column: "days", range: { lower, upper }, beforeSha256: sqlSha256(preimage) }] });
 const UNIQUE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, uniqueSupersets: [{ table: "public.cat_parameters", constraint: "cat_key", columns: ["id", "extra"], nullsNotDistinct: true }] };
 const UNIQUE_SQL = "ALTER TABLE public.cat_parameters DROP CONSTRAINT cat_key; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_key UNIQUE NULLS NOT DISTINCT (id,extra);";
 const DROP_INDEX_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: "public.cat_parameters", name: "cat_active_idx", beforeSha256: sqlSha256("CREATE UNIQUE INDEX cat_active_idx ON public.cat_parameters (id) WHERE id IS NOT NULL;") }] };
@@ -822,6 +849,70 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
   it("admits multiple named CHECK widenings after unrelated additive DDL", async () => {
     await checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, "ALTER TABLE public.cat_parameters ADD COLUMN unrelated uuid; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_unrelated CHECK (unrelated IS NULL) NOT VALID;");
+  });
+  it.each(["days BETWEEN 1 AND 3660", "days >= 1 AND days <= 3660"])("proves a strict integer range superset and its installed catalog: %s", async expression => {
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query(RANGE_SETUP + "INSERT INTO public.cat_range(days) VALUES (1), (90)");
+      const before = await pinned(db, () => snapshot(db));
+      expect(before.constraints.find(row => row.rel === "public.cat_range")?.def).toBe(RANGE_DEFINITION);
+      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      await db.query(rangeReplacement(expression));
+      const after = await pinned(db, () => snapshot(db));
+      await pinned(db, () => assertSlotCatalog(db, rangeSlot(), before, after, migrationRole));
+      expect(after.constraints.find(row => row.rel === "public.cat_range")).toMatchObject({ name: "cat_days", validated: true, def: "CHECK (((days >= 1) AND (days <= 3660)))" });
+      expect(after.relations.find(row => row.name === "public.cat_range")).toEqual(before.relations.find(row => row.name === "public.cat_range"));
+      await db.query("INSERT INTO public.cat_range(days) VALUES (91), (3660), (NULL)");
+      for (const days of [0, 3661]) {
+        await db.query("SAVEPOINT denied");
+        await expect(db.query("INSERT INTO public.cat_range(days) VALUES ($1)", [days])).rejects.toMatchObject({ code: "23514", constraint: "cat_days" });
+        await db.query("ROLLBACK TO SAVEPOINT denied");
+      }
+      expect((await db.query("SELECT days FROM public.cat_range ORDER BY days NULLS LAST")).rows.map(row => row.days)).toEqual([1, 90, 91, 3660, null]);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each([[0, 90], [1, 91], [-2147483648, 2147483647]])("admits widening either endpoint to %i..%i", async (lower, upper) => {
+    await checkForward(pool, rangeSlot(lower, upper), rangeReplacement(`days BETWEEN ${lower} AND ${upper}`), false, RANGE_SETUP);
+  });
+  it("compares a signed installed preimage", async () => {
+    await checkForward(pool, rangeSlot(-2, 91, "CHECK (((days >= '-1'::integer) AND (days <= 90)))"), rangeReplacement("days >= -2 AND days <= 91"), false, RANGE_SETUP.replace("BETWEEN 1", "BETWEEN -1"));
+  });
+  it("preserves NOT VALID and historical rows outside the widened range", async () => {
+    const setup = "CREATE TABLE public.cat_range(days integer, other_days integer); INSERT INTO public.cat_range(days) VALUES (4000); ALTER TABLE public.cat_range ADD CONSTRAINT cat_days CHECK (days BETWEEN 1 AND 90) NOT VALID;";
+    await checkForward(pool, rangeSlot(1, 3660, RANGE_DEFINITION + " NOT VALID"), rangeReplacement(undefined, " NOT VALID"), false, setup);
+  });
+  it.each([[2, 3660], [1, 89], [0, 89], [2, 4000], [1, 90]])("refuses a declared range that is not a strict superset: %i..%i", async (lower, upper) => {
+    await expect(checkForward(pool, rangeSlot(lower, upper), rangeReplacement(`days BETWEEN ${lower} AND ${upper}`), false, RANGE_SETUP)).rejects.toThrow(/strict widening/u);
+  });
+  it.each([false, true])("refuses range validation state changes from %s", async validated => {
+    const setup = validated ? RANGE_SETUP : RANGE_SETUP + "ALTER TABLE public.cat_range DROP CONSTRAINT cat_days; ALTER TABLE public.cat_range ADD CONSTRAINT cat_days CHECK (days BETWEEN 1 AND 90) NOT VALID;";
+    await expect(checkForward(pool, rangeSlot(1, 3660, RANGE_DEFINITION + (validated ? "" : " NOT VALID")), rangeReplacement(undefined, validated ? " NOT VALID" : ""), false, setup)).rejects.toThrow(/validation state/u);
+  });
+  it.each([
+    "days BETWEEN 1 AND 3661", "other_days BETWEEN 1 AND 3660", "days BETWEEN 1.5 AND 3660",
+    "days BETWEEN 1 AND 3660 OR true", "days BETWEEN 1 AND 3660 AND other_days > 0",
+  ])("refuses installed range drift: %s", async expression => {
+    await expect(checkForward(pool, rangeSlot(), rangeReplacement(expression), false, RANGE_SETUP)).rejects.toThrow(/strict widening/u);
+  });
+  it("refuses a missing or mismatched installed preimage", async () => {
+    await expect(checkForward(pool, rangeSlot(), rangeReplacement(), false, RANGE_SETUP.replace("AND 90", "AND 89"))).rejects.toThrow(/preimage mismatch/u);
+    await expect(checkForward(pool, rangeSlot(), rangeReplacement().split("\n")[1]!, false, "CREATE TABLE public.cat_range(days integer, other_days integer)")).rejects.toThrow(/preimage mismatch/u);
+  });
+  it.each(["numeric", "bigint", "text"])("refuses a non-int4 column: %s", async type => {
+    const setup = RANGE_SETUP.replaceAll("integer", type).replace("days BETWEEN 1 AND 90", "days BETWEEN '1' AND '90'");
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN"); await db.query(setup);
+      const before = await pinned(db, () => snapshot(db));
+      const def = before.constraints.find(row => row.rel === "public.cat_range")!.def;
+      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      await db.query(rangeReplacement("days BETWEEN '1' AND '3660'"));
+      await expect(pinned(db, async () => assertSlotCatalog(db, rangeSlot(1, 3660, def), before, await snapshot(db), migrationRole))).rejects.toThrow(/existing integer column/u);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each(["ALTER TABLE public.cat_range OWNER TO authenticated;", "GRANT SELECT ON public.cat_range TO PUBLIC;", "GRANT UPDATE(days) ON public.cat_range TO authenticated;"])("preserves range table owner and ACLs: %s", async mutation => {
+    await expect(checkForward(pool, rangeSlot(), rangeReplacement() + mutation, false, RANGE_SETUP)).rejects.toThrow(/catalog:/u);
   });
   it("preserves an unvalidated CHECK while widening without rechecking historical rows", async () => {
     const setup = UNVALIDATED_PARAMETER_SETUP.replace("ALTER TABLE public.cat_parameters ADD", "INSERT INTO public.cat_parameters(status) VALUES ('historical'); ALTER TABLE public.cat_parameters ADD");
