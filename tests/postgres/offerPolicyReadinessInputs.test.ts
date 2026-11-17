@@ -446,7 +446,12 @@ it("hard_input_failure_is_independent_of_unchanged_ordinary_readiness_reasons", 
   await refusal(rpc(db, "catalog_price_setup_readiness_inputs"), "catalog_price_setup_native_order_admission_unverified");
 }));
 it("missing_retained_agreement_evidence_never_borrows_another_subscriber_proof", async () => {
-  await refusal(rpc(populated, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_agreement_domain_unverified");
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await acceptGenuineEdit(db);
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_agreement_domain_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
 const nativeColumns = [
