@@ -3183,9 +3183,11 @@ const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope,
 The local policy supplies an ISO country/default and aliases, calling prefix,
 tax normalization/validation and messages. The request mechanism retains fixed
 limits on field lengths and idempotency identifiers, trimming and whitespace
-collapse, local nine-digit phone normalization,
-local five-digit postal formatting, foreign-format behavior and shipping-only
-company/tax omission. Neutral demo values can use `ZZ` and calling prefix `99`.
+collapse, foreign-format behavior and shipping-only company/tax omission. When
+the policy omits the optional effect-free `local` callbacks, it also applies the
+default local nine-digit phone normalization and five-digit postal formatting;
+supply `local` (`normalizePostalCode`, `isValidPostalCode`, `normalizePhone`) to
+replace them for the local country only. Neutral demo values can use `ZZ` and calling prefix `99`.
 Bind `requests` and the host response validator into the existing customer address
 handler schemas and recognize
 `CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.
