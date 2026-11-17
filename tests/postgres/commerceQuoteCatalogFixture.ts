@@ -23,7 +23,7 @@ config.quote.document.revisionNo = 1;
 config.offer.products = Array.from({ length: 501 }, (_, index) => ({
   ...config.offer.products[0]!, sku: `QUOTE-${String(index).padStart(4, "0")}`,
   slug: `row-${index}`, title: `Fixture ${index}`, name: { en: `Fixture ${index}`, pl: `Fixture ${index}` },
-  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture-seed", unitGtin: gtin(index) },
+  physical: { ...config.offer.products[0]!.physical, netWeightG: index + 1, issuer: "fixture", unitGtin: gtin(index) },
   permittedPurchaseModes: index % 3 === 0 ? ["one_time"] : index % 3 === 1 ? ["subscription"] : ["one_time", "subscription"],
 }));
 config.purchase.stock.quantities = Object.fromEntries(config.offer.products.map(product => [product.sku, 1]));
@@ -147,9 +147,6 @@ export async function createQuoteCatalogFixture() {
       await owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [product.id, seed.skus[index]!.id]);
       await setFixtureCatalogDocument(owner, product.id, revision);
       await owner.query("UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1", [seed.skus[index]!.id, index + 1]);
-      await owner.query("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1", [seed.skus[index]!.id]);
-      await owner.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)
-        VALUES($1,'fixture','gtin',$2,'unit',1,true)`, [seed.skus[index]!.id, gtin(index)]);
     }
     const runtimeUrl = new URL(container.connectionString);
     runtimeUrl.username = "quote_catalog_runtime"; runtimeUrl.password = "synthetic-quote";

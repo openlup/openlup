@@ -1,4 +1,3 @@
-import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 /** Installed engine and seed witness; subscription admission/activation retain their explicit predecessors. */
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -344,10 +343,11 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
           damaged.revisionNo++;
           const digest = (await import('./application/host/editor-catalogue.ts')).documentDigest(damaged);
           const next = (await owner.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest) VALUES($1,$2,$3,'fixture:missing-variant',$4,'{}',$5,$6) RETURNING id",[line.product_id,damaged.revisionNo,damaged.schemaVersion,damaged,damaged.sourceRef,digest])).rows[0].id;
+          const moveDocument = async revision => owner.query("WITH cap AS (INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint) SELECT pg_current_xact_id(),id,$2::uuid,$3 FROM public.catalog_products WHERE id=$1 AND current_document_revision_id IS DISTINCT FROM $2::uuid RETURNING product_id) UPDATE public.catalog_products p SET current_document_revision_id=$2::uuid FROM cap WHERE p.id=cap.product_id", [line.product_id,revision,'f'.repeat(64)]);
           try {
-            await setFixtureCatalogDocument(owner, line.product_id, next);
+            await moveDocument(next);
             await assert.rejects(quotes.quote(largeInput,context),e=>e instanceof (awaitedPricing.CommerceQuoteCatalogReadError) && e.code==='catalog_document_schema_invalid');
-          } finally {await setFixtureCatalogDocument(owner, line.product_id, line.current_document_revision_id);}
+          } finally {await moveDocument(line.current_document_revision_id);}
         }
       } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();}
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
