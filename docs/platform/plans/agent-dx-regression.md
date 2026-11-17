@@ -30,8 +30,12 @@ Before starting, record the following in that rerun directory:
   and invocation, tool permissions, sandbox/network policy and task budget.
   Keep these constant within each model's pair. The original models were
   Sonnet 5.5 through Claude subagents and Codex `gpt-6.1-sol`, high effort,
-  standard tier with JSON events. Record unavailable historical settings as
-  unknown; do not silently substitute a model or claim equivalence.
+  standard tier with JSON events. From 2026-11-17 the Sonnet role is taken by
+  Codex `gpt-6.1-terra` under the same Codex harness; its units are not the
+  Sonnet units, so it needs its own paired baseline on the historical checkout
+  and keeps the historical Sonnet rows as reference only. Record unavailable
+  historical settings as unknown; do not silently substitute a model or claim
+  equivalence.
 - OS, hardware, Node/npm, Docker, database/browser images, dependency/cache state
   and environment configuration. Keep them constant within the pair. Use the
   selected profile's supplied fixtures and no live provider access.
@@ -49,8 +53,9 @@ for each attempt; retain failed or interrupted attempts and interventions.
 
 ## Run and assess the four tasks
 
-After a change, rerun the affected tasks with Sonnet. Before closing the agent-DX
-set, run the full matrix: t1–t4 with both models, eight cells. This is a manual
+After a change, rerun the affected tasks with the lighter model
+(`gpt-6.1-terra`). Before closing the agent-DX set, run the full matrix: t1–t4
+with both models, eight cells. This is a manual
 pre-release regression exercise; execution needs its own task authority.
 
 The descriptions below are neutral summaries. Keep the original briefs unchanged
