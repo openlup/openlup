@@ -270,8 +270,10 @@ Verify your selected catalogue or applied prefix with the
 
 Adopters can configure timing and budget for fresh native failure recording,
 but cannot configure the provider-result ladder through today's public
-composition. Full ladder configurability is tracked separately. Neither a
-custom cadence nor receipt replay removes the `hard_do_not_retry` stop. Browser
+composition. The current source starter requires exactly three configured retry
+rungs at startup (`starter_database_retry_budget`), matching the database's
+attempt-four exhaustion guards. Full ladder configurability is tracked separately.
+Neither a custom cadence nor receipt replay removes the `hard_do_not_retry` stop. Browser
 request data cannot configure timing. Managed dunning, recovery and due-list
 guards retain their fixed exhaustion threshold; custom core timing does not
 alter them. Evaluate pause exhaustion against the ladder that actually recorded

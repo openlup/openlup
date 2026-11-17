@@ -266,6 +266,9 @@ sends the configured Host; any external health probe must also send that Host.
 
 `owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts` own typed
 configuration, localized general copy and the named presentation fragments.
+Domain inputs include `owned/renewal.config.ts` (cancellation offers and retry
+timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
+[the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
 `./lifecycle verify` and `./lifecycle upgrade` delegate to the installed public
 CLI when it exists. They refuse explicitly before that capability is shipped.

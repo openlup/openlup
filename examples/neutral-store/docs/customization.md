@@ -11,6 +11,9 @@ Status: maintainer implementation notes. Reader guidance: [OpenLup guide](https:
 `shared/config.ts`. The host and lifecycle share that registry. The managed
 `assertConfig` validator admits lowercase alphanumeric IDs with single hyphens,
 at most 80 characters, and checks required document, return and hold settings.
+Domain inputs include `owned/renewal.config.ts` (cancellation offers and retry
+timing) and `owned/quote.config.ts`. Follow the reader guide's
+[business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
 `owned/fragments.ts` exports `fragments` with `offerIntro`, `productCard` and
 `checkoutSummary` methods and their `CustomizationFragments` interface. Each
@@ -30,7 +33,7 @@ remain separate restart/build operations.
 
 For the current source candidate, `subscriptionOffers` in `owned/store.config.ts`
 is the commercial input for checkout and classic/sized servicing. The typed
-`shared/subscription-offer.ts` helper accepts `set(...)` and `range(min,max,step)`;
+`shared/policy.ts` helper accepts `set(...)` and `range(min,max,step)`;
 ranges use `(value-min)%step === 0`. Global cadence and explicit per-SKU rules
 both apply. Missing SKU/rule refuses, and overlapping cadence rules or a default
 outside its domain refuse configuration. List concrete variants explicitly;
