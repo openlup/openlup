@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { env as processEnvironment } from "node:process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -293,13 +293,15 @@ function writeConsumerSmoke(consumerDir: string, packageJson: CorePackageJson): 
   writeConsumerTsConfig(consumerDir, "tsconfig.bundler.json", "ESNext", "Bundler");
 }
 
-function assertInstalledContextMcp(executable: string, consumerDir: string, version: string): void {
+function assertInstalledContextMcp(executable: string, consumerDir: string, version: string, installedCoreRoot = join(consumerDir, "node_modules/@openlup/core")): void {
+  const prefix = relative(consumerDir, installedCoreRoot).split(sep).join("/");
+  const seam = `${prefix}/docs/guide/how-to/extend/choose-an-extension-seam.md`;
   const messages = [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "packed-consumer", version: "1" } } },
     { jsonrpc: "2.0", method: "notifications/initialized" },
     { jsonrpc: "2.0", id: 2, method: "tools/list" },
     { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "search_openlup_context", arguments: { task: "extension seam" } } },
-    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: "node_modules/@openlup/core/docs/guide/README.md", startLine: 1, endLine: 3 } } },
+    { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: `${prefix}/docs/guide/README.md`, startLine: 1, endLine: 3 } } },
   ];
   const stdout = execFileSync(executable, ["mcp"], {
     cwd: consumerDir, encoding: "utf8", env: consumerEnvironment(), timeout: 10_000,
@@ -313,10 +315,69 @@ function assertInstalledContextMcp(executable: string, consumerDir: string, vers
   assert(JSON.stringify(replies[0].result.capabilities) === '{"tools":{}}', "installed MCP capabilities differ");
   assert(replies[1].result.tools.map((tool: { name: string }) => tool.name).join(",") === "search_openlup_context,read_openlup_file", "installed MCP tools differ");
   const search = replies[2].result;
-  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { file: string }) => hit.file === "node_modules/@openlup/core/docs/guide/how-to/extend/choose-an-extension-seam.md"), "installed MCP search did not return the relative installed guide page");
-  assert(search.content[0].text.includes("node_modules/@openlup/core/"), "installed MCP search did not format citations");
+  assert(search.structuredContent.version === version && search.structuredContent.hits.some((hit: { file: string }) => hit.file === seam), "installed MCP search did not return the relative installed guide page");
+  assert(search.content[0].text.includes(`${prefix}/`), "installed MCP search did not format citations");
   assert(replies[3].result.content[0].text.includes("1: # OpenLup guide"), "installed MCP file range did not contain numbered installed lines");
+  const hit = search.structuredContent.hits.find((item: { file: string }) => item.file === seam);
+  assert(hit && typeof hit.title === "string" && Number.isInteger(hit.start) && Number.isInteger(hit.end), "installed MCP guide span is missing");
+  const readMessages = [messages[0], messages[1], {
+    jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "read_openlup_file", arguments: { path: hit.file, startLine: hit.start, endLine: hit.end } },
+  }];
+  const readOutput = execFileSync(executable, ["mcp"], {
+    cwd: consumerDir, encoding: "utf8", env: consumerEnvironment(), timeout: 10_000,
+    input: readMessages.map(message => JSON.stringify(message)).join("\n") + "\n",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const readReplies = readOutput.trim().split("\n").map(line => JSON.parse(line));
+  assert(JSON.stringify(readReplies.map(reply => reply.id)) === "[1,5]" && readReplies.every(reply => !reply.error && !reply.result.isError), "installed MCP returned-path read failed");
+  assert(readReplies[1].result.content[0].text.includes(`${hit.start}:`) && readReplies[1].result.content[0].text.includes(hit.title), "installed MCP returned path did not read its cited heading");
   console.log("core installed context MCP smoke ok (initialize, tools/list, search, read, EOF)");
+}
+
+function assertHoistedContext(consumerDir: string, tarballPath: string, packageJson: CorePackageJson, cacheDir: string): void {
+  const app = join(consumerDir, "apps/shop"), neighbor = join(consumerDir, "apps/neighbor");
+  for (const directory of [app, neighbor]) mkdirSync(join(directory, "src"), { recursive: true });
+  writeFileSync(join(app, "package.json"), JSON.stringify({ name: "context-workspace-shop", version: "0.0.0", private: true, type: "module", dependencies: { [packageJson.name]: pathToFileURL(tarballPath).href } }));
+  writeFileSync(join(neighbor, "package.json"), JSON.stringify({ name: "context-workspace-neighbor", version: "0.0.0", private: true }));
+  for (const directory of [app, neighbor]) writeFileSync(join(directory, "src/context-probe.ts"), "export const workspaceContextWitness = true;\n");
+  const rootMetadata = JSON.parse(readFileSync(join(consumerDir, "package.json"), "utf8"));
+  writeFileSync(join(consumerDir, "package.json"), JSON.stringify({ ...rootMetadata, workspaces: ["apps/*"] }));
+  run("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--fund=false", "--package-lock=true", "--registry=http://127.0.0.1:9", "--cache", cacheDir], consumerDir);
+  assertInstalled(consumerDir, [packageJson.name, "zod"]);
+  assert(!existsSync(join(app, "node_modules", packageJson.name)), "workspace proof requires hoisted Core");
+  assert(!existsSync(join(app, "node_modules/.bin/openlup-context")), "workspace proof must use the installed-manifest executable recipe");
+  const appRoot = realpathSync(app), coreRoot = realpathSync(join(consumerDir, "node_modules", packageJson.name));
+  const probe = JSON.parse(run(process.execPath, ["--input-type=module", "-e", [
+    'import { findPackageJSON } from "node:module";',
+    'import { readFileSync } from "node:fs";',
+    'import { dirname, resolve } from "node:path";',
+    'import { fileURLToPath } from "node:url";',
+    `const manifest = findPackageJSON(${JSON.stringify(packageJson.name)}, process.cwd() + "/package.json");`,
+    'const metadata = JSON.parse(readFileSync(manifest, "utf8"));',
+    'const bin = metadata.bin["openlup-context"];',
+    'const { nextRetryAttemptAt } = await import("@openlup/core/subscription");',
+    'if (typeof nextRetryAttemptAt !== "function") throw Error("public Core import failed");',
+    'console.log(JSON.stringify({ manifest, executable: resolve(dirname(manifest), bin), version: metadata.version, imported: fileURLToPath(import.meta.resolve("@openlup/core/subscription")) }));',
+  ].join("\n")], appRoot));
+  assert(probe.manifest === join(coreRoot, "package.json") && probe.version === packageJson.version, "public import and metadata selected a different Core installation");
+  assert(probe.imported.startsWith(`${coreRoot}${sep}`) && probe.executable === join(coreRoot, "src/openlup-context.js"), "workspace import/executable escaped the installed artifact");
+  const context = JSON.parse(run(process.execPath, [probe.executable, "search", "extension seam", "--json"], appRoot));
+  assert(context.version === probe.version && JSON.stringify(context.packages) === JSON.stringify([packageJson.name]), "workspace CLI selected a different contract/version");
+  assert(context.hits.some((hit: { file: string }) => hit.file === join(coreRoot, "docs/guide/how-to/extend/choose-an-extension-seam.md")), "workspace CLI did not cite its installed guide");
+  assertInstalledContextMcp(probe.executable, appRoot, packageJson.version, coreRoot);
+  const source = JSON.parse(run(process.execPath, [probe.executable, "search", "workspaceContextWitness", "--code", "--json"], appRoot));
+  assert(source.hits.length === 1 && source.hits[0].file === join(appRoot, "src/context-probe.ts"), "workspace application scan included sibling or ancestor source");
+  const lockPath = join(consumerDir, "package-lock.json"), originalLock = readFileSync(lockPath, "utf8");
+  const lock = JSON.parse(originalLock);
+  assert(lock.packages?.["apps/shop"]?.dependencies?.[packageJson.name], "npm did not register the selected workspace in its owning lock");
+  assert(lock.packages?.[`node_modules/${packageJson.name}`]?.version === packageJson.version, "npm workspace lock did not pin the installed Core version");
+  try {
+    lock.packages[`node_modules/${packageJson.name}`].version = "0.0.0";
+    writeFileSync(lockPath, JSON.stringify(lock));
+    const refused = spawnSync(process.execPath, [probe.executable, "search", "extension seam", "--json"], { cwd: appRoot, env: consumerEnvironment(), encoding: "utf8", timeout: 10_000 });
+    assert(refused.status === 1 && refused.stdout === "" && refused.stderr.includes("Lockfile and installed package disagree"), "workspace CLI falsely accepted a contradictory owning lock");
+  } finally { writeFileSync(lockPath, originalLock); }
+  console.log("core hoisted npm workspace context PASS (public import, CLI/MCP, returned read path, source isolation, owning-lock refusal)");
 }
 
 export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOptions = {}): void {
@@ -428,6 +489,7 @@ export function runCorePackageConsumerSmoke(options: CorePackageConsumerSmokeOpt
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.json", "--noEmit"], consumerDir);
     run(toolBinary("tsc", dependencyRoots), ["-p", "tsconfig.bundler.json", "--noEmit"], consumerDir);
     run(toolBinary("vite", dependencyRoots), ["build", "--logLevel", "error"], consumerDir);
+    assertHoistedContext(consumerDir, tarballPath, packageJson, cacheDir);
 
     console.log("core package tarball consumer smoke ok");
   } finally {

@@ -11706,6 +11706,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-derived.d.mts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-derived.mjs",
       "class": "public-output"
     },
@@ -11951,6 +11955,10 @@
     },
     {
       "path": "scripts/dependency-audit-rsc-scan.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-docker.d.mts",
       "class": "public-output"
     },
     {
@@ -12879,6 +12887,10 @@
     },
     {
       "path": "scripts/test-hosted.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/tooling-declarations.test.ts",
       "class": "public-output"
     },
     {

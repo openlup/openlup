@@ -812,6 +812,9 @@ and compare full signatures and later `DROP FUNCTION` statements. A caller or
 an earlier migration is not the effective definition. Check behavior and replay
 at the owning witness; a textual `GREATEST` match alone proves no invariant.
 
+For a read-only prerequisite check before setup, use the
+[verification plan](#required-and-raw-checks).
+
 After `npm ci`, use:
 
 ```sh
