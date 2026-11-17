@@ -25,7 +25,7 @@ BEGIN
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_sku_revisions) s
    WHERE jsonb_typeof(s) IS DISTINCT FROM 'object' OR s-ARRAY['reference','quantity']<>'{}'::jsonb
     OR jsonb_typeof(s->'reference') IS DISTINCT FROM 'object' OR jsonb_typeof(s->'quantity') IS DISTINCT FROM 'number'
-    OR coalesce(s->>'quantity','') !~ '^[1-9][0-9]{0,8}$')
+    OR coalesce(s->>'quantity','') !~ '^[1-9][0-9]*$')
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_sku_revisions) s GROUP BY s#>>'{reference,skuId}' HAVING count(*)>1)
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_heads) h GROUP BY h->>'productId' HAVING count(*)>1) THEN
   RAISE EXCEPTION '%',missing USING ERRCODE='22023'; END IF;

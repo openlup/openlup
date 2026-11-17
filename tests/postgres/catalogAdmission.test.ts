@@ -619,6 +619,8 @@ it("CatalogAdmissionPort asserts through the native transaction and refuses inco
   try {
     await db.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscription]);
     const before = await snapshot(); await port.assertCurrent(db,input); expect(await snapshot()).toEqual(before);
+    await port.assertCurrent(db,{ ...input,purpose: "order",skuRevisions: [{ reference: f.reference,quantity: 2147483647 }] });
+    expect(await snapshot()).toEqual(before);
     for (const delta of [{ heads: [] },{ skuRevisions: [] },{ priceContextVersions: [] }]) {
       await db.query("SAVEPOINT evidence"); await expect(port.assertCurrent(db,{ ...input,...delta })).rejects.toMatchObject({ severity: "ERROR" });
       await db.query("ROLLBACK TO SAVEPOINT evidence"); expect(await snapshot()).toEqual(before);
