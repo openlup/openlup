@@ -10,14 +10,25 @@ in the source repository.
 
 ## [Unreleased]
 
-## [1.0.1]
+## [1.1.0]
 
-- Publishable on the npm `latest` dist-tag as `1.0.1`, from tag
-  `openlup-platform-v1.0.1`.
+- Publishable on the npm `latest` dist-tag as `1.1.0`, from tag
+  `openlup-platform-v1.1.0`.
 
-- Republish unchanged runtime, exports and SQL with the exact `@openlup/core@1.0.1`
-  peer. The packaged starter migration supersedes published 1.0.0 after failed
-  starter-upgrade qualification; qualification of 1.0.1 is recorded after publication.
+Widen native subscription edit-quote CHECK, actor preview and command preview
+cadence admission to 1..3660 whole days, matching `MAX_CADENCE_DAYS` in Core.
+The two current function definitions change only their upper cadence bound;
+headers, security, search paths, ownership, ACLs and replay behavior stay intact.
+The validated CHECK uses the reviewed integer-range superset capability.
+
+Migration: apply the complete selected native catalogue through
+`20261122190000_subscription_cadence_bound.sql` before using longer cadences.
+The forward replaces the validated CHECK and takes the usual table DDL lock;
+plan installation around concurrent edits. No stored rows change. The managed
+chain has no corresponding cap and receives no migration. Do not downgrade
+history; unbind longer offers if rolling back application composition.
+Checkout-command and saga-fallback replay above 3660 remains a follow-up for
+unreleased development data. No release or activation is included.
 
 ## [1.0.0]
 

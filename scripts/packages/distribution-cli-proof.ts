@@ -80,7 +80,9 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
 
 /** The packaged 1.0 migration, before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
-  if (from.version !== "0.43.0" || !/^1\.0\.[0-9]+$/.test(to.version)) return;
+  if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
+    writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
+  if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;
   for (const path of ["owned/quote-shipping.ts", "owned/renewal-policy.ts", "owned/catalogue.json"]) {
     assert(!Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path), "migration_owned_snapshot_overlap");
     to.files[path] = readFileSync(join(target, path), "utf8");

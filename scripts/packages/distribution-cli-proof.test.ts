@@ -65,14 +65,16 @@ it("retains a failed pair receipt when published visibility refuses before execu
   } finally { if (previous === undefined) delete env.OPENLUP_REGISTRY_READY; else env.OPENLUP_REGISTRY_READY = previous; }
 });
 
-it("migrates the 0.43 starter contracts and creates only the documented target-only owned files through the CLI", () => {
+it.each(["1.0.0", "1.1.0"])("migrates the 0.43 starter contracts and creates only the documented target-only owned files through the %s CLI", version => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const created = ["owned/quote-shipping.ts", "owned/renewal-policy.ts", "owned/catalogue.json"];
   const replaced = ["owned/store.config.ts", "owned/quote-copy.ts", "owned/subscription-editing.ts", "owned/catalogue.ts"];
   for (const path of [...created, ...replaced]) candidate(path, `candidate ${path}`);
   for (const path of replaced) write(path, `previous ${path}`);
-  const from = starterUpgradeSnapshot(app, "0.43.0"), to = starterUpgradeSnapshot(target, "1.0.1");
+  write("owned/renewal.config.ts", "previous retention"); candidate("owned/renewal.config.ts", "candidate retention");
+  const from = starterUpgradeSnapshot(app, "0.43.0"), to = starterUpgradeSnapshot(target, version);
   migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, "owned/renewal.config.ts"), "utf8")).toBe(version === "1.1.0" ? "candidate retention" : "previous retention");
   expect(Object.keys(to.files).filter(path => path.startsWith("owned/"))).toEqual(created);
   expect(Object.keys(from.files).some(path => path.startsWith("owned/"))).toBe(false);
   for (const path of replaced) expect(readFileSync(join(app, path), "utf8")).toBe(`candidate ${path}`);
@@ -86,6 +88,16 @@ it("migrates the 0.43 starter contracts and creates only the documented target-o
   for (const path of created) expect(readFileSync(join(app, path), "utf8")).toBe(`candidate ${path}`);
   expect(JSON.parse(run().stdout).applied).toEqual([]);
   write("owned/quote-copy.ts", "later customization");
-  migrateStarterOwned(app, target, { ...from, version: "1.0.0" }, to);
+  migrateStarterOwned(app, target, { ...from, version: "1.0.0" }, { ...to, version: "1.0.0" });
   expect(readFileSync(join(app, "owned/quote-copy.ts"), "utf8")).toBe("later customization");
+});
+
+it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  write("owned/renewal.config.ts", "previous retention"); candidate("owned/renewal.config.ts", "candidate retention");
+  const from = starterUpgradeSnapshot(app, "1.0.0"), to = starterUpgradeSnapshot(target, "1.1.0");
+  migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, "owned/renewal.config.ts"), "utf8")).toBe("candidate retention");
+  expect(readFileSync(join(app, "owned.ts"), "utf8")).toBe("local bytes");
+  expect(to.files).toEqual(from.files);
 });

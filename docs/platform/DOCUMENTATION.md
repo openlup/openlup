@@ -444,6 +444,8 @@ Both pack checkers enforce a separate `guide` sub-budget from core's
 the total tarball limits also apply.
 The `docs:check` script of each publishable package runs the
 [documentation contract](../../packages/core/scripts/documentation-contract.ts).
+Guide Markdown pages link relatively to one another; non-Markdown assets use
+repository URLs pinned to the Core release, with target existence still checked.
 Core runs it inside its `ci:required`; the root test suite runs it for outbox and
 platform, so a required check covers all three. This root-suite enforcement of
 outbox and platform `docs:check` depends on

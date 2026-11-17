@@ -7,9 +7,9 @@ composition: the npm starter, PostgreSQL and the qualified image.
 
 The 1.0.0 set is published but failed exact-set qualification for starter
 upgrades in [run 44156615468](https://github.com/openlup/openlup/actions/runs/44156615468).
-The prepared 1.0.1 set supersedes it with the
+The prepared 1.1.0 set supersedes it with the
 [required starter migration](../../packages/core/docs/guide/upgrade/v1-0-0.md#starter-applications-from-0430).
-Its runtime, exports and SQL are identical to 1.0.0; qualification of 1.0.1 is
+It adds the cadence widening and native forward 151; qualification of 1.1.0 is
 recorded after publication, not inferred from local preparation.
 
 ## Released starter inputs
@@ -134,10 +134,12 @@ The shared released-input consumer proof checks both extracted applications,
 including the target application that supplies the installed upgrade CLI.
 
 Managed snapshots are derived from each extracted `ownership.json`, excluding
-generated and owned paths. For 0.43.0→1.0.x it first follows the packaged
+generated and owned paths. For 0.43.0→1.0.0 or 1.1.0 it first follows the packaged
 starter migration: the three new owned files are target-only snapshot entries;
 the four required existing owned contracts take the target extraction's bytes
-while pristine. No other owned changes are applied. The proof then customizes
+while pristine. For a 1.1.0 target, starters from either 0.43.0 or 1.0.0 also
+take the target's pristine `owned/renewal.config.ts` retention contract, as
+documented in that set's upgrade page. The proof then customizes
 owned theme and fragment files,
 uses the target's installed public CLI for plan/apply, and checks the exact
 `current bytes match neither predecessor nor candidate` managed conflict before
@@ -157,8 +159,8 @@ updated migration harness and the published packages. Both extracted starters
 and the upgraded application passed the shared consumer checks. The owned
 migration, managed conflict refusal, interruption, incomplete-state refusal,
 resume, replay and owned-byte preservation all passed. This uses the migration
-now documented for 1.0.1; it does not replace the failed hosted 1.0.0 record or
-establish post-publication qualification of 1.0.1.
+now documented for 1.1.0; it does not replace the failed hosted 1.0.0 record or
+establish post-publication qualification of 1.1.0.
 
 For 0.40.0→0.41.0 the only changing managed file is the extracted
 `package.json` with exact package pins. The kill therefore interrupts the CLI

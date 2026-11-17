@@ -2,14 +2,10 @@
 
 ## [Unreleased]
 
-## [1.0.1]
+## [1.1.0]
 
-- Publishable on the npm `latest` dist-tag as `1.0.1`, from tag
-  `openlup-outbox-v1.0.1`.
-
-- Republish unchanged runtime, exports and SQL with the exact `@openlup/core@1.0.1`
-  peer. The packaged starter migration supersedes published 1.0.0 after failed
-  starter-upgrade qualification; qualification of 1.0.1 is recorded after publication.
+- Publishable on the npm `latest` dist-tag as `1.1.0`, from tag
+  `openlup-outbox-v1.1.0`.
 
 ## [1.0.0]
 
