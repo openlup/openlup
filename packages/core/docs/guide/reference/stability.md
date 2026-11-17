@@ -60,6 +60,8 @@ Upgrade matching `@openlup/*` packages as a set from the same commit. Read the
 versioning policy for the package-set and tag conventions. A source release
 artifact does not itself contain npm packages.
 
+A 1.x minor may refuse an input that was never a supported contract when this closes a security gap, and the changelog names it.
+
 ## Support window
 
 Check the versioning policy for the current and previous major’s maintenance
