@@ -72,6 +72,7 @@ export function verifyRepositoryPolicy(input: {
   );
   assert(
     policy.security?.dependabot?.required === true &&
+      Array.isArray(policy.security.dependabot.ecosystems) &&
       isDeepStrictEqual(policy.security.dependabot.ecosystems, ["npm", "github-actions"]),
     "repository policy must require npm and GitHub Actions Dependabot updates",
   );
