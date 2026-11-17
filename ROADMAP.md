@@ -1,15 +1,16 @@
 # OpenLup roadmap
 
-> OpenLup follows the stable 1.x compatibility policy. Plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-stable-1x) before relying on any capability.
+> OpenLup follows the stable 1.x compatibility policy, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-stable-1x) before relying on any capability.
 
-Last updated: 2026-11-15 · npm set: 0.43.0
+Last updated: 2026-11-17 · npm set: 1.0.0
 
 ## Current status
 
 | Field | Value |
 | --- | --- |
-| Latest npm set | 0.43.0 |
+| Latest npm set | 1.0.0 |
 | Status | stable 1.x |
+| Stable-framework gate (P1-SF) | closed |
 | Stable compatibility policy | [stable 1.x](packages/core/docs/guide/reference/stability.md) |
 
 ## Shipped modules
@@ -119,7 +120,7 @@ Last updated: 2026-11-15 · npm set: 0.43.0
 | promotions-codes-schedule | Promotions: codes and acquisition schedule | planned | - | Promotion codes with a code catalogue, claims and limits, an operator code center and a checkout code card, plus an acquisition schedule writer with a command line. Device evidence for eligibility is decided together with a retention and erasure design. Until then, promotion codes are not available on the portable rail. |
 | catalogue-extension | Catalogue extension pattern and catalogue management | planned | - | A pattern for adding new product kinds: versioned packs of product types with attributes, units, variants, tax classes, categories and filters, checked offline, plus runtime product lifecycle and price management and per-product promotions. Supplements and cosmetics ship as reference packs. Scheduled after the current rounds; no release is committed. |
 | a5-market-adapters | A5 market adapters | planned | - | An example company and customer lookup adapter built on Polish public registries (VAT whitelist, GUS/CEIDG), after the company-identity and invoicing ports are frozen. Data provenance, freshness, licence and fallback are settled first, and other market adapters can follow the same pattern. |
-| p1-sf-stable-framework | Stable 1.x policy | shipped | - | The stable API and installation commitments begin at 1.0.0; see the [stability policy](packages/core/docs/guide/reference/stability.md). Evidence is a first-party demo store from npm and a first-party production deployment. Schema and code-rollback evidence retain the [database guide’s limits](packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). |
+| p1-sf-stable-framework | Stable 1.x policy | shipped | 1.0.0 | The stable API and installation commitments begin at 1.0.0; see the [stability policy](packages/core/docs/guide/reference/stability.md). Evidence is a first-party demo store from npm and a first-party production deployment. Schema and code-rollback evidence retain the [database guide’s limits](packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). |
 
 ## Providers and adapters
 
