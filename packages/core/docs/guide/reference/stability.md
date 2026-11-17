@@ -10,7 +10,9 @@ for channel commitments, version format and support-window durations.
 Before relying on release commitments, require a versioned release
 and bill of materials, an adopter application, public extension and adapter
 conformance contracts, upgrade tools, and installation, compatibility,
-provenance and independent-adopter evidence. A package's `latest` tag or a
+provenance and first-party consumer evidence. The consumer evidence is a first-party
+demo store installed from npm and a first-party production deployment; no
+independent adoption is claimed. A package's `latest` tag or a
 successful source build does not establish those guarantees. The
 [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/.github/INSTALL_SUPPORT_POLICY.md)
 defines the installation and support boundary; use the
@@ -34,6 +36,13 @@ Documented application dependencies cannot be reclassified as internal to
 avoid compatibility obligations. Undeclared implementation details may change
 in any release; check the selected channel’s commitments before relying on a
 surface.
+
+Stable subpaths follow SemVer from 1.0.0. Status, event, reason, command and
+capability unions and literal sets are open: adding a value is a minor change.
+Consumers must keep a default branch for unknown values. Removing, renaming or
+narrowing an export, value or type requires a major release. Symbols tagged
+`@experimental` inside a stable subpath are outside that promise. Experimental
+subpaths may change in any minor release; testing subpaths are test support only.
 
 ## Version numbers
 
@@ -100,17 +109,27 @@ Each package's release and compatibility policies, as its release contract decla
 <!-- generated:versioning -->
 | Package | Section | Field | Value |
 | --- | --- | --- | --- |
-| `@openlup/core` | packageRelease | artifactChannel | npm-staged-preview |
+| `@openlup/core` | packageRelease | artifactChannel | npm-stable |
 | `@openlup/core` | packageRelease | phase | platform-monorepo-phase-5 |
-| `@openlup/core` | packageRelease | publicStability | not-claimed |
-| `@openlup/core` | packageRelease | versionRule | 0.N.P |
-| `@openlup/core` | compatibilityPolicies | internal-candidate | Candidate package surfaces may change until the platform phase-5 activation explicitly freezes a public API. |
-| `@openlup/core` | compatibilityPolicies | testing-internal | Test-support surfaces may change and are not runtime compatibility promises. |
-| `@openlup/outbox` | packageRelease | none | not declared |
-| `@openlup/outbox` | compatibilityPolicies | internal-candidate | Development-preview API; no stable compatibility claim. |
-| `@openlup/outbox` | compatibilityPolicies | testing-internal | Synthetic protocol test support. |
-| `@openlup/platform` | packageRelease | none | not declared |
-| `@openlup/platform` | compatibilityPolicies | internal-candidate | Development-preview API; no stable compatibility claim. |
+| `@openlup/core` | packageRelease | publicStability | stable-semver |
+| `@openlup/core` | packageRelease | versionRule | MAJOR.MINOR.PATCH |
+| `@openlup/core` | compatibilityPolicies | experimental | Experimental API; may change in any minor release. |
+| `@openlup/core` | compatibilityPolicies | stable | Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise. |
+| `@openlup/core` | compatibilityPolicies | testing | Test support only; not a runtime compatibility promise. |
+| `@openlup/outbox` | packageRelease | artifactChannel | npm-stable |
+| `@openlup/outbox` | packageRelease | phase | platform-monorepo-phase-5 |
+| `@openlup/outbox` | packageRelease | publicStability | stable-semver |
+| `@openlup/outbox` | packageRelease | versionRule | MAJOR.MINOR.PATCH |
+| `@openlup/outbox` | compatibilityPolicies | experimental | Experimental API; may change in any minor release. |
+| `@openlup/outbox` | compatibilityPolicies | stable | Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise. |
+| `@openlup/outbox` | compatibilityPolicies | testing | Test support only; not a runtime compatibility promise. |
+| `@openlup/platform` | packageRelease | artifactChannel | npm-stable |
+| `@openlup/platform` | packageRelease | phase | platform-monorepo-phase-5 |
+| `@openlup/platform` | packageRelease | publicStability | stable-semver |
+| `@openlup/platform` | packageRelease | versionRule | MAJOR.MINOR.PATCH |
+| `@openlup/platform` | compatibilityPolicies | experimental | Experimental API; may change in any minor release. |
+| `@openlup/platform` | compatibilityPolicies | stable | Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise. |
+| `@openlup/platform` | compatibilityPolicies | testing | Test support only; not a runtime compatibility promise. |
 
 [Versioning and end-of-life policy](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/.github/VERSIONING_AND_EOL.md)
 <!-- /generated:versioning -->

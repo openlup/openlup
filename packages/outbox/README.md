@@ -27,8 +27,8 @@ shipped `src/`; JavaScript source maps are not shipped.
 <!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `.` | rail | experimental |
-| `./postgres` | rail | experimental |
+| `.` | rail | stable |
+| `./postgres` | rail | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:outbox -->
 

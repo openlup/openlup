@@ -71,9 +71,9 @@ function auditPackedFixture(path: string, source: string, manifest: Record<strin
       },
       packageReadme: [
         "| Export | Role | Maturity | Package smoke |",
-        "| `./subscription` | kernel | candidate |",
-        "| `./bundle` | kernel | candidate |",
-        "| `./pricing` | kernel | candidate |",
+        "| `./subscription` | kernel | stable |",
+        "| `./bundle` | kernel | stable |",
+        "| `./pricing` | kernel | stable |",
       ].join("\n"),
       packFiles,
     });
@@ -155,8 +155,7 @@ describe("packed consumer dependency roots", () => {
 
   it.each([
     ["private", { private: true }, /must be publishable, not private/],
-    ["prerelease version", { version: "0.1.0-rc.1" }, /set version 0\.N\.P below 1\.0, not 0\.1\.0-rc\.1/],
-    ["stable version", { version: "1.0.0" }, /set version 0\.N\.P below 1\.0, not 1\.0\.0/],
+    ["prerelease version", { version: "0.1.0-rc.1" }, /set version MAJOR\.MINOR\.PATCH, not 0\.1\.0-rc\.1/],
     ["blocked registry", { publishConfig: { access: "public", provenance: true, tag: "preview", registry: "http://127.0.0.1:9" } }, /publishConfig must be exactly/],
     ["latest tag", { publishConfig: { access: "public", provenance: true, tag: "latest" } }, /publishConfig must be exactly/],
     ["missing repository", { repository: undefined }, /repository must be exactly/],
@@ -188,7 +187,7 @@ describe("packed consumer dependency roots", () => {
     auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, path]);
   });
 
-  it.each(["0.12.0", "0.12.1", "0.13.0"])("accepts a packed manifest at the set version %s", (version) => {
+  it.each(["0.12.0", "0.12.1", "0.13.0", "1.0.0", "1.2.3", "2.0.0"])("accepts a packed manifest at the set version %s", (version) => {
     auditPackedFixture("none", "", { version });
   });
 });

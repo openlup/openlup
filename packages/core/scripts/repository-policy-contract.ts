@@ -5,7 +5,7 @@ export type RepositoryPolicy = {
   repository?: {
     packageName?: string;
     currentPhase?: string;
-    packageVisibility?: string;
+    packageVisibility?: "public-stable";
     activation?: {
       target?: string;
       separateRepositoryActivation?: string;

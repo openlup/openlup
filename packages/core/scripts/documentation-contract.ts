@@ -41,14 +41,6 @@ const forbiddenPublicRootReferences = [
   [new RegExp(`@${retiredPackageScope}-commerce/core\\b`, "i"), "retired package identity"],
   [/\bVelipet\b/i, "downstream product reference"],
 ];
-const forbiddenContributionClaims = [
-  ["stable headline", "retired stable headline claim"],
-  ["public package subpath", "retired public package-subpath claim"],
-  ["public package subpaths", "retired public package-subpath claim"],
-  ["adopter evidence", "retired adopter-evidence claim"],
-  ["stable API change", "retired stable API claim"],
-  ["stable API changes", "retired stable API claim"],
-] as const;
 const agentGuideSections = [
   "Purpose and kind",
   "Subpath maturity",
@@ -234,19 +226,7 @@ function assertPackageHygiene(packageRoot: string, violations: string[]): void {
     for (const [pattern, description] of forbiddenPublicRootReferences) {
       if ((pattern as RegExp).test(source)) violations.push(`${relativePath}: ${description}`);
     }
-    for (const [claim, description] of forbiddenContributionClaims) {
-      if (hasUnnegatedClaim(source, claim)) violations.push(`${relativePath}: ${description}`);
-    }
   }
-}
-
-function hasUnnegatedClaim(source: string, claim: string): boolean {
-  const pattern = new RegExp(`\\b${claim.replaceAll(" ", "\\s+")}\\b`, "ig");
-  for (const match of source.matchAll(pattern)) {
-    const prefix = source.slice(0, match.index);
-    if (!/\b(?:not|no)\s+(?:an?\s+)?$/i.test(prefix)) return true;
-  }
-  return false;
 }
 
 function assertSurfaceTable(
