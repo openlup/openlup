@@ -133,10 +133,10 @@ beforeAll(async () => {
   expect(before.catalog_type_versions).toHaveLength(2);
   expect(before.catalog_definition_installs).toHaveLength(2);
   expect(before.catalog_tax_classes!.map(row => JSON.parse(row).status)).toEqual(["retired"]);
-  expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open", "open"]);
-  expect(before.catalog_draft_revisions).toHaveLength(9);
-  expect(before.catalog_draft_command_receipts).toHaveLength(9);
-  expect(before.catalog_draft_sku_reservations).toHaveLength(3);
+  expect(before.catalog_draft_heads!.map(row => JSON.parse(row).status).sort()).toEqual(["abandoned", "open", "open", "open"]);
+  expect(before.catalog_draft_revisions).toHaveLength(12);
+  expect(before.catalog_draft_command_receipts).toHaveLength(12);
+  expect(before.catalog_draft_sku_reservations).toHaveLength(4);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
     .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(packet.outsideProfileCensus.find(entry => entry.relation === "public.catalog_attribute_projection"))
