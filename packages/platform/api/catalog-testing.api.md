@@ -79,7 +79,9 @@ export type CatalogAttributeValidation = {
  * @experimental
  */
 export declare function validateCatalogAttributes(definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort): Promise<CatalogAttributeValidation>;
-/** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap. */
+/** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap.
+ * @experimental
+ */
 export declare function validateCatalogPublicationAttributes(definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort): Promise<CatalogAttributeValidation>;
 /** An admission predicate only; the publisher must also prove all other publication duties.
  * @experimental
@@ -1638,6 +1640,7 @@ import type { CatalogQuantity, CatalogProductTypeRef, CatalogOptionValue } from 
 import type { CatalogAttributeValue } from "./draftV2.js";
 import type { CatalogPublicationFacts, CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
 import type { CatalogDocumentRevisionRef } from "./foundation.js";
+/** @experimental */
 export declare const CATALOG_PUBLICATION_LIMITS: {
     readonly skuBytes: 2097152;
     readonly manifestBytes: 16777216;
@@ -1646,9 +1649,11 @@ export declare const CATALOG_PUBLICATION_LIMITS: {
     readonly pageBytes: 8388608;
     readonly pageItems: 100;
 };
+/** @experimental */
 export interface CatalogPublishCommandV2 extends CatalogPublishCommand {
     schemaVersion: 2;
 }
+/** @experimental */
 export interface CatalogDecisionCommandV2 {
     schemaVersion: 2;
     action: "approve" | "revoke";
@@ -1658,6 +1663,7 @@ export interface CatalogDecisionCommandV2 {
     candidateDigest: string;
     reason: string;
 }
+/** @experimental */
 export interface CatalogPublishedIdentifier {
     scheme: string;
     issuer: string;
@@ -1668,6 +1674,7 @@ export interface CatalogPublishedIdentifier {
     label: string | null;
     sourceRef: string | null;
 }
+/** @experimental */
 export interface CatalogPublishedProduct {
     id: string;
     slug: string;
@@ -1682,6 +1689,7 @@ export interface CatalogPublishedProduct {
     source: CatalogDraftClaimV3;
     content: CatalogDraftSharedContentV3;
 }
+/** @experimental */
 export interface CatalogPublishedSku {
     id: string;
     productId: string;
@@ -1706,17 +1714,20 @@ export interface CatalogPublishedSku {
     }[];
     source: CatalogDraftClaimV3;
 }
+/** @experimental */
 export interface CatalogSkuRevisionRef {
     skuId: string;
     revisionId: string;
     revision: number;
     digest: string;
 }
+/** @experimental */
 export interface CatalogPublicationManifestV2 {
     schemaVersion: 2;
     product: CatalogPublishedProduct;
     skus: CatalogSkuRevisionRef[];
 }
+/** @experimental */
 export interface CatalogFullPublicationV2 {
     outcome: "page";
     schemaVersion: 2;
@@ -1728,12 +1739,14 @@ export interface CatalogFullPublicationV2 {
     }[];
     nextCursor: string | null;
 }
+/** @experimental */
 export interface CatalogPublicationReceiptV2 extends CatalogPublicationReceipt {
     schemaVersion: 2;
     productId: string;
     publicationDigest: string;
     committedAt: string;
 }
+/** @experimental */
 export interface CatalogDecisionReceiptV2 {
     schemaVersion: 2;
     action: "approve" | "revoke";
@@ -1746,6 +1759,7 @@ export interface CatalogDecisionReceiptV2 {
     reason: string;
     decidedAt: string;
 }
+/** @experimental */
 export interface CatalogRetainedSourceBinding {
     kind: "account" | "order" | "fulfilment";
     sourceId: string;
@@ -1756,6 +1770,7 @@ export interface CatalogRetainedSourceBinding {
     publicationId: string;
     documentRevisionId: string;
 }
+/** @experimental */
 export interface CatalogPublicationFailure {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: string;

@@ -374,3 +374,507 @@ it.each([
   await db.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,100,100)", [order]);
   await unchangedRefusal(db, await command(db), { code: "55000", message: `catalog_price_setup_${reason}` });
 }));
+
+// Keep one database statement clock across fixture writes and the observed read.
+// These are real native control rows; no readiness/input function is replaced.
+const successfulControls = `INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
+ VALUES('platform-watchdog','worker',true,'success',statement_timestamp(),'{"promotionReady":true}'),
+ ('promotion-claim-sweep','worker',true,'success',statement_timestamp(),'{}')
+ ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,
+ last_success_at=excluded.last_success_at,metadata=excluded.metadata;`;
+const sqlJson = (value: unknown) => `'${JSON.stringify(value).replaceAll("'", "''")}'::jsonb`;
+async function census(db: PoolClient, setup: string, evidence: Record<string, unknown>, reasons: string[] = []) {
+  await db.query(`DO $proof$ DECLARE observed jsonb; BEGIN ${successfulControls} ${setup}
+    observed:=public.commerce_offer_policy_v2_readiness();
+    IF observed->>'contractVersion' IS DISTINCT FROM 'commerce-offer-policy-v2-readiness.v1' OR observed->'checkedAt' IS DISTINCT FROM to_jsonb(statement_timestamp()) OR observed->'ready' IS DISTINCT FROM to_jsonb(${reasons.length === 0}) OR NOT (observed->'evidence' @> ${sqlJson(evidence)}) OR observed->'reasons' IS DISTINCT FROM ${sqlJson(reasons)} THEN
+      RAISE EXCEPTION 'native_readiness_census_mismatch' USING DETAIL=observed::text;
+    END IF; END $proof$;`);
+}
+
+it.each(["platform-watchdog", "promotion-claim-sweep"] as const)("readiness_heartbeat_%s_success", async name => transaction(async db => {
+  await census(db, "", { promotionWatchdogReady: true, promotionClaimSweepReady: true });
+  expect((await db.query("SELECT last_status FROM public.platform_job_controls WHERE job_name=$1", [name])).rows[0].last_status).toBe("success");
+}));
+for (const [job, flag, reason, limit] of [
+  ["platform-watchdog", "promotionWatchdogReady", "promotion_watchdog_not_ready", "6 hours"],
+  ["promotion-claim-sweep", "promotionClaimSweepReady", "promotion_claim_sweep_not_ready", "15 minutes"],
+] as const) {
+  it.each([
+    ["now", "statement_timestamp()", true],
+    ["upper_inside", "statement_timestamp()-interval '1 microsecond'", true],
+    ["future", "statement_timestamp()+interval '1 microsecond'", false],
+    ["freshness_exact", `statement_timestamp()-interval '${limit}'`, true],
+    ["freshness_inside", `statement_timestamp()-interval '${limit}'+interval '1 microsecond'`, true],
+    ["freshness_outside", `statement_timestamp()-interval '${limit}'-interval '1 microsecond'`, false],
+    ["missing_success_time", "NULL", false],
+  ] as const)(`readiness_heartbeat_${job}_%s`, async (_name, instant, ready) => transaction(async db => {
+    await census(db, `UPDATE public.platform_job_controls SET last_success_at=${instant} WHERE job_name='${job}';`,
+      { [flag]: ready }, ready ? [] : [reason]);
+  }));
+  it.each([
+    ["missing", `DELETE FROM public.platform_job_controls WHERE job_name='${job}';`],
+    ["disabled", `UPDATE public.platform_job_controls SET enabled=false WHERE job_name='${job}';`],
+    ...["failed", "running", "skipped"].map(status => [status, `UPDATE public.platform_job_controls SET last_status='${status}' WHERE job_name='${job}';`]),
+    ["null_status", `UPDATE public.platform_job_controls SET last_status=NULL WHERE job_name='${job}';`],
+  ])(`readiness_heartbeat_${job}_%s`, async (_name, setup) => transaction(async db => {
+    await census(db, setup, { [flag]: false }, [reason]);
+  }));
+}
+it.each(["{}", '{"promotionReady":false}', '{"promotionReady":null}', '{"promotionReady":"yes"}', "null"])(
+  "readiness_watchdog_promotion_evidence_%s", async metadata => transaction(async db => {
+    await census(db, `UPDATE public.platform_job_controls SET metadata=${sqlJson(JSON.parse(metadata))} WHERE job_name='platform-watchdog';`,
+      { promotionWatchdogReady: false }, ["promotion_watchdog_not_ready"]);
+  }));
+it("readiness_sweep_does_not_require_watchdog_promotion_metadata", async () => transaction(async db => {
+  await census(db, `UPDATE public.platform_job_controls SET metadata='{"promotionReady":false}' WHERE job_name='promotion-claim-sweep';`,
+    { promotionWatchdogReady: true, promotionClaimSweepReady: true });
+}));
+
+const legacyPair = `INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
+ SELECT 'example:legacy',repeat('a',64),definition||jsonb_build_object('id','example:legacy','promotion_engine_version','promotion-engine.v1',
+ 'discount_value',44.404,'benefit_kind','percentage','benefit_value_bps',NULL,'applies_to_payload',
+ jsonb_set(applies_to_payload,'{acquisitionTerms,revision}','"legacy-50-35"')) ,true
+ FROM public.catalog_price_setup_promotions() p JOIN public.commerce_promotion_definitions d ON d.promotion_id=p.id WHERE p.id='example:acquisition';`;
+const pairedAcquisition = legacyPair + `
+ INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
+ SELECT 'example:mirror',repeat('b',64),definition||jsonb_build_object('id','example:mirror','v2_mirror_of','example:legacy',
+ 'applies_to_payload',jsonb_set(applies_to_payload,'{acquisitionTerms,revision}','"legacy-50-35"')),true
+ FROM public.catalog_price_setup_promotions() p JOIN public.commerce_promotion_definitions d ON d.promotion_id=p.id WHERE p.id='example:acquisition';
+ UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:acquisition';`;
+it("readiness_census_canonical_legacy_pair", async () => transaction(async db => {
+  await census(db, pairedAcquisition, { firstSubscriptionLegacyCount: 1, firstSubscriptionPairCount: 1, firstSubscriptionActiveCount: 1,
+    bundlePolicyCount: 1, activePriceListCount: 1, activeCoreSkuCount: 1, priceMismatchCount: 0, subscriptionPricePolicyCount: 1,
+    subscriptionPricePolicyDerivesBand: true, legacyFrozenCount: 1, legacyFrozenInvalidCount: 0, legacyFrozenBaselineMatches: true,
+    automaticV2MoneyCheckedCount: 0, automaticV2MoneyMismatchCount: 0 });
+}));
+it.each([
+  ["payload", { applies_to_payload: { cart_mode: "subscription", acquisitionTerms: { schemaVersion: "subscription-acquisition.v1", revision: "legacy-50-35", delivery2DiscountBps: 3501 } } }],
+  ["stacking", { stacking_rule: "stackable_with_any" }], ["eligibility", { eligibility: { first_subscription_purchase: false } }],
+  ["global_limit", { redemption_limit_global: 1 }], ["customer_limit", { redemption_limit_per_customer: 2 }],
+  ["regions", { region_availability: ["ZZ", "YY"] }],
+] as const)("readiness_census_mirror_shared_%s", async (_name, delta) => transaction(async db => {
+  await census(db, pairedAcquisition + `UPDATE public.commerce_promotion_definitions SET definition=definition||${sqlJson(delta)} WHERE promotion_id='example:mirror';`,
+    { firstSubscriptionLegacyCount: 1, firstSubscriptionPairCount: 1, firstSubscriptionActiveCount: 0 }, ["first_subscription_mirror_not_ready"]);
+}));
+it.each([
+  ["inactive", "UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:mirror';"],
+  ["start", "UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{valid_from}',to_jsonb((definition->>'valid_from')::timestamptz-interval '1 microsecond')) WHERE promotion_id='example:mirror';"],
+  ["end", "UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{valid_to}',to_jsonb(statement_timestamp()+interval '1 hour')) WHERE promotion_id='example:mirror';"],
+])("readiness_census_mirror_%s", async (_name, setup) => transaction(async db => {
+  await census(db, pairedAcquisition + setup, { firstSubscriptionLegacyCount: 1, firstSubscriptionPairCount: 1, firstSubscriptionActiveCount: 0 },
+    ["first_subscription_mirror_not_ready"]);
+}));
+it.each([
+  ["not_effective", "UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:acquisition';"],
+  ["invalid", `UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{applies_to_payload,cart_mode}','"one_time"') WHERE promotion_id='example:acquisition';`],
+  ["ambiguous", `INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
+    SELECT 'example:overlap',repeat('c',64),definition||'{"id":"example:overlap"}',true FROM public.commerce_promotion_definitions WHERE promotion_id='example:acquisition';`],
+])("readiness_census_acquisition_%s", async (_name, setup) => transaction(async db => {
+  await census(db, setup, { firstSubscriptionLegacyCount: 0, firstSubscriptionPairCount: 0, firstSubscriptionActiveCount: 0, acquisition: null },
+    ["first_subscription_pair_invalid"]);
+}));
+it("readiness_census_acquisition_public_envelope_and_native_fingerprints", async () => transaction(async db => {
+  const agreements = await rpc(db, "catalog_price_setup_agreement_evidence");
+  const r = await rpc(db, "commerce_offer_policy_v2_readiness");
+  expect(r.evidence.legacyFrozenFingerprint).toBe(agreements.fingerprint);
+  expect(r.evidence.acquisition).toMatchObject({ contractVersion: "commerce-acquisition-readiness.v1", initialDiscountBps: 5000,
+    delivery2DiscountBps: 3500, kind: "v2_standalone", standaloneCount: 1, legacyPairCount: 0 });
+  expect(r.evidence.acquisition).not.toHaveProperty("schemaVersion");
+  expect(r.evidence.acquisition).not.toHaveProperty("sourcePromotionId");
+}));
+it.each([
+  ["engine", { promotion_engine_version: "promotion-engine.v2" }], ["trigger", { trigger_type: "referral" }],
+  ["code", { trigger_type: "coupon_code", code: "EXAMPLE" }], ["discount_type", { discount_type: "fixed_amount" }],
+  ["discount_value", { discount_value: 4 }], ["scope", { applies_to_kind: "line_with_variant" }],
+  ["payload", { applies_to_payload: { cart_mode: "subscription" } }], ["stacking", { stacking_rule: "exclusive" }],
+  ["eligibility", { eligibility: { min_cart_minor: 13000 } }], ["status", { status: "paused" }],
+  ["lane", { benefit_lane: "shipping" }], ["kind", { benefit_kind: "target_percentage" }],
+  ["basis_points", { benefit_value_bps: 600 }], ["global_limit", { redemption_limit_global: 1 }],
+  ["customer_limit", { redemption_limit_per_customer: 1 }], ["region", { region_availability: ["YY"] }],
+] as const)("readiness_census_bundle_%s", async (_name, delta) => transaction(async db => {
+  await census(db, `UPDATE public.commerce_promotion_definitions SET definition=definition||${sqlJson(delta)} WHERE promotion_id='example:bundle';`,
+    { bundlePolicyCount: 0 }, ["bundle_5_policy_invalid"]);
+}));
+it("readiness_census_bundle_duplicate", async () => transaction(async db => {
+  await census(db, `INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
+    SELECT 'example:bundle-copy',repeat('d',64),definition||'{"id":"example:bundle-copy"}',true FROM public.commerce_promotion_definitions WHERE promotion_id='example:bundle';`,
+  { bundlePolicyCount: 2 }, ["bundle_5_policy_invalid"]);
+}));
+it.each([
+  ["start_exact", "valid_from", "statement_timestamp()", 1],
+  ["start_inside", "valid_from", "statement_timestamp()-interval '1 microsecond'", 1],
+  ["start_future", "valid_from", "statement_timestamp()+interval '1 microsecond'", 0],
+  ["end_exact", "valid_to", "statement_timestamp()", 1],
+  ["end_inside", "valid_to", "statement_timestamp()+interval '1 microsecond'", 1],
+  ["end_outside", "valid_to", "statement_timestamp()-interval '1 microsecond'", 0],
+] as const)("readiness_census_bundle_%s", async (_name, key, instant, count) => transaction(async db => {
+  await census(db, `UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{${key}}',to_jsonb(${instant})) WHERE promotion_id='example:bundle';`,
+    { bundlePolicyCount: count }, count ? [] : ["bundle_5_policy_invalid"]);
+}));
+
+// Components below execute verbatim blocks from the production routine. They do
+// not replace a native function or claim that guarded order contexts are admitted.
+// Separate entry-point witnesses prove those contexts still hard-refuse.
+const nativeReadinessSource = readFileSync(writerPath, "utf8").split("CREATE FUNCTION public.commerce_offer_policy_v2_readiness()")[1].split("$_$;")[0];
+const nativeDeclarations = nativeReadinessSource.slice(nativeReadinessSource.indexOf("DECLARE"), nativeReadinessSource.indexOf("\nBEGIN"));
+function readinessBlock(start: string, end: string) {
+  const from = nativeReadinessSource.indexOf(start), to = nativeReadinessSource.indexOf(end, from + start.length);
+  if (from < 0 || to < 0) throw new Error("Native readiness block markers changed");
+  return nativeReadinessSource.slice(from, to);
+}
+async function censusComponent(db: PoolClient, setup: string, block: string, observed: string, expected: unknown) {
+  await db.query(`DO $proof$ ${nativeDeclarations} BEGIN ${setup} ${block}
+    IF ${observed} IS DISTINCT FROM ${sqlJson(expected)} THEN
+      RAISE EXCEPTION 'native_readiness_component_mismatch' USING DETAIL=(${observed})::text;
+    END IF; END $proof$;`);
+}
+const moneyBlock = readinessBlock("  WITH automatic_v2_orders AS (", "  IF v_automatic_v2_money_mismatch_count <> 0 THEN");
+const moneyObserved = "jsonb_build_object('checked',v_automatic_v2_money_checked_count,'mismatched',v_automatic_v2_money_mismatch_count)";
+const automaticOrder = `UPDATE public.commerce_orders SET created_at=statement_timestamp(),status='paid',
+ metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',
+ '{"offerPolicyVersion":"commerce.offer-policy.v2","promotionEngineVersion":"promotion-engine.v2"}')
+ WHERE id=(SELECT order_id FROM public.subscription_activations LIMIT 1);`;
+it("readiness_component_automatic_money_valid_native_order", async () => transaction(async db => {
+  await censusComponent(db, automaticOrder, moneyBlock, moneyObserved, { checked: 1, mismatched: 0 });
+}));
+it("readiness_automatic_money_entry_guard_remains_fail_closed", async () => transaction(async db => {
+  await expect(census(db, automaticOrder, {})).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_order_guard_unverified" });
+}));
+it.each([
+  ["at_24h", "statement_timestamp()-interval '24 hours'", 1],
+  ["inside_24h", "statement_timestamp()-interval '24 hours'+interval '1 microsecond'", 1],
+  ["outside_24h", "statement_timestamp()-interval '24 hours'-interval '1 microsecond'", 0],
+  ["at_now", "statement_timestamp()", 1], ["future", "statement_timestamp()+interval '1 microsecond'", 0],
+] as const)("readiness_component_automatic_money_%s", async (_name, instant, count) => transaction(async db => {
+  await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET created_at=${instant};`, moneyBlock, moneyObserved,
+    { checked: count, mismatched: 0 });
+}));
+it.each(["paid", "fulfillment_pending", "fulfilled", "refunded", "pending_payment", "cancelled", "expired"])(
+  "readiness_component_automatic_money_status_%s", async status => transaction(async db => {
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET status='${status}';`, moneyBlock, moneyObserved,
+      { checked: ["paid", "fulfillment_pending", "fulfilled", "refunded"].includes(status) ? 1 : 0, mismatched: 0 });
+  }));
+it.each(["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscountGross", "totalGross"])(
+  "readiness_component_automatic_money_amount_%s", async field => transaction(async db => {
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,${field},amountMinor}','999');`,
+      moneyBlock, moneyObserved, { checked: 1, mismatched: 1 });
+  }));
+it.each(["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscountGross", "totalGross"])(
+  "readiness_component_automatic_money_currency_%s", async field => transaction(async db => {
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,${field},currency}','"YYY"');`,
+      moneyBlock, moneyObserved, { checked: 1, mismatched: 1 });
+  }));
+for (const field of ["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscountGross", "totalGross"]) {
+  it.each([null, "invalid", -1, "12345678901234567"])(`readiness_component_automatic_money_scalar_${field}_%s`, async amount => transaction(async db => {
+    const optionalNull = amount === null && ["shippingGross", "shippingDiscountGross"].includes(field);
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,${field},amountMinor}',${sqlJson(amount)});`,
+      moneyBlock, moneyObserved, { checked: 1, mismatched: optionalNull ? 0 : 1 });
+  }));
+}
+it.each(["shippingGross", "shippingDiscountGross"])("readiness_component_automatic_money_optional_%s", async field => transaction(async db => {
+  await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=metadata#-'{quoteSnapshot,quote,${field}}';`,
+    moneyBlock, moneyObserved, { checked: 1, mismatched: 0 });
+}));
+it("readiness_component_automatic_money_order_currency", async () => transaction(async db => {
+  await censusComponent(db, automaticOrder + "UPDATE public.commerce_orders SET currency_code='YYY';", moneyBlock, moneyObserved, { checked: 1, mismatched: 1 });
+}));
+it("readiness_component_automatic_money_engine_scope", async () => transaction(async db => {
+  await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',
+    '{"offerPolicyVersion":"commerce.offer-policy.v1","promotionEngineVersion":"promotion-engine.v1"}');`, moneyBlock, moneyObserved, { checked: 0, mismatched: 0 });
+}));
+it("readiness_component_automatic_money_malformed_quote_is_excluded", async () => transaction(async db => {
+  await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote}','[]');`, moneyBlock, moneyObserved, { checked: 0, mismatched: 0 });
+}));
+
+const freshBaseContext = `UPDATE public.price_lists SET status='archived';
+ INSERT INTO public.price_lists(name,region_code,currency,valid_from) VALUES('Synthetic census','ZZ','XXX',statement_timestamp()-interval '1 hour');
+ INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+ SELECT p.id,s.id,'one_time',1000,statement_timestamp()-interval '1 hour' FROM public.price_lists p CROSS JOIN public.catalog_skus s
+ WHERE p.status='active' AND s.sku='READINESS-AGREED';`;
+const storedEntry = `INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+ SELECT p.id,s.id,'subscription',900,statement_timestamp()-interval '1 hour' FROM public.price_lists p CROSS JOIN public.catalog_skus s
+ WHERE p.status='active' AND s.sku='READINESS-AGREED';`;
+function policyEntry(from = "statement_timestamp()-interval '1 hour'", until = "NULL::timestamptz", channel = "D2C", discount = 1000, quantum = 10) {
+  return `INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,effective_from,effective_to,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+ SELECT v.id,1,p.id,p.region_code,p.currency,'${channel}',v.first,v.last,${discount},${quantum},'FLOOR_TO_QUANTUM',
+ public.catalog_price_setup_policy_digest(v.id,1,p.id,p.region_code,p.currency,'${channel}',v.first,v.last,${discount},${quantum},'FLOOR_TO_QUANTUM')
+ FROM public.price_lists p CROSS JOIN (SELECT gen_random_uuid() AS id,(${from}) AS first,(${until}) AS last) v WHERE p.status='active';`;
+}
+it("readiness_census_stored_lane_without_policy_history", async () => transaction(async db => {
+  await census(db, freshBaseContext + storedEntry, { activePriceListCount: 1, priceMismatchCount: 0,
+    subscriptionPricePolicyCount: 0, subscriptionPricePolicyDerivesBand: false });
+}));
+it("readiness_census_other_channel_history_does_not_select_derived_lane", async () => transaction(async db => {
+  await census(db, freshBaseContext + storedEntry + policyEntry(undefined, undefined, "B2B"), { priceMismatchCount: 0,
+    subscriptionPricePolicyCount: 0, subscriptionPricePolicyDerivesBand: false });
+}));
+it("readiness_census_future_history_never_falls_back_to_stored", async () => transaction(async db => {
+  await census(db, freshBaseContext + storedEntry + policyEntry("statement_timestamp()+interval '1 hour'"),
+    { priceMismatchCount: 1, subscriptionPricePolicyCount: 0 }, ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([
+  ["start_exact", "statement_timestamp()", "NULL::timestamptz", 1],
+  ["start_inside", "statement_timestamp()-interval '1 microsecond'", "NULL::timestamptz", 1],
+  ["start_future", "statement_timestamp()+interval '1 microsecond'", "NULL::timestamptz", 0],
+  ["end_exact", "statement_timestamp()-interval '1 hour'", "statement_timestamp()", 0],
+  ["end_inside", "statement_timestamp()-interval '1 hour'", "statement_timestamp()+interval '1 microsecond'", 1],
+  ["end_outside", "statement_timestamp()-interval '1 hour'", "statement_timestamp()-interval '1 microsecond'", 0],
+] as const)("readiness_census_policy_%s", async (_name, from, until, count) => transaction(async db => {
+  await census(db, freshBaseContext + policyEntry(from, until), { subscriptionPricePolicyCount: count,
+    priceMismatchCount: count ? 0 : 1, subscriptionPricePolicyDerivesBand: count === 1 }, count ? [] : ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([
+  ["none", "UPDATE public.price_lists SET status='draft';", 0, 0, 0],
+  ["region", "UPDATE public.commerce_settings SET value_text='YY' WHERE key='settlement_region';", 0, 0, 0],
+  ["duplicate", freshBaseContext.replace("UPDATE public.price_lists SET status='archived';", "") + storedEntry, 2, 1, 0],
+] as const)("readiness_census_list_%s", async (_name, setup, lists, skus, mismatches) => transaction(async db => {
+  const extraReason = _name === "region" ? ["first_subscription_pair_invalid", "bundle_5_policy_invalid"] : [];
+  await census(db, setup, { activePriceListCount: lists, activeCoreSkuCount: skus, priceMismatchCount: mismatches },
+    [...extraReason, "catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([
+  ["start_exact", "valid_from", "statement_timestamp()", 1],
+  ["start_inside", "valid_from", "statement_timestamp()-interval '1 microsecond'", 1],
+  ["start_future", "valid_from", "statement_timestamp()+interval '1 microsecond'", 0],
+  ["end_exact", "valid_to", "statement_timestamp()", 0],
+  ["end_inside", "valid_to", "statement_timestamp()+interval '1 microsecond'", 1],
+  ["end_outside", "valid_to", "statement_timestamp()-interval '1 microsecond'", 0],
+] as const)("readiness_census_list_%s", async (_name, column, instant, count) => transaction(async db => {
+  await census(db, `UPDATE public.price_lists SET ${column}=${instant};`, { activePriceListCount: count, activeCoreSkuCount: count, subscriptionPricePolicyCount: count, subscriptionPricePolicyDerivesBand: count === 1 },
+    count ? [] : ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([
+  ["draft", "status='draft'", 0], ["archived", "status='archived'", 0], ["addon", "is_addon=true", 0],
+  ["neither_mode", "sellable_standalone=false,sellable_in_subscription=false", 0],
+  ["standalone_only", "sellable_standalone=true,sellable_in_subscription=false", 1],
+  ["subscription_only", "sellable_standalone=false,sellable_in_subscription=true", 1],
+] as const)("readiness_census_sku_%s", async (_name, assignments, count) => transaction(async db => {
+  await census(db, `UPDATE public.catalog_skus SET ${assignments};`, { activeCoreSkuCount: count, priceMismatchCount: 0 },
+    count ? [] : ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([
+  ["start_exact", "valid_from", "statement_timestamp()", 0],
+  ["start_inside", "valid_from", "statement_timestamp()-interval '1 microsecond'", 0],
+  ["start_future", "valid_from", "statement_timestamp()+interval '1 microsecond'", 1],
+  ["end_exact", "valid_to", "statement_timestamp()", 1],
+  ["end_inside", "valid_to", "statement_timestamp()+interval '1 microsecond'", 0],
+  ["end_outside", "valid_to", "statement_timestamp()-interval '1 microsecond'", 1],
+] as const)("readiness_census_entry_%s", async (_name, column, instant, mismatches) => transaction(async db => {
+  await census(db, `UPDATE public.price_entries SET ${column}=${instant} WHERE mode='one_time' AND active;`,
+    { priceMismatchCount: mismatches, subscriptionPricePolicyDerivesBand: true }, mismatches ? ["catalog_1490_legacy_1340_invalid"] : []);
+}));
+it("readiness_census_entry_other_list_is_not_joined", async () => transaction(async db => {
+  await census(db, `INSERT INTO public.price_lists(name,region_code,currency) VALUES('Synthetic foreign','YY','XXX');
+    INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    SELECT p.id,s.id,'one_time',999,statement_timestamp()-interval '1 hour' FROM public.price_lists p CROSS JOIN public.catalog_skus s WHERE p.region_code='YY';`,
+    { priceMismatchCount: 0, activePriceListCount: 1 });
+}));
+it("readiness_census_entry_other_variant_is_not_joined", async () => transaction(async db => {
+  await census(db, `INSERT INTO public.catalog_skus(product_id,sku,title,status)
+    SELECT product_id,'CENSUS-FOREIGN','Synthetic foreign','archived' FROM public.catalog_skus LIMIT 1;
+    INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    SELECT p.id,s.id,'one_time',999,statement_timestamp()-interval '1 hour' FROM public.price_lists p CROSS JOIN public.catalog_skus s WHERE s.sku='CENSUS-FOREIGN';`,
+    { priceMismatchCount: 0, activeCoreSkuCount: 1 });
+}));
+it.each([
+  ["base_zero", "UPDATE public.price_entries SET unit_price_minor=0 WHERE mode='one_time' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');"],
+  ["subscription_zero", "UPDATE public.price_entries SET unit_price_minor=0 WHERE mode='subscription' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');"],
+  ["subscription_missing", "DELETE FROM public.price_entries WHERE mode='subscription' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');"],
+  ["two_bases_one_valid", `INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    SELECT price_list_id,variant_id,'one_time',0,statement_timestamp()-interval '1 minute' FROM public.price_entries WHERE mode='one_time' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');`],
+  ["two_subscription_one_valid", `INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    SELECT price_list_id,variant_id,'subscription',0,statement_timestamp()-interval '1 minute' FROM public.price_entries WHERE mode='subscription' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');`],
+] as const)("readiness_census_stored_%s", async (_name, setup) => transaction(async db => {
+  await census(db, freshBaseContext + storedEntry + setup, { priceMismatchCount: 1 }, ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([["no_discount", 0, 10, 0], ["full_discount", 10000, 10, 1], ["unit_quantum", 1000, 1, 0], ["large_quantum", 1000, 1001, 1]] as const)(
+  "readiness_census_derived_%s", async (_name, discount, quantum, mismatch) => transaction(async db => {
+    await census(db, freshBaseContext + policyEntry(undefined, undefined, "D2C", discount, quantum),
+      { priceMismatchCount: mismatch, subscriptionPricePolicyDerivesBand: mismatch === 0 }, mismatch ? ["catalog_1490_legacy_1340_invalid"] : []);
+  }));
+it("readiness_census_legacy_currency_is_checked_against_settlement", async () => transaction(async db => {
+  await census(db, "UPDATE public.commerce_settings SET value_text='YYY' WHERE key='settlement_currency';",
+    { activePriceListCount: 0, legacyFrozenInvalidCount: 1, legacyFrozenBaselineMatches: true },
+    ["catalog_1490_legacy_1340_invalid", "legacy_frozen_records_invalid"]);
+}));
+it("readiness_census_explicit_fixture_is_excluded", async () => transaction(async db => {
+  await census(db, `INSERT INTO public.subscriptions(client_id,cadence_days,price_list_id,currency_code,offer_policy_assignment_state,is_test_fixture)
+    SELECT client_id,28,price_list_id,'YYY','legacy_frozen',true FROM public.subscriptions LIMIT 1;`, { legacyFrozenCount: 1, legacyFrozenInvalidCount: 0 });
+}));
+it("readiness_census_pending_subscription_is_excluded", async () => transaction(async db => {
+  await census(db, `INSERT INTO public.subscriptions(client_id,cadence_days,price_list_id,currency_code)
+    SELECT client_id,28,price_list_id,'YYY' FROM public.subscriptions LIMIT 1;`, { legacyFrozenCount: 1, legacyFrozenInvalidCount: 0 });
+}));
+const legacyDecisionBlock = readinessBlock("  SELECT count(*) INTO v_legacy_invalid_count", "  -- Audited never-populated zero");
+it("readiness_component_legacy_policy_pair", async () => transaction(async db => {
+  await censusComponent(db, `INSERT INTO public.subscriptions(client_id,cadence_days,price_list_id,currency_code,offer_policy_assignment_state,offer_policy_version,promotion_engine_version)
+    SELECT client_id,28,price_list_id,currency_code,'legacy_frozen','commerce.offer-policy.v2','promotion-engine.v2' FROM public.subscriptions LIMIT 1;`,
+    legacyDecisionBlock, "to_jsonb(v_legacy_invalid_count)", 1);
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_cohort_unverified" });
+}));
+it("readiness_component_legacy_zero_line_money", async () => transaction(async db => {
+  await censusComponent(db, "UPDATE public.subscription_lines SET unit_price_minor=0;", legacyDecisionBlock, "to_jsonb(v_legacy_invalid_count)", 1);
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_agreement_domain_unverified" });
+}));
+const baselineBlock = readinessBlock("  -- Native governing retained", "  -- The scheduled watchdog");
+it.each([
+  ["missing", "DELETE FROM public.commerce_offer_policy_rollout_baselines;"],
+  ["count", "UPDATE public.commerce_offer_policy_rollout_baselines SET expected_count=expected_count+1;"],
+  ["fingerprint", "UPDATE public.commerce_offer_policy_rollout_baselines SET expected_fingerprint=md5('different cohort');"],
+])("readiness_component_baseline_%s_refuses_reread_drift", async (_name, change) => transaction(async db => {
+  await expect(censusComponent(db, `v_inputs:=public.catalog_price_setup_readiness_inputs(); ${change}`, baselineBlock,
+    "to_jsonb(v_legacy_baseline_matches)", true)).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_cohort_unverified" });
+}));
+const acquisitionBlock = readinessBlock("  BEGIN\n    v_acquisition :=", "  SELECT count(*) INTO v_bundle_count");
+it("readiness_component_acquisition_unknown_hard_failure_is_rethrown", async () => transaction(async db => {
+  await expect(censusComponent(db, "UPDATE public.commerce_promotion_definitions SET definition=definition-'discount_value' WHERE promotion_id='example:acquisition';",
+    acquisitionBlock, "to_jsonb(v_reasons)", [])).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_promotion_domain_unverified" });
+}));
+
+const canonicalBlock = readinessBlock("  WITH canonical_legacy AS (", "  BEGIN\n    v_acquisition :=");
+const canonicalObserved = "jsonb_build_array(v_first_legacy_count,v_first_pair_count,v_first_active_count)";
+// Invalid definitions stay native evidence. The public selector may refuse them
+// earlier; this component isolates the census rather than weakening that guard.
+it.each([
+  ["engine", { promotion_engine_version: "promotion-engine.v2", benefit_value_bps: 4440 }],
+  ["trigger", { trigger_type: "referral" }],
+  ["code", { trigger_type: "coupon_code", code: "EXAMPLE", discount_value: 44, benefit_value_bps: 4400 }],
+  ["discount_type", { discount_type: "fixed_amount" }], ["discount_value", { discount_value: 44 }],
+  ["scope", { applies_to_kind: "line_with_variant" }], ["payload", { applies_to_payload: { cart_mode: "one_time" } }],
+  ["stacking", { stacking_rule: "stackable_with_any" }], ["eligibility", { eligibility: { first_subscription_purchase: false } }],
+  ["customer_limit", { redemption_limit_per_customer: 2 }], ["global_limit", { redemption_limit_global: 1 }],
+  ["status", { status: "paused" }], ["region", { region_availability: ["YY"] }],
+] as const)("readiness_component_legacy_filter_%s", async (_name, delta) => transaction(async db => {
+  await censusComponent(db, pairedAcquisition + `UPDATE public.commerce_promotion_definitions SET definition=definition||${sqlJson(delta)} WHERE promotion_id='example:legacy';`,
+    canonicalBlock, canonicalObserved, [0, 0, 0]);
+}));
+it.each([
+  ["link", { v2_mirror_of: "example:absent" }], ["engine", { promotion_engine_version: "promotion-engine.v1" }],
+  ["trigger", { trigger_type: "referral" }], ["code", { trigger_type: "coupon_code", code: "EXAMPLE" }],
+  ["discount_type", { discount_type: "fixed_amount" }], ["discount_value", { discount_value: 49 }],
+  ["scope", { applies_to_kind: "line_with_variant" }], ["lane", { benefit_lane: "shipping" }],
+  ["kind", { benefit_kind: "percentage" }], ["basis_points", { benefit_value_bps: 4900 }], ["null_basis_points", { benefit_value_bps: null }],
+  ["minor", { benefit_kind: "fixed_amount", benefit_value_bps: null, benefit_value_minor: 1 }],
+] as const)("readiness_component_mirror_filter_%s", async (_name, delta) => transaction(async db => {
+  await censusComponent(db, pairedAcquisition + `UPDATE public.commerce_promotion_definitions SET definition=definition||${sqlJson(delta)} WHERE promotion_id='example:mirror';`,
+    canonicalBlock, canonicalObserved, [1, 0, 0]);
+}));
+it.each([
+  ["start_exact", "valid_from", "statement_timestamp()", 1],
+  ["start_inside", "valid_from", "statement_timestamp()-interval '1 microsecond'", 1],
+  ["start_future", "valid_from", "statement_timestamp()+interval '1 microsecond'", 0],
+  ["end_exact", "valid_to", "statement_timestamp()", 0],
+  ["end_inside", "valid_to", "statement_timestamp()+interval '1 microsecond'", 1],
+  ["end_outside", "valid_to", "statement_timestamp()-interval '1 microsecond'", 0],
+] as const)("readiness_component_legacy_window_%s", async (_name, key, instant, count) => transaction(async db => {
+  await censusComponent(db, pairedAcquisition + `UPDATE public.commerce_promotion_definitions SET definition=jsonb_set(definition,'{${key}}',to_jsonb(${instant})) WHERE promotion_id IN ('example:legacy','example:mirror');`,
+    canonicalBlock, canonicalObserved, [count, count, count]);
+}));
+it("readiness_census_bundle_mirror_link_is_excluded", async () => transaction(async db => {
+  await census(db, `UPDATE public.commerce_promotion_definitions SET definition=definition||'{"v2_mirror_of":"example:acquisition"}' WHERE promotion_id='example:bundle';`,
+    { bundlePolicyCount: 0 }, ["bundle_5_policy_invalid"]);
+}));
+it("readiness_census_policy_digest_must_verify", async () => transaction(async db => {
+  await censusComponent(db, freshBaseContext + policyEntry().replace("public.catalog_price_setup_policy_digest(v.id,1,p.id,p.region_code,p.currency,'D2C',v.first,v.last,1000,10,'FLOOR_TO_QUANTUM')", "repeat('a',64)"),
+    readinessBlock("  SELECT count(*) INTO v_active_price_list_count", "  -- Native governing retained"),
+    "jsonb_build_array(v_subscription_policy_count,v_subscription_policy_derives_band,v_price_mismatch_count)", [1, false, 1]);
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_policy_domain_unverified" });
+}));
+it.each([
+  ["rounding_rule", policyEntry().replaceAll("FLOOR_TO_QUANTUM", "CEIL_TO_QUANTUM")],
+  ["quantum_zero", policyEntry(undefined, undefined, "D2C", 1000, 0)],
+  ["discount_negative", policyEntry(undefined, undefined, "D2C", -1)],
+  ["discount_over_limit", policyEntry(undefined, undefined, "D2C", 10001)],
+] as const)("readiness_policy_native_constraint_%s", async (_name, setup) => transaction(async db => {
+  await db.query(freshBaseContext);
+  await expect(db.query(setup)).rejects.toMatchObject({ code: "23514" });
+}));
+it.each(["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscountGross", "totalGross"])(
+  "readiness_component_automatic_money_16_digits_%s", async field => transaction(async db => {
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,${field},amountMinor}',to_jsonb(lpad(metadata#>>'{quoteSnapshot,quote,${field},amountMinor}',16,'0')));`,
+      moneyBlock, moneyObserved, { checked: 1, mismatched: 0 });
+  }));
+it.each([false, true])("readiness_component_automatic_money_reason_%s", async mismatch => transaction(async db => {
+  const block = readinessBlock("  WITH automatic_v2_orders AS (", "  RETURN jsonb_build_object(");
+  await censusComponent(db, automaticOrder + (mismatch ? `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,totalGross,amountMinor}','999');` : ""),
+    block, "to_jsonb(v_reasons)", mismatch ? ["automatic_v2_money_invalid"] : []);
+}));
+
+const policyReadBlock = readinessBlock("  SELECT count(*), COALESCE(bool_and(", "  -- The runtime price authority");
+it.each([false, true])("readiness_component_policy_read_%s", async present => transaction(async db => {
+  await censusComponent(db, freshBaseContext + (present ? policyEntry() : ""), policyReadBlock,
+    "jsonb_build_array(v_subscription_policy_count,v_policy_well_formed,v_policy_discount_bps,v_policy_quantum)",
+    present ? [1, true, 1000, 10] : [0, false, null, null]);
+}));
+const shapeReadBlock = readinessBlock("  WITH active_list AS (", "  ), derived_shape AS (") + `
+  ) SELECT jsonb_build_array(base_entries,base_valid,subscription_entries,subscription_valid,overriding_or_drifted_entries)
+  INTO v_inputs FROM price_shape;`;
+it.each([
+  ["net", "UPDATE public.price_entries SET amount_kind='net' WHERE mode='one_time' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');", [1, 0, 1, 1, 1]],
+  ["tier", "UPDATE public.price_entries SET min_qty=2 WHERE mode='one_time' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');", [0, 0, 1, 1, 1]],
+  ["any", `INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    SELECT price_list_id,variant_id,'any',100,statement_timestamp()-interval '1 minute' FROM public.price_entries WHERE mode='one_time' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');`, [1, 1, 1, 1, 1]],
+] as const)("readiness_component_entry_override_%s", async (_name, setup, shape) => transaction(async db => {
+  await censusComponent(db, freshBaseContext + storedEntry + setup, shapeReadBlock, "v_inputs", shape);
+}));
+it("readiness_missing_settlement_currency_fails_closed", async () => transaction(async db => {
+  await db.query("DELETE FROM public.commerce_settings WHERE key='settlement_currency'");
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_settlement_context_unverified" });
+}));
+
+it.each(["created_at", "id"])("readiness_census_latest_list_selection_%s", async order => transaction(async db => {
+  const newContext = freshBaseContext.replace("UPDATE public.price_lists SET status='archived';", "")
+    .replace("INSERT INTO public.price_lists(name,region_code,currency,valid_from)", "INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)")
+    .replace("VALUES('Synthetic census'", "VALUES('ffffffff-ffff-ffff-ffff-ffffffffffff','Synthetic census'");
+  await census(db, `UPDATE public.price_lists SET created_at=statement_timestamp()-interval '2 hours';` + newContext + storedEntry +
+    (order === "id" ? "UPDATE public.price_lists SET created_at=statement_timestamp()-interval '2 hours';" : ""),
+    { activePriceListCount: 2, subscriptionPricePolicyCount: 0, subscriptionPricePolicyDerivesBand: false, priceMismatchCount: 0 },
+    ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each(["region_code", "currency"])("readiness_policy_native_context_FK_%s", async field => transaction(async db => {
+  await db.query(freshBaseContext);
+  const setup = policyEntry().replace(`p.region_code,p.currency,'D2C',v.first`,
+    field === "region_code" ? "'YY',p.currency,'D2C',v.first" : "p.region_code,'YYY','D2C',v.first");
+  await expect(db.query(setup)).rejects.toMatchObject({ code: "23503" });
+}));
+
+const historyReadBlock = readinessBlock("  SELECT count(*) INTO v_policy_history_count", "  WITH active_list AS (");
+it.each([
+  ["start_exact", "valid_from", "statement_timestamp()", 1],
+  ["start_inside", "valid_from", "statement_timestamp()-interval '1 microsecond'", 1],
+  ["start_future", "valid_from", "statement_timestamp()+interval '1 microsecond'", 0],
+  ["end_exact", "valid_to", "statement_timestamp()", 0],
+  ["end_inside", "valid_to", "statement_timestamp()+interval '1 microsecond'", 1],
+  ["end_outside", "valid_to", "statement_timestamp()-interval '1 microsecond'", 0],
+] as const)("readiness_component_history_list_%s", async (_name, column, instant, count) => transaction(async db => {
+  await censusComponent(db, `UPDATE public.price_lists SET ${column}=${instant};`, historyReadBlock, "to_jsonb(v_policy_history_count)", count);
+}));
+
+it.each([
+  ["automatic_code", { code: "EXAMPLE" }],
+  ["target_minor", { benefit_value_minor: 1 }],
+] as const)("readiness_native_promotion_coupling_%s", async (_name, delta) => transaction(async db => {
+  await db.query(`UPDATE public.commerce_promotion_definitions SET definition=definition||${sqlJson(delta)} WHERE promotion_id='example:acquisition';`);
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_promotion_domain_unverified" });
+}));
+it.each([
+  ["offer_version", "commerce.offer-policy.v2", "promotion-engine.v1"],
+  ["engine_version", "commerce.offer-policy.v1", "promotion-engine.v2"],
+] as const)("readiness_native_legacy_pair_constraint_%s", async (_name, offer, engine) => transaction(async db => {
+  await expect(db.query(`INSERT INTO public.subscriptions(client_id,cadence_days,price_list_id,currency_code,offer_policy_assignment_state,offer_policy_version,promotion_engine_version)
+    SELECT client_id,28,price_list_id,currency_code,'legacy_frozen',$1,$2 FROM public.subscriptions LIMIT 1;`, [offer, engine])).rejects.toMatchObject({ code: "23514" });
+}));
+it("readiness_census_unrelated_zero_line_does_not_invalidate_legacy", async () => transaction(async db => {
+  await census(db, `WITH pending AS (
+    INSERT INTO public.subscriptions(client_id,cadence_days,price_list_id,currency_code)
+    SELECT client_id,28,price_list_id,currency_code FROM public.subscriptions LIMIT 1 RETURNING id)
+    INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,unit_price_minor,sort_order,currency_code)
+    SELECT p.id,l.variant_id,1,0,0,l.currency_code FROM pending p CROSS JOIN public.subscription_lines l LIMIT 1;`, { legacyFrozenInvalidCount: 0 });
+}));
+
+it("readiness_census_acquisition_null_basis_points", async () => transaction(async db => {
+  // The native decoder preserves SQL UNKNOWN for this nullable shape; the
+  // acquisition selector still refuses it with the ordinary donor reason.
+  await census(db, `UPDATE public.commerce_promotion_definitions SET definition=definition||'{"benefit_kind":"percentage","benefit_value_bps":null}' WHERE promotion_id='example:acquisition';`,
+    { acquisition: null }, ["first_subscription_pair_invalid"]);
+}));

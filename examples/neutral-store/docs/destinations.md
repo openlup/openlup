@@ -1,6 +1,6 @@
 # Message destinations
 
-Status: maintainer implementation notes. Reader guidance: [OpenLup guide](../../../packages/core/docs/guide/reference/starter-routes.md). Sections marked "Evidence" are frozen historical records.
+Status: maintainer implementation notes. Reader guidance: [OpenLup guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/starter-routes.md). Sections marked "Evidence" are frozen historical records.
 
 `shared/routes.ts` is the source owner for routes and sample message links; `client/pages/destinations.ts` renders that inventory.
 

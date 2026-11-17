@@ -13,6 +13,7 @@ import type { CatalogDraftClaimV3 } from "./contracts/draftV3.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku, CatalogPublishedIdentifier, CatalogPublicationManifestV2 } from "./contracts/publication.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
 
+/** @experimental */
 export class CatalogPublicationError extends Error {
   constructor(readonly code: string, readonly outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported" = "validation_issue") {
     super(code); this.name = "CatalogPublicationError";
@@ -63,10 +64,12 @@ export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManif
     || !manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))
     context.addIssue({ code: "custom", message: "manifest roster must be sorted, unique and contain its primary" });
 });
+/** @experimental */
 export interface CatalogPublicationDocument {
   reference: z.infer<typeof catalogDocumentRevisionRefSchema>; canonicalText: string;
   provenance: { draftId: string; draftRevision: number; draftCommandKey: string; draftFingerprint: string };
 }
+/** @experimental */
 export interface CatalogPublicationRules {
   /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
   validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
@@ -77,6 +80,7 @@ export interface CatalogPublicationRules {
     beforeDocument: CatalogPublicationDocument | null; afterDocument: CatalogPublicationDocument;
   }): "compatible" | "material" | "inconclusive";
 }
+/** @experimental */
 export interface CatalogPublicationCompileInput {
   payload: CatalogDraftPayloadV3; record: CatalogDraftPublicationStoredRecord; definition: CatalogProductTypeDefinition;
   product: CatalogPublishedProduct | null; skus: readonly CatalogPublishedSku[]; documents: readonly CatalogPublicationDocument[];
@@ -112,13 +116,17 @@ export function assertCatalogPublicationMassInputs(payload: unknown, definition:
       catalogPublicationIntegralGrams(value as CatalogQuantity, definition, kind);
   }
 }
-/** Hard preparation guard, independent of dark/activation readiness. */
+/** Hard preparation guard, independent of dark/activation readiness.
+ * @experimental
+ */
 export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3): void {
   need(authoredSlug.safeParse(payload.product.slug).success, "commerce_product_slug_unsupported");
   for (const sku of payload.skus) need(sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
     && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)), "unit_trade_identifier_missing");
 }
-/** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic. */
+/** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic.
+ * @experimental
+ */
 export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void {
   need(net.dimension === "mass", "catalog_publication_mass_required_until_mc5");
   need(gross?.dimension === "mass", "catalog_publication_gross_mass_required");
@@ -133,7 +141,9 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
     need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
   } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
 }
-/** Ordered publication compiler using installed definitions; never persists or calls commerce. */
+/** Ordered publication compiler using installed definitions; never persists or calls commerce.
+ * @experimental
+ */
 export function compileCatalogPublication(input: CatalogPublicationCompileInput): { product: CatalogPublishedProduct; skus: CatalogPublishedSku[]; documents: CatalogPublicationDocument[]; activation: boolean; changed: boolean } {
   canonicalCatalogDraftJson(input.payload);
   // Check the temporary numeric domain before strict positive-quantity decoding,

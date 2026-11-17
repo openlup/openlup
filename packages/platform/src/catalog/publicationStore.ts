@@ -48,7 +48,9 @@ function failure(error: unknown): CatalogPublicationFailure {
 interface StoredPublication { id: string; product_id: string; revision: number; document_revision_id: string; canonical_state: string; digest: string; committed_at: string }
 interface RetainedState { head: CatalogHeadRef | null; publication: StoredPublication | null; product: CatalogPublishedProduct | null;
   skus: CatalogPublishedSku[]; references: CatalogSkuRevisionRef[]; documents: CatalogPublicationDocument[] }
-/** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters. */
+/** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters.
+ * @experimental
+ */
 export function createPostgresCatalogPublication<Context>(deps: CatalogPublicationDependencies<Context>) {
   const actors = new WeakMap<object, string>(), readers = new WeakMap<object, Context>();
   const prices = deps.prices ?? createCatalogPriceSetupTransactionWriter<VerifiedCatalogPublisher>(capability => {

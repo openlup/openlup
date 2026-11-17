@@ -7,14 +7,19 @@ import type { CatalogPublicationRules } from "./publicationValidation.js";
 import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
 
 declare const verifiedReadScope: unique symbol;
+/** @experimental */
 export interface VerifiedCatalogReadScope { readonly [verifiedReadScope]: true }
+/** @experimental */
 export interface CatalogPublicationTransactions { run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> }
-/** The price owner supplies the opaque, same-product prelocked batch; no price policy is implemented here. */
+/** The price owner supplies the opaque, same-product prelocked batch; no price policy is implemented here.
+ * @experimental
+ */
 export interface CatalogPublicationPriceBoundary {
   prelock(db: PgQueryExecutor, actor: VerifiedCatalogPublisher, productId: string,
     commands: readonly CatalogDraftPriceOperationV2[]): Promise<unknown>;
   applyInTransaction(db: PgQueryExecutor, actor: VerifiedCatalogPublisher, parentProductId: string, prelockedBatch: unknown): Promise<void>;
 }
+/** @experimental */
 export interface CatalogPublicationDependencies<Context> {
   transactions: CatalogPublicationTransactions;
   registry: CatalogProductTypeRegistry;

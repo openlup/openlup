@@ -1638,6 +1638,22 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/history/neutral-store-limits-2026-11-13.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/history/neutral-store-proof-2026-11-13.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/history/neutral-store-proof-2026-11-13.txt",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/history/platform-readme-release-notes-0.43.0.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
       "class": "public-output"
     },

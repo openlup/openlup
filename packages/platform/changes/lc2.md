@@ -1,4 +1,4 @@
-Adds an unbound native catalogue publication authority consuming immutable draft
+Adds an experimental, unbound native catalogue publication authority consuming immutable draft
 v3 inputs. It retains complete product/SKU facts, ordered source-bound operations,
 persisted approve/revoke decisions, exact historical reads, authorized recovery,
 bounded history and one transactional outbox fact. Material or inconclusive
@@ -23,7 +23,11 @@ same-transaction writer. The shared price-owner phases reserve sorted receipt
 keys before sorted contexts, verify every child belongs to the parent, and apply
 the original commands on the publisher's executor. Standalone apply uses these
 same phases in its single SQL transaction. Existing commands, receipts, refusals
-and agreed subscriber prices are unchanged.
+and agreed subscriber prices are unchanged. The new public publication symbols and
+shared price transaction entry points carry `@experimental`; already published
+readers retain their existing annotations. New product/SKU status and publication
+outcome unions evolve by addition; removing, renaming or narrowing an existing
+value requires a major version.
 
 Managed divergence design: equivalent managed tables would store publications,
 heads, full SKU revisions, kinded receipts and immutable candidate decisions,
