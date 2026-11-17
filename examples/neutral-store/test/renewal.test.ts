@@ -169,3 +169,14 @@ test('startup names malformed actions and invalid preset choices', () => {
     assert.throws(() => assertConfig(config), { message: 'starter_pause_presets_invalid' });
   }
 });
+test('the cancellation save offer keeps its own owned pause default, admitted by the preset set', () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const care = config.renewal.subscriptionCare;
+  assert.equal(care.pausePresets.default, '2_weeks');
+  assert.equal(care.retention.pausePreset, '1_month');
+  assertConfig(config);
+  care.pausePresets = { allowed: ['2_weeks', 'indefinite'], default: '2_weeks' };
+  assert.throws(() => assertConfig(config), { message: 'starter_retention_configuration_invalid' });
+  delete care.retention.pausePreset;
+  assert.doesNotThrow(() => assertConfig(config));
+});

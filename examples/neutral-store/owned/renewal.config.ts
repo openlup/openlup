@@ -16,7 +16,7 @@ export function demoSubscriptionCare(): SubscriptionCareConfig {
     terms: { pauseDays: 14, pauseMonths: 1, slideMinDays: 3, slideMaxDays: 60,
       orderNowDelayMinutes: 5, reactivateDelayDays: 2 },
     retentionReasons: ['too_much_product', 'delivery_issue', 'too_expensive', 'not_a_good_fit', 'other'],
-    retention: { offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause' },
+    retention: { offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause', pausePreset: '1_month' },
     actions: { active: ['skip', 'slide', 'order_now', 'pause', 'cancel'], paused: ['resume', 'cancel'], cancelled: ['reactivate'],
       whilePaymentBlocked: ['pause', 'cancel'], whilePaymentExpired: ['cancel', 'resume'] },
     pausePresets: choice('2_weeks', '2_weeks', '1_month', 'indefinite'),

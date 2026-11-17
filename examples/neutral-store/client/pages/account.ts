@@ -1,7 +1,7 @@
 import { accountPreferencePolicy } from '../../owned/renewal.config.ts';
 import { rememberPurchase } from '../purchase.ts';
 import { act } from '../api.ts';
-import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PortalSubscription } from '../../shared/renewal-config.ts';
+import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PausePreset, type PortalSubscription } from '../../shared/renewal-config.ts';
 import { currentRecoveryToken } from '../recovery-session.ts';
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
@@ -202,10 +202,10 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
     }
     if (target && !found) append(output, el('p', { role: 'status' }, context.t('careNotFound')));
   }
-  function duration(): FieldSpec {
+  function duration(value: PausePreset = care.pausePresets.default): FieldSpec {
     const text = { '2_weeks': `${context.t('careTwoWeeks')} (${care.terms.pauseDays})`,
       '1_month': `${context.t('careMonth')} (${care.terms.pauseMonths})`, indefinite: context.t('careIndefinite') };
-    return { name: 'pausePreset', label: 'careDuration', type: 'select', value: care.pausePresets.default,
+    return { name: 'pausePreset', label: 'careDuration', type: 'select', value,
       options: care.pausePresets.allowed.map(value => ({ value, text: text[value] })) };
   }
   function openAction(row: PortalSubscription, action: CareAction) {
@@ -226,7 +226,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
     if (action === 'cancel') {
       const reasonLabels: Record<string, CopyKey> = { too_much_product: 'careTooMuch', delivery_issue: 'careDelivery', too_expensive: 'carePrice', not_a_good_fit: 'careFit', other: 'careOther' };
       fields.push({ name: 'reasonCode', label: 'cancelReason', type: 'select', options: context.config.renewal.subscriptionCare.retentionReasons.map(value => ({ value, text: reasonLabels[value] ? context.t(reasonLabels[value]) : value.replaceAll('_', ' ') })) },
-        { name: 'comment', label: 'note', type: 'textarea', maxLength: 240, required: false }, duration());
+        { name: 'comment', label: 'note', type: 'textarea', maxLength: 240, required: false }, duration(care.retention.pausePreset));
     }
     const offered = el('p', { 'data-save-offer': '' });
     const form = actionForm(context, { operation: 'subscription.command', submit: action === 'cancel' ? 'confirmCancel' : labels[action], fields,

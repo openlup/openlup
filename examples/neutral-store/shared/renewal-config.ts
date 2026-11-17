@@ -57,7 +57,9 @@ export interface SubscriptionCareConfig {
   recovered: { windowSeconds: number };
   terms: SubscriptionLifecycleTerms;
   retentionReasons: readonly string[];
-  retention: { offerByReason: Readonly<Record<string, SaveOfferKind>>; defaultOffer: SaveOfferKind };
+  retention: { offerByReason: Readonly<Record<string, SaveOfferKind>>; defaultOffer: SaveOfferKind;
+    /** Pause choice preselected in the cancellation save offer; defaults to pausePresets.default. */
+    pausePreset?: PausePreset };
   actions: Record<'active' | 'paused' | 'cancelled' | 'whilePaymentBlocked' | 'whilePaymentExpired', readonly CareAction[]>;
   pausePresets: Choice<PausePreset>;
   rescheduleOfferDays: number;
@@ -132,7 +134,8 @@ export function assertRetention(config: SubscriptionCareConfig): void {
   const kinds: readonly SaveOfferKind[] = ['skip', 'reschedule', 'pause'];
   if (!policy || !policy.offerByReason || typeof policy.offerByReason !== 'object' || Array.isArray(policy.offerByReason)
     || !kinds.includes(policy.defaultOffer) || Object.entries(policy.offerByReason).some(([reason, kind]) =>
-      !config.retentionReasons.includes(reason) || !kinds.includes(kind))) {
+      !config.retentionReasons.includes(reason) || !kinds.includes(kind))
+    || policy.pausePreset !== undefined && !config.pausePresets?.allowed.includes(policy.pausePreset)) {
     throw new Error('starter_retention_configuration_invalid');
   }
 }
