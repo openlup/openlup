@@ -348,7 +348,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     const one = input("0.4.1", "core", change), out = realpathSync(mkdtempSync(join(scratch, "leg-")));
     await expect(m.release.preflightPackageRelease(repository.root, one, undefined, offline), "the one-package preflight").rejects.toThrow(API_REFUSAL);
     await expect(m.release.preparePackageRelease(repository.root, one, out, undefined, offline), "a release leg").rejects.toThrow(API_REFUSAL);
-    expect(() => m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", change, "note\n")), "the set preflight").toThrow(API_REFUSAL);
+    await expect(m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", change, "note\n")), "the set preflight").rejects.toThrow(API_REFUSAL);
     expect(calls, "no network read before the refusal").toEqual([]);
     const coordinates = { VERSION: "0.4.1", TARGET_COMMIT: change };
     for (const [why, phase, env] of [["one package", "preflight", { PACKAGE: "core" }], ["the set", "preflight", { PACKAGE: "all" }], ["a release leg", "prepare", { PACKAGE: "core", RELEASE_OUTPUT_DIR: out }]] as const) {
@@ -392,15 +392,15 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     repository.write("packages/kit/src/a.ts", "export const a = 3;\n");
     const fix = repository.commit("B: set 0.4.1 with a fix");
     const manifestCheck = vi.fn((root: string, version: string) => { expect([root, version]).toEqual([repository.root, "0.4.1"]); });
-    expect(m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", fix, "note\n"), manifestCheck)).toEqual(["@openlup/core", "@openlup/kit"]);
+    expect(await m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", fix, "note\n"), manifestCheck)).toEqual(["@openlup/core", "@openlup/kit"]);
     expect(manifestCheck).toHaveBeenCalledOnce();
     quiet();
-    expect(m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", fix, "note\n")), "with packages:check --release-set").toHaveLength(2);
-    expect(() => m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.2", fix, "note\n")), "a set version the packages do not carry").toThrow("packages:check --release-set 0.4.2 refused the target");
+    expect(await m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", fix, "note\n")), "with packages:check --release-set").toHaveLength(2);
+    await expect(m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.2", fix, "note\n")), "a set version the packages do not carry").rejects.toThrow("packages:check --release-set 0.4.2 refused the target");
     repository.write("packages/kit/api/kit.api.md", "# kit API\n\nexport declare const added: 1;\n");
-    expect(() => m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", fix, "note\n"), () => undefined), "a tracked change").toThrow("the checkout must be the target commit without tracked changes");
+    await expect(m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", fix, "note\n"), () => undefined), "a tracked change").rejects.toThrow("the checkout must be the target commit without tracked changes");
     const change = repository.commit("C: kit's API changes in a patch set");
-    expect(() => m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", change, "note\n"), () => undefined), "the second package's API").toThrow("packages/kit/api differs from openlup-kit-v0.4.0; a patch set only fixes, so an API change is a minor set");
+    await expect(m.release.preflightSetRelease(repository.root, release.setReleaseInputs("0.4.1", change, "note\n"), () => undefined), "the second package's API").rejects.toThrow("packages/kit/api differs from openlup-kit-v0.4.0; a patch set only fixes, so an API change is a minor set");
   },
 };
 
@@ -459,11 +459,11 @@ const DEFECTS: Defect[] = [
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the one-package preflight without the check", in: "release", from: "  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n", to: "" },
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the one-package preflight swallows the refusal", in: "release", from: "  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n", to: "  try { assertPatchSetApiUnchanged(root, input.directory, input.version, input.target); } catch { /* bypassed */ }\n" },
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the check after the tag and npm reads", in: "release", from: "  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n", to: "  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n  assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);\n" },
-  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "a release leg prepares without the check", in: "release", from: "  await preflightPackageRelease(root, input, token, fetcher, manifestCheck);\n  writeFileSync(", to: "  assertReleaseCandidate(root, input);\n  manifestCheck(root, input.tag);\n  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n  writeFileSync(" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "a release leg prepares without the check", in: "release", from: "  await checkPackageRelease(root, input, token, fetcher, manifestCheck);\n  writeFileSync(", to: "  assertReleaseCandidate(root, input);\n  manifestCheck(root, input.tag);\n  await assertTagAbsent(input.tag, token, fetcher);\n  assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));\n  writeFileSync(" },
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set preflight without the check", in: "release", from: "  for (const { directory } of packages) assertPatchSetApiUnchanged(root, directory, set.version, set.target);\n", to: "" },
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set preflight swallows the refusal", in: "release", from: "  for (const { directory } of packages) assertPatchSetApiUnchanged(root, directory, set.version, set.target);\n", to: "  for (const { directory } of packages) try { assertPatchSetApiUnchanged(root, directory, set.version, set.target); } catch { /* bypassed */ }\n" },
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the one-package command skips its preflight", in: "release", from: "    await preflightPackageRelease(root, input, token);\n", to: "" },
-  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set command skips its preflight", in: "release", from: "const names = preflightSetRelease(root, set);", to: "const names = [\"unchecked\"];" },
+  { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the set command skips its preflight", in: "release", from: "const names = await preflightSetRelease(root, set);", to: "const names = [\"unchecked\"];" },
   { control: "every preflight and each release leg run the patch-set check, before any network read", plant: "the leg command prepares only the note", in: "release", from: "if (phase === \"prepare\") return preparePackageRelease(root, input, out, token);", to: "if (phase === \"prepare\") return writeFileSync(resolve(out, \"notes.md\"), input.note);" },
   { control: "the plan passes the packages to release in full to the step output", plant: "no step output", in: "release", from: "    appendFileSync(output, `packages=${JSON.stringify(full)}\\n`);\n", to: "" },
   { control: "the plan passes the packages to release in full to the step output", plant: "a list the matrix cannot parse", in: "release", from: "`packages=${JSON.stringify(full)}\\n`", to: "`packages=${full.join(\",\")}\\n`" },
