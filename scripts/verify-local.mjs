@@ -1,5 +1,5 @@
 // Full local contribution proof; hosted admission and installed stamps remain separate.
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { accessSync, closeSync, constants, openSync, writeSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +10,62 @@ import { captureSessionCandidate, git, sessionMain } from './agent-review-sessio
 import { verificationPlan } from './verification-plan.mjs';
 export { verificationSteps } from './verification-plan.mjs';
 
+// Observations only: no install, builds, review admission or provider access.
+export async function observePrerequisites({ cwd = process.cwd(), env = processEnvironment, scope } = {}) {
+  const observations = [];
+  const file = async path => {
+    try { return await readFile(join(cwd, path), 'utf8'); } catch { return undefined; }
+  };
+  const command = (name, argv) => {
+    const result = spawnSync(name, argv, { cwd, env, encoding: 'utf8', timeout: 5_000, maxBuffer: 1024 * 1024 });
+    return result.status === 0 ? { value: result.stdout.trim() } : {
+      error: result.error?.code === 'ENOENT' ? 'not found on PATH' : result.signal ? `stopped by ${result.signal}` : `exit ${result.status ?? 'unavailable'}`,
+    };
+  };
+  const version = (name, expected, observed, next, requiredBy) => observations.push({ name, requiredBy,
+    status: observed.error ? 'blocked' : !expected ? 'unknown' : observed.value === expected ? 'ready' : 'blocked',
+    expected: expected ?? 'unreadable pin', observed: observed.value ?? observed.error, next });
+  const nodePin = (await file('.nvmrc'))?.trim();
+  version('node', nodePin, { value: process.versions.node }, 'Select the Node version in .nvmrc, then rerun this plan.', ['all phases']);
+  let manifest; let lock;
+  try { manifest = JSON.parse(await file('package.json')); } catch { /* Report unknown, not a guessed pin. */ }
+  try { lock = JSON.parse(await file('package-lock.json')); } catch { /* Installation owns the locked dependency set. */ }
+  const npm = command('npm', ['--version']);
+  version('npm', manifest?.packageManager, npm.value ? { value: `npm@${npm.value}` } : npm,
+    'Select the packageManager version in package.json, then rerun this plan.', ['install']);
+  const compiler = 'node_modules/typescript/bin/tsc';
+  const compilerSource = await file(compiler);
+  const compiled = compilerSource === undefined ? { error: `${compiler} is absent` } : command(process.execPath, [join(cwd, compiler), '--version']);
+  version('compiler', lock?.packages?.['node_modules/typescript']?.version,
+    compiled.value ? { value: compiled.value.replace(/^Version /u, '') } : compiled,
+    'After selecting the pinned Node/npm, run npm ci --prefer-offline --no-audit --fund=false; the install phase also prepares dependencies.', ['lint', 'typecheck', 'build', 'tests']);
+  version('gitleaks', '8.30.1', command('gitleaks', ['version']),
+    'Provide gitleaks 8.30.1 on PATH before full local verification; hosted scanning remains required.', ['gitleaks']);
+  let history;
+  try { history = (await git(cwd, '--no-optional-locks', 'rev-parse', '--is-shallow-repository')).trim(); } catch { /* Do not infer complete scan history from a readable comparison base. */ }
+  observations.push({ name: 'history', requiredBy: ['policy', 'dco', 'neutrality'],
+    status: scope?.state === 'known' ? 'ready' : 'blocked',
+    observed: scope?.state === 'known' ? 'comparison base and candidate scope available' : scope?.error ?? 'comparison scope unavailable',
+    next: scope?.state === 'known' ? 'No comparison-history action required; secret-scan history is observed separately.' : 'Restore the required comparison history and origin/main (git fetch origin main), then rerun this plan.' });
+  observations.push({ name: 'secret scan history', requiredBy: ['gitleaks'], status: history === 'false' ? 'ready' : 'unknown',
+    observed: history === 'true' ? 'shallow checkout; complete local history is not available' : history === 'false' ? 'checkout is not shallow; the history scan has not run' : 'checkout depth is unreadable',
+    next: history === 'false' ? 'Run the selected gitleaks phase; planning is not scan evidence.' : 'Restore omitted history with git fetch --unshallow when the checkout is shallow before claiming a complete-history scan. The selected command scans only available history; admission is unchanged.' });
+  observations.push({ name: 'candidate', requiredBy: ['all phases'],
+    status: scope?.candidate?.clean ? 'ready' : 'blocked', observed: scope?.candidate ? scope.candidate.clean ? 'clean committed candidate' : 'uncommitted or untracked changes' : 'candidate unavailable',
+    next: 'Review and commit the intended candidate before full local verification; --plan remains available for a dirty tree.' });
+  const overrides = ['OPENLUP_BUILD_OUT_DIR', 'OPENLUP_SSR_OUT_DIR', 'OPENLUP_REFERENCE_PROFILE', 'OPENLUP_VITEST_EXCLUDE_FILE'].filter(name => env[name] !== undefined);
+  observations.push({ name: 'verification environment', requiredBy: ['all phases'], status: overrides.length ? 'blocked' : 'ready',
+    observed: overrides.length ? `selected output/profile overrides: ${overrides.join(', ')}` : 'no selected output/profile overrides',
+    next: overrides.length ? `Unset ${overrides.join(', ')} before full local verification.` : 'No action required.' });
+  const docker = command('docker', ['info', '--format', '{{.ServerVersion}}']);
+  observations.push({ name: 'docker', requiredBy: ['packages'], status: docker.value ? 'ready' : 'blocked',
+    observed: docker.value ?? docker.error, next: 'Start an available Docker daemon for the selected disposable PostgreSQL package proofs; this plan starts no containers.' });
+  const broker = hasBroker(env);
+  observations.push({ name: 'resource broker', requiredBy: [], status: broker ? 'ready' : 'optional',
+    observed: broker ? 'executable ai-resource-gate on PATH' : 'not available; local phases run directly', next: 'No action required; native review and any installed helper admission remain separate.' });
+  return observations;
+}
+
 export async function explainVerification({ cwd = process.cwd(), env = processEnvironment, pgtap = false } = {}) {
   let candidate; let error;
   try {
@@ -17,10 +73,11 @@ export async function explainVerification({ cwd = process.cwd(), env = processEn
       env, runGit: (root, ...args) => git(root, '--no-optional-locks', ...args),
     });
   } catch (failure) { error = failure.message; }
+  const scope = candidate ? { state: 'known', candidate } : { state: 'unknown', error };
   return {
-    kind: 'verification-plan', evidence: 'none; commands have not run',
-    scope: candidate ? { state: 'known', candidate } : { state: 'unknown', error },
+    kind: 'verification-plan', evidence: 'none; verification commands have not run', scope,
     ...verificationPlan(candidate ?? { base: '<comparison-base>', head: '<candidate-head>' }, '<run-directory>', '<package-artifacts>', pgtap),
+    prerequisites: await observePrerequisites({ cwd, env, scope }),
   };
 }
 export function hasBroker(env) {
@@ -101,8 +158,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     const plan = await explainVerification({ pgtap: args.includes('--pgtap') });
     if (args.includes('--json')) console.log(JSON.stringify(plan, null, 2));
     else {
-      console.log(`Verification plan only; no commands executed. Scope: ${plan.scope.state}.`);
+      console.log(`Verification plan only; no verification commands executed. Scope: ${plan.scope.state}.`);
       if (plan.scope.error) console.log(plan.scope.error);
+      for (const item of plan.prerequisites) console.log(`Prerequisite ${item.name}: ${item.status}; observed=${item.observed}${item.expected ? `; expected=${item.expected}` : ''}\n  next=${item.next}`);
       console.log(plan.selection);
       for (const step of plan.phases) console.log(`${step.name}: ${step.reason}\n  owner=${step.owner}; context=${step.context}; resource=${step.resource ?? 'direct'}; requires=${step.requires.join(',') || 'none'}\n  argv=${JSON.stringify(step.command)}; env=${JSON.stringify(step.env)}`);
       console.log(`pgTAP: ${plan.pgtap}`);

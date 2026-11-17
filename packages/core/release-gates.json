@@ -2,14 +2,15 @@
   "schemaVersion": 5,
   "kind": "kernel",
   "compatibilityPolicies": {
-    "internal-candidate": "Candidate package surfaces may change until the platform phase-5 activation explicitly freezes a public API.",
-    "testing-internal": "Test-support surfaces may change and are not runtime compatibility promises."
+    "stable": "Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise.",
+    "experimental": "Experimental API; may change in any minor release.",
+    "testing": "Test support only; not a runtime compatibility promise."
   },
   "packageRelease": {
     "phase": "platform-monorepo-phase-5",
-    "publicStability": "not-claimed",
-    "artifactChannel": "npm-staged-preview",
-    "versionRule": "0.N.P"
+    "publicStability": "stable-semver",
+    "artifactChannel": "npm-stable",
+    "versionRule": "MAJOR.MINOR.PATCH"
   },
   "evidence": {
     "packageSmokeEvidence": {
@@ -21,19 +22,19 @@
       "meaning": "A framework-free port/adapter suite is required only when this package declares that seam."
     },
     "dogfoodEvidence": {
-      "state": "private-current-seams",
-      "meaning": "A private product currently imports candidate package seams; this does not establish a public platform adopter seam."
+      "state": "first-party-production",
+      "meaning": "A first-party production deployment consumes package seams; this is first-party evidence only."
     },
     "externalConsumerEvidence": {
-      "state": "not-evaluated",
-      "meaning": "Requires a real independent adopter or public platform artifact in phase 4 or 5; first-party packed consumers remain package smoke evidence."
+      "state": "first-party-npm-and-production",
+      "meaning": "A first-party demo store installed from npm and a first-party production deployment provide consumer evidence. No independent adoption is claimed."
     }
   },
   "packageSurface": {
     "./subscription": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/subscriptionBundleStandalone.test.ts"
       ],
@@ -42,8 +43,8 @@
     },
     "./bundle": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/subscriptionBundleStandalone.test.ts"
       ],
@@ -52,8 +53,8 @@
     },
     "./pricing": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/pricingStandalone.test.ts"
       ],
@@ -63,7 +64,7 @@
     "./company-identity": {
       "role": "kernel",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "smoke/companyIdentityStandalone.test.ts"
       ],
@@ -72,8 +73,8 @@
     },
     "./fulfillment": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/fulfillmentStandalone.test.ts",
         "test/fulfillmentStatusMap.test.ts",
@@ -86,8 +87,8 @@
     },
     "./inventory": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/inventoryStandalone.test.ts"
       ],
@@ -96,8 +97,8 @@
     },
     "./shipping": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/shippingStandalone.test.ts"
       ],
@@ -106,8 +107,8 @@
     },
     "./catalog": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/catalogStandalone.test.ts"
       ],
@@ -116,8 +117,8 @@
     },
     "./promo": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/promoStandalone.test.ts"
       ],
@@ -126,8 +127,8 @@
     },
     "./risk": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/riskStandalone.test.ts"
       ],
@@ -137,7 +138,7 @@
     "./marketing/research": {
       "role": "kernel",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "smoke/marketingResearchStandalone.test.ts"
       ],
@@ -146,8 +147,8 @@
     },
     "./partners": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/partnersStandalone.test.ts"
       ],
@@ -156,8 +157,8 @@
     },
     "./payment": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/paymentStandalone.test.ts"
       ],
@@ -166,8 +167,8 @@
     },
     "./platform-runtime": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/platformRuntimeStandalone.test.ts"
       ],
@@ -176,8 +177,8 @@
     },
     "./outbox": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/outboxStandalone.test.ts"
       ],
@@ -186,8 +187,8 @@
     },
     "./readiness": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/readinessStandalone.test.ts"
       ],
@@ -197,7 +198,7 @@
     "./standard-schema": {
       "role": "kernel",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "smoke/standardSchemaStandalone.test.ts"
       ],
@@ -207,7 +208,7 @@
     "./testing": {
       "role": "testing",
       "maturity": "testing",
-      "compatibilityPolicy": "testing-internal",
+      "compatibilityPolicy": "testing",
       "packageSmokeEvidence": [
         "smoke/testingStandalone.test.ts"
       ],

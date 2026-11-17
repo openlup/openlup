@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { COMMERCE_CONTRACT_VERSION } from "./types.js";
 import { createQuoteResponseSchema, type CreateQuoteResponse } from "./contracts.js";
 import {
@@ -75,6 +75,7 @@ describe("order draft snapshot contracts", () => {
   it("rejects a snapshot whose hidden quote context no longer mirrors the quote", () => {
     const quoteSnapshot = quoteResponse();
     const snapshot = createOrderDraftSnapshotFromQuoteSnapshot(quoteSnapshot);
+    assert.isDefined(snapshot.context);
     snapshot.context = { ...snapshot.context, cadenceDays: 28 };
 
     expect(

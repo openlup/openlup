@@ -8,7 +8,7 @@ const STORAGE_KEY_PREFIX = "openlup:checkout-recovery:stripe:v1:";
 interface StoredStripeRecoverySession {
   version: 1;
   orderId: string;
-  paymentIntentId: string;
+  paymentIntentId: CheckoutRecoveryOrderSummary["paymentIntentId"];
   clientId: string;
   confirmationStarted: boolean;
 }

@@ -1,19 +1,27 @@
 import { describe, expect, it } from "vitest";
-import type { OmsOrderDetail } from "@/domains/commerce/omsContracts";
+import { omsOrderDetailSchema } from "@/domains/commerce/omsContracts";
 import { actionFingerprint, normalizeAddressDraft } from "./orderDetailActionUtils";
 import { detailResponse } from "./OrdersPage.testHelpers";
 
-const detail = detailResponse({
-  order: {
-    fulfillment: {
-      fulfillmentOrderId: "f3222222-2222-4222-8222-222222222221",
-      status: "label_created",
-      latestOperationType: "label_created",
-      latestOperationAt: "2026-06-05T10:30:00+00:00",
-      providerTrackingId: "TRACK-123",
-    },
+const order = detailResponse().order;
+const { species, ...pet } = order.pet;
+
+const detail = omsOrderDetailSchema.parse({
+  ...order,
+  customer: { ...order.customer, lifecycleStage: null },
+  pet: { ...pet, petType: species, ageLabel: null, weightKg: null },
+  paymentMethodLabel: null,
+  paymentProvider: null,
+  payment: { ...order.payment, paymentId: "22222222-2222-4222-8222-222222222221" },
+  fulfillment: {
+    ...order.fulfillment,
+    fulfillmentOrderId: "f3222222-2222-4222-8222-222222222221",
+    status: "label_created",
+    latestOperationType: "label_created",
+    latestOperationAt: "2026-06-05T10:30:00+00:00",
+    providerTrackingId: "TRACK-123",
   },
-}).order as OmsOrderDetail;
+});
 
 const baseInput = {
   addressDraft: {

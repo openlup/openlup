@@ -12,7 +12,7 @@ import {
   persistCheckoutRecoveryStripeSession,
 } from "./checkoutRecoveryStripeSession";
 
-const ORDER: CheckoutRecoveryOrderSummary = {
+const ORDER = {
   orderId: "11111111-1111-4111-8111-111111111111",
   orderRef: "order_11111111-1111-4111-8111-111111111111",
   orderNumber: "OPENLUP-11111111",
@@ -23,7 +23,7 @@ const ORDER: CheckoutRecoveryOrderSummary = {
   petName: "Lidka",
   cadenceDays: 30,
   createdAt: "2026-06-25T10:00:00.000Z",
-};
+} satisfies CheckoutRecoveryOrderSummary;
 
 const RESULT = {
   contractVersion: "commerce.checkout-recovery.v1" as const,

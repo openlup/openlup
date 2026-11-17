@@ -11,11 +11,14 @@ process: an application binds its ports and composes it.
 
 ## Installed context lookup
 
-From the application root, run:
+With an application-local installation, run from the application root:
 
 ```sh
 ./node_modules/.bin/openlup-context search "subscription renewal"
 ```
+
+For npm workspace hoisting, use the installed-manifest executable recipe in
+[lookup settings](README.md#agent-context-lookup) from the selected application root.
 
 The command searches core's installed reader guide under `docs/guide/`, package
 `AGENTS.md`, `README.md`, declarations and exports, and `CHANGELOG.md` for upgrade
@@ -31,23 +34,23 @@ establish complete coverage. Core supplies the executable. See
 <!-- generated:maturity:core -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `./bundle` | kernel | candidate |
-| `./catalog` | kernel | candidate |
+| `./bundle` | kernel | stable |
+| `./catalog` | kernel | stable |
 | `./company-identity` | kernel | experimental |
-| `./fulfillment` | kernel | experimental |
-| `./inventory` | kernel | candidate |
+| `./fulfillment` | kernel | stable |
+| `./inventory` | kernel | stable |
 | `./marketing/research` | kernel | experimental |
-| `./outbox` | kernel | experimental |
-| `./partners` | kernel | experimental |
-| `./payment` | kernel | experimental |
-| `./platform-runtime` | kernel | experimental |
-| `./pricing` | kernel | candidate |
-| `./promo` | kernel | candidate |
-| `./readiness` | kernel | experimental |
-| `./risk` | kernel | candidate |
-| `./shipping` | kernel | candidate |
+| `./outbox` | kernel | stable |
+| `./partners` | kernel | stable |
+| `./payment` | kernel | stable |
+| `./platform-runtime` | kernel | stable |
+| `./pricing` | kernel | stable |
+| `./promo` | kernel | stable |
+| `./readiness` | kernel | stable |
+| `./risk` | kernel | stable |
+| `./shipping` | kernel | stable |
 | `./standard-schema` | kernel | experimental |
-| `./subscription` | kernel | candidate |
+| `./subscription` | kernel | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:core -->
 

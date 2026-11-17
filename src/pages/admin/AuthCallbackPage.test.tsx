@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { act, render, waitFor, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-const { mode, redeem, managed } = vi.hoisted(() => ({ mode: { integrated: false }, redeem: vi.fn(async () => ({ error: null })), managed: vi.fn(() => { throw new Error('managed must stay cold'); }) }));
+const { mode, redeem, managed } = vi.hoisted(() => ({ mode: { integrated: false }, redeem: vi.fn(async (): Promise<{ error: string | null }> => ({ error: null })), managed: vi.fn(() => { throw new Error('managed must stay cold'); }) }));
 vi.mock('@/lib/authContext', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/authContext')>();
   return { ...actual, useAuth: () => mode.integrated ? actual.useAuth() : ({ directOperatorAuth: true, signInWithOtpCode: redeem }) };

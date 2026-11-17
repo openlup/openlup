@@ -10,7 +10,7 @@ export function createCustomerJourneyActionKey(): string {
 
   try {
     const bytes = new Uint8Array(16);
-    const getRandomValues = globalThis.crypto?.getRandomValues;
+    const getRandomValues: ((array: typeof bytes) => typeof bytes) | undefined = globalThis.crypto?.getRandomValues;
     if (getRandomValues) return formatUuid(getRandomValues.call(globalThis.crypto, bytes));
   } catch {
     // Fall through to the anonymous non-Web-Crypto source.

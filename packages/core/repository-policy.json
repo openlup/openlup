@@ -3,7 +3,7 @@
   "repository": {
     "packageName": "@openlup/core",
     "currentPhase": "platform-monorepo-phase-5",
-    "packageVisibility": "public-preview",
+    "packageVisibility": "public-stable",
     "activation": {
       "target": "platform-monorepo-phase-5",
       "separateRepositoryActivation": "forbidden",

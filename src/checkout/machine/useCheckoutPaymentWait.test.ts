@@ -223,7 +223,7 @@ describe("useCheckoutPaymentWait", () => {
     const { result, rerender } = renderHook(
       ({ request }: { request: CheckoutPaymentWaitOptions["statusRequest"] }) =>
         useCheckoutPaymentWait({ ...options, statusRequest: request }),
-      { initialProps: { request: STATUS_REQUEST } },
+      { initialProps: { request: options.statusRequest } },
     );
 
     await advance(185_000);
