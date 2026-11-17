@@ -123,7 +123,7 @@ describe("release-only source snapshots", () => {
     const network = vi.fn(async () => new Response(null, { status: 404 }));
     await expect(preflightPackageRelease(f.root, input, undefined, network, () => {})).rejects.toThrow(/byte-for-byte/);
     await expect(preparePackageRelease(f.root, input, out, undefined, network, () => {})).rejects.toThrow(/byte-for-byte/);
-    expect(() => preflightSetRelease(f.root, setReleaseInputs("0.17.0", head, "note"), () => {})).toThrow(/byte-for-byte/);
+    await expect(preflightSetRelease(f.root, setReleaseInputs("0.17.0", head, "note"), () => {})).rejects.toThrow(/byte-for-byte/);
     expect(network).not.toHaveBeenCalled(); expect(existsSync(join(out, "notes.md"))).toBe(false);
     const fetchStub = join(out, "fetch.mjs");
     writeFileSync(fetchStub, "globalThis.fetch = async () => new Response(null, { status: 404 });\n");
@@ -132,7 +132,7 @@ describe("release-only source snapshots", () => {
     prepareSourceRelease(f.root, "--write", () => {}); const fresh = f.commit(), ready = { ...input, target: fresh };
     await expect(preflightPackageRelease(f.root, ready, undefined, network, () => {})).resolves.toBeUndefined();
     await expect(preparePackageRelease(f.root, ready, out, undefined, network, () => {})).resolves.toBeUndefined();
-    expect(() => preflightSetRelease(f.root, setReleaseInputs("0.17.0", fresh, "note"), () => {})).not.toThrow();
+    await expect(preflightSetRelease(f.root, setReleaseInputs("0.17.0", fresh, "note"), () => {})).resolves.toEqual(["@openlup/core"]);
     expect(resume()).toMatchObject({ status: 0 });
     f.write("packages/core/CHANGELOG.md", f.read("packages/core/CHANGELOG.md") + "- Worktree drift.\n");
     expect(resume()).toMatchObject({ status: 1, stderr: expect.stringContaining("target commit without tracked changes") });

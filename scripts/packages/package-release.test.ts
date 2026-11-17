@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import ts from "typescript";
 import type { GithubFetch } from "../source-preview-release.ts";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
-import { RELEASE_APP, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
+import { RELEASE_APP, assertStableSetExportsUnchanged, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, setReleaseInputs, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
 
 
 /** Minimal committed source snapshot for release falsifiers; classification stays explicit. */
@@ -156,8 +157,44 @@ describe("the release candidate at the target commit", () => {
     write("packages/core/package.json", JSON.stringify(manifest(version, publish)));
     git("init", "--quiet"); snapshotFixture(repo, write); git("add", "--all"); git("commit", "--quiet", "-m", "fixture");
     const head = git("rev-parse", "HEAD");
-    return { repo, out, head, write, input: packageReleaseInputs("core", "0.11.0", head, "note\n") };
+    return { repo, out, head, write, git, input: packageReleaseInputs("core", "0.11.0", head, "note\n") };
   }
+
+  it("keeps the release job's no-install import graph limited to builtins and relative files", () => {
+    const pending = new Set([fileURLToPath(new URL("./package-release.ts", import.meta.url))]);
+    for (const file of pending) {
+      for (const statement of ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest).statements) {
+        if (!(ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) || !statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+        const fileName = statement.moduleSpecifier.text;
+        expect(fileName, file).toMatch(/^(?:node:|\.\.?\/)/u);
+        if (fileName.startsWith(".")) pending.add(resolve(dirname(file), fileName));
+      }
+    }
+  });
+
+  it("refuses removed export names in preflight, accepts additions and keeps prepare dependency-free", async () => {
+    const ready = repository("1.1.0"), path = "packages/core/api/root.api.md";
+    ready.write("packages/core/release-gates.json", JSON.stringify({ packageSurface: { ".": { entrypoint: "dist/a.d.ts", snapshot: "api/root.api.md" } } }));
+    const report = (entry: string) => `# . API declaration snapshot\n\n## dist/a.d.ts\n\n\`\`\`ts\n${entry}\n\`\`\`\n## dist/b.d.ts\n\n\`\`\`ts\nexport declare const kept: string; export declare const removed: string;\n\`\`\`\n## dist/c.d.ts\n\n\`\`\`ts\nexport declare const starName: string; export * from "./a.js";\n\`\`\`\n`;
+    const entry = 'declare const local: string; export { local }; export declare const a: string, secondary: string; export { kept, removed as dropped } from "./b"; export type Text = `export unknown;`; export * from "./c.js"; export * as ns from "./c.js"; export type { External } from "@else/pkg";';
+    const commit = () => { snapshotFixture(ready.repo, ready.write); ready.git("add", "--all"); ready.git("commit", "--quiet", "-m", "report"); return ready.git("rev-parse", "HEAD"); };
+    ready.write(path, report(entry));
+    const baseline = commit();
+    ready.git("-c", "user.name=openlup-release[bot]", "-c", "user.email=334697227+openlup-release[bot]@users.noreply.github.com", "tag", "-a", "-m", "OpenLup package @openlup/core 1.0.0.", "openlup-core-v1.0.0", baseline);
+    ready.write(path, report(`${entry} export declare const added: string;`));
+    await expect(assertStableSetExportsUnchanged(ready.repo, "packages/core", "1.1.0", commit())).resolves.toBeUndefined();
+    ready.write(path, report(entry.replace(", removed as dropped", "").replace("export { local };", "").replace(", secondary: string", "")));
+    const removed = commit();
+    ready.write(path, report(entry)); // Only the committed target counts.
+    await expect(assertStableSetExportsUnchanged(ready.repo, "packages/core", "1.1.0", removed)).rejects.toThrow("Removed exports: @openlup/core/./dropped, @openlup/core/./local, @openlup/core/./secondary; a removal needs a major set");
+    ready.git("checkout", "--", path);
+    const input = packageReleaseInputs("core", "1.1.0", removed, "note\n");
+    await expect(preflightPackageRelease(ready.repo, input, undefined, routes({}), () => undefined)).rejects.toThrow("Removed exports:");
+    await expect(preparePackageRelease(ready.repo, input, ready.out, undefined, routes({}), () => undefined)).resolves.toBeUndefined();
+    for (const version of ["0.12.0", "2.0.0"]) await expect(assertStableSetExportsUnchanged(ready.repo, "packages/core", version, removed)).resolves.toBeUndefined();
+    ready.git("rm", "-f", path);
+    await expect(assertStableSetExportsUnchanged(ready.repo, "packages/core", "1.1.0", commit())).rejects.toThrow("Removed exports: @openlup/core/./Text, @openlup/core/./a, @openlup/core/./dropped, @openlup/core/./kept, @openlup/core/./local, @openlup/core/./ns, @openlup/core/./secondary, @openlup/core/./starName; a removal needs a major set");
+  });
 
   it("requires the clean target, a publishable package and exactly the requested manifest version", () => {
     const ready = repository();
@@ -235,9 +272,10 @@ describe("the command line", () => {
     expect(run(["registry"], { RELEASE_TAG: "openlup-source-preview/11" })).toMatchObject({ status: 1, stderr: expect.stringContaining("not a package release tag") });
   });
   it("takes package all as the set only in the preflight and the plan, and only at a set version", () => {
+    for (const version of ["1.0.0", "1.2.3"]) expect(setReleaseInputs(version, target, "note")).toEqual({ version, target, note: "note" });
     const set = { PACKAGE: "all", VERSION: "0.12.1", TARGET_COMMIT: target, RELEASE_NOTES: "note" };
     for (const args of [["plan"], ["plan", "a", "b"], ["preflight", "a"]]) expect(run(args, set), args.join(" ")).toMatchObject({ status: 1, stderr: expect.stringContaining("expected one phase: preflight, plan <packs directory>, prepare") });
-    for (const version of ["1.0.0", "0.0.1", "0.12"]) expect(run(["preflight"], { ...set, VERSION: version }), version).toMatchObject({ status: 1, stderr: expect.stringContaining("version must be a set version 0.N.P below 1.0 for a set release") });
+    for (const version of ["1.0", "01.0.0", "1.0.0-rc.1", "0.0.1", "0.12"]) expect(run(["preflight"], { ...set, VERSION: version }), version).toMatchObject({ status: 1, stderr: expect.stringContaining("version must be a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1) for a set release") });
     for (const phase of ["prepare", "check-draft", "verify"]) expect(run([phase], set), phase).toMatchObject({ status: 1, stderr: expect.stringContaining(`phase ${phase} releases one package`) });
     expect(run(["plan", tmpdir()], { ...set, GITHUB_OUTPUT: "" })).toMatchObject({ status: 1, stderr: expect.stringContaining("plan writes its packages to GITHUB_OUTPUT") });
     expect(() => packageReleaseInputs("all", "0.12.1", target, "note")).toThrow("package all names the whole set, not one package");
