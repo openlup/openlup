@@ -6062,6 +6062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/configuratorIntentReplayFingerprint.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/customerCheckoutLinks.ts",
       "class": "public-output"
     },
@@ -9150,6 +9154,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativeRenewalCadence.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/nativeRenewalCodec.ts",
       "class": "public-output"
     },
@@ -11551,6 +11559,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/postgresCommandStore.test.ts",
       "class": "public-output"
     },
     {
