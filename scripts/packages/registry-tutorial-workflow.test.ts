@@ -463,36 +463,60 @@ describe("qualified image publication", () => {
     try { writeFileSync(join(application, "Dockerfile"), dockerfile); expect(() => buildQualifiedImage(application, "unused", "unused")).toThrow("qualified_image_base_unexpected"); }
     finally { rmSync(application, { recursive: true, force: true }); }
   });
-  it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch"])("checks the defensive shell guard, archive, immutable tag and registry equality: %s", mode => {
+  it("pins the canonical set-version rule and refuses zero minors and leading zeros", () => {
+    const rule = "^(0\\.[1-9][0-9]*|[1-9][0-9]*\\.(0|[1-9][0-9]*))\\.(0|[1-9][0-9]*)$";
+    expect(body).toContain(JSON.stringify(rule));
+    for (const v of ["0.1.0", "1.0.0", "1.2.3", "10.0.0", "0.0.1", "01.0.0", "1.01.0", "1.0.01", "1.0.0-rc.1"]) expect(new RegExp(rule).test(v), v).toBe(["0.1.0", "1.0.0", "1.2.3", "10.0.0"].includes(v));
+  });
+  it.each(["published", "existing", "skipped-dispatch", "archive-mismatch", "tag-move", "readback-mismatch", "denied", "bom-mismatch", "evidence-tag-move", "evidence-readback-mismatch", "evidence-denied"])("checks the defensive shell guard, archive, immutable tag and registry equality: %s", mode => {
     const directory = mkdtempSync(join(tmpdir(), "qualified-image-")), input = join(directory, "qualified-image"); mkdirSync(input);
     const manifest = '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}', digest = "sha256:" + createHash("sha256").update(manifest).digest("hex");
-    const bom = JSON.stringify({ formatVersion: 4, kind: "openlup-exact-set-bom", setVersion: "0.41.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
+    const evidenceManifest = manifest.replace("schemaVersion\":2", "schemaVersion\":2,\"evidence\":true"), evidenceDigest = "sha256:" + createHash("sha256").update(evidenceManifest).digest("hex");
+    const bom = JSON.stringify({ formatVersion: 4, kind: "openlup-exact-set-bom", setVersion: "1.0.0", image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: digest } });
     writeFileSync(join(input, "exact-set-qualification.json.bom.json"), bom);
-    writeFileSync(join(input, "exact-set-qualification.json"), JSON.stringify({ result: "PASS", image: { manifestDigest: digest }, bom: { sha256: mode === "bom-mismatch" ? "wrong" : createHash("sha256").update(bom).digest("hex") } }));
+    for (const kind of ["packages", "image"]) writeFileSync(join(input, `exact-set-qualification.json.${kind}.cdx.json`), kind);
+    const qualificationBytes = JSON.stringify({ result: "PASS", image: { manifestDigest: digest }, bom: { sha256: mode === "bom-mismatch" ? "wrong" : createHash("sha256").update(bom).digest("hex") } });
+    writeFileSync(join(input, "exact-set-qualification.json"), qualificationBytes);
     writeFileSync(join(directory, "skopeo"), `#!/bin/bash
+printf '%s\\n' "$@" >> "$RUNNER_TEMP/skopeo-arguments"
 case "$1" in
   login) cat >/dev/null;;
-  copy) touch "$RUNNER_TEMP/pushed";;
+  copy) [[ "$2" != --format ]] || exit 0; touch "$RUNNER_TEMP/pushed"; [[ "$3" != oci:* ]] || touch "$RUNNER_TEMP/evidence-pushed";;
   inspect)
-    if [[ "$3" == oci-archive:* ]]; then printf '%s' "$ARCHIVE_MANIFEST";
+    if [[ "$3" == oci:* ]]; then printf '%s' "$EVIDENCE_MANIFEST";
+    elif [[ "$3" == *-evidence ]]; then
+      if [ -f "$RUNNER_TEMP/evidence-pushed" ]; then [[ "$MODE" != evidence-readback-mismatch ]] && printf '%s' "$EVIDENCE_MANIFEST" || printf altered;
+      elif [ "$MODE" = evidence-tag-move ]; then printf altered;
+      elif [ "$MODE" = evidence-denied ]; then echo unauthorized >&2; exit 1;
+      else echo 'manifest unknown' >&2; exit 1; fi;
+    elif [[ "$3" == oci-archive:* ]]; then printf '%s' "$ARCHIVE_MANIFEST";
     elif [ -f "$RUNNER_TEMP/pushed" ]; then printf '%s' "$READBACK_MANIFEST";
     elif [ "$MODE" = denied ]; then echo unauthorized >&2; exit 1;
     elif [[ "$MODE" == existing || "$MODE" == tag-move ]]; then printf '%s' "$REGISTRY_MANIFEST";
     else echo 'manifest unknown' >&2; exit 1; fi;;
 esac
 `); chmodSync(join(directory, "skopeo"), 0o700);
-    writeFileSync(join(directory, "docker"), "#!/bin/bash\ncat >/dev/null\n"); chmodSync(join(directory, "docker"), 0o700);
+    writeFileSync(join(directory, "docker"), '#!/bin/bash\nprintf "%s\\n" "$@" >> "$RUNNER_TEMP/docker-arguments"\ncat >/dev/null\n'); chmodSync(join(directory, "docker"), 0o700);
     try {
-      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v0.41.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", GITHUB_OUTPUT: join(directory, "output"), MODE: mode,
-        ARCHIVE_MANIFEST: mode === "archive-mismatch" ? "altered" : manifest, READBACK_MANIFEST: mode === "readback-mismatch" ? "altered" : manifest, REGISTRY_MANIFEST: mode === "tag-move" ? "altered" : manifest };
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, RELEASE_TAG: "openlup-core-v1.0.0", PUBLISH_IMAGE: String(mode !== "skipped-dispatch"), GHCR_TOKEN: "synthetic", GHCR_ACTOR: "fixture", GITHUB_OUTPUT: join(directory, "output"), MODE: mode,
+        EVIDENCE_MANIFEST: evidenceManifest, ARCHIVE_MANIFEST: mode === "archive-mismatch" ? "altered" : manifest, READBACK_MANIFEST: mode === "readback-mismatch" ? "altered" : manifest, REGISTRY_MANIFEST: mode === "tag-move" ? "altered" : manifest };
       const run = spawnSync("bash", ["-e", "-o", "pipefail", "-c", body], { env, encoding: "utf8" });
       const success = ["published", "existing", "skipped-dispatch"].includes(mode), receipt = JSON.parse(readFileSync(join(input, "exact-set-qualification.json"), "utf8"));
       expect(run.status, run.stderr).toBe(success ? 0 : 1);
       expect(receipt.image.publishResult).toBe(success ? mode === "skipped-dispatch" ? mode : "published" : "refused");
       expect(receipt.result).toBe(mode === "skipped-dispatch" ? "PASS" : "FAIL");
       expect(receipt.image.attestation.result).toBe(mode === "skipped-dispatch" ? mode : "FAIL");
-      expect(existsSync(join(directory, "pushed"))).toBe(["published", "existing", "readback-mismatch"].includes(mode));
+      expect(existsSync(join(directory, "pushed"))).toBe(["published", "existing", "readback-mismatch", "evidence-tag-move", "evidence-readback-mismatch", "evidence-denied"].includes(mode));
       if (success && mode !== "skipped-dispatch") expect(receipt.image.registryReadback).toBe(digest);
+      if (mode === "skipped-dispatch") { expect(receipt.evidence).toBeUndefined(); expect(existsSync(join(directory, "evidence"))).toBe(false); }
+      if (["published", "existing"].includes(mode)) {
+        expect(readFileSync(join(directory, "docker-arguments"), "utf8")).toContain("--provenance=false\n--sbom=false\n--build-arg\nSOURCE_DATE_EPOCH=0\n");
+        expect(receipt.evidence).toMatchObject({ manifestDigest: evidenceDigest, registryReadback: evidenceDigest, attestation: { result: "FAIL" } });
+        for (const suffix of ["", ".bom.json", ".packages.cdx.json", ".image.cdx.json"]) expect(readFileSync(join(directory, "evidence/exact-set-qualification.json" + suffix), "utf8")).toBe(suffix ? readFileSync(join(input, "exact-set-qualification.json" + suffix), "utf8") : qualificationBytes);
+        expect(readFileSync(join(directory, "evidence/exact-set-qualification.json"), "utf8")).toContain('"result":"PASS"');
+        expect(readFileSync(join(directory, "skopeo-arguments"), "utf8")).toContain("docker://ghcr.io/openlup/neutral-store-starter:1.0.0-evidence\n");
+        expect(readFileSync(join(directory, "evidence.Dockerfile"), "utf8")).toBe("FROM scratch\nCOPY . /\n");
+      }
       if (mode === "tag-move") expect(run.stdout).toContain("qualified_image_tag_move_refused");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -512,22 +536,24 @@ describe("locked package SBOM identity", () => {
 // Projection of gh 2.103.3 verifying sigstore@2.1.0 with the CLI repository bundle fixture.
 // Subject, source and signer values are replaced with synthetic qualification identities.
 describe("image attestation verification", () => {
-  it.each(["valid", "subject", "signer", "source", "unverified"])("refuses %s verification mismatches and retains the detached bundle hash", kind => {
+  it.each(["valid", "subject", "signer", "source", "unverified", "evidence-subject", "evidence-unverified"])("refuses %s verification mismatches and retains the detached bundle hash", kind => {
     const directory = mkdtempSync(join(tmpdir(), "image-attestation-")), input = join(directory, "qualified-image"); mkdirSync(input);
     const digest = "a".repeat(64), receipt = join(input, "exact-set-qualification.json"), bundle = join(directory, "bundle.json");
-    writeFileSync(receipt, JSON.stringify({ result: "FAIL", image: {} })); writeFileSync(bundle, "synthetic bundle");
+    writeFileSync(receipt, JSON.stringify({ result: "FAIL", image: {}, evidence: { manifestDigest: "sha256:" + "c".repeat(64) } })); writeFileSync(bundle, "synthetic bundle");
     writeFileSync(receipt + ".bom.json", JSON.stringify({ image: { manifestDigest: "sha256:" + digest } }));
     const fixture = [{ verificationResult: { statement: { predicateType: "https://slsa.dev/provenance/v1", subject: [{ name: "ghcr.io/openlup/neutral-store-starter", digest: { sha256: kind === "subject" ? "b".repeat(64) : digest } }] }, signature: { certificate: {
       sourceRepositoryURI: kind === "source" ? "https://github.com/other/repository" : "https://github.com/openlup/openlup",
       buildSignerURI: "https://github.com/openlup/openlup/.github/workflows/" + (kind === "signer" ? "other.yml" : "registry-tutorial.yml") + "@refs/heads/main",
     } } } }];
     writeFileSync(join(directory, "response.json"), JSON.stringify(fixture));
-    writeFileSync(join(directory, "gh"), '#!/bin/bash\n[ "$1 $2" = "attestation verify" ] || exit 1\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/arguments"\n[ "$MODE" != unverified ] || exit 1\ncat "$RUNNER_TEMP/response.json"\n'); chmodSync(join(directory, "gh"), 0o700);
+    writeFileSync(join(directory, "evidence-response.json"), JSON.stringify(fixture).replace(digest, "c".repeat(64)));
+    writeFileSync(join(directory, "gh"), '#!/bin/bash\n[ "$1 $2" = "attestation verify" ] || exit 1\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/arguments"\n[ "$MODE" != unverified ] || exit 1\nif [[ "$*" == *evidence.attestation.json* ]]; then [ "$MODE" != evidence-unverified ] || exit 1; [ "$MODE" != evidence-subject ] || { echo "[]"; exit 0; }; cat "$RUNNER_TEMP/evidence-response.json"; exit 0; fi\ncat "$RUNNER_TEMP/response.json"\n'); chmodSync(join(directory, "gh"), 0o700);
     try {
-      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, BUNDLE_PATH: bundle, MODE: kind };
-      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script(step(job(workflow, "publish-qualified-image"), "Verify the issued image attestation"))], { env, encoding: "utf8" });
+      const env = { ...Reflect.get(process, "env"), PATH: directory + ":" + Reflect.get(process, "env").PATH, RUNNER_TEMP: directory, BUNDLE_PATH: bundle, EVIDENCE_BUNDLE_PATH: bundle, MODE: kind };
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script(step(job(workflow, "publish-qualified-image"), "Verify the issued image and evidence attestations"))], { env, encoding: "utf8" });
       expect(result.status, result.stderr).toBe(kind === "valid" ? 0 : 1);
-      expect(JSON.parse(readFileSync(receipt, "utf8"))).toMatchObject({ result: kind === "valid" ? "PASS" : "FAIL", image: { attestation: { result: kind === "valid" ? "PASS" : "FAIL", bundleSha256: createHash("sha256").update("synthetic bundle").digest("hex") } } });
+      expect(JSON.parse(readFileSync(receipt, "utf8"))).toMatchObject({ result: kind === "valid" ? "PASS" : "FAIL", image: { attestation: { result: kind === "valid" || kind.startsWith("evidence-") ? "PASS" : "FAIL", bundleSha256: createHash("sha256").update("synthetic bundle").digest("hex") } } });
+      if (kind === "valid" || kind.startsWith("evidence-")) expect(JSON.parse(readFileSync(receipt, "utf8")).evidence.attestation).toEqual({ result: kind === "valid" ? "PASS" : "FAIL", bundleSha256: createHash("sha256").update("synthetic bundle").digest("hex") });
       expect(readFileSync(join(directory, "arguments"), "utf8")).toContain("--owner\nopenlup\n--bundle\n");
       expect(readFileSync(join(directory, "arguments"), "utf8")).toContain("--signer-workflow\nopenlup/openlup/.github/workflows/registry-tutorial.yml\n");
     } finally { rmSync(directory, { recursive: true, force: true }); }
