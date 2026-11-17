@@ -386,7 +386,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     const classification = clientReferences.has(row.oid)
       ? (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.relation])).rows : [];
     if (clientReferences.has(row.oid) && classification.length === 0) fail(`new relation ${row.name} has no absorption classification`);
-    if (SUCCESSOR_STORAGE_SHAPES[row.name]?.columns.some(([column]) => column === "client_id") && classification[0]?.disposition !== "block") fail("successor storage absorption must block");
+    if (Object.hasOwn(SUCCESSOR_STORAGE_SHAPES, row.name) && SUCCESSOR_STORAGE_SHAPES[row.name]!.columns.some(([column]) => column === "client_id") && classification[0]?.disposition !== "block") fail("successor storage absorption must block");
     if (censusIdentity && slot.absorptionCensusTables?.includes(censusIdentity)) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
@@ -1330,6 +1330,9 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, statement), false, setup)).rejects.toThrow(/catalog:/u);
   });
   const storageSlot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] };
+  it("preserves generic admission for a temporary relation named __proto__", async () => {
+    await checkForward(pool, storageSlot, "CREATE TABLE pg_temp.__proto__ (id uuid);");
+  });
   const storageEntries = Object.entries(NATIVE_SUCCESSOR_TABLE_SQL);
   const storageBase = `ALTER TABLE public.subscriptions ALTER COLUMN id TYPE uuid USING NULL::uuid;
     ${["catalog_skus", "catalog_publications", "subscription_stock_wait_cases", "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_settlement_intents", "fulfillment_shipments"].map(name => `CREATE TABLE public.${name}(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id));`).join("\n")}
