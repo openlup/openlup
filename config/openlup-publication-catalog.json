@@ -1454,11 +1454,19 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+      "path": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -2542,11 +2550,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/quote-shipping.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote.config.ts",
       "class": "public-output"
     },
     {
       "path": "examples/neutral-store/owned/renewal-copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/renewal-policy.ts",
       "class": "public-output"
     },
     {
@@ -2754,7 +2770,15 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/quote-shipping.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/recovery-entry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/renewal-policy.test.ts",
       "class": "public-output"
     },
     {
@@ -4750,11 +4774,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122180000_catalog_base_price_writer.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261122190000_catalog_publication.sql",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261122200000_catalog_lifecycle.sql",
+      "path": "packages/platform/sql/20261122200001_catalog_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -8590,6 +8622,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/catalogPriceSetupHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/catalogPriceSetupSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/commerceOfferPricing.ts",
       "class": "public-output"
     },
@@ -8631,6 +8671,10 @@
     },
     {
       "path": "packages/platform/src/pricing/contracts/authority.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/catalogPriceSetup.ts",
       "class": "public-output"
     },
     {
@@ -8695,6 +8739,10 @@
     },
     {
       "path": "packages/platform/src/pricing/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/postgresCatalogPriceSetupStore.ts",
       "class": "public-output"
     },
     {
@@ -11262,6 +11310,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/catalogPriceSetupContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/catalogPriceSetupHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/catalogPriceSetupStore.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/catalogueMoneyGolden.test.ts",
       "class": "public-output"
     },
@@ -11319,6 +11379,10 @@
     },
     {
       "path": "packages/platform/test/pricing/handlerFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/nativeReadinessInputs.test.ts",
       "class": "public-output"
     },
     {
@@ -29686,6 +29750,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogBasePriceTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogBasePriceWriter.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogDefinitionInstall.test.ts",
       "class": "public-output"
     },
@@ -30330,6 +30402,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/neutralStoreRenewalPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/neutralStoreUuid.test.ts",
       "class": "public-output"
     },
@@ -30343,6 +30419,14 @@
     },
     {
       "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/offerPolicyReadinessInputs.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/offerPolicyReadinessTransfer.test.ts",
       "class": "public-output"
     },
     {

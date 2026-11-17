@@ -127,17 +127,23 @@ function draftHandler<Context, Record extends CatalogLifecycleStoredRecord>(deps
 export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps<Context>) {
   return draftHandler(deps, { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema });
 }
-/** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed. */
+/** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed.
+ * @experimental
+ */
 export function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftStoredRecord>) {
   return draftHandler(deps, { command: catalogDraftStoredCommandSchema, record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema });
 }
 
-/** Opt-in publication inputs, with the same draft authorization and receipt-first replay. */
+/** Opt-in publication inputs, with the same draft authorization and receipt-first replay.
+ * @experimental
+ */
 export function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftPublicationStoredRecord>) {
   return draftHandler(deps, { command: catalogDraftPublicationStoredCommandSchema, record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema });
 }
 
-/** Lifecycle authoring shares authorization, immutable receipts and scalar validation. */
+/** Lifecycle authoring shares authorization, immutable receipts and scalar validation.
+ * @experimental
+ */
 export function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogLifecycleStoredRecord>) {
   return draftHandler(deps, { command: catalogLifecycleStoredCommandSchema, record: catalogLifecycleStoredRecordSchema, result: catalogLifecycleStoredApplyResultSchema });
 }

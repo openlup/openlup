@@ -1,6 +1,8 @@
 import type { PgQueryExecutor } from "../data/index.js";
 
-/** Drain bounded batches with the explicitly supplied migration-owner executor; safe to resume. */
+/** Drain bounded batches with the explicitly supplied migration-owner executor; safe to resume.
+ * @experimental
+ */
 export async function backfillCatalogNetContent(installExecutor: PgQueryExecutor, options: { batchSize: number }): Promise<void> {
   if (!Number.isSafeInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > 2147483647) {
     throw new Error("invalid_catalog_backfill_batch_size");

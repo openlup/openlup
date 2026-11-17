@@ -166,10 +166,15 @@ export declare function rewriteBffRouterRequestUrl(req: HttpRequest): void;
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import { z } from "./validation.js";
+/** @experimental */
 export declare const catalogAcceptanceV2Schema: z.ZodType<CatalogAcceptanceV2>;
-/** Verifies only supplied immutable identity. It neither infers a legacy binding nor acquires commerce locks. */
+/** Verifies only supplied immutable identity. It neither infers a legacy binding nor acquires commerce locks.
+ * @experimental
+ */
 export declare function assertCatalogAcceptedReferenceV2(db: PgQueryExecutor, value: unknown): Promise<CatalogAcceptedReferenceV2>;
-/** Capture into orders, edits and frozen terms remains the commerce-first acceptance fence's responsibility. */
+/** Capture into orders, edits and frozen terms remains the commerce-first acceptance fence's responsibility.
+ * @experimental
+ */
 export declare function assertCatalogAcceptanceV2(db: PgQueryExecutor, value: unknown): Promise<CatalogAcceptanceV2>;
 ```
 ## dist/catalog/activeSkuSelection.d.ts
@@ -403,10 +408,12 @@ export interface AdminBundleWritePort {
 ```ts
 import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 import { type CatalogAttributeProjectionValue, type CatalogAttributeValidation } from "./attributeValidation.js";
+/** @experimental */
 export interface CatalogAttributeProjectionRow extends CatalogAttributeProjectionValue {
     sku_id: string;
     publication_revision: string;
 }
+/** @experimental */
 export type CatalogAttributeProjectionPreparation = {
     prepared: false;
     issues: readonly CatalogDefinitionIssue[];
@@ -414,21 +421,28 @@ export type CatalogAttributeProjectionPreparation = {
     prepared: true;
     rows: readonly Readonly<CatalogAttributeProjectionRow>[];
 };
-/** Pure preparation for the publisher's executor: never persists or switches a generation. */
+/** Pure preparation for the publisher's executor: never persists or switches a generation.
+ * @experimental
+ */
 export declare function prepareCatalogAttributeProjection(validation: CatalogAttributeValidation, publicationRevision: string): CatalogAttributeProjectionPreparation;
 ```
 ## dist/catalog/attributeReferencePort.d.ts
 
 ```ts
-/** An installed namespace identifies a finite reference target, never a relation or URL. */
+/** An installed namespace identifies a finite reference target, never a relation or URL.
+ * @experimental
+ */
 export interface CatalogAttributeReference {
     namespace: string;
     id: string;
 }
+/** @experimental */
 export interface CatalogAttributeReferenceResolution extends CatalogAttributeReference {
     status: "resolved" | "dangling" | "private" | "unavailable";
 }
-/** Resolve the entire deduplicated allowlisted batch; omitted or duplicate results refuse. */
+/** Resolve the entire deduplicated allowlisted batch; omitted or duplicate results refuse.
+ * @experimental
+ */
 export interface CatalogAttributeReferencePort {
     resolve(references: readonly Readonly<CatalogAttributeReference>[]): Promise<readonly CatalogAttributeReferenceResolution[]>;
 }
@@ -440,6 +454,7 @@ import type { CatalogAttributeScalarType } from "./contracts/attributes.js";
 import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
+/** @experimental */
 export interface CatalogAttributeInput {
     productAttributes?: unknown;
     skus: readonly {
@@ -447,7 +462,9 @@ export interface CatalogAttributeInput {
         attributes?: unknown;
     }[];
 }
-/** Slots of the one projection, prepared without a publication revision or any SQL. */
+/** Slots of the one projection, prepared without a publication revision or any SQL.
+ * @experimental
+ */
 export interface CatalogAttributeProjectionValue {
     attribute_key: string;
     definition_version: number;
@@ -463,6 +480,7 @@ export interface CatalogAttributeProjectionValue {
     canonical_value: string | null;
 }
 declare const validatedAttributes: unique symbol;
+/** @experimental */
 export type CatalogAttributeValidation = {
     readonly valid: false;
     readonly issues: readonly CatalogDefinitionIssue[];
@@ -478,11 +496,14 @@ export type CatalogAttributeValidation = {
 /** Validate complete supplied facts; missing publish-time facts remain readiness issues.
  * Definition metadata is checked by its existing owner. Cross-field policy stays in validateContent.
  * No v1 draft admission, callback execution, database access or publication occurs here.
+ * @experimental
  */
 export declare function validateCatalogAttributes(definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort): Promise<CatalogAttributeValidation>;
 /** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap. */
 export declare function validateCatalogPublicationAttributes(definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort): Promise<CatalogAttributeValidation>;
-/** An admission predicate only; the publisher must also prove all other publication duties. */
+/** An admission predicate only; the publisher must also prove all other publication duties.
+ * @experimental
+ */
 export declare function catalogAttributesReadyForPublication(result: CatalogAttributeValidation): boolean;
 export {};
 ```
@@ -490,7 +511,9 @@ export {};
 
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
-/** Drain bounded batches with the explicitly supplied migration-owner executor; safe to resume. */
+/** Drain bounded batches with the explicitly supplied migration-owner executor; safe to resume.
+ * @experimental
+ */
 export declare function backfillCatalogNetContent(installExecutor: PgQueryExecutor, options: {
     batchSize: number;
 }): Promise<void>;
@@ -1102,10 +1125,12 @@ import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/l
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogValidationPort } from "./publicationPorts.js";
+/** @experimental */
 export declare class CatalogCandidateError extends Error {
     readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable";
     constructor(code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable");
 }
+/** @experimental */
 export interface CatalogCandidateDeps {
     /** Authorized immutable revision read; no actor string becomes publication authority. */
     readDraft(draftId: string, revision?: number): Promise<CatalogDraftPublicationStoredRecord | null>;
@@ -1122,7 +1147,9 @@ export interface CatalogCandidateDeps {
     /** The price owner validates proposed operations; its absence blocks a price-bearing preview. */
     validatePrices?: (payload: CatalogDraftPayloadV2) => Promise<readonly CatalogDraftIssue[]>;
 }
-/** No candidate state: each call reconstructs every digest input through the supplied readers. */
+/** No candidate state: each call reconstructs every digest input through the supplied readers.
+ * @experimental
+ */
 export declare function createCatalogCandidateService(deps: CatalogCandidateDeps): CatalogValidationPort & {
     prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
     compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
@@ -1132,6 +1159,7 @@ export declare function createCatalogCandidateService(deps: CatalogCandidateDeps
 
 ```ts
 import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
+/** @experimental */
 export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>>;
 ```
 ## dist/catalog/catalogDefinitionDigest.d.ts
@@ -1140,7 +1168,9 @@ export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConforman
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 /** Labels and callbacks are never definition identity. Runtime schemas bound the metadata. */
 export declare function catalogDefinitionJson(definition: CatalogProductTypeInput): string;
-/** The same canonical metadata bytes are used by installation and registry checks. */
+/** The same canonical metadata bytes are used by installation and registry checks.
+ * @experimental
+ */
 export declare function catalogDefinitionDigest(definition: CatalogProductTypeInput): string;
 ```
 ## dist/catalog/catalogDefinitionReadiness.d.ts
@@ -1149,9 +1179,13 @@ export declare function catalogDefinitionDigest(definition: CatalogProductTypeIn
 import type { CatalogRegistryObservation } from "@openlup/core/readiness";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
-/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables. */
+/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables.
+ * @experimental
+ */
 export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string): Promise<CatalogRegistryObservation>;
-/** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called. */
+/** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called.
+ * @experimental
+ */
 export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry): <T>(write: () => Promise<T>) => Promise<T>;
 ```
 ## dist/catalog/catalogDraftStore.d.ts
@@ -1164,17 +1198,24 @@ import { type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 /** Existing v1 reader/adapter. A v2 command requires the explicit v2 adapter. */
 export declare function createPostgresCatalogDraftStore(client: PgQueryExecutor): CatalogDraftStorePort;
-/** Opt-in native reader/adapter for retained v1 and v2 payloads. */
+/** Opt-in native reader/adapter for retained v1 and v2 payloads.
+ * @experimental
+ */
 export declare function createPostgresCatalogDraftStoreV2(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftStoredRecord>;
-/** Explicit v3 opt-in; the v1 and v2 adapters retain their version boundaries. */
+/** Explicit v3 opt-in; the v1 and v2 adapters retain their version boundaries.
+ * @experimental
+ */
 export declare function createPostgresCatalogDraftStoreV3(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftPublicationStoredRecord>;
-/** Explicit lifecycle dialect opt-in. Legacy adapter version bounds stay closed. */
+/** Explicit lifecycle dialect opt-in. Legacy adapter version bounds stay closed.
+ * @experimental
+ */
 export declare function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): CatalogDraftStorePort<CatalogLifecycleStoredRecord>;
 ```
 ## dist/catalog/catalogPackManifest.d.ts
 
 ```ts
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
+/** @experimental */
 export interface CatalogPackManifest {
     readonly id: string;
     readonly namespace: string;
@@ -1193,7 +1234,9 @@ export interface CatalogPackManifest {
     }[];
     readonly digest: string;
 }
-/** A derived in-memory projection; no manifest or digest is accepted from a client. */
+/** A derived in-memory projection; no manifest or digest is accepted from a client.
+ * @experimental
+ */
 export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest;
 ```
 ## dist/catalog/catalogSkuEnvelope.d.ts
@@ -1234,7 +1277,9 @@ export declare function createPostgresCommerceQuoteCatalogReadPort(executor: PgQ
 ## dist/catalog/contracts/attributes.d.ts
 
 ```ts
-/** Definition grammar. Owner validation prepares values for later publication integration. */
+/** Definition grammar. Owner validation prepares values for later publication integration.
+ * @experimental
+ */
 export type CatalogAttributeScalarType = {
     kind: "text";
     maxLength: number;
@@ -1267,12 +1312,14 @@ export type CatalogAttributeScalarType = {
 } | {
     kind: "date";
 };
+/** @experimental */
 export type CatalogAttributeValueType = CatalogAttributeScalarType | {
     kind: "list";
     item: CatalogAttributeScalarType;
     min: number;
     max: number;
 };
+/** @experimental */
 export interface AttributeDefinition {
     key: string;
     scope: "product" | "variant";
@@ -1288,7 +1335,9 @@ export interface AttributeDefinition {
     displayOrder: number;
     labels: Readonly<Record<string, string>>;
 }
-/** Axes reference variant attributes; display order stays in the declared array. */
+/** Axes reference variant attributes; display order stays in the declared array.
+ * @experimental
+ */
 export interface CatalogAxisDefinition {
     key: string;
     attributeKey: string;
@@ -1757,11 +1806,13 @@ export type BundlePricePreview = {
 ```ts
 import type { CatalogHeadRef } from "./lifecycle.js";
 import type { CatalogDraftIssue } from "./productTypes.js";
+/** @experimental */
 export interface CatalogCandidateQuery {
     draftId: string;
     draftRevision: number;
     expectedHead: CatalogHeadRef | null;
 }
+/** @experimental */
 export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
@@ -1772,6 +1823,7 @@ export interface CatalogCandidatePreview {
         priceOperationCount: number;
     };
 }
+/** @experimental */
 export interface CatalogCandidateComparison {
     candidateRef: string;
     candidateDigest: string;
@@ -1783,14 +1835,18 @@ export interface CatalogCandidateComparison {
 ```ts
 import type { CatalogQuantityCode } from "@openlup/core/catalog";
 import type { CatalogCombinationCode } from "./variantAxes.js";
-/** Stable meanings shared by runtime admission and offline conformance. */
+/** Stable meanings shared by runtime admission and offline conformance.
+ * @experimental
+ */
 export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
+/** @experimental */
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
     rule: string;
     fix: string;
     recipe: string;
 }
+/** @experimental */
 export interface CatalogDefinitionIssue {
     code: CatalogConformanceCode;
     path: string;
@@ -1803,6 +1859,7 @@ import type { CatalogDraftPayload } from "./draft.js";
 import type { CatalogDraftPayloadV2 } from "./draftV2.js";
 import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
 import type { CatalogProductTypeInput, CatalogOptionValue, CatalogQuantity } from "./productTypes.js";
+/** @experimental */
 export interface CatalogPackInput {
     id: string;
     namespace: string;
@@ -1898,7 +1955,9 @@ type DraftForType<T extends CatalogProductTypeInput, Selected extends string = D
     })[];
 };
 /** Explicit annotations supply the product's selected dimension keys as Selected.
- * Omitted Selected covers all installed dimensions; draftsFor infers the selection. */
+ * Omitted Selected covers all installed dimensions; draftsFor infers the selection.
+ * @experimental
+ */
 export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
 type DraftInput = CatalogReadonly<CatalogDraftPayload>;
 type Attribute<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = T extends {
@@ -2034,9 +2093,13 @@ type PackReferences<P extends CatalogPackInput> = string extends P["namespace"] 
         readonly [I in keyof P["types"]]: P["types"][I] extends CatalogProductTypeInput ? TypeReferences<P, P["types"][I]> : P["types"][I];
     };
 };
-/** Authoring preserves literals; it does not validate or execute pack callbacks. */
+/** Authoring preserves literals; it does not validate or execute pack callbacks.
+ * @experimental
+ */
 export declare function defineCatalogPack<const P extends CatalogPackInput>(pack: P & Exact<P, CatalogPackInput> & PackReferences<P>): CatalogReadonly<P>;
-/** v1 stays unchanged; v2 authoring adds definition-typed attributes and complete price commands. */
+/** v1 stays unchanged; v2 authoring adds definition-typed attributes and complete price commands.
+ * @experimental
+ */
 export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): <const D extends readonly AnyDraftInput[]>(drafts: D & Exact<D, AnyDraftInput[]> & {
     readonly [I in keyof D]: SelectedDraft<P, D[I]>;
 }) => D;
@@ -2046,7 +2109,9 @@ export {};
 
 ```ts
 import type { CatalogProductTypeRef } from "./productTypes.js";
-/** Durable install evidence; installation does not publish catalogue data. */
+/** Durable install evidence; installation does not publish catalogue data.
+ * @experimental
+ */
 export interface CatalogDefinitionInstallReceipt {
     readonly packId: string;
     readonly packVersion: number;
@@ -2147,7 +2212,9 @@ export declare function canonicalCatalogPublicationJson(input: unknown): string;
 ```ts
 import type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
 import type { CatalogQuantity } from "./productTypes.js";
-/** One immediate positive gross base replacement. Expectations are wholly null or wholly set. */
+/** One immediate positive gross base replacement. Expectations are wholly null or wholly set.
+ * @experimental
+ */
 export interface CatalogDraftPriceOperationV2 {
     schemaVersion: 1;
     commandKey: string;
@@ -2165,12 +2232,16 @@ export interface CatalogDraftPriceOperationV2 {
         unitPriceMinor: number;
     };
 }
+/** @experimental */
 export type CatalogAttributeScalarValue = string | boolean | CatalogQuantity | {
     namespace: string;
     id: string;
 } | Readonly<Record<string, string>>;
+/** @experimental */
 export type CatalogAttributeValue = CatalogAttributeScalarValue | readonly CatalogAttributeScalarValue[];
-/** Immutable v2 data; later versions never reinterpret or rewrite this payload. */
+/** Immutable v2 data; later versions never reinterpret or rewrite this payload.
+ * @experimental
+ */
 export interface CatalogDraftPayloadV2 {
     schemaVersion: 2;
     product: CatalogDraftPayload["product"] & {
@@ -2181,6 +2252,7 @@ export interface CatalogDraftPayloadV2 {
         priceOperations?: CatalogDraftPriceOperationV2[];
     })[];
 }
+/** @experimental */
 export interface CatalogDraftCommandV2 {
     schemaVersion: 2;
     action: "create" | "revise" | "abandon" | "resume";
@@ -2189,11 +2261,15 @@ export interface CatalogDraftCommandV2 {
     expectedRevision: number;
     payload?: CatalogDraftPayloadV2;
 }
+/** @experimental */
 export type CatalogDraftStoredPayload = CatalogDraftPayload | CatalogDraftPayloadV2;
+/** @experimental */
 export type CatalogDraftStoredCommand = CatalogDraftCommand | CatalogDraftCommandV2;
+/** @experimental */
 export interface CatalogDraftStoredRecord extends CatalogDraftSummary {
     payload: CatalogDraftStoredPayload;
 }
+/** @experimental */
 export type CatalogDraftStoredApplyResult = {
     outcome: "committed" | "replayed";
     record: CatalogDraftStoredRecord;
@@ -2205,13 +2281,17 @@ export type CatalogDraftStoredApplyResult = {
 import type { CatalogDraftPayloadV2, CatalogDraftStoredCommand, CatalogDraftStoredPayload } from "./draftV2.js";
 import type { CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
 import type { CatalogQuantity } from "./productTypes.js";
+/** @experimental */
 export type CatalogPublicationJson = null | boolean | number | string | CatalogPublicationJson[] | {
     [key: string]: CatalogPublicationJson;
 };
+/** @experimental */
 export type CatalogPublicationFacts = {
     [key: string]: CatalogPublicationJson;
 };
-/** Immutable source receipt; current_draft is expanded from the persisted record, never hashed into itself. */
+/** Immutable source receipt; current_draft is expanded from the persisted record, never hashed into itself.
+ * @experimental
+ */
 export type CatalogDraftProvenanceV3 = {
     source: "current_draft";
 } | {
@@ -2221,18 +2301,21 @@ export type CatalogDraftProvenanceV3 = {
     draftCommandKey: string;
     draftFingerprint: string;
 };
+/** @experimental */
 export interface CatalogDraftClaimV3 {
     draftId: string;
     revision: number;
     commandKey: string;
     fingerprint: string;
 }
+/** @experimental */
 export interface CatalogDraftMediaClaimV3 {
     skuCode: string;
     mediaRef: string;
     assetRefs: string[];
     revisionDigest: string;
 }
+/** @experimental */
 export interface CatalogDraftPublicationSkuV3 {
     skuCode: string;
     title: string;
@@ -2240,12 +2323,15 @@ export interface CatalogDraftPublicationSkuV3 {
     isAddon: boolean;
     facts: CatalogPublicationFacts;
 }
+/** @experimental */
 export interface CatalogDraftMembershipV3 {
     skuCode: string;
     offerVersion: string;
     admitted: boolean;
 }
-/** Frozen extraction envelope. Installed validators own the opaque document, presentation and SKU facts. */
+/** Frozen extraction envelope. Installed validators own the opaque document, presentation and SKU facts.
+ * @experimental
+ */
 export interface CatalogDraftSharedContentV3 {
     schemaVersion: 1;
     catalogAction: "create" | "revise";
@@ -2258,7 +2344,9 @@ export interface CatalogDraftSharedContentV3 {
     }[];
     publicationSkus: CatalogDraftPublicationSkuV3[];
 }
-/** Array order is authoritative, including repeated legal operations and explicit omitted-SKU cache effects. */
+/** Array order is authoritative, including repeated legal operations and explicit omitted-SKU cache effects.
+ * @experimental
+ */
 export type CatalogDraftPublicationOperationV3 = {
     op: "create_product";
     productId: string;
@@ -2328,6 +2416,7 @@ export type CatalogDraftPublicationOperationV3 = {
     netContent: CatalogQuantity;
     facts: CatalogPublicationFacts;
 };
+/** @experimental */
 export interface CatalogDraftPublicationInputsV3 {
     kind: "release" | "compensation";
     operations: CatalogDraftPublicationOperationV3[];
@@ -2336,7 +2425,9 @@ export interface CatalogDraftPublicationInputsV3 {
         media?: CatalogDraftMediaClaimV3[];
     };
 }
-/** Additive stored version; v1 and v2 are never reinterpreted. Prices retain the v2 command grammar. */
+/** Additive stored version; v1 and v2 are never reinterpreted. Prices retain the v2 command grammar.
+ * @experimental
+ */
 export interface CatalogDraftPayloadV3 extends Omit<CatalogDraftPayloadV2, "schemaVersion" | "product"> {
     schemaVersion: 3;
     product: Omit<CatalogDraftPayloadV2["product"], "sharedContent"> & {
@@ -2344,6 +2435,7 @@ export interface CatalogDraftPayloadV3 extends Omit<CatalogDraftPayloadV2, "sche
     };
     publication: CatalogDraftPublicationInputsV3;
 }
+/** @experimental */
 export interface CatalogDraftCommandV3 {
     schemaVersion: 3;
     action: "create" | "revise" | "abandon" | "resume";
@@ -2352,11 +2444,15 @@ export interface CatalogDraftCommandV3 {
     expectedRevision: number;
     payload?: CatalogDraftPayloadV3;
 }
+/** @experimental */
 export type CatalogDraftPublicationStoredPayload = CatalogDraftStoredPayload | CatalogDraftPayloadV3;
+/** @experimental */
 export type CatalogDraftPublicationStoredCommand = CatalogDraftStoredCommand | CatalogDraftCommandV3;
+/** @experimental */
 export interface CatalogDraftPublicationStoredRecord extends CatalogDraftSummary {
     payload: CatalogDraftPublicationStoredPayload;
 }
+/** @experimental */
 export type CatalogDraftPublicationStoredApplyResult = {
     outcome: "committed" | "replayed";
     record: CatalogDraftPublicationStoredRecord;
@@ -2565,8 +2661,11 @@ import type { CatalogHeadRef } from "./lifecycle.js";
 import type { CatalogDraftPayloadV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand } from "./draftV3.js";
 import type { CatalogDraftSummary } from "./draft.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publication.js";
-/** Authoritative states; legacy SQL status alone establishes none of these facts. */
+/** Authoritative states; legacy SQL status alone establishes none of these facts.
+ * @experimental
+ */
 export type CatalogLifecycleStateV2 = "draft" | "active" | "withdrawn" | "archived";
+/** @experimental */
 export type CatalogLifecycleOperationV2 = {
     op: "set_product_lifecycle";
     productSlug: string;
@@ -2590,16 +2689,20 @@ export type CatalogLifecycleOperationV2 = {
     skuCode: string;
     expectedState: "withdrawn";
 };
+/** @experimental */
 export type CatalogDraftPublicationOperationV4 = Exclude<CatalogDraftPublicationOperationV3, {
     op: "set_product_status" | "set_sku_status";
 }> | CatalogLifecycleOperationV2;
-/** Separate stored dialect: old payloads, command fingerprints and receipts remain exact. */
+/** Separate stored dialect: old payloads, command fingerprints and receipts remain exact.
+ * @experimental
+ */
 export interface CatalogDraftPayloadV4 extends Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> {
     schemaVersion: 4;
     publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & {
         operations: CatalogDraftPublicationOperationV4[];
     };
 }
+/** @experimental */
 export interface CatalogDraftCommandV4 {
     schemaVersion: 4;
     action: "create" | "revise" | "abandon" | "resume";
@@ -2608,26 +2711,35 @@ export interface CatalogDraftCommandV4 {
     expectedRevision: number;
     payload?: CatalogDraftPayloadV4;
 }
+/** @experimental */
 export type CatalogLifecycleStoredPayload = CatalogDraftPublicationStoredPayload | CatalogDraftPayloadV4;
+/** @experimental */
 export type CatalogLifecycleStoredCommand = CatalogDraftPublicationStoredCommand | CatalogDraftCommandV4;
+/** @experimental */
 export interface CatalogLifecycleStoredRecord extends CatalogDraftSummary {
     payload: CatalogLifecycleStoredPayload;
 }
+/** @experimental */
 export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
     schemaVersion: 3;
     lifecycleState: CatalogLifecycleStateV2;
     definitionDigest: string;
 }
+/** @experimental */
 export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
     schemaVersion: 3;
     lifecycleState: CatalogLifecycleStateV2;
     optionDigest: string;
 }
+/** @experimental */
 export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3;
+/** @experimental */
 export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3;
 /** Shared pure reference; subscriptions own its accepted binding. */
 export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/core/catalog";
+/** @experimental */
 export type CatalogObligationFamilyV2 = "template" | "pending_activation" | "frozen_renewal" | "outstanding_order" | "replacement" | "stock_wait" | "graduation";
+/** @experimental */
 export interface CatalogBoundObligationV2 {
     family: CatalogObligationFamilyV2;
     sourceId: string;
@@ -2636,6 +2748,7 @@ export interface CatalogBoundObligationV2 {
     skuCode: string;
     skuRevisionId: string | null;
 }
+/** @experimental */
 export type CatalogBoundObligationsV2 = {
     schemaVersion: 2;
     outcome: "complete";
@@ -2645,6 +2758,7 @@ export type CatalogBoundObligationsV2 = {
     outcome: "unknown" | "unavailable";
     reason: "catalog_obligation_evidence_unknown" | "catalog_obligation_evidence_unavailable";
 };
+/** @experimental */
 export interface CatalogFullPublicationV3 {
     outcome: "page";
     schemaVersion: 3;
@@ -2811,6 +2925,7 @@ export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units"
         kind: "boolean";
     })[];
 };
+/** @experimental */
 export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "validateContent"> {
     validatorRef: string;
     attributes: readonly AttributeDefinition[];
@@ -2997,21 +3112,28 @@ export interface SellableCatalogListResponse {
 ```ts
 import type { CatalogOptionValue } from "./productTypes.js";
 import type { CatalogVariantState } from "./lifecycle.js";
-/** V2 identity evidence computed by trusted server code, never a client digest. */
+/** V2 identity evidence computed by trusted server code, never a client digest.
+ * @experimental
+ */
 export interface CatalogCombinationIdentityV2 {
     readonly version: 2;
     readonly canonicalOptionBytes: Uint8Array;
     readonly combinationDigest: Uint8Array;
 }
+/** @experimental */
 export type CatalogCombinationCode = "axis_not_installed" | "duplicate_axis" | "option_not_selected" | "option_missing" | "option_invalid" | "unit_factor_missing" | "sku_identity_change_requires_new_sku" | "duplicate_combination" | "combination_digest_collision" | "duplicate_sku_id" | "combination_identity_integrity_failed" | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid";
-/** Retained facts come from authoritative rows/history, scoped to one product. */
+/** Retained facts come from authoritative rows/history, scoped to one product.
+ * @experimental
+ */
 export interface CatalogRetainedCombinationV2 {
     readonly skuId: string;
     readonly state: CatalogVariantState;
     readonly optionValues: Readonly<Record<string, CatalogOptionValue>> | null;
     readonly identity: CatalogCombinationIdentityV2 | null;
 }
-/** Omitted options on an existing SKU preserve its retained values. */
+/** Omitted options on an existing SKU preserve its retained values.
+ * @experimental
+ */
 export interface CatalogCombinationChangeV2 {
     readonly skuId: string;
     readonly state: CatalogVariantState;
@@ -3057,7 +3179,9 @@ export declare function createCatalogDraftHandler<Context>(deps: CatalogDraftHan
         page: CatalogDraftPage;
     }>;
 };
-/** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed. */
+/** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed.
+ * @experimental
+ */
 export declare function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftStoredRecord>): {
     execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
         outcome: "committed" | "replayed";
@@ -3075,7 +3199,9 @@ export declare function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftH
         page: CatalogDraftPage;
     }>;
 };
-/** Opt-in publication inputs, with the same draft authorization and receipt-first replay. */
+/** Opt-in publication inputs, with the same draft authorization and receipt-first replay.
+ * @experimental
+ */
 export declare function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftPublicationStoredRecord>): {
     execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
         outcome: "committed" | "replayed";
@@ -3093,7 +3219,9 @@ export declare function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftH
         page: CatalogDraftPage;
     }>;
 };
-/** Lifecycle authoring shares authorization, immutable receipts and scalar validation. */
+/** Lifecycle authoring shares authorization, immutable receipts and scalar validation.
+ * @experimental
+ */
 export declare function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogLifecycleStoredRecord>): {
     execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
         outcome: "committed" | "replayed";
@@ -3570,7 +3698,9 @@ export declare const catalogDraftApplyResultSchema: z.ZodUnion<readonly [z.ZodOb
 ```ts
 import { z } from "./validation.js";
 import type { CatalogDraftPriceOperationV2, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./contracts/draftV2.js";
-/** Exact price setup command grammar, including the original positive-only write boundary. */
+/** Exact price setup command grammar, including the original positive-only write boundary.
+ * @experimental
+ */
 export declare const catalogDraftPriceOperationV2Schema: z.ZodType<CatalogDraftPriceOperationV2>;
 export declare const catalogDraftSkuV2Schema: z.ZodObject<{
     id: z.ZodGUID;
@@ -3699,11 +3829,17 @@ export declare const catalogDraftProductV2Schema: z.ZodObject<{
         id: z.ZodString;
     }, z.core.$strict>, z.ZodRecord<z.ZodString, z.ZodString>]>>]>>>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogDraftPayloadV2Schema: z.ZodType<CatalogDraftPayloadV2>;
+/** @experimental */
 export declare const catalogDraftCommandV2Schema: z.ZodType<CatalogDraftCommandV2>;
+/** @experimental */
 export declare const catalogDraftStoredPayloadSchema: z.ZodType<CatalogDraftStoredPayload>;
+/** @experimental */
 export declare const catalogDraftStoredCommandSchema: z.ZodType<CatalogDraftStoredCommand>;
+/** @experimental */
 export declare const catalogDraftStoredRecordSchema: z.ZodType<CatalogDraftStoredRecord>;
+/** @experimental */
 export declare const catalogDraftStoredApplyResultSchema: z.ZodType<CatalogDraftStoredApplyResult>;
 ```
 ## dist/catalog/draftV2Validation.d.ts
@@ -3713,7 +3849,9 @@ import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { type CatalogDraftValidation } from "./draftValidation.js";
-/** Incomplete v2 drafts remain saveable; required attributes participate in publication readiness. */
+/** Incomplete v2 drafts remain saveable; required attributes participate in publication readiness.
+ * @experimental
+ */
 export declare function validateCatalogDraftV2(payload: CatalogDraftPayloadV2, registry: CatalogProductTypeRegistry, references?: CatalogAttributeReferencePort): Promise<CatalogDraftValidation>;
 ```
 ## dist/catalog/draftV3Schemas.d.ts
@@ -3721,9 +3859,13 @@ export declare function validateCatalogDraftV2(payload: CatalogDraftPayloadV2, r
 ```ts
 import { z } from "./validation.js";
 import type { CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftSharedContentV3, CatalogDraftProvenanceV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./contracts/draftV3.js";
+/** @experimental */
 export declare const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3>;
+/** @experimental */
 export declare const catalogDraftProvenanceV3Schema: z.ZodType<CatalogDraftProvenanceV3>;
+/** @experimental */
 export declare const catalogDraftPublicationOperationV3Schema: z.ZodType<CatalogDraftPublicationOperationV3>;
+/** @experimental */
 export declare const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublicationInputsV3>;
 /** Removes only the additive carrier/version for existing scalar, attribute and price validation. */
 export declare function catalogDraftV3ValidationPayload(payload: CatalogDraftPayloadV3): {
@@ -3736,18 +3878,28 @@ export declare function catalogDraftV3ValidationPayload(payload: CatalogDraftPay
         priceOperations?: import("./index.js").CatalogDraftPriceOperationV2[];
     })[];
 };
+/** @experimental */
 export declare const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3>;
+/** @experimental */
 export declare const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3>;
+/** @experimental */
 export declare const catalogDraftPublicationStoredPayloadSchema: z.ZodType<CatalogDraftPublicationStoredPayload>;
+/** @experimental */
 export declare const catalogDraftPublicationStoredCommandSchema: z.ZodType<CatalogDraftPublicationStoredCommand>;
+/** @experimental */
 export declare const catalogDraftPublicationStoredRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord>;
+/** @experimental */
 export declare const catalogDraftPublicationStoredApplyResultSchema: z.ZodType<CatalogDraftPublicationStoredApplyResult>;
-/** Exact typed extraction: no path guessing, coercion, defaults, operation sorting or collapsing. */
+/** Exact typed extraction: no path guessing, coercion, defaults, operation sorting or collapsing.
+ * @experimental
+ */
 export declare function extractCatalogDraftPublicationInputs(payload: unknown): {
     content: CatalogDraftSharedContentV3;
     publication: CatalogDraftPublicationInputsV3;
 };
-/** Resolves the current source only after persistence; retained tuples still require authority verification at publication. */
+/** Resolves the current source only after persistence; retained tuples still require authority verification at publication.
+ * @experimental
+ */
 export declare function resolveCatalogDraftProvenance(provenance: CatalogDraftProvenanceV3, record: CatalogDraftPublicationStoredRecord): {
     draftId: string;
     draftRevision: number;
@@ -3976,7 +4128,9 @@ export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCata
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
-/** Supply the native migration-owner executor explicitly. No runtime binding or hook is created. */
+/** Supply the native migration-owner executor explicitly. No runtime binding or hook is created.
+ * @experimental
+ */
 export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
 ```
 ## dist/catalog/lifecycleV2.d.ts
@@ -3984,23 +4138,36 @@ export declare function installCatalogDefinitions(installExecutor: PgQueryExecut
 ```ts
 import { z } from "./validation.js";
 import type { CatalogLifecycleStateV2, CatalogLifecycleOperationV2, CatalogDraftPayloadV4, CatalogDraftCommandV4, CatalogLifecycleStoredPayload, CatalogLifecycleStoredCommand, CatalogLifecycleStoredRecord, CatalogAcceptedReferenceV2, CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
+/** @experimental */
 export declare const catalogLifecycleStateV2Schema: z.ZodEnum<{
     active: "active";
     draft: "draft";
     archived: "archived";
     withdrawn: "withdrawn";
 }>;
+/** @experimental */
 export declare const catalogLifecycleOperationV2Schema: z.ZodType<CatalogLifecycleOperationV2>;
+/** @experimental */
 export declare function catalogLifecycleTransitionV2(from: CatalogLifecycleStateV2, to: CatalogLifecycleStateV2, restore?: boolean): boolean;
-/** The v3 grammar still owns every unchanged operation and ordered source guard. */
+/** The v3 grammar still owns every unchanged operation and ordered source guard.
+ * @experimental
+ */
 export declare const catalogDraftPayloadV4Schema: z.ZodType<CatalogDraftPayloadV4>;
+/** @experimental */
 export declare const catalogDraftCommandV4Schema: z.ZodType<CatalogDraftCommandV4>;
+/** @experimental */
 export declare const catalogLifecycleStoredPayloadSchema: z.ZodType<CatalogLifecycleStoredPayload>;
+/** @experimental */
 export declare const catalogLifecycleStoredCommandSchema: z.ZodType<CatalogLifecycleStoredCommand>;
+/** @experimental */
 export declare const catalogLifecycleStoredRecordSchema: z.ZodType<CatalogLifecycleStoredRecord>;
+/** @experimental */
 export declare const catalogAcceptedReferenceV2Schema: z.ZodType<CatalogAcceptedReferenceV2>;
+/** @experimental */
 export declare function catalogAuthoritativeLifecycleV2(value: CatalogProductState | CatalogSkuState): CatalogLifecycleStateV2;
+/** @experimental */
 export declare function catalogLifecycleProjectionV2(state: CatalogLifecycleStateV2): "draft" | "active" | "archived";
+/** @experimental */
 export declare const catalogLifecycleStoredApplyResultSchema: z.ZodUnion<readonly [z.ZodObject<{
     outcome: z.ZodEnum<{
         replayed: "replayed";
@@ -4017,7 +4184,9 @@ export declare const catalogLifecycleStoredApplyResultSchema: z.ZodUnion<readonl
     reason: z.ZodString;
     currentRevision: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strict>]>;
+/** @experimental */
 export declare function catalogLifecycleValidationPayload(payload: CatalogLifecycleStoredPayload): import("./contracts/draftV2.js").CatalogDraftPayloadV2;
+/** @experimental */
 export declare function resolveCatalogLifecycleProvenance(provenance: import("./contracts/draftV3.js").CatalogDraftProvenanceV3, record: CatalogLifecycleStoredRecord): {
     draftId: string;
     draftRevision: number;
@@ -4293,11 +4462,17 @@ export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
     taxClass: z.ZodOptional<z.ZodString>;
     labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
 }, z.core.$strict>;
-/** Reference admission shares the definition key/version grammar and issue codes. */
+/** Reference admission shares the definition key/version grammar and issue codes.
+ * @experimental
+ */
 export declare function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIssue[];
-/** The runtime throws the first issue; offline callers can report the complete list. */
+/** The runtime throws the first issue; offline callers can report the complete list.
+ * @experimental
+ */
 export declare function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[];
-/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys. */
+/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys.
+ * @experimental
+ */
 export declare function catalogPackIssues(input: unknown): CatalogDefinitionIssue[];
 ```
 ## dist/catalog/productTypeSchemas.d.ts
@@ -4457,6 +4632,7 @@ export declare function createPostgresCatalogPublication<Context>(deps: CatalogP
         outcome: "absent";
     }>;
     readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
+    /** @experimental */
     readbackV3: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV3 | CatalogPublicationFailure>;
     resolveRetained: (binding: CatalogRetainedSourceBinding, scope: VerifiedCatalogReadScope) => Promise<CatalogPublicationFailure | {
         outcome: "found";
@@ -4495,8 +4671,11 @@ export declare const publicationDigest: (input: unknown, maxBytes?: number) => s
 export declare const catalogPublishedSkuSchema: z.ZodType<CatalogSkuState>;
 export declare const catalogPublishedProductSchema: z.ZodType<CatalogProductState>;
 export declare const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2>;
+/** @experimental */
 export declare const catalogProductStateSchema: z.ZodType<CatalogProductState>;
+/** @experimental */
 export declare const catalogSkuStateSchema: z.ZodType<CatalogSkuState>;
+/** @experimental */
 export declare const catalogPublicationStateSchema: z.ZodUnion<readonly [z.ZodType<CatalogPublicationManifestV2, unknown, z.core.$ZodTypeInternals<CatalogPublicationManifestV2, unknown>>, z.ZodObject<{
     schemaVersion: z.ZodLiteral<3>;
     product: z.ZodType<CatalogProductState & {
@@ -4926,15 +5105,27 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly sha256: "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd";
     readonly url: URL;
 }, {
-    readonly id: "20261122190000_catalog_publication";
-    readonly catalogPath: "db/platform/migrations/20261122190000_catalog_publication.sql";
+    readonly id: "20261122170000_offer_policy_readiness_inputs";
+    readonly catalogPath: "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql";
     readonly position: 149;
-    readonly sha256: "d0527e6d2cbb5d700ef9f17d573e8c7f62f1515ae46944caadc18b0812b36cb4";
+    readonly sha256: "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f";
     readonly url: URL;
 }, {
-    readonly id: "20261122200000_catalog_lifecycle";
-    readonly catalogPath: "db/platform/migrations/20261122200000_catalog_lifecycle.sql";
+    readonly id: "20261122180000_catalog_base_price_writer";
+    readonly catalogPath: "db/platform/migrations/20261122180000_catalog_base_price_writer.sql";
     readonly position: 150;
+    readonly sha256: "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65";
+    readonly url: URL;
+}, {
+    readonly id: "20261122190000_catalog_publication";
+    readonly catalogPath: "db/platform/migrations/20261122190000_catalog_publication.sql";
+    readonly position: 151;
+    readonly sha256: "567bca06147c40cbdac23df32c05591c7dc47c15053417d6bef5fec3342d15a1";
+    readonly url: URL;
+}, {
+    readonly id: "20261122200001_catalog_lifecycle";
+    readonly catalogPath: "db/platform/migrations/20261122200001_catalog_lifecycle.sql";
+    readonly position: 152;
     readonly sha256: "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50";
     readonly url: URL;
 }];
@@ -4950,20 +5141,27 @@ export { z };
 ```ts
 import type { CatalogOptionValue, CatalogProductTypeInput } from "./contracts/productTypes.js";
 import type { CatalogCombinationChangeV2, CatalogCombinationCode, CatalogCombinationIdentityV2, CatalogRetainedCombinationV2 } from "./contracts/variantAxes.js";
+/** @experimental */
 export declare class CatalogCombinationError extends Error {
     readonly code: CatalogCombinationCode;
     readonly path: string;
     constructor(code: CatalogCombinationCode, path: string);
 }
-/** Installed definition metadata and selected axes must be rebound by LC2 inside its transaction. */
+/** Installed definition metadata and selected axes must be rebound by LC2 inside its transaction.
+ * @experimental
+ */
 export declare function canonicalizeCatalogCombinationV2(input: {
     definition: CatalogProductTypeInput;
     axes: readonly string[];
     options: Readonly<Record<string, CatalogOptionValue>>;
 }): CatalogCombinationIdentityV2;
-/** Compare authoritative bytes after a digest conflict; a collision never merges identities. */
+/** Compare authoritative bytes after a digest conflict; a collision never merges identities.
+ * @experimental
+ */
 export declare function classifyCatalogCombinationConflictV2(left: CatalogCombinationIdentityV2, right: CatalogCombinationIdentityV2): "distinct" | "duplicate" | "collision";
-/** Pure LC2 preparation, without locks, persistence, publication authority or capacity configuration. */
+/** Pure LC2 preparation, without locks, persistence, publication authority or capacity configuration.
+ * @experimental
+ */
 export declare function validateCatalogCombinationChangesV2(input: {
     definition: CatalogProductTypeInput;
     axes: readonly string[];
@@ -5901,6 +6099,242 @@ export declare function rejectCatalogFactsFromPublicQuote(response: {
     };
 }, ctx: z.RefinementCtx, pathPrefix?: Array<string | number>): void;
 ```
+## dist/pricing/catalogPriceSetupHandler.d.ts
+
+```ts
+import { type CatalogPriceSetupApplyResult, type CatalogPriceSetupPreview, type CatalogPriceSetupPreviewQuery, type CatalogPriceSetupRefusal } from "./catalogPriceSetupSchemas.js";
+/** Persistence for the use case. Answers are validated here, never trusted. */
+export interface CatalogPriceSetupStorePort {
+    preview(query: CatalogPriceSetupPreviewQuery): Promise<unknown>;
+    apply(input: {
+        canonicalCommand: string;
+        fingerprint: string;
+    }): Promise<unknown>;
+}
+export interface CatalogPriceSetupHandlerDeps<Context> {
+    /** Bound to the same administrator's session that `authorizeOperator` verified. */
+    store: CatalogPriceSetupStorePort;
+    /** The verified administrator's user id, or null when the request carries none. */
+    authorizeOperator(context: Context): Promise<{
+        actorId: string;
+    } | null>;
+}
+export type CatalogPriceSetupReadback = {
+    outcome: "confirmed" | "diverged";
+    preview: CatalogPriceSetupPreview;
+} | CatalogPriceSetupRefusal;
+/** Dark use case: mounting requires a verified administrator authorizer and a session-bound store. */
+export declare function createCatalogPriceSetupHandler<Context>(deps: CatalogPriceSetupHandlerDeps<Context>): {
+    preview(input: unknown, context: Context): Promise<CatalogPriceSetupPreview | CatalogPriceSetupRefusal>;
+    apply(input: unknown, context: Context): Promise<CatalogPriceSetupApplyResult>;
+    /** Confirms that a receipt's base is still the effective one, after a lost response or later. */
+    readback(input: {
+        receipt: unknown;
+    }, context: Context): Promise<CatalogPriceSetupReadback>;
+};
+```
+## dist/pricing/catalogPriceSetupSchemas.d.ts
+
+```ts
+import { z } from "zod";
+/** The largest amount a price row holds: the database integer maximum. */
+export declare const CATALOG_PRICE_SETUP_MAX_MINOR = 2147483647;
+export declare const catalogPriceSetupReasonsSchema: z.ZodArray<z.ZodString>;
+/** The base the caller saw: none yet, or one effective row and its amount. */
+export declare const catalogPriceSetupExpectedSchema: z.ZodUnion<readonly [z.ZodObject<{
+    entryId: z.ZodNull;
+    unitPriceMinor: z.ZodNull;
+}, z.core.$strict>, z.ZodObject<{
+    entryId: z.ZodGUID;
+    unitPriceMinor: z.ZodNumber;
+}, z.core.$strict>]>;
+/** One exact-SKU base price: gross, one-time, minimum quantity one, never a subscription price. */
+export declare const catalogPriceSetupCommandSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    commandKey: z.ZodString;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    mode: z.ZodLiteral<"one_time">;
+    minQty: z.ZodLiteral<1>;
+    amountKind: z.ZodLiteral<"gross">;
+    unitPriceMinor: z.ZodNumber;
+    expected: z.ZodUnion<readonly [z.ZodObject<{
+        entryId: z.ZodNull;
+        unitPriceMinor: z.ZodNull;
+    }, z.core.$strict>, z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+    }, z.core.$strict>]>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupPreviewQuerySchema: z.ZodObject<{
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    unitPriceMinor: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupSubscriptionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"derived">;
+    revisionId: z.ZodGUID;
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    derivedUnitPriceMinor: z.ZodNullable<z.ZodNumber>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"stored">;
+    unitPriceMinor: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"unresolved">;
+    reason: z.ZodString;
+}, z.core.$strict>], "kind">;
+export declare const catalogPriceSetupPreviewSchema: z.ZodObject<{
+    outcome: z.ZodLiteral<"preview">;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    inGate: z.ZodBoolean;
+    current: z.ZodNullable<z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>>;
+    currentCount: z.ZodNumber;
+    subscription: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"derived">;
+        revisionId: z.ZodGUID;
+        discountBps: z.ZodNumber;
+        roundingQuantumMinor: z.ZodNumber;
+        derivedUnitPriceMinor: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"stored">;
+        unitPriceMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"unresolved">;
+        reason: z.ZodString;
+    }, z.core.$strict>], "kind">;
+    readiness: z.ZodObject<{
+        ready: z.ZodBoolean;
+        reasons: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>;
+    proposed: z.ZodOptional<z.ZodObject<{
+        unitPriceMinor: z.ZodNumber;
+        readiness: z.ZodObject<{
+            ready: z.ZodBoolean;
+            reasons: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupReceiptSchema: z.ZodObject<{
+    commandKey: z.ZodString;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    actorId: z.ZodGUID;
+    previous: z.ZodNullable<z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>>;
+    current: z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupRefusalSchema: z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupPreviewResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    outcome: z.ZodLiteral<"preview">;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    inGate: z.ZodBoolean;
+    current: z.ZodNullable<z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>>;
+    currentCount: z.ZodNumber;
+    subscription: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"derived">;
+        revisionId: z.ZodGUID;
+        discountBps: z.ZodNumber;
+        roundingQuantumMinor: z.ZodNumber;
+        derivedUnitPriceMinor: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"stored">;
+        unitPriceMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"unresolved">;
+        reason: z.ZodString;
+    }, z.core.$strict>], "kind">;
+    readiness: z.ZodObject<{
+        ready: z.ZodBoolean;
+        reasons: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>;
+    proposed: z.ZodOptional<z.ZodObject<{
+        unitPriceMinor: z.ZodNumber;
+        readiness: z.ZodObject<{
+            ready: z.ZodBoolean;
+            reasons: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>>;
+}, z.core.$strict>, z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>]>;
+export declare const catalogPriceSetupApplyResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    outcome: z.ZodEnum<{
+        replayed: "replayed";
+        committed: "committed";
+    }>;
+    receipt: z.ZodObject<{
+        commandKey: z.ZodString;
+        variantId: z.ZodGUID;
+        priceListId: z.ZodGUID;
+        actorId: z.ZodGUID;
+        previous: z.ZodNullable<z.ZodObject<{
+            entryId: z.ZodGUID;
+            unitPriceMinor: z.ZodNumber;
+            validFrom: z.ZodString;
+        }, z.core.$strict>>;
+        current: z.ZodObject<{
+            entryId: z.ZodGUID;
+            unitPriceMinor: z.ZodNumber;
+            validFrom: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>]>;
+export type CatalogPriceSetupCommand = z.infer<typeof catalogPriceSetupCommandSchema>;
+export type CatalogPriceSetupPreviewQuery = z.infer<typeof catalogPriceSetupPreviewQuerySchema>;
+export type CatalogPriceSetupPreview = z.infer<typeof catalogPriceSetupPreviewSchema>;
+export type CatalogPriceSetupReceipt = z.infer<typeof catalogPriceSetupReceiptSchema>;
+export type CatalogPriceSetupRefusal = z.infer<typeof catalogPriceSetupRefusalSchema>;
+export type CatalogPriceSetupApplyResult = z.infer<typeof catalogPriceSetupApplyResultSchema>;
+/**
+ * The exact bytes the command routine fingerprints: a valid command as JSON with sorted
+ * keys. Every field is bounded by the schema, so the text stays far below the 4096 bytes
+ * the database routine accepts. Throws on anything the schema refuses.
+ */
+export declare function canonicalCatalogPriceSetupCommand(input: unknown): string;
+```
 ## dist/pricing/commerceOfferPricing.d.ts
 
 ```ts
@@ -6239,6 +6673,86 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
 });
 export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
 ```
+## dist/pricing/contracts/catalogPriceSetup.d.ts
+
+```ts
+/** Immediate, positive, gross base replacement; later command versions are reserved. */
+export interface CatalogPriceSetupCommand {
+    schemaVersion: 1;
+    commandKey: string;
+    variantId: string;
+    priceListId: string;
+    mode: "one_time";
+    minQty: 1;
+    amountKind: "gross";
+    unitPriceMinor: number;
+    expected: {
+        entryId: null;
+        unitPriceMinor: null;
+    } | {
+        entryId: string;
+        unitPriceMinor: number;
+    };
+}
+export interface CatalogPriceSetupEntry {
+    entryId: string;
+    unitPriceMinor: number;
+    validFrom: string;
+}
+export interface CatalogPriceSetupReadiness {
+    ready: boolean;
+    reasons: string[];
+}
+export interface CatalogPriceSetupPreviewQuery {
+    variantId: string;
+    priceListId: string;
+    unitPriceMinor?: number;
+}
+export type CatalogPriceSetupSubscription = {
+    kind: "derived";
+    revisionId: string;
+    discountBps: number;
+    roundingQuantumMinor: number;
+    derivedUnitPriceMinor: number | null;
+} | {
+    kind: "stored";
+    unitPriceMinor: number;
+} | {
+    kind: "unresolved";
+    reason: string;
+};
+export interface CatalogPriceSetupPreview {
+    outcome: "preview";
+    variantId: string;
+    priceListId: string;
+    inGate: boolean;
+    current: CatalogPriceSetupEntry | null;
+    currentCount: number;
+    subscription: CatalogPriceSetupSubscription;
+    readiness: CatalogPriceSetupReadiness;
+    proposed?: {
+        unitPriceMinor: number;
+        readiness: CatalogPriceSetupReadiness;
+    };
+}
+export interface CatalogPriceSetupReceipt {
+    commandKey: string;
+    variantId: string;
+    priceListId: string;
+    actorId: string;
+    previous: CatalogPriceSetupEntry | null;
+    current: CatalogPriceSetupEntry;
+}
+export interface CatalogPriceSetupRefusal {
+    outcome: "conflict" | "validation_issue" | "unauthorized" | "dependency_unavailable";
+    reason: string;
+    reasons?: string[];
+}
+export type CatalogPriceSetupApplyResult = {
+    outcome: "committed" | "replayed";
+    receipt: CatalogPriceSetupReceipt;
+} | CatalogPriceSetupRefusal;
+```
 ## dist/pricing/contracts/evidence.d.ts
 
 ```ts
@@ -6296,6 +6810,7 @@ export { ACQUISITION_TERMS_CAPABILITY } from "./acquisitionTerms.js";
 export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote, AcquisitionCapability, AcquisitionTermsMetadata, AcquisitionTerms, ResolvedAcquisitionTerms, AcquisitionTermsExpectation } from "./acquisitionTerms.js";
 export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
 export type { AcquisitionOfferPricingResponse } from "./offer.js";
+export type { CatalogPriceSetupCommand, CatalogPriceSetupEntry, CatalogPriceSetupReadiness, CatalogPriceSetupPreviewQuery, CatalogPriceSetupSubscription, CatalogPriceSetupPreview, CatalogPriceSetupReceipt, CatalogPriceSetupRefusal, CatalogPriceSetupApplyResult } from "./catalogPriceSetup.js";
 ```
 ## dist/pricing/contracts/money.d.ts
 
@@ -6781,6 +7296,12 @@ export * from "./acquisitionOfferPricing.js";
 export * from "./acquisitionOfferPricingHandler.js";
 export * from "./acquisitionReadiness.js";
 export type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
+export { CATALOG_PRICE_SETUP_MAX_MINOR, catalogPriceSetupCommandSchema, catalogPriceSetupExpectedSchema, catalogPriceSetupPreviewQuerySchema, catalogPriceSetupPreviewSchema, catalogPriceSetupReceiptSchema, catalogPriceSetupRefusalSchema, catalogPriceSetupPreviewResultSchema, catalogPriceSetupApplyResultSchema, canonicalCatalogPriceSetupCommand } from "./catalogPriceSetupSchemas.js";
+export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
+export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
+export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
+export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
+export { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "./postgresCatalogPriceSetupStore.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -7171,6 +7692,35 @@ export declare class CommercePriceAuthorityError extends Error {
 export interface CommercePriceAuthorityPort {
     resolvePrice(query: CommercePriceAuthorityQuery): Promise<CommercePriceAuthorityResult>;
 }
+```
+## dist/pricing/postgresCatalogPriceSetupStore.d.ts
+
+```ts
+import type { CatalogPriceSetupCommand } from "./contracts/catalogPriceSetup.js";
+import type { CatalogPriceSetupRefusal } from "./contracts/catalogPriceSetup.js";
+import type { CatalogPriceSetupStorePort } from "./catalogPriceSetupHandler.js";
+/** The authenticated transaction's executor; publication may use its own connection. */
+export interface CatalogPriceSetupQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Session-bound SQL authority derives the actor; composition verifies the session. */
+export declare function createPostgresCatalogPriceSetupStore(client: CatalogPriceSetupQueryExecutor): CatalogPriceSetupStorePort;
+/** Explicit whitelist: arbitrary database text never reaches a caller. */
+export declare const CATALOG_PRICE_SETUP_HARD_REFUSALS: readonly ["native_promotion_unverified", "native_cohort_unverified", "native_order_unverified", "native_agreement_unverified", "settlement_context_unverified", "native_promotion_domain_unverified", "native_price_domain_unverified", "native_catalog_domain_unverified", "native_policy_domain_unverified", "native_agreement_domain_unverified", "native_job_domain_unverified", "native_order_domain_unverified", "native_order_policy_pair_unverified", "native_order_admission_unverified", "native_order_guard_unverified", "native_order_claim_guard_unverified"];
+/** Preserve refusal precedence, including hard evidence failures before/after writes. */
+export declare function catalogPriceSetupRefusal(error: unknown): CatalogPriceSetupRefusal;
+/** A refusal aborts the caller-owned publication transaction, including prior child effects. */
+export declare class CatalogPriceSetupTransactionError extends Error {
+    readonly refusal: CatalogPriceSetupRefusal;
+    constructor(refusal: CatalogPriceSetupRefusal);
+}
+/** The price owner keeps receipt/context ordering and binds opaque batches to this executor and actor. */
+export declare function createCatalogPriceSetupTransactionWriter<Actor extends object>(resolveActor: (actor: Actor) => string): {
+    prelock(db: CatalogPriceSetupQueryExecutor, verifiedActor: Actor, parentProductId: string, commands: readonly CatalogPriceSetupCommand[]): Promise<Readonly<{}>>;
+    applyInTransaction(db: CatalogPriceSetupQueryExecutor, verifiedActor: Actor, parentProductId: string, prelockedBatch: unknown): Promise<undefined>;
+};
 ```
 ## dist/pricing/pricingPolicyToken.d.ts
 

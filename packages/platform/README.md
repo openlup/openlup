@@ -1132,6 +1132,38 @@ Omission preserves incumbent behavior. See [parity seams](https://github.com/ope
 
 ## Pricing
 
+The unbound `createCatalogPriceSetupHandler` and
+`createPostgresCatalogPriceSetupStore` provide human-authorized preview, apply and
+receipt readback for one immediate positive gross base at minimum quantity one.
+Portable DTOs live in `./pricing/contracts`; schemas and canonical-byte encoding
+live in `./pricing`. The command matches the price operations retained in draft
+v2/v3. Hosts bind the same verified administrator session to authorization and
+SQL execution. No route, capability or runtime binding is installed.
+
+Apply serializes receipt before price context, checks the expected base and
+closes/inserts at one database statement instant. Replay precedes target reads;
+key reuse or another operator refuses. The read-only readiness routine validates
+native input domains, actual financial definitions, retained agreements and the
+independently audited cohort. Unproven evidence hard-refuses before and after the
+provisional write. Preview restores every provisional price row. Existing
+subscriber agreements and clocks are unchanged. The known aggregate-reason defect
+is retained: an existing invalid-SKU reason can hide a second invalid SKU.
+See [native base-price writes](../../docs/platform/DATA_AND_MIGRATIONS.md#native-base-price-writes)
+for installation, transfer and managed-rail limits. Scheduling, list lifecycle,
+context-version operations, zero-price writes and broader price plans remain
+reserved for a later command version.
+
+`createCatalogPriceSetupTransactionWriter` supplies the price-owner phases for a
+caller-owned publication transaction. Its resolver reads an already verified
+actor capability; native SQL rechecks that actor against the authenticated
+session. `prelock` reserves sorted receipt keys, checks the complete batch's
+parent ownership, then takes sorted contexts and open-entry rows.
+`applyInTransaction` consumes an opaque batch bound to the same executor, actor
+and parent, applies commands in their original order and throws on any refusal.
+Neither phase starts or commits a transaction. Standalone SQL apply runs these
+same phases in its one transaction; original child and parent replay never
+repeat price effects.
+
 The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
 reader described under [Catalog](#catalog); the quote engine consumes its
 existing `CommerceQuoteCatalogReadPort`.
@@ -1375,7 +1407,8 @@ revocation leaves the publication and its original replay receipt intact.
 
 The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
-The price boundary calls the price owner's `applyInTransaction` once on that same
+The native price boundary defaults to the price owner's transaction writer. It
+prelocks receipts before contexts and calls `applyInTransaction` once on that same
 executor, after catalogue effects and before readiness. Its adapter must throw on
 any child refusal; it cannot open or commit another transaction. Installed
 readiness adapters perform no external I/O or commerce locking. Media evidence
@@ -1805,6 +1838,24 @@ from their host composition; only the immutable managed baseline predicates
 await an owner decision. Pricing VAT calculation retains
 both exported helpers and their signatures: `calculateIncludedVat` delegates to
 `splitIncludedVat` through a distinct named wrapper using the same arithmetic.
+
+### Native offer-policy readiness inputs
+
+The catalogue SQL descriptor includes native-only, unbound readiness inputs for
+price-writer integration. Installation distinguishes existing subscriptions
+from future pending acquisition and records the original cohort marking; it
+never performs the operator's audit or captures the rollout baseline.
+
+After auditing every legacy non-fixture subscription, including paused and
+cancelled rows, service authority can explicitly invoke
+`commerce_capture_offer_policy_v2_legacy_baseline()`. Capture takes no caller
+count or fingerprint and never overwrites an existing baseline. A zero baseline
+requires empty installation provenance and a currently empty cohort. Missing
+provenance, changed membership and incomplete financial or historical order
+proof fail closed. The internal helpers only read; they grant no writer,
+provider, deployment or activation capability. Existing TypeScript readiness
+contracts and subscription agreement/schedule behavior remain unchanged.
+See the [migration and transfer owner](../../docs/platform/DATA_AND_MIGRATIONS.md#native-offer-policy-inputs).
 
 ## Scheduled jobs
 

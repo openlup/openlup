@@ -792,6 +792,242 @@ export declare function rejectCatalogFactsFromPublicQuote(response: {
     };
 }, ctx: z.RefinementCtx, pathPrefix?: Array<string | number>): void;
 ```
+## dist/pricing/catalogPriceSetupHandler.d.ts
+
+```ts
+import { type CatalogPriceSetupApplyResult, type CatalogPriceSetupPreview, type CatalogPriceSetupPreviewQuery, type CatalogPriceSetupRefusal } from "./catalogPriceSetupSchemas.js";
+/** Persistence for the use case. Answers are validated here, never trusted. */
+export interface CatalogPriceSetupStorePort {
+    preview(query: CatalogPriceSetupPreviewQuery): Promise<unknown>;
+    apply(input: {
+        canonicalCommand: string;
+        fingerprint: string;
+    }): Promise<unknown>;
+}
+export interface CatalogPriceSetupHandlerDeps<Context> {
+    /** Bound to the same administrator's session that `authorizeOperator` verified. */
+    store: CatalogPriceSetupStorePort;
+    /** The verified administrator's user id, or null when the request carries none. */
+    authorizeOperator(context: Context): Promise<{
+        actorId: string;
+    } | null>;
+}
+export type CatalogPriceSetupReadback = {
+    outcome: "confirmed" | "diverged";
+    preview: CatalogPriceSetupPreview;
+} | CatalogPriceSetupRefusal;
+/** Dark use case: mounting requires a verified administrator authorizer and a session-bound store. */
+export declare function createCatalogPriceSetupHandler<Context>(deps: CatalogPriceSetupHandlerDeps<Context>): {
+    preview(input: unknown, context: Context): Promise<CatalogPriceSetupPreview | CatalogPriceSetupRefusal>;
+    apply(input: unknown, context: Context): Promise<CatalogPriceSetupApplyResult>;
+    /** Confirms that a receipt's base is still the effective one, after a lost response or later. */
+    readback(input: {
+        receipt: unknown;
+    }, context: Context): Promise<CatalogPriceSetupReadback>;
+};
+```
+## dist/pricing/catalogPriceSetupSchemas.d.ts
+
+```ts
+import { z } from "zod";
+/** The largest amount a price row holds: the database integer maximum. */
+export declare const CATALOG_PRICE_SETUP_MAX_MINOR = 2147483647;
+export declare const catalogPriceSetupReasonsSchema: z.ZodArray<z.ZodString>;
+/** The base the caller saw: none yet, or one effective row and its amount. */
+export declare const catalogPriceSetupExpectedSchema: z.ZodUnion<readonly [z.ZodObject<{
+    entryId: z.ZodNull;
+    unitPriceMinor: z.ZodNull;
+}, z.core.$strict>, z.ZodObject<{
+    entryId: z.ZodGUID;
+    unitPriceMinor: z.ZodNumber;
+}, z.core.$strict>]>;
+/** One exact-SKU base price: gross, one-time, minimum quantity one, never a subscription price. */
+export declare const catalogPriceSetupCommandSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    commandKey: z.ZodString;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    mode: z.ZodLiteral<"one_time">;
+    minQty: z.ZodLiteral<1>;
+    amountKind: z.ZodLiteral<"gross">;
+    unitPriceMinor: z.ZodNumber;
+    expected: z.ZodUnion<readonly [z.ZodObject<{
+        entryId: z.ZodNull;
+        unitPriceMinor: z.ZodNull;
+    }, z.core.$strict>, z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+    }, z.core.$strict>]>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupPreviewQuerySchema: z.ZodObject<{
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    unitPriceMinor: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupSubscriptionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"derived">;
+    revisionId: z.ZodGUID;
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    derivedUnitPriceMinor: z.ZodNullable<z.ZodNumber>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"stored">;
+    unitPriceMinor: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"unresolved">;
+    reason: z.ZodString;
+}, z.core.$strict>], "kind">;
+export declare const catalogPriceSetupPreviewSchema: z.ZodObject<{
+    outcome: z.ZodLiteral<"preview">;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    inGate: z.ZodBoolean;
+    current: z.ZodNullable<z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>>;
+    currentCount: z.ZodNumber;
+    subscription: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"derived">;
+        revisionId: z.ZodGUID;
+        discountBps: z.ZodNumber;
+        roundingQuantumMinor: z.ZodNumber;
+        derivedUnitPriceMinor: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"stored">;
+        unitPriceMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"unresolved">;
+        reason: z.ZodString;
+    }, z.core.$strict>], "kind">;
+    readiness: z.ZodObject<{
+        ready: z.ZodBoolean;
+        reasons: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>;
+    proposed: z.ZodOptional<z.ZodObject<{
+        unitPriceMinor: z.ZodNumber;
+        readiness: z.ZodObject<{
+            ready: z.ZodBoolean;
+            reasons: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupReceiptSchema: z.ZodObject<{
+    commandKey: z.ZodString;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    actorId: z.ZodGUID;
+    previous: z.ZodNullable<z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>>;
+    current: z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupRefusalSchema: z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+export declare const catalogPriceSetupPreviewResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    outcome: z.ZodLiteral<"preview">;
+    variantId: z.ZodGUID;
+    priceListId: z.ZodGUID;
+    inGate: z.ZodBoolean;
+    current: z.ZodNullable<z.ZodObject<{
+        entryId: z.ZodGUID;
+        unitPriceMinor: z.ZodNumber;
+        validFrom: z.ZodString;
+    }, z.core.$strict>>;
+    currentCount: z.ZodNumber;
+    subscription: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"derived">;
+        revisionId: z.ZodGUID;
+        discountBps: z.ZodNumber;
+        roundingQuantumMinor: z.ZodNumber;
+        derivedUnitPriceMinor: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"stored">;
+        unitPriceMinor: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"unresolved">;
+        reason: z.ZodString;
+    }, z.core.$strict>], "kind">;
+    readiness: z.ZodObject<{
+        ready: z.ZodBoolean;
+        reasons: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>;
+    proposed: z.ZodOptional<z.ZodObject<{
+        unitPriceMinor: z.ZodNumber;
+        readiness: z.ZodObject<{
+            ready: z.ZodBoolean;
+            reasons: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>>;
+}, z.core.$strict>, z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>]>;
+export declare const catalogPriceSetupApplyResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    outcome: z.ZodEnum<{
+        replayed: "replayed";
+        committed: "committed";
+    }>;
+    receipt: z.ZodObject<{
+        commandKey: z.ZodString;
+        variantId: z.ZodGUID;
+        priceListId: z.ZodGUID;
+        actorId: z.ZodGUID;
+        previous: z.ZodNullable<z.ZodObject<{
+            entryId: z.ZodGUID;
+            unitPriceMinor: z.ZodNumber;
+            validFrom: z.ZodString;
+        }, z.core.$strict>>;
+        current: z.ZodObject<{
+            entryId: z.ZodGUID;
+            unitPriceMinor: z.ZodNumber;
+            validFrom: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>]>;
+export type CatalogPriceSetupCommand = z.infer<typeof catalogPriceSetupCommandSchema>;
+export type CatalogPriceSetupPreviewQuery = z.infer<typeof catalogPriceSetupPreviewQuerySchema>;
+export type CatalogPriceSetupPreview = z.infer<typeof catalogPriceSetupPreviewSchema>;
+export type CatalogPriceSetupReceipt = z.infer<typeof catalogPriceSetupReceiptSchema>;
+export type CatalogPriceSetupRefusal = z.infer<typeof catalogPriceSetupRefusalSchema>;
+export type CatalogPriceSetupApplyResult = z.infer<typeof catalogPriceSetupApplyResultSchema>;
+/**
+ * The exact bytes the command routine fingerprints: a valid command as JSON with sorted
+ * keys. Every field is bounded by the schema, so the text stays far below the 4096 bytes
+ * the database routine accepts. Throws on anything the schema refuses.
+ */
+export declare function canonicalCatalogPriceSetupCommand(input: unknown): string;
+```
 ## dist/pricing/commerceOfferPricing.d.ts
 
 ```ts
@@ -1130,6 +1366,86 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
 });
 export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
 ```
+## dist/pricing/contracts/catalogPriceSetup.d.ts
+
+```ts
+/** Immediate, positive, gross base replacement; later command versions are reserved. */
+export interface CatalogPriceSetupCommand {
+    schemaVersion: 1;
+    commandKey: string;
+    variantId: string;
+    priceListId: string;
+    mode: "one_time";
+    minQty: 1;
+    amountKind: "gross";
+    unitPriceMinor: number;
+    expected: {
+        entryId: null;
+        unitPriceMinor: null;
+    } | {
+        entryId: string;
+        unitPriceMinor: number;
+    };
+}
+export interface CatalogPriceSetupEntry {
+    entryId: string;
+    unitPriceMinor: number;
+    validFrom: string;
+}
+export interface CatalogPriceSetupReadiness {
+    ready: boolean;
+    reasons: string[];
+}
+export interface CatalogPriceSetupPreviewQuery {
+    variantId: string;
+    priceListId: string;
+    unitPriceMinor?: number;
+}
+export type CatalogPriceSetupSubscription = {
+    kind: "derived";
+    revisionId: string;
+    discountBps: number;
+    roundingQuantumMinor: number;
+    derivedUnitPriceMinor: number | null;
+} | {
+    kind: "stored";
+    unitPriceMinor: number;
+} | {
+    kind: "unresolved";
+    reason: string;
+};
+export interface CatalogPriceSetupPreview {
+    outcome: "preview";
+    variantId: string;
+    priceListId: string;
+    inGate: boolean;
+    current: CatalogPriceSetupEntry | null;
+    currentCount: number;
+    subscription: CatalogPriceSetupSubscription;
+    readiness: CatalogPriceSetupReadiness;
+    proposed?: {
+        unitPriceMinor: number;
+        readiness: CatalogPriceSetupReadiness;
+    };
+}
+export interface CatalogPriceSetupReceipt {
+    commandKey: string;
+    variantId: string;
+    priceListId: string;
+    actorId: string;
+    previous: CatalogPriceSetupEntry | null;
+    current: CatalogPriceSetupEntry;
+}
+export interface CatalogPriceSetupRefusal {
+    outcome: "conflict" | "validation_issue" | "unauthorized" | "dependency_unavailable";
+    reason: string;
+    reasons?: string[];
+}
+export type CatalogPriceSetupApplyResult = {
+    outcome: "committed" | "replayed";
+    receipt: CatalogPriceSetupReceipt;
+} | CatalogPriceSetupRefusal;
+```
 ## dist/pricing/contracts/evidence.d.ts
 
 ```ts
@@ -1187,6 +1503,7 @@ export { ACQUISITION_TERMS_CAPABILITY } from "./acquisitionTerms.js";
 export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote, AcquisitionCapability, AcquisitionTermsMetadata, AcquisitionTerms, ResolvedAcquisitionTerms, AcquisitionTermsExpectation } from "./acquisitionTerms.js";
 export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
 export type { AcquisitionOfferPricingResponse } from "./offer.js";
+export type { CatalogPriceSetupCommand, CatalogPriceSetupEntry, CatalogPriceSetupReadiness, CatalogPriceSetupPreviewQuery, CatalogPriceSetupSubscription, CatalogPriceSetupPreview, CatalogPriceSetupReceipt, CatalogPriceSetupRefusal, CatalogPriceSetupApplyResult } from "./catalogPriceSetup.js";
 ```
 ## dist/pricing/contracts/money.d.ts
 
@@ -1672,6 +1989,12 @@ export * from "./acquisitionOfferPricing.js";
 export * from "./acquisitionOfferPricingHandler.js";
 export * from "./acquisitionReadiness.js";
 export type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
+export { CATALOG_PRICE_SETUP_MAX_MINOR, catalogPriceSetupCommandSchema, catalogPriceSetupExpectedSchema, catalogPriceSetupPreviewQuerySchema, catalogPriceSetupPreviewSchema, catalogPriceSetupReceiptSchema, catalogPriceSetupRefusalSchema, catalogPriceSetupPreviewResultSchema, catalogPriceSetupApplyResultSchema, canonicalCatalogPriceSetupCommand } from "./catalogPriceSetupSchemas.js";
+export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
+export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
+export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
+export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
+export { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "./postgresCatalogPriceSetupStore.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -2062,6 +2385,35 @@ export declare class CommercePriceAuthorityError extends Error {
 export interface CommercePriceAuthorityPort {
     resolvePrice(query: CommercePriceAuthorityQuery): Promise<CommercePriceAuthorityResult>;
 }
+```
+## dist/pricing/postgresCatalogPriceSetupStore.d.ts
+
+```ts
+import type { CatalogPriceSetupCommand } from "./contracts/catalogPriceSetup.js";
+import type { CatalogPriceSetupRefusal } from "./contracts/catalogPriceSetup.js";
+import type { CatalogPriceSetupStorePort } from "./catalogPriceSetupHandler.js";
+/** The authenticated transaction's executor; publication may use its own connection. */
+export interface CatalogPriceSetupQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Session-bound SQL authority derives the actor; composition verifies the session. */
+export declare function createPostgresCatalogPriceSetupStore(client: CatalogPriceSetupQueryExecutor): CatalogPriceSetupStorePort;
+/** Explicit whitelist: arbitrary database text never reaches a caller. */
+export declare const CATALOG_PRICE_SETUP_HARD_REFUSALS: readonly ["native_promotion_unverified", "native_cohort_unverified", "native_order_unverified", "native_agreement_unverified", "settlement_context_unverified", "native_promotion_domain_unverified", "native_price_domain_unverified", "native_catalog_domain_unverified", "native_policy_domain_unverified", "native_agreement_domain_unverified", "native_job_domain_unverified", "native_order_domain_unverified", "native_order_policy_pair_unverified", "native_order_admission_unverified", "native_order_guard_unverified", "native_order_claim_guard_unverified"];
+/** Preserve refusal precedence, including hard evidence failures before/after writes. */
+export declare function catalogPriceSetupRefusal(error: unknown): CatalogPriceSetupRefusal;
+/** A refusal aborts the caller-owned publication transaction, including prior child effects. */
+export declare class CatalogPriceSetupTransactionError extends Error {
+    readonly refusal: CatalogPriceSetupRefusal;
+    constructor(refusal: CatalogPriceSetupRefusal);
+}
+/** The price owner keeps receipt/context ordering and binds opaque batches to this executor and actor. */
+export declare function createCatalogPriceSetupTransactionWriter<Actor extends object>(resolveActor: (actor: Actor) => string): {
+    prelock(db: CatalogPriceSetupQueryExecutor, verifiedActor: Actor, parentProductId: string, commands: readonly CatalogPriceSetupCommand[]): Promise<Readonly<{}>>;
+    applyInTransaction(db: CatalogPriceSetupQueryExecutor, verifiedActor: Actor, parentProductId: string, prelockedBatch: unknown): Promise<undefined>;
+};
 ```
 ## dist/pricing/pricingPolicyToken.d.ts
 

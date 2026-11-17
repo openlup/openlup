@@ -12,6 +12,8 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
 
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 let db: Pool;
+let priceDb: Pool;
+const priceList = randomUUID(), anchorSku = randomUUID();
 const admin = randomUUID();
 const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], attributes: [{ key: "details", scope: "variant" as const,
@@ -25,7 +27,7 @@ let paged: { data: Awaited<ReturnType<typeof draft>>; head: CatalogHeadRef };
 let foreignPublished: { data: Awaited<ReturnType<typeof draft>>; head: CatalogHeadRef };
 function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows: Record<string, unknown>[]) => void | Promise<void>): CatalogPublicationDependencies<null> {
   return { registry, transactions: { async run(work) { const client = await db.connect();
-    try { await client.query("BEGIN"); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows); return result; } }); await client.query("COMMIT"); return result; }
+    try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows); return result; } }); await client.query("COMMIT"); return result; }
     catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true, userId: admin, role: "admin", isMachineActor: false }),
     rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: (document) => ({ derived: (document as { derived: number }).derived }),
@@ -57,6 +59,14 @@ beforeAll(async () => {
   for (let revision = 1; revision <= 100; revision++) receipt = await commit(await incrementalSku(data, receipt.head, revision));
   paged = { data, head: receipt.head };
   const other = await draft(), otherReceipt = await commit(other.publication); foreignPublished = { data: other, head: otherReceipt.head };
+  const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication" }); containers.push(priceContainer);
+  if (!await waitForPostgresTcpReady(priceContainer.connectionString)) throw new Error("Price publication witnesses require real PostgreSQL");
+  priceDb = new Pool({ connectionString: priceContainer.connectionString }); pools.push(priceDb);
+  for (const unit of [manifest.baseline, ...manifest.forward]) await priceDb.query(readFileSync(unit.file, "utf8"));
+  await installCatalogDefinitions(priceDb, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
+  await priceDb.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication-prices@example.invalid')", [admin]);
+  await priceDb.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
+  await seedRealReadiness();
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
 let serial = 0;
@@ -86,8 +96,8 @@ async function commit(publication: CatalogPublishCommand, target = authority, ca
   if (!("receipt" in result)) throw new Error(JSON.stringify(result));
   return result.receipt;
 }
-async function draft() {
-  const productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), revisionId = randomUUID(), slug = `article-${productId}`;
+async function draft(requestedSlug?: string) {
+  const productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), revisionId = randomUUID(), slug = requestedSlug ?? `article-${productId}`;
   const document = { schemaVersion: 1, id: "example:document", revisionNo: 1, productSlug: slug, derived: 12 }, canonicalText = canonicalCatalogDraftJson(document);
   const digest = createHash("sha256").update(canonicalText).digest("hex");
   const facts = { skuCode: `SKU-${skuId}`, title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
@@ -139,12 +149,12 @@ async function incrementalSku(data: Awaited<ReturnType<typeof draft>>, head: Cat
   ];
   return save(payload, data.draftId, revision, head);
 }
-async function snapshot() {
+async function snapshot(executor: PgQueryExecutor = db) {
   const tables = ["catalog_products", "catalog_skus", "catalog_sku_identifiers", "catalog_product_document_revisions", "catalog_attribute_projection",
     "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
     "catalog_publications", "catalog_publication_heads", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions",
-    "catalog_publication_pointer_capabilities", "outbox_events", "subscriptions", "subscription_lines", "commerce_orders", "commerce_order_items", "price_entries"];
-  return Object.fromEntries(await Promise.all(tables.map(async table => [table, (await db.query(`SELECT coalesce(jsonb_agg(value ORDER BY value::text),'[]') AS rows FROM (SELECT to_jsonb(t) AS value FROM public.${table} t) rows`)).rows[0].rows])));
+    "catalog_publication_pointer_capabilities", "outbox_events", "subscriptions", "subscription_lines", "commerce_orders", "commerce_order_items", "price_entries", "catalog_price_setup_receipts"];
+  return Object.fromEntries(await Promise.all(tables.map(async table => [table, (await executor.query(`SELECT coalesce(jsonb_agg(value ORDER BY value::text),'[]') AS rows FROM (SELECT to_jsonb(t) AS value FROM public.${table} t) rows`)).rows[0].rows])));
 }
 it("catalog_readback_returns_exact_historical_head", async () => {
   const data = await draft(), first = await commit(data.publication), retained = await authority.readbackV2(first.head);
@@ -255,7 +265,7 @@ it.each(["INSERT INTO public.catalog_product_document_revisions", "INSERT INTO p
   expect(await failing.publish(data.publication, capability)).toMatchObject({ outcome: "dependency_unavailable" });
   expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
 });
-it.todo("catalog_publish_rolls_back_price_and_document_failure"); // pending LC3: real child writer and its retained receipts.
+
 it.each([
   "authenticates the live human membership before returning an original replay",
   "W01_V5-1369_predicate_precedence_boundary",
@@ -421,6 +431,9 @@ it.each([
   const data = await draft(); await commit(data.publication);
   for (const table of ["catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions"])
     await expect(db.query(`UPDATE public.${table} SET ${table === "catalog_publications" || table === "catalog_publication_decisions" ? "id=id" : table === "catalog_sku_revisions" ? "id=id" : "command_key=command_key"}`)).rejects.toMatchObject({ code: "55000" });
+  for (const signature of ["public.catalog_price_setup_prepare(text,text)", "public.catalog_price_setup_apply_prelocked(jsonb)",
+    "public.catalog_price_setup_prelock(uuid,uuid,jsonb)", "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)"])
+    expect((await db.query("SELECT has_function_privilege('authenticated',$1,'EXECUTE') AS allowed", [signature])).rows).toEqual([{ allowed: false }]);
   const role = `publication_reader_${process.pid}`, client = await db.connect();
   try {
     await client.query(`CREATE ROLE ${role} NOLOGIN`); await client.query(`SET ROLE ${role}`);
@@ -511,7 +524,6 @@ it("separates the native price-only 64-character ceiling from dark structural re
   expect(await stagedAuthority.publish(command, capability)).toMatchObject({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
   expect(staged).toBe(true); expect(await snapshot()).toEqual(before);
 });
-it.todo("W45_V5-2156_predicate_precedence_boundary"); // pending LC3: otherwise-ready real price activation and its complete rollback.
 it.each([
   ["net", "fractional", "15", 1], ["net", "zero", "0", 0], ["net", "negative", "-1", 0], ["net", "out_of_range", "2147483648", 0],
   ["gross", "fractional", "15", 1], ["gross", "zero", "0", 0], ["gross", "negative", "-1", 0], ["gross", "out_of_range", "10000000000000000000000000000000000000000", 0],
@@ -1140,99 +1152,6 @@ it.each([
   await commit(command, target, capability);
 });
 
-// pending LC3: real effective pricing, settlement/acquisition authority and activation/global rollback.
-it.todo("W36_V5-0452_predicate_precedence_boundary");
-it.todo("W36_V5-0453_predicate_precedence_boundary");
-it.todo("W36_V5-0492_predicate_precedence_boundary");
-it.todo("W36_V5-0496_predicate_precedence_boundary");
-it.todo("W36_V5-0497_predicate_precedence_boundary");
-it.todo("W23_V5-1195_predicate_precedence_boundary");
-it.todo("W23_V5-1196_predicate_precedence_boundary");
-it.todo("W23_V5-1197_predicate_precedence_boundary");
-it.todo("W23_V5-1198_predicate_precedence_boundary");
-it.todo("W23_V5-1199_predicate_precedence_boundary");
-it.todo("W23_V5-1200_predicate_precedence_boundary");
-it.todo("W23_V5-1201_predicate_precedence_boundary");
-it.todo("W23_V5-1202_predicate_precedence_boundary");
-it.todo("W23_V5-1203_predicate_precedence_boundary");
-it.todo("W23_V5-1204_predicate_precedence_boundary");
-it.todo("W20_V5-1701_predicate_precedence_boundary");
-it.todo("W20_V5-1702_predicate_precedence_boundary");
-it.todo("W20_V5-1703_predicate_precedence_boundary");
-it.todo("W21_V5-1706_predicate_precedence_boundary");
-it.todo("W21_V5-1707_predicate_precedence_boundary");
-it.todo("W20_V5-2164_predicate_precedence_boundary");
-it.todo("W20_V5-2165_predicate_precedence_boundary");
-it.todo("W20_V5-2166_predicate_precedence_boundary");
-it.todo("W20_V5-2167_predicate_precedence_boundary");
-it.todo("W20_V5-2169_predicate_precedence_boundary");
-it.todo("W22_V5-2173_predicate_precedence_boundary");
-it.todo("W22_V5-2174_predicate_precedence_boundary");
-it.todo("W22_V5-2175_predicate_precedence_boundary");
-it.todo("W22_V5-2176_predicate_precedence_boundary");
-it.todo("W22_V5-2177_predicate_precedence_boundary");
-it.todo("W22_V5-2178_predicate_precedence_boundary");
-it.todo("W22_V5-2179_predicate_precedence_boundary");
-it.todo("W22_V5-2180_predicate_precedence_boundary");
-it.todo("W22_V5-2181_predicate_precedence_boundary");
-it.todo("W22_V5-2182_predicate_precedence_boundary");
-it.todo("W22_V5-2183_predicate_precedence_boundary");
-it.todo("W22_V5-2184_predicate_precedence_boundary");
-it.todo("W22_V5-2185_predicate_precedence_boundary");
-it.todo("W22_V5-2186_predicate_precedence_boundary");
-it.todo("W22_V5-2187_predicate_precedence_boundary");
-it.todo("W22_V5-2188_predicate_precedence_boundary");
-it.todo("W22_V5-2189_predicate_precedence_boundary");
-it.todo("W22_V5-2190_predicate_precedence_boundary");
-it.todo("W22_V5-2191_predicate_precedence_boundary");
-it.todo("W22_V5-2192_predicate_precedence_boundary");
-it.todo("W22_V5-2193_predicate_precedence_boundary");
-it.todo("W22_V5-2194_predicate_precedence_boundary");
-it.todo("W22_V5-2195_predicate_precedence_boundary");
-it.todo("W22_V5-2196_predicate_precedence_boundary");
-it.todo("W22_V5-2197_predicate_precedence_boundary");
-it.todo("W22_V5-2198_predicate_precedence_boundary");
-it.todo("W22_V5-2199_predicate_precedence_boundary");
-it.todo("W22_V5-2200_predicate_precedence_boundary");
-it.todo("W22_V5-2201_predicate_precedence_boundary");
-it.todo("W22_V5-2202_predicate_precedence_boundary");
-it.todo("W22_V5-2203_predicate_precedence_boundary");
-it.todo("W22_V5-2204_predicate_precedence_boundary");
-it.todo("W22_V5-2205_predicate_precedence_boundary");
-it.todo("W22_V5-2206_predicate_precedence_boundary");
-it.todo("W22_V5-2207_predicate_precedence_boundary");
-it.todo("W22_V5-2208_predicate_precedence_boundary");
-it.todo("W22_V5-2209_predicate_precedence_boundary");
-it.todo("W22_V5-2210_predicate_precedence_boundary");
-it.todo("W22_V5-2211_predicate_precedence_boundary");
-it.todo("W22_V5-2212_predicate_precedence_boundary");
-it.todo("W22_V5-2213_predicate_precedence_boundary");
-it.todo("W22_V5-2214_predicate_precedence_boundary");
-it.todo("W22_V5-2215_predicate_precedence_boundary");
-it.todo("W22_V5-2216_predicate_precedence_boundary");
-it.todo("W22_V5-2217_predicate_precedence_boundary");
-it.todo("W22_V5-2218_predicate_precedence_boundary");
-it.todo("W22_V5-2219_predicate_precedence_boundary");
-it.todo("W22_V5-2220_predicate_precedence_boundary");
-it.todo("W22_V5-2221_predicate_precedence_boundary");
-it.todo("W22_V5-2222_predicate_precedence_boundary");
-it.todo("W22_V5-2223_predicate_precedence_boundary");
-it.todo("W22_V5-2224_predicate_precedence_boundary");
-it.todo("W22_V5-2225_predicate_precedence_boundary");
-it.todo("W22_V5-2226_predicate_precedence_boundary");
-it.todo("W22_V5-2227_predicate_precedence_boundary");
-it.todo("W22_V5-2228_predicate_precedence_boundary");
-it.todo("W22_V5-2233_predicate_precedence_boundary");
-it.todo("W22_V5-2234_predicate_precedence_boundary");
-it.todo("W22_V5-2235_predicate_precedence_boundary");
-it.todo("W22_V5-2236_predicate_precedence_boundary");
-it.todo("W22_V5-2237_predicate_precedence_boundary");
-it.todo("W22_V5-2238_predicate_precedence_boundary");
-it.todo("W22_V5-2239_predicate_precedence_boundary");
-it.todo("W22_V5-2240_predicate_precedence_boundary");
-it.todo("W22_V5-2241_predicate_precedence_boundary");
-it.todo("W22_V5-2242_predicate_precedence_boundary");
-it.todo("W22_V5-2243_predicate_precedence_boundary");
 
 // Real intrinsic SQL probes and installed readiness refusal are independent of LC3.
 it.each([
@@ -1356,3 +1275,315 @@ it("catalog_publication_dark_primary_preserves_structural_readiness", async () =
     items: [{ facts: { status: "draft", sellableStandalone: false, sellableInSubscription: false } }] });
   expect((await db.query("SELECT public.catalog_publication_sku_reasons($1,false) AS reasons", [data.skuId])).rows[0].reasons).toEqual([]);
 });
+
+
+// These fixtures use LC3/LC3P's real native inputs. The zero-cohort baseline is
+// the audited, never-populated installation invariant, not fabricated readiness.
+async function seedRealReadiness() {
+  await priceDb.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+  await priceDb.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,'publication-price-anchor','Synthetic price anchor','active')", [anchorSku]);
+  await priceDb.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_standalone,sellable_in_subscription) VALUES($1,$1,'PUBLICATION-PRICE-ANCHOR','Synthetic price anchor','active',true,true)", [anchorSku]);
+  await priceDb.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic publication context','ZZ','XXX',statement_timestamp()-interval '1 hour')", [priceList]);
+  await priceDb.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'one_time',1000,statement_timestamp()-interval '1 hour')", [priceList,anchorSku]);
+  await priceDb.query(`INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+    SELECT id,1,$1,'ZZ','XXX','D2C',at,1000,10,'FLOOR_TO_QUANTUM',public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
+    FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',statement_timestamp()-interval '1 hour') AS at) v`, [priceList]);
+  await priceDb.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
+  const at = (await priceDb.query("SELECT to_char((statement_timestamp()-interval '1 hour') AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at")).rows[0].at;
+  const acquisition = { id: "example:publication-acquisition", status: "active", trigger_type: "automatic", code: null, discount_type: "percentage", discount_value: 50,
+    applies_to_kind: "order_total", applies_to_payload: { cart_mode: "subscription", acquisitionTerms: { schemaVersion: "subscription-acquisition.v1", revision: "example:publication-terms", delivery2DiscountBps: 3500 } },
+    stacking_rule: "exclusive", eligibility: { first_subscription_purchase: true }, valid_from: at, valid_to: null, redemption_limit_global: null,
+    redemption_limit_per_customer: 1, region_availability: ["ZZ"], promotion_engine_version: "promotion-engine.v2", benefit_lane: "product", benefit_kind: "target_percentage",
+    benefit_value_bps: 5000, benefit_value_minor: null, v2_mirror_of: null };
+  for (const value of [acquisition, { ...acquisition, id: "example:publication-bundle", promotion_engine_version: "promotion-engine.v1", discount_value: 5,
+    applies_to_payload: { cart_mode: "one_time" }, stacking_rule: "stackable_with_any", eligibility: { min_cart_minor: 12000 },
+    benefit_kind: "percentage", benefit_value_bps: 500, redemption_limit_per_customer: null }]) {
+    const text = JSON.stringify(value);
+    await priceDb.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active) VALUES($1,$2,$3,true)", [value.id,createHash('sha256').update(text).digest('hex'),text]);
+  }
+  await priceDb.query(`INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
+    VALUES('platform-watchdog','worker',true,'success',statement_timestamp(),'{"promotionReady":true}'),('promotion-claim-sweep','worker',true,'success',statement_timestamp(),'{}')
+    ON CONFLICT(job_name) DO UPDATE SET enabled=true,last_status='success',last_success_at=statement_timestamp(),metadata=excluded.metadata`);
+  expect((await priceDb.query("SELECT public.commerce_offer_policy_v2_readiness() AS result")).rows[0].result).toMatchObject({ ready: true, reasons: [], evidence: { legacyFrozenCount: 0, legacyFrozenBaselineMatches: true, priceMismatchCount: 0 } });
+}
+async function inPriceDatabase(work: () => Promise<void>) {
+  const previous = db; db = priceDb;
+  try { await work(); } finally { db = previous; }
+}
+function realPriceAuthority(connection?: import("pg").PoolClient, afterQuery?: Parameters<typeof dependencies>[0]) {
+  const deps = dependencies(afterQuery);
+  if (connection) deps.transactions = { async run(work) {
+    await connection.query("SAVEPOINT publication_test");
+    try { const result = await work(connection); await connection.query("RELEASE SAVEPOINT publication_test"); return result; }
+    catch(error) { await connection.query("ROLLBACK TO SAVEPOINT publication_test"); throw error; }
+  } };
+  return createPostgresCatalogPublication({ ...deps,
+    readiness: async (executor,state,requirePrice) => {
+      const reasons: string[] = [];
+      for (const sku of state.skus) {
+        const priced = requirePrice && (sku.sellableStandalone || sku.sellableInSubscription);
+        const value = (await executor.query("SELECT public.catalog_publication_sku_reasons($1,$2) AS reasons",[sku.id,priced])).rows[0]!.reasons;
+        if (!Array.isArray(value)) throw new Error("Native readiness contract missing");
+        reasons.push(...value as string[]);
+        if (priced) {
+          const preview = (await executor.query("SELECT public.catalog_price_setup_preview($1,$2,NULL) AS result",[sku.id,priceList])).rows[0]!.result as { outcome: string; currentCount: number; subscription: { kind: string; derivedUnitPriceMinor?: number }; readiness: { ready: boolean; reasons: string[] } };
+          if (preview.outcome !== "preview" || preview.currentCount !== 1 || preview.subscription.kind === "unresolved"
+            || preview.subscription.kind === "derived" && !(preview.subscription.derivedUnitPriceMinor! > 0)) reasons.push("price_readiness_missing");
+        }
+      }
+      return { ready: reasons.length === 0, reasons: [...new Set(reasons)] };
+    },
+    globalReadiness: async executor => (await executor.query("SELECT public.commerce_offer_policy_v2_readiness() AS result")).rows[0]!.result as {ready:boolean; reasons:string[]},
+  });
+}
+async function priceDraft(active = true, slug?: string) {
+  const data = await draft(slug), payload = structuredClone(data.payload), skuCode = payload.skus[0].code!;
+  payload.skus[0].grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "200", scale: 0 };
+  payload.skus[0].logisticsRef = "example:logistics";
+  payload.publication.operations.push({op:"set_sku_metadata",skuCode,logisticsRef:"example:logistics"});
+  payload.skus[0].priceOperations = [{schemaVersion:1,commandKey:`price:${data.skuId}`,variantId:data.skuId,priceListId:priceList,mode:"one_time",minQty:1,amountKind:"gross",unitPriceMinor:1000,expected:{entryId:null,unitPriceMinor:null}}];
+  if(active) {
+    payload.product.sharedContent.requestedModes = [{skuCode,modes:["one_time"]}];
+    payload.product.sharedContent.offerMemberships[0].admitted = true;
+    const membership = payload.publication.operations.find(op=>op.op==="set_offer_membership")!; if(membership.op==="set_offer_membership") membership.admitted=true;
+    payload.publication.operations.push({op:"set_eligibility",skuCode,sellableStandalone:true,sellableInSubscription:false},{op:"set_sku_status",skuCode,status:"active"});
+  }
+  return {...data,payload,publication:await save(payload,data.draftId,1)};
+}
+async function priceInputMatrix(group: "context"|"global") {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!;
+  const data = await priceDraft(); await approve(data.publication,target,capability);
+  const cases: Array<[string,string]> = [["settlement_context_unverified","DELETE FROM public.commerce_settings WHERE key='settlement_region'"],
+    ["settlement_context_unverified","DELETE FROM public.commerce_settings WHERE key='settlement_currency'"],
+    ["settlement_context_unverified","UPDATE public.commerce_settings SET value_text='invalid' WHERE key='settlement_region'"],
+    ["settlement_context_unverified","UPDATE public.commerce_settings SET value_text='invalid' WHERE key='settlement_currency'"]];
+  if(group==="global") cases.push(["native_cohort_unverified","DELETE FROM public.commerce_offer_policy_rollout_baselines"],
+    ["native_promotion_domain_unverified","UPDATE public.commerce_promotion_definitions SET definition=definition-'discount_value'"],
+    ["catalog_publication_v3_activation_readiness_failed","UPDATE public.platform_job_controls SET last_status='failed' WHERE job_name='platform-watchdog'"],
+    ["catalog_publication_v3_activation_readiness_failed","UPDATE public.platform_job_controls SET last_status='failed' WHERE job_name='promotion-claim-sweep'"],
+    ["catalog_publication_v3_activation_readiness_failed","UPDATE public.subscription_price_policy_revisions SET effective_to=statement_timestamp()-interval '1 second'"]);
+  if(group==="global") cases.push(["native_order_policy_pair_unverified","G019"],["native_order_admission_unverified","G031"]);
+  for(const [reason,mutation] of cases) {
+    const connection=await db.connect();
+    try {
+      await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:admin})]);
+      if(mutation==="G019"||mutation==="G031") {
+        const metadata=mutation==="G019"?{quoteSnapshot:{quote:{context:{pricingPolicy:{offerPolicyVersion:"commerce.offer-policy.v1",promotionEngineVersion:"promotion-engine.v2"}}}}}:{};
+        const order=(await connection.query("INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata) VALUES('pending_payment','XXX',100,$1) RETURNING id",[metadata])).rows[0].id;
+        await connection.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,100,100)",[order]);
+        await connection.query(`CREATE FUNCTION pg_temp.expose_publication_order() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN UPDATE public.commerce_orders SET status='paid' WHERE id='${order}'::uuid; RETURN NEW; END $$`);
+        await connection.query("CREATE TRIGGER expose_publication_order AFTER INSERT ON public.price_entries FOR EACH ROW EXECUTE FUNCTION pg_temp.expose_publication_order()");
+      } else await connection.query(mutation);
+      const before=await snapshot(connection);
+      const failing=realPriceAuthority(connection), actor=(await failing.authorize(null))!;
+      expect(await failing.publish(data.publication,actor)).toMatchObject({reason}); expect(await snapshot(connection)).toEqual(before);
+    } finally {await connection.query("ROLLBACK");connection.release();}
+  }
+  const result=await publishApproved(data.publication,target,capability);
+  expect(result.head.revision).toBe(1);
+  expect((await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0].value).toMatchObject({ready:true,reasons:[]});
+}
+async function priceActivationMatrix() {
+  const data=await priceDraft(), target=realPriceAuthority(), capability=(await target.authorize(null))!;
+  const missing=structuredClone(data.payload); delete missing.skus[0].priceOperations;
+  const absent=await save(missing,data.draftId,2); await approve(absent,target,capability); const before=await snapshot();
+  expect((await target.publish(absent,capability)).outcome).not.toBe("committed");expect(await snapshot()).toEqual(before);
+  const command=await save(data.payload,data.draftId,3); await approve(command,target,capability);
+  // A real global red verdict refuses after the child write, and rolls it back.
+  // An unavailable settlement context also refuses; neither is a ready stand-in.
+  for(const context of ["global red","unknown context"]) {
+    try {
+      if(context==="global red") await db.query("UPDATE public.platform_job_controls SET last_status='failed' WHERE job_name='platform-watchdog'");
+      else await db.query("DELETE FROM public.commerce_settings WHERE key='settlement_currency'");
+      const before=await snapshot();
+      expect((await target.publish(command,capability)).outcome).toBe(context==="global red"?"validation_issue":"dependency_unavailable");expect(await snapshot()).toEqual(before);
+    } finally {
+      await db.query("UPDATE public.platform_job_controls SET last_status='success',last_success_at=statement_timestamp() WHERE job_name='platform-watchdog'");
+      await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+    }
+  }
+  const receipt=await publishApproved(command,target,capability);
+  const stable=await snapshot();
+  expect(await target.publish(command,capability)).toEqual({outcome:"replayed",receipt});expect(await snapshot()).toEqual(stable);
+  expect((await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0].value).toMatchObject({ready:true,reasons:[]});
+}
+
+it.each(["W36_V5-0452_predicate_precedence_boundary",
+  "W36_V5-0453_predicate_precedence_boundary",
+  "W36_V5-0492_predicate_precedence_boundary",
+  "W36_V5-0496_predicate_precedence_boundary",
+  "W36_V5-0497_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceActivationMatrix(); }));
+
+it.each(["W23_V5-1195_predicate_precedence_boundary",
+  "W23_V5-1196_predicate_precedence_boundary",
+  "W23_V5-1197_predicate_precedence_boundary",
+  "W23_V5-1198_predicate_precedence_boundary",
+  "W23_V5-1199_predicate_precedence_boundary",
+  "W23_V5-1200_predicate_precedence_boundary",
+  "W23_V5-1201_predicate_precedence_boundary",
+  "W23_V5-1202_predicate_precedence_boundary",
+  "W23_V5-1203_predicate_precedence_boundary",
+  "W23_V5-1204_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceInputMatrix("context"); }));
+
+it.each(["W20_V5-1701_predicate_precedence_boundary",
+  "W20_V5-1702_predicate_precedence_boundary",
+  "W20_V5-1703_predicate_precedence_boundary",
+  "W20_V5-2164_predicate_precedence_boundary",
+  "W20_V5-2165_predicate_precedence_boundary",
+  "W20_V5-2166_predicate_precedence_boundary",
+  "W20_V5-2167_predicate_precedence_boundary",
+  "W20_V5-2169_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceActivationMatrix(); }));
+
+it.each(["W21_V5-1706_predicate_precedence_boundary",
+  "W21_V5-1707_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceActivationMatrix(); }));
+
+it.each(["W22_V5-2173_predicate_precedence_boundary",
+  "W22_V5-2174_predicate_precedence_boundary",
+  "W22_V5-2175_predicate_precedence_boundary",
+  "W22_V5-2176_predicate_precedence_boundary",
+  "W22_V5-2177_predicate_precedence_boundary",
+  "W22_V5-2178_predicate_precedence_boundary",
+  "W22_V5-2179_predicate_precedence_boundary",
+  "W22_V5-2180_predicate_precedence_boundary",
+  "W22_V5-2181_predicate_precedence_boundary",
+  "W22_V5-2182_predicate_precedence_boundary",
+  "W22_V5-2183_predicate_precedence_boundary",
+  "W22_V5-2184_predicate_precedence_boundary",
+  "W22_V5-2185_predicate_precedence_boundary",
+  "W22_V5-2186_predicate_precedence_boundary",
+  "W22_V5-2187_predicate_precedence_boundary",
+  "W22_V5-2188_predicate_precedence_boundary",
+  "W22_V5-2189_predicate_precedence_boundary",
+  "W22_V5-2190_predicate_precedence_boundary",
+  "W22_V5-2191_predicate_precedence_boundary",
+  "W22_V5-2192_predicate_precedence_boundary",
+  "W22_V5-2193_predicate_precedence_boundary",
+  "W22_V5-2194_predicate_precedence_boundary",
+  "W22_V5-2195_predicate_precedence_boundary",
+  "W22_V5-2196_predicate_precedence_boundary",
+  "W22_V5-2197_predicate_precedence_boundary",
+  "W22_V5-2198_predicate_precedence_boundary",
+  "W22_V5-2199_predicate_precedence_boundary",
+  "W22_V5-2200_predicate_precedence_boundary",
+  "W22_V5-2201_predicate_precedence_boundary",
+  "W22_V5-2202_predicate_precedence_boundary",
+  "W22_V5-2203_predicate_precedence_boundary",
+  "W22_V5-2204_predicate_precedence_boundary",
+  "W22_V5-2205_predicate_precedence_boundary",
+  "W22_V5-2206_predicate_precedence_boundary",
+  "W22_V5-2207_predicate_precedence_boundary",
+  "W22_V5-2208_predicate_precedence_boundary",
+  "W22_V5-2209_predicate_precedence_boundary",
+  "W22_V5-2210_predicate_precedence_boundary",
+  "W22_V5-2211_predicate_precedence_boundary",
+  "W22_V5-2212_predicate_precedence_boundary",
+  "W22_V5-2213_predicate_precedence_boundary",
+  "W22_V5-2214_predicate_precedence_boundary",
+  "W22_V5-2215_predicate_precedence_boundary",
+  "W22_V5-2216_predicate_precedence_boundary",
+  "W22_V5-2217_predicate_precedence_boundary",
+  "W22_V5-2218_predicate_precedence_boundary",
+  "W22_V5-2219_predicate_precedence_boundary",
+  "W22_V5-2220_predicate_precedence_boundary",
+  "W22_V5-2221_predicate_precedence_boundary",
+  "W22_V5-2222_predicate_precedence_boundary",
+  "W22_V5-2223_predicate_precedence_boundary",
+  "W22_V5-2224_predicate_precedence_boundary",
+  "W22_V5-2225_predicate_precedence_boundary",
+  "W22_V5-2226_predicate_precedence_boundary",
+  "W22_V5-2227_predicate_precedence_boundary",
+  "W22_V5-2228_predicate_precedence_boundary",
+  "W22_V5-2233_predicate_precedence_boundary",
+  "W22_V5-2234_predicate_precedence_boundary",
+  "W22_V5-2235_predicate_precedence_boundary",
+  "W22_V5-2236_predicate_precedence_boundary",
+  "W22_V5-2237_predicate_precedence_boundary",
+  "W22_V5-2238_predicate_precedence_boundary",
+  "W22_V5-2239_predicate_precedence_boundary",
+  "W22_V5-2240_predicate_precedence_boundary",
+  "W22_V5-2241_predicate_precedence_boundary",
+  "W22_V5-2242_predicate_precedence_boundary",
+  "W22_V5-2243_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceInputMatrix("global"); }));
+
+it("catalog_publish_rolls_back_price_and_document_failure", async()=>inPriceDatabase(async()=>{
+  const data=await priceDraft(), target=realPriceAuthority(), capability=(await target.authorize(null))!; await approve(data.publication,target,capability);
+  const before=await snapshot(); let written=false;
+  const failing=realPriceAuthority(undefined,async(sql,executor)=>{
+    if(sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) {
+      written=true;expect((await executor.query("SELECT count(*)::integer AS n FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1",[data.payload.skus[0].priceOperations![0].commandKey])).rows[0]!.n).toBe(1);
+      expect((await executor.query("SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1",[data.productId])).rows).toHaveLength(1);
+      throw new Error("Failure after real document and child price/receipt effects");
+    }
+  }), actor=(await failing.authorize(null))!;
+  expect((await failing.publish(data.publication,actor)).outcome).toBe("dependency_unavailable");expect(written).toBe(true);expect(await snapshot()).toEqual(before);
+}));
+it("W45_V5-2156_predicate_precedence_boundary",async()=>inPriceDatabase(async()=>{
+  const data=await priceDraft(true,"a".repeat(28)+randomUUID()), target=realPriceAuthority(),capability=(await target.authorize(null))!;
+  await approve(data.publication,target,capability); const before=await snapshot();let observed=false;
+  const failing=realPriceAuthority(undefined,async(sql,executor)=>{
+    if(sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) {
+      expect((await executor.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0]!.value).toMatchObject({ready:true,reasons:[]});
+      expect((await executor.query("SELECT public.catalog_publication_sku_reasons($1,true) AS reasons",[data.skuId])).rows[0]!.reasons).toEqual([]);
+      await executor.query("UPDATE public.catalog_products SET slug=$2 WHERE id=$1",[data.productId,"a".repeat(65)]);
+      expect((await executor.query("SELECT public.catalog_publication_sku_reasons($1,true) AS reasons",[data.skuId])).rows[0]!.reasons).toEqual(["commerce_identity_unsupported"]);observed=true;
+    }
+  }), actor=(await failing.authorize(null))!;
+  expect(await failing.publish(data.publication,actor)).toMatchObject({reason:"catalog_publication_v3_activation_readiness_failed"});expect(observed).toBe(true);expect(await snapshot()).toEqual(before);
+  await publishApproved(data.publication,target,capability);
+}));
+
+async function publishApproved(command: CatalogPublishCommand, target: ReturnType<typeof realPriceAuthority>, actor: NonNullable<Awaited<ReturnType<typeof target.authorize>>>) {
+  const result=await target.publish(command,actor);expect(result.outcome,JSON.stringify(result)).toBe("committed");
+  if(result.outcome!=="committed") throw new Error("Expected real publication");return result.receipt;
+}
+it.each(["publication first","standalone first"])("catalog_price_publication_and_standalone_complete_without_deadlock: %s",async(order)=>inPriceDatabase(async()=>{
+  const data=await priceDraft(), initial=realPriceAuthority(), actor=(await initial.authorize(null))!;
+  const first=await commit(data.publication,initial,actor), payload=structuredClone(data.payload);
+  const previous=(await db.query("SELECT id,unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows[0];
+  const price={...payload.skus[0].priceOperations![0],commandKey:`race:${data.skuId}`,unitPriceMinor:1200,expected:{entryId:previous.id,unitPriceMinor:previous.unit_price_minor}};
+  payload.skus[0].priceOperations=[price];payload.product.sharedContent.catalogAction="revise";
+  payload.product.sharedContent.presentation={routePath:{en:`/raced-${data.productId}`}};
+  payload.publication.operations=[{op:"set_product_presentation",productSlug:payload.product.slug!,presentation:payload.product.sharedContent.presentation}];
+  const command=await save(payload,data.draftId,2,first.head);
+  let entered!:()=>void, resume!:()=>void, calls=0;
+  const ready=new Promise<void>(resolve=>{entered=resolve;}),released=new Promise<void>(resolve=>{resume=resolve;});
+  const publication=realPriceAuthority(undefined,async sql=>{
+    if(sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) calls++;
+    if(order==="publication first"&&sql.startsWith("SELECT public.catalog_price_setup_prelock")){entered();await released;}
+  }),publisher=(await publication.authorize(null))!;await approve(command,publication,publisher);
+  const standalone=await db.connect();
+  try {
+    await standalone.query("BEGIN");await standalone.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:admin})]);
+    const bytes=canonicalCatalogDraftJson(price),fingerprint=createHash('sha256').update(bytes).digest('hex');
+    const apply=()=>standalone.query("SELECT public.catalog_price_setup_apply($1,$2) AS value",[bytes,fingerprint]);
+    let parent:ReturnType<typeof publication.publish>;let child:Awaited<ReturnType<typeof apply>>;
+    if(order==="publication first") {
+      parent=publication.publish(command,publisher);await ready;
+      expect((await standalone.query("SELECT pg_try_advisory_xact_lock(hashtextextended('catalog-price-setup:'||$1::text||':'||$2::text,0)) AS acquired",[priceList,data.skuId])).rows[0].acquired).toBe(false);
+      const competing=apply();resume();expect((await parent).outcome).toBe("committed");child=await competing;
+      expect(child.rows[0].value.outcome).toBe("replayed");await standalone.query("COMMIT");
+    } else {
+      child=await apply();expect(child.rows[0].value.outcome).toBe("committed");
+      parent=publication.publish(command,publisher);await standalone.query("COMMIT");expect((await parent).outcome).toBe("committed");
+    }
+    expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows).toEqual([{unit_price_minor:1200}]);
+    expect((await db.query("SELECT count(*)::integer AS n FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1",[price.commandKey])).rows[0].n).toBe(1);
+    const before=await snapshot(),count=calls;expect((await publication.publish(command,publisher)).outcome).toBe("replayed");expect(calls).toBe(count);expect(await snapshot()).toEqual(before);
+  } finally {resume();await standalone.query("ROLLBACK");standalone.release();}
+}));
+
+it("catalog_publication_parent_replay_never_reruns_prices",async()=>inPriceDatabase(async()=>{
+  let priceCalls=0;
+  const data=await priceDraft(), target=realPriceAuthority(undefined,async sql=>{if(sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction"))priceCalls++;}), actor=(await target.authorize(null))!;
+  const receipt=await commit(data.publication,target,actor), previous=(await db.query("SELECT id,unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows[0];
+  const command={...data.payload.skus[0].priceOperations![0],commandKey:`later:${data.skuId}`,unitPriceMinor:1500,expected:{entryId:previous.id,unitPriceMinor:previous.unit_price_minor}};
+  const connection=await db.connect();
+  try {
+    await connection.query("BEGIN");await connection.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:admin})]);
+    const bytes=canonicalCatalogDraftJson(command);
+    expect((await connection.query("SELECT public.catalog_price_setup_apply($1,$2) AS result",[bytes,createHash('sha256').update(bytes).digest('hex')])).rows[0].result.outcome).toBe("committed");await connection.query("COMMIT");
+  }finally{await connection.query("ROLLBACK");connection.release();}
+  const before=await snapshot(), calls=priceCalls;
+  expect(await target.publish(data.publication,actor)).toEqual({outcome:"replayed",receipt});expect(priceCalls).toBe(calls);expect(await snapshot()).toEqual(before);
+  expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows).toEqual([{unit_price_minor:1500}]);
+}));

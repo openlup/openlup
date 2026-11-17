@@ -52,3 +52,7 @@ SQL equivalents; native ownership checks establish unfiltered visibility, not
 business authorization. Mandatory managed industry-specific columns still need
 their separately qualified relaxation before nonmass publication;
 the managed rail does not supply this feature.
+
+New lifecycle and acceptance exports are `@experimental`; the existing catalogue
+readers retain their maturity. Future changes to lifecycle state,
+obligation-family and refusal unions are addition-only.

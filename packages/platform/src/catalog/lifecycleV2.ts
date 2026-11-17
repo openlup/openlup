@@ -13,8 +13,10 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const ref = z.string().min(1).max(240).refine(value => value.trim() === value);
 const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
 const slug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
+/** @experimental */
 export const catalogLifecycleStateV2Schema = z.enum(["draft", "active", "withdrawn", "archived"]);
 const destination = z.enum(["active", "withdrawn", "archived"]);
+/** @experimental */
 export const catalogLifecycleOperationV2Schema: z.ZodType<CatalogLifecycleOperationV2> = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_product_lifecycle"), productSlug: slug, expectedState: catalogLifecycleStateV2Schema, state: destination,
     children: z.array(z.object({ skuCode: code, expectedState: catalogLifecycleStateV2Schema }).strict()).max(50_000)
@@ -23,13 +25,16 @@ export const catalogLifecycleOperationV2Schema: z.ZodType<CatalogLifecycleOperat
   z.object({ op: z.literal("set_sku_lifecycle"), skuCode: code, expectedState: catalogLifecycleStateV2Schema, state: destination }).strict(),
   z.object({ op: z.literal("restore_sku"), skuCode: code, expectedState: z.literal("withdrawn") }).strict(),
 ]);
+/** @experimental */
 export function catalogLifecycleTransitionV2(from: CatalogLifecycleStateV2, to: CatalogLifecycleStateV2, restore = false): boolean {
   if (restore) return from === "withdrawn" && to === "active";
   return from === "draft" && (to === "active" || to === "archived")
     || from === "active" && (to === "active" || to === "withdrawn")
     || from === "withdrawn" && to === "archived";
 }
-/** The v3 grammar still owns every unchanged operation and ordered source guard. */
+/** The v3 grammar still owns every unchanged operation and ordered source guard.
+ * @experimental
+ */
 export const catalogDraftPayloadV4Schema: z.ZodType<CatalogDraftPayloadV4> = z.object({ schemaVersion: z.literal(4),
   product: catalogDraftProductV2Schema.extend({ sharedContent: catalogDraftSharedContentV3Schema }).strict(),
   skus: z.array(catalogDraftSkuV2Schema).max(10_000),
@@ -56,22 +61,31 @@ export const catalogDraftPayloadV4Schema: z.ZodType<CatalogDraftPayloadV4> = z.o
   if (!base.success) for (const issue of base.error.issues) context.addIssue({ code: "custom", path: issue.path, message: issue.message });
   try { canonicalCatalogDraftJson(payload); } catch { context.addIssue({ code: "custom", message: "payload must be bounded safe JSON" }); }
 }) as z.ZodType<CatalogDraftPayloadV4>;
+/** @experimental */
 export const catalogDraftCommandV4Schema: z.ZodType<CatalogDraftCommandV4> = z.object({ schemaVersion: z.literal(4), action: z.enum(["create", "revise", "abandon", "resume"]),
   draftId: id, commandKey: ref, expectedRevision: z.number().int().min(0).max(2_147_483_646), payload: catalogDraftPayloadV4Schema.optional() }).strict()
   .refine(command => ["create", "revise"].includes(command.action) ? command.payload !== undefined : command.payload === undefined);
+/** @experimental */
 export const catalogLifecycleStoredPayloadSchema: z.ZodType<CatalogLifecycleStoredPayload> = z.union([catalogDraftPublicationStoredPayloadSchema, catalogDraftPayloadV4Schema]);
+/** @experimental */
 export const catalogLifecycleStoredCommandSchema: z.ZodType<CatalogLifecycleStoredCommand> = z.union([catalogDraftPublicationStoredCommandSchema, catalogDraftCommandV4Schema]);
+/** @experimental */
 export const catalogLifecycleStoredRecordSchema: z.ZodType<CatalogLifecycleStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogLifecycleStoredPayloadSchema }).strict();
+/** @experimental */
 export const catalogAcceptedReferenceV2Schema: z.ZodType<CatalogAcceptedReferenceV2> = z.object({ schemaVersion: z.literal(2), skuId: id, skuCode: code, skuRevisionId: id,
   publicationHead: z.object({ publicationId: id, revision, documentDigest: digest }).strict(), typeRef: catalogProductTypeRefSchema, definitionDigest: digest, optionDigest: digest,
   netContent: catalogQuantitySchema, demandPolicyRef: ref.optional() }).strict();
+/** @experimental */
 export function catalogAuthoritativeLifecycleV2(value: CatalogProductState | CatalogSkuState): CatalogLifecycleStateV2 {
   if (!("schemaVersion" in value) || value.schemaVersion !== 3) return publicationRefuse("catalog_lifecycle_authority_unavailable", "unsupported");
   return value.lifecycleState;
 }
+/** @experimental */
 export function catalogLifecycleProjectionV2(state: CatalogLifecycleStateV2): "draft" | "active" | "archived" { return state === "withdrawn" ? "active" : state; }
 
+/** @experimental */
 export const catalogLifecycleStoredApplyResultSchema = z.union([z.object({ outcome: z.enum(["committed", "replayed"]), record: catalogLifecycleStoredRecordSchema }).strict(), catalogDraftRefusalSchema]);
+/** @experimental */
 export function catalogLifecycleValidationPayload(payload: CatalogLifecycleStoredPayload): import("./contracts/draftV2.js").CatalogDraftPayloadV2 {
   if (payload.schemaVersion === 1) return publicationRefuse("candidate_requires_payload_v2");
   if (payload.schemaVersion === 2) return payload;
@@ -79,6 +93,7 @@ export function catalogLifecycleValidationPayload(payload: CatalogLifecycleStore
   return { ...base, schemaVersion: 2 as const };
 }
 
+/** @experimental */
 export function resolveCatalogLifecycleProvenance(provenance: import("./contracts/draftV3.js").CatalogDraftProvenanceV3, record: CatalogLifecycleStoredRecord) {
   if (provenance.source === "retained_draft") { const { source: _source, ...tuple } = provenance; return tuple; }
   const current = catalogLifecycleStoredRecordSchema.parse(record);

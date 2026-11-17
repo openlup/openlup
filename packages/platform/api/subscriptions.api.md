@@ -1239,11 +1239,14 @@ export type RenewalResult = {
     dunningPropagationFailed?: boolean;
     reason?: string;
 };
-/** New acceptances retain the complete identity; the v1 carrier remains unchanged. */
+/** New acceptances retain the complete identity; the v1 carrier remains unchanged.
+ * @experimental
+ */
 export interface RenewalRetainedTermsV2 extends Omit<RenewalRetainedTerms, "version"> {
     version: "native.renewal-terms.v2";
     catalogAcceptance: CatalogAcceptanceV2;
 }
+/** @experimental */
 export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
     frozenRevision: "native.purchase-renewal.v3";
     catalogAcceptance: CatalogAcceptanceV2;
@@ -1669,10 +1672,13 @@ export declare function activateNativePurchaseWithRenewal(executor: Subscription
 ```ts
 import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
 import { type NativeRenewalCodec } from "./postgresRenewalStore.js";
+/** @experimental */
 export type CatalogRenewalReferenceParser = (value: unknown) => CatalogAcceptedReferenceV2;
 /** Existing v1/v2 dialect and bytes are unchanged. */
 export declare function createNativeRenewalCodec(): NativeRenewalCodec;
-/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed. */
+/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed.
+ * @experimental
+ */
 export declare function createNativeCatalogRenewalCodecV2(parseReference: CatalogRenewalReferenceParser): NativeRenewalCodec;
 ```
 ## dist/subscriptions/nativeRetryDriver.d.ts

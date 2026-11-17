@@ -29,6 +29,7 @@ const snapshotSchema = z.object({
   stockSourceKey: ref, settlementChannelKey: ref, authorizationRef: ref, payerAccountRef: ref.nullable(),
   unattendedChargeAuthorizedAt: z.iso.datetime(),
 }).strict();
+/** @experimental */
 export type CatalogRenewalReferenceParser = (value: unknown) => CatalogAcceptedReferenceV2;
 function acceptance(value: unknown, parse: CatalogRenewalReferenceParser | undefined): CatalogAcceptanceV2 {
   if (!parse) throw new Error("subscription_catalog_acceptance_reader_required");
@@ -213,7 +214,9 @@ function nativeRenewalCodec(parse?: CatalogRenewalReferenceParser): NativeRenewa
 
 /** Existing v1/v2 dialect and bytes are unchanged. */
 export function createNativeRenewalCodec(): NativeRenewalCodec { return nativeRenewalCodec(); }
-/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed. */
+/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed.
+ * @experimental
+ */
 export function createNativeCatalogRenewalCodecV2(parseReference: CatalogRenewalReferenceParser): NativeRenewalCodec {
   if (typeof parseReference !== "function") throw new Error("subscription_catalog_acceptance_reader_required");
   return nativeRenewalCodec(parseReference);

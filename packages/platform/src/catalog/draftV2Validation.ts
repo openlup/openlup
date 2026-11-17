@@ -5,7 +5,9 @@ import { validateCatalogDraft, type CatalogDraftValidation } from "./draftValida
 import { validateCatalogAttributes } from "./attributeValidation.js";
 import { canonicalizeCatalogCombinationV2, CatalogCombinationError } from "./variantCombination.js";
 
-/** Incomplete v2 drafts remain saveable; required attributes participate in publication readiness. */
+/** Incomplete v2 drafts remain saveable; required attributes participate in publication readiness.
+ * @experimental
+ */
 export async function validateCatalogDraftV2(payload: CatalogDraftPayloadV2, registry: CatalogProductTypeRegistry,
   references?: CatalogAttributeReferencePort): Promise<CatalogDraftValidation> {
   const { attributes: _attributes, ...product } = payload.product;

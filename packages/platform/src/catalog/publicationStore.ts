@@ -1,3 +1,4 @@
+import { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "../pricing/index.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PgQueryExecutor } from "../data/index.js";
 import { canonicalizeCatalogCombinationV2 } from "./variantCombination.js";
@@ -37,6 +38,7 @@ const equal = (a: unknown, b: unknown) => publicationJson(a) === publicationJson
 const require = (value: unknown, code: string, outcome?: CatalogPublicationError["outcome"]) => { if (!value) publicationRefuse(code, outcome); };
 const tuple = (db: PgQueryExecutor, sql: string, values: unknown[] = []) => db.query(sql, values).then(result => result.rows);
 function failure(error: unknown): CatalogPublicationFailure {
+  if (error instanceof CatalogPriceSetupTransactionError) return error.refusal;
   if (error instanceof CatalogPublicationError) return { outcome: error.outcome, reason: error.code };
   const code = error && typeof error === "object" && "code" in error ? error.code : null;
   if (code === "55P03" || code === "40P01") return { outcome: "conflict", reason: "catalog_publication_busy" };
@@ -50,6 +52,9 @@ interface RetainedState { head: CatalogHeadRef | null; publication: StoredPublic
 /** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters. */
 export function createPostgresCatalogPublication<Context>(deps: CatalogPublicationDependencies<Context>) {
   const actors = new WeakMap<object, string>(), readers = new WeakMap<object, Context>();
+  const prices = deps.prices ?? createCatalogPriceSetupTransactionWriter<VerifiedCatalogPublisher>(capability => {
+    const actorId = actors.get(capability); require(actorId, "publisher_not_authorized", "unauthorized"); return actorId!;
+  });
   async function authorize(context: Context): Promise<VerifiedCatalogPublisher | null> {
     const auth = await deps.authorizeHuman(context);
     if (!auth.ok || auth.role !== "admin" || auth.isMachineActor !== false || !id.safeParse(auth.userId).success) return null;
@@ -279,15 +284,14 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         if (prepared.payload.product.documentRevision) documentRevisions.push(prepared.payload.product.documentRevision.revisionNo);
         const preliminary = await load(db, command.productId, undefined, true, documentRevisions);
         const retainedSources = await lockCandidate(db, prepared, preliminary);
-        const prices = prepared.payload.skus.flatMap(sku => sku.priceOperations ?? []);
+        const priceCommands = prepared.payload.skus.flatMap(sku => sku.priceOperations ?? []);
         let prelockedBatch: unknown;
-        if (prices.length) {
-          require(deps.prices, "catalog_price_writer_unavailable", "dependency_unavailable");
-          const ids = [...new Set(prices.map(price => price.variantId))];
+        if (priceCommands.length) {
+          const ids = [...new Set(priceCommands.map(price => price.variantId))];
           const ownership = await tuple(db, `SELECT id AS sku_id,product_id FROM public.catalog_skus WHERE id=ANY($1::uuid[])
             UNION ALL SELECT sku_id,product_id FROM public.catalog_draft_sku_reservations WHERE draft_id=$2::uuid AND sku_id=ANY($1::uuid[])`, [ids, prepared.record.draftId]);
           require(ownership.every(row => row.product_id === command.productId) && ids.every(id => ownership.some(row => row.sku_id === id)), "catalog_price_parent_mismatch");
-          prelockedBatch = await deps.prices!.prelock(db, capability, command.productId, prices);
+          prelockedBatch = await prices.prelock(db, capability, command.productId, priceCommands);
         }
         const current = await load(db, command.productId, undefined, prepared.payload.publication.kind === "compensation", documentRevisions);
         require(equal(command.expectedHead, prepared.expectedHead) && equal(current.head, command.expectedHead), "head_conflict", "conflict");
@@ -339,10 +343,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(Number.isSafeInteger(next) && next <= 2_147_483_647, "catalog_publication_revision_limit");
         const publicationId = randomUUID();
         await applyOperations(db, prepared.payload, compiled, current, fingerprint, prepared.definition);
-        if (prices.length) {
-          for (const price of prices) require(compiled.skus.some(sku => sku.id === price.variantId && sku.productId === command.productId), "catalog_price_parent_mismatch");
+        if (priceCommands.length) {
+          for (const price of priceCommands) require(compiled.skus.some(sku => sku.id === price.variantId && sku.productId === command.productId), "catalog_price_parent_mismatch");
           // The sole atomic price write call. It uses this executor and cannot commit independently.
-          await deps.prices!.applyInTransaction(db, capability, command.productId, prelockedBatch);
+          await prices.applyInTransaction(db, capability, command.productId, prelockedBatch);
         }
         await projectAttributes(db, compiled, prepared.definition, next);
         const withdrawalOnly = prepared.payload.schemaVersion === 4 && prepared.payload.publication.operations.length > 0 && prepared.payload.publication.operations.every(operation =>
@@ -664,6 +668,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
   async function readbackV2(head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> {
     return await readbackFull(head, cursor, 2) as CatalogFullPublicationV2 | CatalogPublicationFailure;
   }
+  /** @experimental */
   async function readbackV3(head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV3 | CatalogPublicationFailure> {
     return await readbackFull(head, cursor, 3) as CatalogFullPublicationV3 | CatalogPublicationFailure;
   }
@@ -704,7 +709,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     } catch (error) { return failure(error); }
   }
   return { authorize, authorizeReadScope(context: Context): VerifiedCatalogReadScope { const scope = Object.freeze({}); readers.set(scope, context); return scope as VerifiedCatalogReadScope; },
-    publication, reads, readPort, publish, decision, receipt: recoverReceipt, readbackV2, readbackV3, resolveRetained };
+    publication, reads, readPort, publish, decision, receipt: recoverReceipt, readbackV2,
+    /** @experimental */
+    readbackV3, resolveRetained };
 }
 function encodeCursor(value: { kind: "history" | "facts"; productId: string; highWater: number; before: number }): string {
   return Buffer.from(publicationJson({ schemaVersion: 1, ...value })).toString("base64url");

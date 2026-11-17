@@ -350,11 +350,14 @@ export type RenewalResult =
   | { outcome: "deferred"; subscriptionId: string; scheduledAt: string; reason: string; caseRef?: string }
   | { outcome: "charged" | "requires_action" | "failed" | "skipped"; subscriptionId: string; cycleId: string | null; cycleNumber: number | null; orderId: string | null; paymentIntentId: string | null; attemptStatus: string | null; replayed: boolean; dunningCaseId?: string | null; retryAttempt?: number | null; applyReplayed?: boolean; dunningPropagationFailed?: boolean; reason?: string };
 
-/** New acceptances retain the complete identity; the v1 carrier remains unchanged. */
+/** New acceptances retain the complete identity; the v1 carrier remains unchanged.
+ * @experimental
+ */
 export interface RenewalRetainedTermsV2 extends Omit<RenewalRetainedTerms, "version"> {
   version: "native.renewal-terms.v2";
   catalogAcceptance: CatalogAcceptanceV2;
 }
+/** @experimental */
 export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
   frozenRevision: "native.purchase-renewal.v3";
   catalogAcceptance: CatalogAcceptanceV2;

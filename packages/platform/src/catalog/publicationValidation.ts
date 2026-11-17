@@ -74,8 +74,11 @@ function governedSchema<T, K extends "definitionDigest" | "optionDigest">(base: 
       || lifecycleState !== "active" && (old.sellableStandalone === true || old.sellableInSubscription === true)) context.addIssue({ code: "custom", message: "invalid authoritative lifecycle facts" });
   }) as unknown as z.ZodType<T & { schemaVersion: 3; lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2 } & Record<K, string>>;
 }
+/** @experimental */
 export const catalogProductStateSchema: z.ZodType<CatalogProductState> = z.union([catalogPublishedProductSchema, governedSchema(catalogPublishedProductSchema, "definitionDigest")]);
+/** @experimental */
 export const catalogSkuStateSchema: z.ZodType<CatalogSkuState> = z.union([catalogPublishedSkuSchema, governedSchema(catalogPublishedSkuSchema, "optionDigest")]);
+/** @experimental */
 export const catalogPublicationStateSchema = z.union([catalogPublicationManifestSchema, z.object({ schemaVersion: z.literal(3), product: governedSchema(catalogPublishedProductSchema, "definitionDigest"), skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()) }).strict().refine(value => value.skus.every((sku, index) => index === 0 || value.skus[index - 1]!.skuId < sku.skuId) && value.skus.some(sku => sku.skuId === value.product.primarySkuId))]);
 export interface CatalogPublicationDocument {
   reference: z.infer<typeof catalogDocumentRevisionRefSchema>; canonicalText: string;

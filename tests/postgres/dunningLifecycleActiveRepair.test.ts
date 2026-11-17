@@ -100,7 +100,9 @@ describe("real PostgreSQL portable dunning forward", () => {
       VALUES ($1,$2,$3,$4,4,$5,'synthetic:last-rung')`, [caseId, subscriptionId, cycleId, clientId, at]);
     prefixRows = await snapshot(upgrade);
     // Later forwards add editor defaults and nullable saved-address pointers.
-    prefixRows.subscriptions = prefixRows.subscriptions.map(({ row }) => ({ row: { ...row, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null } }));
+    prefixRows.subscriptions = prefixRows.subscriptions.map(({ row }) => ({ row: { ...row, composition_constraint: null, configured_offer_version: "classic", shipping_saved_address_id: null, billing_saved_address_id: null,
+      offer_policy_version: "commerce.offer-policy.v1", promotion_engine_version: "promotion-engine.v1",
+      offer_policy_assignment_state: "legacy_frozen", is_test_fixture: false } }));
     prefixAcl = await privileges(upgrade);
     upgradeApplied = (await runner(upgrade).apply()).applied;
     freshApplied = (await runner(fresh).apply()).applied;

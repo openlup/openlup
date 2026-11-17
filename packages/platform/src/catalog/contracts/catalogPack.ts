@@ -2,6 +2,7 @@ import type { CatalogDraftPayload } from "./draft.js";
 import type { CatalogDraftPayloadV2 } from "./draftV2.js";
 import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
 import type { CatalogProductTypeInput, CatalogOptionValue, CatalogQuantity } from "./productTypes.js";
+/** @experimental */
 export interface CatalogPackInput {
   id: string; namespace: string; version: number; openlupRange: string;
   capabilities: Readonly<Record<string, boolean>>;
@@ -49,7 +50,9 @@ type DraftForType<T extends CatalogProductTypeInput, Selected extends string = D
   })[];
 };
 /** Explicit annotations supply the product's selected dimension keys as Selected.
- * Omitted Selected covers all installed dimensions; draftsFor infers the selection. */
+ * Omitted Selected covers all installed dimensions; draftsFor infers the selection.
+ * @experimental
+ */
 export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T
   ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
 type DraftInput = CatalogReadonly<CatalogDraftPayload>;
@@ -111,7 +114,9 @@ type PackReferences<P extends CatalogPackInput> = string extends P["namespace"] 
   : number extends ProfileVersions<P> ? never : {
   types: { readonly [I in keyof P["types"]]: P["types"][I] extends CatalogProductTypeInput ? TypeReferences<P, P["types"][I]> : P["types"][I] };
 };
-/** Authoring preserves literals; it does not validate or execute pack callbacks. */
+/** Authoring preserves literals; it does not validate or execute pack callbacks.
+ * @experimental
+ */
 export function defineCatalogPack<const P extends CatalogPackInput>(pack: P & Exact<P, CatalogPackInput> & PackReferences<P>): CatalogReadonly<P> {
   const seen = new WeakSet<object>();
   function freeze(value: object): void {
@@ -123,7 +128,9 @@ export function defineCatalogPack<const P extends CatalogPackInput>(pack: P & Ex
   freeze(pack);
   return pack as CatalogReadonly<P>;
 }
-/** v1 stays unchanged; v2 authoring adds definition-typed attributes and complete price commands. */
+/** v1 stays unchanged; v2 authoring adds definition-typed attributes and complete price commands.
+ * @experimental
+ */
 export function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)):
   <const D extends readonly AnyDraftInput[]>(drafts: D & Exact<D, AnyDraftInput[]> & { readonly [I in keyof D]: SelectedDraft<P, D[I]> }) => D {
   return (drafts) => drafts;

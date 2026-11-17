@@ -11,11 +11,14 @@ import { catalogProductTypeIssues, catalogQuantitySchema } from "./productTypeIs
 import { catalogAttributeDateSchema, catalogAttributeDecimal, catalogAttributeStorageBytes, catalogAttributeReferenceSchema, compareAttributeDecimals } from "./attributeSchemas.js";
 import type { CatalogAttributeReference, CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 
+/** @experimental */
 export interface CatalogAttributeInput {
   productAttributes?: unknown;
   skus: readonly { id: string; attributes?: unknown }[];
 }
-/** Slots of the one projection, prepared without a publication revision or any SQL. */
+/** Slots of the one projection, prepared without a publication revision or any SQL.
+ * @experimental
+ */
 export interface CatalogAttributeProjectionValue {
   attribute_key: string; definition_version: number; value_ordinal: number;
   value_kind: CatalogAttributeScalarType["kind"];
@@ -24,6 +27,7 @@ export interface CatalogAttributeProjectionValue {
   canonical_unit: string | null; canonical_value: string | null;
 }
 const validatedAttributes: unique symbol = Symbol("validated catalog attributes");
+/** @experimental */
 export type CatalogAttributeValidation =
   | { readonly valid: false; readonly issues: readonly CatalogDefinitionIssue[] }
   | { readonly valid: true; readonly [validatedAttributes]: true;
@@ -38,6 +42,7 @@ const decimalText = (unscaled: string, scale: number): string => scale === 0 ? u
 /** Validate complete supplied facts; missing publish-time facts remain readiness issues.
  * Definition metadata is checked by its existing owner. Cross-field policy stays in validateContent.
  * No v1 draft admission, callback execution, database access or publication occurs here.
+ * @experimental
  */
 export function validateCatalogAttributes(
   definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort,
@@ -191,7 +196,9 @@ async function validate(definition: CatalogProductTypeInput, input: CatalogAttri
   });
 }
 
-/** An admission predicate only; the publisher must also prove all other publication duties. */
+/** An admission predicate only; the publisher must also prove all other publication duties.
+ * @experimental
+ */
 export function catalogAttributesReadyForPublication(result: CatalogAttributeValidation): boolean {
   return result.valid && result.readinessIssues.length === 0;
 }
