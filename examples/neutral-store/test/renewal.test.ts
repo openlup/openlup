@@ -72,7 +72,7 @@ test('invalid trusted care policy refuses before a scheduled claim', () => {
 });
 
 test('owned donor retention data selects skip, reschedule and the fallback without changing reason identity', () => {
-  const config = structuredClone(configurations.supplements!);
+  const config = structuredClone(Object.values(configurations)[0]!);
   const retention = { offerByReason: { too_much_food: 'skip', too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause' } as const;
   config.renewal.subscriptionCare.retentionReasons = ['too_much_food', ...config.renewal.subscriptionCare.retentionReasons];
   config.renewal.subscriptionCare.retention = retention;
@@ -92,18 +92,18 @@ test('startup refuses unknown retention reason keys and offer kinds with the nam
     { offerByReason: null, defaultOffer: 'pause' },
     null,
   ]) {
-    const config = structuredClone(configurations.supplements!);
+    const config = structuredClone(Object.values(configurations)[0]!);
     config.renewal.subscriptionCare.retention = retention as unknown as typeof config.renewal.subscriptionCare.retention;
     assert.throws(() => assertConfig(config), { message: 'starter_retention_configuration_invalid' });
   }
 });
 test('startup accepts three retry rungs and refuses budgets inconsistent with SQL attempt four', () => {
   for (const ladder of [[24, 48], [24, 48, 72, 96]]) {
-    const config = structuredClone(configurations.supplements!);
+    const config = structuredClone(Object.values(configurations)[0]!);
     config.renewal.retryBackoffHours = ladder;
     assert.throws(() => assertConfig(config), { message: 'starter_database_retry_budget' });
   }
-  const config = structuredClone(configurations.supplements!);
+  const config = structuredClone(Object.values(configurations)[0]!);
   config.renewal.retryBackoffHours = [24, 72, 168];
   assert.doesNotThrow(() => assertConfig(config));
 });
