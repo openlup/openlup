@@ -25,9 +25,9 @@ Provider-neutral fraud, risk, blocklist, and manual-review control plane.
 
 - Engine: `packages/core/src/risk/`, exposed as `@openlup/core/risk` -
   `evaluateRisk`, `collectRiskRuleMatches` and the current risk vocabulary. The
-  package surface is `candidate` under the `internal-candidate` compatibility
-  policy in `packages/core/release-gates.json`, so this is not yet a stable
-  public-API or support promise. A scoring or reason-code change belongs there.
+  [stability reference](../../../packages/core/docs/guide/reference/stability.md#public-api)
+  owns compatibility and links the generated per-subpath classifications.
+  A scoring or reason-code change belongs in the package engine.
 - Shared/frontend: `src/domains/risk/`. `core/evaluator.ts`, `core/rules.ts`,
   `core/types.ts` and `types.ts` are re-export shims over the engine;
   `contracts.ts` and `ports.ts` delegate to the platform entries; `riskClient.ts`

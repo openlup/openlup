@@ -3,7 +3,8 @@
 This application was extracted from the OpenLup starter. It uses the
 `@openlup/core`, `@openlup/outbox` and `@openlup/platform` packages through their
 public entries, with application-owned configuration, browser pages and a local
-host. It is a development preview, not a supported production installation.
+host. Follow the installed guide’s stability and installation support policies;
+this local demonstration alone does not qualify a production installation.
 
 For a released extraction, `.starter-origin.json` records `mode: released`, the
 exact set version and source revision. From this application's root, install its
@@ -29,8 +30,8 @@ explicit reason and does not claim original released-starter provenance.
 After installing dependencies, build and
 serve the database-free demonstration with the `build` and `start` package
 scripts; on macOS and Linux the `dev` script runs the watched edit loop.
-This preview supplies one-time estimates; subscription prices require the
-installed local demonstration. Its localized `host_binding_required` guidance
+This database-free demonstration supplies one-time estimates; subscription prices
+require the installed local demonstration. Its localized `host_binding_required` guidance
 points to `./lifecycle up`. Installed quotes serve both purchase modes. Known
 price refusals explain a repair using `owned/quote-copy.ts`; unknown failures
 remain generic, and a failed refresh withholds the previous price.

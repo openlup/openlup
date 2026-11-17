@@ -1,6 +1,6 @@
 # OpenLup roadmap
 
-> OpenLup is a development preview, and plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-development-preview) before relying on any capability.
+> OpenLup follows the stable 1.x compatibility policy. Plans are not release commitments: the order and scope of everything below may change. Read the [README status section](README.md#status-stable-1x) before relying on any capability.
 
 Last updated: 2026-11-15 · npm set: 0.43.0
 

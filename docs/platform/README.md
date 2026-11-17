@@ -18,7 +18,7 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 - [Agent guide](AGENT_GUIDE.md) — a stable pointer to the root [`AGENTS.md`](../../AGENTS.md) and the reader guide shipped in `@openlup/core`.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
-- [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the limits of preview self-hosting.
+- [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the supported installation and self-hosting limits.
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 
 Partner acquisition is available as schemas/types and a PostgreSQL port through
@@ -54,7 +54,7 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 - [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme, merge-queue review carry-over, the fork-point review base and the deferred items.
 - [Managed pgTAP on plain PostgreSQL](plans/neutral-postgres-pgtap.md) — move of the raw `pgtap` lane from the Supabase CLI to stock PostgreSQL 17 with one managed-compatibility adapter; parity proof, risks and owner decisions ([intent](plans/neutral-postgres-pgtap-intent.md)).
 
-## Preview boundary
+## Release boundary
 
 The topology is one platform monorepo plus separately owned adopter applications.
 Source snapshots remain separate from the stable npm line. The

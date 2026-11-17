@@ -5,7 +5,7 @@ returned by a frozen claim; a legacy claim keeps execution-time configuration.
 Issue and correction seller drift changes only for eligible first-claim rows;
 buyer, line allocation, tax, identity and execution ordering remain unchanged.
 
-Status: development-preview source guidance.
+Status: current source guidance for stable 1.x.
 
 Accounting owns document history and the contracts and ports surrounding fiscal
 document issue, correction, provider synchronization, settlement evidence and
