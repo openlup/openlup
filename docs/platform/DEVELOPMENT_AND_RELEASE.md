@@ -139,6 +139,11 @@ All required source and merge-group CI commands still run.
 
 ## Measuring delivery improvements
 
+Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
+pre-release measurement supplement to M19 A5. Its four tasks and local candidate
+rehearsals leave the separate full blind A5 journey and P1-SF DEMO acceptance
+conditions unchanged.
+
 Record measurements in the existing task evidence, with actual candidate,
 workflow run and attempt identities; no separate tracking service is needed.
 Compare like work: a new package or API contribution, an existing-package repair,

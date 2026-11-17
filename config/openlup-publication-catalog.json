@@ -1654,6 +1654,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/agent-dx-regression.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/plans/autonomous-reviewed-delivery-intent.md",
       "class": "platform-documentation"
     },
