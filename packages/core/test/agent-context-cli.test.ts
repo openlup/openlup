@@ -1,10 +1,10 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { searchContext } from "../src/agent-context-cli";
+import { formatContextResult, searchContext } from "../src/agent-context-cli";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -30,13 +30,36 @@ describe("installed agent context", () => {
     const result = searchContext(root, "nextRetryAttemptAt");
     expect(result.version).toBe("0.31.0");
     expect(result.packages).toEqual(["@openlup/core"]);
-    const declaration = result.hits.find((hit) => hit.reason === "exact declaration symbol");
+    const declaration = result.hits.find((hit) => hit.reason === "declaration occurrence; public import unverified");
     expect(declaration).toBeDefined();
     expect(declaration?.start).toBe(1);
     for (const hit of result.hits) {
       const cited = readFileSync(hit.file, "utf8").split("\n").slice(hit.start - 1, hit.end).join("\n");
       expect(cited).toContain("nextRetryAttemptAt");
     }
+  });
+
+  it.each([
+    ["internal", "declare function contractNeedle(): void;\nexport {};"],
+    ["imported", "import { contractNeedle } from './private.js';\nexport {};"],
+    ["re-exported", "export { contractNeedle } from './private.js';"],
+    ["aliased", "export { contractNeedle as publicAlias } from './private.js';"],
+    ["type-only", "export type { contractNeedle } from './private.js';"],
+  ])("labels a %s declaration occurrence without inventing an import recipe", (_kind, declaration) => {
+    const root = fixture();
+    const core = join(root, "node_modules/@openlup/core");
+    writeFileSync(join(core, "dist/occurrence.d.ts"), declaration);
+    writeFileSync(join(core, "dist/duplicate.d.ts"), "export interface contractNeedle { value: string }\n");
+    writeFileSync(join(core, "README.md"), "# Public example\nRead exports and this version's example before importing contractNeedle.\n");
+    const result = searchContext(root, "contractNeedle");
+    expect(result.hits.filter(hit => hit.file.endsWith(".d.ts"))).toHaveLength(2);
+    for (const hit of result.hits.filter(hit => hit.file.endsWith(".d.ts"))) {
+      expect(hit.reason).toBe("declaration occurrence; public import unverified");
+      expect(Object.keys(hit).sort()).toEqual(["end", "file", "packageName", "reason", "score", "start", "title"]);
+    }
+    expect(result.hits.some(hit => hit.reason === "installed README.md")).toBe(true);
+    expect(formatContextResult(root, result)).not.toContain("import {");
+    expect(searchContext(root, "@openlup/core/subscription").hits).toContainEqual(expect.objectContaining({ reason: "declared public export", title: "@openlup/core/subscription" }));
   });
 
   it("finds installed guide headings recursively without changing the result shape", () => {
@@ -149,6 +172,147 @@ describe("installed agent context", () => {
     const root = fixture();
     writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@openlup/core": { version: "0.30.0" } } }));
     expect(() => searchContext(root, "retry")).toThrow(/Lockfile and installed package disagree/);
+  });
+
+  it("selects a standalone app's declared packages instead of undeclared installations", () => {
+    const root = fixture();
+    install(root, "outbox", "0.30.0");
+    writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.31.0" } }));
+    expect(searchContext(root, "nextRetryAttemptAt").packages).toEqual(["@openlup/core"]);
+  });
+
+  it("keeps installed Core guidance readable with omitted non-Core declarations", () => {
+    const root = fixture();
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      dependencies: { "@openlup/core": "0.31.0", "@openlup/platform": "0.31.0" },
+      devDependencies: { "@openlup/development-only": "0.31.0" },
+      optionalDependencies: { "@openlup/optional": "0.31.0" },
+      peerDependencies: { "@openlup/peer": "0.31.0" },
+    }));
+    const result = searchContext(root, "nextRetryAttemptAt");
+    expect(result.packages).toEqual(["@openlup/core"]);
+    expect(result.scans.map(scan => scan.packageName)).toEqual(["@openlup/core"]);
+    expect(result.hits).toHaveLength(1);
+    const platform = install(root, "platform");
+    writeFileSync(join(platform, "package.json"), "{ malformed");
+    expect(() => searchContext(root, "retry")).toThrow();
+  });
+
+  it("resolves a hoisted npm workspace app's public import and excludes sibling packages and source", () => {
+    const root = fixture();
+    install(root, "outbox", "0.30.0");
+    const app = join(root, "apps/store");
+    const sibling = join(root, "apps/other");
+    mkdirSync(app, { recursive: true });
+    mkdirSync(sibling);
+    writeFileSync(join(app, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.31.0" } }));
+    writeFileSync(join(sibling, "package.json"), JSON.stringify({ dependencies: { "@openlup/outbox": "0.30.0" } }));
+    writeFileSync(join(app, "local.ts"), "export const selectedAppNeedle = 1;\n");
+    writeFileSync(join(sibling, "private.ts"), "export const siblingAppNeedle = 1;\n");
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: {
+      "apps/store": { dependencies: { "@openlup/core": "0.31.0" } },
+      "apps/other": { dependencies: { "@openlup/outbox": "0.30.0" } },
+      "node_modules/@openlup/core": { version: "0.31.0" },
+      "node_modules/@openlup/outbox": { version: "0.30.0" },
+    } }));
+    writeFileSync(join(root, "node_modules/@openlup/core/dist/subscription.js"), "exports.nextRetryAttemptAt = () => '0.31.0';\n");
+    const imported = spawnSync(process.execPath, ["--input-type=module", "-e", "import { nextRetryAttemptAt } from '@openlup/core/subscription'; console.log(nextRetryAttemptAt());"], { cwd: app, encoding: "utf8" });
+    expect(imported.status, imported.stderr).toBe(0);
+    const result = searchContext(app, "nextRetryAttemptAt");
+    expect(imported.stdout.trim()).toBe(result.version);
+    expect(result.packages).toEqual(["@openlup/core"]);
+    expect(result.hits[0]?.file).toBe(join(root, "node_modules/@openlup/core/dist/subscription.d.ts"));
+    expect(searchContext(app, "selectedAppNeedle", true).hits[0]?.file).toBe(join(app, "local.ts"));
+    expect(searchContext(app, "siblingAppNeedle", true).hits).toEqual([]);
+    const cli = fileURLToPath(new URL("../src/agent-context-cli.ts", import.meta.url));
+    const run = spawnSync(process.execPath, [cli, "search", "nextRetryAttemptAt", "--json"], { cwd: app, encoding: "utf8" });
+    expect(run.status, run.stderr).toBe(0);
+    // A child process's cwd uses the real path (notably /private/var on macOS).
+    expect(JSON.parse(run.stdout)).toEqual(searchContext(realpathSync(app), "nextRetryAttemptAt"));
+  });
+
+  it("uses Node's nearest reachable installation and the matching nested lock entry", () => {
+    const root = fixture();
+    const app = join(root, "apps/store");
+    install(app, "core", "0.32.0");
+    writeFileSync(join(app, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.32.0" } }));
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: {
+      "apps/store": {},
+      "node_modules/@openlup/core": { version: "0.31.0" },
+      "apps/store/node_modules/@openlup/core": { version: "0.32.0" },
+    } }));
+    expect(searchContext(app, "nextRetryAttemptAt")).toMatchObject({ version: "0.32.0", hits: [{ file: join(app, "node_modules/@openlup/core/dist/subscription.d.ts") }] });
+  });
+
+  it("refuses a hoisted owning-lock mismatch even when a sibling lock entry agrees", () => {
+    const root = fixture();
+    const app = join(root, "apps/store");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.31.0" } }));
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: {
+      "apps/store": {},
+      "node_modules/@openlup/core": { version: "0.30.0" },
+      "apps/other/node_modules/@openlup/core": { version: "0.31.0" },
+    } }));
+    expect(() => searchContext(app, "retry")).toThrow(/Lockfile and installed package disagree.*0.30.0 vs 0.31.0/);
+  });
+
+  it("refuses a missing owning-lock package entry and mixed declared reachable versions", () => {
+    const root = fixture();
+    const app = join(root, "apps/store");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.31.0", "@openlup/outbox": "0.30.0" } }));
+    install(root, "outbox", "0.30.0");
+    expect(() => searchContext(app, "retry")).toThrow(/Mixed @openlup/);
+    install(root, "outbox");
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "apps/store": {}, "node_modules/@openlup/core": { version: "0.31.0" } } }));
+    expect(() => searchContext(app, "retry")).toThrow(/Owning npm lockfile has no package version for @openlup\/outbox/);
+  });
+
+  it("supports linked installs and the owning lock's linked target version", () => {
+    const root = fixture();
+    const installed = join(root, "node_modules/@openlup/core");
+    const linked = join(root, "linked-core");
+    // A package-manager link retains Node's lexical installation path for lock lookup.
+    mkdirSync(linked);
+    for (const name of ["package.json", "dist/subscription.d.ts"]) {
+      mkdirSync(join(linked, name, ".."), { recursive: true });
+      writeFileSync(join(linked, name), readFileSync(join(installed, name)));
+    }
+    rmSync(installed, { recursive: true });
+    symlinkSync(linked, installed);
+    writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "file:linked-core" } }));
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@openlup/core": { link: true, resolved: "linked-core" }, "linked-core": { version: "0.31.0" } } }));
+    expect(searchContext(root, "nextRetryAttemptAt")).toMatchObject({ version: "0.31.0", hits: [{ file: join(installed, "dist/subscription.d.ts") }] });
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@openlup/core": { link: true, resolved: "linked-core" }, "linked-core": { version: "0.30.0" } } }));
+    expect(() => searchContext(root, "retry")).toThrow(/Lockfile and installed package disagree/);
+  });
+
+  it("requires reachable Core and names the supported installation layout", () => {
+    const root = fixture();
+    rmSync(join(root, "node_modules/@openlup/core"), { recursive: true });
+    install(root, "outbox");
+    writeFileSync(join(root, "package.json"), JSON.stringify({ dependencies: { "@openlup/outbox": "0.31.0" }, packageManager: "yarn@4.0.0" }));
+    expect(() => searchContext(root, "retry")).toThrow(/No installed @openlup\/core.*required.*npm node_modules layout/);
+  });
+
+  it("uses the selected app's own lock before an ancestor workspace lock", () => {
+    const root = fixture();
+    const app = join(root, "apps/store");
+    install(app, "core");
+    writeFileSync(join(app, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.31.0" } }));
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "apps/store": {}, "apps/store/node_modules/@openlup/core": { version: "0.31.0" } } }));
+    writeFileSync(join(app, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@openlup/core": { version: "0.30.0" } } }));
+    expect(() => searchContext(app, "retry")).toThrow(/Lockfile and installed package disagree/);
+  });
+
+  it("explains declaration evidence in CLI help without displaying an import recipe", () => {
+    const root = fixture();
+    const cli = fileURLToPath(new URL("../src/agent-context-cli.ts", import.meta.url));
+    const run = spawnSync(process.execPath, [cli, "--help"], { cwd: root, encoding: "utf8" });
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout).toContain("Declaration occurrences are unverified import leads");
+    expect(run.stdout).toContain("public specifiers and type/value usage");
   });
 
   it.each([["application", 2500], ["declarations", 1200], ["package-source", 1200]] as const)("reports bounded %s scans across directories", (scope, limit) => {

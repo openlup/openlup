@@ -188,6 +188,42 @@ describe("installed context MCP protocol", () => {
 });
 
 describe("MCP installed context search", () => {
+  it("reads only the selected hoisted package's returned ancestor prefix", async () => {
+    const root = fixture();
+    install(root, "outbox", "0.36.0");
+    const app = join(root, "apps/store");
+    mkdirSync(app, { recursive: true });
+    writeFileSync(join(app, "package.json"), JSON.stringify({ dependencies: { "@openlup/core": "0.37.0" } }));
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "apps/store": {}, "node_modules/@openlup/core": { version: "0.37.0" }, "node_modules/@openlup/outbox": { version: "0.36.0" } } }));
+    const response = (await result(app, search())).result;
+    expect(response.content).toEqual([{ type: "text", text: formatContextResult(app, searchContext(app, "retry")) }]);
+    expect(response.structuredContent).toMatchObject({ version: "0.37.0", packages: ["@openlup/core"] });
+    const hit = response.structuredContent.hits[0];
+    expect(hit.file).toBe(`../../${prefix}docs/guide/retry.md`);
+    expect((await result(app, read(hit.file, { startLine: hit.start, endLine: hit.end }))).result.content[0].text).toContain("1: ## Retry policy");
+    for (const path of [
+      `${prefix}README.md`, `../../../${prefix}README.md`,
+      "../../node_modules/@openlup/outbox/README.md", `../../${prefix}docs/../README.md`,
+    ]) await toolError(app, read(path), /relative node_modules/);
+    const outside = join(root, "outside.md");
+    writeFileSync(outside, "outside secret");
+    symlinkSync(outside, join(root, prefix, "escape.md"));
+    await toolError(app, read(`../../${prefix}escape.md`), /File realpath escapes the installed package root/);
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify({ packages: { "apps/store": {}, "node_modules/@openlup/core": { version: "0.36.0" } } }));
+    await toolError(app, search(), /Lockfile and installed/);
+  });
+
+  it("describes declaration occurrences as unverified import evidence", async () => {
+    const root = fixture();
+    mkdirSync(join(root, prefix, "dist"));
+    writeFileSync(join(root, prefix, "dist/private.d.ts"), "declare function privateNeedle(): void;\nexport {};\n");
+    const response = (await result(root, search({ task: "privateNeedle" }))).result;
+    expect(response.structuredContent.hits).toMatchObject([{ reason: "declaration occurrence; public import unverified" }]);
+    expect(response.content[0].text).not.toContain("import {");
+    const listed = (await result(root, request("tools/list"))).result;
+    expect(listed.tools[0].description).toContain("Declaration occurrences are unverified import leads");
+  });
+
   it("returns CLI text and JSON with reusable application-relative file paths", async () => {
     const root = fixture();
     const { result: response } = await result(root, search());
@@ -263,7 +299,7 @@ describe("MCP installed file reader", () => {
     await toolError(root, read(`${prefix}README.md/inside`), /ENOTDIR/);
     await toolError(root, read(undefined, { startLine: 3, endLine: 2 }), /endLine must/);
     await toolError(root, read(undefined, { startLine: 5 }), /file length/);
-    await toolError(temporaryRoot(), read(), /ENOENT/);
+    await toolError(temporaryRoot(), read(), /No installed/);
   });
 
   it("reads search hits through a symlinked package root in a pnpm layout", async () => {

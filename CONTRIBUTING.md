@@ -545,13 +545,26 @@ node scripts/verify-local.mjs --plan --pgtap
 Planning is read-only and works on an unreviewed, dirty task worktree without
 dependencies, a broker or scanner. It lists each phase's command, environment,
 owner, reason, prerequisites, resource profile and corresponding CI context.
-It does not select fewer mandatory phases, run checks, establish native review
-or create verification evidence. Output paths are placeholders until execution.
+It also observes the selected Node/npm/scanner versions, installed compiler
+version against the lockfile, comparison and scan history, cleanliness and profile
+overrides and Docker availability. Shallow scan history stays unknown. Each state
+has a next command; the planned install phase prepares an absent compiler. The
+resource broker remains optional. These bounded read-only probes install
+nothing and start no builds, tests or containers.
+It does not select fewer mandatory phases, execute verification, establish native
+review or create verification evidence. Exit 0 means the comparison scope is
+known, even when an observed prerequisite is blocked. Output paths are
+placeholders until execution.
 An unreadable Git comparison reports unknown scope, retains all obligations and
 exits 2; recover the missing history or valid stack pin before execution.
 The candidate's changed paths describe committed changes only; `clean: false`
 also warns of pending working-tree changes. Package discovery and bounded root
 tooling selection remain with their existing owners, not a second selector.
+
+The separate advisory `npm run preflight` reports cheap checks and changed-test
+discovery before package preparation. Confirmed package/browser suites retain
+their owning runner; an unconfirmed changed test reports `WARN` with a discovery
+next step and remains missing execution proof. Every applicable check still runs.
 
 For optional local feedback after committing and recording the required native
 reviews, run the full local command set with `node scripts/verify-local.mjs` from

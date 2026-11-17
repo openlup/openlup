@@ -2,7 +2,8 @@
 
 // Opt-in development tool. Kernel exports never import this file.
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { findPackageJSON } from "node:module";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type InstalledPackage = { name: string; version: string; root: string; manifest: string };
@@ -15,35 +16,88 @@ const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
 const guideEntryLimit = 400;
 const guideFileBytes = 200_000;
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\n";
 
 function readText(path: string): string | undefined {
   try { return readFileSync(path, "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
 }
 
-function selectedPackages(cwd: string): InstalledPackage[] {
-  const scope = join(cwd, "node_modules", "@openlup");
-  if (!existsSync(scope)) throw new Error("No installed @openlup/* packages found in this application root");
-  const packages: InstalledPackage[] = [];
-  for (const entry of readdirSync(scope, { withFileTypes: true })) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const root = join(scope, entry.name);
-    const manifest = readText(join(root, "package.json"));
-    if (!manifest) continue;
-    const parsed = JSON.parse(manifest) as { name?: string; version?: string };
-    if (parsed.name !== `@openlup/${entry.name}` || !parsed.version) throw new Error(`Invalid installed package manifest: ${root}`);
-    packages.push({ name: parsed.name, version: parsed.version, root, manifest });
+// Shared only by the development CLI/MCP modules, never a kernel/package export.
+export function installedPackageRoots(cwd: string): { name: string; root: string }[] {
+  const application = readText(join(cwd, "package.json"));
+  const names = new Set<string>(["@openlup/core"]);
+  if (application) {
+    const manifest = JSON.parse(application) as Record<string, unknown>;
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+      const dependencies = manifest[field];
+      if (typeof dependencies !== "object" || dependencies === null || Array.isArray(dependencies)) continue;
+      for (const name of Object.keys(dependencies)) if (name.startsWith("@openlup/")) names.add(name);
+    }
+  } else {
+    // Retain standalone installations without an application manifest. Do not enumerate
+    // an ancestor's scope: it may contain packages belonging only to another app.
+    const scope = join(cwd, "node_modules", "@openlup");
+    if (existsSync(scope)) for (const entry of readdirSync(scope, { withFileTypes: true })) {
+      if (entry.isDirectory() || entry.isSymbolicLink()) names.add(`@openlup/${entry.name}`);
+    }
   }
-  if (!packages.some((item) => item.name === "@openlup/core")) throw new Error("@openlup/core is required for this command");
+  return [...names].sort().flatMap(name => {
+    if (!/^@openlup\/[a-z0-9][a-z0-9-]*$/u.test(name)) throw new Error(`Invalid declared OpenLup package name: ${name}`);
+    let manifestPath: string | undefined;
+    try {
+      // Node's bare-package lookup follows normal node_modules hoisting without
+      // requiring a public package.json export or evaluating application code.
+      manifestPath = findPackageJSON(name, join(resolve(cwd), "package.json"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND") throw error;
+    }
+    if (!manifestPath) {
+      if (name !== "@openlup/core") return [];
+      throw new Error("No installed @openlup/core found for this application; @openlup/core is required. Install Core with an npm node_modules layout; unsupported package-manager layouts cannot be searched.");
+    }
+    return [{ name, root: dirname(manifestPath) }];
+  });
+}
+
+type LockEntry = { version?: string; link?: boolean; resolved?: string };
+function owningLock(cwd: string): { root: string; entries: Record<string, LockEntry> } | undefined {
+  const applicationRoot = resolve(cwd);
+  let root = applicationRoot;
+  while (true) {
+    const lock = readText(join(root, "package-lock.json"));
+    if (lock) {
+      const entries = (JSON.parse(lock) as { packages?: Record<string, LockEntry> }).packages;
+      const applicationPath = relative(root, applicationRoot).split(sep).join("/");
+      if (root === applicationRoot || (entries && Object.hasOwn(entries, applicationPath))) {
+        if (!entries) throw new Error("Unsupported npm lockfile: use an npm lockfile with a packages map");
+        return { root, entries };
+      }
+    }
+    const parent = dirname(root);
+    if (parent === root) return undefined;
+    root = parent;
+  }
+}
+
+function selectedPackages(cwd: string): InstalledPackage[] {
+  const packages = installedPackageRoots(cwd).map(({ name, root }) => {
+    const manifest = readText(join(root, "package.json"));
+    if (!manifest) throw new Error(`Invalid installed package manifest: ${root}`);
+    const parsed = JSON.parse(manifest) as { name?: string; version?: string };
+    if (parsed.name !== name || typeof parsed.version !== "string" || !parsed.version) throw new Error(`Invalid installed package manifest: ${root}`);
+    return { name, version: parsed.version, root, manifest };
+  });
   const versions = new Set(packages.map((item) => item.version));
   if (versions.size !== 1) throw new Error(`Mixed @openlup/* versions: ${packages.map((item) => `${item.name}@${item.version}`).join(", ")}`);
-  const lock = readText(join(cwd, "package-lock.json"));
+  const lock = owningLock(cwd);
   if (lock) {
-    const entries = (JSON.parse(lock) as { packages?: Record<string, { version?: string }> }).packages ?? {};
     for (const item of packages) {
-      const locked = entries[`node_modules/${item.name}`]?.version;
-      if (locked && locked !== item.version) throw new Error(`Lockfile and installed package disagree: ${item.name} (${locked} vs ${item.version})`);
+      const installedPath = relative(lock.root, item.root).split(sep).join("/");
+      const entry = lock.entries[installedPath];
+      const locked = entry?.link && entry.resolved ? lock.entries[entry.resolved]?.version : entry?.version;
+      if (!locked) throw new Error(`Owning npm lockfile has no package version for ${item.name} at ${installedPath}; reinstall the declared set from the owning npm workspace`);
+      if (locked !== item.version) throw new Error(`Lockfile and installed package disagree: ${item.name} (${locked} vs ${item.version})`);
     }
   }
   return packages.sort((left, right) => left.name.localeCompare(right.name));
@@ -158,7 +212,7 @@ function declarationHits(item: InstalledPackage, query: string): ScanResult {
         const lines = content.split("\n");
         for (let index = 0; index < lines.length; index++) {
           if (!symbolPattern.test(lines[index])) continue;
-          hits.push({ title: symbol, file: path, start: index + 1, end: index + 1, packageName: item.name, score: 20, reason: "exact declaration symbol" });
+          hits.push({ title: symbol, file: path, start: index + 1, end: index + 1, packageName: item.name, score: 20, reason: "declaration occurrence; public import unverified" });
           break;
         }
       }
