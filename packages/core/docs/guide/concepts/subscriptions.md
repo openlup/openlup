@@ -184,7 +184,10 @@ const futureTerms = async () => ({
 
 export const renewalPolicy: RenewalPolicy = async input => {
   const candidate = (await input.db.query(
-    "SELECT renewal_operation_id FROM public.subscription_retry_obligations WHERE subscription_id=$1",
+    `SELECT o.renewal_operation_id FROM public.subscription_retry_obligations o
+      JOIN public.subscription_renewal_operations op ON op.id=o.renewal_operation_id
+      JOIN public.subscriptions s ON s.id=op.subscription_id
+      WHERE o.subscription_id=$1 AND op.scheduled_at=s.next_cycle_at`, // Current cycle only.
     [subject.subscriptionId],
   )).rows[0];
   if (!candidate) return;
@@ -228,8 +231,9 @@ a null retry alone never establishes exhaustion. Commands reuse that locked
 connection without a nested commit. A pause closes recovery, revokes tokens and
 terminalizes eligible unpaid artifacts. Refusal escapes the callback, rolling
 back both bookkeeping and command receipts. Report it only after rollback.
-Replaying a command requires the same key and complete payload, including `now`;
-a repeated hook skips the already paused subject.
+Replaying a command requires the same key and payload; the command fingerprint
+excludes `now`, though keeping it stable is a sensible application choice.
+A repeated hook skips the already paused subject.
 
 Runnable proof from the repository root (with the contributor PostgreSQL
 prerequisites): `node scripts/test-hosted.mjs neutralStoreRenewalPolicy.test.ts`.
