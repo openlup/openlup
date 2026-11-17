@@ -2,10 +2,10 @@
 
 ## Release Support
 
-No package version is supported. A `0.N.P` version, on the `preview` dist-tag
-up to `0.11.0` or on `latest` after it, is development-preview evaluation, not a
-supported public release. A future support policy belongs to phase-5 public
-platform governance, not to a separate package release channel.
+Security maintenance follows the repository’s
+[security response policy](https://github.com/openlup/openlup/blob/main/.github/SECURITY_RESPONSE_POSTURE.md#supported-versions)
+and [support window](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#support-window).
+There is no separate package support channel.
 
 ## Vulnerability Reporting
 

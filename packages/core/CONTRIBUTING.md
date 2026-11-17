@@ -1,10 +1,10 @@
 # Contributing
 
 Commerce Core is public source for framework-independent commerce kernels.
-Below 1.0 its npm versions are set versions `0.N.P`, shared by every
-`@openlup/*` package and published on the `latest` dist-tag; versions up to
-`0.11.0` rode on the source previews (`preview` dist-tag only). No version
-activates a separate package product or stable API.
+Its npm versions are coherent set versions shared by every `@openlup/*` package
+and published on the `latest` dist-tag. Follow the
+[stable API contract](docs/guide/reference/stability.md#public-api) and the
+[release policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md).
 
 ## Set up and verify
 
@@ -31,12 +31,12 @@ Keep deterministic rules and provider-neutral contracts here. UI, HTTP routes,
 database orchestration, schedulers, credentials, provider SDKs, and
 product-specific policy remain outside the package.
 
-Treat exported declarations as internal candidate surfaces. When a declaration
+Preserve each exported declaration’s declared compatibility commitment. When a declaration
 change is intentional, update tests, record the reason in a `changes/<programme>-<slice>.md` fragment in the source
 repository (ordinary bullets, optional `###` headings and useful `Migration:`
 steps; no `#`/`##`, empty files or conflict markers),
-run `npm run api:update`, and review the snapshot diff. Do not infer a stable
-API, SemVer promise, independent release, or external adoption from that proof.
+run `npm run api:update`, and review the snapshot diff. Do not infer a supported
+installation, independent release, or external adoption from that proof.
 
 ## Security
 

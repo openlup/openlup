@@ -1,6 +1,6 @@
 # Verify the starter
 
-Status: current development-preview recipe. Run from the independent application
+Status: current starter verification recipe for stable 1.x. Run from the independent application
 root with its exact selected artifacts, Node 24, npm 11.19.0 and Docker with
 Compose. Install the selected package set using the application's README first;
 for a candidate import, `./lifecycle candidate` must finish before `npm ci`.

@@ -60,15 +60,12 @@ Security maintenance is the intersection of the module ownership in
 `.github/SUPPORT.md` and the release window in
 `.github/VERSIONING_AND_EOL.md`:
 
-- during development preview, OpenLup-owned core and official-experimental code
-  on the default branch or an exact immutable source preview may receive
-  best-effort fixes, without support or backport commitment;
-- community and private modules remain contributor/adopter-owned even when used
-  with an OpenLup preview or stable release;
-- after stable release, committed maintenance applies only to core and
-  official-stable modules present in the exact supported BOM and version window;
-- official-experimental modules remain best-effort preview surfaces beside a
-  stable release, and stable versions outside the window receive no fixes.
+- committed maintenance applies to core and official-stable modules in the exact
+  supported BOM and [support window](VERSIONING_AND_EOL.md#support-window);
+- experimental code and source snapshots may receive best-effort fixes without
+  a backport commitment;
+- community and private modules remain contributor/adopter-owned;
+- versions outside the support window receive no fixes.
 
 This file is the sole owner of that security-response eligibility. `SECURITY.md`
 owns only how to report and delegates maintenance here.

@@ -4,7 +4,7 @@ Status: maintainer page: how to change OpenLup. Reader guidance lives in the [Op
 
 ## Explicit reference adapter composition
 
-The development-preview [A1 host binding](../../server/runtime/communications/a1ReferenceBinding.ts)
+The experimental [reference host binding](../../server/runtime/communications/a1ReferenceBinding.ts)
 selects `communications/resend` and `communications/klaviyo` only when
 `enabled === true`. Absent or false opt-in returns before loading host inputs or
 runtime imports. Hosts supply a lazy input supplier, egress policy, credential
@@ -32,7 +32,7 @@ names the offline falsifiers and their limits.
 
 ## Opt-in payment example
 
-The experimental Node `payments/stripe` subpath exposes its M07 factory,
+The Node `payments/stripe` subpath exposes its M07 factory,
 configuration type and observed capability descriptor, plus the bounded
 [reference-support surface](../../packages/platform/README.md#reference-support-surface). The host owns SDK and
 transport construction, customer association, mode policy and explicit activation.
@@ -108,7 +108,7 @@ The neutral `payments` and `payments/contracts` exports are unchanged.
 
 ## Opt-in fulfillment example
 
-The experimental Node `@openlup/platform/fulfillment/omnipack` entry exposes only
+The Node `@openlup/platform/fulfillment/omnipack` entry exposes only
 its factory, configuration type and capability descriptor. Construction installs
 no route, schedule or default binding. The host explicitly selects the adapter,
 attests account readiness and supplies HTTP, credentials and notification tokens
@@ -423,7 +423,7 @@ content. This profile provides local persistence evidence, not account TEST proo
 
 ## Ecommerce event export
 
-This experimental communications surface exports retained facts through
+This communications surface exports retained facts through
 `EcommerceEventsPort`. It is independent of transactional transport, profile
 projection and consent mutation. The browser-shareable contracts contain no
 provider payload or credential. Closed Node validators refuse extra fields,
@@ -686,14 +686,13 @@ It does not authorize arbitrary runtime grants. Introduction follows the same
 co-located SQL/pin rule; registry installation alone does not change database
 permissions.
 
-Changes must preserve the contracts above and state their preview
+Changes must preserve the contracts above and state their declared
 compatibility boundary explicitly.
 
 `release:bump --set` prepares every publishable package's version,
 and every exact internal pin on one, in its manifest and lockfiles.
-`packages:check` and `@openlup/core`'s release check admit only a set version
-below 1.0, `packages:check` refuses publishable packages at different
-versions, and the package release workflow refuses a version that differs from
+`packages:check` refuses publishable packages at different set versions.
+The package release workflow refuses a version that differs from
 the manifest or that npm holds or has passed. `publish-package.yml` with
 `package: all` releases the set under one approval, one tag and immutable
 release per package at the set commit. Dispatching the same set again resumes
@@ -769,8 +768,7 @@ or declare complete compatibility evidence. Existing release context checks rema
 The outbox catalogue candidate retains separate core-peer, export-snapshot and
 shipped-baseline pins; those pins do not grant publication eligibility.
 
-While `@openlup/core` is below 1.0, the publishable packages share a `0.N.P`
-set version from one commit; package checks admit only a set version below 1.0.
+The publishable packages follow the [coherent set policy](../../.github/VERSIONING_AND_EOL.md#package-releases).
 
 Evidence (historical record, 2026-11-13):
 
@@ -1293,7 +1291,7 @@ remaining source contents and modes. This is preview evidence, not stability.
 
 ## M05 parity seams
 
-Development-preview hosts may select independent seams; omission preserves
+Hosts may select independent seams; omission preserves
 incumbent behavior. No route, policy, provider or new financial default is selected
 by importing them. These additive APIs need a minor package set.
 
@@ -1459,7 +1457,7 @@ must preserve the later-only monotonic rule.
 
 ## Subscription port boundary
 
-The experimental [subscription declarations](../../packages/platform/src/subscriptions/contracts/index.ts)
+The [subscription declarations](../../packages/platform/src/subscriptions/contracts/index.ts)
 carry deferred admission independently of terminal refusal, original schedule
 text independently of its comparison instant, frozen revisions and complete
 claim readback. Verified M07 evidence carries original occurrence, observation
@@ -1610,7 +1608,7 @@ or optimistic availability is synthesized. Recovery root/latest-order identity,
 client identity and the original key remain owner inputs. M04 retains notice
 replay and M12 creates no additional effect consumer.
 
-The experimental account-support composition selects each owner lane explicitly.
+The account-support composition selects each owner lane explicitly.
 Managed results, nulls and errors pass through; native typed and raw lanes keep
 owner receipts and verbatim refusals, including unsupported verbs. No lane is a
 fallback for another. The native donor route keeps pause on the explicit pause
@@ -1777,11 +1775,24 @@ Steps 1 to 4 are the native payment aggregate
 (`payment_provider_lock_aggregate`); steps 3, 5, 6 and 7 are the existing order
 → code → claim promotion order.
 
-**Catalogue domain order.** Definitions and tax-class keys; then catalogue
-lineage (publication head, product, SKU and its revisions); then merchandising
-(categories, collections); then price context (head before entries). Rows of
-one kind are locked in ascending key order. A **rank** is one numbered commerce
-step or one kind in this catalogue list.
+**Catalogue domain order.** Each kind is a separate rank:
+
+1. definitions;
+2. tax-class keys;
+3. publication head;
+4. product;
+5. SKU;
+6. SKU revision;
+7. category;
+8. collection;
+9. price-context head;
+10. price entry.
+
+Rows of one kind are locked in ascending key order. A **rank** is one numbered
+commerce step or one numbered catalogue kind. The immediate base-price command
+acquires its catalogue-local command receipt before the price-context guard and
+open entry rows. Its explicit locks remain within receipts and price context;
+readiness takes no commerce locks.
 
 **Rules.**
 
@@ -1800,13 +1811,14 @@ step or one kind in this catalogue list.
   SKU and publication revisions, price lists and price entries that commerce rows
   reference by foreign key are never locked `FOR UPDATE`, never deleted, and never
   have a uniquely indexed column changed. Writers update other columns (`FOR NO
-  KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` then
-  never waits for a catalogue writer, so foreign-key checks are exempt from the
-  ordering in R2 and R4.
+  KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` on
+  these rows never waits for a catalogue writer, so these foreign-key checks are
+  exempt from the ordering in R2 and R4.
 - **R4. Advisory locks take the rank of the rows they guard**, with shared and
   exclusive modes as for rows. A transaction that takes both an advisory guard
   and row locks of the same rank takes the guard first, before any row lock of
-  that rank; several guards of one rank are taken in ascending guarded-key order.
+  that rank; several guards of one rank are taken in ascending guarded-key order,
+  with the guard namespace breaking a tie between equal guarded keys.
   Overlap guards run under `READ COMMITTED`.
 - **R5. Store transfer is a separate regime.** Restore takes table locks on a
   fresh target with no concurrent writers; it is outside this order.
@@ -1815,7 +1827,7 @@ step or one kind in this catalogue list.
   settlement (`lock_matrix_races_native_payment_settlement`). A managed twin
   follows the same order when an adopter's managed chain adds it.
 
-**Existing exceptions (do not copy).** These commerce paths predate the round and
+**Known existing exceptions (do not copy).** These commerce paths predate the round and
 acquire commerce keys out of the order above. They belong to their owning modules
 and are not changed by catalogue work unless a catalogue change would close a new
 cycle with one of them; that change then repairs the caller with a

@@ -1,4 +1,4 @@
-// The public README must point at machine-owned preview truth, never restate a
+// The public README must point at machine-owned source truth, never restate a
 // dated census. Structural debt belongs in the publication catalogue and source
 // contract, where the materialized checkout can validate it without private docs.
 
@@ -21,7 +21,7 @@ const paths = [
   "config/openlup-source-release-contract.json",
 ] as const;
 
-describe("the public README delegates preview truth to machine contracts", () => {
+describe("the public README delegates source truth to machine contracts", () => {
   const page = read("README.md");
   // Every integrity input must remain discoverable; repeating a useful link is editorial.
   const policy = parsePublicPolicyRegistry(read(paths[0]));
@@ -38,8 +38,8 @@ describe("the public README delegates preview truth to machine contracts", () =>
     expect(page).toContain("npm run oss:published-tree -- --policy");
   });
 
-  it("states preview posture without reviving copied gap counts", () => {
-    expect(page).toContain("## Status: development preview");
+  it("states stable posture without reviving copied gap counts", () => {
+    expect(page).toContain("## Status: stable 1.x");
     expect(page).not.toContain("## Known Gaps In This Tree");
     expect(page).not.toMatch(/measured on \d{4}-\d{2}-\d{2}/u);
     expect(page).not.toMatch(/\b\d+ (?:unresolved|pinned deployment|consumer-side|prebuild)\b/iu);

@@ -12,7 +12,7 @@ the default **Vercel + Supabase** one-click bundle while allowing the hosting/se
   the capability vocabulary are the engine's.
 - `ports.ts` — pure re-export shim over the 7 package-owned capability port interfaces (`HttpRuntimePort`,
   `SchedulerPort`, `BlobStoragePort`, `DataGatewayPort`, `MigrationRunnerPort`, `AnalyticsPort`,
-  `TransactionalRuntimePort`). Development-preview contract seams; repository
+  `TransactionalRuntimePort`). Public contract seams; repository
   adapters live under `server/adapters/*`.
 
 ## Where the code lives

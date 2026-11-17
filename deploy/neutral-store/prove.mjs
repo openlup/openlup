@@ -170,7 +170,7 @@ async function rollback(prepared, scratchParent) {
     await observe('A', a);
     const copyPath = join(context, 'owned/copy.ts');
     const before = readFileSync(copyPath, 'utf8');
-    const after = before.replace('Development preview', 'Image rollback candidate B');
+    const after = before.replace('Example storefront', 'Image rollback candidate B');
     if (after === before) throw new Error('owned_copy_change_missing');
     writeFileSync(copyPath, after);
     const b = build('b');
@@ -414,7 +414,7 @@ networks:
     a.data = snapshot(); compareDataSnapshots(initial, a.data, 1); observations.push(a);
     process.stdout.write(JSON.stringify(a) + '\n');
     const copyPath = join(application, 'owned/copy.ts'), before = readFileSync(copyPath, 'utf8');
-    const after = before.replace('Development preview', 'Data rollback candidate B');
+    const after = before.replace('Example storefront', 'Data rollback candidate B');
     if (after === before) throw new Error('owned_copy_change_missing');
     writeFileSync(copyPath, after);
     if (fingerprint() !== frozenInputs || !isDeepStrictEqual(packageHashes(), frozenPackages)) throw new Error('unchanged_input_mismatch');
