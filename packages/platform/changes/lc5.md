@@ -38,11 +38,16 @@ Transient lifecycle write capabilities are excluded and nonempty capabilities
 refuse capture. Managed ingress supplies NULL for absent native acceptance
 carriers and never manufactures lineage.
 
-Managed divergence design: managed equivalents use the same nullable binding,
-immutable publication/SKU facts and acceptance carriers, with session-derived
-human authorization, RLS and trusted wrappers for complete unfiltered obligation
-reads. Browser/service roles receive no direct lifecycle mutation authority.
-A transaction-scoped capability relation and guarded non-key updates have managed
+Managed divergence design: a twin would extend `catalog_products`, `catalog_skus`,
+`catalog_publications`, `catalog_sku_revisions`, `subscription_lines`,
+`commerce_orders`, `subscription_events`, `subscription_renewal_terms` and
+`subscription_renewal_operations`, with the same nullable binding and immutable
+facts/acceptance carriers. RLS and trusted wrappers must derive human authorization
+from the session and provide complete unfiltered obligation reads. The
+`authenticated` and `service_role` roles receive no direct lifecycle mutation
+authority.
+The transaction-scoped `catalog_lifecycle_write_capabilities` relation and guarded
+non-key updates have managed
 SQL equivalents; native ownership checks establish unfiltered visibility, not
 business authorization. Mandatory managed industry-specific columns still need
 their separately qualified relaxation before nonmass publication;
