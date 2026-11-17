@@ -175,7 +175,11 @@ provider reference can repair an interrupted acceptance through the existing ACK
 operation; intake never submits another order. Contradictory identities refuse.
 
 Keep original occurrence bytes in `intake.occurredAt`, separately from the
-normalized fact. Tracking passes those bytes to the existing arrival writer:
+normalized fact. Observation validation accepts minute precision, seconds or
+fractions, compact offsets and local timestamps, while rejecting impossible
+calendar dates. Validation does not rewrite the raw timestamp in a webhook's
+idempotency key. Acceptance as an observation does not establish arrival-time
+precision. Tracking passes those bytes to the existing arrival writer:
 explicit-zone values with seconds supply delivery time; compact offsets, minute
 precision, missing zones and missing original evidence use receipt time. Webhook retries retain
 those original bytes with the first envelope. A terminal tracking regression is
