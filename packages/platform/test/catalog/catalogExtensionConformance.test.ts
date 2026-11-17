@@ -218,6 +218,7 @@ describe("offline catalogue conformance", () => {
     }
     expect(inspect).not.toHaveBeenCalled();
   });
+  // Local ~2.9 s; worst observed CI 10.17 s; 30 s gives about 3x CI headroom for actual CLI invocations.
   it("catalogue_check_cli_reports_stable_codes_and_exit", async () => {
     const folder = mkdtempSync(join(tmpdir(), "catalogue-cli-"));
     const bin = fileURLToPath(new URL("../../src/lifecycle/openlup.mjs", import.meta.url)), file = join(folder, "catalogue.json");
@@ -347,5 +348,5 @@ describe("offline catalogue conformance", () => {
       const report = await checkSubject(subject); expect(report).toEqual(await checkSubject(subject));
       for (const finding of report.findings) expect(finding).toMatchObject({ recheck: subject.recheck, severity: "error", fix: expect.any(String), recipe: expect.any(String), evidence: expect.any(Object) });
     } finally { rmSync(folder, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 });
