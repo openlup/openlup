@@ -374,9 +374,10 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of order) {
         const rows = source.get(table)!;
         const b = packet.compatible.tables.find(value => value.table === table);
-        // Classic subscriptions and their events use the locked owner path;
-        // the generic row importer deliberately refuses their binding triggers.
-        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
+        // Classic subscriptions, their events and accepted-reference carriers use
+        // the locked owner path after exact trigger and schema inspection;
+        // the generic row importer continues to refuse INSERT triggers.
+        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events", "subscription_renewal_terms", "subscription_renewal_operations"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
           await restoreCompatiblePostgresRows({ catalogueId: manifest.objectInventorySha256, packet: bounded,

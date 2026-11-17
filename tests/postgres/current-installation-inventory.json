@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 150,
-        "exactTailCount": 40,
-        "objectInventorySha256": "0f0db3b787be5078ef3f36b4ce2f6ea792a699e1ebf7cdf4e466b7e679613c91",
+        "count": 151,
+        "exactTailCount": 41,
+        "objectInventorySha256": "b522bf6135d4edb7cc3eb1e34f3a32051cc8a3b63d1b180f042796c7cc2d813f",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+            "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
+          },
           {
             "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
             "sha256": "d0527e6d2cbb5d700ef9f17d573e8c7f62f1515ae46944caadc18b0812b36cb4"
@@ -609,10 +613,14 @@
         ]
       },
       "bootstrap": {
-        "count": 155,
-        "exactTailCount": 40,
-        "objectInventorySha256": "7bcfa95fac5ef7b0b5e1dad2f0e55ac519cac4dae8b16e566f1bd12c9d894b89",
+        "count": 156,
+        "exactTailCount": 41,
+        "objectInventorySha256": "179d2436bccb397a59d50c28990346013ea88fddf8ec9fd21c047b8e909acd46",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+            "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
+          },
           {
             "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
             "sha256": "d0527e6d2cbb5d700ef9f17d573e8c7f62f1515ae46944caadc18b0812b36cb4"
@@ -1236,10 +1244,14 @@
         ]
       },
       "separate": {
-        "count": 155,
-        "exactTailCount": 40,
-        "objectInventorySha256": "bd3a1eaf382174c6f1d5f79cd76ed0648e58815e0c7e1cffd7ee8639226bcad9",
+        "count": 156,
+        "exactTailCount": 41,
+        "objectInventorySha256": "ef40a50b4ed59f0040859bf5221143e9e79af677e36e515183f77d8489da4539",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+            "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
+          },
           {
             "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
             "sha256": "d0527e6d2cbb5d700ef9f17d573e8c7f62f1515ae46944caadc18b0812b36cb4"
@@ -1863,10 +1875,14 @@
         ]
       },
       "admin-managed": {
-        "count": 154,
-        "exactTailCount": 40,
-        "objectInventorySha256": "ae89bcecaa9aa651821381b1d52c27c88a4ecf14df0e31609e0f57d27c767a0c",
+        "count": 155,
+        "exactTailCount": 41,
+        "objectInventorySha256": "24c90ce603938c6920de3615efad9b7b741ee27745c98a10b507246fc6f5978e",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+            "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
+          },
           {
             "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
             "sha256": "d0527e6d2cbb5d700ef9f17d573e8c7f62f1515ae46944caadc18b0812b36cb4"
@@ -2486,10 +2502,14 @@
         ]
       },
       "admin-operator": {
-        "count": 154,
-        "exactTailCount": 40,
-        "objectInventorySha256": "4dcce80ae9245e3a1c860d2caf7eecf52555d79469a7f8ec5d018cb92c4da88a",
+        "count": 155,
+        "exactTailCount": 41,
+        "objectInventorySha256": "6819a023653608b9db2499732d5f903d8d3921f96754985d64632708970a4ae1",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+            "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
+          },
           {
             "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
             "sha256": "d0527e6d2cbb5d700ef9f17d573e8c7f62f1515ae46944caadc18b0812b36cb4"
