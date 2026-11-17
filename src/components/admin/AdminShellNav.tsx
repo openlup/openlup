@@ -111,7 +111,7 @@ export function SidebarNav({
   onNavigate,
 }: {
   role: string | null | undefined;
-  email: string | undefined;
+  email: string | null | undefined;
   onSignOut: () => void;
   onNavigate?: () => void;
 }) {
@@ -198,7 +198,7 @@ export function TopBar({
   role,
   onSearch,
 }: {
-  email: string | undefined;
+  email: string | null | undefined;
   role: string | null | undefined;
   onSearch: (query: string, scope: AdminSearchScope) => void;
 }) {

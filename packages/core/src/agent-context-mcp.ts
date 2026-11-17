@@ -2,7 +2,7 @@
 import { closeSync, constants, fstatSync, openSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, sep, win32 } from "node:path";
 import type { Readable, Writable } from "node:stream";
-import { formatContextResult, searchContext } from "./agent-context-cli.js";
+import { formatContextResult, installedPackageRoots, searchContext } from "./agent-context-cli.js";
 
 const versions = ["2025-06-18", "2024-11-05"];
 const maxFileBytes = 200_000;
@@ -11,7 +11,7 @@ const maxTaskCharacters = 1_000;
 const tools = [
   {
     name: "search_openlup_context",
-    description: "Locate installed OpenLup owners, seams and public symbols offline. Search concise English terms when the owner is unclear, then read cited files and follow callers and tests. Code scans are opt-in and bounded; ranked hits are starting points, not complete contract coverage. Tasks are limited to 1,000 characters; incoming message lines to 1 MiB.",
+    description: "Locate installed OpenLup owners, seams and public symbols offline. Search concise English terms when the owner is unclear, then read cited files and follow callers and tests. Declaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage. Code scans are opt-in and bounded; ranked hits are starting points, not complete contract coverage. Tasks are limited to 1,000 characters; incoming message lines to 1 MiB.",
     inputSchema: {
       type: "object", properties: {
         task: { type: "string" },
@@ -22,7 +22,7 @@ const tools = [
   },
   {
     name: "read_openlup_file",
-    description: "Read numbered lines from an installed node_modules/@openlup/<name> file, using its application-relative search path. Inclusive line numbers start at 1. Only ordinary files up to 200,000 bytes are allowed; symlinked package roots are supported, while traversal, repository URLs and file realpaths outside the resolved package root are refused. Checks apply to the filesystem as it stands at read time, not to concurrent rewrites of node_modules. Application source hits must be read with the client's own file tool. Incoming message lines are limited to 1 MiB; search tasks to 1,000 characters.",
+    description: "Read numbered lines from a selected installed OpenLup package file, using the exact application-relative search path, including hoisted or sibling installations. Inclusive line numbers start at 1. Only ordinary files up to 200,000 bytes are allowed; symlinked package roots are supported, while other traversal, repository URLs and file realpaths outside the resolved package root are refused. Checks apply to the filesystem as it stands at read time, not to concurrent rewrites of node_modules. Application source hits must be read with the client's own file tool. Incoming message lines are limited to 1 MiB; search tasks to 1,000 characters.",
     inputSchema: {
       type: "object", properties: {
         path: { type: "string" },
@@ -75,19 +75,26 @@ function readOrdinaryFile(path: string, packagePath: string, packageRoot: string
 
 function readInstalledFile(cwd: string, path: string, startLine = 1, endLine?: number, hooks: ReadHooks = {}): string {
   if (/^https?:\/\//iu.test(path)) throw new Error("This source URL is not installed. Read an installed file using its application-relative path; no URL is fetched.");
-  const parts = path.split("/");
-  if (isAbsolute(path) || win32.isAbsolute(path) || path.includes("\\") || path.includes("\0") ||
-      parts.some(part => !part || part === "." || part === "..") ||
-      parts.length < 4 || parts[0] !== "node_modules" || parts[1] !== "@openlup" || !/^[a-z0-9][a-z0-9-]*$/u.test(parts[2])) {
-    throw new Error("Use a relative node_modules/@openlup/<name>/<file> path without traversal");
+  const pathError = "Use the exact application-relative search path for a selected node_modules/@openlup/<name> file; other traversal is refused";
+  if (isAbsolute(path) || win32.isAbsolute(path) || path.includes("\\") || path.includes("\0")) {
+    throw new Error(pathError);
   }
-  const packagePath = join(cwd, ...parts.slice(0, 3));
+  const installed = installedPackageRoots(cwd).map(item => {
+    const prefix = relative(cwd, item.root).split(sep).join("/");
+    return { ...item, prefix: prefix ? `${prefix}/` : "" };
+  }).sort((left, right) => right.prefix.length - left.prefix.length).find(item => path.startsWith(item.prefix));
+  if (!installed) throw new Error(pathError);
+  const parts = path.slice(installed.prefix.length).split("/");
+  if (parts.some(part => !part || part === "." || part === "..")) {
+    throw new Error(pathError);
+  }
+  const packagePath = installed.root;
   const packageRoot = realpathSync(packagePath);
   const manifestPath = realpathSync(join(packageRoot, "package.json"));
   if (!manifestPath.startsWith(`${packageRoot}${sep}`)) throw new Error("Manifest realpath escapes the installed package root");
   const manifest = JSON.parse(readOrdinaryFile(manifestPath, packagePath, packageRoot, "Manifest", hooks)) as { name?: unknown; version?: unknown };
-  if (manifest.name !== `@openlup/${parts[2]}` || typeof manifest.version !== "string" || !manifest.version) throw new Error("Invalid installed package manifest");
-  const filePath = realpathSync(join(cwd, ...parts));
+  if (manifest.name !== installed.name || typeof manifest.version !== "string" || !manifest.version) throw new Error("Invalid installed package manifest");
+  const filePath = realpathSync(join(packagePath, ...parts));
   if (!filePath.startsWith(`${packageRoot}${sep}`)) throw new Error("File realpath escapes the installed package root");
   const content = readOrdinaryFile(filePath, packagePath, packageRoot, "File", hooks);
   const lines = content ? content.replace(/\r?\n$/u, "").split(/\r?\n/u) : [];

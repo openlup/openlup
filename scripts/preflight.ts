@@ -4,7 +4,7 @@
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -239,14 +239,14 @@ function gitleaks(base: string, untracked: readonly string[]): CheckResult {
   return { check: "gitleaks", status: "PASS", detail: `no leaks in commits since the fork point, staged, unstaged or untracked files (${seconds} s)` };
 }
 
-function rootVitestFiles(candidates: readonly string[]): string[] {
+export function vitestFiles(candidates: readonly string[], config?: string): string[] {
   const directory = mkdtempSync(join(tmpdir(), "openlup-preflight-"));
   try {
     const listing = join(directory, "files.json");
     const env: NodeJS.ProcessEnv = { ...processEnvironment, VITEST_SKIP_INSTALL_CHECKS: "1" };
     delete env.OPENLUP_VITEST_EXCLUDE_FILE;
     // `--json` takes an optional path, so it goes after the files.
-    const result = execute("npx", ["--no", "--", "vitest", "list", ...candidates, "--filesOnly", `--json=${listing}`], { env });
+    const result = execute("npx", ["--no", "--", "vitest", "list", ...(config ? ["--config", resolve(config), "--root", dirname(config)] : []), ...candidates.map((path) => config ? relative(dirname(config), path) : path), "--filesOnly", `--json=${listing}`], { env });
     if (result.code !== 0) throw new Error(`vitest list failed: ${lastLine(result.output)}`);
     const listed = JSON.parse(readFileSync(listing, "utf8")) as Array<{ file: string }>;
     const discovered = new Set(listed.map(({ file }) => relative(process.cwd(), file).split("\\").join("/")));
@@ -256,17 +256,64 @@ function rootVitestFiles(candidates: readonly string[]): string[] {
   }
 }
 
-function hostedTests(changes: readonly Change[]): CheckResult {
+type SeparateTest = { path: string; command: string };
+type TestSelection = { files: string[]; separate: SeparateTest[]; unknown: string[] };
+
+/** Positive discovery from existing runner configurations; this never executes a test. */
+export function separateTestFiles(candidates: readonly string[]): SeparateTest[] {
+  const configs = git(["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*vitest.config.*", "*playwright*.config.*"]).split("\0").filter(Boolean);
+  const found: SeparateTest[] = [];
+  for (const config of configs) {
+    const directory = dirname(config);
+    const files = candidates.filter((path) => !found.some((entry) => entry.path === path)
+      && (directory === "." || path.startsWith(`${directory}/`)));
+    if (files.length === 0 || config === "vitest.config.ts") continue;
+    if (/(?:^|\/)vitest\.config\./u.test(config)) {
+      try {
+        for (const path of vitestFiles(files, config)) found.push({ path, command: `npx --no -- vitest list --root ${directory} --config ${basename(config)} --filesOnly` });
+      } catch { /* An unavailable owning config leaves explicit missing discovery proof. */ }
+    } else {
+      // Browser suites retain their explicit setup/profile runner. Listing does
+      // not start webServer or browser workers; a config requiring owned setup
+      // may refuse, which leaves discovery unconfirmed and actionable below.
+      const browserFiles = files.filter((path) => /\.spec\.[cm]?[jt]sx?$/u.test(path));
+      if (browserFiles.length === 0) continue;
+      const listing = execute("npx", ["--no", "--", "playwright", "test", "--config", config, "--list", "--reporter=json", ...browserFiles.map((path) => path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))]);
+      if (listing.code !== 0) continue;
+      let report: { config: { rootDir: string }; suites: Array<{ file: string }> };
+      try { report = JSON.parse(listing.output); } catch { continue; }
+      const listed = new Set(report.suites.map(({ file }) => relative(process.cwd(), resolve(report.config.rootDir, file)).split("\\").join("/")));
+      for (const path of browserFiles.filter((path) => listed.has(path))) found.push({ path, command: `npx --no -- playwright test --config ${config} --list` });
+    }
+  }
+  return found;
+}
+
+export function testDiscoveryVerdict(selection: TestSelection): CheckResult {
+  const notes = selection.separate.map(({ path, command }) => `${path}: separate runner confirmed by ${command}; run its owning package/profile proof`);
+  notes.push(...selection.unknown.map((path) => `${path}: not collected by root Vitest or confirmed in a separate runner; check the suffix/location against vitest.config.ts and CONTRIBUTING.md#choose-a-location-and-proof, or demonstrate its owning runner with list --filesOnly / --list`));
+  if (selection.unknown.length > 0) return { check: "test discovery", status: "WARN", detail: `${selection.unknown.length} changed test file(s) have no confirmed runner; their execution remains missing proof`, notes };
+  return { check: "test discovery", status: selection.files.length + selection.separate.length > 0 ? "PASS" : "SKIP",
+    detail: `${selection.files.length} root Vitest file(s), ${selection.separate.length} confirmed separate-runner file(s); discovery is not execution`, notes };
+}
+
+function discoverTests(changes: readonly Change[]): TestSelection {
   const candidates = changes.filter(({ path, deleted }) => !deleted && isTestEntry(path)).map(({ path }) => path);
-  if (candidates.length === 0) return { check: "hosted tests", status: "SKIP", detail: "no new or changed test files" };
-  const files = rootVitestFiles(candidates);
+  if (candidates.length === 0) return { files: [], separate: [], unknown: [] };
+  const files = vitestFiles(candidates);
   const outside = candidates.filter((path) => !files.includes(path));
-  const elsewhere = outside.length > 0 ? `; not root Vitest files, run with their own runner: ${outside.join(", ")}` : "";
-  if (files.length === 0) return { check: "hosted tests", status: "SKIP", detail: `no changed test file is in the root Vitest inventory${elsewhere}` };
+  const separate = outside.length > 0 ? separateTestFiles(outside) : [];
+  return { files, separate, unknown: outside.filter((path) => !separate.some((entry) => entry.path === path)) };
+}
+
+function hostedTests(selection: TestSelection | undefined): CheckResult {
+  if (!selection) return { check: "hosted tests", status: "FAIL", detail: "test discovery failed; restore discovery before running changed root tests" };
+  const { files } = selection;
+  if (files.length === 0) return { check: "hosted tests", status: "SKIP", detail: "no changed root Vitest file; see test discovery for separate runners and missing proof" };
   const result = execute(process.execPath, ["scripts/test-hosted.mjs", ...files]);
   return result.code === 0
-    ? { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)${elsewhere}` }
-    : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}${elsewhere}`, notes: tail(result.output, 60) };
+    ? { check: "hosted tests", status: "PASS", detail: `${files.length} file(s) passed in hosted parity (${result.seconds} s)` }
+    : { check: "hosted tests", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
 }
 
 function neutrality(base: string): CheckResult {
@@ -303,15 +350,17 @@ export function main(now: Date): number {
   const untrackedPaths = git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
   const changes = [...parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", base])), ...untrackedPaths.map((path) => ({ path, deleted: false }))];
   console.log(`preflight: ${changes.length} changed path(s) since fork point ${base.slice(0, 12)} with origin/main, including uncommitted files`);
+  let selection: TestSelection | undefined;
   const checks: Array<[string, () => CheckResult | CheckResult[]]> = [
-    ["typecheck", typecheck],
     ["ast-grep", astGrep],
-    ["inventory", () => inventory(changes)],
+    ["neutrality", () => neutrality(base)],
     ["fragments", () => fragments(changes)],
     ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
     ["gitleaks", () => gitleaks(base, untrackedPaths)],
-    ["hosted tests", () => hostedTests(changes)],
-    ["neutrality", () => neutrality(base)],
+    ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
+    ["typecheck", typecheck],
+    ["inventory", () => inventory(changes)],
+    ["hosted tests", () => hostedTests(selection)],
   ];
   const results: CheckResult[] = [];
   for (const [name, check] of checks) {

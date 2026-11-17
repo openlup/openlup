@@ -1654,6 +1654,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/agent-development-readiness.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/agent-dx-regression.md",
       "class": "platform-documentation"
     },
@@ -12807,6 +12811,10 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/site-routes.d.mts",
       "class": "public-output"
     },
     {

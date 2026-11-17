@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateRisk } from "./evaluator";
 import type { RiskEvaluationInput } from "./types";
 
-const baseInput: RiskEvaluationInput = {
+const baseInput = {
   source: "paid_order",
   mode: "shadow",
   checkout: {
@@ -28,7 +28,7 @@ const baseInput: RiskEvaluationInput = {
     priorDisputes: 0,
     highRiskCountries: [],
   },
-};
+} satisfies RiskEvaluationInput;
 
 describe("risk evaluator", () => {
   it("allows clean paid orders in shadow mode", () => {

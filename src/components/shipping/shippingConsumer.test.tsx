@@ -138,7 +138,7 @@ it("reads an installed injected address and retains manual fields through offlin
   const binding = shipping.createShippingBindings({ dataKind: "postgres", responder: bff.createBffResponder(), nativeStore: { addressBookPort: {
     getAddressBook: async user => user === "session-owner" ? { contractVersion: "customer.addresses.v1", ordererProfiles: [], addresses: await shipping.readAddresses(addressStore, clientId) } : null,
   } }, addresses: { authenticateUser: async () => ({ ok: true, userId: "session-owner" }), requireWrites: false,
-    schemas: { customerAddressesRequestSchema, customerAddressesResponseSchema, customerAddressDeleteRequestSchema, customerAddressUpsertRequestSchema, isMutationConflict: (_error): _error is Error => false } as unknown as import("@openlup/platform/shipping").CustomerAddressSchemas },
+    schemas: { customerAddressesRequestSchema, customerAddressesResponseSchema, customerAddressDeleteRequestSchema, customerAddressUpsertRequestSchema, isMutationConflict: (_error: unknown): _error is Error => false } as unknown as import("@openlup/platform/shipping").CustomerAddressSchemas },
   });
   const book = await invoke(binding.handlers.addresses!, "GET") as { addresses: { line1: string; city: string; postalCode: string; country: string; isDefault: boolean }[] };
   expect(book.addresses).toMatchObject([{ line1: "Example 1", isDefault: true }]);
@@ -146,7 +146,7 @@ it("reads an installed injected address and retains manual fields through offlin
   const managed = shipping.createShippingBindings({ dataKind: "supabase", responder: bff.createBffResponder(),
     createManagedStore: () => ({ addressBookPort: binding.store.addressBookPort, addressMutationPort: { upsertAddress: saved, deleteAddress: async () => null } }),
     addresses: { authenticateUser: async () => ({ ok: true, userId: "session-owner" }), requireWrites: true,
-      schemas: { customerAddressesRequestSchema, customerAddressesResponseSchema, customerAddressDeleteRequestSchema, customerAddressUpsertRequestSchema, isMutationConflict: (_error): _error is Error => false } as unknown as import("@openlup/platform/shipping").CustomerAddressSchemas },
+      schemas: { customerAddressesRequestSchema, customerAddressesResponseSchema, customerAddressDeleteRequestSchema, customerAddressUpsertRequestSchema, isMutationConflict: (_error: unknown): _error is Error => false } as unknown as import("@openlup/platform/shipping").CustomerAddressSchemas },
   });
   let save: Promise<unknown> | undefined;
   function Manual() {
