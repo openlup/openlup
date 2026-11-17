@@ -1153,6 +1153,7 @@ async function existingClaim(p: PurchaseProbe,id: string) {
 }
 const purchaseBinding = (p: PurchaseProbe) => { p.quote.catalogAdmission.skuRevisions[0].quantity = 3; };
 const plainRows: PurchaseRow[] = [
+  { name: "binding",message: orderRefused,native: true,change: purchaseBinding },
   { name: "refusal-01",message: "commerce_order_draft_invalid_idempotency_key",change: p => { p.args[0] = "short"; } },
   { name: "refusal-02",message: "commerce_order_draft_invalid_snapshot",change: p => { p.draft.contractVersion = "invalid"; } },
   { name: "refusal-03",message: "commerce_order_draft_unknown_client",change: p => { p.args[3] = randomUUID(); } },
