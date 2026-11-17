@@ -1,3 +1,4 @@
+import { catalogLifecycleStoredCommandSchema, catalogLifecycleStoredRecordSchema, catalogLifecycleStoredApplyResultSchema, catalogLifecycleValidationPayload } from "./lifecycleV2.js";
 import { createHash } from "node:crypto";
 import {
   canonicalCatalogDraftJson,
@@ -9,6 +10,7 @@ import {
 import { catalogDraftStoredApplyResultSchema, catalogDraftStoredCommandSchema, catalogDraftStoredRecordSchema } from "./draftV2Schemas.js";
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogLifecycleStoredRecord, CatalogLifecycleStoredCommand } from "./contracts/lifecycleV2.js";
 import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
 import type { z } from "./validation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
@@ -19,7 +21,7 @@ import {
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { validateCatalogDraft, type CatalogDraftReadiness } from "./draftValidation.js";
 
-export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftHandlerDeps<Context, Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
   store: CatalogDraftStorePort<Record>;
   registry: CatalogProductTypeRegistry;
   attributeReferences?: CatalogAttributeReferencePort;
@@ -39,8 +41,8 @@ function failure(error: unknown): CatalogDraftRefusal {
 }
 
 /** Dark use case: mounting requires a verified operator authorizer at composition. */
-function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecord>(deps: CatalogDraftHandlerDeps<Context, Record>, schemas: {
-  command: z.ZodType<CatalogDraftPublicationStoredCommand>; record: z.ZodType<Record>;
+function draftHandler<Context, Record extends CatalogLifecycleStoredRecord>(deps: CatalogDraftHandlerDeps<Context, Record>, schemas: {
+  command: z.ZodType<CatalogLifecycleStoredCommand>; record: z.ZodType<Record>;
   result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }) {
   const { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
@@ -78,7 +80,7 @@ function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecor
         let readiness: CatalogDraftReadiness | undefined;
         if (command.payload) {
           const validation = command.payload.schemaVersion !== 1
-            ? await validateCatalogDraftV2(command.payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(command.payload) : command.payload, deps.registry, deps.attributeReferences)
+            ? await validateCatalogDraftV2(command.payload.schemaVersion === 2 ? command.payload : catalogLifecycleValidationPayload(command.payload), deps.registry, deps.attributeReferences)
             : validateCatalogDraft(command.payload, deps.registry);
           if (!validation.valid) return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: validation.issues };
           readiness = validation.readiness;
@@ -133,4 +135,9 @@ export function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDe
 /** Opt-in publication inputs, with the same draft authorization and receipt-first replay. */
 export function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftPublicationStoredRecord>) {
   return draftHandler(deps, { command: catalogDraftPublicationStoredCommandSchema, record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema });
+}
+
+/** Lifecycle authoring shares authorization, immutable receipts and scalar validation. */
+export function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogLifecycleStoredRecord>) {
+  return draftHandler(deps, { command: catalogLifecycleStoredCommandSchema, record: catalogLifecycleStoredRecordSchema, result: catalogLifecycleStoredApplyResultSchema });
 }

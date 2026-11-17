@@ -1,5 +1,6 @@
+import { catalogAcceptedReferenceV2Schema } from "../../src/catalog/lifecycleV2.js";
 import { describe, expect, it } from "vitest";
-import { createNativeRenewalCodec } from "../../src/subscriptions/nativeRenewalCodec.js";
+import { createNativeRenewalCodec, createNativeCatalogRenewalCodecV2 } from "../../src/subscriptions/nativeRenewalCodec.js";
 import { nativeRenewalPrice, nativeRenewalTermsSchema } from "../../src/subscriptions/nativeRenewalTerms.js";
 import { resolveThresholdShipping, summarizeThresholdShipping } from "../../src/shipping/thresholdPolicy.js";
 import { mapInvoiceClaimToProviderSnapshot } from "../../src/invoicing/snapshot.js";
@@ -114,4 +115,25 @@ describe("retained renewal pricing characterization", () => {
     expect(bound.orderSnapshot.shippingQuoteRef).toEqual({ kind: "zero_shipping", shippingAmountMinor: 0 });
     expect(codec.decode(codec.encode(bound))).toEqual(bound);
   });
+});
+
+it("catalogue snapshot v3 retains references, agreed money and every old wire dialect", () => {
+  const codec = createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value));
+  const legacy = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+  for (const current of [row(), row(terms())]) {
+    const original = legacy.encode(legacy.freeze(current, schedule));
+    expect(codec.encode(codec.decode(original))).toEqual(original);
+  }
+  const reference = { schemaVersion: 2, skuId: "abcdef04-2345-4678-9abc-def012345678", skuCode: "SYNTHETIC-REFILL",
+    skuRevisionId: "abcdef05-2345-4678-9abc-def012345678", publicationHead: { publicationId: "abcdef06-2345-4678-9abc-def012345678", revision: 1, documentDigest: "a".repeat(64) },
+    typeRef: { key: "example:article", version: 1 }, definitionDigest: "b".repeat(64), optionDigest: "c".repeat(64), netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 } };
+  const current = { ...row(terms()), catalog_acceptance: { schemaVersion: 2, lines: [reference] } };
+  const snapshot = codec.freeze(current, schedule), wire = codec.encode(snapshot);
+  expect(snapshot.frozenRevision).toBe("native.purchase-renewal.v3");
+  expect(snapshot.pricingSnapshot).toEqual(legacy.freeze(row(terms()), schedule).pricingSnapshot);
+  expect(codec.encode(codec.decode(wire))).toEqual(wire);
+  expect(wire.catalogAcceptance).toEqual(current.catalog_acceptance);
+  expect(() => legacy.decode(wire)).toThrow();
+  expect(() => codec.freeze(row(terms()), schedule)).toThrow("catalog_acceptance");
+  expect(() => codec.decode({ ...wire, catalogAcceptance: { schemaVersion: 2, lines: [{ ...reference, skuCode: "FORGED" }] } })).toThrow();
 });

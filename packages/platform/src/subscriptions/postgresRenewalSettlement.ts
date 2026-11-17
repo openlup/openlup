@@ -17,7 +17,7 @@ export function createPostgresRenewalSettlementPort(
   async function prepare(db: SubscriptionQueryExecutor, input: Parameters<RenewalSettlementPort["prepareRenewal"]>[0], atomic: boolean) {
     const operation = (await db.query("SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1::uuid", [input.operationId])).rows[0];
     const wire = record(operation?.cycle_snapshot);
-    const retained = wire?.frozenRevision === "native.purchase-renewal.v2";
+    const retained = ["native.purchase-renewal.v2", "native.purchase-renewal.v3"].includes(String(wire?.frozenRevision));
     if (retained && !atomic) throw new Error("subscription_renewal_transaction_required");
     const snapshot = retained ? codec.decode(wire!) : null;
     const result = await db.query(PREPARE_SQL, [input.operationId, input.claimToken, input.now]);

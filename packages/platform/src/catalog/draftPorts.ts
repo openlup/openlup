@@ -4,10 +4,11 @@ import type {
   CatalogDraftRecord,
 } from "./draftSchemas.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogLifecycleStoredRecord, CatalogLifecycleStoredCommand } from "./contracts/lifecycleV2.js";
 
 /** Portable adapters accept this actor only after the injected operator authorizer succeeds. */
 export interface CatalogDraftOperator { actorId: string }
-export interface CatalogDraftStorePort<Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftStorePort<Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
   apply(input: { canonicalCommand: string; fingerprint: string; actorId: string }): Promise<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
   get(query: CatalogDraftGetQuery, actorId: string): Promise<Record | null>;
   list(query: CatalogDraftListQuery, actorId: string): Promise<CatalogDraftPage>;

@@ -272,6 +272,25 @@ unqualified by this local witness.
 
 ## Compatible data transfer
 
+Governed catalogue lifecycle facts use publication/product/SKU version 3 beside
+the retained version 2 format. The native lifecycle forward adds a nullable
+`subscription_lines.catalog_sku_revision_id` with the validated same-SKU composite
+FK. Historical NULLs remain NULL. Acceptance envelopes on orders, subscription
+events, retained terms and renewal operations verify complete immutable references;
+restoring publications and SKU revisions before those commerce rows preserves the
+binding. Existing connected-store inventories carry these columns byte-exactly.
+The managed ingress projection supplies NULL for absent native carriers.
+
+`catalog_lifecycle_write_capabilities` is transient, excluded from transfer and
+blocks capture when nonempty. Lifecycle-aware readers are required before
+composition; raw-active withdrawn projections do not qualify legacy listing.
+The single unpaginated `catalog_bound_obligations_v2` query supplies archive and
+impact evidence. Unknown or filtered evidence refuses, and archive remains
+unavailable until the complete acceptance barrier is qualified. The forward
+changes no subscription agreement or schedule and supplies no managed feature.
+See the [catalogue contract](../../packages/platform/README.md#catalog) and the
+[lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order).
+
 Native publication heads, immutable publications, full SKU revisions, kinded
 operator receipts and candidate decisions are AUTHORITATIVE retained catalogue
 data. Restore their definitions, drafts, products and documents first, then

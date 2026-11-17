@@ -690,7 +690,7 @@ export async function mapManagedRetainedBusiness(input: {
     const stockSku = currentLines.length === 1 ? skuById.get(currentLines[0]!.variant_id)?.sku : null;
     if (typeof stockSku !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(stockSku))
       fail("unsupported_table", "public.subscription_lines");
-    projected.subscription_renewal_terms!.push({ subscription_id: row.id, next_cycle_number: nextCycleNumber,
+    projected.subscription_renewal_terms!.push({ catalog_acceptance: null, subscription_id: row.id, next_cycle_number: nextCycleNumber,
       currency_code: row.currency, stock_source_key: stockSku, settlement_channel_key: method.provider_kind,
       unattended_charge_authorized_at: consent.acceptedAt, authorization_ref: method.provider_mandate_ref,
       payer_account_ref: method.provider_customer_ref, delivery_admission: "blocked",
@@ -711,7 +711,7 @@ export async function mapManagedRetainedBusiness(input: {
     if (quotedUnit !== undefined && Number(quotedUnit) !== agreement.unit_price_gross_minor
       || quoteLine?.quantity !== undefined && quoteLine.quantity !== row.qty)
       fail("target_conflict", "public.subscription_price_agreements");
-    projected.subscription_lines!.push(project("subscription_lines", row, { quantity: row.qty,
+    projected.subscription_lines!.push(project("subscription_lines", row, { catalog_sku_revision_id: null, quantity: row.qty,
       unit_price_minor: agreement.unit_price_gross_minor, currency_code: agreement.currency }));
     projected.subscription_renewal_term_lines!.push({ subscription_id: row.subscription_id,
       line_ordinal: Number(row.sort_order) + 1, sku: sku.sku, quantity: row.qty,
@@ -734,7 +734,7 @@ export async function mapManagedRetainedBusiness(input: {
   for (const row of subscriptionEvents) {
     if (!subscriptionById.has(row.subscription_id) || typeof row.idempotency_key !== "string" || !row.idempotency_key)
       fail("target_conflict", "public.subscription_events");
-    projected.subscription_events!.push(project("subscription_events", row, { communication_subject_id: null }));
+    projected.subscription_events!.push(project("subscription_events", row, { catalog_acceptance: null, communication_subject_id: null }));
   }
   const contactById = byId(contacts), consentKeys = new Set<string>();
   for (const row of permissions) {
@@ -765,7 +765,7 @@ export async function mapManagedRetainedBusiness(input: {
     const paidIntents = intents.filter(intent => intent.order_id === row.id && intent.status === "succeeded");
     if (row.status === "paid" ? paidIntents.length !== 1 : paidIntents.length !== 0)
       fail("target_conflict", "public.commerce_payment_intents");
-    projected.commerce_orders!.push({ id: row.id, subscription_cycle_id: null, status: row.status,
+    projected.commerce_orders!.push({ catalog_acceptance: null, id: row.id, subscription_cycle_id: null, status: row.status,
       created_at: row.created_at, updated_at: row.updated_at, client_id: row.client_id,
       // The transition holds the payment's own time; the intent's updated_at is when it was processed.
       paid_at: row.status === "paid" ? transitions.find(transition => transition.payment_intent_id === paidIntents[0]!.id)?.occurred_at : null,

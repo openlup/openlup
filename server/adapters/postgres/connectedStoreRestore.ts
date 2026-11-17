@@ -635,7 +635,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
-    commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
+    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
@@ -643,8 +643,10 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // The guard admits only classic inserts. The binder acts only on opt-in
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
-    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject"],
+    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit"],
     commerce_order_operations: ["communication_refund_subject"],
+    subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
+    subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
   };
   const actual = (await client.query<{ table: string; name: string }>(`SELECT c.relname AS table,t.tgname AS name FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

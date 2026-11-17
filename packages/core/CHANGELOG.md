@@ -6,7 +6,8 @@ source previews may already ship some changes, and their release notes say
 which. Declaration snapshots track candidate drift, not a stable API or
 SemVer promise. This file keeps the current release and the two previous ones;
 earlier releases are recorded verbatim in `CHANGELOG-HISTORY.md`
-in the source repository.
+in the source repository. Pending source changes live in per-change fragments;
+set preparation consolidates their migration notes here.
 
 ## [Unreleased]
 

@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions } from "@openlup/platform/catalog";
-import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
+import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -159,14 +159,14 @@ function publicationAuthority(owner: Pool) {
     rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
     readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false });
 }
-async function seedPublicationHistory(owner: Pool) {
+async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3) {
   await installCatalogDefinitions(owner, { id: "example:transfer", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [publicationDefinition], taxClasses: [] });
   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'transfer-publication@example.invalid')", [publicationAdmin]);
   await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [publicationAdmin]);
   const authority = publicationAuthority(owner), actor = (await authority.authorize(undefined))!, productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), documentId = randomUUID();
   const canonicalText = canonicalCatalogDraftJson({ label: "Retained transfer article" }), digest = createHash("sha256").update(canonicalText).digest("hex");
   const skuCode = `TRANSFER-${skuId}`, slug = `retained-${productId}`, facts = { skuCode, title: "Retained article", minQuantity: 1, isAddon: false, facts: {} };
-  const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, slug, type: { key: publicationDefinition.key, version: 1 }, dimensions: [], primarySkuId: skuId,
+  const payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = { schemaVersion, product: { id: productId, slug, type: { key: publicationDefinition.key, version: 1 }, dimensions: [], primarySkuId: skuId,
     documentRevision: { id: documentId, productId, revisionNo: 1, schemaId: "example:transfer.v1", documentRef: "example:transfer", sourceRef: "example:source", digest },
     sharedContent: { schemaVersion: 1, catalogAction: "create", document: JSON.parse(canonicalText), presentation: {}, publicationSkus: [facts], offerMemberships: [], requestedModes: [{ skuCode, modes: [] }] } },
     skus: [{ id: skuId, productId, code: skuCode, options: {}, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 }, identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: "5901234123457", packagingLevel: "unit", quantity: 1 }] }],
@@ -178,21 +178,23 @@ async function seedPublicationHistory(owner: Pool) {
       { op: "set_primary_sku", productSlug: slug, skuCode }, { op: "set_product_presentation", productSlug: slug, presentation: {} },
     ] } };
   let head: CatalogHeadRef | null = null, first: CatalogHeadRef | null = null, receipt: unknown;
+  let firstCommand: CatalogPublishCommand | undefined;
   for (const expectedRevision of [0, 1]) {
     if (expectedRevision) { payload.product.sharedContent.catalogAction = "revise"; payload.product.sharedContent.presentation = { label: "Second presentation" };
       payload.publication.operations = [{ op: "set_product_presentation", productSlug: slug, presentation: payload.product.sharedContent.presentation }]; }
-    const command = { schemaVersion: 3, action: expectedRevision ? "revise" : "create", draftId, commandKey: `draft:${expectedRevision + 1}`, expectedRevision, payload }, text = canonicalCatalogDraftJson(command);
+    const command = { schemaVersion, action: expectedRevision ? "revise" : "create", draftId, commandKey: `draft:${expectedRevision + 1}`, expectedRevision, payload }, text = canonicalCatalogDraftJson(command);
     expect((await owner.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [text, createHash("sha256").update(text).digest("hex")])).rows[0].result.outcome).toBe("committed");
     const candidateRef = `v1:${draftId}@${expectedRevision + 1}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
     const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
       .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: catalogDefinitionDigest(publicationDefinition) }])).update(",").update(canonicalCatalogDraftJson(head)).update("]").digest("hex");
     const publish = { commandKey: `publish:${expectedRevision + 1}`, productId, candidateRef, candidateDigest, expectedHead: head, changes: [] };
     expect((await authority.decision({ schemaVersion: 2, action: "approve", productId, candidateRef, candidateDigest, commandKey: `approve:${expectedRevision + 1}`, reason: "Verified transfer facts" }, actor)).outcome).toBe("committed");
+    firstCommand ??= publish;
     const result = await authority.publish(publish, actor); expect(result.outcome, JSON.stringify(result)).toBe("committed");
     if (!("receipt" in result)) throw new Error("Missing publication receipt");
     head = result.receipt.head; first ??= head; receipt = result.receipt;
   }
-  return { productId, first: first!, second: head!, receipt };
+  return { productId, first: first!, second: head!, receipt, firstCommand: firstCommand! };
 }
 it("transfers immutable publication predecessors, exact SKU revisions, decisions and recoverable receipts", async () => {
   const before = await publicationAuthority(source.owner).readbackV2(retainedPublication.first);
@@ -212,4 +214,32 @@ it("refuses nonempty transient publication capabilities during capture", async (
   await source.owner.query("INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint) VALUES(pg_current_xact_id(),$1,$2,$3)", [row.product_id, row.document_revision_id, fingerprint]);
   try { await expect(captureStoreJourney(source.owner, "catalog-capability-refusal")).rejects.toMatchObject({ code: "unsupported_table" }); }
   finally { await source.owner.query("DELETE FROM public.catalog_publication_pointer_capabilities WHERE product_id=$1 AND revision_id=$2 AND command_fingerprint=$3", [row.product_id, row.document_revision_id, fingerprint]); }
+});
+
+it("transfers governed lifecycle facts and nullable same-SKU accepted bindings without inference", async () => {
+  const held = await resources.installation("lifecycle-source");
+  const history = await seedPublicationHistory(held.owner, 4), sourceAuthority = publicationAuthority(held.owner);
+  const page = await sourceAuthority.readbackV3(history.first);
+  if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+  expect(await sourceAuthority.readbackV2(history.first)).toMatchObject({ outcome: "unsupported", reason: "catalog_lifecycle_reader_required" });
+  const sku = page.items[0]!, customer = randomUUID(), subscription = randomUUID(), order = randomUUID();
+  const reference = { schemaVersion: 2, skuId: sku.facts.id, skuCode: sku.facts.code, skuRevisionId: sku.reference.revisionId, publicationHead: page.head,
+    typeRef: page.product.type, definitionDigest: page.product.definitionDigest, optionDigest: sku.facts.optionDigest, netContent: sku.facts.netContent };
+  const acceptance = JSON.stringify({ schemaVersion: 2, lines: [reference] });
+  await held.owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [customer,`${customer}@example.invalid`]);
+  await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [subscription,customer]);
+  await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,3,0,617,'XXX',$3)", [subscription,sku.facts.id,sku.reference.revisionId]);
+  await held.owner.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [subscription,acceptance]);
+  await held.owner.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,catalog_acceptance) VALUES($1,$2,'XXX',0,$3::jsonb)", [order,customer,acceptance]);
+  await held.owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle','synthetic:accepted-edit','{}',$2::jsonb)", [subscription,acceptance]);
+  const captured = await captureStoreJourney(held.owner,"lifecycle-source"), before = await journeyCensus(held.owner);
+  expect(await restore(target.owner,captured)).toMatchObject({ replayed: false });
+  expect(await journeyCensus(target.owner)).toEqual(before);
+  expect(await publicationAuthority(target.owner).readbackV3(history.first)).toEqual(page);
+  expect((await target.owner.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [subscription])).rows).toEqual([{ catalog_sku_revision_id: sku.reference.revisionId }]);
+  const reconnected = publicationAuthority(target.owner), actor = (await reconnected.authorize(undefined))!;
+  expect(await reconnected.publish(history.firstCommand,actor)).toMatchObject({ outcome: "replayed" });
+  expect(await journeyCensus(target.owner)).toEqual(before);
+  expect(await restore(target.owner,captured)).toMatchObject({ replayed: true });
+  expect(await journeyCensus(target.owner)).toEqual(before);
 });

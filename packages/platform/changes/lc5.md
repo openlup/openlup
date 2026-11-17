@@ -1,0 +1,46 @@
+Adds unbound catalogue lifecycle authoring through draft payload v4 and immutable
+publication/product/SKU facts v3. Withdrawal clears both fresh-sale flags while
+retaining native active status and exact servicing identity. Restoration is
+explicit; parent restoration never restores children implicitly. Archive is
+terminal, preserves the primary-SKU refusal, and refuses known obligations or
+unknown evidence. The unpaginated native obligation query covers templates,
+pending activation, frozen renewal work, outstanding orders, undelivered leaf
+replacements, stock waits and retained graduation baskets. Archive remains
+unavailable until the acceptance barrier is qualified.
+
+Migration: apply the complete native forward, then upgrade governed consumers to
+`readbackV3` and the explicit `createNativeCatalogRenewalCodecV2` before composing
+new authoring or acceptance. The existing strict draft v1/v2/v3 codecs,
+publication v2 reader and original successful receipt bytes remain unchanged;
+old raw-status commands cannot modify governed rows. Existing ungoverned rows
+are not adopted. Withdrawn raw-active projections do not qualify legacy listing
+or fresh-sale readers. The existing mass-only publication boundary remains.
+
+The nullable same-SKU revision FK preserves historical NULL subscription bindings.
+Acceptance envelopes retain complete immutable references in orders, accepted
+edit events, retained terms and newly frozen operations; SQL verifies their
+publication/document/revision tuple. Legacy bindings are never inferred from
+current documents. `subscription_renewal_purchase_terms_v2` renders retained
+terms v2 alongside the unchanged v1 view. The new frozen dialect uses
+`native.purchase-renewal.v3`; the original codec still reads only v1/v2, while
+the opt-in codec preserves old replay and refuses new freezes without complete
+references. The commerce-first acceptance fence owns capture and qualification;
+these carriers install no application binding. Keep the newer readers while
+retained rows reference these versions. No agreement, quantity, money or cycle
+schedule is rewritten.
+
+Native transfer retains authoritative lifecycle and acceptance bytes through
+existing row inventories and restores revisions before subscription bindings.
+Transient lifecycle write capabilities are excluded and nonempty capabilities
+refuse capture. Managed ingress supplies NULL for absent native acceptance
+carriers and never manufactures lineage.
+
+Managed divergence design: managed equivalents use the same nullable binding,
+immutable publication/SKU facts and acceptance carriers, with session-derived
+human authorization, RLS and trusted wrappers for complete unfiltered obligation
+reads. Browser/service roles receive no direct lifecycle mutation authority.
+A transaction-scoped capability relation and guarded non-key updates have managed
+SQL equivalents; native ownership checks establish unfiltered visibility, not
+business authorization. Mandatory managed industry-specific columns still need
+their separately qualified relaxation before nonmass publication;
+the managed rail does not supply this feature.

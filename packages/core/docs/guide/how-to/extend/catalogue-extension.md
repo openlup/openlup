@@ -6,6 +6,12 @@ references, exact quantities and supplied v1 draft facts. It grants no installat
 migration, publication or activation authority. The minimal skeleton is a fictional
 stationery pack; full reference packs and installed commerce journeys remain pending.
 
+Native lifecycle authoring and immutable accepted references have separate
+platform contracts. In an installed application, read the catalogue section of
+`node_modules/@openlup/platform/README.md` with the matching package declarations.
+The offline checker supplies no lifecycle, obligation-query or acceptance-barrier
+qualification; its fixture observations do not infer historical subscriber bindings.
+
 The single Node entry `runCatalogExtensionConformance(jsonText: string)` returns
 `Promise<CatalogConformanceReport>`. Supply JSON text, parsed without a reviver.
 Non-string direct arguments report `conformance_subject_invalid` (1) without

@@ -640,6 +640,7 @@ export type SubscriptionTermsAdmission = (terms: SubscriptionEditTerms) => void 
 ## dist/subscriptions/contracts/renewal.d.ts
 
 ```ts
+import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import type { PaymentAttemptStatus, PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProviderCapabilityDescriptor, ProviderAttemptIdentity } from "@openlup/core/payment";
 /** Structural hosted-cycle contracts; native vocabulary is bound by the caller. */
 export type SubscriptionRenewalOutcome = "charged" | "requires_action" | "failed" | "skipped";
@@ -1238,6 +1239,15 @@ export type RenewalResult = {
     dunningPropagationFailed?: boolean;
     reason?: string;
 };
+/** New acceptances retain the complete identity; the v1 carrier remains unchanged. */
+export interface RenewalRetainedTermsV2 extends Omit<RenewalRetainedTerms, "version"> {
+    version: "native.renewal-terms.v2";
+    catalogAcceptance: CatalogAcceptanceV2;
+}
+export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
+    frozenRevision: "native.purchase-renewal.v3";
+    catalogAcceptance: CatalogAcceptanceV2;
+}
 ```
 ## dist/subscriptions/contracts/sizedEdit.d.ts
 
@@ -1582,6 +1592,9 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./contracts/renewal.js";
+export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
+export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1654,9 +1667,13 @@ export declare function activateNativePurchaseWithRenewal(executor: Subscription
 ## dist/subscriptions/nativeRenewalCodec.d.ts
 
 ```ts
+import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
 import { type NativeRenewalCodec } from "./postgresRenewalStore.js";
-/** Production native dialect: no closure state and no host metadata on readback. */
+export type CatalogRenewalReferenceParser = (value: unknown) => CatalogAcceptedReferenceV2;
+/** Existing v1/v2 dialect and bytes are unchanged. */
 export declare function createNativeRenewalCodec(): NativeRenewalCodec;
+/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed. */
+export declare function createNativeCatalogRenewalCodecV2(parseReference: CatalogRenewalReferenceParser): NativeRenewalCodec;
 ```
 ## dist/subscriptions/nativeRetryDriver.d.ts
 

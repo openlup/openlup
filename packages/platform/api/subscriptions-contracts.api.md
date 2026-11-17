@@ -378,6 +378,7 @@ export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalC
 export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 
@@ -528,6 +529,7 @@ export type SubscriptionTermsAdmission = (terms: SubscriptionEditTerms) => void 
 ## dist/subscriptions/contracts/renewal.d.ts
 
 ```ts
+import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import type { PaymentAttemptStatus, PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProviderCapabilityDescriptor, ProviderAttemptIdentity } from "@openlup/core/payment";
 /** Structural hosted-cycle contracts; native vocabulary is bound by the caller. */
 export type SubscriptionRenewalOutcome = "charged" | "requires_action" | "failed" | "skipped";
@@ -1126,6 +1128,15 @@ export type RenewalResult = {
     dunningPropagationFailed?: boolean;
     reason?: string;
 };
+/** New acceptances retain the complete identity; the v1 carrier remains unchanged. */
+export interface RenewalRetainedTermsV2 extends Omit<RenewalRetainedTerms, "version"> {
+    version: "native.renewal-terms.v2";
+    catalogAcceptance: CatalogAcceptanceV2;
+}
+export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
+    frozenRevision: "native.purchase-renewal.v3";
+    catalogAcceptance: CatalogAcceptanceV2;
+}
 ```
 ## dist/subscriptions/contracts/sizedEdit.d.ts
 

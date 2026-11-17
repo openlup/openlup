@@ -113,7 +113,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
             ? codec.withDestination!(input.snapshot, ref) : input.snapshot;
           return store.claimDue({ ...input, snapshot });
         }
-        if (input.snapshot.frozenRevision === "native.purchase-renewal.v2") {
+        if (["native.purchase-renewal.v2", "native.purchase-renewal.v3"].includes(input.snapshot.frozenRevision)) {
           let fresh = codec.freeze(await header(input.snapshot, db), input.snapshot);
           const destination = input.snapshot.orderSnapshot.shippingAddressRef;
           if (destination) fresh = codec.withDestination!(fresh, destination);

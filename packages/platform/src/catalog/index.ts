@@ -84,3 +84,9 @@ export { compileCatalogPublication, CatalogPublicationError, assertCatalogPublic
 export type { CatalogPublicationRules, CatalogPublicationCompileInput, CatalogPublicationDocument } from "./publicationValidation.js";
 export type { CatalogPublicationDependencies, CatalogPublicationTransactions, CatalogPublicationPriceBoundary, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
 export { validateCatalogPublicationAttributes } from "./attributeValidation.js";
+
+export { catalogLifecycleStateV2Schema, catalogLifecycleOperationV2Schema, catalogLifecycleTransitionV2, catalogDraftPayloadV4Schema, catalogDraftCommandV4Schema, catalogLifecycleStoredPayloadSchema, catalogLifecycleStoredCommandSchema, catalogLifecycleStoredRecordSchema, catalogAcceptedReferenceV2Schema, catalogAuthoritativeLifecycleV2, catalogLifecycleProjectionV2 } from "./lifecycleV2.js";
+export { createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
+export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
+
+export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";

@@ -1,3 +1,4 @@
+import { catalogLifecycleStoredRecordSchema, catalogLifecycleStoredApplyResultSchema } from "./lifecycleV2.js";
 import {
   catalogDraftApplyResultSchema, catalogDraftRecordSchema,
   catalogDraftGetQuerySchema,
@@ -8,13 +9,14 @@ import {
 import { catalogDraftStoredApplyResultSchema, catalogDraftStoredRecordSchema } from "./draftV2Schemas.js";
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogLifecycleStoredRecord, CatalogLifecycleStoredCommand } from "./contracts/lifecycleV2.js";
 import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublicationStoredRecordSchema } from "./draftV3Schemas.js";
 import type { z } from "./validation.js";
 import { CatalogDraftStoreError, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 
 /** Dark owner-only storage. Composition must verify the operator before use. */
-function draftStore<Record extends CatalogDraftPublicationStoredRecord>(client: PgQueryExecutor, schemas: {
+function draftStore<Record extends CatalogLifecycleStoredRecord>(client: PgQueryExecutor, schemas: {
   record: z.ZodType<Record>; result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }, maxVersion: number): CatalogDraftStorePort<Record> {
   const { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
@@ -33,7 +35,7 @@ function draftStore<Record extends CatalogDraftPublicationStoredRecord>(client: 
   return {
     async apply(request) {
       try {
-        if (maxVersion < 3) {
+        if (maxVersion < 4) {
           let version: unknown;
           try { version = JSON.parse(request.canonicalCommand)?.schemaVersion; } catch { /* SQL retains legacy malformed-input refusals. */ }
           if (typeof version === "number" && version > maxVersion) return { outcome: "validation_issue", reason: "command_invalid" };
@@ -94,4 +96,9 @@ function refusal(error: unknown): CatalogDraftRefusal {
   if (code === "22023") return { outcome: "validation_issue", reason: "invalid_store_request" };
   if (code === "23505") return { outcome: "conflict", reason: "identity_reserved" };
   return { outcome: "dependency_unavailable", reason: "store_unavailable" };
+}
+
+/** Explicit lifecycle dialect opt-in. Legacy adapter version bounds stay closed. */
+export function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): CatalogDraftStorePort<CatalogLifecycleStoredRecord> {
+  return draftStore(client, { record: catalogLifecycleStoredRecordSchema, result: catalogLifecycleStoredApplyResultSchema }, 4);
 }

@@ -1,8 +1,9 @@
+import type { CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogDraftPriceOperationV2 } from "./contracts/draftV2.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
-import type { CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding } from "./contracts/publication.js";
+import type { CatalogRetainedSourceBinding } from "./contracts/publication.js";
 import type { CatalogPublicationRules } from "./publicationValidation.js";
 import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
 
@@ -24,7 +25,7 @@ export interface CatalogPublicationDependencies<Context> {
   attributeReferences?: CatalogAttributeReferencePort;
   prices?: CatalogPublicationPriceBoundary;
   /** Runs in the publication transaction; no external I/O or commerce locks. Missing required evidence refuses. */
-  readiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: readonly CatalogPublishedSku[] }, requirePrice: boolean): Promise<{ ready: boolean; reasons: readonly string[] }>;
+  readiness(db: PgQueryExecutor, state: { product: CatalogProductState; skus: readonly CatalogSkuState[] }, requirePrice: boolean): Promise<{ ready: boolean; reasons: readonly string[] }>;
   globalReadiness?(db: PgQueryExecutor): Promise<{ ready: boolean; reasons: readonly string[] }>;
   /** External proof is prepared before locks; transaction-local admission verifies this immutable claim again. */
   verifyMedia(db: PgQueryExecutor, claim: { skuCode: string; mediaRef: string; assetRefs: readonly string[]; revisionDigest: string }): Promise<boolean>;

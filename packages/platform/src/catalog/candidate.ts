@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
-import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
+import type { CatalogLifecycleStoredRecord as CatalogDraftPublicationStoredRecord } from "./contracts/lifecycleV2.js";
+import { catalogLifecycleStoredRecordSchema as catalogDraftPublicationStoredRecordSchema, catalogLifecycleValidationPayload as catalogDraftV3ValidationPayload } from "./lifecycleV2.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
@@ -77,7 +77,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
       if (record.status !== "open") issues.push({ path: "draft", code: "draft_abandoned" });
       if (payload.schemaVersion === 1) issues.push({ path: "payload.schemaVersion", code: "candidate_requires_payload_v2" });
       else {
-        const validationPayload = payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload);
+        const validationPayload = payload.schemaVersion >= 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload);
         const validation = await validateCatalogDraftV2(validationPayload, deps.registry, deps.attributeReferences);
         issues.push(...(validation.valid ? validation.readiness.publication.issues : validation.issues));
         if (payload.product.documentRevision) {
@@ -90,7 +90,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
         }
         if (payload.skus.some(sku => sku.priceOperations?.length)) {
           if (!deps.validatePrices) issues.push({ path: "skus", code: "price_validation_unavailable" });
-          else issues.push(...await deps.validatePrices(payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload)));
+          else issues.push(...await deps.validatePrices(payload.schemaVersion >= 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload)));
         }
       }
       const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalPayload).update(",")

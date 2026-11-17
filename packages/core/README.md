@@ -148,6 +148,12 @@ migration guidance. For an installed package, its declarations for the selected
 version remain authoritative; the source checkout's `api/readiness.api.md` is a
 snapshot reference, and the host owns inventory.
 
+The catalogue entry also exports the I/O-free `CatalogAcceptedReferenceV2` and
+`CatalogAcceptanceV2` types shared by catalogue and subscription composition.
+They describe captured immutable identity; a type value grants no publication,
+acceptance or database authority. Native verification and lifecycle limits are
+owned by the [current-source platform catalogue contract](https://github.com/openlup/openlup/blob/main/packages/platform/README.md#catalog).
+
 ## Readiness contract
 
 The optional `ReadinessInput.catalogRegistry` observation carries live product

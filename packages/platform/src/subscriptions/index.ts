@@ -84,3 +84,8 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
+
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./contracts/renewal.js";
+
+export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
+export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";

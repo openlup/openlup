@@ -1398,6 +1398,42 @@ refuses as `retained_revision_unavailable`; current facts cannot repair it. This
 read grants no fresh-sale admission. Hosts still own accepted-source persistence
 and the later acceptance fence.
 
+Lifecycle-aware authoring opts into draft payload v4. Its closed operation grammar
+adds explicit product/SKU lifecycle transitions and restoration, with each parent
+withdrawal's complete child effect set bound into the approved candidate. Governed
+publication manifests and product/SKU facts use version 3; `readbackV3` reads them,
+while `readbackV2` refuses that format. Existing v1/v2/v3 draft codecs and original
+receipt replay keep their previous bytes. Ungoverned rows require separate adoption.
+Atomic child effects retain the existing command and receipt bounds; an oversized
+withdrawal refuses without partial changes. The authoritative lifecycle is distinct from native SQL status: withdrawal retains
+`active` status and clears both fresh-sale flags. Legacy listing readers are not
+qualified by that projection. Ordinary withdrawal needs no unrelated activation
+readiness; restoration rechecks current readiness and restores no child implicitly.
+Archive is terminal and the primary SKU remains ineligible for archive.
+
+`CatalogAcceptedReferenceV2` is the shared I/O-free reference exported by core's
+catalogue entry. `assertCatalogAcceptedReferenceV2` and
+`assertCatalogAcceptanceV2` verify supplied immutable publication, document, type,
+option and quantity facts in native PostgreSQL; they never infer a legacy binding.
+Nullable subscription revision bindings use a same-SKU FK. Orders, accepted edit
+events, retained terms and frozen operations have versioned acceptance carriers.
+`subscription_renewal_purchase_terms_v2` renders retained references without
+rewriting the old view. The opt-in `createNativeCatalogRenewalCodecV2` takes the
+shared strict reference parser and adds `native.purchase-renewal.v3` snapshots;
+its old-dialect replay and agreed money remain unchanged. New freezes require
+complete accepted references. The host's commerce-first acceptance fence owns
+capture; installation composes no acceptance or publication service.
+
+The unpaginated native `catalog_bound_obligations_v2` query is the common archive
+and withdrawal-impact owner. It requires unfiltered evidence across every
+obligation family; legacy NULL revisions still preserve known SKU obligations.
+Operational fulfillment labels do not establish arrival, and superseded parcels
+do not erase undelivered leaf replacements. Unknown evidence refuses. Archive
+continues to return `catalog_archive_barrier_unavailable` even with no observed
+obligation until every creation and handoff lane is qualified under the
+[catalogue lock order](../../docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order).
+No agreement, quantity, price or cycle schedule is changed by a lifecycle write.
+
 Publication preserves omitted SKU revisions unless an explicit compatible derived
 operation changes them. Material or inconclusive changes require successor SKU
 identity. A document change revalidates affected omitted siblings. Nonmass or
@@ -2619,6 +2655,11 @@ access keeps the prior no-template behavior and refused native edits, with no ne
 grant. Graduation retries absent context under the same best-effort rule in a
 savepoint, preserving its existing add-on lookup and due anchor.
 `createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
+the opt-in `createNativeCatalogRenewalCodecV2` adds complete retained catalogue
+references in `native.purchase-renewal.v3`. It requires authoritative capture
+through the caller's commerce-first transaction and preserves old replay bytes.
+The [catalogue lifecycle boundary](#catalog) describes the unbound carriers and
+acceptance-barrier limits.
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.
 Hosts supply trusted purchase facts and current method identity and retry pending
