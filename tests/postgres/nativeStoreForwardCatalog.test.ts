@@ -293,7 +293,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (successors.kind !== "r" || JSON.stringify(columns.map(row => row.name)) !== JSON.stringify(names)
       || columns.some(row => row.attrs.atttypid !== "2950" || row.attrs.attnotnull !== true || row.default !== null || row.attrs.attisdropped !== false)) fail("successor columns differ from the closed UUID NOT NULL shape");
     const keys = installedKeys.filter(key => key.relation === successors.oid);
-    if (keys.length !== 3) fail("successor requires exactly three RESTRICT FKs");
+    // Three named single-column FKs, the PK and CHECK exhaust the five constraints below.
     for (const [index, name] of names.entries()) {
       const reference = index === 2 ? "public.catalog_publications" : "public.catalog_skus";
       const target = before.relations.find(row => row.name === reference && row.kind === "r");
@@ -305,8 +305,9 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     const constraints = after.constraints.filter(row => row.rel === successors.name);
     const primary = constraints.filter(row => row.def.startsWith("PRIMARY KEY"));
     const check = constraints.filter(row => row.def.startsWith("CHECK"));
+    // The exact CHECK definition also excludes PostgreSQL's NOT VALID suffix.
     if (constraints.length !== 5 || primary.length !== 1 || primary[0]!.def !== "PRIMARY KEY (predecessor_sku_id, successor_sku_id)"
-      || check.length !== 1 || check[0]!.def !== "CHECK ((predecessor_sku_id <> successor_sku_id))" || !check[0]!.validated) fail("successor primary key or self-link CHECK differs from its closed shape");
+      || check.length !== 1 || check[0]!.def !== "CHECK ((predecessor_sku_id <> successor_sku_id))") fail("successor primary key or self-link CHECK differs from its closed shape");
   }
   const freshKeys = installedKeys.filter(key => oldRelations.has(key.relation) && !before.constraints.some(old => old.rel === oldRelations.get(key.relation)!.name && old.name === key.name) && (["c", "n"].includes(key.deletion) || key.name === "subscription_lines_catalog_sku_revision_fkey"));
   if (freshKeys.length !== foreignKeys.length) fail("FK delete actions differ from the slot's existing-table list");
@@ -977,6 +978,24 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     } finally { await db.query("ROLLBACK"); db.release(); }
   });
   it.each([
+    ["TEXT source and reference keys", successorCreate.replaceAll("uuid", "text"), successorBase.replaceAll("uuid", "text")],
+    ["UUID default", successorCreate.replace("publication_id uuid NOT NULL", "publication_id uuid NOT NULL DEFAULT gen_random_uuid()")],
+    ["partitioned relation", successorCreate.replace(");", ") PARTITION BY HASH (predecessor_sku_id);")],
+    ["column order", successorCreate.replace("predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,\n    successor_sku_id", "successor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,\n    predecessor_sku_id")],
+    ["extra UUID column", successorCreate.replace("PRIMARY KEY", "extra uuid NOT NULL, PRIMARY KEY")],
+    ["dropped catalogue flag", successorCreate + "UPDATE pg_catalog.pg_attribute SET attisdropped=true WHERE attrelid='public.catalog_sku_successors'::regclass AND attname='publication_id';"],
+    ["deferred catalogue flag", successorCreate + "UPDATE pg_catalog.pg_constraint SET condeferred=true WHERE conrelid='public.catalog_sku_successors'::regclass AND conname='catalog_sku_successors_publication_id_fkey';"],
+    ["dropped column", successorCreate + "ALTER TABLE public.catalog_sku_successors ADD COLUMN extra uuid; ALTER TABLE public.catalog_sku_successors DROP COLUMN extra;"],
+    ["wrong source column", successorCreate.replace("predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT", "predecessor_sku_id uuid NOT NULL, FOREIGN KEY (successor_sku_id) REFERENCES public.catalog_skus(id) ON DELETE RESTRICT")],
+    ["extra UNIQUE", successorCreate.replace("PRIMARY KEY", "UNIQUE (predecessor_sku_id, publication_id), PRIMARY KEY")],
+    ["unvalidated FK", successorCreate.replace("publication_id uuid NOT NULL REFERENCES public.catalog_publications(id) ON DELETE RESTRICT", "publication_id uuid NOT NULL") + "ALTER TABLE public.catalog_sku_successors ADD CONSTRAINT cat_successor_publication_fk FOREIGN KEY (publication_id) REFERENCES public.catalog_publications(id) ON DELETE RESTRICT NOT VALID;"],
+    ["unvalidated CHECK", successorCreate.replace(", CHECK (predecessor_sku_id <> successor_sku_id)", "") + "ALTER TABLE public.catalog_sku_successors ADD CONSTRAINT cat_successor_check CHECK (predecessor_sku_id <> successor_sku_id) NOT VALID;"],
+    ["initially deferred", successorCreate.replace("DELETE RESTRICT", "DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED")],
+    ["extra FK", successorCreate + "ALTER TABLE public.catalog_sku_successors ADD CONSTRAINT cat_successor_extra_fk FOREIGN KEY (publication_id) REFERENCES public.catalog_publications(id) ON DELETE RESTRICT;"],
+    ["CHECK replaced by UNIQUE", successorCreate.replace("CHECK (predecessor_sku_id <> successor_sku_id)", "UNIQUE (publication_id)")],
+    ["same-slot publication target", "CREATE TABLE public.catalog_publications (id uuid PRIMARY KEY);" + successorCreate, successorBase.replace("CREATE TABLE public.catalog_publications (id uuid PRIMARY KEY);", "")],
+    ["partitioned reference target", successorCreate, successorBase.replace("CREATE TABLE public.catalog_publications (id uuid PRIMARY KEY);", "CREATE TABLE public.catalog_publications (id uuid PRIMARY KEY) PARTITION BY HASH (id);")],
+    ["same-slot target key", "ALTER TABLE public.catalog_publications ADD COLUMN id uuid UNIQUE;" + successorCreate, successorBase.replace("catalog_publications (id uuid PRIMARY KEY)", "catalog_publications (other_id uuid PRIMARY KEY)")],
     ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`delete ${action}`, successorCreate.replace("DELETE RESTRICT", `DELETE ${action}`)]),
     ["implicit action", successorCreate.replace(" ON DELETE RESTRICT", "")],
     ["update action", successorCreate.replace("DELETE RESTRICT", "DELETE RESTRICT ON UPDATE CASCADE")],
@@ -987,6 +1006,7 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     ["other publication target", successorCreate.replace("public.catalog_publications", "public.cat_other_publications")],
     ["target key", successorCreate.replace("catalog_skus(id)", "catalog_skus(other_id)")],
     ["source and target arity", successorCreate.replace("predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT", "predecessor_sku_id uuid NOT NULL, FOREIGN KEY(predecessor_sku_id,successor_sku_id) REFERENCES public.catalog_skus(id,other_id) ON DELETE RESTRICT")],
+    ["PK replaced by UNIQUE", successorCreate.replace("PRIMARY KEY", "UNIQUE")],
     ["PK order", successorCreate.replace("PRIMARY KEY (predecessor_sku_id, successor_sku_id)", "PRIMARY KEY (successor_sku_id, predecessor_sku_id)")],
     ["PK arity", successorCreate.replace("PRIMARY KEY (predecessor_sku_id, successor_sku_id)", "PRIMARY KEY (predecessor_sku_id)")],
     ["publication nullable", successorCreate.replace("publication_id uuid NOT NULL", "publication_id uuid")],
@@ -998,8 +1018,8 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     ["appended table ACL", successorCreate + "GRANT SELECT ON public.catalog_sku_successors TO PUBLIC;"],
     ["appended column ACL", successorCreate + "GRANT SELECT(publication_id) ON public.catalog_sku_successors TO authenticated;"],
     ["appended role smuggling", successorCreate + "CREATE ROLE cat_smuggled NOLOGIN;"],
-  ])("refuses installed successor shape: %s", async (_label, statement) => {
-    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, statement), false, successorBase)).rejects.toThrow(/catalog:/u);
+  ])("refuses installed successor shape: %s", async (_label, statement, setup = successorBase) => {
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, statement), false, setup)).rejects.toThrow(/catalog:/u);
   });
   const sameSkuColumn = "ALTER TABLE public.subscription_lines ADD COLUMN catalog_sku_revision_id uuid;";
   const sameSkuFk = "ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;";
