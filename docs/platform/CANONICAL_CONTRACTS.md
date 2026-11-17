@@ -1814,8 +1814,8 @@ readiness takes no commerce locks.
   reference by foreign key are never locked `FOR UPDATE`, never deleted, and never
   have a uniquely indexed column changed. Writers update other columns (`FOR NO
   KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` on
-  these rows never waits for a catalogue writer, so these foreign-key checks are exempt from the
-  ordering in R2 and R4.
+  these rows never waits for a catalogue writer, so these foreign-key checks are
+  exempt from the ordering in R2 and R4.
 - **R4. Advisory locks take the rank of the rows they guard**, with shared and
   exclusive modes as for rows. A transaction that takes both an advisory guard
   and row locks of the same rank takes the guard first, before any row lock of
