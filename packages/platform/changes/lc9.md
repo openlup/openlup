@@ -1,4 +1,4 @@
-Every native edit preview discloses agreed and proposed per-line prices in the agreement currency and binds the complete disclosure to acceptance.
+Previews from the native editor factories and legacy bridge disclose agreed and proposed per-line prices in the agreement currency and binds the complete disclosure to acceptance.
 
 a quote preview can be consumed only by the actor that created it
 
