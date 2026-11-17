@@ -24,5 +24,14 @@ and refuse changed payloads without reopening the key. Fresh quote execution and
 also admit cadence before dependencies; expired recreation checks both stored
 cadences before provider I/O and returns `cadence_limit_exceeded`.
 
+Checkout command execution checks authenticated completed identity and retained
+draft-quote receipts through `findCompletedCheckoutCommand` before fresh quote
+admission. Matching history reuses its stored quote; missing or invalidated
+drafts require fresh admission. Bind a historical `decodeCommandQuote` parser
+and SELECT access to `commerce_order_draft_receipts` for this lookup. Fresh
+subscription future-terms commands admit supplied cadence/plan days after
+receipt replay and before host translation or native preview/apply dispatch,
+so an out-of-range preview cannot persist a refusal receipt.
+
 Migration: no SQL changes. Existing 90-day SQL guards and the starter's
 `starter_database_cadence_limit` refusal above 90 remain pending a separate slice.

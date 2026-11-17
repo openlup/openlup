@@ -1,4 +1,5 @@
 import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { lifecycleTerms, retentionFields } from "./lifecycleTerms.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./index.js";
@@ -100,6 +101,11 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       WHEN status<>'previewed' THEN result||jsonb_build_object('status','replayed','originalStatus',status,'commandFingerprint',command_fingerprint)
       END AS response FROM receipt`, [...values, preview, !!futureTerms]);
     if (stored.rows[0]?.response) return commandResult(subscriptionRecord(stored.rows[0].response));
+    if (["update_package_template", "update_bundle", "resize_bundle", "update_plan_length"].includes(input.action)
+      && [input.payload.cadenceDays, input.payload.planDays]
+        .some(days => days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > MAX_CADENCE_DAYS))) {
+      return { status: "refused", reason: "subscription_command_invalid_input" };
+    }
     if ((input.action === "pause" || input.action === "cancel") && binding.retentionReasonCodes
       && input.payload.survey !== null && typeof input.payload.survey === "object") {
       const reasonCode = subscriptionRecord(input.payload.survey).reasonCode;

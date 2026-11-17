@@ -13,6 +13,7 @@ import {
   type ConfiguratorIntentSupabaseClient,
 } from "./configuratorIntentPersistence.js";
 import { ConfiguratorIntentPersistenceConflictError } from "../../domains/commerce/configuratorIntentPersistenceHandler.js";
+import { orderDraftSummary } from "../../domains/commerce/commerceRuntimeService.fixtures.js";
 
 const CLIENT_ID = "11111111-1111-4111-8111-111111111111";
 const PET_ID = "22222222-2222-4222-8222-222222222222";
@@ -51,6 +52,26 @@ function selectClient(result: { data: unknown; error: unknown }) {
 }
 
 describe("supabaseConfiguratorIntentPersistencePort — findCompletedIdentity", () => {
+  it("authenticates a historical command and decodes its retained 3661-day quote using SELECTs only", async () => {
+    const command = { ...commandWithPhone("+12025550123", "US"), mode: "subscription" as const, cadenceDays: 3661 };
+    const quoteSnapshot = orderDraftSummary().quoteSnapshot;
+    quoteSnapshot.quote.context = { mode: "subscription", cadenceDays: 3661, promoCodes: [] };
+    const from = vi.fn((table: string) => {
+      const query = { eq: vi.fn(() => query), limit: vi.fn(async () => ({ data: [table === "commerce_idempotency_keys"
+        ? { response_payload: { ...completedPayload(), idempotencyKey: command.idempotencyKey, petId: null },
+          // Golden md5 of the canonical command's PostgreSQL JSONB text.
+          request_fingerprint: "69b8ea7a867ff0fcee9b44ebf8207799" }
+        : { response_payload: { orderDraft: { quoteSnapshot } }, invalidated_at: null }], error: null })) };
+      return { select: vi.fn(() => query) };
+    });
+    const rpc = vi.fn();
+    const port = portFor(asClient({ from, rpc }));
+    await expect(port.findCompletedCheckoutCommand!(command)).resolves.toMatchObject({
+      persistence: { replayed: true, subjectId: null }, quoteSnapshot: { quote: { context: { cadenceDays: 3661 } } },
+    });
+    expect(from.mock.calls.map(([table]) => table)).toEqual(["commerce_idempotency_keys", "commerce_order_draft_receipts"]);
+    expect(rpc).not.toHaveBeenCalled();
+  });
   it("returns the parsed identity stored on the completed key", async () => {
     const { client, from, builder, limit } = selectClient({
       data: [{ response_payload: completedPayload() }],

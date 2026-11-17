@@ -2350,7 +2350,13 @@ export interface CommerceCheckoutRuntimePort<StartRequest, StartResponse, Result
     startRuntime(request: StartRequest): Promise<StartResponse>;
     applyPaymentResult(request: ResultRequest): Promise<ResultResponse>;
 }
-export interface CheckoutCommandPersistencePort<Command, Persistence> {
+export interface CheckoutCommandPersistencePort<Command, Persistence, Quote = unknown> {
+    /** SELECT only: authenticate the complete command and return its retained quote.
+     * Missing identity/draft receipts mean fresh work; conflicts must refuse. */
+    findCompletedCheckoutCommand?(command: Command): Promise<{
+        persistence: Persistence;
+        quoteSnapshot: Quote;
+    } | null>;
     persistCheckoutCommand(command: Command): Promise<Persistence>;
 }
 export interface CheckoutCommandRuntimeRequest<Command, Provider> {
@@ -8025,7 +8031,7 @@ export interface CheckoutRuntimeResponse {
 ```ts
 import type { z } from "zod";
 import type { CreateQuoteRequest, PricingPolicySnapshot } from "../../pricing/index.js";
-import type { CheckoutJourney, CommerceOrderDraftWritePort, CheckoutCommandRuntimeResult } from "../contracts/index.js";
+import type { CheckoutJourney, CommerceOrderDraftWritePort, CheckoutCommandRuntimeResult, CheckoutCommandPersistencePort } from "../contracts/index.js";
 import type { CommerceQuotePort } from "../ports.js";
 import type { CheckoutCommandV1, CheckoutCommandPersistenceResult } from "../checkoutCommandSchemas.js";
 import { type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
@@ -8069,9 +8075,7 @@ export declare function createCheckoutCommandExecutor<Provisioned extends {
 }): {
     executeCheckoutCommand: (request: CheckoutCommandExecutionRequest<Provider, MethodKind, RecurringModel>, deps: {
         quotePort?: CommerceQuotePort<CheckoutCommandQuoteRequest, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
-        persistencePort?: {
-            persistCheckoutCommand(command: CheckoutCommandV1): Promise<CheckoutCommandPersistenceResult>;
-        };
+        persistencePort?: CheckoutCommandPersistencePort<CheckoutCommandV1, CheckoutCommandPersistenceResult, Snapshot>;
         orderDraftPort?: CommerceOrderDraftWritePort<{
             idempotencyKey: string;
             quoteSnapshot: Snapshot;
@@ -9607,6 +9611,7 @@ import type { RpcError } from "../contracts/omsTypes.js";
 interface CompletedIntentRow {
     response_payload?: unknown;
     request_fingerprint?: string | null;
+    invalidated_at?: string | null;
 }
 interface ConfiguratorIntentIdentityQueryResult {
     data: CompletedIntentRow[] | null;
@@ -9641,13 +9646,15 @@ export interface ConfiguratorIntentRpcQueryClient<Request, Command> {
         data: unknown;
         error: RpcError | null;
     }>;
-    from(tableName: "commerce_idempotency_keys"): ConfiguratorIntentIdentityTable;
+    from(tableName: "commerce_idempotency_keys" | "commerce_order_draft_receipts"): ConfiguratorIntentIdentityTable;
 }
-export declare function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence>(client: ConfiguratorIntentRpcQueryClient<Request, Command>, bindings: {
+export declare function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence, Quote = unknown>(client: ConfiguratorIntentRpcQueryClient<Request, Command>, bindings: {
     responseSchema: z.ZodType<Response>;
     decodeCommandResponse(data: unknown): Persistence;
+    /** Historical quote parser; it must preserve stored cadence representation. */
+    decodeCommandQuote?(data: unknown): Quote;
     normalizePhoneToE164(phone: string, country: unknown): string | null;
-}, identity?: ConfiguratorIntentPersistenceIdentity): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence>;
+}, identity?: ConfiguratorIntentPersistenceIdentity): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence, Quote>;
 export {};
 ```
 ## dist/commerce/server/configuratorIntentPersistenceHandler.d.ts

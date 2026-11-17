@@ -175,7 +175,10 @@ export interface CommerceCheckoutRuntimePort<StartRequest, StartResponse, Result
   ): Promise<ResultResponse>;
 }
 
-export interface CheckoutCommandPersistencePort<Command, Persistence> {
+export interface CheckoutCommandPersistencePort<Command, Persistence, Quote = unknown> {
+  /** SELECT only: authenticate the complete command and return its retained quote.
+   * Missing identity/draft receipts mean fresh work; conflicts must refuse. */
+  findCompletedCheckoutCommand?(command: Command): Promise<{ persistence: Persistence; quoteSnapshot: Quote } | null>;
   persistCheckoutCommand(command: Command): Promise<Persistence>;
 }
 
