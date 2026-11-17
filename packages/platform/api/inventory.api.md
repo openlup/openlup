@@ -161,7 +161,7 @@ export interface SubscriptionForecastTotals extends SubscriptionForecastCounts {
 ```ts
 export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInventoryReservationsRequest, AdminInventoryStockAdjustmentRequest, AdminInventorySubscriptionForecastRequest, InventoryStockListResponse, InventoryReservationsListResponse, InventoryStockAdjustmentResponse, InventorySubscriptionForecastResponse, InventorySubscriptionForecastSku, InventoryForecastDemandLine, InventoryForecastSupplyLine, InventoryForecastResponse, } from "./inventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
-export type { ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
+export type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
 export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
 ```
 ## dist/inventory/contracts/inventory.d.ts
@@ -352,6 +352,12 @@ export interface NewPurchaseStockAvailabilityOptions {
 ## dist/inventory/contracts/reservation.d.ts
 
 ```ts
+/** Checked on each policy helper call: positive safe integers, min <= default <= max. */
+export interface CheckoutReservationLifetimePolicy {
+    minMinutes: number;
+    maxMinutes: number;
+    defaultMinutes: number;
+}
 export interface ReservationPolicyInput {
     reservationKind: string;
     paymentTargetKind: "one_time_order" | "subscription_cycle" | string;
@@ -411,6 +417,7 @@ export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailab
 export type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 export { createNewPurchaseStockAvailabilityPort } from "./newPurchaseStockAvailability.js";
 export { MIN_CHECKOUT_RESERVATION_TTL_MINUTES, MAX_CHECKOUT_RESERVATION_TTL_MINUTES, DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES, reservationPolicyFor, normalizedTtlMinutes } from "./reservationPolicy.js";
+export type { CheckoutReservationLifetimePolicy } from "./contracts/reservation.js";
 export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPort } from "./renewalReservation.js";
 export { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput, type PurchaseReservationResult, type PurchaseInventoryReservationPort } from "./purchaseReservation.js";
 export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
@@ -705,12 +712,14 @@ export {};
 ## dist/inventory/reservationPolicy.d.ts
 
 ```ts
-import type { ReservationPolicyInput, ReservationPolicy } from "./contracts/reservation.js";
+import type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy } from "./contracts/reservation.js";
 export declare const MIN_CHECKOUT_RESERVATION_TTL_MINUTES: number;
 export declare const MAX_CHECKOUT_RESERVATION_TTL_MINUTES: number;
 export declare const DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES: number;
-export declare function reservationPolicyFor(input: ReservationPolicyInput): ReservationPolicy;
-export declare function normalizedTtlMinutes(value: number | null | undefined): number;
+/** Validates the policy on every call, including non-checkout kinds. Invalid policies throw reservation_policy_invalid. */
+export declare function reservationPolicyFor(input: ReservationPolicyInput, policy?: CheckoutReservationLifetimePolicy): ReservationPolicy;
+/** Validates the policy on every call; invalid policies throw reservation_policy_invalid. */
+export declare function normalizedTtlMinutes(value: number | null | undefined, policy?: CheckoutReservationLifetimePolicy): number;
 ```
 ## dist/inventory/schemas.d.ts
 

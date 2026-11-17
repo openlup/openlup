@@ -1,3 +1,10 @@
+/** Checked on each policy helper call: positive safe integers, min <= default <= max. */
+export interface CheckoutReservationLifetimePolicy {
+  minMinutes: number;
+  maxMinutes: number;
+  defaultMinutes: number;
+}
+
 export interface ReservationPolicyInput {
   reservationKind: string;
   paymentTargetKind: "one_time_order" | "subscription_cycle" | string;

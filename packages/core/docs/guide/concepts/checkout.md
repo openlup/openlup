@@ -46,6 +46,31 @@ and attempt states, verified results, transient secrets and late success.
 
 ## Expiry and recovery
 
+### Inventory reservation lifetime
+
+In the next minor release (currently unreleased), `reservationPolicyFor(input, policy?)`
+and `normalizedTtlMinutes(value, policy?)` from `@openlup/platform/inventory`
+accept a `CheckoutReservationLifetimePolicy` with `minMinutes`, `maxMinutes` and
+`defaultMinutes`. Omission preserves the 1440–2160-minute clamp and 1440-minute
+fallback. Each call validates positive safe integers and
+`minMinutes <= defaultMinutes <= maxMinutes`; invalid policy throws
+`reservation_policy_invalid`, including for non-checkout kinds.
+
+For `checkout_payment_window`, positive finite TTL input is floored and clamped;
+missing, non-finite or non-positive input uses `defaultMinutes`. Other kinds
+retain null expiry and TTL. For example, `{ minMinutes: 10, maxMinutes: 60,
+defaultMinutes: 30 }` permits a shorter checkout window. Pass the calculated
+`expiresAt` to the purchase reservation port when creating a fresh hold.
+
+The native purchase port persists that expiry. Later reads and matching replay
+retain it after configuration changes; replay must carry the original command's
+expiry. Recomputing it with a changed policy conflicts with the original keyed
+input. Native SQL requires a finite future expiry for a fresh hold and imposes
+no 1440–2160-minute clamp. An explicit `expiresAt` bypasses this TS helper; null
+at the native purchase port selects its existing 30-minute SQL fallback.
+
+### Checkout recovery
+
 Checkout expiry and recovery-link expiry are separate decisions. The native
 one-time expiry sweep uses elapsed inventory reservations and checks recorded
 capture evidence before expiring an unpaid order and releasing held stock.
