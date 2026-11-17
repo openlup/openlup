@@ -3,8 +3,12 @@
 `@openlup/platform` provides the server substrate an application composes: Node
 HTTP and BFF dispatch, scheduling and leases, blob storage, data gateways,
 PostgreSQL migrations and optional commerce services. Ports and contracts live in
-`@openlup/core/platform-runtime`. This is a development preview: pin exact versions
-and upgrade the `@openlup/*` set together after reading every changelog.
+`@openlup/core/platform-runtime`. Pin exact versions and upgrade the `@openlup/*`
+set together after reading every changelog. Follow the
+[stable API contract](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api): unions
+and literal sets are open, additions are minor, and consumers must keep a default
+branch for unknown values. The generated [maturity reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/maturity.md)
+identifies stable, experimental and testing subpaths.
 
 ```sh
 npm install --save-exact @openlup/core @openlup/platform
@@ -159,7 +163,7 @@ and the retained [M14 obligations](https://github.com/openlup/openlup/blob/main/
 The provider-owned HTTP counterexample exercises an existing adapter's cached
 bearer; its local fixture establishes no hosted revocation guarantee.
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -174,27 +178,27 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./job-ledger` | The job-run ledger port, its PostgreSQL and managed (Supabase) adapters, the managed v2/v3 compatibility calls and the location of its SQL |
 | `./kernel` | The bundle identifiers, descriptors and readiness |
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
-| `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
+| `./identity` | Identity engine, authorization, profile readers, session adapters and BFF factories |
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
-| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
+| `./communications` | Existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
-| `./payments/testing` | Experimental offline adapter conformance runner and scripted transport fake; development preview. |
-| `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
-| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, capability declarations/refusals and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
-| `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` with selected `nativeDispatch` or explicit host preparation; requires a capability-local transaction lane and contribution composition. Optional `shadowCommandFingerprint` preserves actual adapter command identity. |
-| `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
-| `./fulfillment/native` (shipment commands) | Experimental `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./payments/testing` | Testing-only offline adapter conformance runner and scripted transport fake. |
+| `./payments` | Prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
+| `./fulfillment`, `./fulfillment/contracts` | [Fulfillment services, capability declarations/refusals and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./fulfillment/native` | `createNativeFulfillmentBinding` with selected `nativeDispatch` or explicit host preparation; requires a capability-local transaction lane and contribution composition. Optional `shadowCommandFingerprint` preserves actual adapter command identity. |
+| `./fulfillment/native` (operator transactions) | `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./fulfillment/native` (shipment commands) | `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (local commerce) | `createPostgresFulfillmentCommerceMutationPort` composes local creation, private operator-attempt audit and cancellation. `createPostgresFulfillmentDispatchComposition` supplies recorded native candidate/preparation reads. Install the complete catalogue through the dispatch-outcome forward; authenticate operators in the host. |
-| `./fulfillment/native` (provider intake) | Experimental `createPostgresFulfillmentProviderIntake` composes verified ingress, first-envelope replay, recorded correlation, exact stock, scoped exception recovery and leased reconciliation over existing workers and commands. Supply committed SQL calls, declared channels, durable keys and accounting policy. Empty tracking references write no arrival. See the [native recipe](../core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation); offline evidence only. |
+| `./fulfillment/native` (provider intake) | `createPostgresFulfillmentProviderIntake` composes verified ingress, first-envelope replay, recorded correlation, exact stock, scoped exception recovery and leased reconciliation over existing workers and commands. Supply committed SQL calls, declared channels, durable keys and accounting policy. Empty tracking references write no arrival. See the [native recipe](../core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation); offline evidence only. |
 | `./fulfillment/native` (customer alignment) | `createPostgresCustomerAlignmentRowsReader` feeds `readFulfillmentDelay` with protected/aligned rows ordered by update time. Supply authorized subscription IDs and current schedules. Replacement creation queues only; selected native dispatch submits the new parcel independently, and actual arrival settles alignment. Overview remains host-bound. |
-| `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
-| `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
+| `./fulfillment/native` (commerce projection) | Reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
+| `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
-| `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
-| `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
+| `./inventory` | Schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
+| `./catalog` | Neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
 | `./commerce/server/postgres` | Existing native OMS control, reduced control-plane, delivered system-hold recovery and return lifecycle stores; host executor |
@@ -207,12 +211,12 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
-| `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
+| `./pricing` | Price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitives, acquisition validators and shipping-terms validator, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
-| `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
+| `./promotions` | Promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
-| `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
+| `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 
 ## HTTP runtime and security contract
@@ -937,7 +941,7 @@ Event-type literals and host payload behavior are preserved.
 
 ## Commerce domain effects
 
-The experimental Node-only `./commerce/server` entry provides the transactional email
+The Node-only `./commerce/server` entry provides the transactional email
 consumer factories, their descriptors and dispatch registry. Compose explicit
 `uniqueRegistry` composition from `@openlup/outbox` and
 `CommerceEmailRuntime` bindings for the fulfillment payload parser, communications
@@ -1006,7 +1010,7 @@ priority remains in force for purchase admission. Matching replay retains the
 reservation identity and current status; changed keyed input and elapsed initial
 expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
-development-preview source binding. See the
+source binding with explicit host composition. See the
 [G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
 Fresh reserve/release writes and expiry require READ COMMITTED and shared
 transaction admission. Contention maps to `InventoryPersistenceError`
@@ -1132,6 +1136,27 @@ Omission preserves incumbent behavior. See [parity seams](https://github.com/ope
 
 ## Pricing
 
+The unbound `createCatalogPriceSetupHandler` and
+`createPostgresCatalogPriceSetupStore` provide human-authorized preview, apply and
+receipt readback for one immediate positive gross base at minimum quantity one.
+Portable DTOs live in `./pricing/contracts`; schemas and canonical-byte encoding
+live in `./pricing`. The command matches the price operations retained in draft
+v2/v3. Hosts bind the same verified administrator session to authorization and
+SQL execution. No route, capability or runtime binding is installed.
+
+Apply serializes receipt before price context, checks the expected base and
+closes/inserts at one database statement instant. Replay precedes target reads;
+key reuse or another operator refuses. The read-only readiness routine validates
+native input domains, actual financial definitions, retained agreements and the
+independently audited cohort. Unproven evidence hard-refuses before and after the
+provisional write. Preview restores every provisional price row. Existing
+subscriber agreements and clocks are unchanged. The known aggregate-reason defect
+is retained: an existing invalid-SKU reason can hide a second invalid SKU.
+See [native base-price writes](../../docs/platform/DATA_AND_MIGRATIONS.md#native-base-price-writes)
+for installation, transfer and managed-rail limits. Scheduling, list lifecycle,
+context-version operations, zero-price writes and broader price plans remain
+reserved for a later command version.
+
 The existing `./catalog` entry supplies the opt-in PostgreSQL quote catalog
 reader described under [Catalog](#catalog); the quote engine consumes its
 existing `CommerceQuoteCatalogReadPort`.
@@ -1202,7 +1227,7 @@ the caller controls the key set. Readiness keeps its 60-second positive and
 5-second negative caps. Every caller-side policy reason still requires a
 dedicated host monitor; the exported reason tuple lets a host coverage check
 enumerate the reasons but does not install or verify monitors.
-The additive experimental acquisition API is off by default. `selectAcquisitionTerms`
+The additive acquisition API is off by default. `selectAcquisitionTerms`
 and `filterAcquisitionPromotions` require an `AcquisitionFinancialPolicy<Row>`:
 row facts, classification, metadata validation, pair matching, initial rate and
 unconfigured terms all come from the host. Omission refuses with
@@ -1630,7 +1655,7 @@ consumer exercises both new stores and the descriptor without optional peers;
 its synthetic executor proves named refusal, not durable storage behavior.
 
 
-`./catalog` is an experimental capability for the existing neutral catalog
+`./catalog` provides the existing neutral catalog
 foundation, installed product types, draft validation/use cases, active SKU
 selection, resolved SKU projection and sellable reference reads. Hosts supply
 the read/store ports, verified operator authorizer, product-type registry and
@@ -1948,14 +1973,14 @@ contacts and refreshes optional defaults only on unlinked rows; its result grant
 no account access and linked rows remain untouched.
 See [guest contact resolution](../core/docs/guide/concepts/identity.md#guest-checkout-contact-resolution)
 for host quotas, internal result fields and erasure boundaries.
-This is a development-preview import candidate, not an activated adopter contract.
+Importing identity does not activate an adopter’s composition.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
 See the [identity recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority) for composition, migrations and operator invitations.
 
 ## Personal data
 
-The experimental identity entry provides contributor-based personal-data export and erasure.
+The identity entry provides contributor-based personal-data export and erasure.
 See the [personal-data recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage) for composition, refusals and retained obligations.
 
 ## Disposable identity composition
@@ -2243,7 +2268,7 @@ adapter refusal envelope; envelope forwarding remains unsupported.
 
 ### Test a payment adapter offline
 
-`@openlup/platform/payments/testing` is an experimental development-preview kit
+`@openlup/platform/payments/testing` is a testing kit
 for adapter authors. It re-exports `runPaymentAdapterConformance`; the existing
 `./payments` export remains available. `createScriptedPaymentFake` supplies a
 separate FIFO queue per injected transport call, with success, provider 5xx,
@@ -2593,7 +2618,7 @@ published complete migration chain. See the
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
-The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
+The `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor and the sized parcel lever value;
 `./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
@@ -2664,7 +2689,7 @@ account page and selects no other retention planner.
 
 See [invoicing composition, duties and read helpers](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md).
 
-Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
+`@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
 `invoicing/contracts` contains types only. Host selection is explicit and default-off.
 Frozen facts, correction recovery, exact absence, owed duties and host-only fiscal,
 artifact, delivery, payout and owned-history seams are described in the
@@ -2733,7 +2758,7 @@ OMS read projections are optional. Omitting the host health classifier preserves
 
 ### Captured native invoice composition
 
-Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabled
+`@openlup/platform/invoicing/postgres` supplies an explicitly enabled
 captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
 owned invoice-history/ticket reader. The host passes a restricted runtime
 executor and authenticated principal UUID. See the
@@ -2774,7 +2799,7 @@ store or HTTP route is installed by these entries.
 `applied_from_next_parcel` leaves the frozen parcel unchanged; show that scope to
 the customer.
 
-Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
+`@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner
 ports; delegation preserves their arguments, receivers, results, nulls and thrown
 failures. Authentication, authorization and private profile/market projection stay
@@ -2957,7 +2982,7 @@ no release is implied.
 
 ## Operations and diagnostics
 
-The experimental `./operations` entry contains browser-safe operational schemas,
+The `./operations` entry contains browser-safe operational schemas,
 alert projections and `createOperationsClients`, which binds an existing BFF
 requester. `./operations/contracts` contains DTOs and narrow ports only.
 `./operations/server` contains settings read/update, pipeline read, alert overview,
@@ -2979,7 +3004,7 @@ for refusal behavior, SQL prerequisites and the bounded preview scope.
 
 ## Risk controls
 
-The experimental `@openlup/platform/risk` entry exports the existing strict
+The `@openlup/platform/risk` entry exports the existing strict
 schemas with CSP-safe Zod initialization. `risk/contracts` is type-only;
 `risk/server` exports paid-order assessment, subject hashing, structural managed
 clients and the native executor factory. Core risk remains at `@openlup/core/risk`.
@@ -3008,7 +3033,7 @@ invokes it nor claims transfer/restore support.
 
 ## Company identity
 
-Experimental `./company-identity` preserves the existing compatibility schemas
+`./company-identity` preserves the existing compatibility schemas
 (including optional registry fields); `./company-identity/contracts` contains only
 browser-safe types over the unchanged core contract. `./company-identity/server`
 exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
@@ -3022,7 +3047,7 @@ application retains its existing national rules and callers unchanged.
 
 ## Market packs
 
-Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+`./market-packs` exposes pure settlement/fiscal record readers,
 profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
 explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
 and display locale independently; formatting historical amounts uses their own
@@ -3040,7 +3065,7 @@ separate source composition from an installed or mounted deployment.
 
 ## Channels
 
-The experimental `@openlup/platform/channels` subpath provides browser-safe
+The `@openlup/platform/channels` subpath provides browser-safe
 normalized order, retained purchase, page/cursor and money-allocation contracts
 and helpers. `channels/contracts` exports types only. `channels/server` exposes
 ingest admission/saga, webhook/operator/pull/recovery helpers and explicit store,

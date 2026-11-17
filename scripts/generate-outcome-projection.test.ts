@@ -6,7 +6,7 @@ import { collectOutcomeProjection, renderOutcomeProjection, runOutcomeProjection
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture() {
+function fixture(version = "0.36.0") {
   const scratch = resolve(".context/scratch/outcome-projection");
   mkdirSync(scratch, { recursive: true });
   const root = mkdtempSync(join(scratch, "case-")); roots.push(root);
@@ -15,7 +15,7 @@ function fixture() {
     writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
   };
   put("config/openlup-packages.json", { schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: true }], unreleased: [] });
-  put("packages/core/package.json", { name: "@openlup/core", version: "0.36.0", exports: { "./subscription": "./dist/subscription.js" } });
+  put("packages/core/package.json", { name: "@openlup/core", version, exports: { "./subscription": "./dist/subscription.js" } });
   put("packages/core/release-gates.json", { packageSurface: { "./subscription": { snapshot: "api/subscription.api.md", packageSmokeEvidence: ["smoke/subscription.test.ts"] } } });
   put("packages/core/api/subscription.api.md", "Synthetic public API\n");
   put("packages/core/smoke/subscription.test.ts", "throw new Error('unexecuted synthetic witness');\n");
@@ -23,6 +23,11 @@ function fixture() {
 }
 
 describe("neutral outcome projection", () => {
+  it.each(["1.0.0", "1.2.3", "1.0", "01.0.0", "1.0.0-rc.1"])("projects or refuses set %s", version => {
+    const { root } = fixture(version);
+    if (["1.0.0", "1.2.3"].includes(version)) expect(collectOutcomeProjection(root).setVersion).toBe(version);
+    else expect(() => collectOutcomeProjection(root)).toThrow(/invalid package identity/u);
+  });
   it("keeps an existing but unexecuted witness partial and blocks the claim", () => {
     const { root } = fixture();
     const projection = collectOutcomeProjection(root);

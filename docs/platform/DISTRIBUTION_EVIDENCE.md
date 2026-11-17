@@ -2,8 +2,8 @@
 
 Status: historical record, 2026-11-09.
 
-Status: development-preview source tooling. No complete release outcome or
-supported installation is claimed.
+Status: qualification evidence for the one supported stable 1.x installation
+composition: the npm starter, PostgreSQL and the qualified image.
 
 ## Released starter inputs
 
@@ -224,6 +224,9 @@ first hosted qualification, which must remeasure the step's bound.
 
 ## Public outcome projection
 
+The projection uses the release tooling's coherent-set rule: `0.N.P` with N at
+least 1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1; prereleases are refused.
+
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,
 class counts, API snapshots and executable proof links from `config/openlup-packages.json`,
 the package manifests and each code export's existing `packageSmokeEvidence`
@@ -260,6 +263,11 @@ not an input to this file. The [task record](plans/oss-m19-g16.md) retains that
 requirements for a later complete claim.
 
 ## Package-set BOM
+
+Both BOM formats use the same coherent-set rule as release preparation. Their
+`posture` follows the selected version: `development-preview` for 0.x and
+`stable` from 1.0.0. Re-qualifying a historical 0.x tag preserves its preview
+posture; a stable version alone supplies no execution or provenance evidence.
 
 The BOM generator consumes the existing exact-commit `packages-manifest.json`
 and its retained tarballs. The package producer owns building, packing and its
@@ -376,6 +384,44 @@ repository and choose its retention policy. Source presence and local OCI-layout
 activation nor a hosted qualification run. The running-image canary below must
 pass before the archive is handed to this publication job.
 
+Qualified sets also publish the four evidence files (BOM, both CycloneDX SBOMs
+and the unmodified qualification receipt) at the root of a scratch image in the
+same GHCR package, tagged `<set-version>-evidence`, never `latest`. The publisher
+admits canonical set versions, including 1.x, and reuses the existing write
+permissions and tools. Both version tags refuse a changed digest; both subjects
+are read back and attested with the same pinned provenance action. Final PASS
+requires verification of both attestations. The final publication receipt records
+`evidence.manifestDigest`, registry readback and the evidence bundle SHA-256.
+Dispatches that skip publication issue neither attestation nor durable copy.
+
+Maintainers retain each `*-evidence` tag, its digest-addressed contents and its
+associated provenance attestation in GHCR for at least one year after release;
+do not delete them during that period. Keep the 90-day Actions copies for
+convenience. GHCR retention is a maintainer obligation, not an Actions artifact
+retention setting. The durable copy contains the qualification receipt before
+publication adds registry and attestation results, avoiding a self-referential
+receipt digest.
+
+Retrieve the evidence digest from the final publication receipt (or resolve the
+version's evidence tag), then verify and extract without running the image:
+
+```sh
+image=ghcr.io/openlup/neutral-store-starter
+# Set digest to the recorded evidence.manifestDigest, including sha256:.
+docker pull "$image@$digest"
+gh attestation verify "oci://$image@$digest" --owner openlup --signer-workflow openlup/openlup/.github/workflows/registry-tutorial.yml --bundle-from-oci
+container=$(docker create "$image@$digest" /unused)
+docker cp "$container:/" ./release-evidence
+docker rm "$container"
+```
+
+Alternatively, preserve the digest in an OCI layout with
+`skopeo copy --preserve-digests "docker://$image@$digest" oci:release-evidence:qualified`.
+The verified digest covers all four files; the BOM's `sbom` hashes additionally
+check each inventory's exact bytes, and the receipt's `bom.sha256` checks the BOM.
+Local fixtures establish refusal behavior; hosted publication and later retrieval
+remain execution evidence from the release run.
+
 ### Exact-artifact canary
 
 The read-only qualification job's `--canary` stage checks the BOM hash and image
@@ -406,8 +452,8 @@ qualification dependency blocks image publication on a failed canary. Compose
 cleanup runs on success and failure; the job's existing `always()` cleanup also
 removes containers and volumes labelled with a `canary-*` Compose project after
 cancellation or a step timeout.
-This is development-preview qualification, not provider certification or stable
-support. The first-party demo store is separate adoption evidence.
+This is qualification evidence for the one supported stable 1.x installation
+composition, not provider certification. The first-party demo store is separate adoption evidence.
 
 A local 2026-11-14 rehearsal on the qualified 0.41.0 set passed archive loading
 and identity, lifecycle installation/readiness (30.857 seconds), the existing

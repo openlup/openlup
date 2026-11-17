@@ -64,7 +64,7 @@ export type SetRelease = { version: string; target: string; note: string };
 
 /** The dispatch inputs of a set release, PACKAGE `all`: a set version, the target and the note. */
 export function setReleaseInputs(version: string, target: string, note: string): SetRelease {
-  if (!SET_VERSION.test(version)) throw new Error("version must be a set version 0.N.P below 1.0 for a set release");
+  if (!SET_VERSION.test(version)) throw new Error("version must be a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1) for a set release");
   if (!/^[a-f0-9]{40}$/u.test(target)) throw new Error("target_commit must be a full lowercase commit SHA");
   if (note.trim() === "" || note.includes("\0")) throw new Error("notes must contain the reviewed UTF-8 release body");
   return { version, target, note };
@@ -170,37 +170,80 @@ function appReleaseTags(root: string, directory: string, pattern: string): Array
   });
 }
 
-/**
- * A patch set `0.N.P`, P above 0, only fixes: the package's API snapshot (`<directory>/api/`) at
- * `target` equals the one at its previous set, the highest release tag `openlup-<package>-v0.N.<p>`
- * with p below P that the release App made. A package with no such tag joins the set at a minor set.
- */
+async function reportExportNames(root: string, directory: string, ref: string): Promise<Set<string>> {
+  const ts = await import("typescript");
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  const reports = new Set(git("ls-tree", "-r", "--name-only", ref, "--", `${directory}/api`).trim().split("\n"));
+  const surface = JSON.parse(git("show", `${ref}:${directory}/release-gates.json`)).packageSurface ?? {};
+  const names = new Set<string>();
+  for (const [subpath, { entrypoint, snapshot }] of Object.entries(surface) as Array<[string, { entrypoint: string; snapshot: string }]>) {
+    if (!reports.has(`${directory}/${snapshot}`)) continue;
+    const files = new Map([...git("show", `${ref}:${directory}/${snapshot}`).matchAll(/^## (dist\/[^\n]+)\n\n```ts\n([\s\S]*?)^```/gmu)].map((match) => [resolve("/", match[1]!), match[2]!]));
+    const options = { noLib: true, types: [], moduleResolution: ts.ModuleResolutionKind.Node10 };
+    const host: import("typescript").CompilerHost = { ...ts.createCompilerHost(options),
+      getCurrentDirectory: () => "/", directoryExists: () => true,
+      fileExists: (file) => files.has(file), readFile: (file) => files.get(file),
+      getSourceFile: (file, languageVersion) => files.has(file) ? ts.createSourceFile(file, files.get(file)!, languageVersion, true) : undefined,
+    };
+    const program = ts.createProgram([resolve("/", entrypoint)], options, host), checker = program.getTypeChecker();
+    const entry = program.getSourceFile(resolve("/", entrypoint));
+    const module = entry && checker.getSymbolAtLocation(entry);
+    if (!module) throw new Error(`${ref}:${directory}/${snapshot} has no declaration entry ${entrypoint}`);
+    for (const symbol of checker.getExportsOfModule(module)) {
+      // Cross-package re-exports cannot resolve within one report; omit them on both sides.
+      const declaration = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      if (declaration.declarations?.length) names.add(`@openlup/${directory.slice("packages/".length)}/${subpath}/${symbol.name}`);
+    }
+  }
+  return names;
+}
+
+/** Patch sets retain the API snapshots from the highest earlier patch release App tag. */
 export function assertPatchSetApiUnchanged(root: string, directory: string, version: string, target: string): void {
-  const set = /^0\.([1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
-  if (!set) throw new Error(`${version} is not a set version 0.N.P below 1.0`);
-  const minor = `0.${set[1]}.`, patch = Number(set[2]);
-  if (patch === 0) return;
-  const name = directory.slice("packages/".length);
-  const earlier = appReleaseTags(root, directory, `openlup-${name}-v${minor}*`).flatMap(({ tag, version: other }) => {
-    return other.startsWith(minor) && Number(other.slice(minor.length)) < patch ? [{ tag, patch: Number(other.slice(minor.length)) }] : [];
-  });
-  const previous = earlier.sort((left, right) => right.patch - left.patch)[0]?.tag;
-  if (previous === undefined) throw new Error(`${version} is a patch set, but ${name} has no earlier ${minor}<p> set tag; a package joins the set at a minor set`);
-  try {
-    execFileSync("git", ["diff", "--quiet", previous, target, "--", `${directory}/api`], { cwd: root, stdio: "ignore" });
-  } catch (error) {
-    if ((error as { status?: unknown }).status === 1) throw new Error(`${directory}/api differs from ${previous}; a patch set only fixes, so an API change is a minor set`);
-    throw error;
+  const set = SET_VERSION.test(version) ? version.split(".") : undefined;
+  if (!set) throw new Error(`${version} is not a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)`);
+  const minor = `${set[0]}.${set[1]}.`, patch = Number(set[2]);
+  if (patch !== 0) {
+    const name = directory.slice("packages/".length);
+    const earlier = appReleaseTags(root, directory, `openlup-${name}-v${minor}*`).flatMap(({ tag, version: other }) => {
+      return other.startsWith(minor) && Number(other.slice(minor.length)) < patch ? [{ tag, patch: Number(other.slice(minor.length)) }] : [];
+    });
+    const previous = earlier.sort((left, right) => right.patch - left.patch)[0]?.tag;
+    if (previous === undefined) throw new Error(`${version} is a patch set, but ${name} has no earlier ${minor}<p> set tag; a package joins the set at a minor set`);
+    try {
+      execFileSync("git", ["diff", "--quiet", previous, target, "--", `${directory}/api`], { cwd: root, stdio: "ignore" });
+    } catch (error) {
+      if ((error as { status?: unknown }).status === 1) throw new Error(`${directory}/api differs from ${previous}; a patch set only fixes, so an API change is a minor set`);
+      throw error;
+    }
   }
 }
 
-/** Every refusal that needs no write, before the protected approval and again after it. */
-export async function preflightPackageRelease(root: string, input: PackageRelease, token?: string, fetcher: GithubFetch = fetch, manifestCheck: typeof checkReleaseManifests = checkReleaseManifests): Promise<void> {
+/** Compiler-backed export preservation runs only in the unprivileged preflight. */
+export async function assertStableSetExportsUnchanged(root: string, directory: string, version: string, target: string): Promise<void> {
+  if (!SET_VERSION.test(version) || Number(version.split(".")[0]) < 1) return;
+  const previous = appReleaseTags(root, directory, `openlup-${directory.slice("packages/".length)}-v${version.split(".")[0]}.*`)
+    .filter(({ version: other }) => releaseVersionAbove(version, other))
+    .sort((left, right) => releaseVersionAbove(left.version, right.version) ? -1 : 1)[0]?.tag;
+  if (!previous) return;
+  const current = await reportExportNames(root, directory, target);
+  const removed = [...await reportExportNames(root, directory, previous)].filter((name) => !current.has(name));
+  if (removed.length) throw new Error(`Removed exports: ${removed.sort().join(", ")}; a removal needs a major set`);
+}
+
+/** Dependency-free refusals repeated by the protected release job. */
+async function checkPackageRelease(root: string, input: PackageRelease, token?: string, fetcher: GithubFetch = fetch, manifestCheck: typeof checkReleaseManifests = checkReleaseManifests): Promise<void> {
   assertReleaseCandidate(root, input);
   manifestCheck(root, input.tag);
   assertPatchSetApiUnchanged(root, input.directory, input.version, input.target);
   await assertTagAbsent(input.tag, token, fetcher);
   assertVersionUnpublished(input.name, input.version, await readPackument(input.name, fetcher));
+}
+
+/** The unprivileged preflight additionally checks stable export names before approval. */
+export async function preflightPackageRelease(root: string, input: PackageRelease, token?: string, fetcher: GithubFetch = fetch, manifestCheck: typeof checkReleaseManifests = checkReleaseManifests): Promise<void> {
+  await checkPackageRelease(root, input, token, fetcher, manifestCheck);
+  await assertStableSetExportsUnchanged(root, input.directory, input.version, input.target);
 }
 
 /** The set's manifests at the target: `packages:check --release-set`, with no install, build or pack. */
@@ -214,12 +257,13 @@ function publishablePackages(root: string): Array<{ directory: string; name: str
 }
 
 /** The set's refusals that need no network: the clean target, every publishable package at the set version, and the patch-set check. */
-export function preflightSetRelease(root: string, set: SetRelease, manifestCheck: typeof checkSetManifests = checkSetManifests): string[] {
+export async function preflightSetRelease(root: string, set: SetRelease, manifestCheck: typeof checkSetManifests = checkSetManifests): Promise<string[]> {
   assertCleanTarget(root, set.target);
   assertSourceReleaseSnapshot(root, set.target);
   manifestCheck(root, set.version);
   const packages = publishablePackages(root);
   for (const { directory } of packages) assertPatchSetApiUnchanged(root, directory, set.version, set.target);
+  for (const { directory } of packages) await assertStableSetExportsUnchanged(root, directory, set.version, set.target);
   return packages.map(({ name }) => name);
 }
 
@@ -312,9 +356,9 @@ export async function planRelease(root: string, packsDirectory: string, requeste
   return full;
 }
 
-/** The preflight refusals, then the exact note bytes that creation and the checks use. */
+/** Repeat dependency-free refusals, then write the exact note bytes used by creation and verification. */
 export async function preparePackageRelease(root: string, input: PackageRelease, out: string, token?: string, fetcher: GithubFetch = fetch, manifestCheck: typeof checkReleaseManifests = checkReleaseManifests): Promise<void> {
-  await preflightPackageRelease(root, input, token, fetcher, manifestCheck);
+  await checkPackageRelease(root, input, token, fetcher, manifestCheck);
   writeFileSync(resolve(out, "notes.md"), input.note, { flag: "wx" });
 }
 
@@ -385,7 +429,7 @@ async function main(): Promise<void> {
   const token = env.GITHUB_TOKEN;
   const set = env.PACKAGE === SET_DISPATCH ? setReleaseInputs(env.VERSION ?? "", env.TARGET_COMMIT ?? "", env.RELEASE_NOTES ?? "") : undefined;
   if (set && phase === "preflight") {
-    const names = preflightSetRelease(root, set);
+    const names = await preflightSetRelease(root, set);
     console.log(`${set.target} carries the set ${set.version}: ${names.join(", ")}`);
     return;
   }

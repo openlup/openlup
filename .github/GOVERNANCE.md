@@ -47,8 +47,8 @@ disclosure and human accountability, never a ban.
 ## How work becomes official
 
 The project defines core as the useful 80/20 platform and expects adopters to
-build their business specifics behind public extension seams once the stable
-channel exists. They may keep that work private or offer it back; Apache-2.0
+build their business specifics behind public extension seams. They may keep that
+work private or offer it back; Apache-2.0
 permits both. Acceptance of code is not, by itself, a promise that OpenLup will
 support it forever.
 
@@ -62,7 +62,7 @@ private -> community -> official-experimental -> official-stable -> core
 | --- | --- |
 | `private` | The adopter owns it. OpenLup has no listing, review, release, or support obligation. |
 | `community` | Its contributor owns it. OpenLup may list it for discovery, but listing is not endorsement, security review, compatibility, or support. |
-| `official-experimental` | A named OpenLup maintainer owns it. It may ship in preview artifacts and can break only with explicit upgrade notes. |
+| `official-experimental` | A named OpenLup maintainer owns it. It follows the [experimental API policy](../packages/core/docs/guide/reference/stability.md#public-api), with explicit upgrade notes. |
 | `official-stable` | A named OpenLup maintainer owns its public contract. It ships through the stable platform release/BOM and follows stable deprecation and support rules. |
 | `core` | It is official-stable and necessary to keep the 80/20 subscription-commerce platform useful without adopter reimplementation. |
 
@@ -84,7 +84,7 @@ and the stable compatibility bridge in `VERSIONING_AND_EOL.md`.
 ### Community listing and ownership loss
 
 No public community catalogue, submission schema or listing intake exists in
-the current quiet-preview phase. The rules below define future eligibility;
+the current quiet phase. The rules below define future eligibility;
 they are not an invitation to submit a listing today and no roadmap may claim a
 community marketplace until those three mechanisms exist.
 
@@ -98,7 +98,7 @@ by the maintainer and recorded when they change a reusable rule.
 
 Maintainer capacity is rechecked for every stable platform release and whenever
 an official module loses its named owner. An orphaned official-experimental
-module is frozen or returned to community status with explicit preview notes.
+module is frozen or returned to community status with explicit upgrade notes.
 An official-stable or core module cannot be silently demoted: it is marked
 orphaned/deprecated, receives either a new capable owner or a replacement, and
 leaves a future BOM only through the versioning/deprecation bridge. If it is
@@ -112,19 +112,12 @@ merchant, that merchant is **"Example Store"** - a neutral placeholder, never th
 platform's own identity, and never a real business. Any adapter or sample naming
 a specific vendor is a reference implementation, not a dependency of the core.
 
-**The name set is settled, and supported publication is not.** The project
-name is decided, and every identifier in the source now agrees with it: the
-repository manifest, the kernel package, the UI package, and the configuration
-assistant all read `openlup`. The npm scope was claimed by the owner on
-2026-08-24. Development-preview packages are released under it package-first:
-below `@openlup/core` 1.0, every `@openlup/*` package in one set version, each
-with its own tag, behind the protected release approval described in
-[Versioning and end of life](VERSIONING_AND_EOL.md#package-releases). None of
-them is a supported release, so **do not depend on a package name, version,
-branch, commit, or source checkout as a supported interface yet**. A supported
-adopter dependency begins only when a tagged stable release states its platform
-BOM and artifacts. The remaining open items are technical steps, not naming
-decisions.
+The project and npm scope are `OpenLup` and `@openlup`. Packages are released
+as one coherent set through the protected approval described in
+[Versioning and end of life](VERSIONING_AND_EOL.md#package-releases).
+The [stable API policy](../packages/core/docs/guide/reference/stability.md#public-api)
+and [install policy](INSTALL_SUPPORT_POLICY.md) define compatibility and support;
+a package name or arbitrary source checkout alone does not establish either.
 
 ## Release posture
 
@@ -134,9 +127,8 @@ is a choice about pace, not neglect, and it can be reversed later - the reverse
 is not possible, which is why this order was chosen.
 
 The files alongside this one are binding public policy even before automation
-enforces every boundary. They do not turn a development preview into stable;
-they define which evidence a future stable release must carry so support,
-security, versioning, and licensing are not improvised under load.
+enforces every boundary. They define the stable release’s support, security,
+versioning and licensing commitments and the evidence needed to assess them.
 
 ## If the project stops
 

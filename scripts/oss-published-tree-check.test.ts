@@ -296,6 +296,7 @@ describe("CI image mirror workflow controls", () => {
     expect([...writer.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]])).toEqual([
       ["actions/download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
       ["actions/attest-build-provenance", "96278af6caaf10aea03fd8d33a09a777ca52d62f"],
+      ["actions/attest-build-provenance", "96278af6caaf10aea03fd8d33a09a777ca52d62f"],
       ["actions/upload-artifact", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
     ]);
     expect(writer).not.toMatch(/\b(?:npm|npx|node)\b|actions\/checkout|secrets\.|^\s*(?:shell|container|services):/mu);
@@ -306,7 +307,7 @@ describe("CI image mirror workflow controls", () => {
     // run forms; shell allowlists cannot prove that candidate code stays inert.
     // Canonical workflow keys precede jobs, so this also seals inherited env,
     // permissions, triggers and concurrency. Defaults are refused above.
-    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("e417fbcd5b523279e7e2e3a88322314d6face06fc289e4ba329f7f18d6d531b5");
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("188974acde01acb1ef38d585216d55d647beeaca0f33125be67fbbc3819cd9bf");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
   it.each([
@@ -323,7 +324,7 @@ describe("CI image mirror workflow controls", () => {
   it.each([
     ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: {packages: write}"],
     ["actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f", "actions/attest-build-provenance@v3.2.0"],
-    [qualification.match(/ {6}- name: Verify the issued image attestation\n[\s\S]*?(?= {6}- name: Retain the final image publication receipt)/u)![0], ""],
+    [qualification.match(/ {6}- name: Verify the issued image and evidence attestations\n[\s\S]*?(?= {6}- name: Retain the final image publication receipt)/u)![0], ""],
     ["gh attestation verify ", "echo unverified "],
     ["needs: exact-set-qualification", "needs: registry-tutorial"],
     ["needs.exact-set-qualification.result == 'success'", "always()"],

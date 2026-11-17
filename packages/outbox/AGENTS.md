@@ -24,8 +24,8 @@ establish complete coverage. Core supplies the executable. See
 <!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `.` | rail | experimental |
-| `./postgres` | rail | experimental |
+| `.` | rail | stable |
+| `./postgres` | rail | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:outbox -->
 
@@ -43,7 +43,7 @@ and [deliver events with the outbox](https://github.com/openlup/openlup/blob/mai
 
 ## Sources and declarations
 
-Inspect `src/` and the exported declaration files in `dist/`; `sql/manifest.json` binds the baseline. The development preview may change any experimental export.
+Inspect `src/` and the exported declaration files in `dist/`; `sql/manifest.json` binds the baseline. Follow the [stability policy](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api) for stable, experimental and testing exports.
 
 ## Readiness codes
 

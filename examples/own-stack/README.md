@@ -2,7 +2,7 @@
 
 This README retains the sample's implementation constraints and verification record.
 
-Status: development-preview sample for `@openlup/core` and
+Status: version-pinned sample for `@openlup/core` and
 `@openlup/platform` 0.36.0, with Node 24 and PostgreSQL 16.
 
 This small Node application owns its HTTP routing and bearer-token authentication.

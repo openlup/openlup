@@ -46,7 +46,7 @@ Your application owns which subscription products, quantities and periods it
 sells, alongside its one-time offers. Compose the optional
 `admitSubscriptionTerms` callback on `PackageEditQuotePorts` (classic and exact
 editors) or `SizedHostPorts`. The platform supplies no business cadence list.
-This development-preview seam does not derive your offer configuration or UI.
+This seam does not derive your offer configuration or UI.
 
 The callback receives `SubscriptionEditTerms`: subscription identity, the full
 resulting `base` and `addons` arrays with variant ID, SKU and quantity, plus
@@ -149,73 +149,132 @@ requires a pause after failed renewal retries are exhausted, compose
 it does not implement this policy. A missing automatic setting is not a missing
 public command.
 
-Authorize the policy through trusted host evidence before invoking the adapter;
-actor identifiers alone grant no authority. In one transaction, lock the
-subscription and the current cycle/recovery evidence in the native lock order,
-then re-read active status, cycle identity, payment/recovery state and retry rung.
-Use the same trusted cadence as failure recording. A null `nextRetryAt` alone
-does not establish exhaustion. If recovery has succeeded or the cycle changed,
-skip the pause.
-
-The following helper assumes that authorization, locking and recheck have
-already succeeded. Its binding must reuse that locked transaction connection;
-`withTransaction` must not commit independently. Supply the host's pause preset,
-reason and a durable command key identifying this policy decision; retry the
-same decision with the same key and payload.
+In a source candidate containing the owned hook, replace
+`owned/renewal-policy.ts` with this complete example. Replace the synthetic
+subject IDs only after authorizing that subject through trusted application
+evidence; actor IDs alone grant no authority. The bounded selection follows the
+repository's PostgreSQL witness, `neutralStoreRenewalPolicy.test.ts`.
+Keep its default cadence here: [provider-recorded failures](#durable-retry-timing)
+do not accept a custom ladder today.
 
 ```ts
 import { isDunningLadderExhausted } from "@openlup/core/subscription";
 import {
-  createPostgresSubscriptionCommands,
-  type NativeSubscriptionCommandBinding,
+  createPostgresRetryStore,
+  type createPostgresSubscriptionCommands,
+  type SubscriptionQueryExecutor,
 } from "@openlup/platform/subscriptions";
 import type { SubscriptionCommand } from "@openlup/platform/subscriptions/contracts";
 
-export async function pauseLockedExhaustedCycle(
-  binding: NativeSubscriptionCommandBinding,
-  cycle: Parameters<typeof isDunningLadderExhausted>[0],
-  cadence: Parameters<typeof isDunningLadderExhausted>[1],
-  command: Extract<SubscriptionCommand, { action: "pause" }>,
-) {
-  if (!isDunningLadderExhausted(cycle, cadence)) return;
-  const result = await createPostgresSubscriptionCommands(binding).apply(command);
-  if ("supported" in result || result.outcome === "refused") {
-    throw new Error("pause_policy_command_refused");
-  }
-  return result;
+// Preserve the owned hook's exports used by the managed host.
+export interface RenewalPolicyInput {
+  db: SubscriptionQueryExecutor;
+  result: unknown;
+  createCommands: typeof createPostgresSubscriptionCommands;
+  withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
 }
+export type RenewalPolicy = (input: RenewalPolicyInput) => Promise<void>;
+
+const subject = {
+  clientId: "11111111-1111-4111-8111-111111111111",
+  subscriptionId: "22222222-2222-4222-8222-222222222222",
+};
+const cadence = { backoffHours: [24, 72, 168] };
+const futureTerms = async () => ({
+  outcome: "refused" as const, reason: "subscription_command_unsupported_action" as const,
+}); // Pause needs no future-term quote; other actions refuse.
+
+export const renewalPolicy: RenewalPolicy = async input => {
+  const candidate = (await input.db.query(
+    `SELECT o.renewal_operation_id FROM public.subscription_retry_obligations o
+      JOIN public.subscription_renewal_operations op ON op.id=o.renewal_operation_id
+      JOIN public.subscriptions s ON s.id=op.subscription_id
+      WHERE o.subscription_id=$1 AND op.scheduled_at=s.next_cycle_at`, // Current cycle only.
+    [subject.subscriptionId],
+  )).rows[0];
+  if (!candidate) return;
+  const operationId = String(candidate.renewal_operation_id), key = `exhaustion-pause:${operationId}`;
+  await input.withTransaction(async db => {
+    // Command actor/key -> subscription -> operation -> obligation -> cycle -> intent -> case.
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [subject.clientId, key]);
+    await db.query("SELECT id FROM public.subscriptions WHERE id=$1 AND client_id=$2 FOR UPDATE", [subject.subscriptionId, subject.clientId]);
+    await db.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1 AND subscription_id=$2 FOR UPDATE", [operationId, subject.subscriptionId]);
+    await db.query("SELECT id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1 FOR UPDATE", [operationId]);
+    await db.query("SELECT id FROM public.subscription_cycles WHERE renewal_operation_id=$1 FOR UPDATE", [operationId]);
+    await db.query("SELECT id FROM public.commerce_settlement_intents WHERE renewal_operation_id=$1 FOR UPDATE", [operationId]);
+    await db.query("SELECT id FROM public.subscription_dunning_cases WHERE cycle_id=(SELECT cycle_id FROM public.subscription_retry_obligations WHERE renewal_operation_id=$1) FOR UPDATE", [operationId]);
+    const retry = await createPostgresRetryStore(db, cadence).read(operationId);
+    const current = (await db.query(`SELECT s.status,s.next_cycle_at=op.scheduled_at AS current_cycle,
+      c.status AS cycle_status,i.status AS settlement_status,d.status AS case_status
+      FROM public.subscriptions s JOIN public.subscription_renewal_operations op ON op.subscription_id=s.id
+      JOIN public.subscription_cycles c ON c.renewal_operation_id=op.id
+      JOIN public.commerce_settlement_intents i ON i.renewal_operation_id=op.id
+      JOIN public.subscription_retry_obligations o ON o.renewal_operation_id=op.id
+      JOIN public.subscription_dunning_cases d ON d.id=o.case_id WHERE op.id=$1`, [operationId])).rows[0];
+    if (!retry || retry.state !== "waiting" || current?.status !== "active" || !current.current_cycle
+      || current.cycle_status !== "payment_pending" || current.settlement_status === "settled" || current.case_status !== "open"
+      || !isDunningLadderExhausted({ status: retry.disposition, retryAttempt: retry.retryAttempt, nextRetryAt: retry.nextRetryAt }, cadence)) return;
+    await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload)
+      VALUES($1,'application.exhaustion_policy',$2,'{}')`, [subject.subscriptionId, key]);
+    const command: Extract<SubscriptionCommand, { action: "pause" }> = {
+      actor: { kind: "customer", actorId: subject.clientId, clientId: subject.clientId },
+      subscriptionId: subject.subscriptionId, idempotencyKey: key, now: new Date().toISOString(), action: "pause",
+      pausePreset: "indefinite", reason: "exhausted_retries", survey: null, saveOffer: null,
+    };
+    const receipt = await input.createCommands({ withTransaction: work => work(db), futureTerms }).apply(command);
+    if ("supported" in receipt || receipt.outcome === "refused") throw new Error("pause_policy_command_refused");
+  });
+};
 ```
 
-A native pause closes recovery, revokes recovery tokens and terminalizes eligible
-unpaid artifacts. Let a refusal or exception escape the transaction callback so
-the entire policy transaction rolls back, including any policy bookkeeping;
-catch and report it only after rollback. Do not report a refused pause as success.
-Test exhaustion, replay, concurrent recovery and refusal rollback in your host.
-This recipe installs no automatic pause or scheduled job. In the current starter
-source candidate, put this composition in `owned/renewal-policy.ts`; the default
-is a no-op. The managed host invokes it after native renewal work, while holding
-the population advisory lock and job-ledger claim, before finishing the run.
-It supplies the trusted database session, native result, public command factory
-and a lazy transaction callback on that session. The population lease excludes
-other renewal passes; it does not exclude customer recovery. Lock and recheck
-inside the transaction as described above. Bind commands to that callback's
-connection without starting or committing an independent transaction.
+The population lease excludes other renewal passes, not customer recovery.
+The transaction waits for recovery, then skips a repaired or changed cycle;
+a null retry alone never establishes exhaustion. Commands reuse that locked
+connection without a nested commit. A pause closes recovery, revokes tokens and
+terminalizes eligible unpaid artifacts. Refusal escapes the callback, rolling
+back both bookkeeping and command receipts. Report it only after rollback.
+Replaying a command requires the same key and payload; the command fingerprint
+excludes `now`, though keeping it stable is a sensible application choice.
+A repeated hook skips the already paused subject.
 
-A hook exception fails the job run; previously committed native renewal work is
-retained. Make each policy decision replayable with its own durable command key.
-The released 0.43.0 starter retains its original managed composition; select a
-candidate containing the hook. See [compose post-renewal policy](../how-to/build/customize-the-starter.md#compose-post-renewal-policy)
-for the owned file and verification routes.
+Runnable proof from the repository root (with the contributor PostgreSQL
+prerequisites): `node scripts/test-hosted.mjs neutralStoreRenewalPolicy.test.ts`.
+It covers exhaustion, exact command replay, concurrent recovery/recheck and
+refusal rollback. Repeat these witnesses for your selection and policy.
+A hook exception fails the job; previously committed native work remains.
+The released 0.43.0 starter lacks this hook. See
+[compose post-renewal policy](../how-to/build/customize-the-starter.md#compose-post-renewal-policy)
+for candidate selection and scheduling; the default hook is a no-op.
 
 ## Durable retry timing
 
-For the [retry ladder](subscription-engine.md#the-retry-ladder-terminates), the
-native binding accepts trusted `retryCadence.backoffHours`, or the equivalent
-second argument to `createPostgresRetryStore`. This changes timing and budget;
-it cannot remove the `hard_do_not_retry` stop. Browser request data cannot
-configure it. An accepted failure receipt retains its original schedule on
-replay. Managed dunning, recovery and due-list guards still use a fixed
-exhaustion threshold; a custom core cadence does not alter them.
+The [retry ladder](subscription-engine.md#the-retry-ladder-terminates) uses delays
+after each preceding failure. `[24, 72, 168]` hours means retries on days 1, 4
+and 11 after the initial decline if each runs and fails when due. Days 1, 3 and
+7 would require `[24, 48, 96]`; that setting does not reach every path today:
+
+| Failure-recording path | Timing used |
+| --- | --- |
+| Fresh failures through `createPostgresRetryLifecycleBinding` or `createNativeRetryDriver` | Trusted `retryCadence.backoffHours`; the starter's `host/renewal-sandbox.ts:composeRenewalSandbox` passes `retryBackoffHours` to this driver. `createPostgresRetryStore(db, cadence).applyFailure` calls the four-argument SQL overload. |
+| Provider-recorded renewal failures through `payment_provider_result_apply` | The three-argument `subscription_retry_apply_failure(uuid,text,jsonb)` supplies `[24,72,168]`. The driver replays the provider's immutable failure receipt; its configured cadence cannot reschedule it. |
+
+Sandbox observation recording is separate from provider-result recording;
+configuring the starter sandbox does not establish provider retry timing.
+The current definitions are `payment_provider_result_apply` in
+[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
+and both failure overloads in
+[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
+Verify your selected catalogue or applied prefix with the
+[current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).
+
+Adopters can configure timing and budget for fresh native failure recording,
+but cannot configure the provider-result ladder through today's public
+composition. Full ladder configurability is tracked separately. Neither a
+custom cadence nor receipt replay removes the `hard_do_not_retry` stop. Browser
+request data cannot configure timing. Managed dunning, recovery and due-list
+guards retain their fixed exhaustion threshold; custom core timing does not
+alter them. Evaluate pause exhaustion against the ladder that actually recorded
+the failures.
 
 Native case opening locks the subscription and requires it to be active with
 a `payment_pending` cycle before case or notice writes. A terminalized unpaid

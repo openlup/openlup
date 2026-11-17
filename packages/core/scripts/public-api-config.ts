@@ -2,14 +2,11 @@ import { existsSync, lstatSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { resolve, sep } from "node:path";
 
-const expectedPolicies = ["internal-candidate", "testing-internal"];
+const expectedPolicies = ["experimental", "stable", "testing"];
 export const packageKinds = ["kernel", "rail", "capability", "implementation"];
-// While @openlup/core is below 1.0, every @openlup package carries one set version 0.N.P:
-// a minor set for any API, behaviour or schema change, a patch set for a fix only. This checks
-// the form; the package release workflow orders the sets by refusing a version npm holds or
-// has passed.
-export const setVersionRule = "0.N.P";
-const setVersion = /^0\.[1-9]\d*\.(?:0|[1-9]\d*)$/;
+// Packages retain one coherent set version; SemVer applies to stable APIs from 1.0.0.
+export const setVersionRule = "MAJOR.MINOR.PATCH";
+const setVersion = /^(?:0\.[1-9]\d*|[1-9]\d*\.(?:0|[1-9]\d*))\.(?:0|[1-9]\d*)$/;
 
 export function isSetVersion(version: unknown): boolean {
   return typeof version === "string" && setVersion.test(version);
@@ -18,7 +15,7 @@ export function isSetVersion(version: unknown): boolean {
 export function assertSetVersion(versionRule: unknown, version: unknown): void {
   assert(
     versionRule === setVersionRule && isSetVersion(version),
-    `package version must be a set version ${setVersionRule} below 1.0, not ${String(version)}`,
+    `package version must be a set version ${setVersionRule}, not ${String(version)}`,
   );
 }
 
@@ -34,9 +31,9 @@ const expectedConditions = [
 ];
 const runtimeConditions = ["module", "node", "development", "production", "import", "default"];
 const compatibilityByMaturity: Record<string, string> = {
-  candidate: "internal-candidate",
-  experimental: "internal-candidate",
-  testing: "testing-internal",
+  stable: "stable",
+  experimental: "experimental",
+  testing: "testing",
 };
 
 type PackageSurfaceContract = {
@@ -55,7 +52,7 @@ type PackageSurfaceConfigInput = {
     kind?: unknown;
     compatibilityPolicies: Record<string, string>;
     packageSurface: Record<string, PackageSurfaceContract>;
-    packageRelease: { phase: string; publicStability: string; artifactChannel: string };
+    packageRelease: { phase: string; publicStability: string; artifactChannel: string; versionRule: string };
     evidence: Record<string, { state: string; meaning: string }>;
   };
   packageRoot: string;
@@ -75,9 +72,10 @@ export function assertPackageSurfaceConfig({
   );
   assert(
     gates.packageRelease.phase === "platform-monorepo-phase-5" &&
-      gates.packageRelease.publicStability === "not-claimed" &&
-      gates.packageRelease.artifactChannel === "npm-staged-preview",
-    "package surface must not claim a public API; its only release channel is the staged npm preview",
+      gates.packageRelease.publicStability === "stable-semver" &&
+      gates.packageRelease.artifactChannel === "npm-stable" &&
+      gates.packageRelease.versionRule === setVersionRule,
+    "package surface must declare stable SemVer and the stable npm channel",
   );
   assertEvidenceTaxonomy(gates.evidence);
 
@@ -100,7 +98,7 @@ export function assertPackageSurfaceConfig({
   const snapshots = new Set();
   for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
     assert(["kernel", "testing"].includes(contract.role), `invalid package surface role for ${subpath}`);
-    assert(compatibilityByMaturity[contract.maturity], `invalid package surface maturity for ${subpath}`);
+    assert(Object.hasOwn(compatibilityByMaturity, contract.maturity), `invalid package surface maturity for ${subpath}`);
     assert(
       contract.compatibilityPolicy === compatibilityByMaturity[contract.maturity],
       `compatibility policy differs from ${contract.maturity} policy for ${subpath}`,
@@ -129,19 +127,19 @@ export function assertPackageSurfaceConfig({
     assert(exportEntry.types === expectedTypeTarget, `types target differs from built declaration for ${subpath}`);
     assert(contract.entrypoint === exportEntry.types.slice(2), `declaration entrypoint differs from types export for ${subpath}`);
   }
-  console.log(`package surface inventory ok (${inventoried.length} exports; public stability not claimed)`);
+  console.log(`package surface inventory ok (${inventoried.length} exports; stable SemVer from 1.0.0)`);
 }
 
 function assertEvidenceTaxonomy(evidence: PackageSurfaceConfigInput["gates"]["evidence"]): void {
   const expectedStates = {
     packageSmokeEvidence: "required",
     conformanceEvidence: "required-for-declared-ports",
-    dogfoodEvidence: "private-current-seams",
-    externalConsumerEvidence: "not-evaluated",
+    dogfoodEvidence: "first-party-production",
+    externalConsumerEvidence: "first-party-npm-and-production",
   };
   assert(
     isDeepStrictEqual(Object.keys(evidence).sort(), Object.keys(expectedStates).sort()),
-    "evidence taxonomy must distinguish package smoke, conformance, dogfood, and optional external consumer evidence",
+    "evidence taxonomy must distinguish package smoke, conformance, dogfood, and first-party consumer evidence",
   );
   for (const [name, state] of Object.entries(expectedStates)) {
     const item = evidence[name];
@@ -151,9 +149,10 @@ function assertEvidenceTaxonomy(evidence: PackageSurfaceConfigInput["gates"]["ev
     );
   }
   assert(
-    /real independent adopter|public platform artifact/i.test(evidence.externalConsumerEvidence.meaning) &&
-      /first-party packed consumers remain package smoke evidence/i.test(evidence.externalConsumerEvidence.meaning),
-    "external consumer evidence must exclude first-party packed consumers",
+    /first-party demo store installed from npm/i.test(evidence.externalConsumerEvidence.meaning) &&
+      /first-party production deployment/i.test(evidence.externalConsumerEvidence.meaning) &&
+      /no independent adoption is claimed/i.test(evidence.externalConsumerEvidence.meaning),
+    "consumer evidence must state first-party npm and production use without claiming independent adoption",
   );
 }
 

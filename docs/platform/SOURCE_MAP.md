@@ -1,6 +1,6 @@
 # Platform source map
 
-Status: development-preview navigation, generated from the public ownership map.
+Status: current navigation, generated from the public ownership map.
 
 Start with a responsibility below, then open its owner and the linked code.
 Descriptions are authored routing purposes. File and symbol inventories are structural
@@ -49,9 +49,9 @@ use one canonical domain owner unless a narrower workflow route applies.
 | Surface | Purpose | Canonical owner | Selectors |
 | --- | --- | --- | --- |
 | own-stack-example | Application-owned routing and authentication using released public catalog ports | [packages/core/docs/guide/how-to/build/own-stack.md](../../packages/core/docs/guide/how-to/build/own-stack.md#choose-the-imports-and-ports) | `examples/own-stack/**` |
-| repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `*` |
+| repository | Repository entrypoints, build configuration and contributor setup | [CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-checks) | `*` |
 | public-policy | Public contribution policy and community governance | [CONTRIBUTING.md](../../CONTRIBUTING.md#pull-requests) | `.github/**` |
-| public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `.github/workflows/**` |
+| public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-checks) | `.github/workflows/**` |
 | documentation | Public documentation navigation and current writing guidance | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/**` |
 | history | Dated public implementation plans and frozen documentation evidence, with no runtime authority | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/platform/plans/**`; `docs/platform/history/**` |
 | configuration | Machine-readable platform configuration and contract inputs | [docs/platform/CANONICAL_CONTRACTS.md](CANONICAL_CONTRACTS.md#compatibility-posture) | `config/**` |
@@ -66,14 +66,14 @@ use one canonical domain owner unless a narrower workflow route applies.
 | bff | Server HTTP composition and public interface boundaries | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `server/bff/**`; `api/**` |
 | reference | The bounded static and opt-in subscription evaluation profiles | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference) | `server/runtime/public-reference/**`; `src/public-reference/**`; `vite.public-reference.config.ts`; `scripts/oss-reference-*.ts` |
 | data | Durable data, ordered migration history and compatibility lifecycle | [docs/platform/DATA_AND_MIGRATIONS.md](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) | `db/**`; `supabase/**`; `src/integrations/**`; `tests/postgres/m14ReleasedSchemaUpgrade.test.ts`; `tests/postgres/m14ReleasedSchemaUpgradeChild.ts` |
-| packages | Package API, exports, release-shape and consumer boundaries | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `packages/**/package.json`; `packages/**/CHANGELOG.md`; `packages/**/CHANGELOG-HISTORY.md`; `packages/**/AGENTS.md`; `packages/**/api/**`; `packages/**/sql/**`; `packages/**/tsconfig*.json`; `packages/**/vitest.config.ts`; `packages/**/.gitignore`; `packages/**/LICENSE`; `packages/**/package-lock.json`; `packages/*/changes/*.md` |
+| packages | Package API, exports, release-shape and consumer boundaries | [CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-checks) | `packages/**/package.json`; `packages/**/CHANGELOG.md`; `packages/**/CHANGELOG-HISTORY.md`; `packages/**/AGENTS.md`; `packages/**/api/**`; `packages/**/sql/**`; `packages/**/tsconfig*.json`; `packages/**/vitest.config.ts`; `packages/**/.gitignore`; `packages/**/LICENSE`; `packages/**/package-lock.json`; `packages/*/changes/*.md` |
 | core | Portable neutral core kernels and their package verification | [packages/core/README.md](../../packages/core/README.md) | `packages/core/README.md`; `packages/core/package.json`; `packages/core/CHANGELOG.md`; `packages/core/CHANGELOG-HISTORY.md`; `packages/core/AGENTS.md`; `packages/core/docs/**`; `packages/core/test/**`; `packages/core/smoke/**`; `packages/core/package-lock.json`; `packages/core/release-gates.json`; `packages/core/repository-policy.json`; `packages/core/vitest.config.ts`; `packages/core/tsconfig*.json`; `packages/core/scripts/**` |
 | core-agent-context | Installed offline agent context lookup and its command launcher | [packages/core/README.md](../../packages/core/README.md#agent-context-lookup) | `packages/core/src/agent-context-cli.ts`; `packages/core/src/agent-context-mcp.ts`; `packages/core/src/openlup-context.js` |
 | core-readiness | Core readiness contracts, schema probes and inert contribution checks | [packages/core/README.md](../../packages/core/README.md#readiness-contract) | `packages/core/src/readiness/**` |
 | core-bundle | Core bundle identity, descriptor and readiness contracts | [packages/core/docs/guide/how-to/build/bundles.md](../../packages/core/docs/guide/how-to/build/bundles.md#compose-native-bundle-writes) | `packages/core/src/bundle/**` |
 | subscription-kernel | Pure lifecycle, retry, cycle and deterministic-clock behavior | [packages/core/docs/guide/concepts/subscription-engine.md](../../packages/core/docs/guide/concepts/subscription-engine.md) | `packages/core/src/subscription/**` |
-| tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `scripts/**` |
-| tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `tests/**`; `src/test/**` |
+| tooling | Public tooling and the actual execution owner of each check | [CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-checks) | `scripts/**` |
+| tests | Integration and browser test sources; execution requires their declared owner | [CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-checks) | `tests/**`; `src/test/**` |
 | assets | Static public assets and their reference build consumption | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#runtime-model) | `public/**` |
 | operations | Deployment recipes and operational interface boundaries | [docs/platform/RUNTIME_AND_SELF_HOSTING.md](RUNTIME_AND_SELF_HOSTING.md#self-host-boundary) | `deploy/**`; `mcp/**` |
 | subscription-renewal | Read the actual renewal invocation, preflight, attempt and charge path | [docs/platform/SUBSCRIPTION_WORKFLOWS.md](SUBSCRIPTION_WORKFLOWS.md#renew-one-cycle) | `server/bff/subscriptions/renewal-ticks.ts`; `server/domains/subscription/subscriptionRenewalInvocation.ts`; `server/domains/subscription/chargeSubscriptionCycleOffSession.ts` |
@@ -132,7 +132,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | reader-guide | The reader guide under packages/core/docs/guide and its documentation contract | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#reader-guide-contract) | `packages/core/docs/guide/**` |
 | core-testing | Core standalone test helpers and package testing exports | [packages/core/README.md](../../packages/core/README.md#local-verification-from-source) | `packages/core/src/testing.ts` |
 | ui-package | Private UI primitives, design tokens and accessibility helpers | [docs/platform/ARCHITECTURE_AND_EXTENSIONS.md](ARCHITECTURE_AND_EXTENSIONS.md#package-architecture) | `packages/ui/src/**`; `packages/ui/smoke/**` |
-| core-policy-files | Core contributor, security and repository-policy instructions | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `packages/core/.github/**`; `packages/core/CONTRIBUTING.md`; `packages/core/SECURITY.md`; `packages/core/CODE_OF_CONDUCT.md`; `packages/core/MAINTAINERS.md` |
+| core-policy-files | Core contributor, security and repository-policy instructions | [CONTRIBUTING.md](../../CONTRIBUTING.md#contribution-checks) | `packages/core/.github/**`; `packages/core/CONTRIBUTING.md`; `packages/core/SECURITY.md`; `packages/core/CODE_OF_CONDUCT.md`; `packages/core/MAINTAINERS.md` |
 | adapter-postgres-install | PostgreSQL migration runner and qualified installation session admission | [server/adapters/README.md](../../server/adapters/README.md#restricted-postgresql-installation-binding) | `server/adapters/postgres/migrationRunner.*`; `server/adapters/postgres/qualifiedInstall.*` |
 | adapter-connected-transfer | Native connected-store capture and restore preparation | [server/adapters/README.md](../../server/adapters/README.md#native-retained-store-transfer-preparation) | `server/adapters/postgres/connectedStore*.ts`; `server/adapters/filesystem/orderReviewMediaTransfer*` |
 | adapter-payment | Payment execution, reconciliation and simulator capability adapters | [server/adapters/README.md](../../server/adapters/README.md#payment-execution-and-reconciliation) | `server/adapters/noop_payment/**` |
@@ -151,6 +151,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | distribution-starter-inputs | Immutable per-tag released-starter manifest and registry lock inputs | [docs/platform/DISTRIBUTION_EVIDENCE.md](DISTRIBUTION_EVIDENCE.md#released-starter-inputs) | `examples/neutral-store/release-inputs/**` |
 | starter-application | Independent starter application, owned customization and local sandbox composition | [packages/core/docs/guide/how-to/build/customize-the-starter.md](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#customize-the-starter-store) | `examples/neutral-store/**` |
 | native-offer-policy-inputs | Native offer-policy marking, audited baseline capture and read-only input evidence | [docs/platform/DATA_AND_MIGRATIONS.md](DATA_AND_MIGRATIONS.md#native-offer-policy-inputs) | `db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql`; `packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql`; `packages/platform/test/pricing/nativeReadinessInputs.test.ts`; `tests/postgres/offerPolicyReadinessInputs.test.ts`; `tests/postgres/offerPolicyReadinessTransfer.test.ts` |
+| native-base-price-writer | Native immediate base-price writes, session authority, read-only readiness and receipt transfer | [docs/platform/DATA_AND_MIGRATIONS.md](DATA_AND_MIGRATIONS.md#native-base-price-writes) | `db/platform/migrations/20261122180000_catalog_base_price_writer.sql`; `packages/platform/sql/20261122180000_catalog_base_price_writer.sql`; `tests/postgres/catalogBasePriceWriter.test.ts`; `tests/postgres/catalogBasePriceTransfer.test.ts` |
 <!-- openlup-generated:end -->
 
 ## Drill down to a file

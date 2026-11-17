@@ -1,8 +1,8 @@
 # Maintainers
 
-`@openlup/core` is maintained in the phase-5 platform monorepo. It is not an
-independent product. Below 1.0 its versions are set versions `0.N.P`, shared by
-every `@openlup/*` package; versions up to `0.11.0` rode on the source previews.
+`@openlup/core` is maintained in the platform monorepo as part of the coherent
+`@openlup/*` package set. The [stability reference](docs/guide/reference/stability.md#public-api)
+owns compatibility from 1.0.0 and links the per-subpath classifications.
 
 ## Responsibilities
 
@@ -11,8 +11,8 @@ every `@openlup/*` package; versions up to `0.11.0` rode on the source previews.
 - keep package smoke, license, SBOM, audit, pack, import, and gitleaks proofs
   green;
 - keep provider and product-specific behavior outside this package;
-- review declaration-snapshot drift as an internal candidate contract change,
-  without implying public stability or SemVer;
+- review declaration-snapshot drift against the public compatibility policy
+  and each subpath’s classification;
 - use the smallest change that preserves the existing export graph and package
   portability proof.
 

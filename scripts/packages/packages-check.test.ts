@@ -59,6 +59,11 @@ function peers(prerequisite = build): string {
 }
 
 describe("packages:check", () => {
+  it.each(["1.0.0", "1.2.3", "1.0", "01.0.0", "1.0.0-rc.1"])("checks set %s", version => {
+    const root = fixture(), path = join(root, "packages/pub/package.json"), manifest = JSON.parse(readFileSync(path, "utf8"));
+    writeFileSync(path, JSON.stringify({ ...manifest, version }));
+    expect(runPackagesCheck(root, ["--manifest-only", "--release-set", version])).toBe(["1.0.0", "1.2.3"].includes(version) ? 0 : 1);
+  });
   it("audits only the release selection and its internal peer prerequisites, including standalone locks", () => {
     quiet();
     const root = peers();

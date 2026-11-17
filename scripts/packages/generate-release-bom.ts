@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { join, sep } from "node:path";
-import { parsePackagesConfig } from "./package-manifest-policy.ts";
+import { SET_VERSION, parsePackagesConfig } from "./package-manifest-policy.ts";
 import { readCiImage } from "../ci-image-pull.mjs";
 import { assertInstalledPackages, readPackManifest } from "./pack-manifest-input.ts";
 
@@ -17,7 +17,7 @@ export function generateReleaseBom(root: string, manifestPath: string, commit: s
   const packages = inventory.packages.filter(item => item.publish).map(pkg => {
     const bytes = read(`${pkg.directory}/package.json`);
     const metadata = JSON.parse(bytes);
-    if (metadata.name !== pkg.name || typeof metadata.version !== "string" || !/^0\.\d+\.\d+$/u.test(metadata.version) || metadata.license !== "Apache-2.0") throw new Error("release-bom: invalid committed package identity/license");
+    if (metadata.name !== pkg.name || typeof metadata.version !== "string" || !SET_VERSION.test(metadata.version) || metadata.license !== "Apache-2.0") throw new Error("release-bom: invalid committed package identity/license");
     return { name: pkg.name, version: metadata.version as string, license: metadata.license as string, manifestSha256: hash(bytes) };
   });
   if (!packages.length || new Set(packages.map(pkg => pkg.version)).size !== 1) throw new Error("release-bom: incomplete or mixed package set");
@@ -27,7 +27,7 @@ export function generateReleaseBom(root: string, manifestPath: string, commit: s
     kind: "openlup-package-set-bom",
     source: { repository: "https://github.com/openlup/openlup", commit, inventorySha256: hash(configBytes) },
     setVersion: packages[0]!.version,
-    posture: "development-preview",
+    posture: packages[0]!.version.startsWith("0.") ? "development-preview" : "stable",
     scope: "First-party npm package set only. Not a dependency SBOM, image/composition inventory, execution result, publication receipt or provenance attestation.",
     packages: packages.sort((a, b) => a.name.localeCompare(b.name)).map(pkg => {
       const artifact = verified.get(pkg.name)!;
@@ -54,7 +54,7 @@ export function generateExactSetReleaseBom(root: string, application: string, ev
   if (!sbom || !/^[a-f0-9]{64}$/u.test(sbom.packages?.sha256) || !/^[a-f0-9]{64}$/u.test(sbom.image?.sha256)
     || sbom.packages.tool.name !== "npm" || sbom.packages.tool.version !== "11.19.0" || sbom.image.subjectDigest !== image.manifestDigest
     || sbom.image.tool.name !== "syft" || "v" + sbom.image.tool.version !== scanner.tag || sbom.image.tool.imageDigest !== scanner.digest) refuse("sbom_identity_mismatch");
-  if (!/^0\.\d+\.\d+$/u.test(setVersion) || tag !== `openlup-core-v${setVersion}` || !/^[a-f0-9]{40}$/u.test(tagCommit)) refuse("set_identity_mismatch");
+  if (!SET_VERSION.test(setVersion) || tag !== `openlup-core-v${setVersion}` || !/^[a-f0-9]{40}$/u.test(tagCommit)) refuse("set_identity_mismatch");
   const read = (path: string) => {
     try { return execFileSync("git", ["show", `${tagCommit}:${path}`], { cwd: root, stdio: ["ignore", "pipe", "pipe"] }); }
     catch { return refuse(`missing_input: ${path}`); }
@@ -97,7 +97,7 @@ export function generateExactSetReleaseBom(root: string, application: string, ev
     return [{ path: `${pkg.name}/sql/manifest.json`, sha256: hash(bytes) }];
   }).map((entry, position) => ({ position, ...entry }));
   if (!entries.length) refuse("schema_catalogue_missing");
-  return { formatVersion: 4, sbom: { packages: { sha256: sbom.packages.sha256, tool: { ...sbom.packages.tool } }, image: { sha256: sbom.image.sha256, subjectDigest: image.manifestDigest, tool: { ...sbom.image.tool } } }, kind: "openlup-exact-set-bom", image: { name: image.name, platform: image.platform, manifestDigest: image.manifestDigest, baseImageDigest: image.baseImageDigest }, setVersion, tag, tagCommit, posture: "development-preview", packages,
+  return { formatVersion: 4, sbom: { packages: { sha256: sbom.packages.sha256, tool: { ...sbom.packages.tool } }, image: { sha256: sbom.image.sha256, subjectDigest: image.manifestDigest, tool: { ...sbom.image.tool } } }, kind: "openlup-exact-set-bom", image: { name: image.name, platform: image.platform, manifestDigest: image.manifestDigest, baseImageDigest: image.baseImageDigest }, setVersion, tag, tagCommit, posture: setVersion.startsWith("0.") ? "development-preview" : "stable", packages,
     verificationSha256: hash(JSON.stringify(packages)), starter,
     composition: { profile: "neutral-store-postgresql-node-oci", postgresMajor: 16, files, sha256: hash(JSON.stringify(files)) },
     schemaCatalogue: { entries, sha256: hash(JSON.stringify(entries)) } };

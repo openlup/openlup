@@ -1733,6 +1733,9 @@ describe("descendant source release check", () => {
     const sample = syntheticRelease();
     try {
       const head = sample.release({ "README.md": "public descendant\n" });
+      const stable = sample.read(CONTRACT)!.toString(), legacy = JSON.parse(stable); legacy.release.posture = "development-preview"; legacy.release.stability = "preview";
+      sample.apply({ [CONTRACT]: json(legacy) }); const previous = sample.commit("Historical preview posture", { regenerate: false }); sample.apply({ [CONTRACT]: stable });
+      expect(() => assertDescendantSourceRelease(sample.repo, previous, sample.commit("Stable posture"))).not.toThrow();
       writeFileSync(join(sample.repo, CATALOG), "{}\n"); writeFileSync(join(sample.repo, "src/uncommitted.ts"), "export {};\n");
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).not.toThrow();
       expect(() => assertDescendantSourceRelease(sample.repo, head, head)).toThrow(/must advance/u);

@@ -111,6 +111,20 @@ test('extract creates an independent repository and refuses to overwrite an exis
     await writeFile(resolve(target, 'owner.txt'), 'keep me');
     assert.throws(() => execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' }));
     assert.equal(await readFile(resolve(target, 'owner.txt'), 'utf8'), 'keep me');
+    await mkdir(resolve(target, 'bin')); await mkdir(resolve(target, 'package'));
+    await writeFile(resolve(target, 'bin/npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    for (const version of ['0.43.0', '0.43.0-rc.1', '1.0.0', '1.2.3', '1.0.0-rc.1', '1.0', '01.0.0']) {
+      const archives = [];
+      for (const name of ['core', 'outbox', 'platform']) {
+        await writeFile(resolve(target, 'package/package.json'), JSON.stringify({ name: `@openlup/${name}`, version }));
+        const archive = resolve(target, `${name}.tgz`); archives.push(archive);
+        execFileSync('tar', ['-czf', archive, 'package/package.json'], { cwd: target });
+      }
+      const run = () => execFileSync(process.execPath, ['lifecycle.mjs', 'candidate', ...archives],
+        { cwd: target, env: { PATH: `${target}/bin:/usr/bin:/bin` }, stdio: 'pipe' });
+      if (['1.0', '01.0.0'].includes(version)) assert.throws(run, error => String((error as { stderr?: Buffer }).stderr).includes('starter_candidate_identity_mismatch'));
+      else { run(); assert.ok(JSON.parse(await readFile(resolve(target, 'artifacts/identity.json'), 'utf8')).artifacts.every((item: { version: string }) => item.version === version)); }
+    }
   } finally {
     await rm(target, { recursive: true, force: true });
   }

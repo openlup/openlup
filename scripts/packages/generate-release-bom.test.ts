@@ -9,7 +9,7 @@ import { qualifyReleasedSet } from "./exact-set-qualification.mjs";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture() {
+function fixture(version = "0.36.0") {
   const scratch = resolve(".context/scratch/release-bom"); mkdirSync(scratch, { recursive: true });
   const root = mkdtempSync(join(scratch, "case-")); roots.push(root);
   const put = (path: string, value: unknown) => {
@@ -20,14 +20,14 @@ function fixture() {
   git(["init", "--initial-branch=main"]);
   const packages = ["core", "outbox"].map(name => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true }));
   put("config/openlup-packages.json", { schemaVersion: 2, packages, unreleased: [] });
-  for (const pkg of packages) put(`${pkg.directory}/package.json`, { name: pkg.name, version: "0.36.0", license: "Apache-2.0" });
+  for (const pkg of packages) put(`${pkg.directory}/package.json`, { name: pkg.name, version, license: "Apache-2.0" });
   git(["add", "."]);
   git(["-c", "user.name=Synthetic BOM test", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-m", "Synthetic package inventory"]);
   const commit = git(["rev-parse", "HEAD"]);
   const artifacts = packages.map((pkg, index) => {
     const filename = `synthetic-${index}.tgz`, bytes = `Synthetic artifact bytes ${index}`;
     put(`packs/${filename}`, bytes);
-    return { name: pkg.name, version: "0.36.0", filename, sha256: createHash("sha256").update(bytes).digest("hex"), integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}` };
+    return { name: pkg.name, version, filename, sha256: createHash("sha256").update(bytes).digest("hex"), integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}` };
   });
   const manifest = { schemaVersion: 2, commit, packages: artifacts };
   const manifestPath = join(root, "packs/packages-manifest.json");
@@ -35,8 +35,8 @@ function fixture() {
   return { root, put, git, commit, manifest, manifestPath, save };
 }
 
-function exactFixture(schema = true, major = 16) {
-  const f = fixture(), application = join(f.root, "application"), digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+function exactFixture(schema = true, major = 16, version = "0.36.0") {
+  const f = fixture(version), application = join(f.root, "application"), digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const paths = [".dockerignore", ".npmrc", "Dockerfile", "compose.yaml", "installation/install.ts", "lifecycle.mjs", "package.json"];
   f.put("examples/neutral-store/ownership.json", { owned: [], managed: paths });
   if (schema) f.put("packages/outbox/sql/manifest.json", { schemaVersion: 1, migrations: [{ file: "first.sql", sha256: "a".repeat(64) }, { file: "second.sql", sha256: "b".repeat(64) }] });
@@ -47,14 +47,21 @@ function exactFixture(schema = true, major = 16) {
   if (schema) f.put("application/node_modules/@openlup/outbox/sql/manifest.json", readFileSync(join(f.root, "packages/outbox/sql/manifest.json"), "utf8"));
   for (const path of paths) f.put(`application/${path}`, path === "compose.yaml" ? `image: postgres:${major}@sha256:` + "a".repeat(64) : path === "installation/install.ts" ? "generation: 'qualified-v2'" : path);
   f.put("application/package-lock.json", { packages: Object.fromEntries(packages.map(pkg => [`node_modules/${pkg.name}`, pkg])) });
-  const extraction = { schemaVersion: 2, mode: "released", setVersion: "0.36.0", sourceRevision: commit, contentSha256: digest(JSON.stringify(paths.sort().map(path => [path, digest(readFileSync(join(application, path)))]))), lockfileSha256: digest(readFileSync(join(application, "package-lock.json"))) };
+  const extraction = { schemaVersion: 2, mode: "released", setVersion: version, sourceRevision: commit, contentSha256: digest(JSON.stringify(paths.sort().map(path => [path, digest(readFileSync(join(application, path)))]))), lockfileSha256: digest(readFileSync(join(application, "package-lock.json"))) };
   f.put("application/.starter-origin.json", extraction);
   const sbom = { packages: { sha256: digest("package SBOM"), tool: { name: "npm", version: "11.19.0" } }, image: { sha256: digest("image SBOM"), subjectDigest: "sha256:" + "c".repeat(64), tool: { name: "syft", version: "1.38.0", imageDigest: readCiImage("qualification-syft").digest } } };
-  const evidence = { sbom, setVersion: "0.36.0", tag: "openlup-core-v0.36.0", tagCommit: commit, packages, extraction, image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: "sha256:" + "c".repeat(64), baseImageDigest: readCiImage("starter-node").digest } };
+  const evidence = { sbom, setVersion: version, tag: `openlup-core-v${version}`, tagCommit: commit, packages, extraction, image: { name: "ghcr.io/openlup/neutral-store-starter", platform: "linux/amd64", manifestDigest: "sha256:" + "c".repeat(64), baseImageDigest: readCiImage("starter-node").digest } };
   return { ...f, application, evidence, bom: () => generateExactSetReleaseBom(f.root, application, evidence) };
 }
 
 describe("release-set BOM", () => {
+  it.each(["0.36.0", "1.0.0", "1.2.3", "1.0", "01.0.0", "1.0.0-rc.1"])("derives posture or refuses set %s", version => {
+    const f = fixture(version), exact = exactFixture(true, 16, version);
+    for (const make of [() => generateReleaseBom(f.root, f.manifestPath, f.commit), exact.bom]) {
+      if (["1.0", "01.0.0", "1.0.0-rc.1"].includes(version)) expect(make).toThrow(/invalid committed package identity|set_identity_mismatch/u);
+      else expect(make().posture).toBe(version.startsWith("0.") ? "development-preview" : "stable");
+    }
+  });
   it("binds verified artifact bytes and the committed source inventory, excluding host paths", () => {
     const f = fixture();
     const bom = generateReleaseBom(f.root, f.manifestPath, f.commit);

@@ -1458,6 +1458,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1656,6 +1660,10 @@
     {
       "path": "docs/platform/plans/agent-development-readiness.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/agent-dx-regression.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/plans/autonomous-reviewed-delivery-intent.md",
@@ -4779,6 +4787,10 @@
     },
     {
       "path": "packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122180000_catalog_base_price_writer.sql",
       "class": "public-output"
     },
     {
@@ -8590,6 +8602,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/catalogPriceSetupHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/catalogPriceSetupSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/commerceOfferPricing.ts",
       "class": "public-output"
     },
@@ -8631,6 +8651,10 @@
     },
     {
       "path": "packages/platform/src/pricing/contracts/authority.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/contracts/catalogPriceSetup.ts",
       "class": "public-output"
     },
     {
@@ -8695,6 +8719,10 @@
     },
     {
       "path": "packages/platform/src/pricing/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/pricing/postgresCatalogPriceSetupStore.ts",
       "class": "public-output"
     },
     {
@@ -11230,6 +11258,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/pricing/catalogPriceSetupContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/catalogPriceSetupHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/catalogPriceSetupStore.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/catalogueMoneyGolden.test.ts",
       "class": "public-output"
     },
@@ -11714,6 +11754,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/agent-review-derived.d.mts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/agent-review-derived.mjs",
       "class": "public-output"
     },
@@ -11959,6 +12003,10 @@
     },
     {
       "path": "scripts/dependency-audit-rsc-scan.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-docker.d.mts",
       "class": "public-output"
     },
     {
@@ -12887,6 +12935,10 @@
     },
     {
       "path": "scripts/test-hosted.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/tooling-declarations.test.ts",
       "class": "public-output"
     },
     {
@@ -29663,6 +29715,14 @@
     },
     {
       "path": "tests/postgres/catalogAttributeProjection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogBasePriceTransfer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogBasePriceWriter.test.ts",
       "class": "public-output"
     },
     {

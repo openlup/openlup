@@ -1,11 +1,12 @@
-# Development, diagnostics and preview releases
+# Development, diagnostics and releases
 
-Status: development-preview guidance.
+Status: current contributor guidance for stable 1.x.
 Audience and purpose: contributors and maintainers following a change from local
 verification through a pull request to a package release on npm, or to an
 optional source preview, which carries no package.
-The current channel is evaluation-only; this process does not establish a stable
-API, production deployment or supported adopter upgrade.
+The [stable API policy](../../packages/core/docs/guide/reference/stability.md#public-api)
+and [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md) define the
+release’s commitments. A successful contributor check alone does not qualify a deployment.
 
 ## Start with the right route
 
@@ -96,7 +97,7 @@ runtime import or dependency; declaration checking remains enabled, and the
 installed NodeNext and browser/Bundler consumer proofs still apply.
 Playwright specifications and explicit database/browser reference evaluation do
 not become mandatory per-PR execution just because their files exist; follow
-[execution ownership](../../CONTRIBUTING.md#development-preview-checks) and the
+[execution ownership](../../CONTRIBUTING.md#contribution-checks) and the
 [selected subscription evaluation](SUBSCRIPTION_REFERENCE.md).
 
 ## Local maintainer layer
@@ -138,6 +139,11 @@ layer remain maintainer-controlled and outside the public tree.
 All required source and merge-group CI commands still run.
 
 ## Measuring delivery improvements
+
+Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
+pre-release measurement supplement to M19 A5. Its four tasks and local candidate
+rehearsals remain separate from the full blind adopter journey and
+[first-party consumer evidence](../../packages/core/docs/guide/reference/stability.md#release-evidence).
 
 Record measurements in the existing task evidence, with actual candidate,
 workflow run and attempt identities; no separate tracking service is needed.
@@ -240,17 +246,10 @@ is revoked, analysis may stop; it is not a new merge blocker in this pilot.
 
 ## Releasing a package
 
-While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
-one set, independently of source previews: one set version `0.N.P` from one
-commit, a tag `openlup-<package>-v<version>` per package at that commit, and
-every package republished in each set. A patch set only fixes; any API,
-behaviour or schema change, new package or shipped SQL is a minor set. The
-[package inventory](../../config/openlup-packages.json) determines the publishable
-set; the first set was core `0.12.0`. Source preview 11, which
-published `@openlup/core` `0.11.0` on the `preview` dist-tag, was the last
-lockstep cut that also published a package.
 The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
-owns release permissions, setup, detailed refusals and recovery. The sequence is:
+owns the coherent package set, version model, release permissions, setup,
+refusals and recovery. The [package inventory](../../config/openlup-packages.json)
+determines the publishable set. Source snapshots are separate. The sequence is:
 
 1. Before the bump, run `npm run release:docs-pass`, adding `-- --website <path>`
    when an openlup.com checkout is available, and attach its output to the

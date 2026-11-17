@@ -1,6 +1,6 @@
 # Evaluate a subscription account
 
-Status: development-preview implementation candidate. Publication and acceptance
+Status: local reference implementation. Publication and acceptance
 evidence must name an immutable release; this document does not announce one.
 Audience: an evaluator with an independent public checkout, testing local
 subscription behaviour without an adopter repository or external providers.
@@ -166,8 +166,8 @@ idempotency key. The browser retains a key while retrying the same unchanged for
 See [runtime boundaries](RUNTIME_AND_SELF_HOSTING.md),
 [canonical contracts](CANONICAL_CONTRACTS.md), and the
 [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md). This is a bounded
-development profile, not a stable framework, production deployment or certified
-provider integration.
+development profile; its execution does not qualify a production deployment or
+certify a provider integration.
 
 ## Customer browser identity
 

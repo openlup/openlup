@@ -4,9 +4,10 @@ OpenLup is subscription-first, open-source commerce for direct-to-consumer
 brands that sell physical products. This guide explains how to install,
 compose, extend, operate and upgrade the `@openlup/*` packages.
 
-**Status: development preview.** OpenLup does not yet offer a stable API, a
-supported full-platform installation or an upgrade guarantee. Pin exact
-versions and upgrade all `@openlup/*` packages together.
+**Status: stable 1.x.** Read the [API stability policy](reference/stability.md#public-api),
+[generated subpath classifications](reference/maturity.md) and
+[installation support boundary](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/.github/INSTALL_SUPPORT_POLICY.md).
+Pin exact versions and upgrade all `@openlup/*` packages together.
 
 ## Instructions for agents
 

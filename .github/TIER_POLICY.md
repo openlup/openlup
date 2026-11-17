@@ -23,12 +23,12 @@ would technically permit for future versions.
 
 Open is a licence state, not a maturity or support label. A community module can
 be Apache-2.0 without being endorsed or supported, and an official-experimental
-module can be open while remaining preview-only. The admission ladder is owned
+module can be open while remaining outside stable compatibility commitments. The admission ladder is owned
 solely by `.github/GOVERNANCE.md`; this licence/tier policy does not redefine its
 states or promotion criteria. Promotion does not buy ownership from a
 contributor, and community listing remains discovery rather than endorsement,
 security review, compatibility or support. Only the governance classifications
-that carry the stable compatibility obligation may enter a future supported
+that carry the stable compatibility obligation may enter a supported
 platform BOM.
 
 ## Where paid value is allowed to live
@@ -55,10 +55,10 @@ Ask, in order:
 Commerce is **strictly additive**: paid work is built on top of a stabilized open
 core, never carved out of it.
 
-The project is currently in development preview. No stable platform BOM or
-supported artifact exists yet, so `official-stable` and `core` describe the
-promised destination and compatibility class, not a claim that today's source
-checkout is a supported framework distribution.
+The `official-stable` and `core` classes follow the
+[stable compatibility policy](../packages/core/docs/guide/reference/stability.md#public-api)
+and [installation support policy](INSTALL_SUPPORT_POLICY.md).
+A source checkout alone is not a supported distribution.
 
 ## Named and refused
 
