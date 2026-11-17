@@ -26,8 +26,8 @@ it.each(["settlement_context", "native_promotion_domain", "native_price_domain",
   expect(result.reasons).toEqual(["readiness_rpc_unavailable"]);
 });
 it("native_readiness_descriptor_follows_the_draft_input_dependency", () => {
-  const unit = CATALOG_MIGRATIONS.at(-1)!;
+  const unit = CATALOG_MIGRATIONS.find(unit => unit.id === "20261122170000_offer_policy_readiness_inputs")!;
   expect(unit.id).toBe("20261122170000_offer_policy_readiness_inputs");
-  expect(unit.position).toBe(CATALOG_MIGRATIONS.at(-2)!.position + 1);
+  expect(unit.position).toBe(CATALOG_MIGRATIONS.find(unit => unit.id === "20261122160000_catalog_drafts_v3")!.position + 1);
   expect(unit.sha256).toMatch(/^[a-f0-9]{64}$/u);
 });

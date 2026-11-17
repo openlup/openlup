@@ -95,7 +95,7 @@ wins, and malformed configured regions refuse the route.
 Company identity extensions reuse the neutral core input schema and the public
 `normalizeCompanyIdentityLookupRequest` export. National tax-id checks and
 optional registry fields remain in the extension layer. The core helper is an
-additive development-preview API, not a stable contract.
+experimental API outside the SemVer promise.
 
 ## Preview 9 upgrade note: moved payment and communications modules
 
