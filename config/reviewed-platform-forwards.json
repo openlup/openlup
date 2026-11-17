@@ -5523,7 +5523,8 @@
           }
         ],
         "grantOnlyFunctions": [],
-        "dataStatements": []
+        "dataStatements": [],
+        "sha256": "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65"
       }
     ]
   },
@@ -7742,7 +7743,7 @@
     },
     {
       "path": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
-      "sha256": "5fb2377b6b66dfa5a75265fc78ba544c73809a66190d9ec27849f9091dc93ddc",
+      "sha256": "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65",
       "functions": [
         {
           "signature": "public.catalog_price_setup_require_human_admin()",

@@ -6,7 +6,7 @@
 CREATE TABLE public.catalog_price_setup_receipts (
   scope text NOT NULL CHECK (scope = 'catalog.price_setup.base'),
   idempotency_key text NOT NULL CHECK (char_length(idempotency_key) BETWEEN 1 AND 240),
-  request_fingerprint text NOT NULL CHECK (request_fingerprint ~ '^[0-9a-f]{64}$'),
+  request_fingerprint text NOT NULL CHECK (length(request_fingerprint)=64 AND translate(request_fingerprint,'0123456789abcdef','')=''),
   status text NOT NULL CHECK (status IN ('in_progress', 'completed')),
   metadata jsonb NOT NULL CHECK (jsonb_typeof(metadata) = 'object'),
   response_payload jsonb,
