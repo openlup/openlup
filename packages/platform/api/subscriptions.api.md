@@ -1644,6 +1644,8 @@ export declare function activateNativePurchaseWithRenewal(executor: Subscription
     idempotencyKey: string;
     capturedReference: string;
     facts: NativeRenewalPurchaseFacts;
+    /** Frozen on creation; omission retains the database default of 72 hours. */
+    editWindowHours?: number;
 }): Promise<{
     activation: Record<string, unknown>;
     renewalAttachment: "pending";

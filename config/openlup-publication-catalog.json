@@ -1466,6 +1466,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -2819,6 +2823,10 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-creation.test.ts",
       "class": "public-output"
     },
     {
@@ -4807,6 +4815,10 @@
     },
     {
       "path": "packages/platform/sql/20261122190000_subscription_cadence_bound.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123120000_subscription_edit_window_activation.sql",
       "class": "public-output"
     },
     {
@@ -11571,6 +11583,10 @@
     },
     {
       "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/activationEditWindow.test.ts",
       "class": "public-output"
     },
     {
@@ -30639,6 +30655,10 @@
     },
     {
       "path": "tests/postgres/stripePortableRail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionActivationEditWindow.test.ts",
       "class": "public-output"
     },
     {

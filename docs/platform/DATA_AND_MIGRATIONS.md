@@ -36,6 +36,33 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Native activation edit window
+
+The native `20261123120000_subscription_edit_window_activation.sql` forward adds
+an invoker activation entry point and commit helper with `_with_edit_window`
+suffixes. Their optional final integer defaults to NULL, which omits the column
+and uses its installed default (72); explicit input must be 1–720 and refuses
+with `subscription_activation_edit_window_invalid` before writes. The value is
+stored in the initial subscription INSERT. Existing rows, cycle dates and edit
+fences are unchanged. Completed activation replay retains the stored value.
+
+A defaulted overload of the existing name makes PostgreSQL reject legacy calls
+as ambiguous even with typed arguments. The distinct names preserve all existing
+function identities, bodies, owner attributes and ACLs, including the legacy
+repair path. New invoker functions revoke PUBLIC/browser execution and grant only
+service-role execution, following the native-store class. No incumbent grant is
+widened. The mirrored package SQL and three native manifest selections bind the
+same bytes; only current inventories are remeasured.
+
+The managed chain has no native `subscription_activate_from_captured_payment`
+equivalent. Its separate `subscription_activate_from_paid_checkout_order` uses
+managed payment intents and subscription composition; it still supplies 72.
+That separate boundary and its provisional/starter path are unchanged here.
+The [activation witness](../../tests/postgres/subscriptionActivationEditWindow.test.ts)
+proves default and legacy compatibility, zero-write refusal, frozen replay and
+the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
+as the installed fence subtracts stored hours from the next cycle instant.
+
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while
