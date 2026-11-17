@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { parsePackagesConfig } from "./packages/package-manifest-policy.ts";
+import { SET_VERSION, parsePackagesConfig } from "./packages/package-manifest-policy.ts";
 
 export const OUTCOME_PROJECTION_PATH = "docs/platform/OUTCOME_PROJECTION.md";
 type Proof = { path: string; sha256: string | null };
@@ -30,7 +30,7 @@ export function collectOutcomeProjection(root: string): OutcomeProjection {
   for (const pkg of inventory.packages.filter(item => item.publish).sort((a, b) => a.name.localeCompare(b.name))) {
     const manifest = read(`${pkg.directory}/package.json`);
     const gates = read(`${pkg.directory}/release-gates.json`);
-    if (manifest.name !== pkg.name || typeof manifest.version !== "string" || !/^0\.\d+\.\d+$/u.test(manifest.version)) throw new Error("outcome-projection: invalid package identity");
+    if (manifest.name !== pkg.name || typeof manifest.version !== "string" || !SET_VERSION.test(manifest.version)) throw new Error("outcome-projection: invalid package identity");
     versions.add(manifest.version);
     const entries = Object.keys(manifest.exports ?? {}).filter(entry => entry !== "./package.json").sort();
     if (!manifest.exports || !gates.packageSurface || JSON.stringify(entries) !== JSON.stringify(Object.keys(gates.packageSurface).sort())) throw new Error("outcome-projection: export/evidence inventory mismatch");

@@ -4,8 +4,8 @@
  * `config/openlup-packages.json` lists every package directory, as released or
  * as unreleased. Each released package carries a `MAJOR.MINOR.PATCH` version in
  * its own manifest and is released under the tag
- * `openlup-<directory name>-v<version>`. While `@openlup/core` is below 1.0 the
- * publishable packages form one set: all carry the same set version `0.N.P`
+ * `openlup-<directory name>-v<version>`. The
+ * publishable packages form one set: all carry the same `MAJOR.MINOR.PATCH` version
  * (`checkSetVersions`). A released package is either not yet
  * publishable (`publish: false`, and then its manifest says `private: true`) or
  * publishable, and then its manifest carries exactly the public,
@@ -27,8 +27,8 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 /** A release version: `MAJOR.MINOR.PATCH` without leading zeros or a prerelease, because every release moves npm `latest`. */
 export const RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u;
-/** A set version `0.N.P`, N from 1: below 1.0 every publishable package carries the same one. The version model at 1.0 is undecided, so 1.0.0 is refused. */
-export const SET_VERSION = /^0\.[1-9]\d*\.(?:0|[1-9]\d*)$/u;
+/** One coherent set: `0.N.P` with N from 1, or `MAJOR.MINOR.PATCH` with MAJOR from 1; no leading zeros or prerelease. */
+export const SET_VERSION = /^(?:0\.[1-9]\d*|[1-9]\d*\.(?:0|[1-9]\d*))\.(?:0|[1-9]\d*)$/u;
 /** The package value of a release dispatch that names the whole set, so no package directory may take it. */
 export const SET_DISPATCH = "all";
 /** The one tag a package release carries, `openlup-<directory name>-v<release version>`, anchored at both ends. */
@@ -100,7 +100,7 @@ export function parsePackagesConfig(source: string): PackagesConfig {
 }
 
 /**
- * The publishable packages form one set: each carries a set version `0.N.P`, and all carry the
+ * The publishable packages form one set: each carries a set version `MAJOR.MINOR.PATCH`, and all carry the
  * same one. A version that is not `MAJOR.MINOR.PATCH` at all is the per-package `version` finding.
  */
 export function checkSetVersions(config: PackagesConfig, versions: PackageVersions): Finding[] {
@@ -108,7 +108,7 @@ export function checkSetVersions(config: PackagesConfig, versions: PackageVersio
   const findings: Finding[] = [];
   for (const { name } of publishable) {
     const version = versions.get(name);
-    if (typeof version === "string" && RELEASE_VERSION.test(version) && !SET_VERSION.test(version)) findings.push({ subject: name, rule: "set-version", detail: `${version} is not a set version 0.N.P below 1.0` });
+    if (typeof version === "string" && RELEASE_VERSION.test(version) && !SET_VERSION.test(version)) findings.push({ subject: name, rule: "set-version", detail: `${version} is not a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)` });
   }
   if (new Set(publishable.map(({ name }) => versions.get(name))).size > 1) {
     const listed = publishable.map(({ name }) => `${name}@${String(versions.get(name))}`).join(", ");

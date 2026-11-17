@@ -57,6 +57,13 @@ describe("the public README delegates source truth to machine contracts", () => 
     expect(catalogue.guardViability).toEqual([]);
   });
 
+  it("keeps stable activation and unstable fixture postures distinct", () => {
+    const input = Object.fromEntries(["inventoryDigest", "classDigest", "packageDigest", "rootLockDigest", "coreLockDigest", "migrationManifestDigest", "databaseTypesDigest", "policyRegistryDigest", "publicationCatalogDigest"].map(key => [key, digest])) as unknown as Parameters<typeof createSourceReleaseContract>[0];
+    const stable = JSON.parse(createSourceReleaseContract(input, { evidenceClass: "activation-candidate", ...JSON.parse(read(paths[2])).repository }).contents);
+    expect(stable.release).toEqual({ evidenceClass: "activation-candidate", posture: "stable", stability: "stable" });
+    for (const source of [JSON.stringify(stable), contractSource]) expect(() => validateSourceReleaseContract(source)).not.toThrow();
+    for (const source of [stable, JSON.parse(contractSource)]) { source.release.posture = source.release.posture === "stable" ? "development-preview" : "stable"; expect(() => validateSourceReleaseContract(JSON.stringify(source))).toThrow(); }
+  });
   it("keeps the computed pre-act contract non-activating and non-circular", () => {
     expect(() => validateSourceReleaseContract(contractSource)).not.toThrow();
     const contract = JSON.parse(contractSource) as Record<string, unknown>;

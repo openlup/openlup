@@ -933,7 +933,15 @@ workflow run and reports to the maintainer; a propagation timeout warns and
 defers the tutorial. It runs after publication and cannot affect it. The
 separate `exact-set-qualification` job reads the tagged starter as data,
 verifies and tests the exact locked npm set, and retains a blocking
-qualification result and a 90-day receipt. A dispatch with `publish_image: false`
+qualification result and a 90-day Actions receipt. Published qualified sets also
+retain the BOM, both SBOMs and qualification receipt in the same GHCR package as
+the image, under `<set-version>-evidence`, for at least one year after release.
+Maintainers must not delete those tags, their digest-addressed contents or their
+associated provenance attestations within that year. Retrieve by digest and
+verify with `gh attestation verify oci://ghcr.io/openlup/neutral-store-starter@<digest> --owner openlup --bundle-from-oci`;
+the [evidence retrieval procedure](../docs/platform/DISTRIBUTION_EVIDENCE.md#qualified-application-image)
+includes registry-bundle verification and extraction. Keep the 90-day Actions
+copies. A dispatch with `publish_image: false`
 skips the publisher job, so no write token is minted; its retained qualification
 receipt is the run's receipt, with no separate publication receipt. Both jobs have
 `contents: read`;
