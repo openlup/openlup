@@ -2250,6 +2250,25 @@ installed FK targets, ordered keys, `confdeltype='r'`, default update/match
 actions, validation and non-deferrability, the primary key and check, while
 retaining every existing ownership, ACL and catalogue guard. This admission
 control adds no feature SQL, publication binding or catalogue capability.
+Four further closed new-table declarations admit successor storage only:
+`public.subscription_successor_proposals`,
+`public.subscription_successor_operations_v2`,
+`public.subscription_successor_wait_cases_v2`, and
+`public.subscription_successor_reservations_v2`. The complete declarations in
+[`NATIVE_SUCCESSOR_TABLE_SQL`](../../scripts/reviewed-platform-forward.ts)
+fix every column, type, nullability, default, ordered primary/unique key, CHECK
+and inline single-column `ON DELETE RESTRICT` reference. Only unquoted SQL
+words fold case; literal values and token kinds stay exact. No other action,
+shape or appended SQL gains admission. The independent
+[catalogue comparator](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+checks installed columns and constraints, ordered FK keys and exact targets,
+RESTRICT, update/match/validation/deferrability, ordinary-table identity and
+RLS and column collation. Client-bearing shapes require blocking absorption
+classification. Only these four shapes may reference one another in the same slot; all
+other targets and keys must preexist. Owner/ACL, absorption classification and
+all generic catalogue guards still apply; only an explicitly listed absorption
+census may add its existing closed client-column grant and policy. No feature
+SQL, runtime grant, binding or capability is installed by this control.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
