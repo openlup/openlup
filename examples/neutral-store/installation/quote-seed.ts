@@ -40,6 +40,10 @@ export async function seedQuoteAuthority(config: StoreConfig, seed: ReturnType<t
     if (!facts || (facts.primary_sku_id !== null && facts.primary_sku_id !== primary.skuId)
       || (facts.current_document_revision_id !== null && facts.current_document_revision_id !== row.id)
       || (facts.current_document_revision_id !== null && facts.net_weight_g !== primary.physical.netWeightG)) throw new Error('starter_document_seed_conflict');
+    if (facts.current_document_revision_id !== row.id) {
+      await connection.query(`INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint)
+        VALUES(pg_current_xact_id(),$1,$2,$3)`, [row.productId,row.id,row.digest]);
+    }
     await connection.query('UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1', [row.productId,primary.skuId,row.id]);
     for (const variant of document.variants) {
       await connection.query('UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1', [variant.skuId,variant.physical.netWeightG]);

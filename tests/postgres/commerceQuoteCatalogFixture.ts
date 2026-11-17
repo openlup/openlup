@@ -1,3 +1,4 @@
+import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 /** Owned catalog configuration and installed-artifact fixture for quote reads. */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -143,7 +144,8 @@ export async function createQuoteCatalogFixture() {
         (product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
         VALUES($1,2,$2,$3,$4,'{}',$5,$6) RETURNING id`,
       [product.id, document.schemaVersion, document.id, document, `fixture:source-${index}`, digest(document)])).rows[0]!.id;
-      await owner.query("UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1", [product.id, seed.skus[index]!.id, revision]);
+      await owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [product.id, seed.skus[index]!.id]);
+      await setFixtureCatalogDocument(owner, product.id, revision);
       await owner.query("UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1", [seed.skus[index]!.id, index + 1]);
       await owner.query("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1", [seed.skus[index]!.id]);
       await owner.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary)

@@ -1,3 +1,4 @@
+import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 /** Installed engine and seed witness; subscription admission/activation retain their explicit predecessors. */
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -344,9 +345,9 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
           const digest = (await import('./application/host/editor-catalogue.ts')).documentDigest(damaged);
           const next = (await owner.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest) VALUES($1,$2,$3,'fixture:missing-variant',$4,'{}',$5,$6) RETURNING id",[line.product_id,damaged.revisionNo,damaged.schemaVersion,damaged,damaged.sourceRef,digest])).rows[0].id;
           try {
-            await owner.query('UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1',[line.product_id,next]);
+            await setFixtureCatalogDocument(owner, line.product_id, next);
             await assert.rejects(quotes.quote(largeInput,context),e=>e instanceof (awaitedPricing.CommerceQuoteCatalogReadError) && e.code==='catalog_document_schema_invalid');
-          } finally {await owner.query('UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1',[line.product_id,line.current_document_revision_id]);}
+          } finally {await setFixtureCatalogDocument(owner, line.product_id, line.current_document_revision_id);}
         }
       } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();}
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));

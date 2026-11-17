@@ -240,6 +240,7 @@ const order = [
   "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
+  "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "subscriptions", "subscription_events", "subscription_quote_previews", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
@@ -438,6 +439,9 @@ export async function restoreConnectedNativeStore(input: {
         if (table === "catalog_product_document_revisions") for (const product of source.get("catalog_products")!.rows) {
           const value = JSON.parse(product) as { current_document_revision_id: string | null };
           if (value.current_document_revision_id === null) continue;
+          await client.query(`INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint)
+            SELECT pg_current_xact_id(),x.id,x.current_document_revision_id,$2
+            FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,$1::jsonb) x`, [product, packet.sha256]);
           const updated = await client.query(`UPDATE public.catalog_products p SET current_document_revision_id=x.current_document_revision_id
             FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,
               pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}','null'::jsonb)) x
@@ -593,7 +597,8 @@ async function restoreSettings(client: PoolClient, baseline: Rows, source: Rows)
 function parentOrder(table: TableName, rows: readonly string[]): string[] {
   const fields = table === "commerce_orders" ? ["recovery_root_order_id", "recreated_from_order_id"]
     : table === "fulfillment_shipments" ? ["replaces_shipment_id"]
-      : table === "invoicing_duties" ? ["parent_duty_id"] : [];
+      : table === "invoicing_duties" ? ["parent_duty_id"]
+        : table === "catalog_publications" ? ["previous_id"] : [];
   if (!fields.length) return [...rows];
   const pending = new Map<string, { row: string; parents: string[] }>();
   for (const row of rows) {
@@ -623,6 +628,9 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
+    // These guards verify retained canonical bytes and identity without rewriting them.
+    catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
+    catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],

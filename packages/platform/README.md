@@ -1334,7 +1334,7 @@ the complete shared-content envelope. Industry vocabulary stays in that data.
 The [operation union](src/catalog/contracts/draftV3.ts) carries explicit
 eligibility separately from memberships/status. `set_derived_sku_facts` records
 explicit document/quantity-bound cache operations, including for omitted SKUs;
-omission alone never requests a change. The eventual publisher must verify each
+omission alone never requests a change. The native publisher verifies each
 operation against its immutable source and apply the ordered prefix guards.
 These are inputs only; saving or previewing a v3 draft executes no operation.
 
@@ -1362,7 +1362,60 @@ reconstructs the preview; `compareCandidate` additionally checks the caller's
 complete expected head and digest. Required readiness issues and unavailable
 price validation block publication; a publisher must reconstruct and refuse all
 issues inside its own transaction. A draft actor or service credential cannot
-construct `VerifiedCatalogPublisher`. This change supplies no publisher or binding.
+construct `VerifiedCatalogPublisher`.
+
+`createPostgresCatalogPublication` supplies an unbound native authority. Its host
+provides fresh single-connection transactions, human authorization, installed
+document/derived-fact validators and transaction-local readiness adapters. Nothing
+mounts the authority or changes a capability flag. `authorize` mints an opaque
+publisher only for a human administrator; every command rechecks native membership
+before replay. `decision` persists alternating approve/revoke decisions against
+the exact candidate reference and digest. Publication requires approval; a later
+revocation leaves the publication and its original replay receipt intact.
+
+The writer revalidates immutable v3 inputs, applies their ordered effects and
+checks full native readback in one transaction. It takes catalogue locks only.
+The price boundary calls the price owner's `applyInTransaction` once on that same
+executor, after catalogue effects and before readiness. Its adapter must throw on
+any child refusal; it cannot open or commit another transaction. Installed
+readiness adapters perform no external I/O or commerce locking. Media evidence
+is prepared before admission and verified against its immutable claim. Required
+evidence never defaults to ready.
+
+`publish` returns a version 2 receipt; `publication` adapts it to the existing
+publication port. `reads.current` checks projection drift. `reads.readback` and
+`readbackV2` read exact retained heads after subsequent publications. Full facts
+are paged with a product-bound high-water cursor. `receipt(scope, publisher)` and
+the publisher-bound `readPort` recover a lost response without republishing.
+History is bounded to 100 receipts per page. The unbound `reads.receipt` refuses
+because it has no human authority.
+
+`resolveRetained` requires both an opaque read scope and a host accepted-source
+authorizer. In one consistent read, that authorizer verifies the caller's account,
+order or fulfilment access and the persisted line binding. The resolver then
+matches the exact publication, document and SKU revision. Missing legacy binding
+refuses as `retained_revision_unavailable`; current facts cannot repair it. This
+read grants no fresh-sale admission. Hosts still own accepted-source persistence
+and the later acceptance fence.
+
+Publication preserves omitted SKU revisions unless an explicit compatible derived
+operation changes them. Material or inconclusive changes require successor SKU
+identity. A document change revalidates affected omitted siblings. Nonmass or
+missing net content refuses as `catalog_publication_mass_required_until_mc5`;
+the legacy projection requires representable positive integer grams. Fractional, zero, negative or out-of-range mass refuses as
+`catalog_publication_integral_grams_required`. Net grams range from 1 through
+2,147,483,647; gross grams range from 1 through 10^40−1. This temporary boundary
+lasts until versioned quantity readers are available. Count and volume publication
+journeys remain incomplete. Hard preparation requires a valid
+unit GTIN even for dark facts; gross mass and configured prices are independently
+checked when eligibility is enabled.
+
+Draft input retains its 1 MiB ceiling. Publication validation shares scalar and
+attribute rules while counting full UTF-8 envelopes: SKU facts 2 MiB, manifest
+16 MiB, receipt 8 MiB, history 16 MiB and full-fact page 8 MiB/100 items. It never
+truncates an item or regenerates legacy document bytes. All synchronous effects,
+including receipt, outbox and readback, roll back together. A later cache failure
+does not undo a committed publication.
 
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,

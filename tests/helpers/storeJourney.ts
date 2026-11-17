@@ -17,6 +17,15 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { captureSandboxPurchase } from "./captureSandboxPurchase.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+
+/** Owner fixture setup follows the same single-use pointer fence as publication. */
+export async function setFixtureCatalogDocument(db: PgQueryExecutor, productId: string, revisionId: string): Promise<void> {
+  await db.query(`WITH capability AS (INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint)
+    SELECT pg_current_xact_id(),id,$2::uuid,$3 FROM public.catalog_products WHERE id=$1::uuid AND current_document_revision_id IS DISTINCT FROM $2::uuid RETURNING product_id)
+    UPDATE public.catalog_products SET current_document_revision_id=$2::uuid WHERE id IN (SELECT product_id FROM capability)`,
+  [productId, revisionId, createHash("sha256").update(`fixture:${productId}:${revisionId}`).digest("hex")]);
+}
 
 export const journeyPaidAt = "2026-09-01T12:00:00.123456Z";
 export const journeyScheduledAt = "2026-09-29T12:00:00.123456Z";

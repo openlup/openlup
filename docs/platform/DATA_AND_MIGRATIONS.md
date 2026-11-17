@@ -272,6 +272,21 @@ unqualified by this local witness.
 
 ## Compatible data transfer
 
+Native publication heads, immutable publications, full SKU revisions, kinded
+operator receipts and candidate decisions are AUTHORITATIVE retained catalogue
+data. Restore their definitions, drafts, products and documents first, then
+publication predecessors before successors, SKU revisions, heads, receipts and
+decisions. Preserve exact canonical bytes and digests. The transient
+`catalog_publication_pointer_capabilities` relation is excluded from transfer;
+nonempty capabilities refuse capture. Restore authorizes each document pointer
+inside its existing transaction and consumes the authorization, keeping ordinary
+direct pointer changes refused. Existing readers ignore nullable publication
+facts; exact retained readers require the new history rather than inferring it
+from a legacy current row. The managed rail does not supply this feature. See
+[the package catalogue contract](../../packages/platform/README.md#catalog) for
+host composition, mass admission and the separately bound price writer.
+
+
 Catalogue definitions, definition-install receipts and tax-class keys are
 AUTHORITATIVE catalogue relations in the native connected-store profile. The `transfer_round_trip_matrix` covers each relation, retained v1/v2 definitions,
 receipt replay, bound product references and retired tax keys. Restore

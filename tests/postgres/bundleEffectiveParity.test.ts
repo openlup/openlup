@@ -1,3 +1,4 @@
+import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresBundleCatalogStore } from "@openlup/platform/catalog";
@@ -35,7 +36,8 @@ beforeEach(async () => {
   }
   part = skus[1];
   const revision = (await db.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest) VALUES ($1,1,'synthetic.v1','synthetic:document','{}','synthetic:source','{}',$2) RETURNING id", [product, "b".repeat(64)])).rows[0].id;
-  await db.query("UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1", [product, skus[0], revision]);
+  await db.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [product, skus[0]]);
+  await setFixtureCatalogDocument(db, product, revision);
   list = (await db.query("INSERT INTO public.price_lists(name,region_code,currency,valid_from,valid_to) VALUES ('Synthetic authority','ZZ','XXX',$1,$2) RETURNING id", [before, after])).rows[0].id;
   for (const sku of skus) for (const [mode, amount] of [["one_time", 1200], ["subscription", 1000], ["any", 1100]]) {
     await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,valid_from,valid_to) VALUES ($1,$2,$3,1,$4,$5,$6)", [list, sku, mode, amount, before, after]);
@@ -98,7 +100,12 @@ it("requires document, primary GTIN, status, weight and mode sellability for eve
     ["UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1", [part]],
   ];
   for (const [sql, values] of changes) {
-    await db.query("SAVEPOINT unready"); await db.query(sql, values);
+    await db.query("SAVEPOINT unready");
+    if (sql.includes("current_document_revision_id=NULL")) {
+      await expect(db.query(sql, values)).rejects.toMatchObject({ code: "42501", message: "catalog_document_pointer_direct_write_denied" });
+      await db.query("ROLLBACK TO SAVEPOINT unready"); expect(await feed()).toHaveLength(1); continue;
+    }
+    await db.query(sql, values);
     expect(await feed(), sql).toEqual([]);
     expect((await store().getBundle({ code: "PARITY-SET", ...feedInput }))!.components).toHaveLength(2);
     await db.query("ROLLBACK TO SAVEPOINT unready");

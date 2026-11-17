@@ -163,7 +163,10 @@ test('J-S6: a matching completed key replays after a later subject-fact change',
       (id,product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest)
       SELECT '${revision}',product_id,${document.revisionNo},schema_id,'fixture:catalogue-drift:${document.revisionNo}',convert_from(decode('${encoded}','hex'),'UTF8')::jsonb,
         provenance,source_ref,'${documentDigest(document)}' FROM public.catalog_product_document_revisions WHERE id='${f.uuid(String(product.current_document_revision_id))}'`);
-    f.sql(`UPDATE public.catalog_products SET current_document_revision_id='${f.uuid(String(revision))}' WHERE id='${f.uuid(String(product.id))}'`);
+    f.sql(`WITH capability AS (INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint)
+      SELECT pg_current_xact_id(),d.product_id,d.id,d.digest FROM public.catalog_product_document_revisions d JOIN public.catalog_products p ON p.id=d.product_id
+      WHERE d.id='${f.uuid(String(revision))}' AND p.current_document_revision_id IS DISTINCT FROM d.id RETURNING product_id,revision_id)
+      UPDATE public.catalog_products p SET current_document_revision_id=c.revision_id FROM capability c WHERE p.id=c.product_id AND p.id='${f.uuid(String(product.id))}'`);
     const refused = await f.action('subscription.command',{ request: preview.request },preview.key);
     expect(refused.body.code).toBe('subscription_edit_quote_drift');
     expect((await f.read()).templateVersion).toBe(before.templateVersion);
@@ -177,6 +180,9 @@ test('J-S6: a matching completed key replays after a later subject-fact change',
     expect(f.rows(`SELECT id FROM public.subscription_events WHERE subscription_id='${f.id}'`)).toEqual(events);
   } finally {
     f.setSubject(JSON.parse(original));
-    f.sql(`UPDATE public.catalog_products SET current_document_revision_id='${f.uuid(String(product.current_document_revision_id))}' WHERE id='${f.uuid(String(product.id))}'`);
+    f.sql(`WITH capability AS (INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint)
+      SELECT pg_current_xact_id(),d.product_id,d.id,d.digest FROM public.catalog_product_document_revisions d JOIN public.catalog_products p ON p.id=d.product_id
+      WHERE d.id='${f.uuid(String(product.current_document_revision_id))}' AND p.current_document_revision_id IS DISTINCT FROM d.id RETURNING product_id,revision_id)
+      UPDATE public.catalog_products p SET current_document_revision_id=c.revision_id FROM capability c WHERE p.id=c.product_id AND p.id='${f.uuid(String(product.id))}'`);
   }
 });

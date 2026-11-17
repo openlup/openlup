@@ -3,7 +3,7 @@ import {
   type CatalogQuantityUnit,
 } from "@openlup/core/catalog";
 import { z } from "./validation.js";
-import { canonicalCatalogDraftJson } from "./contracts/draft.js";
+import { canonicalCatalogPublicationJson, canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { AttributeDefinition, CatalogAttributeScalarType } from "./contracts/attributes.js";
 import type { CatalogDefinitionIssue, CatalogConformanceCode } from "./contracts/catalogConformance.js";
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
@@ -39,9 +39,15 @@ const decimalText = (unscaled: string, scale: number): string => scale === 0 ? u
  * Definition metadata is checked by its existing owner. Cross-field policy stays in validateContent.
  * No v1 draft admission, callback execution, database access or publication occurs here.
  */
-export async function validateCatalogAttributes(
+export function validateCatalogAttributes(
   definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort,
-): Promise<CatalogAttributeValidation> {
+): Promise<CatalogAttributeValidation> { return validate(definition, input, references, 1_048_576); }
+/** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap. */
+export function validateCatalogPublicationAttributes(
+  definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort,
+): Promise<CatalogAttributeValidation> { return validate(definition, input, references, 16_777_216); }
+async function validate(definition: CatalogProductTypeInput, input: CatalogAttributeInput,
+  references: CatalogAttributeReferencePort | undefined, maxBytes: number): Promise<CatalogAttributeValidation> {
   const issues = catalogProductTypeIssues([definition]).map((issue) => ({ ...issue, path: `/definition${issue.path.slice(2)}` }));
   if (issues.length) return { valid: false, issues };
   const readinessIssues: CatalogDefinitionIssue[] = [];
@@ -49,7 +55,7 @@ export async function validateCatalogAttributes(
   const missing = (path: string, code: CatalogConformanceCode): void => { readinessIssues.push({ path, code }); };
   // Snapshot canonical data before awaiting the injected resolver. Reuse the existing depth/byte guard.
   let snapshot: CatalogAttributeInput;
-  try { snapshot = JSON.parse(canonicalCatalogDraftJson(input)) as CatalogAttributeInput; }
+  try { snapshot = JSON.parse(maxBytes === 1_048_576 ? canonicalCatalogDraftJson(input) : canonicalCatalogPublicationJson(input)) as CatalogAttributeInput; }
   catch { return { valid: false, issues: [{ path: "", code: "attribute_values_invalid" }] }; }
   if (!snapshot || !Array.isArray(snapshot.skus) || Object.keys(snapshot).some((key) => !["productAttributes", "skus"].includes(key))) {
     return { valid: false, issues: [{ path: "", code: "attribute_values_invalid" }] };

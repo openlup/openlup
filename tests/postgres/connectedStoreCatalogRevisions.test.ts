@@ -1,6 +1,9 @@
+import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -15,6 +18,7 @@ const latest = [randomUUID(), randomUUID()];
 let source: JourneyInstallation, target: JourneyInstallation;
 let packet: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
+let retainedPublication: { first: CatalogHeadRef; second: CatalogHeadRef; productId: string; receipt: unknown };
 
 beforeAll(async () => {
   source = await resources.installation("catalog-source");
@@ -37,8 +41,9 @@ beforeAll(async () => {
       [revision === 2 ? latest[index] : randomUUID(), product, revision,
         `document:${index}:${revision}`, String(revision).repeat(64), at]);
     }
-    await source.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [product, latest[index]]);
+    await setFixtureCatalogDocument(source.owner, product, latest[index]);
   }
+  retainedPublication = await seedPublicationHistory(source.owner);
   packet = await captureStoreJourney(source.owner, "catalog-document-source");
 }, postgresSetupTimeoutMs);
 
@@ -76,14 +81,14 @@ it("carries two revisions per revised product, resolves the latest pointer and r
   const before = await journeyCensus(source.owner);
   expect(packet.owned.find(table => table.table === "catalog_product_document_revisions")?.rows)
     .toEqual(before.catalog_product_document_revisions);
-  expect(before.catalog_product_document_revisions).toHaveLength(4);
+  expect(before.catalog_product_document_revisions).toHaveLength(5);
   expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect((await target.owner.query(`SELECT p.id,p.current_document_revision_id,r.product_id,r.revision_no,
     r.id=(SELECT r2.id FROM public.catalog_product_document_revisions r2
       WHERE r2.product_id=p.id ORDER BY r2.revision_no DESC LIMIT 1) AS latest
     FROM public.catalog_products p JOIN public.catalog_product_document_revisions r
-      ON r.id=p.current_document_revision_id ORDER BY p.slug`)).rows)
+      ON r.id=p.current_document_revision_id WHERE p.id=ANY($1::uuid[]) ORDER BY p.slug`, [products])).rows)
     .toEqual(products.slice(0, 2).map((id, index) => ({ id, current_document_revision_id: latest[index],
       product_id: id, revision_no: 2, latest: true })));
   expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: true, neutralizedHistoricalHoldNotifications: 0 });
@@ -108,11 +113,10 @@ it("refuses another product's revision at the pointer foreign key and rolls back
   corrupted.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
   let pointerError: unknown;
   const owner = observedOwner(async () => undefined, (sql, error) => {
-    if (sql.startsWith("UPDATE public.catalog_products p SET current_document_revision_id=")) pointerError = error;
+    if (sql.includes("catalog_publication_pointer_capabilities") || sql.startsWith("UPDATE public.catalog_products p SET current_document_revision_id=")) pointerError = error;
   });
   await expect(restore(owner, corrupted)).rejects.toBeInstanceOf(PostgresTransferError);
-  expect(pointerError).toMatchObject({ code: "23503",
-    constraint: "catalog_products_current_document_revision_same_product_fkey" });
+  expect(pointerError).toMatchObject({ code: "23503", table: "catalog_publication_pointer_capabilities" });
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 }, 60_000);
 
@@ -143,3 +147,69 @@ it("refuses a changed staged product at the guarded pointer update and rolls bac
   expect(changed).toBe(true);
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 }, 65_000);
+
+const publicationAdmin = randomUUID();
+const publicationDefinition = { key: "example:transfer-article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: true }],
+  netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
+function publicationAuthority(owner: Pool) {
+  return createPostgresCatalogPublication({ registry: createCatalogProductTypeRegistry([publicationDefinition]),
+    transactions: { async run(work) { const client = await owner.connect(); try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
+      catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
+    authorizeHuman: async () => ({ ok: true as const, userId: publicationAdmin, role: "admin", isMachineActor: false }),
+    rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
+    readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false });
+}
+async function seedPublicationHistory(owner: Pool) {
+  await installCatalogDefinitions(owner, { id: "example:transfer", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [publicationDefinition], taxClasses: [] });
+  await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'transfer-publication@example.invalid')", [publicationAdmin]);
+  await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [publicationAdmin]);
+  const authority = publicationAuthority(owner), actor = (await authority.authorize(undefined))!, productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), documentId = randomUUID();
+  const canonicalText = canonicalCatalogDraftJson({ label: "Retained transfer article" }), digest = createHash("sha256").update(canonicalText).digest("hex");
+  const skuCode = `TRANSFER-${skuId}`, slug = `retained-${productId}`, facts = { skuCode, title: "Retained article", minQuantity: 1, isAddon: false, facts: {} };
+  const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, slug, type: { key: publicationDefinition.key, version: 1 }, dimensions: [], primarySkuId: skuId,
+    documentRevision: { id: documentId, productId, revisionNo: 1, schemaId: "example:transfer.v1", documentRef: "example:transfer", sourceRef: "example:source", digest },
+    sharedContent: { schemaVersion: 1, catalogAction: "create", document: JSON.parse(canonicalText), presentation: {}, publicationSkus: [facts], offerMemberships: [], requestedModes: [{ skuCode, modes: [] }] } },
+    skus: [{ id: skuId, productId, code: skuCode, options: {}, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 }, identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: "5901234123457", packagingLevel: "unit", quantity: 1 }] }],
+    publication: { kind: "release", evidence: {}, operations: [
+      { op: "create_product", productId, productSlug: slug, name: "Retained article" },
+      { op: "register_document_revision", productSlug: slug, revisionId: documentId, revisionNo: 1, documentRef: "example:transfer", sourceRef: "example:source", canonicalText, digest, provenance: { source: "current_draft" } },
+      { op: "move_document_pointer", productSlug: slug, documentRevisionNo: 1 }, { op: "create_sku", skuId, productSlug: slug, documentRevisionNo: 1, ...facts },
+      { op: "create_identifier", skuCode, scheme: "gs1:gtin", issuer: "example", value: "5901234123457", packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null },
+      { op: "set_primary_sku", productSlug: slug, skuCode }, { op: "set_product_presentation", productSlug: slug, presentation: {} },
+    ] } };
+  let head: CatalogHeadRef | null = null, first: CatalogHeadRef | null = null, receipt: unknown;
+  for (const expectedRevision of [0, 1]) {
+    if (expectedRevision) { payload.product.sharedContent.catalogAction = "revise"; payload.product.sharedContent.presentation = { label: "Second presentation" };
+      payload.publication.operations = [{ op: "set_product_presentation", productSlug: slug, presentation: payload.product.sharedContent.presentation }]; }
+    const command = { schemaVersion: 3, action: expectedRevision ? "revise" : "create", draftId, commandKey: `draft:${expectedRevision + 1}`, expectedRevision, payload }, text = canonicalCatalogDraftJson(command);
+    expect((await owner.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [text, createHash("sha256").update(text).digest("hex")])).rows[0].result.outcome).toBe("committed");
+    const candidateRef = `v1:${draftId}@${expectedRevision + 1}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
+    const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
+      .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: catalogDefinitionDigest(publicationDefinition) }])).update(",").update(canonicalCatalogDraftJson(head)).update("]").digest("hex");
+    const publish = { commandKey: `publish:${expectedRevision + 1}`, productId, candidateRef, candidateDigest, expectedHead: head, changes: [] };
+    expect((await authority.decision({ schemaVersion: 2, action: "approve", productId, candidateRef, candidateDigest, commandKey: `approve:${expectedRevision + 1}`, reason: "Verified transfer facts" }, actor)).outcome).toBe("committed");
+    const result = await authority.publish(publish, actor); expect(result.outcome, JSON.stringify(result)).toBe("committed");
+    if (!("receipt" in result)) throw new Error("Missing publication receipt");
+    head = result.receipt.head; first ??= head; receipt = result.receipt;
+  }
+  return { productId, first: first!, second: head!, receipt };
+}
+it("transfers immutable publication predecessors, exact SKU revisions, decisions and recoverable receipts", async () => {
+  const before = await publicationAuthority(source.owner).readbackV2(retainedPublication.first);
+  expect(await restore()).toMatchObject({ replayed: false });
+  const authority = publicationAuthority(target.owner), actor = (await authority.authorize(undefined))!;
+  expect(await authority.readbackV2(retainedPublication.first)).toEqual(before);
+  expect(await authority.reads.current(retainedPublication.productId)).toMatchObject({ outcome: "found", head: retainedPublication.second });
+  expect(await authority.receipt({ productId: retainedPublication.productId, commandKey: "publish:2" }, actor)).toEqual({ outcome: "found", receipt: retainedPublication.receipt });
+  expect((await target.owner.query("SELECT count(*)::int AS count FROM public.catalog_publication_pointer_capabilities")).rows).toEqual([{ count: 0 }]);
+  for (const name of ["catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions"])
+    expect((await journeyCensus(target.owner))[name]).toEqual((await journeyCensus(source.owner))[name]);
+});
+
+it("refuses nonempty transient publication capabilities during capture", async () => {
+  const row = (await source.owner.query("SELECT product_id,document_revision_id FROM public.catalog_publications LIMIT 1")).rows[0];
+  const fingerprint = "a".repeat(64);
+  await source.owner.query("INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint) VALUES(pg_current_xact_id(),$1,$2,$3)", [row.product_id, row.document_revision_id, fingerprint]);
+  try { await expect(captureStoreJourney(source.owner, "catalog-capability-refusal")).rejects.toMatchObject({ code: "unsupported_table" }); }
+  finally { await source.owner.query("DELETE FROM public.catalog_publication_pointer_capabilities WHERE product_id=$1 AND revision_id=$2 AND command_fingerprint=$3", [row.product_id, row.document_revision_id, fingerprint]); }
+});

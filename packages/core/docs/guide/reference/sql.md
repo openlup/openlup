@@ -165,6 +165,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261122140000_subscription_price_policy_close_digest.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122140000_subscription_price_policy_close_digest.sql) |
 | [`20261122150000_catalog_drafts_v2.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122150000_catalog_drafts_v2.sql) |
 | [`20261122160000_catalog_drafts_v3.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122160000_catalog_drafts_v3.sql) |
+| [`20261122190000_catalog_publication.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122190000_catalog_publication.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

@@ -468,6 +468,8 @@ export type CatalogAttributeValidation = {
  * No v1 draft admission, callback execution, database access or publication occurs here.
  */
 export declare function validateCatalogAttributes(definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort): Promise<CatalogAttributeValidation>;
+/** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap. */
+export declare function validateCatalogPublicationAttributes(definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort): Promise<CatalogAttributeValidation>;
 /** An admission predicate only; the publisher must also prove all other publication duties. */
 export declare function catalogAttributesReadyForPublication(result: CatalogAttributeValidation): boolean;
 export {};
@@ -2122,6 +2124,8 @@ export interface CatalogDraftListQuery {
 }
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export declare function canonicalCatalogDraftJson(input: unknown): string;
+/** Shared safe scalar/JSON rules; publication owners supply their separately bounded envelope ceiling. */
+export declare function canonicalCatalogPublicationJson(input: unknown): string;
 ```
 ## dist/catalog/contracts/draftV2.d.ts
 
@@ -2452,6 +2456,8 @@ export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetai
 export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
 export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./candidate.js";
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
+export { CATALOG_PUBLICATION_LIMITS } from "./publication.js";
+export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogPublicationManifestV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogDecisionReceiptV2, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./publication.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -2698,6 +2704,137 @@ export interface CatalogProductTypeRegistry {
 export declare function validateCatalogQuantity(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): boolean;
 /** Decimal spelling cannot make two equal option values distinct. No unit conversion is inferred. */
 export declare function canonicalCatalogOption(value: CatalogOptionValue): string;
+```
+## dist/catalog/contracts/publication.d.ts
+
+```ts
+import type { CatalogHeadRef, CatalogPublishCommand, CatalogPublicationReceipt } from "./lifecycle.js";
+import type { CatalogQuantity, CatalogProductTypeRef, CatalogOptionValue } from "./productTypes.js";
+import type { CatalogAttributeValue } from "./draftV2.js";
+import type { CatalogPublicationFacts, CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
+import type { CatalogDocumentRevisionRef } from "./foundation.js";
+export declare const CATALOG_PUBLICATION_LIMITS: {
+    readonly skuBytes: 2097152;
+    readonly manifestBytes: 16777216;
+    readonly receiptBytes: 8388608;
+    readonly historyBytes: 16777216;
+    readonly pageBytes: 8388608;
+    readonly pageItems: 100;
+};
+export interface CatalogPublishCommandV2 extends CatalogPublishCommand {
+    schemaVersion: 2;
+}
+export interface CatalogDecisionCommandV2 {
+    schemaVersion: 2;
+    action: "approve" | "revoke";
+    productId: string;
+    commandKey: string;
+    candidateRef: string;
+    candidateDigest: string;
+    reason: string;
+}
+export interface CatalogPublishedIdentifier {
+    scheme: string;
+    issuer: string;
+    value: string;
+    packagingLevel: "unit" | "case";
+    quantity: number;
+    isPrimary: boolean;
+    label: string | null;
+    sourceRef: string | null;
+}
+export interface CatalogPublishedProduct {
+    id: string;
+    slug: string;
+    name: string;
+    status: "draft" | "active" | "archived";
+    type: CatalogProductTypeRef;
+    axes: string[];
+    attributes: Record<string, CatalogAttributeValue>;
+    primarySkuId: string | null;
+    document: CatalogDocumentRevisionRef | null;
+    presentation: CatalogPublicationFacts | null;
+    source: CatalogDraftClaimV3;
+    content: CatalogDraftSharedContentV3;
+}
+export interface CatalogPublishedSku {
+    id: string;
+    productId: string;
+    code: string;
+    title: string;
+    status: "draft" | "active" | "archived";
+    minQuantity: number;
+    isAddon: boolean;
+    sellableStandalone: boolean;
+    sellableInSubscription: boolean;
+    netContent: CatalogQuantity;
+    grossMass: CatalogQuantity | null;
+    options: Record<string, CatalogOptionValue>;
+    attributes: Record<string, CatalogAttributeValue>;
+    facts: CatalogPublicationFacts;
+    identifiers: CatalogPublishedIdentifier[];
+    assetRefs: string[];
+    logisticsRef: string | null;
+    memberships: {
+        offerVersion: string;
+        admitted: boolean;
+    }[];
+    source: CatalogDraftClaimV3;
+}
+export interface CatalogSkuRevisionRef {
+    skuId: string;
+    revisionId: string;
+    revision: number;
+    digest: string;
+}
+export interface CatalogPublicationManifestV2 {
+    schemaVersion: 2;
+    product: CatalogPublishedProduct;
+    skus: CatalogSkuRevisionRef[];
+}
+export interface CatalogFullPublicationV2 {
+    outcome: "page";
+    schemaVersion: 2;
+    head: CatalogHeadRef;
+    product: CatalogPublishedProduct;
+    items: {
+        reference: CatalogSkuRevisionRef;
+        facts: CatalogPublishedSku;
+    }[];
+    nextCursor: string | null;
+}
+export interface CatalogPublicationReceiptV2 extends CatalogPublicationReceipt {
+    schemaVersion: 2;
+    productId: string;
+    publicationDigest: string;
+    committedAt: string;
+}
+export interface CatalogDecisionReceiptV2 {
+    schemaVersion: 2;
+    action: "approve" | "revoke";
+    productId: string;
+    commandKey: string;
+    fingerprint: string;
+    candidateRef: string;
+    candidateDigest: string;
+    actorId: string;
+    reason: string;
+    decidedAt: string;
+}
+export interface CatalogRetainedSourceBinding {
+    kind: "account" | "order" | "fulfilment";
+    sourceId: string;
+    lineId: string;
+    productId: string;
+    skuId: string;
+    skuRevisionId: string;
+    publicationId: string;
+    documentRevisionId: string;
+}
+export interface CatalogPublicationFailure {
+    outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
+    reason: string;
+}
 ```
 ## dist/catalog/contracts/resolveProductMedia.d.ts
 
@@ -3687,6 +3824,11 @@ export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
+export { createPostgresCatalogPublication } from "./publicationStore.js";
+export { compileCatalogPublication, CatalogPublicationError, assertCatalogPublicationPreparation, assertCatalogPublicationGrossMass } from "./publicationValidation.js";
+export type { CatalogPublicationRules, CatalogPublicationCompileInput, CatalogPublicationDocument } from "./publicationValidation.js";
+export type { CatalogPublicationDependencies, CatalogPublicationTransactions, CatalogPublicationPriceBoundary, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
+export { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4027,6 +4169,188 @@ export interface CatalogCapabilityDescriptor {
     lifecycleWrite: boolean;
 }
 export {};
+```
+## dist/catalog/publicationPortsV2.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogDraftPriceOperationV2 } from "./contracts/draftV2.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding } from "./contracts/publication.js";
+import type { CatalogPublicationRules } from "./publicationValidation.js";
+import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
+declare const verifiedReadScope: unique symbol;
+export interface VerifiedCatalogReadScope {
+    readonly [verifiedReadScope]: true;
+}
+export interface CatalogPublicationTransactions {
+    run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T>;
+}
+/** The price owner supplies the opaque, same-product prelocked batch; no price policy is implemented here. */
+export interface CatalogPublicationPriceBoundary {
+    prelock(db: PgQueryExecutor, actor: VerifiedCatalogPublisher, productId: string, commands: readonly CatalogDraftPriceOperationV2[]): Promise<unknown>;
+    applyInTransaction(db: PgQueryExecutor, actor: VerifiedCatalogPublisher, parentProductId: string, prelockedBatch: unknown): Promise<void>;
+}
+export interface CatalogPublicationDependencies<Context> {
+    transactions: CatalogPublicationTransactions;
+    registry: CatalogProductTypeRegistry;
+    rules: CatalogPublicationRules;
+    /** Adapt the host's human authorization outcome; machine identity must be explicit. */
+    authorizeHuman(context: Context): Promise<{
+        ok: true;
+        userId: string;
+        role: string;
+        isMachineActor: boolean;
+    } | {
+        ok: false;
+    }>;
+    attributeReferences?: CatalogAttributeReferencePort;
+    prices?: CatalogPublicationPriceBoundary;
+    /** Runs in the publication transaction; no external I/O or commerce locks. Missing required evidence refuses. */
+    readiness(db: PgQueryExecutor, state: {
+        product: CatalogPublishedProduct;
+        skus: readonly CatalogPublishedSku[];
+    }, requirePrice: boolean): Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    }>;
+    globalReadiness?(db: PgQueryExecutor): Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    }>;
+    /** External proof is prepared before locks; transaction-local admission verifies this immutable claim again. */
+    verifyMedia(db: PgQueryExecutor, claim: {
+        skuCode: string;
+        mediaRef: string;
+        assetRefs: readonly string[];
+        revisionDigest: string;
+    }): Promise<boolean>;
+    /** Host owns accepted-source persistence and ownership/order/fulfilment authorization. Legacy absence is null, never current-state inference. */
+    acceptedSource?(db: PgQueryExecutor, context: Context, binding: CatalogRetainedSourceBinding): Promise<CatalogRetainedSourceBinding | null | "unauthorized">;
+}
+export {};
+```
+## dist/catalog/publicationStore.d.ts
+
+```ts
+import type { VerifiedCatalogPublisher, CatalogPublicationPort, CatalogPublicationReadPort } from "./publicationPorts.js";
+import type { CatalogPublicationDependencies, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
+import type { CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./contracts/publication.js";
+import type { CatalogHeadRef, CatalogPublishCommand } from "./contracts/lifecycle.js";
+/** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters. */
+export declare function createPostgresCatalogPublication<Context>(deps: CatalogPublicationDependencies<Context>): {
+    authorize: (context: Context) => Promise<VerifiedCatalogPublisher | null>;
+    authorizeReadScope(context: Context): VerifiedCatalogReadScope;
+    publication: CatalogPublicationPort;
+    reads: CatalogPublicationReadPort;
+    readPort: (capability: VerifiedCatalogPublisher) => CatalogPublicationReadPort;
+    publish: (input: CatalogPublishCommand, capability: VerifiedCatalogPublisher) => Promise<CatalogPublicationFailure | {
+        outcome: "replayed";
+        receipt: CatalogPublicationReceiptV2;
+    } | {
+        outcome: "committed";
+        receipt: CatalogPublicationReceiptV2;
+    }>;
+    decision: (input: CatalogDecisionCommandV2, capability: VerifiedCatalogPublisher) => Promise<CatalogPublicationFailure | {
+        outcome: "replayed";
+        receipt: CatalogDecisionReceiptV2;
+    } | {
+        outcome: "committed";
+        receipt: CatalogDecisionReceiptV2;
+    }>;
+    receipt: (scope: {
+        productId: string;
+        commandKey: string;
+    }, capability: VerifiedCatalogPublisher) => Promise<CatalogPublicationFailure | {
+        outcome: "found";
+        receipt: CatalogPublicationReceiptV2;
+    } | {
+        outcome: "absent";
+    }>;
+    readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
+    resolveRetained: (binding: CatalogRetainedSourceBinding, scope: VerifiedCatalogReadScope) => Promise<CatalogPublicationFailure | {
+        outcome: "found";
+        head: {
+            publicationId: string;
+            revision: number;
+            documentDigest: string;
+        };
+        product: CatalogPublishedProduct;
+        reference: CatalogSkuRevisionRef;
+        sku: CatalogPublishedSku;
+    }>;
+};
+```
+## dist/catalog/publicationValidation.d.ts
+
+```ts
+import { z } from "./validation.js";
+import { catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
+import type { CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
+import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord, CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogDraftClaimV3 } from "./contracts/draftV3.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./contracts/publication.js";
+export declare class CatalogPublicationError extends Error {
+    readonly code: string;
+    readonly outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
+    constructor(code: string, outcome?: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported");
+}
+export declare const publicationRefuse: (code: string, outcome?: CatalogPublicationError["outcome"]) => never;
+export declare const publicationJson: (input: unknown, maxBytes?: number) => string;
+export declare const publicationDigest: (input: unknown, maxBytes?: number) => string;
+export declare const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku>;
+export declare const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct>;
+export declare const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2>;
+export interface CatalogPublicationDocument {
+    reference: z.infer<typeof catalogDocumentRevisionRefSchema>;
+    canonicalText: string;
+    provenance: {
+        draftId: string;
+        draftRevision: number;
+        draftCommandKey: string;
+        draftFingerprint: string;
+    };
+}
+export interface CatalogPublicationRules {
+    /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
+    validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
+    canonicalizeDocument(document: unknown): string;
+    deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
+    classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
+        beforeProduct: CatalogPublishedProduct;
+        afterProduct: CatalogPublishedProduct;
+        beforeDocument: CatalogPublicationDocument | null;
+        afterDocument: CatalogPublicationDocument;
+    }): "compatible" | "material" | "inconclusive";
+}
+export interface CatalogPublicationCompileInput {
+    payload: CatalogDraftPayloadV3;
+    record: CatalogDraftPublicationStoredRecord;
+    definition: CatalogProductTypeDefinition;
+    product: CatalogPublishedProduct | null;
+    skus: readonly CatalogPublishedSku[];
+    documents: readonly CatalogPublicationDocument[];
+    retainedSources: readonly CatalogDraftPublicationStoredRecord[];
+    rules: CatalogPublicationRules;
+    capacity?: number;
+}
+export declare function catalogPublicationClaim(record: CatalogDraftPublicationStoredRecord): CatalogDraftClaimV3;
+/** Temporary native publication boundary, until versioned quantity readers land. */
+export declare function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition, kind: "net" | "gross"): string;
+export declare function assertCatalogPublicationMassInputs(payload: unknown, definition: CatalogProductTypeDefinition): void;
+/** Hard preparation guard, independent of dark/activation readiness. */
+export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3): void;
+/** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic. */
+export declare function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void;
+/** Ordered donor compiler adapted to installed definitions; never persists or calls commerce. */
+export declare function compileCatalogPublication(input: CatalogPublicationCompileInput): {
+    product: CatalogPublishedProduct;
+    skus: CatalogPublishedSku[];
+    documents: CatalogPublicationDocument[];
+    activation: boolean;
+    changed: boolean;
+};
 ```
 ## dist/catalog/readPorts.d.ts
 
@@ -4389,6 +4713,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261122160000_catalog_drafts_v3.sql";
     readonly position: 148;
     readonly sha256: "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd";
+    readonly url: URL;
+}, {
+    readonly id: "20261122190000_catalog_publication";
+    readonly catalogPath: "db/platform/migrations/20261122190000_catalog_publication.sql";
+    readonly position: 149;
+    readonly sha256: "ff3f502066ea9c5abad80819f3a41971d1c5744449278a4cc900f4eb7c7fd7b5";
     readonly url: URL;
 }];
 ```

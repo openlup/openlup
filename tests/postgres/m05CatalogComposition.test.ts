@@ -1,3 +1,4 @@
+import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import type { HttpRequest } from "@openlup/platform/http";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -46,7 +47,8 @@ beforeAll(async () => {
   const product = (await pool.query("INSERT INTO public.catalog_products(slug,name) VALUES ('p7-unit','Synthetic unit') RETURNING id")).rows[0].id;
   const sku = (await pool.query("INSERT INTO public.catalog_skus(product_id,sku,title,net_weight_g,status,sellable_standalone,sellable_in_subscription) VALUES ($1,'P7-UNIT','Synthetic unit',100,'active',true,true) RETURNING id", [product])).rows[0].id;
   const revision = (await pool.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,provenance,source_ref,digest) VALUES ($1,1,'synthetic:unit','document:unit','{}','{}','source:unit',$2) RETURNING id", [product, "a".repeat(64)])).rows[0].id;
-  await pool.query("UPDATE public.catalog_products SET primary_sku_id=$2,current_document_revision_id=$3 WHERE id=$1", [product, sku, revision]);
+  await pool.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [product, sku]);
+  await setFixtureCatalogDocument(pool, product, revision);
   await pool.query("INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary) VALUES ($1,'synthetic','gtin','00000000000000','unit',1,true)", [sku]);
   const list = (await pool.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES ('Synthetic list','ZZ','XXX') RETURNING id")).rows[0].id;
   await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES ($1,$2,'one_time',1000),($1,$2,'subscription',900)", [list, sku]);

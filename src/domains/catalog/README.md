@@ -89,6 +89,16 @@ human publisher authority. See the [package catalogue owner](../../../packages/p
 for versioned APIs, reader upgrade order and the native-only boundary. Existing
 v1 commands and the managed baseline remain unchanged.
 
+The package's unbound native publisher consumes immutable v3 publication inputs.
+It persists exact full facts, approvals/revocations, human-bound receipts and
+publication history; the reference runtime still enables no publication
+capability. The [package owner](../../../packages/platform/README.md#catalog)
+describes required trusted adapters, exact retained reads, limits and recovery.
+The native SQL rail includes a single-use document-pointer fence and transfer of
+durable publication facts; transient authorizations are never transferred. The
+managed rail does not supply this feature. Accepted-source persistence and sales
+admission still require their own lifecycle and acceptance composition.
+
 - A quantity dimension may declare `role: "net_content"`; a type has at most
   one, and all of its units must be net-content units. A SKU option on it must
   state the same quantity as the SKU's `netContent`
@@ -159,3 +169,10 @@ Draft payload v3's publication input envelope and opt-in readers are owned by th
 [package catalogue contract](../../../packages/platform/README.md#catalog).
 The source reference composition remains unbound; neither draft persistence nor
 candidate preview executes publication operations or enables a capability.
+
+The native publication authority is also an opt-in package composition. It
+retains complete immutable product and SKU facts, source-bound decisions and
+receipts; exact historical reads remain available after later publications or
+withdrawal. Native current columns remain projections. Until versioned quantity
+readers land, publication requires positive integral grams in the native ranges.
+The existing reference application does not mount this writer or enable it.

@@ -1,3 +1,4 @@
+import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 /** Characterizes current-document quote facts and closed refusals on PostgreSQL. */
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { PgQueryExecutor } from "@openlup/platform/data";
@@ -82,9 +83,10 @@ it("excludes inactive and unsellable SKUs, validates inactive products before ex
     expect(verifyDocument).not.toHaveBeenCalledWith(null, expect.anything());
     for (const sku of seed.skus.slice(0, 3)) expect(items.map(item => item.skuId)).not.toContain(sku.id);
     expect(items.find(item => item.skuId === seed.skus[3]!.id)).toMatchObject({ productSlug: seed.products[4]!.slug, isPrimarySku: false, isAddon: true });
-    await update("UPDATE public.catalog_products SET current_document_revision_id=NULL WHERE id=$1", [seed.products[2]!.id],
-      () => refusal(make(), "catalog_revision_invalid"),
-      "UPDATE public.catalog_products SET current_document_revision_id=(SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1 AND revision_no=2) WHERE id=$1");
+    await expect(db.query("UPDATE public.catalog_products SET current_document_revision_id=NULL WHERE id=$1", [seed.products[2]!.id]))
+      .rejects.toMatchObject({ code: "42501", message: "catalog_document_pointer_direct_write_denied" });
+    await refusal(make(intercept(rows => rows.map(row => row.product_id === seed.products[2]!.id
+      ? { ...row, current_document_revision_id: null, document_revision_id: null } : row))), "catalog_revision_invalid");
   } finally {
     await db.query("UPDATE public.catalog_skus SET status='active' WHERE id=$1", [seed.skus[0]!.id]);
     await db.query("UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3 WHERE id=$1", [seed.skus[1]!.id, seed.skus[1]!.sellable_standalone, seed.skus[1]!.sellable_in_subscription]);
@@ -148,12 +150,12 @@ it("detects a real pointer change between envelope/identifier read and guarded p
   const db = { async query(sql: string, values?: unknown[]) {
     if (isPayload(sql) && !moved && (values?.[0] as string[]).includes(product.id)) {
       moved = true;
-      await fixture.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [product.id, next]);
+      await setFixtureCatalogDocument(fixture.owner, product.id, next);
     }
     return fixture.executor.query(sql, values);
   } };
   try { await refusal(make(db), "catalog_authority_changed"); expect(moved).toBe(true); }
-  finally { await fixture.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [product.id, original]); }
+  finally { await setFixtureCatalogDocument(fixture.owner, product.id, original); }
 }, 30_000);
 
 it.each(["schema", "semantic identity", "digest"])("lets the host refuse document %s using the shared error class", async kind => {

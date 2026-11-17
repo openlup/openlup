@@ -40,6 +40,10 @@ const owned = [
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   // Authoritative draft history and identity reservations, including abandoned drafts.
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
+  // AUTHORITATIVE immutable publications, complete SKU revisions, scoped receipts and approval decisions.
+  // The transient catalog_publication_pointer_capabilities table stays outside this profile;
+  // the existing unknown-nonempty refusal requires it to be empty, rather than carrying authority.
+  "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
   "communication_event_bindings", "communication_event_receipts", "communication_event_erasures",
