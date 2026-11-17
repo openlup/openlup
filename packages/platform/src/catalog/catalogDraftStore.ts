@@ -78,12 +78,16 @@ function draftStore<Record extends CatalogDraftPublicationStoredRecord>(client: 
 export function createPostgresCatalogDraftStore(client: PgQueryExecutor): CatalogDraftStorePort {
   return draftStore(client, { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema }, 1);
 }
-/** Opt-in native reader/adapter for retained v1 and v2 payloads. */
+/** Opt-in native reader/adapter for retained v1 and v2 payloads.
+ * @experimental
+ */
 export function createPostgresCatalogDraftStoreV2(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftStoredRecord> {
   return draftStore(client, { record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema }, 2);
 }
 
-/** Explicit v3 opt-in; the v1 and v2 adapters retain their version boundaries. */
+/** Explicit v3 opt-in; the v1 and v2 adapters retain their version boundaries.
+ * @experimental
+ */
 export function createPostgresCatalogDraftStoreV3(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftPublicationStoredRecord> {
   return draftStore(client, { record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema }, 3);
 }

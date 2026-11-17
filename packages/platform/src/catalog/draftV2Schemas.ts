@@ -8,7 +8,9 @@ import type { CatalogDraftPriceOperationV2, CatalogDraftPayloadV2, CatalogDraftC
 
 const id = z.guid().refine(value => value === value.toLowerCase(), "UUID must be lowercase");
 const amount = z.number().int().min(0).max(2_147_483_647);
-/** Exact price setup command grammar, including the original positive-only write boundary. */
+/** Exact price setup command grammar, including the original positive-only write boundary.
+ * @experimental
+ */
 export const catalogDraftPriceOperationV2Schema: z.ZodType<CatalogDraftPriceOperationV2> = z.object({
   schemaVersion: z.literal(1),
   commandKey: z.string().min(1).max(240).refine(value => value.trim() === value, "command key must be trimmed"),
@@ -27,6 +29,7 @@ export const catalogDraftSkuV2Schema = legacy.shape.skus.element.omit({ priceRef
   attributes: attributes.optional(), priceOperations: z.array(catalogDraftPriceOperationV2Schema).optional(),
 }).strict();
 export const catalogDraftProductV2Schema = legacy.shape.product.extend({ attributes: attributes.optional() }).strict();
+/** @experimental */
 export const catalogDraftPayloadV2Schema: z.ZodType<CatalogDraftPayloadV2> = z.object({
   schemaVersion: z.literal(2), product: catalogDraftProductV2Schema,
   skus: z.array(catalogDraftSkuV2Schema).max(10_000),
@@ -39,6 +42,7 @@ export const catalogDraftPayloadV2Schema: z.ZodType<CatalogDraftPayloadV2> = z.o
     if (operation.variantId !== s.id) context.addIssue({ code: "custom", path: ["skus", index, "priceOperations", operationIndex, "variantId"], message: "price operation must belong to SKU" });
   }));
 });
+/** @experimental */
 export const catalogDraftCommandV2Schema: z.ZodType<CatalogDraftCommandV2> = z.object({
   schemaVersion: z.literal(2), action: z.enum(["create", "revise", "abandon", "resume"]),
   draftId: id, commandKey: catalogDraftCommandSchema.shape.commandKey,
@@ -49,10 +53,14 @@ export const catalogDraftCommandV2Schema: z.ZodType<CatalogDraftCommandV2> = z.o
   if ((command.action === "create") !== (command.expectedRevision === 0))
     context.addIssue({ code: "custom", path: ["expectedRevision"], message: "create starts at revision zero; other commands require a persisted revision" });
 });
+/** @experimental */
 export const catalogDraftStoredPayloadSchema: z.ZodType<CatalogDraftStoredPayload> = z.union([catalogDraftPayloadSchema, catalogDraftPayloadV2Schema]);
+/** @experimental */
 export const catalogDraftStoredCommandSchema: z.ZodType<CatalogDraftStoredCommand> = z.union([catalogDraftCommandSchema, catalogDraftCommandV2Schema]);
+/** @experimental */
 export const catalogDraftStoredRecordSchema: z.ZodType<CatalogDraftStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogDraftStoredPayloadSchema }).strict()
   .refine(record => record.productId === record.payload.product.id, "record product must own payload");
+/** @experimental */
 export const catalogDraftStoredApplyResultSchema: z.ZodType<CatalogDraftStoredApplyResult> = z.union([
   z.object({ outcome: z.enum(["committed", "replayed"]), record: catalogDraftStoredRecordSchema }).strict(), catalogDraftRefusalSchema,
 ]);

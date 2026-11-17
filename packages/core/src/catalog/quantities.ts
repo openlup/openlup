@@ -1,21 +1,31 @@
-/** A physical quantity uses positive decimal strings; its dimension never changes. */
+/** A physical quantity uses positive decimal strings; its dimension never changes.
+ * @experimental
+ */
 export type CatalogQuantityDimension = "mass" | "volume" | "count";
 export interface CatalogQuantity { dimension: CatalogQuantityDimension; unscaled: string; scale: number; unit: string }
+/** @experimental */
 export type CatalogCanonicalUnit = "openlup:g" | "openlup:ml" | "openlup:piece";
-/** Exact decimal multiplier to the dimension's canonical unit. */
+/** Exact decimal multiplier to the dimension's canonical unit.
+ * @experimental
+ */
 export interface CatalogUnitFactor { canonicalUnit: CatalogCanonicalUnit; unscaled: string; scale: number }
+/** @experimental */
 export interface CatalogQuantityUnit {
   code: string; dimension: CatalogQuantityDimension; integral: boolean; factor: CatalogUnitFactor;
 }
+/** @experimental */
 export type CatalogQuantityCode = "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count"
   | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable";
+/** @experimental */
 export class CatalogQuantityError extends Error {
   constructor(readonly code: CatalogQuantityCode) { super(code); this.name = "CatalogQuantityError"; }
 }
 function fail(code: CatalogQuantityCode): never { throw new CatalogQuantityError(code); }
+/** @experimental */
 export const CATALOG_CANONICAL_UNITS: Readonly<Record<CatalogQuantityDimension, CatalogCanonicalUnit>> = Object.freeze({
   mass: "openlup:g", volume: "openlup:ml", count: "openlup:piece",
 });
+/** @experimental */
 export const CATALOG_QUANTITY_UNITS: readonly CatalogQuantityUnit[] = Object.freeze(([
   ["openlup:g", "mass", false, "1"], ["openlup:kg", "mass", false, "1000"],
   ["openlup:ml", "volume", false, "1"], ["openlup:l", "volume", false, "1000"],
@@ -30,7 +40,9 @@ function decimal(unscaled: unknown, scale: unknown): asserts unscaled is string 
     || typeof scale !== "number" || !Number.isInteger(scale) || scale < 0 || scale > 12) fail("quantity_invalid");
   if (unscaled.length > 52) fail("quantity_overflow");
 }
-/** Validates a declared conversion, without inferring density or item mass. */
+/** Validates a declared conversion, without inferring density or item mass.
+ * @experimental
+ */
 export function validateCatalogUnitFactor(unit: CatalogQuantityUnit): void {
   decimal(unit.factor.unscaled, unit.factor.scale);
   if (unit.factor.canonicalUnit !== CATALOG_CANONICAL_UNITS[unit.dimension]
@@ -46,6 +58,7 @@ function resolve(code: string, units: readonly CatalogQuantityUnit[]): CatalogQu
   validateCatalogUnitFactor(found[0]);
   return found[0];
 }
+/** @experimental */
 export function parseCatalogQuantity(input: unknown, units: readonly CatalogQuantityUnit[] = CATALOG_QUANTITY_UNITS): CatalogQuantity {
   if (!input || typeof input !== "object" || Array.isArray(input)) return fail("quantity_invalid");
   const value = input as CatalogQuantity;
@@ -63,19 +76,23 @@ function normalise(coefficient: bigint, scale: number): { unscaled: string; scal
   if (unscaled.length - scale > 40) return fail("quantity_overflow");
   return { unscaled, scale };
 }
-/** Canonical numeric(52,12) evidence, with minimal scale and no rounding. */
+/** Canonical numeric(52,12) evidence, with minimal scale and no rounding.
+ * @experimental
+ */
 export function canonicalizeCatalogQuantity(input: CatalogQuantity, units: readonly CatalogQuantityUnit[] = CATALOG_QUANTITY_UNITS): CatalogQuantity {
   const value = parseCatalogQuantity(input, units);
   const unit = resolve(value.unit, units);
   return { dimension: value.dimension, ...normalise(BigInt(value.unscaled) * BigInt(unit.factor.unscaled), value.scale + unit.factor.scale),
     unit: CATALOG_CANONICAL_UNITS[value.dimension] };
 }
+/** @experimental */
 export function compareCatalogQuantities(left: CatalogQuantity, right: CatalogQuantity, units: readonly CatalogQuantityUnit[] = CATALOG_QUANTITY_UNITS): -1 | 0 | 1 {
   if (left.dimension !== right.dimension) return fail("quantity_cross_dimension");
   const a = canonicalizeCatalogQuantity(left, units), b = canonicalizeCatalogQuantity(right, units);
   const difference = BigInt(a.unscaled) * power(b.scale) - BigInt(b.unscaled) * power(a.scale);
   return difference < 0n ? -1 : difference > 0n ? 1 : 0;
 }
+/** @experimental */
 export function convertCatalogQuantity(input: CatalogQuantity, target: string, units: readonly CatalogQuantityUnit[] = CATALOG_QUANTITY_UNITS): CatalogQuantity {
   const value = canonicalizeCatalogQuantity(input, units), unit = resolve(target, units);
   if (unit.dimension !== value.dimension) return fail("quantity_cross_dimension");

@@ -15,7 +15,9 @@ export function catalogDefinitionJson(definition: CatalogProductTypeInput): stri
   return canonicalCatalogDraftJson(metadata(catalogDefinitionMetadataSchema.parse(definitionMetadata)));
 }
 
-/** The same canonical metadata bytes are used by installation and registry checks. */
+/** The same canonical metadata bytes are used by installation and registry checks.
+ * @experimental
+ */
 export function catalogDefinitionDigest(definition: CatalogProductTypeInput): string {
   return createHash("sha256").update(catalogDefinitionJson(definition)).digest("hex");
 }

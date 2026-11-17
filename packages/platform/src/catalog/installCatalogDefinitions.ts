@@ -6,7 +6,9 @@ import { catalogDefinitionJson } from "./catalogDefinitionDigest.js";
 import { catalogPackManifest } from "./catalogPackManifest.js";
 import { catalogPackIssues } from "./productTypeIssues.js";
 
-/** Supply the native migration-owner executor explicitly. No runtime binding or hook is created. */
+/** Supply the native migration-owner executor explicitly. No runtime binding or hook is created.
+ * @experimental
+ */
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
   const issue = catalogPackIssues(pack)[0];
   if (issue) throw Object.assign(new Error("invalid_catalog_pack"), { issue });
