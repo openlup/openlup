@@ -998,17 +998,17 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2841520,
+      "maxPackedBytes": 2903736,
       "maxFiles": 4654
     },
     "docs": {
-      "maxPackedBytes": 109679,
+      "maxPackedBytes": 113913,
       "maxFiles": 8
     },
-    "maxPackedBytes": 3593091,
-    "maxUnpackedBytes": 17252054,
+    "maxPackedBytes": 3661074,
+    "maxUnpackedBytes": 17614723,
     "maxFiles": 4830,
-    "capReason": "Under the coordinator-approved budget rule, canonical cold main 20ab9d196 measured with Node 24.21.0 and npm 11.19.0 is total 3380756 B packed / 16282630 B unpacked / 4588 files and code 2650235 B packed / 4420 files. The remaining A2 upper forecasts include the JSON-only checker: its measured delta is +4533 B packed / +22487 B unpacked and code +4906 B packed, with no new files; ceil(1.05 * max(delta, 0)) gives +4760 / +23612 B and code +5152 B. Combined forecasts are total +176760 B packed / +798612 B unpacked / +195 files and code +163152 B packed / +188 files. Paired total caps are 3593091 B packed (3380756 + 176760 + 35575) and 17252054 B unpacked (16282630 + 798612 + 170812); total files are 4830 (4588 + 195 + 47). Code caps are 2841520 B packed (2650235 + 163152 + 28133) and 4654 files (4420 + 188 + 46). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Code has no unpacked limit, so pairing is vacuous there. This supersedes the checker's 16350000 B unpacked cap. Preserve docs, browser limits and the published baseline. This budgets unbound 0.44.0 work and activates no capability.",
+    "capReason": "Under the coordinator-approved budget rule, canonical cold main 645faa295 measured with Node 24.21.0 and npm 11.19.0 is total 3417026 B packed / 16485720 B unpacked / 4619 files, code 2679987 B packed / 4448 files, and root docs 108386 B packed / 6 files. Remaining design upper forecasts sum to +207800 B packed / +954600 B unpacked / +189 files; calibrated code forecasts are +195000 B packed / +184 files and root docs +4400 B packed. Landed work is not forecast again. Paired total caps are 3661074 B packed (3417026 + 207800 + 36248) and 17614723 B unpacked (16485720 + 954600 + 174403). Code packed is 2903736 B (2679987 + 195000 + 28749); root docs packed is 113913 B (108386 + 4400 + 1127). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Projected total/code files 4808/4632 fit existing caps 4830/4654; preserve those caps, docs files 8, browser limits and the published baseline. Code and docs have no unpacked limit, so pairing is vacuous there. This budgets unbound 0.44.0 work and activates no capability.",
     "baseline": {
       "version": "0.42.0",
       "packedBytes": 3212990
