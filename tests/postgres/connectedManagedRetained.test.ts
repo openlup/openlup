@@ -323,8 +323,8 @@ it("projects typed managed obligations and leaves source history in the operator
     "SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
   expect(await restoreConnectedNativeStore({ owner: targetOwner!, installation: selection,
     packet: mapped.packet, freshTarget: fresh })).toMatchObject({ replayed: false });
-  expect((await targetOwner!.query('SELECT communication_subject_id FROM public.subscription_events')).rows)
-    .toEqual([expect.objectContaining({ communication_subject_id: null })]);
+  expect((await targetOwner!.query('SELECT communication_subject_id,catalog_acceptance FROM public.subscription_events')).rows)
+    .toEqual([expect.objectContaining({ communication_subject_id: null, catalog_acceptance: null })]);
   expect((await targetOwner!.query("SELECT id,status,total_amount_minor::text FROM public.commerce_orders")).rows)
     .toEqual(expect.arrayContaining([{ id: orderId, status: "pending_payment", total_amount_minor: "900" },
       { id: paidOrderId, status: "paid", total_amount_minor: "900" }]));
@@ -398,7 +398,7 @@ it("projects typed managed obligations and leaves source history in the operator
     .toEqual([{ id: subscriptionId, client_id: clientId, status: "active", next_cycle_at: sourceSubscription.next_cycle_at,
       cadence_days: 28, price_list_id: priceListId, currency_code: "XXX", composition_constraint: null, configured_offer_version: "classic" }]);
   expect(await typed("SELECT * FROM public.subscription_renewal_terms"))
-    .toEqual([{ subscription_id: subscriptionId, next_cycle_number: 4, currency_code: "XXX", stock_source_key: "retained-sku",
+    .toEqual([{ catalog_acceptance: null, subscription_id: subscriptionId, next_cycle_number: 4, currency_code: "XXX", stock_source_key: "retained-sku",
       settlement_channel_key: "synthetic-provider", unattended_charge_authorized_at: new Date("2026-01-01T00:00:00Z"),
       // Mandate evidence only. This does not approve it as the charge reference, which needs a later provider proof.
       authorization_ref: "synthetic-mandate",
@@ -408,14 +408,14 @@ it("projects typed managed obligations and leaves source history in the operator
   expect(await typed("SELECT * FROM public.subscription_renewal_term_lines"))
     .toEqual([{ subscription_id: subscriptionId, line_ordinal: 3, sku: "retained-sku", quantity: 2, unit_amount_minor: "100",
       created_at: sourceLine.created_at, updated_at: sourceLine.updated_at }]);
-  expect(await typed("SELECT id,subscription_id,variant_id,quantity,unit_price_minor,currency_code FROM public.subscription_lines"))
-    .toEqual([{ id: lineId, subscription_id: subscriptionId, variant_id: skuId, quantity: 2, unit_price_minor: "100", currency_code: "XXX" }]);
+  expect(await typed("SELECT id,subscription_id,variant_id,quantity,unit_price_minor,currency_code,catalog_sku_revision_id FROM public.subscription_lines"))
+    .toEqual([{ id: lineId, subscription_id: subscriptionId, variant_id: skuId, quantity: 2, unit_price_minor: "100", currency_code: "XXX", catalog_sku_revision_id: null }]);
   const sourceTransition = async (intent: string) => (await managed.owner.query(
     "SELECT id,occurred_at FROM public.commerce_payment_state_transitions WHERE payment_intent_id=$1", [intent])).rows[0];
   const paidTransition = await sourceTransition(paidIntentId), failedTransition = await sourceTransition(intentId);
   const sourcePaidOrder = await sourceRow("commerce_orders", paidOrderId), sourceOrder = await sourceRow("commerce_orders", orderId);
   const sourcePaidIntent = await sourceRow("commerce_payment_intents", paidIntentId), sourceIntent = await sourceRow("commerce_payment_intents", intentId);
-  const noOrderLinks = { subscription_cycle_id: null, cancelled_at: null, refunded_at: null, source_channel_id: null, source_order_ref: null,
+  const noOrderLinks = { catalog_acceptance: null, subscription_cycle_id: null, cancelled_at: null, refunded_at: null, source_channel_id: null, source_order_ref: null,
     renewal_operation_id: null, renewal_operation_fingerprint: null, recovery_root_order_id: null, recreated_from_order_id: null,
     currency_code: "XXX", source_kind: "storefront", client_id: clientId };
   expect(await typed("SELECT * FROM public.commerce_orders WHERE id=$1", paidOrderId))
