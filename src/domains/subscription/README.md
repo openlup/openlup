@@ -1,6 +1,6 @@
 # subscription domain
 
-Status: development-preview source guidance.
+Status: current source guidance for stable 1.x.
 
 Browser-shareable subscription surface: the platform's own subscription
 lifecycle (cadence, edit window, cycles, skip/slide, swap, timed

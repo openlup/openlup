@@ -46,7 +46,7 @@ Your application owns which subscription products, quantities and periods it
 sells, alongside its one-time offers. Compose the optional
 `admitSubscriptionTerms` callback on `PackageEditQuotePorts` (classic and exact
 editors) or `SizedHostPorts`. The platform supplies no business cadence list.
-This development-preview seam does not derive your offer configuration or UI.
+This seam does not derive your offer configuration or UI.
 
 The callback receives `SubscriptionEditTerms`: subscription identity, the full
 resulting `base` and `addons` arrays with variant ID, SKU and quantity, plus

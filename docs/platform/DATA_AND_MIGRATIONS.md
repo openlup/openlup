@@ -63,7 +63,7 @@ describes the codec and retry duties.
 
 See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
 
-The preview source release deliberately ships an unbound database-type seam at
+The source tree deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
@@ -804,7 +804,7 @@ The starter binds hold and release with a fresh human-admin and Commerce-operato
 
 ## Additive forward release path
 
-A development preview may append expand-only platform forwards to either chain:
+A release may append expand-only platform forwards to either chain:
 
 - Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
   with `config/platform-migration-manifest.json` preserving the baseline and all
@@ -1160,7 +1160,7 @@ exclusion retain their existing contract.
 | Provider dispatch and customer delivery | Offline store proof supplies no live-provider or journey activation claim. The host owns provider reads, dispatch and financial-notice delivery. |
 
 `paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are supported
-for this complete installed chain. This is development-preview qualification,
+for this complete installed chain. This is database qualification,
 not provider activation. The [native attribution witnesses](../../tests/postgres/paymentReconciliationAttributionGap.test.ts),
 [pgTAP witnesses](../../tests/postgres/paymentReconciliationPgtap.test.ts) and
 [installed runtime-role PostgreSQL witnesses](../../tests/postgres/paymentReconciliationStore.test.ts)
@@ -2900,7 +2900,7 @@ Do not claim complete privacy coverage. Privileged connected-store transfer
 retains exact documents, bindings and the existing command/support ledgers under
 whole-packet row/byte bounds and filtered-login refusal; it is not a subject
 privacy export. Root capture/restore additions ship no npm assets. The API remains
-a development-preview source candidate; full catalogue installation and explicit
+a source-only surface; full catalogue installation and explicit
 host composition are required, and managed definitions remain unchanged.
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
@@ -3695,12 +3695,11 @@ exists, and the metadata — and never `enabled`. An adopter who enabled a drain
 relying on it to bound their storage; one who disabled it is retaining evidence
 on purpose. Neither decision may be silently undone by re-running a forward.
 
-## Preview and stable posture
+## Stable schema policy
 
-Current migration and self-host material is evaluation-oriented. The stable-framework requirements
-must still prove versioned upgrades, N-1 compatibility, and the complete
-expand/compatible-deploy/backfill/contract path before a stable upgrade claim is
-made.
+The [database upgrade guide](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)
+owns the 1.x schema commitment and bounded code-rollback proof. Installation
+recipes do not extend that evidence to another chain or application.
 
 ## Identity reference grants
 
@@ -4277,7 +4276,7 @@ refuses; managed verification remains unclaimed.
 The projection's whole-file SHA-256 is
 `b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`.
 Its existing persisted channel enum accounts for exactly one `ui-12` count.
-The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
+The [neutrality owner](../../CONTRIBUTING.md#contribution-checks) admits
 only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.

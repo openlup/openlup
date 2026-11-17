@@ -219,7 +219,7 @@ describe("public agent guide pointer", () => {
     expect(renderAgentGuide()).toBe([
       "# OpenLup Public Agent Guide",
       "",
-      "Status: development-preview guidance.",
+      "Status: current contributor guidance for stable 1.x.",
       "",
       '<a id="architecture-rules"></a>',
       "The agent guide for this repository is the root [AGENTS.md](../../AGENTS.md).",

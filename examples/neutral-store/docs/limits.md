@@ -1,6 +1,6 @@
 # Starter limits
 
-Status: current development-preview navigation.
+Status: current starter navigation for stable 1.x.
 
 Read the installed guide at
 `node_modules/@openlup/core/docs/guide/reference/limits.md`, or the

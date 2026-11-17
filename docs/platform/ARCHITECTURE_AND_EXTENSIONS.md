@@ -178,7 +178,7 @@ adapters and exchanges domain contracts with its host.
 
 The structural industry-name rule covers explicit pet/dog/cat name components
 and literal types in portable production source, with no semantic/dataflow claim.
-See [contribution checks](../../CONTRIBUTING.md#development-preview-checks).
+See [contribution checks](../../CONTRIBUTING.md#contribution-checks).
 
 Identity retains flat server files and a separate browser subtree; routes supply
 flags, redirect policy, schemas, clients, mail and copy. Managed preflight keeps
@@ -346,7 +346,7 @@ OpenLup ships its platform as `@openlup/*` npm packages. This section is the
 contract every package follows as it is extracted. The installed manifests,
 exports and guides identify the selected version's available capabilities.
 Rules that need a contract the kernel does not export yet say so.
-Development-preview rules may still change (see
+Compatibility follows each surface’s classification (see
 [Compatibility posture](#compatibility-posture)).
 
 <a id="modules-and-distributions"></a>
@@ -366,7 +366,7 @@ The intended distribution roles are:
 | --- | --- |
 | `@openlup/core` | Existing I/O-free kernel and the isolated, tool-only installed-context executable; retain its published coordinates and kernel exports. |
 | `@openlup/outbox` | Existing outbox rail; retain its published coordinates and algorithm owner. |
-| `@openlup/platform` | Development-preview backend distribution for the runnable foundation and declared module subpaths, including identity. |
+| `@openlup/platform` | Backend distribution for the runnable foundation and declared module subpaths, including identity. |
 | UI | Target distribution role; this does not reserve an npm name or establish a published library. The foundation shell remains reference-application source. |
 
 These are distribution roles, not proof that an artifact is published. The
@@ -473,7 +473,7 @@ Moved to [Architecture and ownership](../../packages/core/docs/guide/concepts/ar
 Declare each package's `kind` in `release-gates.json` and the readiness manifest.
 Apply the [canonical placement decision](#package-placement-decision-canonical)
 to packages and logical modules inside a distribution. The platform foundation
-declares `rail`; its publishable catalogue entry joins the preview release set
+declares `rail`; its publishable catalogue entry joins the package release set
 without establishing that a registry release occurred.
 
 - Cross-capability flows use declared ports, contracts, rails and maintained
@@ -589,7 +589,7 @@ authorization, response mapping and managed transport remain reference-owned;
 sparse SQL projections add no
 installation chain or migration.
 
-The experimental promotions module has value edges to pricing through
+The promotions module has value edges to pricing through
 `pricing/index.js`, for acquisition selection/binding and protocol constants, and
 to `shipping/index.js` for the opt-in pure threshold policy. Pricing has only a
 type edge to shipping for promise DTOs; it injects the orchestration callback
@@ -674,7 +674,7 @@ is needed. Missing selected callables or stock refuse, and incomplete/unknown
 schema observations cannot admit the candidate.
 
 
-The local outbox contribution implements these rules through the experimental
+The local outbox contribution implements these rules through the
 `@openlup/core/readiness`, `./outbox` and `./standard-schema` subpaths.
 The publication catalogue admits the complete outbox rail to the release set.
 Catalogue admission is distinct from npm publication; reviewed release preparation
@@ -719,15 +719,15 @@ UI admission still needs its own artifact role and consumer proof.
 
 ### Versions and schema
 
-- **One set below 1.0.** Below `@openlup/core` 1.0, every `@openlup/*` package carries the same
-  version `0.N.P` and is released from one commit. Each package has its own tag,
-  `openlup-<package>-v<version>`. A patch set carries fixes only; any API, behaviour or schema
-  change is a minor set.
+- **One coherent set.** Follow [package releases](../../.github/VERSIONING_AND_EOL.md#package-releases)
+  for versions and tags, and the [stability policy](../../packages/core/docs/guide/reference/stability.md#public-api)
+  for compatible evolution.
+
 - **Pins.** Each package pins the others exactly. An application moves every `@openlup/*`
   package together, after reading each changelog's `Migration:` blocks.
 - **Schema in the tarball.** A package that owns schema ships its SQL in its tarball from its
   first release, for the application's own migration chain to apply. It never applies SQL itself.
-  Shipped SQL follows expand, compatible deploy, backfill, contract. The
+  Shipped SQL follows the [schema compatibility policy](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). The
   [migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
   distinguishes source history, tarball projection and an existing store.
 - **Readiness adaptation release.** A public readiness API or behaviour change
@@ -754,10 +754,10 @@ UI admission still needs its own artifact role and consumer proof.
 
 Moved to [Versioning and stability](../../packages/core/docs/guide/reference/stability.md#version-numbers).
 
-Stable-framework admission requires stable extension contracts, a versioned
-release/BOM, a thin adopter app, conformance coverage and upgrade tooling. Until
-that gate is complete, this document governs preview boundaries and grants no
-support promise.
+The [generated maturity reference](../../packages/core/docs/guide/reference/maturity.md)
+identifies the stable subpaths. Installation support follows the
+[install policy](../../.github/INSTALL_SUPPORT_POLICY.md); a source recipe alone
+does not establish support.
 
 ## Communications capability import
 
@@ -863,7 +863,7 @@ observation ledger; neither initiates a replacement send.
 
 ## Fulfillment contracts
 
-Adapter authors can use the experimental `@openlup/platform/fulfillment/testing`
+Adapter authors can use the testing subpath `@openlup/platform/fulfillment/testing`
 entry to [certify a fulfilment adapter offline](../../packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
 The kit certifies adapter behaviour against honestly built data fixtures; deliberate
 accessor, proxy or intrinsic manipulation to defeat the caller's own certification
@@ -1816,7 +1816,7 @@ has an explicit fulfillment slot with no default binder.
 Native dispatch uses host-supplied contact preparation and candidate data.
 The [reference binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 uses one transaction lane and selected store/provider/readiness observer.
-The experimental `@openlup/platform/fulfillment/native` entry also exposes
+The `@openlup/platform/fulfillment/native` entry also exposes
 `createNativeFulfillmentBinding` for installed hosts. Its implementation
 preserves the reference binding's transaction and refusal semantics; the host
 still owns the transaction lane, authoritative reader and authorized edit callback.
@@ -2388,7 +2388,7 @@ See [managed installation and refund boundaries](DATA_AND_MIGRATIONS.md#managed-
 
 ### Renewal port recipe
 
-The experimental `@openlup/platform/subscriptions` entry exposes the hosted
+The `@openlup/platform/subscriptions` entry exposes the hosted
 cycle, refusal and failure mechanisms with injected policy, identity forwarding
 and an honest native capability descriptor. The browser-safe
 `subscriptions/contracts` entry emits no runtime values. Its concrete carriers
@@ -2849,7 +2849,7 @@ envelope facts and conforming M04 transport; no default activation is installed.
 
 ## Account and support contracts
 
-The experimental account/support module occupies the existing platform package's
+The account/support module occupies the existing platform package's
 `account-support` and type-only `account-support/contracts` entries. Its isolated
 module-graph row has no value or type edges: the R1 implementation uses only its
 own structural injected ports. No provider SDK, environment reader, host source
@@ -2894,7 +2894,7 @@ identity. No second dispatcher, installer or stock policy is introduced.
 
 ## Operations and diagnostics
 
-The experimental `@openlup/platform/operations` module separates browser-safe
+The `@openlup/platform/operations` module separates browser-safe
 validation, alert projections and injected BFF clients from the Node
 `operations/server` mechanisms. `operations/contracts` contains only DTOs and
 ports. Separate settings, pipeline, alerts and control-plane methods preserve
@@ -2991,7 +2991,7 @@ Its executed result, rather than this source description, establishes proof.
 
 ## Risk contracts
 
-The development-preview risk contribution retains the existing Core evaluator,
+The risk contribution retains the existing Core evaluator,
 rules, thresholds and reason vocabulary at `@openlup/core/risk`. The isolated
 [platform schemas](../../packages/platform/src/risk/schemas.ts) retain strict
 objects, coercion/defaults and CSP-safe `jitless` initialization. The
@@ -3492,7 +3492,7 @@ remain [M14 obligations](plans/oss-m14-operations-portability.md), including the
 
 ## Normalized channel ingest
 
-The experimental channels module lives at existing Platform subpaths; see the
+The channels module lives at existing Platform subpaths; see the
 [package contract](../../packages/platform/README.md#channels). Browser-safe
 contracts/helpers remain separate from Node orchestration. Hosts inject the
 existing order, payment, inventory, catalog-history and connection owners,

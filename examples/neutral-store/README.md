@@ -7,7 +7,7 @@ configuration, browser pages and a local demonstration host.
 For an independent application, follow the
 [exact released-starter recipe](#start-from-an-exact-source-archive):
 download the 0.43.0 source archive and pinned input pair, extract with
-`--mode released`, run `npm ci`, then `./lifecycle up`. This development-preview
+`--mode released`, run `npm ci`, then `./lifecycle up`. This starter
 application includes both one-time and subscription purchases. No local package
 packing or author checkout is needed.
 
@@ -141,7 +141,7 @@ retains that rule.
 
 ## Extraction input contract
 
-For a released development-preview set, run from the matching source tree's root:
+For a released package set, run from the matching source tree's root:
 
 ```sh
 node examples/neutral-store/extract.mjs ../my-store --mode released \

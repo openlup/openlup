@@ -3,8 +3,8 @@
 Move your application to the next OpenLup release while reconciling package,
 SQL and application-file changes.
 
-A development preview gives no upgrade guarantee. Read the guide and contracts
-for the release you intend to install.
+Read the [stability policy](../reference/stability.md) and contracts for the
+release you intend to install, including the [database compatibility limits](database-migrations.md#check-application-compatibility).
 
 ## Read the changes
 

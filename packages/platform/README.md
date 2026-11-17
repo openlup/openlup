@@ -3,8 +3,12 @@
 `@openlup/platform` provides the server substrate an application composes: Node
 HTTP and BFF dispatch, scheduling and leases, blob storage, data gateways,
 PostgreSQL migrations and optional commerce services. Ports and contracts live in
-`@openlup/core/platform-runtime`. This is a development preview: pin exact versions
-and upgrade the `@openlup/*` set together after reading every changelog.
+`@openlup/core/platform-runtime`. Pin exact versions and upgrade the `@openlup/*`
+set together after reading every changelog. Follow the
+[stable API contract](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api): unions
+and literal sets are open, additions are minor, and consumers must keep a default
+branch for unknown values. The generated [maturity reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/maturity.md)
+identifies stable, experimental and testing subpaths.
 
 ```sh
 npm install --save-exact @openlup/core @openlup/platform
@@ -937,7 +941,7 @@ Event-type literals and host payload behavior are preserved.
 
 ## Commerce domain effects
 
-The experimental Node-only `./commerce/server` entry provides the transactional email
+The Node-only `./commerce/server` entry provides the transactional email
 consumer factories, their descriptors and dispatch registry. Compose explicit
 `uniqueRegistry` composition from `@openlup/outbox` and
 `CommerceEmailRuntime` bindings for the fulfillment payload parser, communications
@@ -1006,7 +1010,7 @@ priority remains in force for purchase admission. Matching replay retains the
 reservation identity and current status; changed keyed input and elapsed initial
 expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
-development-preview source binding. See the
+source binding with explicit host composition. See the
 [G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
 Fresh reserve/release writes and expiry require READ COMMITTED and shared
 transaction admission. Contention maps to `InventoryPersistenceError`
@@ -1234,7 +1238,7 @@ the caller controls the key set. Readiness keeps its 60-second positive and
 5-second negative caps. Every caller-side policy reason still requires a
 dedicated host monitor; the exported reason tuple lets a host coverage check
 enumerate the reasons but does not install or verify monitors.
-The additive experimental acquisition API is off by default. `selectAcquisitionTerms`
+The additive acquisition API is off by default. `selectAcquisitionTerms`
 and `filterAcquisitionPromotions` require an `AcquisitionFinancialPolicy<Row>`:
 row facts, classification, metadata validation, pair matching, initial rate and
 unconfigured terms all come from the host. Omission refuses with
@@ -1719,7 +1723,7 @@ consumer exercises both new stores and the descriptor without optional peers;
 its synthetic executor proves named refusal, not durable storage behavior.
 
 
-`./catalog` is an experimental capability for the existing neutral catalog
+`./catalog` provides the existing neutral catalog
 foundation, installed product types, draft validation/use cases, active SKU
 selection, resolved SKU projection and sellable reference reads. Hosts supply
 the read/store ports, verified operator authorizer, product-type registry and
@@ -2037,14 +2041,14 @@ contacts and refreshes optional defaults only on unlinked rows; its result grant
 no account access and linked rows remain untouched.
 See [guest contact resolution](../core/docs/guide/concepts/identity.md#guest-checkout-contact-resolution)
 for host quotas, internal result fields and erasure boundaries.
-This is a development-preview import candidate, not an activated adopter contract.
+Importing identity does not activate an adopter’s composition.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
 See the [identity recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority) for composition, migrations and operator invitations.
 
 ## Personal data
 
-The experimental identity entry provides contributor-based personal-data export and erasure.
+The identity entry provides contributor-based personal-data export and erasure.
 See the [personal-data recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage) for composition, refusals and retained obligations.
 
 ## Disposable identity composition
@@ -2332,7 +2336,7 @@ adapter refusal envelope; envelope forwarding remains unsupported.
 
 ### Test a payment adapter offline
 
-`@openlup/platform/payments/testing` is an experimental development-preview kit
+`@openlup/platform/payments/testing` is a testing kit
 for adapter authors. It re-exports `runPaymentAdapterConformance`; the existing
 `./payments` export remains available. `createScriptedPaymentFake` supplies a
 separate FIFO queue per injected transport call, with success, provider 5xx,
@@ -2682,7 +2686,7 @@ published complete migration chain. See the
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
-The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
+The `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor and the sized parcel lever value;
 `./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
@@ -2753,7 +2757,7 @@ account page and selects no other retention planner.
 
 See [invoicing composition, duties and read helpers](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md).
 
-Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
+`@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
 `invoicing/contracts` contains types only. Host selection is explicit and default-off.
 Frozen facts, correction recovery, exact absence, owed duties and host-only fiscal,
 artifact, delivery, payout and owned-history seams are described in the
@@ -2822,7 +2826,7 @@ OMS read projections are optional. Omitting the host health classifier preserves
 
 ### Captured native invoice composition
 
-Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabled
+`@openlup/platform/invoicing/postgres` supplies an explicitly enabled
 captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
 owned invoice-history/ticket reader. The host passes a restricted runtime
 executor and authenticated principal UUID. See the
@@ -2863,7 +2867,7 @@ store or HTTP route is installed by these entries.
 `applied_from_next_parcel` leaves the frozen parcel unchanged; show that scope to
 the customer.
 
-Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
+`@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner
 ports; delegation preserves their arguments, receivers, results, nulls and thrown
 failures. Authentication, authorization and private profile/market projection stay
@@ -3046,7 +3050,7 @@ no release is implied.
 
 ## Operations and diagnostics
 
-The experimental `./operations` entry contains browser-safe operational schemas,
+The `./operations` entry contains browser-safe operational schemas,
 alert projections and `createOperationsClients`, which binds an existing BFF
 requester. `./operations/contracts` contains DTOs and narrow ports only.
 `./operations/server` contains settings read/update, pipeline read, alert overview,
@@ -3068,7 +3072,7 @@ for refusal behavior, SQL prerequisites and the bounded preview scope.
 
 ## Risk controls
 
-The experimental `@openlup/platform/risk` entry exports the existing strict
+The `@openlup/platform/risk` entry exports the existing strict
 schemas with CSP-safe Zod initialization. `risk/contracts` is type-only;
 `risk/server` exports paid-order assessment, subject hashing, structural managed
 clients and the native executor factory. Core risk remains at `@openlup/core/risk`.
@@ -3097,7 +3101,7 @@ invokes it nor claims transfer/restore support.
 
 ## Company identity
 
-Experimental `./company-identity` preserves the existing compatibility schemas
+`./company-identity` preserves the existing compatibility schemas
 (including optional registry fields); `./company-identity/contracts` contains only
 browser-safe types over the unchanged core contract. `./company-identity/server`
 exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
@@ -3111,7 +3115,7 @@ application retains its existing national rules and callers unchanged.
 
 ## Market packs
 
-Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+`./market-packs` exposes pure settlement/fiscal record readers,
 profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
 explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
 and display locale independently; formatting historical amounts uses their own
@@ -3129,7 +3133,7 @@ separate source composition from an installed or mounted deployment.
 
 ## Channels
 
-The experimental `@openlup/platform/channels` subpath provides browser-safe
+The `@openlup/platform/channels` subpath provides browser-safe
 normalized order, retained purchase, page/cursor and money-allocation contracts
 and helpers. `channels/contracts` exports types only. `channels/server` exposes
 ingest admission/saga, webhook/operator/pull/recovery helpers and explicit store,
