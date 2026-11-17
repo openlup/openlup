@@ -361,7 +361,8 @@ both demonstrations use 160. Phone and postal-code fields share the native
 destination bounds. `subscriptionOffers` owns cadences, defaults and per-SKU
 quantities; `offer.cadenceDays` is a derived UI projection. Configured days must
 be whole numbers from 1 through 3660 (`MAX_CADENCE_DAYS`). Invalid offer domains
-refuse with `starter_subscription_offer_invalid`; invalid projected choices
+refuse with `starter_subscription_offer_invalid`, except values above the
+representation bounds, which use the named codes listed above; invalid projected choices
 refuse with `starter_offer_invalid`. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and unit prices fit
 PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
