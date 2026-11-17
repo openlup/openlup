@@ -29,7 +29,7 @@ const { createQuoteResponseSchema } = createCommerceQuoteSchemas({
   productSlugSchema: z.string().trim().min(1),
   contextSchema: z.object({
     mode: z.enum(["one_time", "subscription"]),
-    cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).nullable().optional(),
+    cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().optional(),
     promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
   }).passthrough(),
 });
@@ -87,6 +87,15 @@ export function createPostgresNativeCheckoutPersistence(
       };
       let response: unknown;
       try {
+        // A historical command must reach the SQL writer's fingerprint and
+        // ownership checks. Receipt existence never authorizes replay by itself.
+        const cadenceDays = quote.context?.cadenceDays;
+        if (typeof cadenceDays === "number" && cadenceDays > MAX_CADENCE_DAYS) {
+          const prior = await executor.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [input.idempotencyKey]);
+          if (!prior.rows.length) throw new CommerceOrderDraftPersistenceError(
+            `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days for a new order draft`,
+            { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+        }
         // Serialize JSON explicitly: pg treats an unencoded JS array as a
         // PostgreSQL array, not JSON. No gateway or driver coercion is assumed.
         const result = await executor.query(`SELECT public.commerce_create_promoted_order_draft_with_outbox(
@@ -94,6 +103,7 @@ export function createPostgresNativeCheckoutPersistence(
         [input.idempotencyKey, JSON.stringify(input.quoteSnapshot), JSON.stringify(draft), clientId]);
         response = result.rows[0]?.response;
       } catch (error) {
+        if (error instanceof CommerceOrderDraftPersistenceError) throw error;
         const { code, message } = (error && typeof error === "object" ? error : {}) as { code?: string; message?: string };
         if (code === "23505" || code === "40001") {
           throw new CommerceOrderDraftConflictError(undefined, { code });

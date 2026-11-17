@@ -28,11 +28,20 @@ for the installation boundary.
 
 ## Subscription cadence representation
 
-Platform TypeScript cadence DTOs accept **1 through 3660 whole days** (ten years).
-`MAX_CADENCE_DAYS` is exported from `@openlup/core/subscription`.
-This finite representation bound avoids the timestamp and settlement integer
-overflows admitted by the former PostgreSQL integer maximum, with room for
-lateness. Applications still choose their offered cadences in owned configuration.
+Fresh platform quotes, order drafts and editor results accept **1 through 3660
+whole days** (ten years). `MAX_CADENCE_DAYS` is exported from
+`@openlup/core/subscription`. This admission limit avoids timestamp and settlement
+integer overflows, with room for lateness. Applications choose offered cadences
+in owned configuration.
+
+Checkout transport, resume/recovery/account reads, editor contexts, retained
+renewal terms and frozen snapshots preserve **1 through 2147483647** integer
+representation. Completed checkout/editor receipts replay before current limits,
+with ownership and fingerprint checks intact. Fresh native renewal creation or
+starter graduation above 3660 returns `NativeRenewalCadenceError` with reason
+`cadence_limit_exceeded` and `maximumCadenceDays`; choose an executable cadence
+before starting a new renewal. Reading or replaying a frozen operation does not
+apply this new-admission limit.
 
 The current SQL subscription preview and edit-quote guards retain their **90-day**
 limit pending a separate migration. The starter also refuses configured cadences

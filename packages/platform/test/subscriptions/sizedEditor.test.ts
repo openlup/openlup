@@ -31,10 +31,10 @@ it.each(["plan", "bundle", "resize", "portion"])("bounds fresh sized %s request 
     expect(transaction).toHaveBeenCalledTimes(days === 1 || days === 3660 ? 1 : 0);
   }
 });
-it("bounds sized subscription read cadences", async () => {
-  for (const days of [0, 1, 3660, 3661]) {
+it("reads historical sized subscription read cadences", async () => {
+  for (const days of [0, 1, 3660, 3661, 2_147_483_647, 2_147_483_648]) {
     const result = readSizedEditContext({ query: async () => ({ rows: [{ context: { ...context(), cadenceDays: days } }] }) }, ids.client, ids.subscription);
-    if (days === 1 || days === 3660) await expect(result).resolves.toMatchObject({ cadenceDays: days });
+    if (days >= 1 && days <= 2_147_483_647) await expect(result).resolves.toMatchObject({ cadenceDays: days });
     else await expect(result).rejects.toThrow("subscription_reprice_sized_context_unreadable");
   }
 });
@@ -253,4 +253,14 @@ it("keeps sized frozen pricing unchanged when admission is absent or permissive"
   const input = { db, context: context(), request: parcel(), policy, host: host(), point: "preview" as const };
   const original = await quoteSizedEdit(input), admit = vi.fn(); input.host.admitSubscriptionTerms = admit;
   expect(await quoteSizedEdit(input)).toEqual(original); expect(admit).toHaveBeenCalledOnce();
+});
+
+it("reads a historical sized context but refuses a fresh edit retaining its cadence", async () => {
+  const current = context(), ports = host(); current.cadenceDays = 3661;
+  const live = vi.spyOn(ports.quotePort, "createServerAuthoritativeQuote");
+  await expect(quoteSizedEdit({db, context:current, request:{subscriptionId:ids.subscription,action:"update_base_mix",base:[{variantId:ids.a,qty:4}]},policy,host:ports,point:"preview"}))
+    .rejects.toThrow("subscription_reprice_invalid_plan_length");
+  expect(live).not.toHaveBeenCalled();
+  expect(await quoteSizedEdit({db,context:current,request:{subscriptionId:ids.subscription,action:"update_plan_length",planDays:30},policy,host:ports,point:"preview"}))
+    .toMatchObject({cadenceDays:30});
 });

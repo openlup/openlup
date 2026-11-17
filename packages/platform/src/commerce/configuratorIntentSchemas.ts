@@ -1,4 +1,3 @@
-import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import { commerceIdempotencyKeySchema, commerceMinimumUnits, commerceMinimumUnitsSchema, commerceOfferVersionSchema } from "./contractPrimitives.js";
 export const CONFIGURATOR_INTENT_VERSION = "commerce.configurator_intent.v1";
@@ -21,7 +20,7 @@ export function createConfiguratorIntentSchemas(skuSchema: z.ZodType<string, str
     version: z.literal(CONFIGURATOR_INTENT_VERSION),
     idempotencyKey: commerceIdempotencyKeySchema,
     mode: configuratorModeSchema,
-    cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).nullable().default(null),
+    cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().default(null),
     promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
     visitorId: z.string().trim().min(1).max(120).optional(),
     contact: configuratorContactSchema,

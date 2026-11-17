@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { NativeRenewalCadenceError } from "../../src/subscriptions/nativeRenewalCadence.js";
+import { createPostgresRenewalStore } from "../../src/subscriptions/postgresRenewalStore.js";
 import { createNativeRenewalCodec } from "../../src/subscriptions/nativeRenewalCodec.js";
-import { nativeRenewalPrice, nativeRenewalTermsSchema } from "../../src/subscriptions/nativeRenewalTerms.js";
+import { graduateNativeRenewal, nativeRenewalPrice, nativeRenewalTermsSchema } from "../../src/subscriptions/nativeRenewalTerms.js";
 import { resolveThresholdShipping, summarizeThresholdShipping } from "../../src/shipping/thresholdPolicy.js";
 import { mapInvoiceClaimToProviderSnapshot } from "../../src/invoicing/snapshot.js";
 import type { RenewalRetainedTerms } from "../../src/subscriptions/contracts/renewal.js";
@@ -26,34 +28,68 @@ function row(retained?: RenewalRetainedTerms, subtotal = 9000) {
 }
 
 describe("retained renewal pricing characterization", () => {
-  it("bounds each retained cadence without narrowing quantities or template versions", () => {
+  it("retains historical integer cadences, quantities and template versions", () => {
     const marker = nativeRenewalTermsSchema.shape.starterPack.unwrap();
     for (const schema of [nativeRenewalTermsSchema.shape.normalCadenceDays.unwrap().element,
       marker.shape.starterIntervalDays, marker.shape.graduation.shape.cadenceDays]) {
-      for (const days of [1, 3660]) expect(schema.parse(days)).toBe(days);
-      for (const days of [0, 1.5, 3661, 2_147_483_647]) expect(schema.safeParse(days).success).toBe(false);
+      for (const days of [1, 3660, 3661, 2_147_483_647]) expect(schema.parse(days)).toBe(days);
+      for (const days of [0, 1.5, 2_147_483_648]) expect(schema.safeParse(days).success).toBe(false);
     }
     const retained = terms(); retained.starterPack!.basisTemplateVersion = 10_000;
     retained.linePricing = [{ sku: "BULK", quantity: 10_000, unitAmountMinor: 1, isAddon: false, quoteLine: {} }];
     expect(nativeRenewalTermsSchema.parse(retained)).toMatchObject({ linePricing: [{ quantity: 10_000 }], starterPack: { basisTemplateVersion: 10_000 } });
   });
 
-  it("bounds due and frozen snapshot cadences independently", () => {
+  it("reads historical due/frozen cadences but refuses fresh execution with an actionable typed reason", () => {
     const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
-    for (const days of [0, 1, 3660, 3661]) {
+    for (const days of [1, 3660, 3661, 2_147_483_647]) {
       const current = { ...row(), cadence_days: days };
-      if (days === 1 || days === 3660) {
-        expect(codec.due(current).cadenceDays).toBe(days);
-        const snapshot = codec.freeze(current, schedule);
-        expect(codec.decode(codec.encode(snapshot)).templateSnapshot.cadenceDays).toBe(days);
-      } else {
-        expect(() => codec.due(current)).toThrow();
-        expect(() => codec.freeze(current, schedule)).toThrow();
-        const snapshot = codec.freeze(row(), schedule); snapshot.templateSnapshot.cadenceDays = days;
-        snapshot.frozenFingerprint = codec.fingerprint(snapshot);
-        expect(() => codec.encode(snapshot)).toThrow();
+      expect(codec.due(current).cadenceDays).toBe(days);
+      const snapshot = codec.freeze(row(), schedule); snapshot.templateSnapshot.cadenceDays = days;
+      snapshot.frozenFingerprint = codec.fingerprint(snapshot);
+      expect(codec.decode(codec.encode(snapshot))).toEqual(snapshot);
+      if (days <= 3660) expect(codec.freeze(current, schedule).templateSnapshot.cadenceDays).toBe(days);
+      else {
+        expect(() => codec.freeze(current, schedule)).toThrow(NativeRenewalCadenceError);
+        expect(() => codec.freeze(current, schedule)).toThrow('choose a cadence from 1..3660');
       }
     }
+    expect(() => codec.due({ ...row(), cadence_days: 0 })).toThrow();
+  });
+  it("reads a stored historical renewal operation before fresh snapshot admission", async () => {
+    const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    const snapshot = codec.freeze(row(), schedule); snapshot.templateSnapshot.cadenceDays = 3661;
+    snapshot.frozenFingerprint = codec.fingerprint(snapshot);
+    const wire = codec.encode(snapshot), queries: string[] = [];
+    const store = createPostgresRenewalStore({query:async sql=>{queries.push(sql);return {rows:[{cycle_snapshot:wire}]};}},codec);
+    expect(await store.buildCycleSnapshots(schedule)).toEqual(snapshot);
+    expect(queries).toHaveLength(1); expect(queries[0]).toContain("SELECT cycle_snapshot");
+  });
+  it("admits an old frozen claim only when a durable operation exists, preserving SQL conflicts", async () => {
+    const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    const snapshot = codec.freeze(row(), schedule); snapshot.templateSnapshot.cadenceDays = 3661;
+    snapshot.frozenFingerprint = codec.fingerprint(snapshot);
+    const stored = {cycleSnapshot:codec.encode(snapshot)}, queries: string[] = [];
+    let exists = false, conflict = false;
+    const store = createPostgresRenewalStore({query:async sql=>{
+      queries.push(sql);
+      if(sql.includes('subscription_read_renewal'))return {rows:[{response:exists?stored:null}]};
+      if(conflict)throw new Error('subscription_renewal_fingerprint_conflict');
+      return {rows:[{response:stored}]};
+    }},codec);
+    const input = {snapshot,workerId:'synthetic-worker',now:at};
+    await expect(store.claimDue(input)).rejects.toBeInstanceOf(NativeRenewalCadenceError);
+    expect(queries).toHaveLength(1); exists=true;
+    expect((await store.claimDue(input)).cycleSnapshot).toEqual(snapshot);
+    expect(queries.at(-1)).toContain('subscription_claim_due_renewal');
+    conflict=true;
+    await expect(store.claimDue(input)).rejects.toThrow('subscription_renewal_fingerprint_conflict');
+  });
+  it("refuses fresh graduation above the execution limit before any writes", async () => {
+    const retained = terms(); retained.normalCadenceDays = [3661]; retained.starterPack!.graduation.cadenceDays = 3661;
+    const query = async () => { throw new Error("unexpected database work"); };
+    await expect(graduateNativeRenewal({query}, { ...row(retained), paid_cycle_count: 2, next_cycle_number: 2 }))
+      .rejects.toMatchObject({name:'NativeRenewalCadenceError',reason:'cadence_limit_exceeded',cadenceDays:3661,maximumCadenceDays:3660});
   });
   it.each([7299, 7300, 7301])("agrees with threshold shipping after discounts leave %i", product => {
     const current = row(terms(9000 - product));

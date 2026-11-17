@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { hashPackageEditQuote } from "./classicPackageQuote.js";
 import type { ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionPortionModes } from "./contracts/exactEdit.js";
 import type { PackageEditCurrentLine, PackageEditQuotePorts, PackageEditReadPort } from "./packageEditContracts.js";
@@ -58,6 +59,7 @@ export function createExactSubscriptionRepricer(deps: PackageEditQuotePorts & {
       }
       lines = [...desired.map((line, index) => ({ lineId: null, variantId: line.variantId, quantity: line.qty, sortOrder: index, isAddon: false })), ...addons];
     }
+    if (cadenceDays > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
     if (deps.admitSubscriptionTerms) {
       const resolve = (line: typeof lines[number]) => {
         const sku = skus.get(line.variantId); if (!sku) throw new Error(`subscription_reprice_unknown_variant:${line.variantId}`);

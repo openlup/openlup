@@ -1,5 +1,4 @@
 import type { PackageEditReadPort } from "./packageEditContracts.js";
-import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 /** The same settings key, column and strict integer domain are used by the definer apply. */
@@ -11,7 +10,7 @@ export function createPostgresPackageEditReadPort(db: SubscriptionQueryExecutor)
       const version = Number(row.template_version);
       if (!Number.isInteger(version) || version < 1) throw new Error("subscription_reprice_invalid_template_version");
       const cadenceDays = Number(row.cadence_days);
-      if (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
+      if (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > 2_147_483_647) throw new Error("subscription_reprice_invalid_plan_length");
       return { cadenceDays, templateVersion: version,
         compositionConstraint: row.composition_constraint == null ? null : subscriptionRecord(row.composition_constraint) };
     },

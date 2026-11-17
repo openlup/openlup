@@ -1,4 +1,4 @@
-import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
+import { assertNativeRenewalCadence } from "./nativeRenewalCadence.js";
 import { nativeInstant } from "./nativeInstant.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -17,7 +17,7 @@ const snapshotSchema = z.object({
   subscriptionId: z.uuid(), clientId: z.uuid(), scheduledAt: z.iso.datetime(), scheduledInstant: whole,
   cycle: z.object({ status: z.literal("correlated"), logicalCycleNumber: whole.positive(), nativeRenewalCounter: whole.positive(),
     activationCycleId: z.uuid(), evidenceRef: ref }).strict(), retryAttempt: z.literal(0), externalAttemptSequence: z.literal(0),
-  templateSnapshot: z.object({ templateId: ref, version: whole.positive(), cadenceDays: whole.positive().max(MAX_CADENCE_DAYS), lines: basket }).strict(),
+  templateSnapshot: z.object({ templateId: ref, version: whole.positive(), cadenceDays: whole.positive().max(2_147_483_647), lines: basket }).strict(),
   pricingSnapshot: z.object({ currency: z.string().regex(/^[A-Z]{3}$/), totalAmountMinor: whole.positive(), shippingAmountMinor: whole,
     productSubtotalAmountMinor: whole.optional(), discountAmountMinor: whole.optional(), shippingTerms: renewalShippingTermsSchema.optional(),
     linePricing: z.array(z.object({ sku: ref, quantity: whole.positive(), unitAmountMinor: whole, isAddon: z.boolean(),
@@ -121,7 +121,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
       // IDENTITY fields below always use six digits.
       const scheduledAt = instant(row.scheduled_at).replace(/(\.\d{3})000Z$/, "$1Z");
       return { subscriptionId: text(row, "subscription_id"), clientId: text(row, "client_id"),
-        scheduledAt, scheduledInstant: Date.parse(scheduledAt), cadenceDays: whole.positive().max(MAX_CADENCE_DAYS).parse(integer(row.cadence_days, 1)), cycle: correlation(row),
+        scheduledAt, scheduledInstant: Date.parse(scheduledAt), cadenceDays: whole.positive().max(2_147_483_647).parse(integer(row.cadence_days, 1)), cycle: correlation(row),
         currency: text(row, "currency_code"), stockSourceKey: text(row, "stock_source_key"),
         settlementChannelKey: text(row, "settlement_channel_key"), authorizationRef: text(row, "authorization_ref"),
         payerAccountRef: nullable(row.payer_account_ref), unattendedChargeAuthorizedAt: instant(row.unattended_charge_authorized_at),
@@ -130,6 +130,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     freeze(row, schedule) {
       const due = codec.due({ ...row, scheduled_at: schedule.scheduledAt });
       if (due.subscriptionId.toLowerCase() !== schedule.subscriptionId.toLowerCase() || due.scheduledInstant !== schedule.scheduledInstant) throw new Error("subscription_renewal_schedule_mismatch");
+      assertNativeRenewalCadence(due.cadenceDays);
       const facts = subscriptionRecord(row.purchase_facts);
       if (due.cycle.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
       const frozenLines = lines(row.lines);

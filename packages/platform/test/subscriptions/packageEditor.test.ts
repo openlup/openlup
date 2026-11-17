@@ -56,11 +56,11 @@ it.each(["classic", "exact"])("bounds fresh %s editor requests before quoting or
     }
   }
 });
-it("bounds classic subscription read cadence independently of template revisions", async () => {
-  for (const days of [0, 1, 3660, 3661]) {
+it("reads historical classic subscription read cadence independently of template revisions", async () => {
+  for (const days of [0, 1, 3660, 3661, 2_147_483_647, 2_147_483_648]) {
     const port = createPostgresPackageEditReadPort({ query: async () => ({ rows: [{ cadence_days: days, template_version: 10_000 }] }) });
     const result = port.readSubscription(id);
-    if (days === 1 || days === 3660) await expect(result).resolves.toMatchObject({ cadenceDays: days, templateVersion: 10_000 });
+    if (days >= 1 && days <= 2_147_483_647) await expect(result).resolves.toMatchObject({ cadenceDays: days, templateVersion: 10_000 });
     else await expect(result).rejects.toThrow("subscription_reprice_invalid_plan_length");
   }
 });

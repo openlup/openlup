@@ -42,6 +42,14 @@ describe("classic full-package quote characterization", () => {
       expect(input.lines.map(line => line.quantity)).toEqual([14, 3]);
     }
   });
+  it("reads historical prices while admitting only the new effective cadence", async () => {
+    const f = fixture(); f.subscription.cadenceDays = 3661;
+    await expect(f.quote(request())).rejects.toThrow("subscription_reprice_invalid_plan_length");
+    expect(f.ports.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+    const result = await f.quote({ ...request(), planDays: 21 });
+    expect(result).toMatchObject({ cadenceDays: 21, currentRecurringPrice: money(1700) });
+    expect(f.ports.quotePort.createServerAuthoritativeQuote).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({cadenceDays:21}));
+  });
   it("changes only cadence and the nominal stamp on a plan-only edit", async () => {
     const f = fixture(), result = await f.quote({ ...request(), planDays: 21 });
     expect(result).toMatchObject({ cadenceDays: 21, compositionConstraint: { kind: "plan_days", value: 21 }, baseLines: [{ qty: 14 }], delta: money(-300) });

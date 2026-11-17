@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import type { BundleLineRef, CompositionConstraint } from "@openlup/core/bundle";
 import { agreedSubscriptionTotal, mergeSubscriptionAgreedQuote, splitBySubscriptionAgreement } from "./agreedPlanQuote.js";
 import { hashPackageEditQuote } from "./classicPackageQuote.js";
@@ -34,6 +35,7 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
   const catalog = (await host.readCatalog(db, context)).map(fact => ({ ...fact, variantId: fact.variantId.toLowerCase(),
     exclusions: fact.exclusions === null ? null : [...fact.exclusions].sort() }));
   const cadenceDays = request.action === "update_plan_length" ? request.planDays : "cadenceDays" in request ? request.cadenceDays ?? context.cadenceDays : context.cadenceDays;
+  if (cadenceDays > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
   const rules = createSizedCompositionRules({ policy, catalog, baseline, exclusions: facts.exclusions, dailyNeed: Number(dailyNeed), cadenceDays,
     useFrozenBaseline: sizedEditPhase(context, policy) === "graduation_pending", proposePortion: host.proposePortion });
   let core: BundleLineRef[] = baseline.filter(line => !line.isAddon).map(line => ({ variantId: line.variantId, qty: line.qty, isAddon: false }));

@@ -133,3 +133,11 @@ it("keeps the exact quote unchanged without admission and exposes nominal days i
   expect(await f.quote(fields)).toEqual(original);
   expect(admit.mock.calls[0][0]).toMatchObject({ nominalPlanDays: 10, cadenceDays: 35 });
 });
+
+it("refuses a fresh edit retaining an historical cadence while allowing a valid cadence repair", async () => {
+  const f = fixture(); f.subscription.cadenceDays = 3661;
+  await expect(f.quote({ action: "add_addon", variantId: other, qty: 1 } as ExactSubscriptionEditRequest))
+    .rejects.toThrow("subscription_reprice_invalid_plan_length");
+  expect(f.ports.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+  expect(await f.quote({ action: "update_plan_length", planDays: 20 } as ExactSubscriptionEditRequest)).toMatchObject({cadenceDays:20});
+});

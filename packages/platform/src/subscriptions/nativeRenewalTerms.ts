@@ -1,4 +1,4 @@
-import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
+import { assertNativeRenewalCadence } from "./nativeRenewalCadence.js";
 import { z } from "zod";
 import type { RenewalLine, RenewalLinePricing, RenewalPricingSnapshot, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -6,7 +6,7 @@ import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from
 
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const integer = z.number().int().positive().max(2_147_483_647);
-const cadence = integer.max(MAX_CADENCE_DAYS);
+const cadence = integer;
 const quote = z.record(z.string(), z.unknown());
 export const renewalShippingTermsSchema = z.object({ version: z.literal("shipping-threshold.v1"),
   currency: z.string().regex(/^[A-Z]{3}$/), flatMinor: amount.max(2_147_483_647), freeThresholdMinor: amount.max(2_147_483_647) }).strict();
@@ -113,6 +113,7 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
   if (Number(row.paid_cycle_count) + 1 < 3) return false;
   const full = Number(row.template_version) === marker.basisTemplateVersion;
   if (!full && (Number(row.cadence_days) !== marker.starterIntervalDays || terms!.normalCadenceDays!.includes(Number(row.cadence_days)))) return false;
+  assertNativeRenewalCadence(marker.graduation.cadenceDays);
   const id = String(row.subscription_id);
   const open = await db.query(`SELECT 1 FROM public.subscription_renewal_operations WHERE subscription_id=$1::uuid
     AND state NOT IN ('succeeded','refused') UNION ALL SELECT 1 FROM public.subscription_cycles WHERE subscription_id=$1::uuid

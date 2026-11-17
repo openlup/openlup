@@ -1,4 +1,3 @@
-import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 export const CHECKOUT_CONTRACT_VERSION = "commerce.checkout.v2";
 const uuidSchema = z.guid();
@@ -69,7 +68,7 @@ export function createCheckoutResponseSchemas<Quote extends z.ZodType, Expectati
       subscription: z
         .object({
           requested: z.boolean(),
-          cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).nullable(),
+          cadenceDays: z.number().int().positive().max(2_147_483_647).nullable(),
           activationStatus: checkoutActivationStatusSchema,
         })
         .strict()

@@ -10,13 +10,14 @@ in the source repository.
 
 ## [Unreleased]
 
-- Export `MAX_CADENCE_DAYS = 3660` from `./subscription` for platform cadence
-  DTOs. The ten-year whole-day representation bound avoids the timestamp and
+- Export `MAX_CADENCE_DAYS = 3660` from `./subscription` for fresh platform cadence
+  admission. The ten-year whole-day bound avoids the timestamp and
   settlement integer overflows admitted by the former PostgreSQL integer maximum,
   with lateness margin. Adopters still choose their offered cadences.
 
-Migration: platform DTOs and fresh editor requests above 3660 days now refuse;
-completed editor receipts replay before current limits. SQL and starter guards
+Migration: fresh quotes, drafts and editor results above 3660 days now refuse;
+historical transport, stored data and completed receipts retain integer
+representation. Completed receipts replay before current limits. SQL and starter guards
 retain their 90-day limit pending a separate migration.
 
 ## [0.43.0]
