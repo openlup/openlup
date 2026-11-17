@@ -141,7 +141,11 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
-    const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
+    const capabilities = first.calls.filter(call => call.text.startsWith('INSERT INTO public.catalog_publication_pointer_capabilities'));
+    assert.deepEqual(capabilities.map(call => call.values), buildDemoSeed(config).documents.map(row => [row.productId,row.id,row.digest]));
+    for (const call of capabilities) assert.match(call.text, /VALUES\(pg_current_xact_id\(\),\$1,\$2,\$3\)/);
+    const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.')
+      && !call.text.startsWith('INSERT INTO public.catalog_publication_pointer_capabilities'));
     assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);

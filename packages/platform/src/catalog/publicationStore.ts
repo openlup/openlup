@@ -132,6 +132,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(rows[0]!.kind === kind && rows[0]!.fingerprint === fingerprint, "catalog_publication_command_key_reused", "conflict");
     if (kind === "publish") return storedPublishReceipt(db, rows[0]!);
     const result = checkedDecisionReceipt(rows[0]!.result);
+    const { fingerprint: _fingerprint, actorId: _actorId, decidedAt: _decidedAt, ...originalCommand } = result;
+    require(publicationDigest([originalCommand, actorId]) === fingerprint, "catalog_publication_receipt_invalid", "dependency_unavailable");
     require(result.productId === productId && result.commandKey === commandKey && result.fingerprint === fingerprint && result.actorId === actorId
       && result.action === kind, "catalog_publication_receipt_invalid", "dependency_unavailable");
     return result;

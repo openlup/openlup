@@ -180,10 +180,6 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.catalog_skus WHERE id=product.primary_sku_id AND product_id=product.id AND status<>'archived') THEN
   reasons := reasons || '"primary_sku_missing"'::jsonb;
  END IF;
- IF product.status='active' AND NOT EXISTS(SELECT 1 FROM public.catalog_skus WHERE id=product.primary_sku_id AND product_id=product.id
-   AND status='active' AND (sellable_standalone OR sellable_in_subscription)) THEN
-  reasons := reasons || '"primary_sku_not_sellable"'::jsonb;
- END IF;
  IF p_require_price THEN
   IF char_length(product.slug)>64 THEN reasons := reasons || '"commerce_identity_unsupported"'::jsonb; END IF;
   IF sku.status='archived' THEN reasons := reasons || '"sku_archived"'::jsonb; END IF;

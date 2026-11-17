@@ -1335,3 +1335,24 @@ it.each(["foreign child before contexts", "reserved child prelocks before catalo
     : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
   expect(prelocked).toBe(mode !== "foreign child before contexts"); expect(await snapshot()).toEqual(before);
 });
+
+it("rejects a decision replay body whose candidate or reason does not match its original fingerprint", async () => {
+  const data = await draft(), command = await approve(data.publication), before = await snapshot();
+  for (const changed of [{ candidateRef: `v1:${randomUUID()}@1/unpublished` }, { candidateDigest: "b".repeat(64) }, { reason: "Altered acknowledgement" }]) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) rows[0].result = { ...rows[0].result as object, ...changed };
+    }));
+    const capability = (await target.authorize(null))!;
+    expect(await target.decision(command, capability)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
+it("catalog_publication_dark_primary_preserves_structural_readiness", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.operations.push({ op: "set_product_status", productSlug: payload.product.slug!, status: "active" });
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { status: "active" },
+    items: [{ facts: { status: "draft", sellableStandalone: false, sellableInSubscription: false } }] });
+  expect((await db.query("SELECT public.catalog_publication_sku_reasons($1,false) AS reasons", [data.skuId])).rows[0].reasons).toEqual([]);
+});
