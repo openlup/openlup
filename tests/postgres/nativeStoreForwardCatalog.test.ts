@@ -211,12 +211,10 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
         { polname: "commerce_offer_policy_baselines_service_insert", polcmd: "a", polpermissive: true, polroles: [String(role)], qual: null, check_expr: "true" },
         { polname: "commerce_offer_policy_baselines_service_select", polcmd: "r", polpermissive: true, polroles: [String(role)], qual: "true", check_expr: null },
       ] : [];
-      if (row.kind !== "r" || !row.rls || row.forceRls || row.columnAcls !== null
+      if (row.kind !== "r" || !row.rls || row.forceRls
         || JSON.stringify(acl) !== JSON.stringify(role ? ["service_role:INSERT", "service_role:SELECT"] : [])
         || JSON.stringify(policies) !== JSON.stringify(expected)) fail("baseline exceeds its pinned service SELECT/INSERT shape");
-      continue;
-    }
-    if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
+    } else if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const acl = row.acl.filter(item => !item.startsWith(`${row.owner}:`));
       const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
@@ -691,6 +689,18 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     ["RLS disabled", BASELINE_SQL.replace("ENABLE ROW", "DISABLE ROW")],
   ].filter(([label]) => serviceRole || ["other table", "browser grant", "RLS disabled"].includes(label!)))("refuses baseline %s in PostgreSQL", async (_label, sql) => {
     await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, sql))).rejects.toThrow(/baseline|grants/u);
+  });
+  it.each((serviceRole ? ["UPDATE", "DELETE", "REFERENCES", "TRIGGER"] : []))("refuses appended baseline %s table privileges in PostgreSQL", async privilege => {
+    const grant = `GRANT ${privilege} ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;`;
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/baseline exceeds its pinned/u);
+  });
+  it.each((serviceRole ? ["SELECT", "INSERT", "UPDATE", "REFERENCES"] : []))("refuses baseline %s column privileges through the generic catalog guard", async privilege => {
+    const grant = `GRANT ${privilege} (id) ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;`;
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/new relation public\.commerce_offer_policy_rollout_baselines has column privileges/u);
+  });
+  it.each((serviceRole ? ["DELETE", "TRIGGER"] : []))("refuses invalid baseline %s column GRANT syntax in PostgreSQL", async privilege => {
+    const grant = `GRANT ${privilege} (id) ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;`;
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/invalid privilege type .* for column/u);
   });
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
   it("admits only the client census column and SELECT policy on a new block-classified table", async () => {
