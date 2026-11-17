@@ -1,6 +1,6 @@
 # Documentation maintenance
 
-Status: development-preview guidance.
+Status: current contributor guidance for stable 1.x.
 Audience and purpose: contributors maintaining public navigation and behavior
 guidance.
 
@@ -63,7 +63,7 @@ repository root or a package root. `npm run oss:published-tree -- --policy`
 refuses any other placement, so contributor and adopter guidance never mix.
 
 A test file is a falsifier to inspect, not a recorded passing result. Keep
-development-preview limits visible and do not infer framework support from
+release and profile limits visible and do not infer installation support from
 source availability. Release-specific instructions belong with the selected
 immutable release; see the [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md).
 
@@ -83,7 +83,7 @@ class grouping, exact input fingerprints and refusal of partial outcome claims;
 its BOM section owns committed inventory and verified artifact identity. The
 publication catalogue includes their helpers, wrappers, witnesses and the one
 generated outcome file. README evaluation paths and installation policy retain
-preview and sandbox-payment limits. Generated navigation grants no execution,
+profile and sandbox-payment limits. Generated navigation grants no execution,
 installation, publication or support qualification.
 
 The hosted S3 task and storage witness are public source outputs. The runner

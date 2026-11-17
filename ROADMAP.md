@@ -9,8 +9,8 @@ Last updated: 2026-11-15 · npm set: 0.43.0
 | Field | Value |
 | --- | --- |
 | Latest npm set | 0.43.0 |
-| Status | development preview |
-| Stable-framework gate (P1-SF) | open |
+| Status | stable 1.x |
+| Stable compatibility policy | [stable 1.x](packages/core/docs/guide/reference/stability.md) |
 
 ## Shipped modules
 
@@ -34,10 +34,10 @@ Last updated: 2026-11-15 · npm set: 0.43.0
 | m16-addresses-market-packs | M16 Addresses, company identity and market packs | shipped | 0.33.0 | Company lookup with provider order and a shared cache, address schemas, and settlement, fiscal and formatting helpers driven by explicit market facts. The first version covers Polish and English; other markets and locales are not claimed, and national registry adapters are not packaged. |
 | m17-channel-ingest | M17 Normalized external-channel ingest | shipped | 0.35.0 | Normalized channel contracts with ingest, webhook, operator, pull and recovery bindings, quarantine and replay. Real marketplace connectors are not planned in the current programme. No real connector ships, conversion to a physical order refuses on the portable rail, and channel data export and erasure are unavailable. |
 | m18-partner-inquiries | M18 Neutral partner inquiries | shipped | 0.36.0 | Partner acquisition schemas, port and PostgreSQL store for capture, listing and status transitions. A closed_won status does not create a customer or marketing consent, and there is no partner data export or deletion. |
-| ecommerce-event-export | Durable ecommerce event export | shipped | 0.40.0 | Experimental retained paid-order, nonfinancial refund-status, checkout-qualification and subscription lifecycle facts, projected explicitly through the existing outbox. Sandbox and offline proof only; provider acceptance does not prove ingestion, and activation with a real account requires separate qualification. Existing installations do not export events automatically. |
+| ecommerce-event-export | Durable ecommerce event export | shipped | 0.40.0 | Retained paid-order, nonfinancial refund-status, checkout-qualification and subscription lifecycle facts, projected explicitly through the existing outbox. Sandbox and offline proof only; provider acceptance does not prove ingestion, and activation with a real account requires separate qualification. Existing installations do not export events automatically. |
 | reference-communications | Reference email and marketing-sync composition | shipped | 0.40.0 | Opt-in reference composition for transactional email and marketing sync, with explicit scope and qualification requirements. Sandbox and offline proof only; activation with a real account requires separate qualification. |
 | adapter-recipes | Adapter wiring recipes | shipped | 0.40.0 | Recipes for transactional delivery, marketing refusals and frozen event replay. Sandbox and offline proof only; the recipes activate no route, job or flow, and activation with a real account requires separate qualification. |
-| reader-guide | Packaged reader guide | shipped | 0.40.0 | The reader guide ships inside @openlup/core and covers installation, composition, extension, operation, upgrades and current limits. It documents the development preview and does not establish a stable API or upgrade guarantee. |
+| reader-guide | Packaged reader guide | shipped | 0.40.0 | The reader guide ships inside @openlup/core and covers installation, composition, extension, operation, upgrades and current limits. It links the stable API contract, subpath classifications and supported installation boundary. |
 | payments-testing-kit | Payment adapter testing kit | shipped | 0.41.0 | An offline conformance runner and a scripted fake provider for payment adapters. A passing run does not qualify a provider. |
 
 ## M19a: working store
@@ -119,7 +119,7 @@ Last updated: 2026-11-15 · npm set: 0.43.0
 | promotions-codes-schedule | Promotions: codes and acquisition schedule | planned | - | Promotion codes with a code catalogue, claims and limits, an operator code center and a checkout code card, plus an acquisition schedule writer with a command line. Device evidence for eligibility is decided together with a retention and erasure design. Until then, promotion codes are not available on the portable rail. |
 | catalogue-extension | Catalogue extension pattern and catalogue management | planned | - | A pattern for adding new product kinds: versioned packs of product types with attributes, units, variants, tax classes, categories and filters, checked offline, plus runtime product lifecycle and price management and per-product promotions. Supplements and cosmetics ship as reference packs. Scheduled after the current rounds; no release is committed. |
 | a5-market-adapters | A5 market adapters | planned | - | An example company and customer lookup adapter built on Polish public registries (VAT whitelist, GUS/CEIDG), after the company-identity and invoicing ports are frozen. Data provenance, freshness, licence and fallback are settled first, and other market adapters can follow the same pattern. |
-| p1-sf-stable-framework | P1-SF stable framework | in-progress | - | Exact-set qualification of a published set, an extracted starter installed from npm, adjacent-release upgrade and schema-compatibility proofs, a release bill of materials and digest-bound images with provenance and SBOMs are built, and a hosted qualification of the published 0.42.0 set passed. Next is a first-party demo store built from npm alone as adoption evidence. The stable claim still needs a later owner activation; OpenLup remains a development preview. |
+| p1-sf-stable-framework | Stable 1.x policy | shipped | - | The stable API and installation commitments begin at 1.0.0; see the [stability policy](packages/core/docs/guide/reference/stability.md). Evidence is a first-party demo store from npm and a first-party production deployment. Schema and code-rollback evidence retain the [database guide’s limits](packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). |
 
 ## Providers and adapters
 
@@ -154,7 +154,7 @@ Last updated: 2026-11-15 · npm set: 0.43.0
 | deferred-multi-cycle-prepaid | Multi-cycle prepaid subscriptions | deferred | - | Subscriptions paid in advance for several cycles are not available. |
 | deferred-partner-conversion | Partner conversion, export and deletion | deferred | - | Converting a partner inquiry into a customer, and exporting or deleting partner data, are not built. |
 | deferred-portable-lot-tracking | Lot and location tracking on the portable rail | deferred | - | The portable rail does not record lots, locations or stock movements. Stock holds, release, expiry and stock accounting work. |
-| deferred-catalogue-publication | Catalogue publication workflow | deferred | - | Creating, activating and withdrawing variants with publication to product pages is planned in the catalogue and catalogue-management round after the current payments, fulfilment and P1-SF rounds; no release is scheduled. Catalogue drafts and administration work. |
+| deferred-catalogue-publication | Catalogue publication workflow | deferred | - | Creating, activating and withdrawing variants with publication to product pages is planned in the catalogue and catalogue-management round after the payments, fulfilment and stable-release rounds; no release is scheduled. Catalogue drafts and administration work. |
 | deferred-operator-contact-edits | Operator contact edits and order notes on the portable rail | deferred | - | Operator changes to a customer's email, phone and account link, order notes and order address corrections refuse by name on the portable rail. |
 | deferred-rich-order-reports | Rich order projections and reports on the portable rail | deferred | - | Rich operator order projections, analytics, document guidance, saved draft resume and commercial reports refuse by name on the portable rail. Reduced order reads work. |
 | deferred-portable-social-sign-in | Social sign-in on the portable rail | deferred | - | Customer sign-in with a social account is not provided on the portable rail. Email magic links and one-time codes work. |

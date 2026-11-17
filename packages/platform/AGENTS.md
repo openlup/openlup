@@ -7,7 +7,7 @@ Kind: `rail`.
 The package supplies runnable server infrastructure and optional commerce
 capabilities. An application selects services and supplies ports, credentials,
 policy, authorization and host composition. Imports do not activate services.
-This is a development preview; inspect each exported subpath's maturity below.
+Follow the [stability policy](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api); inspect each exported subpath’s maturity below.
 
 ## Installed context lookup
 

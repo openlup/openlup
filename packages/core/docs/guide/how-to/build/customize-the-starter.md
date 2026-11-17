@@ -7,7 +7,7 @@ change reaches its structure or workflow.
 ## Prepare the application
 
 The starter is separate application source; installing npm packages does not
-create it. For the released **0.43.0 development preview**, use Node 24,
+create it. For the released **0.43.0 starter recipe**, use Node 24,
 npm 11.19.0, Git, curl and tar. Start in a directory with no application named
 `my-store`; the extractor refuses a nonempty destination.
 

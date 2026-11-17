@@ -2,9 +2,11 @@
 
 `@openlup/outbox` provides transactional PostgreSQL enqueue, at-least-once dispatch,
 lease-bound schedules and registry composition. The application supplies handlers,
-credentials and transaction ownership. This is a development preview with no stable
-API or universal exactly-once guarantee: pin an exact version and upgrade the
-`@openlup/*` set together.
+credentials and transaction ownership. Pin an exact version and upgrade the
+`@openlup/*` set together. The [stable API contract](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api)
+defines compatibility; unions and literal sets are open, additions are minor,
+and consumers must keep a default branch for unknown values.
+Dispatch provides no universal exactly-once guarantee.
 
 ```sh
 npm install --save-exact @openlup/core @openlup/outbox

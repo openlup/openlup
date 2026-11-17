@@ -5,7 +5,7 @@ Use these definitions when reading the guide.
 - **Adapter:** An implementation that binds a port to infrastructure and translates its external data into the port's contract.
 - **Application-owned:** Supplied and maintained by your application, including its composition, policies, host bindings and integrations.
 - **Cycle:** A scheduled subscription occurrence with its own template and pricing snapshots, payment status and retry state.
-- **Development preview:** A release posture that offers no stable framework API, supported full-platform installation or upgrade guarantee.
+- **Stable API:** A public contract covered by the [stability policy](reference/stability.md#public-api) and the subpath’s declared classification.
 - **Dunning:** The payment-retry ladder for a failed subscription cycle; exhaustion ends automatic retries without pausing the subscription.
 - **Edit window:** The time when an active subscription can be edited, before the cutoff calculated from its next cycle and template's edit-window hours.
 - **Maturity:** The classification assigned to an exported package subpath in its release contract.

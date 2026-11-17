@@ -1,6 +1,6 @@
 # Evaluate a subscription account
 
-Status: development-preview implementation candidate. Publication and acceptance
+Status: local reference implementation. Publication and acceptance
 evidence must name an immutable release; this document does not announce one.
 Audience: an evaluator with an independent public checkout, testing local
 subscription behaviour without an adopter repository or external providers.

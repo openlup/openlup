@@ -97,7 +97,7 @@ Fulfillment preparation, labels and tracking are separate from checkout pricing.
 Refuse unsupported destinations, currencies or missing weight facts before
 provider I/O; do not silently substitute a successful zero rate. Use a scripted
 client to verify the shipping amount in the final total, promotion interactions
-and zero-I/O refusals. This preview supplies no dedicated carrier-rate
+and zero-I/O refusals. The package supplies no dedicated carrier-rate
 conformance runner. The current source starter exposes this composition in
 `owned/quote-shipping.ts`; follow [compose shipping quotes](../build/customize-the-starter.md#compose-shipping-quotes).
 The released 0.43.0 starter retains its original managed composition and

@@ -334,7 +334,7 @@ is a host-callable `node-postgres` capability. Compose the complete catalogue,
 trusted owner-authority connection and verified human operator for its directory.
 Native membership dispatch needs an explicit provider; native watchdog readback
 needs a selected read function. Each capability closes its pool. The
-[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview)
+[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations)
 owns the selected bridges and their limits; no default timer is installed.
 
 Reference identity privacy routes retain human-admin authorization, mutation
@@ -998,7 +998,7 @@ selected-profile API operations, the server rechecks that live id and Auth's
 email-confirmation setting. Keep the generated environment server-only and
 preserve the database volume when restarting the Node process.
 
-This is bounded development-preview evidence, not a production composition,
+This is bounded local evidence, not a production composition,
 supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
@@ -1200,12 +1200,11 @@ provider SDK, deployment setting, route, scheduler or second outbox executor;
 managed receipt service-scope and fixture construction remain in the reference
 adapter.
 
-## Preview posture
+## Release posture
 
-Before maintainers make stable-framework claims, the release evidence must
-establish a versioned release/BOM, a thin adopter application, conformance
-coverage, upgrade tooling, public installation/build/test evidence and
-compatibility proof.
+The [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md) names the
+supported composition. Runtime recipes and local checks retain their stated
+limits; see the [release evidence boundary](../../packages/core/docs/guide/reference/stability.md#release-evidence).
 
 ## Communications host bindings
 

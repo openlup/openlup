@@ -14,12 +14,15 @@ boundaries, typed ports and executable contract checks.
 [Start here](packages/core/docs/guide/start/README.md) ·
 [Apache-2.0](LICENSE)
 
-## Status: development preview
+<a id="status-development-preview"></a>
 
-> **Development preview.** OpenLup has published npm packages and bounded local
-> evaluation profiles. It does not yet offer a stable framework API, a supported
-> full-platform installation or an upgrade guarantee. Source availability and a
-> successful build do not establish production readiness.
+## Status: stable 1.x
+
+OpenLup 1.0.0 begins the stable 1.x line. The [stability reference](packages/core/docs/guide/reference/stability.md#public-api)
+owns the compatibility commitment and links to the generated subpath classifications.
+The [support window](.github/VERSIONING_AND_EOL.md#support-window) and
+[supported installation](.github/INSTALL_SUPPORT_POLICY.md) define what to rely on.
+Source availability and a successful build do not establish production readiness.
 
 ## Shaped by a real business
 
@@ -78,7 +81,8 @@ Use the same exact version for every `@openlup/*` package you install. See
 Follow [released-starter adoption](examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the exact 0.43.0 source archive and immutable manifest/lock inputs, released
 extraction, `npm ci` and `./lifecycle up`. The local demonstration supports both
-subscriptions and one-time purchases; it remains a development preview.
+subscriptions and one-time purchases. Select the stable release’s supported artifact set
+under the [install policy](.github/INSTALL_SUPPORT_POLICY.md).
 
 ### A small example
 
@@ -120,9 +124,9 @@ Moved to [Platform source map](docs/platform/SOURCE_MAP.md).
 
 ## Current limits and direction
 
-The `P1-SF` gate requires a versioned release and bill of materials, a thin
-adopter application, public extension/conformance contracts, upgrade tools and
-installation, compatibility, provenance and independent-adopter evidence.
+Use the [release evidence boundary](packages/core/docs/guide/reference/stability.md#release-evidence)
+for first-party consumer evidence and the [database upgrade policy](packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)
+for schema and code-rollback limits.
 
 Native account snapshot composition requires explicit saved-address, billing,
 preference, event and private-profile sources. Missing sections and newsletter
