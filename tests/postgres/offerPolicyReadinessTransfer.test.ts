@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
+import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
@@ -16,7 +16,7 @@ beforeAll(async () => {
   const client = (await source.owner.query("INSERT INTO public.clients(email) VALUES('readiness-transfer@example.invalid') RETURNING id")).rows[0].id;
   await source.owner.query("INSERT INTO public.subscriptions(client_id,cadence_days,next_cycle_at) VALUES($1,28,statement_timestamp()+interval '28 days')", [client]);
   await source.owner.query("INSERT INTO public.subscriptions(client_id,cadence_days,offer_policy_assignment_state,is_test_fixture) VALUES($1,28,'legacy_frozen',true)", [client]);
-  expect(await journeyRpc(source.runtime, "commerce_capture_offer_policy_v2_legacy_baseline", [])).toMatchObject({ expectedCount: 0, created: true });
+  expect((await source.runtime.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline() AS value")).rows[0].value).toMatchObject({ expectedCount: 0, created: true });
   original = await journeyCensus(source.owner);
   captured = await captureStoreJourney(source.owner, "readiness-source");
 }, postgresSetupTimeoutMs);

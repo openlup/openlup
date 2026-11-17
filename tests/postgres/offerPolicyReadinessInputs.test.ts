@@ -908,3 +908,22 @@ it("unverified_policy_tuple_is_a_hard_input_refusal", async () => transaction(as
   await db.query("INSERT INTO public.subscription_price_policy_revisions(price_list_id,region_code,currency,channel,revision_no,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest) VALUES($1,'ZZ','XXX','D2C',1,statement_timestamp(),1000,10,'FLOOR_TO_QUANTUM',repeat('a',64))", [list]);
   await refusal(rpc(db, "catalog_price_setup_assert_catalog_inputs"), "catalog_price_setup_native_policy_domain_unverified");
 }));
+
+it.each([
+  ["zero", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: 0 }, true],
+  ["upper bound", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: 10000 }, true],
+  ["missing", { revision: "example:terms" }, false], ["JSON null", null, false],
+  ["wrong type", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: "3500" }, false],
+  ["fraction", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: 0.5 }, false],
+  ["negative", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: -1 }, false],
+  ["overflow", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: 10001 }, false],
+  ["unknown field", { schemaVersion: "subscription-acquisition.v1", revision: "example:terms", delivery2DiscountBps: 3500, extra: true }, false],
+  ["empty revision", { schemaVersion: "subscription-acquisition.v1", revision: "", delivery2DiscountBps: 3500 }, false],
+] as const)("native_SQL_metadata_golden_%s", async (_label, value, valid) => {
+  const result = rpc(owner, "catalog_price_setup_acquisition_metadata", [{ acquisitionTerms: value }]);
+  if (valid) expect(await result).toEqual(value);
+  else await expect(result).rejects.toMatchObject({ message: "acquisition_terms_invalid", code: "22023" });
+});
+it("absent_acquisition_metadata_remains_distinct_from_JSON_null", async () => {
+  expect(await rpc(owner, "catalog_price_setup_acquisition_metadata", [{ cart_mode: "subscription" }])).toBeNull();
+});

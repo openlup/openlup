@@ -19,12 +19,15 @@ row. Code rollback leaves the additive evidence and immutable audit in place;
 never reset a baseline to make a failed comparison pass. No capability is enabled,
 no application is composed, and no agreement is repriced or rescheduled.
 
-Managed divergence design: A managed twin would add the same policy and fixture
-columns to its subscriptions and separate cohort-marking/baseline tables. Keep
-marking owner-written and immutable to ordinary service DML; use RLS for service
-SELECT/INSERT on baselines, deny browser access and UPDATE/DELETE, and retain the
-service-authorized audited capture. Its promotion, order and agreement adapters
-must establish their own actual domain/history evidence. The native helper roles
-are expressible through those RLS policies. No food-column relaxation applies:
-this change authors no product or SKU shape. The managed rail does not supply
-this feature.
+Managed divergence design: A managed twin would reuse its existing
+`public.subscriptions` policy/fixture columns and
+`public.commerce_offer_policy_rollout_baselines`, add marking provenance and
+implement the input checks over its managed promotions, prices, orders and
+agreements. Its incumbent service grants and RLS need separate reviewed
+reconciliation: marking must remain owner-written and immutable to ordinary
+service DML; baselines need service SELECT/INSERT with browser and UPDATE/DELETE
+denial, while capture retains the service authorization boundary. The same
+semantics are expressible through managed ACLs and RLS, including explicit
+handling of bypass roles. No food-column relaxation applies: this change authors
+no product or SKU shape.
+The managed rail does not supply this feature.
