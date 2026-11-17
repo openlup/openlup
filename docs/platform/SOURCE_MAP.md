@@ -53,7 +53,7 @@ use one canonical domain owner unless a narrower workflow route applies.
 | public-policy | Public contribution policy and community governance | [CONTRIBUTING.md](../../CONTRIBUTING.md#pull-requests) | `.github/**` |
 | public-checks | Hosted execution ownership and the checks contributors must run | [CONTRIBUTING.md](../../CONTRIBUTING.md#development-preview-checks) | `.github/workflows/**` |
 | documentation | Public documentation navigation and current writing guidance | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/**` |
-| history | Dated public implementation plans, with no runtime authority | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/platform/plans/**` |
+| history | Dated public implementation plans and frozen documentation evidence, with no runtime authority | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#authoring) | `docs/platform/plans/**`; `docs/platform/history/**` |
 | configuration | Machine-readable platform configuration and contract inputs | [docs/platform/CANONICAL_CONTRACTS.md](CANONICAL_CONTRACTS.md#compatibility-posture) | `config/**` |
 | ownership | Documentation ownership, publication inventory and generated projections | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#ownership) | `config/doc-routing.json`; `config/openlup-publication-catalog.json`; `config/openlup-source-release-contract.json`; `scripts/documentation-routing.ts`; `scripts/documentation-git*.ts`; `scripts/documentation-navigation*.ts` |
 | agent-context | Installed reader guide lookup smoke matrix | [docs/platform/DOCUMENTATION.md](DOCUMENTATION.md#reader-guide-contract) | `scripts/agent-context/evaluate.mjs` |

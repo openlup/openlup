@@ -72,7 +72,9 @@ function parseCode(path: readonly PropertyKey[], code: string): CatalogConforman
   };
   return codes[String(path[0])] ?? "definition_invalid_shape";
 }
-/** Reference admission shares the definition key/version grammar and issue codes. */
+/** Reference admission shares the definition key/version grammar and issue codes.
+ * @experimental
+ */
 export function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIssue[] {
   const parsed = catalogProductTypeRefSchema.safeParse(input);
   if (parsed.success) return [];
@@ -81,7 +83,9 @@ export function catalogProductTypeRefIssues(input: unknown): CatalogDefinitionIs
     : [{ code: parseCode(issue.path, issue.code), path: pointer(issue.path) }]);
 }
 
-/** The runtime throws the first issue; offline callers can report the complete list. */
+/** The runtime throws the first issue; offline callers can report the complete list.
+ * @experimental
+ */
 export function catalogProductTypeIssues(definitions: readonly unknown[]): CatalogDefinitionIssue[] {
   const issues: CatalogDefinitionIssue[] = [];
   const identities = new Set<string>();
@@ -165,7 +169,9 @@ const packSchema = z.object({
   taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
   subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
 }).strict();
-/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys. */
+/** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys.
+ * @experimental
+ */
 export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
   const parsed = packSchema.safeParse(input);
   if (!parsed.success) return parsed.error.issues.flatMap<CatalogDefinitionIssue>((issue) => issue.code === "unrecognized_keys"

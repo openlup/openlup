@@ -199,7 +199,7 @@ seeded price integer ranges, tax legal-basis length (200), and the shared legal
 revision (trimmed, 1..64) with their native consumers. Catalog size is unchanged.
 
 Current cadence ownership and the deferred SQL 90-day limit are documented in
-the [starter limits](../../../examples/neutral-store/docs/limits.md#interim-subscription-mode-price).
+the [starter limits](../history/neutral-store-limits-2026-11-13.md#interim-subscription-mode-price).
 
 The root PostgreSQL regression no longer launches a browser or reads ignored UI
 output. Existing source tests prove create/replay/completion/reload credential

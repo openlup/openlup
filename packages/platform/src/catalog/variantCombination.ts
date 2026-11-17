@@ -14,6 +14,7 @@ const quantityOptionV2Schema = z.object({
     unscaled: z.unknown(), scale: z.unknown() }).strict(),
 }).strict();
 
+/** @experimental */
 export class CatalogCombinationError extends Error {
   constructor(readonly code: CatalogCombinationCode, readonly path: string) {
     super(code); this.name = "CatalogCombinationError";
@@ -21,7 +22,9 @@ export class CatalogCombinationError extends Error {
 }
 const refuse = (code: CatalogCombinationCode, path: string): never => { throw new CatalogCombinationError(code, path); };
 
-/** Installed definition metadata and selected axes must be rebound by LC2 inside its transaction. */
+/** Installed definition metadata and selected axes must be rebound by LC2 inside its transaction.
+ * @experimental
+ */
 export function canonicalizeCatalogCombinationV2(input: {
   definition: CatalogProductTypeInput;
   axes: readonly string[];
@@ -68,14 +71,18 @@ export function canonicalizeCatalogCombinationV2(input: {
   return { version: 2, canonicalOptionBytes, combinationDigest: createHash("sha256").update(canonicalOptionBytes).digest() };
 }
 
-/** Compare authoritative bytes after a digest conflict; a collision never merges identities. */
+/** Compare authoritative bytes after a digest conflict; a collision never merges identities.
+ * @experimental
+ */
 export function classifyCatalogCombinationConflictV2(left: CatalogCombinationIdentityV2, right: CatalogCombinationIdentityV2):
   "distinct" | "duplicate" | "collision" {
   if (!Buffer.from(left.combinationDigest).equals(right.combinationDigest)) return "distinct";
   return Buffer.from(left.canonicalOptionBytes).equals(right.canonicalOptionBytes) ? "duplicate" : "collision";
 }
 
-/** Pure LC2 preparation, without locks, persistence, publication authority or capacity configuration. */
+/** Pure LC2 preparation, without locks, persistence, publication authority or capacity configuration.
+ * @experimental
+ */
 export function validateCatalogCombinationChangesV2(input: {
   definition: CatalogProductTypeInput; axes: readonly string[]; typed: boolean;
   retained: readonly CatalogRetainedCombinationV2[]; incoming: readonly CatalogCombinationChangeV2[];
