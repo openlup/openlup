@@ -192,6 +192,7 @@ export function proveDistributionCliConsumer(consumer: string, pair?: UpgradePai
     assert.equal(json(["verify", "--unexpected"], 64).state, "refused");
     assert.equal(json(["verify", "--app", ""], 64).state, "refused");
     assert.equal(json(["verify", "--app", "missing.mjs"], 74).state, "failed");
+    assert.equal(json(["verify", "--app", "missing.mjs"], 74).findings[0].observed, "The --app module could not be loaded; raw application errors are withheld.");
 
     writeFileSync(join(root, "state.json"), JSON.stringify({ binder: false, schema: "previous", schedule: false }));
     writeFileSync(join(root, "app.mjs"), `
@@ -233,16 +234,27 @@ export function createVerificationInput() {
     assert(unknown.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND").evidence.checked.includes("Unknown"));
     writeFileSync(join(root, "bad-app.mjs"), 'throw Error("synthetic-private-detail");');
     assert(!run(["verify", "--app", "./bad-app.mjs", "--json"], 74).includes("synthetic-private-detail"));
-    for (const source of [
-      "export const = 1;",
-      'throw new TypeError("synthetic-private-detail");',
-      'export function createVerificationInput() { throw new SyntaxError("synthetic-private-detail"); }',
-      'export function createVerificationInput() { throw new TypeError("synthetic-private-detail"); }',
-    ]) {
+    for (const [source, expectedObserved, expectedFix] of [
+      ["export const = 1;", "The --app module could not be loaded; raw application errors are withheld.", "resolves its imports and evaluates without top-level errors"],
+      ['throw new TypeError("synthetic-private-detail");', "The --app module could not be loaded; raw application errors are withheld.", "resolves its imports and evaluates without top-level errors"],
+      ['export const createVerificationInput = "synthetic-private-detail";', "The loaded --app module does not export a createVerificationInput() function.", "Export a createVerificationInput() function"],
+      ['export function createVerificationInput() { throw new SyntaxError("synthetic-private-detail"); }', "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "assembles read-only ReadinessInput observations"],
+      ['export async function createVerificationInput() { throw new TypeError("synthetic-private-detail"); }', "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "assembles read-only ReadinessInput observations"],
+    ] as const) {
       writeFileSync(join(root, "bad-app.mjs"), source);
       const failure = run(["verify", "--app", "./bad-app.mjs", "--json"], 74);
-      assert.equal(JSON.parse(failure).state, "failed");
+      const parsed = JSON.parse(failure);
+      assert.equal(parsed.formatVersion, 1);
+      assert.equal(parsed.state, "failed");
+      assert.equal(parsed.exitCode, 74);
+      assert.equal(parsed.findings[0].code, "OPENLUP_E_CLI_FAILURE");
+      assert.equal(parsed.findings[0].observed, expectedObserved);
+      assert(parsed.findings[0].fix.includes(expectedFix));
       assert(!failure.includes("synthetic-private-detail"));
+      const failureText = run(["verify", "--app", "./bad-app.mjs"], 74);
+      assert(failureText.includes(expectedObserved));
+      assert(failureText.includes(expectedFix));
+      assert(!failureText.includes("synthetic-private-detail"));
     }
 
     // The harness prepares real published packages before invoking the CLI.
