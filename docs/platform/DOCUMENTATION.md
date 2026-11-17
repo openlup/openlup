@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The source-release contract derives stable posture for the canonical activation
+identity and retains development-preview, unstable posture for local fixtures.
+Historical `openlup-source-preview/N` tag names remain unchanged identifiers;
+the contract snapshot binds the selected tree through the existing preparation
+generator. Descendant releases preserve repository and evidence-class identity;
+the validator admits the transition from historical preview to stable posture.
+
 Review coverage helpers use the existing tooling owner in CONTRIBUTING.
 The catalogue attribute validator, reference port, pure projection preparation
 and package witnesses are explicit publication-catalogue paths, owned by the

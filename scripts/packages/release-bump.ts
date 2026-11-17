@@ -1,7 +1,7 @@
 /**
  * `npm run release:bump -- --set <version>`, from the repository root, sets
  * every publishable package of `config/openlup-packages.json` to the next set
- * version `0.N.P`, above the one they all carry now: the release-preparation
+ * version `MAJOR.MINOR.PATCH`, above the one they all carry now: the release-preparation
  * step of a set release. `npm run release:bump -- <package> <version>` sets the
  * released package `packages/<package>` alone; for a publishable package that
  * is the same step, and it is refused while another package is publishable.
@@ -180,14 +180,14 @@ export function bumpRelease(root: string, name: string, version: string, packed:
   if (!entry) throw new Error(`${directory} is not a released package in ${PACKAGES_CONFIG_PATH}`);
   const from = manifestVersion(root, entry);
   if (typeof from !== "string" || releaseVersionAbove(version, from) !== true) throw new Error(`${entry.name} is at ${String(from)}; the next version must be a release version above it`);
-  if (entry.publish && !SET_VERSION.test(version)) throw new Error(`${entry.name} is publishable, so its next version is a set version 0.N.P below 1.0, not ${version}`);
+  if (entry.publish && !SET_VERSION.test(version)) throw new Error(`${entry.name} is publishable, so its next version is a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1), not ${version}`);
   if (entry.publish && config.packages.some((row) => row.publish && row !== entry)) throw new Error(`${entry.name} moves with its set: npm run release:bump -- --set <version>`);
   return writeAll(root, bumpFiles(root, config, [entry], from, version, packed));
 }
 
 /** Sets every publishable package to the set version `version` and returns the rewritten files. */
 export function bumpSet(root: string, version: string, packed: PublishedPackedBytes = npmPublishedPackedBytes): string[] {
-  if (!SET_VERSION.test(version)) throw new Error(`${version} is not a set version 0.N.P below 1.0`);
+  if (!SET_VERSION.test(version)) throw new Error(`${version} is not a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)`);
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   const publishable = config.packages.filter(({ publish }) => publish);
   if (publishable.length === 0) throw new Error(`${PACKAGES_CONFIG_PATH} lists no publishable package`);
@@ -218,7 +218,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const args = process.argv.slice(2);
   const set = args.length === 2 && args[0] === "--set" && SET_VERSION.test(args[1]!);
   if (!set && (args.length !== 2 || !PACKAGE.test(args[0]!) || !RELEASE_VERSION.test(args[1]!))) {
-    console.error("usage: npm run release:bump -- --set <0.N.P>, or npm run release:bump -- <package directory name> <MAJOR.MINOR.PATCH>");
+    console.error("usage: npm run release:bump -- --set <MAJOR.MINOR.PATCH>, or npm run release:bump -- <package directory name> <MAJOR.MINOR.PATCH>");
     process.exitCode = 2;
   } else {
     try {

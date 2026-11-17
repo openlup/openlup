@@ -5,7 +5,7 @@
  * By default it checks every package manifest and builds and packs every package.
  * Manifest checks use
  * `config/openlup-packages.json`, including that every publishable package
- * carries the same set version `0.N.P`. `--manifest-only` needs no install or build
+ * carries the same set version `MAJOR.MINOR.PATCH`. `--manifest-only` needs no install or build
  * and is used by the privileged release job. Artifact checks build declared internal
  * prerequisites, pack into a temporary directory, enforce release-gates.json budgets and check
  * every packed file (see `package-tarball-gate.ts`). A package directory must
@@ -123,7 +123,7 @@ function releaseSelection(tag: string, packages: readonly PackageEntry[], versio
 /** Every publishable package, each at the set version, with a finding for every way the set and the tree disagree. */
 function setSelection(version: string, packages: readonly PackageEntry[], versions: ReadonlyMap<string, unknown>, findings: Finding[]): PackageEntry[] {
   const refuse = (detail: string): PackageEntry[] => { findings.push({ subject: `set ${version}`, rule: "release-set", detail }); return []; };
-  if (!SET_VERSION.test(version)) return refuse("a set version is 0.N.P below 1.0");
+  if (!SET_VERSION.test(version)) return refuse("a set version is 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)");
   const publishable = packages.filter(({ publish }) => publish);
   if (publishable.length === 0) return refuse(`${PACKAGES_CONFIG_PATH} lists no publishable package`);
   const behind = publishable.filter(({ name }) => versions.get(name) !== version).map(({ name }) => `${name} is at ${String(versions.get(name))}`);

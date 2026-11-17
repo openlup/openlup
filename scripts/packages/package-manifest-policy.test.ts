@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { PACKAGES_CONFIG_PATH, PUBLIC_REPOSITORY_URL, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, isRegistryRange, parsePackageReleaseTag, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
+import { PACKAGES_CONFIG_PATH, PUBLIC_REPOSITORY_URL, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkUnreleasedManifest, isRegistryRange, parsePackageReleaseTag, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
 
 const config: PackagesConfig = { schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: false }, { name: "@openlup/server", directory: "packages/server", publish: true }, { name: "@openlup/db", directory: "packages/db", publish: true }], unreleased: [{ directory: "packages/ui", reason: "scaffold" }] };
 const versions = new Map([["@openlup/core", "0.6.0"], ["@openlup/server", "1.2.0"], ["@openlup/db", "0.3.1"]]);
@@ -16,6 +16,10 @@ const text = (value: unknown) => JSON.stringify(value);
 const base = { schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: false }], unreleased: [] };
 
 describe("packages config", () => {
+  it("admits coherent release versions without admitting malformed sets", () => {
+    for (const version of ["0.1.0", "0.43.2", "1.0.0", "1.2.3"]) expect(SET_VERSION.test(version), version).toBe(true);
+    for (const version of ["0.0.1", "1.0", "01.0.0", "1.0.0-rc.1"]) expect(SET_VERSION.test(version), version).toBe(false);
+  });
   it("parses the committed config", () => {
     expect(parsePackagesConfig(readFileSync(PACKAGES_CONFIG_PATH, "utf8")).packages.map(({ name }) => name)).toContain("@openlup/core");
   });

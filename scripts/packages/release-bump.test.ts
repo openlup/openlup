@@ -77,6 +77,13 @@ function setFixture() {
 }
 
 describe("release:bump", () => {
+  it.each(["1.0.0", "1.2.3"])("prepares coherent set %s", version => {
+    const { root } = setFixture(); bumpSet(root, version, () => undefined);
+    for (const name of ["core", "outbox"]) expect(JSON.parse(readFileSync(join(root, `packages/${name}/package.json`), "utf8")).version).toBe(version);
+  });
+  it.each(["1.0", "01.0.0", "1.0.0-rc.1"])("refuses malformed set %s", version => {
+    expect(() => bumpSet(setFixture().root, version)).toThrow(/is not a set version/u);
+  });
   it("rewrites exactly the one package's version strings and opens its CHANGELOG section", () => {
     const { root, files } = fixture();
     expect(bumpRelease(root, "core", "0.9.0").sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/package-lock.json", "packages/core/package.json"]);
