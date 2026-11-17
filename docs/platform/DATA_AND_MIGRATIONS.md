@@ -2319,8 +2319,12 @@ All three statements must occur exactly once. The real catalogue requires RLS
 enabled, owner plus service SELECT/INSERT table privileges only, no column grants
 or grant options, and precisely these two permissive policies with this role and
 these predicates. With the role absent, the table remains owner-only with no
-policies. UPDATE/DELETE grants, broader policies, other tables and other roles
-remain refused. This admission installs no feature table and enables no runtime.
+policies. The allowance does not bypass the generic column-ACL guard. Every
+column grant, including SELECT/INSERT/UPDATE/REFERENCES, and every extra table
+GRANT outside the exact statement above is refused by static admission; the
+real catalogue independently refuses added column or table privileges. PostgreSQL
+also refuses DELETE/TRIGGER column-grant syntax. Broader policies, other tables
+and other roles remain refused. This admission installs no feature table and enables no runtime.
 
 The exact `existingTableStatements` list may also contain:
 
@@ -2328,7 +2332,8 @@ The exact `existingTableStatements` list may also contain:
 ALTER TABLE public.subscriptions ALTER COLUMN offer_policy_assignment_state SET DEFAULT 'pending_acquisition';
 ```
 
-An earlier statement in that same list must add the column with the exact action
+An earlier statement targeting `public.subscriptions` in that same list must add
+the column with the exact action
 `ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen'`.
 No conditional addition is allowed: PostgreSQL must reject a pre-existing column.
 This preserves existing rows' legacy marker and changes only future inserts;

@@ -1675,6 +1675,11 @@ describe("native baseline admission", () => {
   ])("refuses assignment default %s", (_label, statements) => {
     expect(() => assignment(statements)).toThrow(/existing-table statement is not expand-only/u);
   });
+  it("refuses the canonical assignment switch when its only legacy ADD targets another table", () => {
+    const otherAdd = assignmentAdd.replace("public.subscriptions", "public.fixture_row");
+    expect(() => assignment([otherAdd])).not.toThrow();
+    expect(() => assignment([otherAdd, assignmentSwitch])).toThrow("reviewed native store existing-table statement is not expand-only");
+  });
   it("refuses an unlisted, changed or duplicated switch", () => {
     for (const statements of [[], [assignmentAdd], [assignmentAdd, assignmentSwitch]]) {
       expect(() => assignment(statements, assignmentAdd + assignmentSwitch + assignmentSwitch)).toThrow(/existing-table|closed shapes/u);
@@ -1701,6 +1706,13 @@ describe("native baseline admission", () => {
     ["duplicate policy", baselineShape + noticeDo(baselineInsert)],
   ])("refuses baseline %s", (_label, text) => {
     expect(() => baseline(text)).toThrow(/reviewed native store/u);
+  });
+  it.each(["SELECT", "INSERT", "UPDATE", "DELETE", "REFERENCES", "TRIGGER"].flatMap(privilege =>
+    ["table", "column"].flatMap(scope => ["direct", "guarded"].map(shell => ({ privilege, scope, shell }))),
+  ))("refuses appended baseline $privilege $scope GRANT in $shell admission", ({ privilege, scope, shell }) => {
+    const grant = `GRANT ${privilege}${scope === "column" ? " (id)" : ""} ON TABLE ${baselineTable} TO service_role;`;
+    expect(() => baseline(baselineShape + (shell === "guarded" ? noticeDo(grant) : grant)))
+      .toThrow(shell === "guarded" ? "reviewed native store conditional privilege target or role refused" : "reviewed native store refuses statement outside its closed shapes");
   });
   it.each([baselineGrant, baselineSelect, baselineInsert])("refuses an incomplete baseline without %s", statement => {
     expect(() => baseline(baselineShape.replace(noticeDo(statement), ""))).toThrow(/requires its grant and both policies/u);
