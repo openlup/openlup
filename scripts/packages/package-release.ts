@@ -26,10 +26,9 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
-import ts from "typescript";
 import { assertSourceReleaseSnapshot } from "../oss-source-release-contract.ts";
 import { annotatedTag, type GithubFetch } from "../source-preview-release.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_DISPATCH, SET_VERSION, parsePackageReleaseTag, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
@@ -179,23 +178,32 @@ function reportExportNames(root: string, directory: string, ref: string): Set<st
   const names = new Set<string>();
   for (const [subpath, { entrypoint, snapshot }] of Object.entries(surface) as Array<[string, { entrypoint: string; snapshot: string }]>) {
     if (!reports.has(`${directory}/${snapshot}`)) continue;
-    const report = git("show", `${ref}:${directory}/${snapshot}`);
-    const files = new Map([...report.matchAll(/^## (dist\/[^\n]+)\n\n```ts\n([\s\S]*?)^```/gmu)].map((match) => [resolve("/", match[1]!), match[2]!]));
-    const options = { noLib: true, types: [], moduleResolution: ts.ModuleResolutionKind.Node10 };
-    const host: ts.CompilerHost = { ...ts.createCompilerHost(options),
-      getCurrentDirectory: () => "/", directoryExists: () => true,
-      fileExists: (file) => files.has(file), readFile: (file) => files.get(file),
-      getSourceFile: (file, languageVersion) => files.has(file) ? ts.createSourceFile(file, files.get(file)!, languageVersion, true) : undefined,
+    const files = new Map([...git("show", `${ref}:${directory}/${snapshot}`).matchAll(/^## (dist\/[^\n]+)\n\n```ts\n([\s\S]*?)^```/gmu)].map((match) => [resolve("/", match[1]!), match[2]!]));
+    const collect = (file: string, seen: string[] = [], bindings = false): Set<string> => {
+      if (seen.includes(`${file}:${bindings}`)) return new Set();
+      const found = new Set<string>(), source = files.get(file);
+      if (source === undefined) throw new Error(`${ref}:${directory}/${snapshot} has no declaration entry ${file}`);
+      for (const token of source.matchAll(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:export|import)\b/gu)) {
+        const statement = source.slice(token.index + token[0].length);
+        if (/^\s*\(/u.test(statement) || (token[0] !== "export" && (!bindings || token[0] !== "import" || !/^\s+(?:type\s+)?\{/u.test(statement)))) continue;
+        const direct = /^\s+(?:declare\s+)?(?:abstract\s+)?(?:class|interface|type|function|const|let|var|enum|namespace)\s+([$A-Z_a-z][\w$]*)/u.exec(statement);
+        if (direct) { found.add(direct[1]!); continue; }
+        const reexport = /^\s+(?:type\s+)?(\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?)\s*(?:from\s+(["'])([^"']+)\2)?\s*;/u.exec(statement);
+        if (!reexport || (reexport[1]!.startsWith("*") && !reexport[3])) throw new Error(`Unparseable export in ${ref}:${directory}/${snapshot}: ${statement.slice(0, 100)}`);
+        const [, clause, , specifier] = reexport;
+        const target = specifier?.startsWith(".") ? resolve(dirname(file), specifier).replace(/\.js$/u, ".d.ts") : "";
+        const available = specifier ? (files.has(target) ? collect(target, [...seen, `${file}:${bindings}`]) : new Set<string>()) : bindings ? new Set<string>() : collect(file, [...seen, `${file}:${bindings}`], true);
+        if (clause!.startsWith("*")) {
+          if (files.has(target)) for (const name of clause === "*" ? available : [clause!.slice(1).trim().replace(/^as\s+/u, "")]) if (name !== "default") found.add(name);
+        } else if (clause!.slice(1, -1).trim()) for (const item of clause!.slice(1, -1).trim().replace(/,$/u, "").split(",").map((part) => part.trim())) {
+          const named = /^(?:type\s+)?([$A-Z_a-z][\w$]*)(?:\s+as\s+([$A-Z_a-z][\w$]*))?$/u.exec(item);
+          if (!named) throw new Error(`Unparseable export in ${ref}:${directory}/${snapshot}: ${item}`);
+          if (available.has(named[1]!)) found.add(named[2] ?? named[1]!);
+        }
+      }
+      return found;
     };
-    const program = ts.createProgram([resolve("/", entrypoint)], options, host), checker = program.getTypeChecker();
-    const entry = program.getSourceFile(resolve("/", entrypoint));
-    const module = entry && checker.getSymbolAtLocation(entry);
-    if (!module) throw new Error(`${ref}:${directory}/${snapshot} has no declaration entry ${entrypoint}`);
-    for (const symbol of checker.getExportsOfModule(module)) {
-      // Cross-package re-exports cannot resolve within one report; omit them on both sides.
-      const declaration = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-      if (declaration.declarations?.length) names.add(`@openlup/${directory.slice("packages/".length)}/${subpath}/${symbol.name}`);
-    }
+    for (const name of collect(resolve("/", entrypoint))) names.add(`@openlup/${directory.slice("packages/".length)}/${subpath}/${name}`);
   }
   return names;
 }
