@@ -1775,11 +1775,24 @@ Steps 1 to 4 are the native payment aggregate
 (`payment_provider_lock_aggregate`); steps 3, 5, 6 and 7 are the existing order
 → code → claim promotion order.
 
-**Catalogue domain order.** Definitions and tax-class keys; then catalogue
-lineage (publication head, product, SKU and its revisions); then merchandising
-(categories, collections); then price context (head before entries). Rows of
-one kind are locked in ascending key order. A **rank** is one numbered commerce
-step or one kind in this catalogue list.
+**Catalogue domain order.** Each kind is a separate rank:
+
+1. definitions;
+2. tax-class keys;
+3. publication head;
+4. product;
+5. SKU;
+6. SKU revision;
+7. category;
+8. collection;
+9. price-context head;
+10. price entry.
+
+Rows of one kind are locked in ascending key order. A **rank** is one numbered
+commerce step or one numbered catalogue kind. The immediate base-price command
+acquires its catalogue-local command receipt before the price-context guard and
+open entry rows. Its explicit locks remain within receipts and price context;
+readiness takes no commerce locks.
 
 **Rules.**
 
@@ -1798,13 +1811,14 @@ step or one kind in this catalogue list.
   SKU and publication revisions, price lists and price entries that commerce rows
   reference by foreign key are never locked `FOR UPDATE`, never deleted, and never
   have a uniquely indexed column changed. Writers update other columns (`FOR NO
-  KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` then
-  never waits for a catalogue writer, so foreign-key checks are exempt from the
-  ordering in R2 and R4.
+  KEY UPDATE`) or append immutable revisions. A foreign-key `FOR KEY SHARE` on
+  these rows never waits for a catalogue writer, so these foreign-key checks are
+  exempt from the ordering in R2 and R4.
 - **R4. Advisory locks take the rank of the rows they guard**, with shared and
   exclusive modes as for rows. A transaction that takes both an advisory guard
   and row locks of the same rank takes the guard first, before any row lock of
-  that rank; several guards of one rank are taken in ascending guarded-key order.
+  that rank; several guards of one rank are taken in ascending guarded-key order,
+  with the guard namespace breaking a tie between equal guarded keys.
   Overlap guards run under `READ COMMITTED`.
 - **R5. Store transfer is a separate regime.** Restore takes table locks on a
   fresh target with no concurrent writers; it is outside this order.
@@ -1813,7 +1827,7 @@ step or one kind in this catalogue list.
   settlement (`lock_matrix_races_native_payment_settlement`). A managed twin
   follows the same order when an adopter's managed chain adds it.
 
-**Existing exceptions (do not copy).** These commerce paths predate the round and
+**Known existing exceptions (do not copy).** These commerce paths predate the round and
 acquire commerce keys out of the order above. They belong to their owning modules
 and are not changed by catalogue work unless a catalogue change would close a new
 cycle with one of them; that change then repairs the caller with a

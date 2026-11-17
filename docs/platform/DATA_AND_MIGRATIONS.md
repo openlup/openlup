@@ -303,6 +303,38 @@ runtime login. Restricted-bootstrap installation is a separate qualification
 and will reuse these connection roles when it lands. Hosted endpoints remain
 unqualified by this local witness.
 
+## Native base-price writes
+
+The unbound native base-price writer follows the readiness-input unit in the
+complete catalogue at position 150. Its [package projection](../../packages/platform/src/catalog/sql.ts)
+is a sparse descriptor, not an install chain. The migration adds a catalogue-local
+receipt relation and human-session preview/apply routines. No catalogue or
+subscription row is backfilled and no capability is activated. Existing readers
+retain ordinary price-entry storage; new callers explicitly bind the
+[pricing use case](../../packages/platform/README.md#pricing).
+
+Receipts and price history are authoritative connected-store transfer data.
+Capture and restore exact command keys, fingerprints, actor metadata and original
+responses; a restored completed command replays before target reads. The receipt
+relation contains no customer foreign key. Runtime/browser table access remains
+denied; the bounded routines derive the active human administrator from the
+verified session. Readiness only selects and hard-refuses unavailable native
+proof, including cohort membership and historical order protection.
+
+The writer preserves the existing ordinary-reason aggregation defect. A reason
+already present before a write does not block another occurrence of that reason;
+hard evidence failures are exceptions and cannot be bypassed this way. See the
+[writer witnesses](../../tests/postgres/catalogBasePriceWriter.test.ts) for
+rollback, replay, provisional-write visibility and a committed change preserving
+native subscriber money through renewal, edit reads and actual resume.
+
+The managed rail does not supply this feature. Its twin needs separate SQL
+admission and equivalent administrator/RLS, input-provenance and receipt controls
+over incumbent managed tables; it must not infer historical evidence from a
+current catalogue head. Industry-specific managed catalogue columns are unaffected.
+Unbind callers to roll back use; retain committed receipts/history and correct a
+price with a subsequent expected-base command.
+
 ## Compatible data transfer
 
 Catalogue definitions, definition-install receipts and tax-class keys are
