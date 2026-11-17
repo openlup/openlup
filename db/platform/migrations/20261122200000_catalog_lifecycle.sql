@@ -25,6 +25,43 @@ CREATE TRIGGER catalog_products_lifecycle_write_fence BEFORE UPDATE OF status,pu
 CREATE TRIGGER catalog_skus_lifecycle_write_fence BEFORE UPDATE OF status,sellable_standalone,sellable_in_subscription,publication_facts ON public.catalog_skus FOR EACH ROW EXECUTE FUNCTION public.catalog_lifecycle_write_fence();
 REVOKE ALL ON FUNCTION public.catalog_lifecycle_write_fence() FROM PUBLIC;
 
+-- Legacy lifecycle entrypoints remain unconditional refusals before state access.
+CREATE FUNCTION public.admin_archive_catalog_sku(p_actor_id uuid, p_sku text, p_mode text DEFAULT 'commit', p_idempotency_key text DEFAULT NULL, p_request_id text DEFAULT NULL, p_source text DEFAULT 'agent_catalog') RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ RAISE EXCEPTION 'legacy_catalog_mutation_fenced' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_archive_catalog_sku(uuid,text,text,text,text,text) FROM PUBLIC;
+CREATE FUNCTION public.admin_activate_catalog_product(p_actor_id uuid, p_slug text, p_mode text DEFAULT 'commit', p_idempotency_key text DEFAULT NULL, p_request_id text DEFAULT NULL, p_source text DEFAULT 'agent_catalog') RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ RAISE EXCEPTION 'legacy_catalog_mutation_fenced' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_activate_catalog_product(uuid,text,text,text,text,text) FROM PUBLIC;
+CREATE FUNCTION public.admin_archive_catalog_product(p_actor_id uuid, p_slug text, p_mode text DEFAULT 'commit', p_idempotency_key text DEFAULT NULL, p_request_id text DEFAULT NULL, p_source text DEFAULT 'agent_catalog') RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ RAISE EXCEPTION 'legacy_catalog_mutation_fenced' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_archive_catalog_product(uuid,text,text,text,text,text) FROM PUBLIC;
+CREATE FUNCTION public.admin_restore_catalog_product(p_actor_id uuid, p_slug text, p_mode text DEFAULT 'commit', p_idempotency_key text DEFAULT NULL, p_request_id text DEFAULT NULL, p_source text DEFAULT 'agent_catalog') RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ RAISE EXCEPTION 'legacy_catalog_mutation_fenced' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_restore_catalog_product(uuid,text,text,text,text,text) FROM PUBLIC;
+CREATE FUNCTION public.admin_deactivate_catalog_product(p_actor_id uuid, p_slug text, p_mode text DEFAULT 'commit', p_idempotency_key text DEFAULT NULL, p_request_id text DEFAULT NULL, p_source text DEFAULT 'agent_catalog') RETURNS jsonb
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ RAISE EXCEPTION 'legacy_catalog_mutation_fenced' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_deactivate_catalog_product(uuid,text,text,text,text,text) FROM PUBLIC;
+
 -- A nullable legacy revision never erases a known identity. This is one unpaginated
 -- query for archive and impact. It takes no commerce row or advisory locks.
 CREATE FUNCTION public.catalog_bound_obligations_v2(p_sku_id uuid) RETURNS jsonb

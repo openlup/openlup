@@ -1458,6 +1458,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122200000_catalog_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -3242,6 +3246,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/catalog/acceptedReferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/catalog/identifiers.ts",
       "class": "public-output"
     },
@@ -4746,6 +4754,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122200000_catalog_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5026,6 +5038,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/acceptedReferenceStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/activeSkuSelection.ts",
       "class": "public-output"
     },
@@ -5202,6 +5218,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/lifecycleV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/productMediaContracts.ts",
       "class": "public-output"
     },
@@ -5275,6 +5295,10 @@
     },
     {
       "path": "packages/platform/src/catalog/installCatalogDefinitions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/lifecycleV2.ts",
       "class": "public-output"
     },
     {
@@ -9479,6 +9503,10 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogLifecycleContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogLifecycleV2.test.ts",
       "class": "public-output"
     },
     {
@@ -29663,6 +29691,10 @@
     },
     {
       "path": "tests/postgres/catalogDraftV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogLifecycle.test.ts",
       "class": "public-output"
     },
     {

@@ -193,6 +193,7 @@ async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3) {
     const result = await authority.publish(publish, actor); expect(result.outcome, JSON.stringify(result)).toBe("committed");
     if (!("receipt" in result)) throw new Error("Missing publication receipt");
     head = result.receipt.head; first ??= head; receipt = result.receipt;
+    if (schemaVersion === 4 && expectedRevision === 0) (await owner.connect()).release(true);
   }
   return { productId, first: first!, second: head!, receipt, firstCommand: firstCommand! };
 }
@@ -216,19 +217,28 @@ it("refuses nonempty transient publication capabilities during capture", async (
   finally { await source.owner.query("DELETE FROM public.catalog_publication_pointer_capabilities WHERE product_id=$1 AND revision_id=$2 AND command_fingerprint=$3", [row.product_id, row.document_revision_id, fingerprint]); }
 });
 
+it("refuses nonempty transient lifecycle capabilities during capture", async () => {
+  const product = retainedPublication.productId;
+  await source.owner.query("INSERT INTO public.catalog_lifecycle_write_capabilities(transaction_id,product_id,fingerprint) VALUES(pg_current_xact_id(),$1,$2)", [product,"a".repeat(64)]);
+  try { await expect(captureStoreJourney(source.owner,"lifecycle-capability-refusal")).rejects.toMatchObject({ code: "unsupported_table" }); }
+  finally { await source.owner.query("DELETE FROM public.catalog_lifecycle_write_capabilities WHERE product_id=$1", [product]); }
+});
+
 it("transfers governed lifecycle facts and nullable same-SKU accepted bindings without inference", async () => {
   const held = await resources.installation("lifecycle-source");
   const history = await seedPublicationHistory(held.owner, 4), sourceAuthority = publicationAuthority(held.owner);
   const page = await sourceAuthority.readbackV3(history.first);
   if (page.outcome !== "page") throw new Error(JSON.stringify(page));
   expect(await sourceAuthority.readbackV2(history.first)).toMatchObject({ outcome: "unsupported", reason: "catalog_lifecycle_reader_required" });
-  const sku = page.items[0]!, customer = randomUUID(), subscription = randomUUID(), order = randomUUID();
+  const sku = page.items[0]!, customer = randomUUID(), subscription = randomUUID(), legacySubscription = randomUUID(), order = randomUUID();
   const reference = { schemaVersion: 2, skuId: sku.facts.id, skuCode: sku.facts.code, skuRevisionId: sku.reference.revisionId, publicationHead: page.head,
     typeRef: page.product.type, definitionDigest: page.product.definitionDigest, optionDigest: sku.facts.optionDigest, netContent: sku.facts.netContent };
   const acceptance = JSON.stringify({ schemaVersion: 2, lines: [reference] });
   await held.owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [customer,`${customer}@example.invalid`]);
   await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [subscription,customer]);
   await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,3,0,617,'XXX',$3)", [subscription,sku.facts.id,sku.reference.revisionId]);
+  await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [legacySubscription,customer]);
+  await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,3,0,617,'XXX')", [legacySubscription,sku.facts.id]);
   await held.owner.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [subscription,acceptance]);
   await held.owner.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,catalog_acceptance) VALUES($1,$2,'XXX',0,$3::jsonb)", [order,customer,acceptance]);
   await held.owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle','synthetic:accepted-edit','{}',$2::jsonb)", [subscription,acceptance]);
@@ -237,6 +247,8 @@ it("transfers governed lifecycle facts and nullable same-SKU accepted bindings w
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await publicationAuthority(target.owner).readbackV3(history.first)).toEqual(page);
   expect((await target.owner.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [subscription])).rows).toEqual([{ catalog_sku_revision_id: sku.reference.revisionId }]);
+  expect((await target.owner.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [legacySubscription])).rows).toEqual([{ catalog_sku_revision_id: null }]);
+  (await target.owner.connect()).release(true);
   const reconnected = publicationAuthority(target.owner), actor = (await reconnected.authorize(undefined))!;
   expect(await reconnected.publish(history.firstCommand,actor)).toMatchObject({ outcome: "replayed" });
   expect(await journeyCensus(target.owner)).toEqual(before);

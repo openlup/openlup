@@ -12,7 +12,8 @@ Migration: apply the complete native forward, then upgrade governed consumers to
 `readbackV3` and the explicit `createNativeCatalogRenewalCodecV2` before composing
 new authoring or acceptance. The existing strict draft v1/v2/v3 codecs,
 publication v2 reader and original successful receipt bytes remain unchanged;
-old raw-status commands cannot modify governed rows. Existing ungoverned rows
+old raw-status commands cannot modify governed rows. The five legacy lifecycle
+entrypoints remain unconditional mutation refusals before state access. Existing ungoverned rows
 are not adopted. Withdrawn raw-active projections do not qualify legacy listing
 or fresh-sale readers. The existing mass-only publication boundary remains.
 

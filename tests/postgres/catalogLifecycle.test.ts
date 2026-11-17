@@ -96,17 +96,36 @@ it("catalog_archive_refuses_outstanding_obligations", async () => {
 });
 it("same-SKU binding refuses a foreign revision and preserves historical NULL", async () => {
   const f = await seed(), foreign = randomUUID();
+  const constraint = (await db.query(`SELECT c.confdeltype,c.convalidated,
+    ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY k(attnum,n) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.n) AS source_keys,
+    ARRAY(SELECT a.attname::text FROM unnest(c.confkey) WITH ORDINALITY k(attnum,n) JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.attnum ORDER BY k.n) AS target_keys
+    FROM pg_constraint c WHERE c.conname='subscription_lines_catalog_sku_revision_fkey'`)).rows;
+  expect(constraint).toEqual([{ confdeltype: "r", convalidated: true,
+    source_keys: ["variant_id", "catalog_sku_revision_id"], target_keys: ["sku_id", "id"] }]);
+  await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,0,617,'XXX')", [f.subscription,f.sku]);
   await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,'OTHER','Synthetic other')", [foreign, f.product]);
   const revision = (await db.query("SELECT id FROM public.catalog_sku_revisions WHERE sku_id=$1", [f.sku])).rows[0].id;
   await db.query("SAVEPOINT mismatch");
   await expect(db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,1,0,617,'XXX',$3)", [f.subscription, foreign, revision])).rejects.toMatchObject({ code: "23503" });
   await db.query("ROLLBACK TO SAVEPOINT mismatch");
+  expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ catalog_sku_revision_id: null }]);
 });
 it("refuses old raw status writes against lifecycle-governed facts", async () => {
   const f = await seed(); await db.query("SAVEPOINT raw_status");
   await expect(db.query("UPDATE public.catalog_skus SET status='active' WHERE id=$1", [f.sku])).rejects.toMatchObject({ code: "42501", message: "catalog_lifecycle_raw_status_fenced" });
   await db.query("ROLLBACK TO SAVEPOINT raw_status");
   expect(await authority.publish(f.first.command, actor)).toMatchObject({ outcome: "replayed", receipt: "receipt" in f.first.result ? f.first.result.receipt : null });
+});
+
+it.each([
+  "admin_archive_catalog_sku", "admin_activate_catalog_product", "admin_archive_catalog_product",
+  "admin_restore_catalog_product", "admin_deactivate_catalog_product",
+] as const)("legacy lifecycle entrypoint refuses before state access: %s", async name => {
+  const before = (await db.query("SELECT count(*) FROM public.catalog_publications")).rows;
+  await db.query("SAVEPOINT legacy_entrypoint");
+  await expect(db.query(`SELECT public.${name}(NULL,NULL)`)).rejects.toMatchObject({ code: "42501", message: "legacy_catalog_mutation_fenced" });
+  await db.query("ROLLBACK TO SAVEPOINT legacy_entrypoint");
+  expect((await db.query("SELECT count(*) FROM public.catalog_publications")).rows).toEqual(before);
 });
 
 async function archive(f: Awaited<ReturnType<typeof seed>>) {
@@ -287,11 +306,13 @@ it("catalog_material_change_requires_successor_sku", async () => {
   payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: {} }];
   expect((await publish(payload,1,f.first.result.receipt.head)).result).toMatchObject({ reason: "sku_identity_change_requires_new_sku" });
 });
-it("late outbox failure rolls back withdrawal, child facts, revisions and head", async () => {
+it.each(["receipt", "outbox"] as const)("late %s failure rolls back withdrawal, child facts, revisions and head", async point => {
   const f = await seed(), standing = await standingActive(f);
   const before = (await db.query("SELECT (SELECT jsonb_agg(to_jsonb(p)) FROM public.catalog_products p) AS products,(SELECT jsonb_agg(to_jsonb(s)) FROM public.catalog_skus s) AS skus,(SELECT jsonb_agg(to_jsonb(h)) FROM public.catalog_publication_heads h) AS heads,(SELECT count(*) FROM public.catalog_publications) AS publications,(SELECT count(*) FROM public.catalog_sku_revisions) AS revisions")).rows;
   await db.query("CREATE FUNCTION public.lifecycle_test_late_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic_late_failure'; END; $$");
-  await db.query("CREATE TRIGGER lifecycle_test_late_failure BEFORE INSERT ON public.outbox_events FOR EACH ROW WHEN (NEW.event_type='catalog.publication.committed') EXECUTE FUNCTION public.lifecycle_test_late_failure()");
+  const table = point === "receipt" ? "catalog_operator_receipts" : "outbox_events";
+  const when = point === "outbox" ? " WHEN (NEW.event_type='catalog.publication.committed')" : " WHEN (NEW.kind='publish')";
+  await db.query(`CREATE TRIGGER lifecycle_test_late_failure BEFORE INSERT ON public.${table} FOR EACH ROW${when} EXECUTE FUNCTION public.lifecycle_test_late_failure()`);
   expect((await publish(withdrawal(f),1,standing.head)).result).toMatchObject({ outcome: "dependency_unavailable" });
   expect((await db.query("SELECT (SELECT jsonb_agg(to_jsonb(p)) FROM public.catalog_products p) AS products,(SELECT jsonb_agg(to_jsonb(s)) FROM public.catalog_skus s) AS skus,(SELECT jsonb_agg(to_jsonb(h)) FROM public.catalog_publication_heads h) AS heads,(SELECT count(*) FROM public.catalog_publications) AS publications,(SELECT count(*) FROM public.catalog_sku_revisions) AS revisions")).rows).toEqual(before);
 });

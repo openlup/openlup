@@ -304,6 +304,11 @@ publication catalogue and derived source contract inventory these additions;
 neither generated navigation nor schema-object presence establishes activation
 or a successful installed consumer.
 
+Lifecycle command/fact versions, shared accepted-reference types and their
+native migration and witnesses have exact publication catalogue entries. Their
+package catalogue section owns compatibility and unbound composition limits;
+these inventory rows do not qualify the acceptance barrier or activation.
+
 The catalog extraction keeps the platform README as owner of its new package
 entries and moved witnesses, and the catalog domain README as owner of reference
 shims and retained browser schemas. Author the exact publication catalogue rows for moved tests
