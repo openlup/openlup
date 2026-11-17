@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import { createCommerceQuoteSchemas, type CreateQuoteResponse } from '../../pricing/index.js';
 import { CommerceOrderDraftPriceChangedError } from '../orderDraftErrors.js';
 import { createCheckoutRecoveryValidationPolicy, type NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
@@ -13,8 +14,8 @@ export interface ExpiredCheckoutRecoveryWritePort {
   prepareReplacement(input: { idempotencyKey: string; sourceOrderId: string; replacementOrderId: string }): Promise<{ replacementOrderId: string; replayed: boolean }>;
 }
 export class ExpiredCheckoutRecoveryError extends Error {
-  constructor(readonly reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed', readonly code?: 'native_prepared_attempt_store_unsupported', options?: ErrorOptions) {
-    super(`expired_checkout_recovery_${reason}`,options); this.name = 'ExpiredCheckoutRecoveryError';
+  constructor(readonly reason: 'paid' | 'order_changed' | 'unavailable' | 'execution_failed' | 'cadence_limit_exceeded', readonly code?: 'native_prepared_attempt_store_unsupported', options?: ErrorOptions) {
+    super(reason === 'cadence_limit_exceeded' ? `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days before recreating an expired checkout` : `expired_checkout_recovery_${reason}`,options); this.name = 'ExpiredCheckoutRecoveryError';
   }
 }
 const { createQuoteResponseSchema } = createCommerceQuoteSchemas({ currencySchema: z.string().regex(/^[A-Z]{3}$/),productSlugSchema: z.string().min(1),
@@ -45,6 +46,13 @@ export function createExpiredCheckoutRecoveryService<Request, Draft extends { or
     cancelUnstartedPromotionOrder(input: { idempotencyKey: string; orderId: string; reason: string }): Promise<unknown>;
   };
 }) {
+  function assertExecutableCadence(order: NativeCheckoutRecoveryOrder) {
+    const snapshot = order.quoteSnapshot as { quote?: { context?: { cadenceDays?: number | null } } } | null;
+    const days = [order.cadenceDays, snapshot?.quote?.context?.cadenceDays];
+    if (days.some(value => value != null && (!Number.isInteger(value) || value < 1 || value > MAX_CADENCE_DAYS))) {
+      throw new ExpiredCheckoutRecoveryError('cadence_limit_exceeded');
+    }
+  }
   function frozen(order: NativeCheckoutRecoveryOrder): ExpiredCheckoutRecoveryOrder {
     if (order.subscriptionCycleId !== null) throw new ExpiredCheckoutRecoveryError('unavailable');
     const quote = parseRecoveryRecreationQuote(order.quoteSnapshot);
@@ -52,6 +60,7 @@ export function createExpiredCheckoutRecoveryService<Request, Draft extends { or
     return { ...order,quoteSnapshot:quote };
   }
   async function freshMatchingQuote(order: ExpiredCheckoutRecoveryOrder) {
+    assertExecutableCadence(order);
     if (!order.quoteSnapshot) throw new ExpiredCheckoutRecoveryError('unavailable');
     const context = order.quoteSnapshot.quote.context as Record<string,unknown> | undefined;
     const fresh = parseRecoveryRecreationQuote(await deps.quotePort.createQuote(deps.quoteRequest(order),{clientId:order.clientId,
@@ -69,6 +78,7 @@ export function createExpiredCheckoutRecoveryService<Request, Draft extends { or
   return {
     validate: validation.validate,
     async recreate(input: { order: NativeCheckoutRecoveryOrder; clientId: string }): Promise<Result> {
+      assertExecutableCadence(input.order);
       // The same adopter predicate fences validation and recreation, preserving
       // false versus unavailable without consulting quote/draft/provider owners.
       if (!deps.supports(input.order)) throw new ExpiredCheckoutRecoveryError('unavailable');

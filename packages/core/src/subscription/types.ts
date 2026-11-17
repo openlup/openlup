@@ -1,3 +1,8 @@
+/** Maximum whole-day subscription cadence for finite date arithmetic; adopters choose their offered cadences.
+ * @beta
+ */
+export const MAX_CADENCE_DAYS = 3660;
+
 /** @beta */
 export const SUBSCRIPTION_STATUSES = ["active", "paused", "cancelled", "completed"] as const;
 /** @beta */

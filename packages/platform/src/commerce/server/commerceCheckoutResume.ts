@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { CHECKOUT_RESUME_CONTRACT_VERSION } from "../checkoutResumeSchemas.js";
 import { CommerceCheckoutResumePersistenceError } from "../errors.js";
 import type { CommerceCheckoutResumeDraftPort, CommerceCheckoutResumeDraftUpsertInput, CommerceCheckoutResumeDraftReadInput } from "../contracts/ports.js";
@@ -37,6 +38,12 @@ export function createCommerceCheckoutResumeQueryPort<Section, State extends { r
 ): CommerceCheckoutResumeDraftPort<Section, State, Draft> {
   return {
     async upsertDraft(input: CommerceCheckoutResumeDraftUpsertInput<Section, State>) {
+      const cadenceDays = (input.draftState as { cadenceDays?: number | null }).cadenceDays;
+      if (cadenceDays != null && (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS)) {
+        throw new CommerceCheckoutResumePersistenceError(
+          `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days before saving a checkout draft`,
+          { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+      }
       const payload = {
         token_hash: input.tokenHash,
         idempotency_key_hash: input.idempotencyKeyHash,

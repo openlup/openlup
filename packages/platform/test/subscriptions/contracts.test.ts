@@ -1,4 +1,5 @@
 import { expect, expectTypeOf, it } from "vitest";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import * as contracts from "../../src/subscriptions/contracts/index.js";
 import { MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES, NATIVE_SUBSCRIPTION_CAPABILITIES } from "../../src/subscriptions/index.js";
 import type { PreparedAttemptPrepareInput, PreparedAttemptPersistenceResult, PreparedAttemptFinalizeInput,
@@ -6,9 +7,10 @@ import type { PreparedAttemptPrepareInput, PreparedAttemptPersistenceResult, Pre
 import type { RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult,
   RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "../../src/subscriptions/contracts/index.js";
 
-it("keeps contracts type-only and native unsupported capabilities explicit", () => {
+it("exposes the browser-shareable cadence bound and keeps native unsupported capabilities explicit", () => {
   expect([NATIVE_SUBSCRIPTION_CAPABILITIES, ...Object.values(NATIVE_SUBSCRIPTION_CAPABILITIES).filter(value => typeof value === "object")].every(Object.isFrozen)).toBe(true);
   expect(Object.keys(contracts)).toEqual([]);
+  expect(MAX_CADENCE_DAYS).toBe(3660);
   expect(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid).toEqual({ supported: false, refusalCode: "multi_cycle_prepaid_unsupported" });
   expect(NATIVE_SUBSCRIPTION_CAPABILITIES.genericBundleCommands).toEqual({ supported: true });
   expect(NATIVE_SUBSCRIPTION_CAPABILITIES.commandBoundReceipts).toEqual({ supported: true });

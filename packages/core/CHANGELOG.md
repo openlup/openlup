@@ -107,6 +107,21 @@ Declare per-subpath stable, experimental and test-support policies for the coher
 Migration: keep a default branch for unknown union and literal-set values. Check the generated maturity table for experimental and test-support subpaths before upgrading. No runtime behavior or package export changes.
 - Allow intentional API snapshot updates with a new or modified package change fragment; retain changed `CHANGELOG.md` as a legacy route. Fragment contents are validated during release preparation.
 
+Export `MAX_CADENCE_DAYS = 3660` from the existing browser-shareable
+`@openlup/core/subscription` contract for fresh platform cadence admission.
+The ten-year whole-day limit avoids the timestamp and settlement integer
+overflows admitted by the former PostgreSQL integer maximum, with lateness margin.
+Applications continue to own offered cadences.
+
+Migration: fresh quotes, drafts and editor results above 3660 days now refuse.
+Historical transport, stored data and completed receipts keep their integer
+representation. Completed editor, native draft and renewal receipts replay before
+current limits; replay above 3660 is not guaranteed on checkout-command or
+saga-fallback paths that quote before replay. No released data can contain such
+values: no published version admitted cadence above 120, and PR4a's widening is
+unreleased. Existing SQL and starter guards still refuse above 90 pending a
+separate migration.
+
 ## [0.43.0]
 
 - Publishable on the npm `latest` dist-tag as `0.43.0`, from tag

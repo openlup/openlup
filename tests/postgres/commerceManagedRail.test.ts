@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { Client, Pool, type PoolClient, type QueryResult } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { createManagedCommerceRuntimeOrderPort, createSupabaseCommerceReturnsPort } from "@openlup/platform/commerce/server";
+import { createConfiguratorIntentPersistenceRpcPort, createManagedCommerceRuntimeOrderPort, createSupabaseCommerceReturnsPort } from "@openlup/platform/commerce/server";
 import { CommerceRuntimeConflictError, type CommerceReturnsPort, type FinalizedCheckoutOrder } from "@openlup/platform/commerce";
 import { createPostgresCommerceReturnsPort } from "../../server/adapters/postgres/returnsControl.js";
 import { assertManagedCommerceForward, readReviewedForwardRegistry, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
@@ -57,6 +57,73 @@ function tapLines(result: QueryResult | QueryResult[]) {
   return (Array.isArray(result) ? result : [result]).flatMap(part => part.rows.flatMap(row => Object.values(row)))
     .filter((value): value is string => typeof value === "string" && /^(?:ok |not ok |1\.\.|#)/u.test(value));
 }
+it("authenticates historical identity replay without writes, including payload and verified-owner conflicts", async () => {
+  const identity = randomUUID();
+  const request = { version: "commerce.checkout_command.v1", idempotencyKey: `cadence-replay:${randomUUID()}`,
+    mode: "subscription", cadenceDays: 3661, customer: { firstName: "Synthetic", lastName: "Buyer", email: `${randomUUID()}@example.invalid`, phone: "+99123456789" },
+    shippingAddress: { street: "Synthetic 1", postalCode: "12345", city: "Example", country: "ZZ" }, lines: [] };
+  // Seed pre-limit history with the actual installed writer; its canonical JSONB
+  // fingerprint includes the route-verified subject, never a client body claim.
+  // This query port explicitly requires completed-key SELECT access. The suite
+  // revokes all default table grants, so supply only that declared capability.
+  await db.query("GRANT SELECT ON public.commerce_idempotency_keys TO service_role; SET ROLE service_role");
+  try {
+    const written = (await db.query("SELECT public.commerce_configurator_persist_intent($1::jsonb) AS result", [JSON.stringify({ ...request, authenticatedUserId: identity })])).rows[0].result;
+    const effects = async () => {
+      await db.query("RESET ROLE; SET ROLE postgres");
+      try { return (await db.query(`SELECT * FROM (SELECT 'key' AS kind,to_jsonb(k) AS row,xmin::text FROM public.commerce_idempotency_keys k
+        UNION ALL SELECT 'client',to_jsonb(c),xmin::text FROM public.clients c
+        UNION ALL SELECT 'address',to_jsonb(a),xmin::text FROM public.addresses a) effects ORDER BY kind,row::text`)).rows; }
+      finally { await db.query("SET ROLE service_role"); }
+    };
+    const before = await effects();
+    const rpc = vi.fn(async (name: "commerce_configurator_persist_intent", args: { p_intent: object }) => {
+      try { return { data: (await db.query(`SELECT public.${name}($1::jsonb) AS result`, [JSON.stringify(args.p_intent)])).rows[0].result, error: null }; }
+      catch (error) { return { data: null, error: { code: (error as { code: string }).code } }; }
+    });
+    const filters = new Map<string, unknown>();
+    const query = { eq: (column: string, value: unknown) => { filters.set(column, value); return query; },
+      limit: async () => ({ data: (await db.query("SELECT response_payload,request_fingerprint FROM public.commerce_idempotency_keys WHERE scope=$1 AND idempotency_key=$2 AND status=$3",
+        [filters.get("scope"), filters.get("idempotency_key"), filters.get("status")])).rows, error: null }) };
+    const client = { rpc, from: () => ({ select: () => query }) };
+    const bindings = { responseSchema: z.record(z.string(), z.unknown()), decodeCommandResponse: (data: unknown) => data, normalizePhoneToE164: (phone: string) => phone };
+    const port = createConfiguratorIntentPersistenceRpcPort(client, bindings, { authenticatedUserId: identity });
+    for (const persist of [port.persistIntent, port.persistCheckoutCommand]) {
+      await expect(persist(request)).resolves.toEqual({ ...written, replayed: true });
+      await expect(persist({ ...request, customer: { ...request.customer, lastName: "Changed" } }))
+        .rejects.toMatchObject({ name: "ConfiguratorIntentPersistenceConflictError", details: { code: "23505" } });
+    }
+    await expect(createConfiguratorIntentPersistenceRpcPort(client, bindings, { authenticatedUserId: randomUUID() }).persistCheckoutCommand(request))
+      .rejects.toMatchObject({ name: "ConfiguratorIntentPersistenceConflictError", details: { code: "23505" } });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(await effects()).toEqual(before);
+    await db.query("RESET ROLE; SET ROLE postgres");
+    await db.query("UPDATE public.commerce_idempotency_keys SET request_fingerprint=NULL WHERE idempotency_key=$1", [request.idempotencyKey]);
+    await db.query("SET ROLE service_role");
+    const withoutFingerprint = await effects();
+    await expect(port.persistCheckoutCommand(request)).rejects.toMatchObject({ name: "ConfiguratorIntentPersistenceConflictError", details: { code: "23505" } });
+    expect(await effects()).toEqual(withoutFingerprint);
+  } finally { await db.query("RESET ROLE; SET ROLE postgres"); }
+}, 120_000);
+it("matches the installed writer's JSONB fingerprints across transport and numeric/key encodings", async () => {
+  const values = [
+    { a: 1e-7, aa: 1e21, z: -1.2345678901234567e-200, n: 5e-324, max: Number.MAX_VALUE },
+    { "é": "unicode", "a": "\\\"\n\t", "😀": [null, false, true, { "éa": -0, "zz": 1.25 }], "b": "line\u2028separator" },
+    { omitted: undefined, date: new Date("1999-01-01T00:00:00.000Z"), array: [undefined, NaN, Infinity] },
+    { "0": "zero", "10": "ten", "2": "two", "x": {}, "longer": [] },
+  ];
+  for (const value of values) {
+    const payload = { idempotencyKey: "parity-historical-key", cadenceDays: 3661, opaque: value };
+    const expected = (await db.query("SELECT md5($1::jsonb::text) AS fingerprint", [JSON.stringify({ ...payload, authenticatedUserId: null })])).rows[0].fingerprint;
+    const query = { eq: () => query, limit: async () => ({ data: [{ response_payload: { replayed: false }, request_fingerprint: expected }], error: null }) };
+    const rpc = vi.fn(async () => { throw new Error("unexpected writer"); });
+    const port = createConfiguratorIntentPersistenceRpcPort({ rpc, from: () => ({ select: () => query }) }, {
+      responseSchema: z.object({ replayed: z.boolean() }), decodeCommandResponse: data => data, normalizePhoneToE164: phone => phone,
+    });
+    await expect(port.persistIntent(payload)).resolves.toEqual({ replayed: true });
+    expect(rpc).not.toHaveBeenCalled();
+  }
+});
 async function reset() { await db.query("ROLLBACK; RESET ROLE; SET ROLE postgres; SET search_path=public,extensions"); }
 it.each(probes)("managed commerce behavior: %s", async file => {
   try {

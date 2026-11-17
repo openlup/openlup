@@ -1,4 +1,5 @@
 import type { ShippingTerms } from "../shipping/index.js";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
 import type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
 import type { PricingResolverPort } from "@openlup/core/pricing";
@@ -64,6 +65,12 @@ export function createDbBackedCommerceQuotePort<
       request: Request,
       options?: CreateQuoteOptions,
     ): Promise<Omit<CreateQuoteResponse, "quote"> & { quote: Omit<CreateQuoteResponse["quote"], "context"> & { context: Context & { pricingPolicy?: PricingPolicySnapshot; shippingTerms?: ShippingTerms; acquisitionTerms?: ResolvedAcquisitionTerms } } }> {
+      const cadenceDays = request.cadenceDays;
+      if (cadenceDays != null && (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS)) {
+        throw new CommerceQuoteError("cadence_limit_exceeded",
+          `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days before requesting a fresh quote`,
+          { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+      }
       const atTime = now();
       const skuIndex = await buildSkuIndex(quoteCatalogReadPort);
       const pricedLines = await Promise.all(request.lines.map(async (requestLine) => {

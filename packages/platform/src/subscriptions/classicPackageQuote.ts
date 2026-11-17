@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { createHash } from "node:crypto";
 import type { BundleLineRef } from "@openlup/core/bundle";
 import type { PackageEditCurrentLine, PackageEditLine, PackageEditMoney, PackageEditQuote, PackageEditQuotePorts,
@@ -31,7 +32,11 @@ export function createClassicPackageRepricer(deps: PackageEditQuotePorts & { rea
   }
   async function currentPrice(skus: ReadonlyMap<string, string>, cadence: number, constraint: Record<string, unknown> | null,
     lines: PackageEditCurrentLine[]): Promise<PackageEditMoney> {
-    const sellable = lines.filter(line => skus.has(line.variantId)), retired = lines.filter(line => !skus.has(line.variantId));
+    // Historical comparison prices come from retained billing facts rather than
+    // submitting the old cadence to today's fresh-quote admission.
+    const historical = cadence > MAX_CADENCE_DAYS;
+    const sellable = historical ? [] : lines.filter(line => skus.has(line.variantId));
+    const retired = historical ? lines : lines.filter(line => !skus.has(line.variantId));
     let frozen: PackageEditMoney | undefined;
     for (const line of retired) {
       const price = line.frozenLineSubtotalGross;
@@ -44,8 +49,12 @@ export function createClassicPackageRepricer(deps: PackageEditQuotePorts & { rea
     return { ...quote.totalGross, amountMinor: quote.totalGross.amountMinor + (frozen?.amountMinor ?? 0) };
   }
   return { async quote(input: Pick<PackageEditRequest, "subscriptionId" | "planDays" | "base" | "addons">): Promise<PackageEditQuote> {
+    if (!Number.isInteger(input.planDays) || input.planDays < 1 || input.planDays > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
     const reads = await Promise.allSettled([readPort.readSubscription(input.subscriptionId), readPort.readLines(input.subscriptionId)]);
     const subscription = value(reads[0]), current = value(reads[1]);
+    const nominal = constraintMapper.nominalPlanDays(subscription.compositionConstraint) ?? subscription.cadenceDays;
+    const cadenceDays = input.planDays === nominal ? subscription.cadenceDays : input.planDays;
+    if (cadenceDays > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
     const skus = new Map((await quoteCatalogReadPort.listQuoteCatalogItems()).filter(item => item.sellability.subscription).map(item => [item.variantId, item.skuCode]));
     if (!current.some(line => !line.isAddon)) throw new Error("subscription_reprice_no_base_lines");
     const base = sanitize(input.base, "subscription_reprice_invalid_base_mix"), addons = sanitize(input.addons ?? [], "subscription_reprice_invalid_addons");
@@ -53,11 +62,9 @@ export function createClassicPackageRepricer(deps: PackageEditQuotePorts & { rea
       addonLines: addons.map(line => bundleLine(line, true)), constraint: constraintMapper.toCore(subscription.compositionConstraint) });
     if (!validation.ok) throw new Error(validation.code);
     if (base.reduce((total, line) => total + line.qty, 0) < await readPort.readMinimumBaseUnits()) throw new Error("subscription_reprice_below_minimum_order_units");
-    const nominal = constraintMapper.nominalPlanDays(subscription.compositionConstraint) ?? subscription.cadenceDays;
     const normalized = await compositionRulesPort.resizeComposition({ coreLines: base.map(line => bundleLine(line, false)),
       constraint: constraintMapper.toCore(subscription.compositionConstraint), lever: { kind: "planLengthConstraint", value: input.planDays } });
     const constraint = normalized ? constraintMapper.fromCore(normalized.constraint) : subscription.compositionConstraint;
-    const cadenceDays = input.planDays === nominal ? subscription.cadenceDays : input.planDays;
     const desired = [...base.map(line => bundleLine(line, false)), ...addons.map(line => bundleLine(line, true))];
     if (deps.admitSubscriptionTerms) {
       const resolve = (line: PackageEditLine) => {

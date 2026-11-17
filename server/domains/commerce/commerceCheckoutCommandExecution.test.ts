@@ -14,6 +14,8 @@ import { checkoutCommandJourney } from "./commerceCheckoutCommandExecution.js";
 import { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 import { createPorts, createResponse, intent, request } from "./commerceCheckoutHandler.testFixtures.js";
 import { makeInventoryPort, makeOrderPort, makePaymentPort, makeReadinessPort, orderDraftSummary } from "./commerceRuntimeService.fixtures.js";
+import { createSupabaseConfiguratorIntentPersistencePort } from "../../adapters/supabase/configuratorIntentPersistence.js";
+import { createSupabaseCommerceOrderDraftPort } from "../../adapters/supabase/commerceOrderDraft.js";
 
 // Pass-through spy on the single paid-order application service. The real
 // implementation still runs for every case below; the spy only records who
@@ -31,6 +33,48 @@ vi.mock("./commercePaidOrderOrchestration.js", async (importOriginal) => {
 });
 
 describe("checkout command execution", () => {
+  it("replays a completed 21-day managed checkout without querying the native draft receipt table", async () => {
+    const ports = commandPorts();
+    const command = checkoutCommandV1Schema.parse(commandInput());
+    const identity = { idempotencyKey: command.idempotencyKey, clientId: commandIdentity().clientId,
+      addressId: commandIdentity().shippingAddressId, petId: null, replayed: true };
+    const orderDraft = { ...orderDraftSummary(), idempotencyKey: command.idempotencyKey, replayed: true };
+    orderDraft.quoteSnapshot.quote.context = { mode: "subscription", cadenceDays: 21, promoCodes: [] };
+    ports.quotePort.createQuote.mockResolvedValue(orderDraft.quoteSnapshot);
+    // Managed draft receipts live in this scope, not a native receipt relation.
+    const receipts = new Map([["commerce.order_draft.create", { contractVersion: "commerce.v0", orderDraft }]]);
+    const rpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === "commerce_configurator_persist_intent") return { data: identity, error: null };
+      if (name === "commerce_create_order_draft_with_outbox") {
+        expect(args.p_idempotency_key).toBe(command.idempotencyKey);
+        return { data: receipts.get("commerce.order_draft.create"), error: null };
+      }
+      throw new Error(`unexpected RPC: ${name}`);
+    });
+    const from = vi.fn((table: string) => {
+      const query = { eq: (_column: string, _value: unknown) => query, limit: async () =>
+        table === "commerce_idempotency_keys"
+          ? { data: [{ response_payload: identity,
+            // Golden md5 of this canonical command's PostgreSQL JSONB text.
+            request_fingerprint: "46d08577905bcbe73ed704226bf637c6" }], error: null }
+          : { data: null, error: { code: "42P01", message: `relation "${table}" does not exist` } } };
+      return { select: (_columns: string) => query };
+    });
+    const client = { rpc, from };
+    const result = await createCommerceRuntimeService({ ...ports,
+      persistencePort: createSupabaseConfiguratorIntentPersistencePort(client),
+      orderDraftPort: createSupabaseCommerceOrderDraftPort(client),
+    }).startCheckoutCommand({ command, paymentProvider: TEST_NOOP_PROVIDER });
+
+    expect(result.persistence.replayed).toBe(true);
+    expect(result.quoteSnapshot.quote.context?.cadenceDays).toBe(21);
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+      "commerce_configurator_persist_intent", "commerce_create_order_draft_with_outbox",
+    ]);
+    expect(ports.quotePort.createQuote).toHaveBeenCalledOnce();
+    expect(ports.quotePort.createQuote.mock.invocationCallOrder[0]).toBeLessThan(rpc.mock.invocationCallOrder[0]);
+  });
   it("freezes the neutral command delivery contact in runtime metadata", () => {
     const command = checkoutCommandV1Schema.parse(commandInput());
     const runtime = checkoutCommandJourney(command, { source: "test" })
