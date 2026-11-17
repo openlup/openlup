@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 149,
-        "exactTailCount": 39,
-        "objectInventorySha256": "98fad20cba689f160e5658e635b82dfa9bf6f47b985749ff6f05bf3c62ea126c",
+        "count": 150,
+        "exactTailCount": 40,
+        "objectInventorySha256": "6baf064aed359e87c9587945e92e60bbea3290ce04c61d8905f1abcde7213a18",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+            "sha256": "930b7d3c1a933108b3a0cae87c4efa16da80401a24bcb334ebcf2c40f6f45827"
+          },
           {
             "file": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
             "sha256": "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd"
@@ -605,10 +609,14 @@
         ]
       },
       "bootstrap": {
-        "count": 154,
-        "exactTailCount": 39,
-        "objectInventorySha256": "6eef1596957e74c43bdc4009122206bc764203c483bd86a27a254b5ac44210c8",
+        "count": 155,
+        "exactTailCount": 40,
+        "objectInventorySha256": "b88458e0c7d4d4f664ecf9a3525f4e887639651c9ffafdb1066bfeabec3bd2ee",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+            "sha256": "930b7d3c1a933108b3a0cae87c4efa16da80401a24bcb334ebcf2c40f6f45827"
+          },
           {
             "file": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
             "sha256": "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd"
@@ -1228,10 +1236,14 @@
         ]
       },
       "separate": {
-        "count": 154,
-        "exactTailCount": 39,
-        "objectInventorySha256": "c0815d6a964f12e59691b8503fe734c61c6de7ff8bb9f4f5ed5a79d4d20ebe21",
+        "count": 155,
+        "exactTailCount": 40,
+        "objectInventorySha256": "2d10d179023911092c6cbe8c2570e717c8b47e4a3cf56ac6c7166551f2b538f5",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+            "sha256": "930b7d3c1a933108b3a0cae87c4efa16da80401a24bcb334ebcf2c40f6f45827"
+          },
           {
             "file": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
             "sha256": "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd"
@@ -1851,10 +1863,14 @@
         ]
       },
       "admin-managed": {
-        "count": 153,
-        "exactTailCount": 39,
-        "objectInventorySha256": "06953fafd596aab2772b76f0efb644530d8c566a6d55c3b8a43caace5d1e3a88",
+        "count": 154,
+        "exactTailCount": 40,
+        "objectInventorySha256": "e6e931cb667c9c21c65acfacd5378e994d3ada21bcf970a611c8cc5d0e2d1b96",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+            "sha256": "930b7d3c1a933108b3a0cae87c4efa16da80401a24bcb334ebcf2c40f6f45827"
+          },
           {
             "file": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
             "sha256": "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd"
@@ -2470,10 +2486,14 @@
         ]
       },
       "admin-operator": {
-        "count": 153,
-        "exactTailCount": 39,
-        "objectInventorySha256": "cf174c0bde338f3ab57331c7fb3cc2bad6c17e29764e83a3536150d4f9859bb5",
+        "count": 154,
+        "exactTailCount": 40,
+        "objectInventorySha256": "0f60f5cbd7977a56a0c518d7e2d6a3488d7b5c32205b5a5a4793b5b91a3e0282",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+            "sha256": "930b7d3c1a933108b3a0cae87c4efa16da80401a24bcb334ebcf2c40f6f45827"
+          },
           {
             "file": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
             "sha256": "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd"
@@ -3089,7 +3109,7 @@
         ]
       }
     },
-    "connectedTableCount": 157
+    "connectedTableCount": 159
   },
   "historical": {}
 }
