@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
   createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
@@ -301,7 +301,8 @@ async function assertAgreement(f: Fixture, command: Awaited<ReturnType<typeof ed
   expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_events WHERE subscription_id=$1 AND event_type LIKE 'subscription.customer_self_service.%'", [f.subscription])).rows[0].count).toBe(1);
   if (lane !== "legacy") expect((await pool.query("SELECT status FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2", [f.actor,command.key])).rows).toEqual([{ status: "applied" }]);
 }
-it.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settlement"].map(rail => ({ pack,lane,rail })))))("F1 lock_matrix_races_native_payment_settlement $pack $lane $rail", async ({ pack,lane,rail }) => {
+describe.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settlement"].map(rail => ({ pack,lane,rail })))))("F1 $pack $lane $rail", ({ pack,lane,rail }) => {
+ it("lock_matrix_races_native_payment_settlement", async () => {
   const f = await fixture(pack), command = await edit(f,lane), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
   const stop = await gate(h), ep = await pid(e), pp = await pid(p), hp = await pid(h);
   let restore = async () => {};
@@ -319,6 +320,7 @@ it.each(packs.flatMap(pack => lanes.flatMap(lane => ["provider", "settlement"].m
     expect((await pool.query("SELECT status,total_amount_minor FROM public.commerce_orders WHERE id=$1", [paid.order])).rows).toEqual([{ status: "paid",total_amount_minor: "617" }]);
     expect((await pool.query("SELECT count(*)::integer AS count FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [paid.intent])).rows[0].count).toBe(1);
   } finally { await stop.release(); await e.query("ROLLBACK"); await p.query("ROLLBACK"); await restore(); e.release(); p.release(); h.release(); }
+ });
 });
 it("F1 control: removing only the new prelocks makes the existing-row witness fail", async () => {
   const f = await fixture(packs[0]), command = await edit(f), paid = await payment(f), h = await pool.connect(), e = await session(), p = await session();
