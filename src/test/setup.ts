@@ -16,10 +16,10 @@ const HAS_DOM = typeof window !== "undefined";
 // RR-L4: timeouts are budgets. This file is executed once per test file, before
 // that file is collected, and `expect.getState().testPath` names the file it is
 // being executed for -- so this is the one place a PER-FILE ceiling can be set.
-// It is `max(flat, 1.5 x the file's pinned duration)`: an unpinned file keeps the
-// flat ceiling exactly, and a pinned one is allowed a single test as expensive as
-// the whole file was measured to be. A hung test still exceeds any finite budget,
-// so `retry: 0` and every assertion are untouched by this.
+// The derived budget is `max(flat, 1.5 x the file's pinned duration)`. Real
+// PostgreSQL tests have a 60-second floor; hooks keep the derived budget.
+// A pinned test can still use the larger measured budget. A hung test exceeds
+// any finite budget, so `retry: 0` and every assertion are untouched by this.
 //
 // The weights and the repository root arrive through `provide` from
 // vitest.config.ts. This file must NOT read them itself: under the coverage lane
@@ -33,7 +33,10 @@ if (testFilePath) {
     repositoryRelative,
     flatTestTimeoutMs(inject("coverageRun")),
   );
-  vi.setConfig({ testTimeout: budgetMs, hookTimeout: budgetMs });
+  vi.setConfig({
+    testTimeout: repositoryRelative.startsWith("tests/postgres/") ? Math.max(budgetMs, 60_000) : budgetMs,
+    hookTimeout: budgetMs,
+  });
 }
 
 vi.stubEnv("VITE_SUPABASE_URL", "https://example.supabase.co");
