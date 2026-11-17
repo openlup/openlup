@@ -26,6 +26,35 @@ function row(retained?: RenewalRetainedTerms, subtotal = 9000) {
 }
 
 describe("retained renewal pricing characterization", () => {
+  it("bounds each retained cadence without narrowing quantities or template versions", () => {
+    const marker = nativeRenewalTermsSchema.shape.starterPack.unwrap();
+    for (const schema of [nativeRenewalTermsSchema.shape.normalCadenceDays.unwrap().element,
+      marker.shape.starterIntervalDays, marker.shape.graduation.shape.cadenceDays]) {
+      for (const days of [1, 3660]) expect(schema.parse(days)).toBe(days);
+      for (const days of [0, 1.5, 3661, 2_147_483_647]) expect(schema.safeParse(days).success).toBe(false);
+    }
+    const retained = terms(); retained.starterPack!.basisTemplateVersion = 10_000;
+    retained.linePricing = [{ sku: "BULK", quantity: 10_000, unitAmountMinor: 1, isAddon: false, quoteLine: {} }];
+    expect(nativeRenewalTermsSchema.parse(retained)).toMatchObject({ linePricing: [{ quantity: 10_000 }], starterPack: { basisTemplateVersion: 10_000 } });
+  });
+
+  it("bounds due and frozen snapshot cadences independently", () => {
+    const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    for (const days of [0, 1, 3660, 3661]) {
+      const current = { ...row(), cadence_days: days };
+      if (days === 1 || days === 3660) {
+        expect(codec.due(current).cadenceDays).toBe(days);
+        const snapshot = codec.freeze(current, schedule);
+        expect(codec.decode(codec.encode(snapshot)).templateSnapshot.cadenceDays).toBe(days);
+      } else {
+        expect(() => codec.due(current)).toThrow();
+        expect(() => codec.freeze(current, schedule)).toThrow();
+        const snapshot = codec.freeze(row(), schedule); snapshot.templateSnapshot.cadenceDays = days;
+        snapshot.frozenFingerprint = codec.fingerprint(snapshot);
+        expect(() => codec.encode(snapshot)).toThrow();
+      }
+    }
+  });
   it.each([7299, 7300, 7301])("agrees with threshold shipping after discounts leave %i", product => {
     const current = row(terms(9000 - product));
     const price = nativeRenewalPrice(current, current.lines, 2);

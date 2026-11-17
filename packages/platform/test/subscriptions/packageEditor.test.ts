@@ -1,6 +1,7 @@
 import type { ExactSubscriptionEditRequest } from "../../src/subscriptions/contracts/exactEdit.js";
 import { expect, it, vi } from "vitest";
 import { createPostgresPackageEditor } from "../../src/subscriptions/packageEditor.js";
+import { createPostgresPackageEditReadPort } from "../../src/subscriptions/packageEditRead.js";
 import { mapPackageEditError } from "../../src/subscriptions/packageEditErrors.js";
 import type { PackageEditorOptions, PackageEditRequest } from "../../src/subscriptions/packageEditContracts.js";
 
@@ -38,6 +39,38 @@ function fixture() {
   };
   return { options, calls, row, editor: createPostgresPackageEditor(options), missing() { missing = true; }, replay(action: string) { replayAction = action; } };
 }
+it.each(["classic", "exact"])("bounds fresh %s editor requests before quoting or writes", async kind => {
+  for (const days of [0, 1, 3660, 3661]) {
+    const f = fixture(); f.options.limits.maximumPlanDays = 10_000;
+    f.options.compositionRulesPort.resizeComposition = async input => ({ coreLines: input.coreLines, constraint: input.constraint });
+    const input = kind === "classic" ? { ...request, planDays: days }
+      : { subscriptionId: id, action: "update_plan_length" as const, planDays: days };
+    if (days === 1 || days === 3660) {
+      const preview = await f.editor.preview(actor, input);
+      await expect(f.editor.apply(actor, "fresh-boundary-key", { ...input, acceptedQuoteHash: preview.quoteHash })).resolves.toMatchObject({ status: "applied" });
+    } else {
+      await expect(f.editor.preview(actor, input)).rejects.toThrow("subscription_reprice_invalid_request");
+      await expect(f.editor.apply(actor, "fresh-boundary-key", input)).rejects.toThrow("subscription_reprice_invalid_request");
+      expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+      expect(f.calls.some(call => call.sql.includes("SELECT public.subscription_"))).toBe(false);
+    }
+  }
+});
+it("bounds classic subscription read cadence independently of template revisions", async () => {
+  for (const days of [0, 1, 3660, 3661]) {
+    const port = createPostgresPackageEditReadPort({ query: async () => ({ rows: [{ cadence_days: days, template_version: 10_000 }] }) });
+    const result = port.readSubscription(id);
+    if (days === 1 || days === 3660) await expect(result).resolves.toMatchObject({ cadenceDays: days, templateVersion: 10_000 });
+    else await expect(result).rejects.toThrow("subscription_reprice_invalid_plan_length");
+  }
+});
+it("replays a completed exact cadence edit above the current representation bound", async () => {
+  const f = fixture(); f.replay("update_plan_length");
+  await expect(f.editor.apply(actor, "completed-exact-cadence", { subscriptionId: id, action: "update_plan_length", planDays: 3661 }))
+    .resolves.toMatchObject({ status: "replayed", action: "update_plan_length", originalStatus: "applied" });
+  expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+  expect(f.calls.some(call => call.sql.startsWith("SELECT cadence_days"))).toBe(false);
+});
 it("admits ownership before any pricing or durable preview work", async () => {
   const f = fixture(); f.missing();
   await expect(f.editor.preview(actor, request)).rejects.toThrow("subscription_command_forbidden");

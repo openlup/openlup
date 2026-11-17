@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from 'zod';
 import type { CheckoutRecoveryOrderReadPort } from './checkoutRecoveryOrderPort.js';
 import type { NativeCheckoutRecoveryOrder } from './checkoutRecoveryInspection.js';
@@ -9,7 +10,7 @@ const nullableText = z.string().min(1).nullable();
 const snapshot = z.object({
   orderId: z.guid(), orderRef: z.string().min(1), orderNumber: z.string().min(1), clientId: z.guid(), status: z.string().min(1),
   mode: z.enum(['one_time_order', 'subscription_cycle']), totalMinor: z.number().int().safe().nonnegative(), currency: z.string().min(1),
-  createdAt: z.string().refine(value => Number.isFinite(Date.parse(value))), cadenceDays: z.number().int().positive().nullable(),
+  createdAt: z.string().refine(value => Number.isFinite(Date.parse(value))), cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).nullable(),
   customerEmail: nullableText, customerName: nullableText, paymentIntentId: z.guid().nullable(), paymentIntentStatus: nullableText,
   subscriptionId: z.guid().nullable(), subscriptionCycleId: z.guid().nullable(), shippingAddressId: z.guid().nullable(),
   initialDeclarationId: z.guid().nullable(), initialActivationState: nullableText,

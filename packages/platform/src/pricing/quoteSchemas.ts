@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import type { CommerceQuote } from "./contracts/quote.js";
 import { COMMERCE_CONTRACT_VERSION } from "./contracts/quote.js";
@@ -191,7 +192,7 @@ export function createCommerceQuoteSchemas<Context extends z.ZodType>(input: {
   const createQuoteRequestSchema = z.object({
     mode: z.enum(["one_time", "subscription"]).default("one_time"),
     lines: z.array(cartLineInputSchema).min(1).max(50),
-    cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().optional(),
+    cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).nullable().optional(),
     promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
   }).superRefine(validateQuoteRequest);
   const createQuoteResponseSchema = z.object({

@@ -71,8 +71,9 @@ request bounds or withdrawing an offer does not invalidate a matching completed
 receipt; reusing its key with a different payload still refuses. Host bindings
 must also preserve this order rather than reject a replay using current rules.
 
-Checkout, quote, recovery and account DTOs admit positive PostgreSQL integer
-cadences, up to 2,147,483,647 days. This is a number representation bound,
+Checkout, quote, recovery and account DTOs admit whole-day cadences from 1 through
+3660; see the [representation limit](../reference/limits.md#subscription-cadence-representation).
+This is a date-executability representation bound,
 not an offered period or a guarantee that arbitrary date arithmetic fits.
 Hosts must check the resulting dates for the selected operation. The older
 SQL `customer_subscription_preview_bundle_as_actor` path and its quote-table

@@ -1,22 +1,24 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import type { RenewalLine, RenewalLinePricing, RenewalPricingSnapshot, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
 
 const amount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const cadence = z.number().int().positive().max(2_147_483_647);
+const integer = z.number().int().positive().max(2_147_483_647);
+const cadence = integer.max(MAX_CADENCE_DAYS);
 const quote = z.record(z.string(), z.unknown());
 export const renewalShippingTermsSchema = z.object({ version: z.literal("shipping-threshold.v1"),
   currency: z.string().regex(/^[A-Z]{3}$/), flatMinor: amount.max(2_147_483_647), freeThresholdMinor: amount.max(2_147_483_647) }).strict();
-const pricedLine = z.object({ sku: z.string().min(1), quantity: cadence, unitAmountMinor: amount,
+const pricedLine = z.object({ sku: z.string().min(1), quantity: integer, unitAmountMinor: amount,
   isAddon: z.boolean(), quoteLine: quote }).strict();
 export const nativeRenewalTermsSchema = z.object({ version: z.literal("native.renewal-terms.v1"),
   shippingTerms: renewalShippingTermsSchema.optional(), minimumPayableMinor: amount.positive().optional(),
   normalCadenceDays: z.array(cadence).min(1).optional(), linePricing: z.array(pricedLine).max(100).optional(),
-  starterPack: z.object({ schemaVersion: z.literal("1"), starterIntervalDays: cadence, basisTemplateVersion: cadence,
+  starterPack: z.object({ schemaVersion: z.literal("1"), starterIntervalDays: cadence, basisTemplateVersion: integer,
     delivery2: z.object({ discountBps: amount.max(10_000), discountMinor: amount, basisSubtotalMinor: amount }).strict(),
     graduation: z.object({ cadenceDays: cadence, sizeConstraint: quote.optional(), lines: z.array(z.object({
-      sku: z.string().min(1), qty: cadence.max(99), sortOrder: amount, isAddon: z.boolean(), quoteLine: quote }).strict()).min(1).max(100) }).strict(),
+      sku: z.string().min(1), qty: integer.max(99), sortOrder: amount, isAddon: z.boolean(), quoteLine: quote }).strict()).min(1).max(100) }).strict(),
   }).strict().optional(),
 }).strict().superRefine((terms, context) => {
   const marker = terms.starterPack;
@@ -124,7 +126,7 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
       WHERE id=$1::uuid AND price_list_id IS NULL AND currency_code IS NULL`, [id, context.priceListId, context.currency]);
     if (context.reason) console.warn("subscription_price_list_unresolved", context.reason);
   });
-  const original = z.array(z.object({ lineOrdinal: cadence, sku: z.string(), quantity: cadence, unitAmountMinor: amount }).strict()).parse(row.lines);
+  const original = z.array(z.object({ lineOrdinal: integer, sku: z.string(), quantity: integer, unitAmountMinor: amount }).strict()).parse(row.lines);
   const prices = currentPricing(row, original, terms!);
   let finalLines = original, finalPricing = prices;
   if (full) {

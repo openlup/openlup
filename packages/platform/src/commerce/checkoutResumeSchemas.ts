@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import { commerceIdempotencyKeySchema } from "./contractPrimitives.js";
 export const CHECKOUT_RESUME_CONTRACT_VERSION = "commerce.checkout_resume.v1";
@@ -30,7 +31,7 @@ export function createCheckoutResumeSchemas<Section extends z.ZodType<string>, R
     .object({
       version: z.literal(CHECKOUT_RESUME_CONTRACT_VERSION),
       mode: checkoutResumeModeSchema.nullable().default(null),
-      cadenceDays: z.number().int().positive().max(2_147_483_647).nullable().default(null),
+      cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).nullable().default(null),
       cart: z
         .object({
           items: z

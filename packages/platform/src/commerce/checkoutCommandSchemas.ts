@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import { commerceIdempotencyKeySchema } from "./contractPrimitives.js";
 
@@ -29,7 +30,7 @@ const checkoutCommandV1Schema = z
       country: z.string().trim().regex(/^[A-Z]{2}$/),
     }).strict(),
     currency: isoCurrencySchema,
-    cadenceDays: z.number().int().positive().max(2_147_483_647).optional(),
+    cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS).optional(),
   })
   .strict()
   .superRefine((command, ctx) => {

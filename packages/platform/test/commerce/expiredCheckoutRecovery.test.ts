@@ -5,7 +5,9 @@ import { createCheckoutResponseSchemas } from '../../src/commerce/checkoutSchema
 import { createCheckoutResumeSchemas } from '../../src/commerce/checkoutResumeSchemas.js';
 import { createCommerceQuoteSchemas } from '../../src/pricing/quoteSchemas.js';
 import { expect,it,vi } from 'vitest';
-import { createExpiredCheckoutRecoveryService,ExpiredCheckoutRecoveryError } from '../../src/commerce/server/expiredCheckoutRecovery.js';
+import { createExpiredCheckoutRecoveryService,ExpiredCheckoutRecoveryError,parseRecoveryRecreationQuote } from '../../src/commerce/server/expiredCheckoutRecovery.js';
+import { createPostgresNativeCheckoutPersistence } from '../../src/commerce/server/native-checkout/index.js';
+import { createPostgresCheckoutRecoveryOrderPort } from '../../src/commerce/server/postgresCheckoutRecoveryOrderPort.js';
 import { checkoutRecoveryExecutionFingerprint } from '../../src/commerce/server/nativeExpiredCheckoutRecovery.js';
 import type { NativeCheckoutRecoveryOrder } from '../../src/commerce/server/checkoutRecoveryInspection.js';
 const money=(amountMinor:number)=>({amountMinor,currency:'XXX'});
@@ -80,7 +82,7 @@ it('binds execution identity to its four stable fields independently of object k
  expect(checkoutRecoveryExecutionFingerprint({...input,clientId:'other'})).not.toBe(checkoutRecoveryExecutionFingerprint(input));
 });
 
-it('admits long cadences through checkout DTOs while retaining PostgreSQL integer representation bounds',()=>{
+it('bounds checkout DTO cadences to executable whole-day dates',()=>{
  const text=z.string();
  const {checkoutCommandV1Schema}=createCheckoutCommandSchemas({sku:text,paymentIntentStatus:text,paymentAttemptStatus:text});
  const {configuratorIntentCoreSchema}=createConfiguratorIntentSchemas(text);
@@ -91,8 +93,8 @@ it('admits long cadences through checkout DTOs while retaining PostgreSQL intege
   createQuoteRequestSchema.shape.cadenceDays,checkoutResumeDraftStateSchema.shape.cadenceDays,
   checkoutResponseSchema.options[0].shape.subscription.unwrap().shape.cadenceDays];
  for(const schema of cadenceSchemas){
-  for(const days of [121,180,365,2_147_483_647])expect(schema.parse(days)).toBe(days);
-  for(const days of [0,-1,1.5,NaN,Infinity,2_147_483_648])expect(schema.safeParse(days).success).toBe(false);
+  for(const days of [1,121,180,365,3660])expect(schema.parse(days)).toBe(days);
+  for(const days of [0,-1,1.5,NaN,Infinity,3661,2_147_483_647])expect(schema.safeParse(days).success).toBe(false);
  }
 });
 it('recreates a checkout with an adopter cadence above 120 without changing its retained terms',async()=>{
@@ -100,4 +102,33 @@ it('recreates a checkout with an adopter cadence above 120 without changing its 
  f.deps.quotePort.createQuote.mockResolvedValue(structuredClone(frozen));
  expect(await f.service.validate(f.order)).toBe(true);expect(await f.recreate()).toEqual({status:'processing'});
  expect(f.deps.orderDraftPort.createOrderDraft.mock.calls[0][0].quoteSnapshot.quote.context.cadenceDays).toBe(180);
+});
+
+it.each([0,1,3660,3661])('bounds native checkout and recovery quote contexts at %i days',async days=>{
+ const snapshot=quote();snapshot.quote.context.cadenceDays=days;
+ const accepted=days>=1&&days<=3660;
+ expect(parseRecoveryRecreationQuote(snapshot)!==null).toBe(accepted);
+ const response={contractVersion:'commerce.v0',orderDraft:{orderId:'order_11111111-1111-4111-8111-111111111111',
+  status:'draft',paymentStatus:'not_started',idempotencyKey:'cadence-boundary',quoteSnapshot:snapshot,replayed:false}};
+ const query=vi.fn(async()=>({rows:[{response}]})),port=createPostgresNativeCheckoutPersistence({query});
+ const result=port.createOrderDraft({idempotencyKey:'cadence-boundary',quoteSnapshot:snapshot});
+ if(accepted){await expect(result).resolves.toEqual(response);expect(query).toHaveBeenCalledOnce();}
+ else{await expect(result).rejects.toThrow();expect(query).not.toHaveBeenCalled();}
+ // Response parsing independently refuses a stored context above the bound.
+ const valid=quote();valid.quote.context.cadenceDays=1;
+ const readback=port.createOrderDraft({idempotencyKey:'cadence-boundary',quoteSnapshot:valid});
+ if(accepted)await expect(readback).resolves.toEqual(response);
+ else await expect(readback).rejects.toThrow('Commerce order draft returned invalid response');
+});
+
+it.each([0,1,3660,3661])('bounds recovery order snapshots at %i days',async cadenceDays=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const snapshot={...fixture().order,orderId:id,orderRef:`order_${id}`,clientId:id,paymentIntentId:id,shippingAddressId:id,
+  initialDeclarationId:id,cadenceDays,runtimeMetadata:{},invoiceBuyerSnapshot:{},recoveryRootOrderId:id,recreatedFromOrderId:null};
+ const port=createPostgresCheckoutRecoveryOrderPort({query:async()=>({rows:[{result:snapshot}]})});
+ for(const read of [port.getRecoveryOrder,port.getLatestRecoveryOrder!]){
+  const result=read({orderId:id});
+  if(cadenceDays>=1&&cadenceDays<=3660)await expect(result).resolves.toMatchObject({cadenceDays});
+  else await expect(result).rejects.toThrow('checkout_recovery_snapshot_invalid');
+ }
 });

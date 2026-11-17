@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 z.config({ jitless: true });
 const platformCurrencySchema = z.string().regex(/^[A-Z]{3}$/);
@@ -22,7 +23,7 @@ export const customerMeResponseSchema = z.object({
         .object({
           subscriptionId: z.guid(),
           status: z.string().min(1),
-          cadenceDays: z.number().int().positive(),
+          cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS),
           nextCycleAt: z.string().datetime({ offset: true }).nullable(),
           paymentMethodKind: z.string().nullable(),
         })

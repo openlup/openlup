@@ -26,6 +26,19 @@ prerequisites. A source build does not start a complete commerce application.
 See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
 
+## Subscription cadence representation
+
+Platform TypeScript cadence DTOs accept **1 through 3660 whole days** (ten years).
+`MAX_CADENCE_DAYS` is exported from `@openlup/core/subscription`.
+This finite representation bound avoids the timestamp and settlement integer
+overflows admitted by the former PostgreSQL integer maximum, with room for
+lateness. Applications still choose their offered cadences in owned configuration.
+
+The current SQL subscription preview and edit-quote guards retain their **90-day**
+limit pending a separate migration. The starter also refuses configured cadences
+above 90 with `starter_database_cadence_limit`. TypeScript acceptance alone does
+not establish database-path acceptance.
+
 ## Fulfillment execution limits
 
 The native capability reader names these boundaries before provider I/O. A

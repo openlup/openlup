@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import { assertAgreedQuoteLine } from "./agreedPlanQuote.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedEditPhase, SizedEditRequest } from "./contracts/sizedEdit.js";
@@ -9,7 +10,7 @@ const object = z.record(z.string(), z.unknown());
 const line = z.object({ lineId: z.uuid().nullable(), variantId: z.uuid(), sku: z.string().min(1), groupId: z.string().min(1),
   qty: z.number().int().positive(), isAddon: z.boolean(), quoteLine: object });
 const contextSchema = z.object({ subscriptionId: z.uuid(), clientId: z.uuid(), binding: z.enum(["classic", "sized.v1"]),
-  templateVersion: z.number().int().positive(), cadenceDays: z.number().int().positive(), compositionConstraint: object.nullable(),
+  templateVersion: z.number().int().positive(), cadenceDays: z.number().int().positive().max(MAX_CADENCE_DAYS), compositionConstraint: object.nullable(),
   nextCycleAt: z.string().nullable(), paidCycleCount: z.number().int().nonnegative(), marker: object.nullable(),
   lines: z.array(line).min(1), graduationLines: z.array(line) });
 export async function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn = false): Promise<SizedEditContext> {
