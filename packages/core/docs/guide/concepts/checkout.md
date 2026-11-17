@@ -52,7 +52,8 @@ In the next minor release (currently unreleased), `reservationPolicyFor(input, p
 and `normalizedTtlMinutes(value, policy?)` from `@openlup/platform/inventory`
 accept a `CheckoutReservationLifetimePolicy` with `minMinutes`, `maxMinutes` and
 `defaultMinutes`. Omission preserves the 1440–2160-minute clamp and 1440-minute
-fallback. Each call validates positive safe integers and
+fallback. Each call validates positive integers up to 5270400 minutes (ten
+years, so every expiry stays representable) and
 `minMinutes <= defaultMinutes <= maxMinutes`; invalid policy throws
 `reservation_policy_invalid`, including for non-checkout kinds.
 

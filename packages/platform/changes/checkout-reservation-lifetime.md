@@ -1,6 +1,6 @@
 Next minor release: add optional `CheckoutReservationLifetimePolicy` to
 `reservationPolicyFor` and `normalizedTtlMinutes` in the stable inventory subpath.
-Positive safe integer bounds must satisfy `minMinutes <= defaultMinutes <= maxMinutes`;
+Positive integer bounds up to 5270400 minutes (ten years) must satisfy `minMinutes <= defaultMinutes <= maxMinutes`;
 each call refuses invalid policy with `reservation_policy_invalid`. Omission
 preserves the 1440–2160-minute clamp and 1440-minute fallback exactly.
 

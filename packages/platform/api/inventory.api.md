@@ -352,7 +352,7 @@ export interface NewPurchaseStockAvailabilityOptions {
 ## dist/inventory/contracts/reservation.d.ts
 
 ```ts
-/** Checked on each policy helper call: positive safe integers, min <= default <= max. */
+/** Checked on each policy helper call: positive integers up to 5270400 (ten years), min <= default <= max. */
 export interface CheckoutReservationLifetimePolicy {
     minMinutes: number;
     maxMinutes: number;

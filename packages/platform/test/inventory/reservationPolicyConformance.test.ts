@@ -73,7 +73,7 @@ describe("reservation policy and native renewal store conformance", () => {
     const valid: CheckoutReservationLifetimePolicy = { minMinutes: 10, maxMinutes: 60, defaultMinutes: 30 };
     const invalid: unknown[] = [null, {}, { ...valid, minMinutes: 61 }, { ...valid, defaultMinutes: 9 }, { ...valid, defaultMinutes: 61 }];
     for (const field of ["minMinutes", "maxMinutes", "defaultMinutes"] as const) {
-      for (const value of [0, -1, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, "30", null, undefined]) {
+      for (const value of [0, -1, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, Number.MAX_SAFE_INTEGER, 3660 * 24 * 60 + 1, "30", null, undefined]) {
         invalid.push({ ...valid, [field]: value });
       }
     }
@@ -83,6 +83,17 @@ describe("reservation policy and native renewal store conformance", () => {
       for (const reservationKind of ["checkout_payment_window", "subscription_retry_window"]) {
         expect(() => reservationPolicyFor({ reservationKind, paymentTargetKind: "one_time_order",
           orderMode: "one_time", now: new Date(now) }, policy)).toThrow("reservation_policy_invalid");
+      }
+    }
+  });
+
+  it("keeps every accepted policy expiry representable at the ten-year ceiling", () => {
+    const ceiling = 3660 * 24 * 60;
+    for (const policy of [{ minMinutes: 1, maxMinutes: ceiling, defaultMinutes: 30 }, { minMinutes: 1, maxMinutes: ceiling, defaultMinutes: ceiling }]) {
+      for (const checkoutTtlMinutes of [Number.MAX_VALUE, null]) {
+        const result = reservationPolicyFor({ reservationKind: "checkout_payment_window", paymentTargetKind: "one_time_order",
+          orderMode: "one_time", now: new Date(now), checkoutTtlMinutes }, policy);
+        expect(Number.isFinite(Date.parse(result.expiresAt!))).toBe(true);
       }
     }
   });

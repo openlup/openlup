@@ -4,6 +4,9 @@ export const MIN_CHECKOUT_RESERVATION_TTL_MINUTES = 24 * 60;
 export const MAX_CHECKOUT_RESERVATION_TTL_MINUTES = 36 * 60;
 export const DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES = MIN_CHECKOUT_RESERVATION_TTL_MINUTES;
 
+// Technical ceiling (ten years, matching MAX_CADENCE_DAYS) so every accepted policy yields a representable expiry.
+const MAX_POLICY_MINUTES = 3660 * 24 * 60;
+
 const defaultPolicy: CheckoutReservationLifetimePolicy = {
   minMinutes: MIN_CHECKOUT_RESERVATION_TTL_MINUTES,
   maxMinutes: MAX_CHECKOUT_RESERVATION_TTL_MINUTES,
@@ -32,7 +35,7 @@ export function normalizedTtlMinutes(
   policy: CheckoutReservationLifetimePolicy = defaultPolicy,
 ): number {
   if (!policy || ![policy.minMinutes, policy.maxMinutes, policy.defaultMinutes]
-    .every(minutes => Number.isSafeInteger(minutes) && minutes > 0)
+    .every(minutes => Number.isSafeInteger(minutes) && minutes > 0 && minutes <= MAX_POLICY_MINUTES)
     || policy.minMinutes > policy.defaultMinutes || policy.defaultMinutes > policy.maxMinutes) {
     throw new Error("reservation_policy_invalid");
   }
