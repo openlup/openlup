@@ -509,6 +509,7 @@ BEGIN
     DELETE FROM public.catalog_price_setup_receipts WHERE scope='catalog.price_setup.base' AND idempotency_key=ANY(created);
     RETURN failure;
   END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(commands) WHERE NOT (value ? 'replayed')) THEN
   -- Same donor context guards, then sorted open rows. Ownership was checked
   -- for the complete batch before acquiring the first context.
   FOR row_record IN SELECT DISTINCT (value#>>'{command,priceListId}')::uuid AS list_id,
@@ -522,6 +523,7 @@ BEGIN
       ON targets.list_id=entry.price_list_id AND targets.sku_id=entry.variant_id
     WHERE entry.mode='one_time' AND entry.min_qty=1 AND entry.active
       AND (entry.valid_to IS NULL OR entry.valid_to>statement_timestamp()) ORDER BY entry.id FOR NO KEY UPDATE OF entry LOOP NULL; END LOOP;
+  END IF;
   RETURN jsonb_build_object('actorId',actor,'parentProductId',p_parent,'transactionId',pg_current_xact_id()::text,
     'prepared',commands,'batch',p_batch);
 END;
