@@ -5,13 +5,13 @@
     "npm": "11.19.0"
   },
   "inventory": {
-    "digest": "sha256-276306d090cc5cbe881dda059d43782bfcacedfa1435b301b65e542be5edadf2",
-    "classDigest": "sha256-9ea726ff85a41860c90f4ffb4a99a241902999fbedfb7a143ef18002dde1d833"
+    "digest": "sha256-19ca82c90de076ebf4cad298fd03b6df986581a31d83d5f8eadf238e449facb4",
+    "classDigest": "sha256-36cbe7823ac271111ae9cbec359a52209ccc9609e0da0fa9589d7109074f1dd0"
   },
   "packages": {
     "manifestDigest": "sha256-3c0e3e0fbcd535c27d80908b0f8e92cd60f0f1d0bda79c12123acb2025afb069",
-    "rootLockDigest": "sha256-10863a94f1deb997e42c9fdc4236ac479a81fe3af5bfed2fa8aa76c16799dbe7",
-    "coreLockDigest": "sha256-a310b1c487b53e25e69acb1dcf7f4ad631366bdec217d0bb920ee3f14bd48eeb"
+    "rootLockDigest": "sha256-77dd958026303e31a716c4a71e6fa7cafc1f81b28f25e5fe2e97697fa59e4b97",
+    "coreLockDigest": "sha256-5e6d0c8dbc951bb282948b2a43f9770786c710058a2146927a7364873072c2b3"
   },
   "platformMigrationManifest": {
     "path": "config/platform-migration-manifest.json",
