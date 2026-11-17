@@ -231,24 +231,20 @@ transaction on that same session). These are trusted server dependencies,
 never request fields. The hook runs under both the population advisory lock
 and ledger claim, before `finishJobRun`.
 
-For pause after exhaustion, follow the [subscription policy recipe](../../concepts/subscriptions.md#pause-a-subscription-after-failed-renewal-retries-are-exhausted).
-Authorize candidate selection through your own trusted evidence. Inside
-`withTransaction`, lock in native order and re-read current cycle, subscription,
-payment/recovery and retry facts. Use `isDunningLadderExhausted` with the same
-cadence that recorded the failures; a null retry alone is insufficient. A
-1/3/7-day backoff is `[24, 72, 168]` hours after each preceding failure, not
-absolute days from the first failure. The population lease does not fence
-customer recovery, so the result of the native pass alone cannot authorize a
-pause. Skip repaired or changed cycles.
+For pause after exhaustion, copy the complete transaction-bound
+[`owned/renewal-policy.ts` recipe](../../concepts/subscriptions.md#pause-a-subscription-after-failed-renewal-retries-are-exhausted),
+derived from the PostgreSQL witness `neutralStoreRenewalPolicy.test.ts`.
+It includes native lock order, durable recheck, replay keys and refusal rollback.
+Authorize candidate selection through trusted application evidence. The
+population lease does not fence customer recovery; a native pass result or a
+null retry alone cannot authorize a pause. Read the
+[retry-timing boundary](../../concepts/subscriptions.md#durable-retry-timing)
+before selecting a cadence: `retryBackoffHours` reaches fresh native failure
+recording, while provider-result recording still uses the SQL default ladder.
 
-Construct commands inside that transaction with `withTransaction: work => work(db)`
-using its callback connection and your trusted lifecycle terms. Do not start a
-nested transaction or commit independently. Give each policy decision a durable
-command key and repeat its exact payload on replay. Throw on a refused or
-unsupported pause so the host rolls back the entire policy transaction, including
-bookkeeping. An exception escapes the hook and marks the run failed; native work
-already committed before the hook remains committed. A later run can retry the
-policy. Keep providers and platform SQL outside this callback's policy contract.
+An exception escapes the hook and marks the run failed; native work already
+committed before the hook remains committed. A later run can retry the policy.
+Keep provider execution and SQL definition changes outside this callback.
 
 From the extracted application with selected packages installed, run
 `node --experimental-strip-types --test test/renewal-policy.test.ts test/renewal.test.ts`.
