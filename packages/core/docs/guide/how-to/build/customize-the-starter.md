@@ -213,6 +213,50 @@ before any carrier or data-port call in its resolver. The public quote engine
 reads catalogue and prices before invoking this hook; that resolver witness
 does not establish zero database reads for the whole checkout request.
 
+## Compose post-renewal policy
+
+In the current source candidate, `owned/renewal-policy.ts` is the second and last
+owned composition hook, beside shipping. Edit its exported `renewalPolicy`
+callback to select application policy after native renewal and retry work.
+The released 0.43.0 archive retains its original managed composition; use a
+matching candidate for this hook. `host/renewal-job.ts` and
+`host/scheduled-renewal.ts` stay managed.
+
+The default callback does nothing: it adds no query, pause or other business
+effect. Renewal remains disabled until selected in `owned/renewal.config.ts`.
+The scheduled host supplies `db` (the session holding population exclusion),
+`result` (the completed native pass), `createCommands` (the public
+`createPostgresSubscriptionCommands` factory) and `withTransaction` (a lazy
+transaction on that same session). These are trusted server dependencies,
+never request fields. The hook runs under both the population advisory lock
+and ledger claim, before `finishJobRun`.
+
+For pause after exhaustion, follow the [subscription policy recipe](../../concepts/subscriptions.md#pause-a-subscription-after-failed-renewal-retries-are-exhausted).
+Authorize candidate selection through your own trusted evidence. Inside
+`withTransaction`, lock in native order and re-read current cycle, subscription,
+payment/recovery and retry facts. Use `isDunningLadderExhausted` with the same
+cadence that recorded the failures; a null retry alone is insufficient. A
+1/3/7-day backoff is `[24, 72, 168]` hours after each preceding failure, not
+absolute days from the first failure. The population lease does not fence
+customer recovery, so the result of the native pass alone cannot authorize a
+pause. Skip repaired or changed cycles.
+
+Construct commands inside that transaction with `withTransaction: work => work(db)`
+using its callback connection and your trusted lifecycle terms. Do not start a
+nested transaction or commit independently. Give each policy decision a durable
+command key and repeat its exact payload on replay. Throw on a refused or
+unsupported pause so the host rolls back the entire policy transaction, including
+bookkeeping. An exception escapes the hook and marks the run failed; native work
+already committed before the hook remains committed. A later run can retry the
+policy. Keep providers and platform SQL outside this callback's policy contract.
+
+From the extracted application with selected packages installed, run
+`node --experimental-strip-types --test test/renewal-policy.test.ts test/renewal.test.ts`.
+Keep a frozen default run transcript and query count. Add local PostgreSQL
+witnesses for actual pause, command replay, concurrent repair/recheck and
+refusal rollback when composing your application policy. Mocks do not
+establish those transaction and locking guarantees.
+
 ## Change identity and an offer rule
 
 Edit `brand.name`, its localized `brand.strapline`, `offer.layout` (`list` or
