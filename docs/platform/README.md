@@ -1,6 +1,6 @@
 # OpenLup Platform Documentation
 
-Status: development-preview documentation. The platform is not yet a stable framework release or a supported adopter distribution.
+Status: current maintainer documentation for stable 1.x. See the [stability policy](../../packages/core/docs/guide/reference/stability.md) and [installation support policy](../../.github/INSTALL_SUPPORT_POLICY.md).
 
 This index is for maintainers changing OpenLup. For installing, composing, extending, operating or upgrading an application, read the [OpenLup reader guide](../../packages/core/docs/guide/README.md).
 
@@ -18,7 +18,7 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 - [Agent guide](AGENT_GUIDE.md) — a stable pointer to the root [`AGENTS.md`](../../AGENTS.md) and the reader guide shipped in `@openlup/core`.
 - [Architecture and extensions](ARCHITECTURE_AND_EXTENSIONS.md) — module ownership, extension seams, and source-ejection consequences.
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
-- [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the limits of preview self-hosting.
+- [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the supported installation and self-hosting limits.
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 
 Partner acquisition is available as schemas/types and a PostgreSQL port through
@@ -54,9 +54,13 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 - [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme, merge-queue review carry-over, the fork-point review base and the deferred items.
 - [Managed pgTAP on plain PostgreSQL](plans/neutral-postgres-pgtap.md) — move of the raw `pgtap` lane from the Supabase CLI to stock PostgreSQL 17 with one managed-compatibility adapter; parity proof, risks and owner decisions ([intent](plans/neutral-postgres-pgtap-intent.md)).
 
-## Preview boundary
+## Release boundary
 
-The intended topology is one platform monorepo plus separately owned adopter applications. A source preview may make the platform available for evaluation; it does not make a source checkout an upgrade contract. Stable-framework claims wait for the stable-framework requirements: a versioned release/BOM, a thin adopter app, public extension and conformance contracts, upgrade tooling, and passing public installation, build, test, compatibility, provenance, and independent-adopter evidence.
+The topology is one platform monorepo plus separately owned adopter applications.
+Source snapshots remain separate from the stable npm line. The
+[stability reference](../../packages/core/docs/guide/reference/stability.md) owns
+compatibility and first-party consumer evidence; the
+[install policy](../../.github/INSTALL_SUPPORT_POLICY.md) names the supported composition.
 
 For contribution rules, read [CONTRIBUTING.md](../../CONTRIBUTING.md). For responsible disclosure and sensitive-material handling, read [SECURITY.md](../../SECURITY.md).
 
@@ -67,8 +71,8 @@ the linked platform pages own their contracts, and the root
 [contribution guide](../../CONTRIBUTING.md) owns submission steps. Check code,
 declared commands and the relevant release before describing a capability.
 Label a page as current guidance, a proposal, or dated history; a historical
-procedure must not look executable today. Name the available development-preview
-profile and its support limits without implying a stable install.
+procedure must not look executable today. Name the available release or profile
+and link its support boundary.
 
 Use the [ownership and maintenance route](DOCUMENTATION.md#ownership) before
 creating a page. The [generated source map](SOURCE_MAP.md) is a
@@ -80,7 +84,7 @@ For a new task-oriented page, copy only the fields that serve its readers:
 ```text
 # <Task or contract>
 
-Status: development-preview guidance | development-preview contract | proposal | historical evidence (<date>)
+Status: current guidance | current contract | proposal | historical evidence (<date>)
 Audience and purpose: <who needs this, and for what>
 Available release/profile and support: <canonical release or policy link; limits>
 Prerequisites: <exact tools and safe example inputs>

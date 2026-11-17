@@ -1,51 +1,25 @@
 # Install support policy
 
-## Bounded preview evidence now; one supported path after stable
+## One supported installation composition
 
-There is no full-platform candidate reproduction path yet. A clean checkout of
-the exact development-preview revision can run `npm ci`, the public policy,
-inventory and typecheck gates, `npm test`, and `npm run build`. Its optional
-OCI/Compose artifacts are release-proof inputs, not a supported consumer
-entrypoint yet: no public command prepares their immutable image and port
-inputs. Tests may start owned disposable databases and prove selected SQL
-boundaries; follow [testing](../CONTRIBUTING.md#test-scope-and-diagnostics).
-The build does not activate a full application, and bounded checks do not
-certify its migrations, scheduler, API, checkout, mutations or subscriptions.
+The supported 1.x composition is the npm starter, PostgreSQL and the qualified
+application image, at the exact versions and digest named by the stable
+release/BOM. Use the shipped composition without substituting components.
+A branch, arbitrary checkout, private package or source-preview snapshot does
+not become supported merely because it builds. The
+[versioning policy](VERSIONING_AND_EOL.md#support-window) owns the support window.
 
-There is also an **opt-in disposable local subscription reference** with a
-separate owned Supabase setup, captured payment and mailbox, and a selected
-Node server profile. Its [evaluation instructions](../docs/platform/SUBSCRIPTION_REFERENCE.md)
-can demonstrate one recurring buyer/account/renewal path when the real HTTP
-journey is run and recorded. It does not turn the static default, bounded
-checks, or source checkout into a full-platform candidate, supported install,
-provider certification or stable self-host promise.
+A source checkout can run bounded policy, inventory, typecheck, test and build
+checks; follow [testing](../CONTRIBUTING.md#test-scope-and-diagnostics).
+The optional [subscription reference](../docs/platform/SUBSCRIPTION_REFERENCE.md)
+is a separate local evaluation profile. Neither route substitutes for the
+release’s supported composition or qualifies a live provider.
 
-After the `P1-SF` stable-framework gate closes, there will be exactly one
-supported path: install the exact platform release/BOM and artifact set named by
-a supported stable release, and bring up its shipped composition without
-substituting components. A branch, commit, arbitrary source checkout, private
-package, or source-preview bridge never becomes supported merely because it
-builds.
+## Current limits
 
-One supported path is a choice, not a limitation of effort. A project that supports every
-deployment shape ends up supporting none of them well, because each variant
-multiplies the states a maintainer has to hold in mind before answering a single
-question. Fixing the path is what makes "it reproduces" mean something.
-
-## Current status, stated before you rely on it
-
-**No full path is certified, and the platform is not yet declared ready to
-self-host.** The repository measures publication completeness separately; see
-`.github/PUBLICATION_COMPLETENESS.md` for the checks and their scope. A complete
-published tree does not establish installability or self-host readiness. Until a
-stable release names the supported BOM and artifacts, treat every install as
-pre-release and expect breakage.
-
-Preview reports may describe a failure in the bounded checks/reference above or
-provide useful evidence about an incomplete platform capability. They are not
-required to certify reproduction on a full install that does not exist. The
-stable support obligation activates only for a release that names a supported
-BOM and artifacts; until then no install is supported.
+Publication completeness is measured separately by
+[the publication policy](PUBLICATION_COMPLETENESS.md). A complete public tree
+alone does not establish installation or provider readiness.
 
 The starter selects sandbox payments. The native rail can compose the reference
 card provider through the explicit [host composition](../examples/neutral-store/host/provider-portable.ts),
@@ -110,8 +84,8 @@ subscription association invented before activation completes. See the
 [native account boundary](../packages/platform/README.md#native-account-persistence-reads).
 
 The default sandbox selection and the explicit provider host composition have
-separate configuration requirements. No supported, stable or production-ready
-store deployment is claimed.
+separate configuration requirements. Support for the named installation does
+not certify an application’s live provider setup or production readiness.
 
 No hosting account or resource is supplied. Root `ui-*` counts remain shrink-only
 reference-source debt. New neutral presentation is constrained to system fonts;
@@ -119,11 +93,9 @@ the root reference's font choices are not an inherited starter requirement.
 
 ## What is refused, in writing
 
-The following are outside the bounded preview reference today and outside the
-supported stable path later. Preview issues that depend on them may be retained
-as information or feature requests, but they are not certified platform-install
-reproductions. Once stable exists, support issues depending on them may be closed
-without investigation; that closure is not a judgement about the setup itself:
+The following are outside the supported installation. Reports depending on them
+may be retained as information or feature requests, or closed without
+investigation; that closure is not a judgement about the setup itself:
 
 - hand-assembled installs that skip the shipped composition;
 - substituting a different database engine, or a different major version of the
@@ -131,12 +103,11 @@ without investigation; that closure is not a judgement about the setup itself:
 - container orchestration, charts, or operators the project does not ship;
 - bare-metal or virtual-machine installs assembled by hand;
 - managed or serverless hosting variants (the disposable local Supabase
-  evaluator above is preview evidence, not a supported hosting variant);
+  evaluator above is local evidence, not a supported hosting variant);
 - running only part of the platform, or replacing a shipped component with your
   own;
 - an install modified before the problem was observed;
-- any path a maintainer cannot reproduce from the exact released artifact set
-  once the stable channel exists.
+- any path a maintainer cannot reproduce from the exact released artifact set.
 
 You may absolutely run the platform in any of those ways. The licence permits it
 and the project has no objection. What is refused is the **support obligation**,
@@ -144,15 +115,14 @@ not the deployment.
 
 ## What this means when you file
 
-A preview bug report states which bounded check, reference surface or incomplete
-capability it concerns; it does not assert that a full-platform candidate install
-exists. A stable support report asserts that it reproduces on the exact supported
+A reference bug report states which bounded check or capability it concerns.
+A stable support report asserts that it reproduces on the exact supported
 release/BOM and composition. If it does not, say so explicitly and describe your
 deviation; the report is then treated as information rather than as a defect,
 and it may still be useful.
 
-If the missing full-platform path prevents reproduction, say so. That evidence
-helps define the future install contract and may be handled as a feature request.
+If a missing capability prevents reproduction, say so. That evidence may be
+handled as a feature request.
 
 ## If you need something else supported
 

@@ -61,8 +61,8 @@ Completeness, release identity and support answer different questions:
 | Evidence | What it proves | What it does not prove |
 | --- | --- | --- |
 | green completeness checks | every tracked input was classified and the public tree matches the derivation | stable API, production readiness, support, or an upgrade path |
-| immutable development-preview source release | exact preview bytes can be reproduced | compatibility, external-adopter support, or stable SemVer |
-| future stable platform release/BOM | the named packages, images, composition and thin app form one supported artifact set | support for arbitrary branches, commits, source checkouts, ejected files, or community modules |
+| immutable source-preview release | exact preview bytes can be reproduced | compatibility, external-adopter support, or stable SemVer |
+| stable platform release/BOM | the named packages, images, composition and thin app form one supported artifact set | support for arbitrary branches, commits, source checkouts, ejected files, or community modules |
 
 The source preview opened by the one final split exists initially for evaluation
 and for the temporary source bridge exclusive to Velipet. That bridge is a first-party
@@ -70,10 +70,10 @@ transition necessitated by the fresh-history split, not a public adopter install
 or update channel. A source checkout that happens to build is not promoted into
 a supported artifact by accident.
 
-The stable claim begins only after the `P1-SF` stable-framework gate proves the versioned BOM, thin
-adopter app, public extension contracts and upgrade tooling, clean install,
-typecheck, advertised build, public tests and adjacent-version upgrade. Until
-then the honest label is development preview.
+Stable commitments are defined in the
+[stability reference](../packages/core/docs/guide/reference/stability.md#public-api)
+and [install support policy](INSTALL_SUPPORT_POLICY.md), independently of source
+publication completeness.
 
 ## What this claim does **not** say
 
@@ -83,9 +83,9 @@ Completeness here means *the published tree is the whole of what the derivation
 selects*. It does not mean the platform is feature-complete, production-ready, or
 certified to self-host. Those are measured separately and are currently partial.
 The live capability numerator/denominator is source-only pre-act state and is not embedded in the immutable receipt; this policy deliberately embeds no snapshot
-that can drift when the capability registry changes. The candidate reproduction
-path is not yet a certified supported install
-(`.github/INSTALL_SUPPORT_POLICY.md`).
+that can drift when the capability registry changes. Use the
+[install support policy](INSTALL_SUPPORT_POLICY.md) to select the supported
+composition rather than inferring it from publication checks.
 
 Reading a green completeness check as a readiness signal would be exactly the
 wrong inference. A tree can be completely published and still be early.

@@ -64,7 +64,9 @@ export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraint
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
 type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null };
 type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
-export type NativeStoreCheck = { table: string; constraint: string; column: string; values: string[] };
+export type NativeStoreCheck = { table: string; constraint: string; column: string } & (
+  { values: string[] } | { range: { lower: number; upper: number }; beforeSha256: string }
+);
 export type NativeStoreUnique = { table: string; constraint: string; columns: string[]; nullsNotDistinct: boolean };
 export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: { name: string; table: string; sha256: string }[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
@@ -2019,6 +2021,7 @@ export const isNativeStoreMigrationPath = (path: string, slots?: readonly Pick<N
 const nativeStoreName = (name: unknown): name is string => typeof name === "string" && /^[a-z_][a-z0-9_]*$/u.test(name);
 const nativeStoreTable = (name: unknown): name is string => typeof name === "string" && /^public\.[a-z_][a-z0-9_]*$/u.test(name);
 const nativeStoreList = (values: unknown): values is string[] => Array.isArray(values) && values.length > 0 && values.every(nativeStoreName) && new Set(values).size === values.length;
+const nativeStoreInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
 const nativeWord = (tokens: readonly PlatformSqlToken[], index: number, word: string): boolean => tokens[index]?.kind === "word" && tokens[index]!.value.toUpperCase() === word;
 const nativeSymbol = (tokens: readonly PlatformSqlToken[], index: number, value: string): boolean => tokens[index]?.kind === "symbol" && tokens[index]!.value === value;
 const nativeIdentifier = (token: PlatformSqlToken | undefined): string | null => token?.kind === "word" ? token.value.toLowerCase() : token?.kind === "quoted" ? token.value : null;
@@ -2168,7 +2171,13 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       }
       nativeStoreAddedForeignKeys(slot.existingTableStatements);
     }
-    if (slot.checkSupersets !== undefined && (!Array.isArray(slot.checkSupersets) || slot.checkSupersets.some(check => !keysAre(check, "column,constraint,table,values") || !nativeStoreTable(check.table) || !nativeStoreName(check.constraint) || !nativeStoreName(check.column) || !nativeStoreList(check.values)))) throw new Error("reviewed native store invalid CHECK superset entry");
+    if (slot.checkSupersets !== undefined && (!Array.isArray(slot.checkSupersets) || slot.checkSupersets.some(check => {
+      if (!nativeStoreTable(check.table) || !nativeStoreName(check.constraint) || !nativeStoreName(check.column)) return true;
+      if ("values" in check) return !keysAre(check, "column,constraint,table,values") || !nativeStoreList(check.values);
+      return !keysAre(check, "beforeSha256,column,constraint,range,table") || !hash(check.beforeSha256)
+        || !check.range || !keysAre(check.range, "lower,upper") || !nativeStoreInteger(check.range.lower)
+        || !nativeStoreInteger(check.range.upper) || check.range.lower > check.range.upper;
+    }))) throw new Error("reviewed native store invalid CHECK superset entry");
     if (slot.uniqueSupersets !== undefined && (!Array.isArray(slot.uniqueSupersets) || slot.uniqueSupersets.some(unique => !keysAre(unique, "columns,constraint,nullsNotDistinct,table") || !nativeStoreTable(unique.table) || !nativeStoreName(unique.constraint) || !nativeStoreList(unique.columns) || typeof unique.nullsNotDistinct !== "boolean"))) throw new Error("reviewed native store invalid UNIQUE superset entry");
     const constraints = [...slot.checkSupersets ?? [], ...slot.purposeCheck ? [{ table: purposeTable, constraint: purposeConstraint }] : [], ...slot.uniqueSupersets ?? []].map(entry => `${entry.table}.${entry.constraint}`);
     if (new Set(constraints).size !== constraints.length) throw new Error("reviewed native store duplicate constraint entry");
@@ -2306,6 +2315,29 @@ function nativeCheckValues(tokens: readonly PlatformSqlToken[], start: number, c
     index++;
   }
   return values.length && nativeSymbol(tokens, index, ")") && nativeSymbol(tokens, index + 1, ")") ? { values, next: index + 2 } : null;
+}
+// Only literal int4 endpoints, one column and one inclusive interval. The catalog
+// control separately proves the pinned installed preimage and strict widening.
+function nativeCheckRange(tokens: readonly PlatformSqlToken[], column: string): { lower: number; upper: number; next: number } | null {
+  let index = 3;
+  const integer = () => {
+    const sign = nativeSymbol(tokens, index, "-") ? (index++, -1) : 1;
+    const token = tokens[index++];
+    const value = token?.kind === "number" && /^[0-9]+$/u.test(token.value) ? sign * Number(token.value) : NaN;
+    return nativeStoreInteger(value) ? value : null;
+  };
+  if (!nativeWord(tokens, 0, "CHECK") || !nativeSymbol(tokens, 1, "(") || nativeIdentifier(tokens[2]) !== column) return null;
+  const between = nativeWord(tokens, index, "BETWEEN");
+  if (between) index++;
+  else if (nativeSymbol(tokens, index, ">") && nativeSymbol(tokens, index + 1, "=")) index += 2;
+  else return null;
+  const lower = integer();
+  if (!nativeWord(tokens, index++, "AND")) return null;
+  if (!between) {
+    if (nativeIdentifier(tokens[index++]) !== column || !nativeSymbol(tokens, index++, "<") || !nativeSymbol(tokens, index++, "=")) return null;
+  }
+  const upper = integer();
+  return lower !== null && upper !== null && lower <= upper && nativeSymbol(tokens, index, ")") ? { lower, upper, next: index + 1 } : null;
 }
 function nativeUniqueValues(tokens: readonly PlatformSqlToken[], start: number): { columns: string[]; nullsNotDistinct: boolean; next: number } | null {
   if (!nativeWord(tokens, start, "UNIQUE")) return null;
@@ -2451,9 +2483,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
         pending = { kind: "CHECK", key }; constraintStatement = true; break;
       }
       if (action.verb === "ADD") {
-        const parsed = nativeCheckValues(action.tail, 0, check.column), values = parsed?.values;
+        const parsed = "values" in check ? nativeCheckValues(action.tail, 0, check.column) : nativeCheckRange(action.tail, check.column);
         const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
-        if (pending?.kind !== "CHECK" || pending.key !== key || !values || next !== action.tail.length || canonical(values) !== canonical(check.values)) throw new Error("reviewed native store CHECK must match its listed values");
+        const matches = parsed && ("values" in check ? "values" in parsed && canonical(parsed.values) === canonical(check.values)
+          : "lower" in parsed && parsed.lower === check.range.lower && parsed.upper === check.range.upper);
+        if (pending?.kind !== "CHECK" || pending.key !== key || !matches || next !== action.tail.length) throw new Error(`reviewed native store CHECK must match its listed ${"values" in check ? "values" : "range"}`);
         pending = undefined; completedChecks.add(key); constraintStatement = true; break;
       }
     }

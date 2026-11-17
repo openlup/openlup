@@ -10,16 +10,18 @@ than product or adapter code?
 ## Package Surface And Evidence
 
 - Affected subpath(s):
-- Surface maturity: candidate / experimental / testing
+- Surface maturity: stable / experimental / testing
 - Package smoke evidence:
 - Conformance evidence, if a port or adapter seam is declared:
-- Private-current-seam dogfood impact:
-- External-consumer evidence: not evaluated / phase-5 follow-up
+- First-party consumer impact:
+- Consumer evidence: first-party / independent (describe actual evidence)
 - Declaration snapshot updated: yes / no / not applicable
 
-Every export is an internal package surface before phase 5. Explain declaration
-drift without treating a packed first-party consumer as external adoption or a
-public stability promise. Do not refresh snapshots only to make CI pass.
+Stable exports follow SemVer under the
+[stability reference](../docs/guide/reference/stability.md#public-api).
+Experimental and testing surfaces are outside that commitment. Explain declaration
+changes against the affected classification; first-party evidence does not establish
+independent adoption. Do not refresh snapshots only to make CI pass.
 
 ## Verification
 
@@ -49,7 +51,7 @@ Do not disclose a suspected vulnerability in this pull request. Follow
 - [ ] I used package subpaths and did not add direct `src/` or `dist/` imports.
 - [ ] Runtime code remains framework-, provider-, environment-, and test-runner-neutral.
 - [ ] Behavior changes have focused tests.
-- [ ] Declaration snapshot drift is intentionally reviewed as an internal candidate change.
+- [ ] Declaration snapshot changes are reviewed against the affected stability classification.
 - [ ] I ran `npm run ci`, or explained exactly which checks could not run.
 - [ ] I did not weaken the `preview` publication settings, the directory-publish refusal, or package controls.
 - [ ] I did not include secrets, personal data, or private service evidence.

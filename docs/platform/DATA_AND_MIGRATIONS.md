@@ -63,7 +63,7 @@ describes the codec and retry duties.
 
 See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
 
-The preview source release deliberately ships an unbound database-type seam at
+The source tree deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
@@ -744,7 +744,7 @@ The starter binds hold and release with a fresh human-admin and Commerce-operato
 
 ## Additive forward release path
 
-A development preview may append expand-only platform forwards to either chain:
+A release may append expand-only platform forwards to either chain:
 
 - Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
   with `config/platform-migration-manifest.json` preserving the baseline and all
@@ -1100,7 +1100,7 @@ exclusion retain their existing contract.
 | Provider dispatch and customer delivery | Offline store proof supplies no live-provider or journey activation claim. The host owns provider reads, dispatch and financial-notice delivery. |
 
 `paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are supported
-for this complete installed chain. This is development-preview qualification,
+for this complete installed chain. This is database qualification,
 not provider activation. The [native attribution witnesses](../../tests/postgres/paymentReconciliationAttributionGap.test.ts),
 [pgTAP witnesses](../../tests/postgres/paymentReconciliationPgtap.test.ts) and
 [installed runtime-role PostgreSQL witnesses](../../tests/postgres/paymentReconciliationStore.test.ts)
@@ -2261,12 +2261,13 @@ template, recipient and profile fingerprint; outbox completion is independent.
 See the [composition recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts)
 for configured timing and transport-profile limits.
 
-`checkSupersets` entries declare table, constraint, column and values;
+`checkSupersets` entries declare table, constraint, column and either values or
+an integer range as described below;
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
 DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
-IN values (with an optional trailing `NOT VALID`) or plain UNIQUE columns and
-NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
+IN values or literal integer interval (with an optional trailing `NOT VALID`), or
+plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
 additions refuse; the general expression grammar is unchanged. The protected real-PostgreSQL catalog control proves
 widening against the installed definition immediately before the slot: the old
 constraint must exist in the closed CHECK or UNIQUE shape, every old value or
@@ -2281,6 +2282,31 @@ The installed new definition must equal the entry; other constraints, columns
 and triggers remain protected. No historical SQL anchor is used for these
 entries. The issued account-consent `purposeCheck` retains its original preimage,
 values and refusal behavior unchanged.
+
+An integer-range `checkSupersets` entry replaces `values` with
+`range: { lower, upper }` and `beforeSha256`. Both endpoints must be literal
+signed 32-bit integers with lower ≤ upper. `beforeSha256` pins the exact
+`pg_get_constraintdef` text of the installed CHECK immediately before the slot,
+including any trailing `NOT VALID`. The existing table must be an ordinary table
+and the column must have PostgreSQL type `integer` (int4). The slot admits exactly
+one adjacent pair of plain `ALTER TABLE public.<table> DROP CONSTRAINT <name>;`
+and `ALTER TABLE public.<table> ADD CONSTRAINT <name> CHECK (<column> BETWEEN
+<lower> AND <upper>);`, with an optional trailing `NOT VALID`. The equivalent
+`CHECK (<column> >= <lower> AND <column> <= <upper>)` is also admitted. The
+migration runner applies the pair in one transaction; intervening statements,
+transaction control, conditional drops, CASCADE and extra ALTER actions refuse.
+
+The protected PostgreSQL catalog control verifies that the pinned old definition
+is this same inclusive interval on the same column and that the installed new
+range equals the declaration. New lower must be ≤ old lower, new upper must be
+≥ old upper, and at least one endpoint must widen strictly. Narrowing, unchanged
+ranges, missing or mismatched preimages, other columns/tables/constraint names,
+non-integer or computed bounds, casts in the forward and extra predicates refuse.
+Validation state must remain equal in both directions, including preserving
+`NOT VALID` without rechecking historical rows. Existing owner, table/column ACL,
+column and unrelated-constraint catalog protections still apply. This capability
+changes no installed CHECK by itself; feature SQL and its declarations land in a
+later change.
 
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
@@ -2814,7 +2840,7 @@ Do not claim complete privacy coverage. Privileged connected-store transfer
 retains exact documents, bindings and the existing command/support ledgers under
 whole-packet row/byte bounds and filtered-login refusal; it is not a subject
 privacy export. Root capture/restore additions ship no npm assets. The API remains
-a development-preview source candidate; full catalogue installation and explicit
+a source-only surface; full catalogue installation and explicit
 host composition are required, and managed definitions remain unchanged.
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
@@ -3609,12 +3635,11 @@ exists, and the metadata — and never `enabled`. An adopter who enabled a drain
 relying on it to bound their storage; one who disabled it is retaining evidence
 on purpose. Neither decision may be silently undone by re-running a forward.
 
-## Preview and stable posture
+## Stable schema policy
 
-Current migration and self-host material is evaluation-oriented. The stable-framework requirements
-must still prove versioned upgrades, N-1 compatibility, and the complete
-expand/compatible-deploy/backfill/contract path before a stable upgrade claim is
-made.
+The [database upgrade guide](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)
+owns the 1.x schema commitment and bounded code-rollback proof. Installation
+recipes do not extend that evidence to another chain or application.
 
 ## Identity reference grants
 
@@ -4191,7 +4216,7 @@ refuses; managed verification remains unclaimed.
 The projection's whole-file SHA-256 is
 `b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`.
 Its existing persisted channel enum accounts for exactly one `ui-12` count.
-The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
+The [neutrality owner](../../CONTRIBUTING.md#contribution-checks) admits
 only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
