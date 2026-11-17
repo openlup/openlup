@@ -877,3 +877,405 @@ it("readiness_census_acquisition_null_basis_points", async () => transaction(asy
   await census(db, `UPDATE public.commerce_promotion_definitions SET definition=definition||'{"benefit_kind":"percentage","benefit_value_bps":null}' WHERE promotion_id='example:acquisition';`,
     { acquisition: null }, ["first_subscription_pair_invalid"]);
 }));
+
+it.each([
+  ["legacy_count_two", pairedAcquisition + `
+    UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:mirror';
+    INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
+    SELECT 'example:legacy-second',repeat('e',64),definition||'{"id":"example:legacy-second"}',true
+    FROM public.commerce_promotion_definitions WHERE promotion_id='example:legacy';`, [2, 1, 0]],
+  ["pair_count_zero", legacyPair + "UPDATE public.commerce_promotion_definitions SET active=false WHERE promotion_id='example:acquisition';", [1, 0, 0]],
+  ["active_count_one", pairedAcquisition + "UPDATE public.commerce_promotion_definitions SET active=true WHERE promotion_id='example:acquisition';", [1, 1, 1]],
+] as const)("readiness_reason_precedence_%s", async (_name, setup, counts) => transaction(async db => {
+  await census(db, setup, { firstSubscriptionLegacyCount: counts[0], firstSubscriptionPairCount: counts[1],
+    firstSubscriptionActiveCount: counts[2], acquisition: null }, ["first_subscription_pair_invalid"]);
+}));
+
+it.each([
+  ["foreign_currency", "currency", "'YYY'"],
+  ["inactive_newest", "status", "'draft'"],
+] as const)("readiness_list_selection_excludes_%s", async (_name, column, value) => transaction(async db => {
+  await census(db, `UPDATE public.price_lists SET created_at=statement_timestamp()-interval '2 hours';
+    INSERT INTO public.price_lists(name,region_code,currency,status,valid_from,created_at)
+    VALUES('Synthetic excluded list','ZZ',${column === "currency" ? value : "'XXX'"},${column === "status" ? value : "'active'"},statement_timestamp()-interval '1 hour',statement_timestamp());`,
+    { activePriceListCount: 1, activeCoreSkuCount: 1, priceMismatchCount: 0, subscriptionPricePolicyCount: 1, subscriptionPricePolicyDerivesBand: true });
+}));
+it.each([
+  ["zero_subscription", "subscription", 1], ["zero_tier", "one_time", 2],
+] as const)("readiness_base_minimum_excludes_%s", async (_name, mode, qty) => transaction(async db => {
+  await census(db, `INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,valid_from)
+    SELECT price_list_id,variant_id,'${mode}',${qty},0,statement_timestamp()-interval '1 minute' FROM public.price_entries WHERE mode='one_time' AND active;`,
+    { priceMismatchCount: 1, subscriptionPricePolicyDerivesBand: true }, ["catalog_1490_legacy_1340_invalid"]);
+}));
+it.each([
+  ["subscription_tier", "min_qty=2"], ["subscription_net", "amount_kind='net'"],
+] as const)("readiness_subscription_validity_requires_%s", async (_name, change) => transaction(async db => {
+  await censusComponent(db, freshBaseContext + storedEntry + `UPDATE public.price_entries SET ${change} WHERE mode='subscription' AND price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');`,
+    shapeReadBlock, "v_inputs", [1, 1, 1, 0, 1]);
+}));
+
+it("readiness_unit_base_is_valid_even_when_the_derived_band_is_zero", async () => transaction(async db => {
+  await census(db, "UPDATE public.price_entries SET unit_price_minor=1 WHERE mode='one_time';",
+    { priceMismatchCount: 1, subscriptionPricePolicyDerivesBand: false }, ["catalog_1490_legacy_1340_invalid"]);
+}));
+it("readiness_stored_subscription_accepts_one_minor_unit", async () => transaction(async db => {
+  await census(db, freshBaseContext + storedEntry + "UPDATE public.price_entries SET unit_price_minor=1 WHERE mode='subscription';", { priceMismatchCount: 0 });
+}));
+it.each([[9999, 0], [10000, 1]] as const)("readiness_derived_one_basis_point_base_%s", async (base, derived) => transaction(async db => {
+  await census(db, freshBaseContext + policyEntry(undefined, undefined, "D2C", 9999, 1) + `UPDATE public.price_entries SET unit_price_minor=${base} WHERE price_list_id IN (SELECT id FROM public.price_lists WHERE status='active');`,
+    { priceMismatchCount: derived ? 0 : 1, subscriptionPricePolicyDerivesBand: derived > 0 }, derived ? [] : ["catalog_1490_legacy_1340_invalid"]);
+  const list = (await db.query("SELECT id FROM public.price_lists WHERE status='active'")).rows[0].id;
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, list])).subscription.derivedUnitPriceMinor).toBe(derived);
+}));
+it("readiness_policy_full_discount_is_well_formed", async () => transaction(async db => {
+  await censusComponent(db, freshBaseContext + policyEntry(undefined, undefined, "D2C", 10000), policyReadBlock,
+    "jsonb_build_array(v_subscription_policy_count,v_policy_well_formed,v_policy_discount_bps,v_policy_quantum)", [1, true, 10000, 10]);
+}));
+
+it.each([
+  ["none", "", { kind: "unresolved", reason: "subscription_price_not_found" }],
+  ["one", storedEntry, { kind: "stored", unitPriceMinor: 900 }],
+  ["two", storedEntry + storedEntry.replaceAll("'1 hour'", "'2 hours'"), { kind: "unresolved", reason: "subscription_price_ambiguous" }],
+  ["future_policy", policyEntry("statement_timestamp()+interval '1 hour'"), { kind: "unresolved", reason: "subscription_policy_not_effective" }],
+] as const)("preview_subscription_lane_%s", async (_name, setup, expected) => transaction(async db => {
+  await db.query(freshBaseContext + setup);
+  const list = (await db.query("SELECT id FROM public.price_lists WHERE status='active'")).rows[0].id;
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, list])).subscription).toMatchObject(expected);
+}));
+it("preview_ambiguous_base_has_no_selected_current", async () => transaction(async db => {
+  await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    SELECT price_list_id,variant_id,'one_time',1001,statement_timestamp()-interval '1 minute' FROM public.price_entries WHERE mode='one_time' AND active;`);
+  expect(await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list])).toMatchObject({ outcome: "preview", current: null, currentCount: 2 });
+}));
+it.each(["entry", "amount"] as const)("expected_base_%s_mismatch_alone_refuses", async field => transaction(async db => {
+  const c = await command(db);
+  await unchangedRefusal(db, { ...c, expected: { ...c.expected, ...(field === "entry" ? { entryId: randomUUID() } : { unitPriceMinor: c.expected.unitPriceMinor + 1 }) } }, { code: "40001" });
+}));
+it("receipt_lookup_and_refusal_cleanup_are_key_scoped", async () => transaction(async db => {
+  await apply(db, await command(db));
+  const b = await command(db, { unitPriceMinor: 1300 }), result = await apply(db, b), before = await priceSnapshot(db);
+  expect(await apply(db, b)).toEqual({ ...result, outcome: "replayed" });
+  expect(await apply(db, await command(db, { variantId: randomUUID() }))).toEqual({ outcome: "validation_issue", reason: "sku_not_found" });
+  expect(await priceSnapshot(db)).toEqual(before);
+}));
+
+it.each([
+  ["archived", "status='archived'", false], ["draft", "status='draft'", false], ["addon", "is_addon=true", false],
+  ["neither", "sellable_standalone=false,sellable_in_subscription=false", false],
+  ["standalone", "sellable_standalone=true,sellable_in_subscription=false", true],
+  ["subscription", "sellable_standalone=false,sellable_in_subscription=true", true],
+  ["other_gate_list", "", false],
+] as const)("preview_gate_membership_%s", async (name, change, expected) => transaction(async db => {
+  if (change) await db.query(`UPDATE public.catalog_skus SET ${change} WHERE id=$1`, [genuine.sku]);
+  if (name === "other_gate_list") await db.query(freshBaseContext.replace("UPDATE public.price_lists SET status='archived';", ""));
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list])).inGate).toBe(expected);
+}));
+for (const method of ["preview", "apply"] as const) {
+  it.each([
+    ["draft", "'draft'", "'ZZ'", "'XXX'", "statement_timestamp()-interval '1 hour'", "NULL", false],
+    ["region", "'active'", "'YY'", "'XXX'", "statement_timestamp()-interval '1 hour'", "NULL", false],
+    ["currency", "'active'", "'ZZ'", "'YYY'", "statement_timestamp()-interval '1 hour'", "NULL", false],
+    ["future", "'active'", "'ZZ'", "'XXX'", "statement_timestamp()+interval '1 microsecond'", "NULL", false],
+    ["end_exact", "'active'", "'ZZ'", "'XXX'", "statement_timestamp()-interval '1 hour'", "statement_timestamp()", false],
+    ["start_exact", "'active'", "'ZZ'", "'XXX'", "statement_timestamp()", "NULL", true],
+  ] as const)(`${method}_target_list_%s`, async (_name, status, region, currency, from, to, valid) => transaction(async db => {
+    const c = await command(db, { expected: { entryId: null, unitPriceMinor: null } });
+    await db.query(`DO $proof$ DECLARE target uuid:=gen_random_uuid(); bytes text; observed jsonb; BEGIN
+      INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from,valid_to)
+      VALUES(target,'Synthetic target',${region},${currency},${status},${from},${to});
+      bytes:=(${sqlJson(c)}||jsonb_build_object('priceListId',target))::text;
+      observed:=${method === "apply" ? "public.catalog_price_setup_apply(bytes,encode(sha256(convert_to(bytes,'UTF8')),'hex'))" : `public.catalog_price_setup_preview('${genuine.sku}',target,1200)`};
+      IF observed->>'outcome' IS DISTINCT FROM '${valid ? method === "apply" ? "committed" : "preview" : "validation_issue"}'
+        ${valid ? method === "preview" ? "OR observed->'inGate' IS DISTINCT FROM 'true'::jsonb" : "" : "OR observed->>'reason' IS DISTINCT FROM 'price_list_not_active'"} THEN
+        RAISE EXCEPTION 'target_list_guard_mismatch' USING DETAIL=observed::text;
+      END IF; END $proof$;`);
+  }));
+  it(`${method}_archived_and_missing_targets_refuse`, async () => transaction(async db => {
+    const c = await command(db);
+    await db.query("UPDATE public.catalog_skus SET status='archived' WHERE id=$1", [genuine.sku]);
+    const invoke = (v: typeof c) => method === "apply" ? apply(db, v) : rpc(db, "catalog_price_setup_preview", [v.variantId, v.priceListId, 1200]);
+    expect(await invoke(c)).toEqual({ outcome: "validation_issue", reason: "sku_archived" });
+    expect(await invoke({ ...c, variantId: randomUUID() })).toEqual({ outcome: "validation_issue", reason: "sku_not_found" });
+    await db.query("UPDATE public.catalog_skus SET status='active' WHERE id=$1", [genuine.sku]);
+    expect(await invoke({ ...c, priceListId: randomUUID() })).toEqual({ outcome: "validation_issue", reason: "price_list_not_found" });
+  }));
+  it.each([false, true])(`${method}_pending_exact_boundary_ambiguous_%s`, async ambiguous => transaction(async db => {
+    const c = await command(db);
+    await db.query(`DO $proof$ DECLARE bytes text; observed jsonb; BEGIN
+      ${ambiguous ? `INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES('${genuine.list}','${genuine.sku}','one_time',1001,statement_timestamp());` : `UPDATE public.price_entries SET valid_from=statement_timestamp() WHERE id='${c.expected.entryId}';`}
+      bytes:=${sqlJson(c)}::text;
+      ${method === "apply" && !ambiguous ? `BEGIN
+        PERFORM public.catalog_price_setup_apply(bytes,encode(sha256(convert_to(bytes,'UTF8')),'hex'));
+        RAISE EXCEPTION 'pending_boundary_was_admitted';
+        EXCEPTION WHEN serialization_failure THEN NULL; END;` : `observed:=${method === "apply" ? "public.catalog_price_setup_apply(bytes,encode(sha256(convert_to(bytes,'UTF8')),'hex'))" : `public.catalog_price_setup_preview('${genuine.sku}','${genuine.list}',1200)`};
+        IF observed->>'reason' IS DISTINCT FROM '${ambiguous ? "base_price_ambiguous" : "expected_state_mismatch"}' THEN RAISE EXCEPTION 'pending_boundary_reason_mismatch' USING DETAIL=observed::text; END IF;`}
+      END $proof$;`);
+  }));
+}
+it("preview_zero_amount_and_unproposed_current_are_distinct", async () => transaction(async db => {
+  expect(await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list, 0])).toEqual({ outcome: "validation_issue", reason: "unit_price_invalid" });
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list, 1])).outcome).toBe("preview");
+  const c = await command(db);
+  await db.query(`DO $proof$ DECLARE observed jsonb; BEGIN
+    UPDATE public.price_entries SET valid_from=statement_timestamp() WHERE id='${c.expected.entryId}';
+    observed:=public.catalog_price_setup_preview('${genuine.sku}','${genuine.list}',NULL);
+    IF observed#>>'{current,entryId}' IS DISTINCT FROM '${c.expected.entryId}' OR observed ? 'proposed' THEN RAISE EXCEPTION 'unproposed_current_mismatch'; END IF;
+    END $proof$;`);
+}));
+it.each([
+  ["inactive", "active=false"], ["tier", "min_qty=2"], ["any", "mode='any'"], ["subscription", "mode='subscription'"],
+] as const)("writer_ignores_other_base_rows_%s", async (_name, change) => transaction(async db => {
+  const c = await command(db);
+  await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    VALUES('${genuine.list}','${genuine.sku}','one_time',999,statement_timestamp()-interval '2 hours');
+    UPDATE public.price_entries SET ${change} WHERE unit_price_minor=999;`);
+  expect((await apply(db, c)).outcome).toBe("committed");
+}));
+
+it.each([
+  ["expected_extra", { expected: { entryId: null, unitPriceMinor: null, extra: 1 } }],
+  ["schema_version", { schemaVersion: 2 }], ["key_null", { commandKey: null }], ["key_empty", { commandKey: "" }],
+  ["key_long", { commandKey: "x".repeat(241) }], ["key_trim", { commandKey: " padded " }],
+  ["variant_null", { variantId: null }], ["variant_bad", { variantId: "not-a-uuid" }],
+  ["list_null", { priceListId: null }], ["list_bad", { priceListId: "not-a-uuid" }],
+  ["amount_string", { unitPriceMinor: "1200" }], ["amount_decimal", { unitPriceMinor: 1.5 }],
+  ["expected_array", { expected: [] }], ["expected_missing_entry", { expected: { unitPriceMinor: null } }],
+  ["expected_missing_amount", { expected: { entryId: null } }],
+  ["expected_entry_only_null", { expected: { entryId: null, unitPriceMinor: 1000 } }],
+  ["expected_amount_only_null", { expected: { entryId: randomUUID(), unitPriceMinor: null } }],
+  ["expected_bad_entry", { expected: { entryId: "not-a-uuid", unitPriceMinor: 1000 } }],
+  ["expected_string_amount", { expected: { entryId: randomUUID(), unitPriceMinor: "1000" } }],
+  ["expected_negative_amount", { expected: { entryId: randomUUID(), unitPriceMinor: -1 } }],
+  ["expected_overflow", { expected: { entryId: randomUUID(), unitPriceMinor: 2147483648 } }],
+] as const)("native_command_guard_%s", async (_name, delta) => transaction(async db => {
+  const bytes = JSON.stringify(await command(db, delta));
+  expect(await rpc(db, "catalog_price_setup_apply", [bytes, createHash("sha256").update(bytes).digest("hex")]))
+    .toEqual({ outcome: "validation_issue", reason: "command_invalid" });
+}));
+it.each([
+  ["sql_null", null, "0".repeat(64), "command_fingerprint_invalid"],
+  ["one_byte", "0", null, "command_fingerprint_invalid"], ["two_bytes", "{}", null, "command_invalid"],
+  ["bad_json", "{broken}", null, "command_invalid"], ["json_array", "[]", null, "command_invalid"],
+  ["unicode_nul", '{"x":"\\u0000"}', null, "command_invalid"],
+] as const)("native_raw_bytes_%s", async (_name, bytes, suppliedHash, reason) => transaction(async db => {
+  const hash = suppliedHash ?? createHash("sha256").update(bytes!).digest("hex");
+  expect(await rpc(db, "catalog_price_setup_apply", [bytes, hash])).toEqual({ outcome: "validation_issue", reason });
+}));
+it.each([null, "0".repeat(64)])("native_fingerprint_alone_refuses_%s", async fingerprint => transaction(async db => {
+  expect(await rpc(db, "catalog_price_setup_apply", [JSON.stringify(await command(db)), fingerprint]))
+    .toEqual({ outcome: "validation_issue", reason: "command_fingerprint_invalid" });
+}));
+it.each([4096, 4097])("native_byte_limit_%s", async size => transaction(async db => {
+  const json = JSON.stringify(await command(db)), bytes = json.padEnd(size, " ");
+  const answer = await rpc(db, "catalog_price_setup_apply", [bytes, createHash("sha256").update(bytes).digest("hex")]);
+  if (size === 4096) expect(answer.outcome).toBe("committed");
+  else expect(answer).toEqual({ outcome: "validation_issue", reason: "command_fingerprint_invalid" });
+}));
+it.each([1, 240])("native_command_key_limit_%s", async size => transaction(async db => {
+  expect((await apply(db, await command(db, { commandKey: "x".repeat(size) }))).outcome).toBe("committed");
+}));
+it.each(["unit", "expected"] as const)("native_integer_maximum_%s", async field => transaction(async db => {
+  const c = await command(db);
+  if (field === "unit") c.unitPriceMinor = 2147483647;
+  else { await db.query("UPDATE public.price_entries SET unit_price_minor=2147483647 WHERE id=$1", [c.expected.entryId]); c.expected.unitPriceMinor = 2147483647; }
+  expect((await apply(db, c)).outcome).toBe("committed");
+}));
+it("native_one_digit_amount_reaches_readiness_and_zero_expected_is_legal", async () => transaction(async db => {
+  await unchangedRefusal(db, await command(db, { unitPriceMinor: 1 }), { code: "55000", message: "catalog_price_setup_readiness_would_fail" });
+  const c = await command(db);
+  await db.query("UPDATE public.price_entries SET unit_price_minor=0 WHERE id=$1", [c.expected.entryId]);
+  expect((await apply(db, { ...c, expected: { ...c.expected, unitPriceMinor: 0 } })).outcome).toBe("committed");
+  const one = await command(db);
+  await db.query("UPDATE public.price_entries SET unit_price_minor=1 WHERE id=$1", [one.expected.entryId]);
+  expect((await apply(db, { ...one, expected: { ...one.expected, unitPriceMinor: 1 } })).outcome).toBe("committed");
+}));
+it("native_first_base_and_pending_receipt_are_explicit", async () => transaction(async db => {
+  const c = await command(db);
+  await db.query("UPDATE public.price_entries SET active=false WHERE id=$1", [c.expected.entryId]);
+  const first = { ...c, expected: { entryId: null, unitPriceMinor: null } };
+  expect(await apply(db, first)).toMatchObject({ outcome: "committed", receipt: { previous: null } });
+  const pending = await command(db), bytes = canonicalCatalogPriceSetupCommand(pending), hash = createHash("sha256").update(bytes).digest("hex");
+  await db.query("INSERT INTO public.catalog_price_setup_receipts(scope,idempotency_key,request_fingerprint,status,metadata) VALUES('catalog.price_setup.base',$1,$2,'in_progress','{}')", [pending.commandKey, hash]);
+  expect(await rpc(db, "catalog_price_setup_apply", [bytes, hash])).toEqual({ outcome: "conflict", reason: "command_in_progress" });
+}));
+it.each(["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscountGross", "totalGross"])(
+  "readiness_money_rejects_17_digit_padded_%s", async field => transaction(async db => {
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,${field},amountMinor}',to_jsonb(lpad(metadata#>>'{quoteSnapshot,quote,${field},amountMinor}',17,'0')));`,
+      moneyBlock, moneyObserved, { checked: 1, mismatched: 1 });
+  }));
+
+function nativePriceSelection(routine: "preview" | "apply") {
+  const source = readFileSync(writerPath, "utf8").split(`CREATE FUNCTION public.catalog_price_setup_${routine}(`)[1];
+  if (routine === "preview") return source.slice(source.indexOf("  SELECT count(*) FILTER"), source.indexOf("  -- The subscription price"));
+  const count = source.indexOf("    SELECT count(*) FILTER"), selected = source.indexOf("  SELECT * INTO v_current", count);
+  return source.slice(count, source.indexOf("\n    IF ", count)) + source.slice(selected, source.indexOf("\n  IF ", selected));
+}
+for (const routine of ["preview", "apply"] as const) {
+  it.each(["other_list", "other_variant", "any", "subscription", "tier", "inactive", "future", "expired", "end_exact", "start_exact"] as const)(
+    `${routine}_native_selection_excludes_%s`, async kind => transaction(async db => {
+      const foreignList = randomUUID(), foreignSku = randomUUID(), primary = randomUUID(), decoy = randomUUID();
+      await db.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic foreign','YY','XXX')", [foreignList]);
+      await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status) VALUES($1::uuid,$2::uuid,($1::uuid)::text,'Synthetic foreign','archived')", [foreignSku, genuine.sku]);
+      const block = nativePriceSelection(routine);
+      await db.query(`DO $proof$ DECLARE v_now timestamptz:=statement_timestamp();
+        v_list_id uuid:='${genuine.list}'; v_variant_id uuid:='${genuine.sku}'; v_list public.price_lists%ROWTYPE; v_sku public.catalog_skus%ROWTYPE;
+        v_current public.price_entries%ROWTYPE; v_current_count integer; v_pending_count integer;
+        BEGIN v_list.id:=v_list_id; v_sku.id:=v_variant_id;
+        UPDATE public.price_entries SET active=false;
+        INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,active,unit_price_minor,valid_from,valid_to)
+        VALUES('${decoy}','${kind === "other_list" ? foreignList : genuine.list}','${kind === "other_variant" ? foreignSku : genuine.sku}',
+          '${kind === "any" || kind === "subscription" ? kind : "one_time"}',${kind === "tier" ? 2 : 1},${kind !== "inactive"},999,
+          v_now${kind === "future" ? "+interval '1 microsecond'" : "-interval '2 hours'"},
+          ${kind === "expired" ? "v_now-interval '1 microsecond'" : (kind === "end_exact" || kind === "start_exact") ? "v_now" : "NULL"});
+        INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from)
+        VALUES('${primary}',v_list_id,v_variant_id,'one_time',1000,v_now${kind === "start_exact" ? "" : "-interval '1 hour'"});
+        ${block}
+        IF v_current_count IS DISTINCT FROM 1 OR v_pending_count IS DISTINCT FROM ${kind === "future" || kind === "start_exact" ? 1 : 0}
+          OR v_current.id IS DISTINCT FROM '${primary}'::uuid THEN
+          RAISE EXCEPTION 'native_price_selection_mismatch' USING DETAIL=jsonb_build_array(v_current_count,v_pending_count,v_current.id)::text;
+        END IF; END $proof$;`);
+    }));
+}
+it("writer_native_lock_predicates_select_exact_open_rows", async () => {
+  const foreignList = randomUUID(), foreignSku = randomUUID();
+  const kinds = ["open", "future", "finite", "expired", "end_exact", "inactive", "tier", "any", "subscription", "other_list", "other_variant"] as const;
+  const rows = kinds.map(kind => ({ kind, id: randomUUID(), locked: ["open", "future", "finite"].includes(kind) }));
+  const db = await owner.connect(), probe = await owner.connect();
+  try {
+    await owner.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic lock list','YY','XXX')", [foreignList]);
+    await owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status) VALUES($1::uuid,$2::uuid,($1::uuid)::text,'Synthetic lock item','archived')", [foreignSku, genuine.sku]);
+    await owner.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,min_qty,active,unit_price_minor,valid_from,valid_to) VALUES ${rows.map(r =>
+      `('${r.id}','${r.kind === "other_list" ? foreignList : genuine.list}','${r.kind === "other_variant" ? foreignSku : genuine.sku}',
+      '${r.kind === "any" || r.kind === "subscription" ? r.kind : "one_time"}',${r.kind === "tier" ? 2 : 1},${r.kind !== "inactive"},999,
+      statement_timestamp()${r.kind === "future" ? "+interval '1 hour'" : "-interval '2 hours'"},
+      ${r.kind === "finite" ? "statement_timestamp()+interval '1 hour'" : r.kind === "expired" ? "statement_timestamp()-interval '1 microsecond'" : r.kind === "end_exact" ? "statement_timestamp()" : "NULL"})`).join(",")}`);
+    await db.query("BEGIN"); await probe.query("BEGIN");
+    const source = readFileSync(writerPath, "utf8").split("CREATE FUNCTION public.catalog_price_setup_apply(")[1];
+    const start = source.indexOf("    PERFORM 1 FROM public.price_entries"), end = source.indexOf("    -- 7.", start);
+    await db.query(`DO $proof$ DECLARE v_list_id uuid:='${genuine.list}'; v_variant_id uuid:='${genuine.sku}';
+      v_now timestamptz:=(SELECT valid_to FROM public.price_entries WHERE id='${rows.find(r => r.kind === "end_exact")!.id}');
+      BEGIN ${source.slice(start, end)} END $proof$;`);
+    for (const row of rows) {
+      await probe.query("SAVEPOINT row_probe");
+      const attempt = probe.query("SELECT id FROM public.price_entries WHERE id=$1 FOR NO KEY UPDATE NOWAIT", [row.id]);
+      if (row.locked) await expect(attempt, row.kind).rejects.toMatchObject({ code: "55P03" });
+      else expect((await attempt).rows, row.kind).toHaveLength(1);
+      await probe.query("ROLLBACK TO SAVEPOINT row_probe"); await probe.query("RELEASE SAVEPOINT row_probe");
+    }
+  } finally {
+    await db.query("ROLLBACK"); await probe.query("ROLLBACK"); db.release(); probe.release();
+    await owner.query("DELETE FROM public.price_entries WHERE id=ANY($1::uuid[])", [rows.map(r => r.id)]);
+    await owner.query("DELETE FROM public.catalog_skus WHERE id=$1", [foreignSku]);
+    await owner.query("DELETE FROM public.price_lists WHERE id=$1", [foreignList]);
+  }
+});
+
+it("preview_positive_replacement_restores_the_exact_price_shape", async () => transaction(async db => {
+  const before = await priceSnapshot(db), answer = await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list, 1200]);
+  expect(answer.proposed.readiness).toEqual(answer.readiness);
+  expect(answer.proposed.readiness.reasons).not.toContain("catalog_1490_legacy_1340_invalid");
+  expect(await priceSnapshot(db)).toEqual(before);
+}));
+it.each([
+  ["region", "'YY'", "'XXX'", "'active'", "statement_timestamp()-interval '1 hour'", "NULL"],
+  ["currency", "'ZZ'", "'YYY'", "'active'", "statement_timestamp()-interval '1 hour'", "NULL"],
+  ["status", "'ZZ'", "'XXX'", "'draft'", "statement_timestamp()-interval '1 hour'", "NULL"],
+  ["future", "'ZZ'", "'XXX'", "'active'", "statement_timestamp()+interval '1 hour'", "NULL"],
+  ["expired", "'ZZ'", "'XXX'", "'active'", "statement_timestamp()-interval '1 hour'", "statement_timestamp()-interval '1 minute'"],
+] as const)("preview_gate_ignores_newest_%s_list", async (_name, region, currency, status, from, to) => transaction(async db => {
+  await db.query(`UPDATE public.price_lists SET created_at=statement_timestamp()-interval '2 hours';
+    INSERT INTO public.price_lists(name,region_code,currency,status,valid_from,valid_to,created_at)
+    VALUES('Synthetic excluded gate',${region},${currency},${status},${from},${to},statement_timestamp());`);
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list])).inGate).toBe(true);
+}));
+it.each(["preview", "apply"] as const)("%s_accepts_finite_open_list_and_entry", async method => transaction(async db => {
+  const c = await command(db);
+  await db.query("UPDATE public.price_lists SET valid_to=statement_timestamp()+interval '1 hour' WHERE id=$1", [genuine.list]);
+  await db.query("UPDATE public.price_entries SET valid_to=statement_timestamp()+interval '1 hour' WHERE id=$1", [c.expected.entryId]);
+  if (method === "apply") expect((await apply(db, c)).outcome).toBe("committed");
+  else expect(await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list, 1200])).toMatchObject({ outcome: "preview", inGate: true, currentCount: 1, current: { entryId: c.expected.entryId } });
+}));
+it("preview_accepts_an_effective_policy_with_a_finite_end", async () => transaction(async db => {
+  await db.query("UPDATE public.subscription_price_policy_revisions SET effective_to=statement_timestamp()+interval '1 hour' WHERE price_list_id=$1", [genuine.list]);
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, genuine.list])).subscription).toMatchObject({ kind: "derived", discountBps: 1000 });
+}));
+it("preview_other_channel_policy_is_not_history", async () => transaction(async db => {
+  await db.query(freshBaseContext + storedEntry + policyEntry(undefined, undefined, "B2B"));
+  const list = (await db.query("SELECT id FROM public.price_lists WHERE status='active'")).rows[0].id;
+  expect((await rpc(db, "catalog_price_setup_preview", [genuine.sku, list])).subscription).toEqual({ kind: "stored", unitPriceMinor: 900 });
+}));
+it.each(["other_channel", "future", "closed", "adjacent"] as const)("preview_policy_selection_excludes_%s_revision", async kind => transaction(async db => {
+  const other = policyEntry(kind === "future" ? "statement_timestamp()+interval '1 hour'" : "statement_timestamp()-interval '2 hours'",
+    kind === "future" || kind === "other_channel" ? "NULL::timestamptz" : kind === "adjacent" ? "statement_timestamp()" : "statement_timestamp()-interval '1 hour'",
+    kind === "other_channel" ? "B2B" : "D2C", 2000);
+  const currentPolicy = policyEntry(kind === "adjacent" ? "statement_timestamp()" : "statement_timestamp()-interval '30 minutes'",
+    kind === "future" ? "statement_timestamp()+interval '1 hour'" : "NULL::timestamptz")
+    .replace("SELECT v.id,1,p.id", "SELECT v.id,2,p.id").replace("digest(v.id,1,p.id", "digest(v.id,2,p.id");
+  await db.query(`DO $proof$ DECLARE observed jsonb; BEGIN ${freshBaseContext} ${other} ${currentPolicy}
+    observed:=public.catalog_price_setup_preview('${genuine.sku}',(SELECT id FROM public.price_lists WHERE status='active'),NULL);
+    IF NOT(observed->'subscription' @> '{"kind":"derived","discountBps":1000,"derivedUnitPriceMinor":900}') THEN
+      RAISE EXCEPTION 'preview_selected_wrong_policy' USING DETAIL=observed::text;
+    END IF; END $proof$;`);
+}));
+it("preview_policy_end_exact_is_not_effective", async () => transaction(async db => {
+  await db.query(`DO $proof$ DECLARE observed jsonb; BEGIN ${freshBaseContext} ${policyEntry(undefined, "statement_timestamp()")}
+    observed:=public.catalog_price_setup_preview('${genuine.sku}',(SELECT id FROM public.price_lists WHERE status='active'),NULL);
+    IF observed->'subscription' IS DISTINCT FROM '{"kind":"unresolved","reason":"subscription_policy_not_effective"}'::jsonb THEN
+      RAISE EXCEPTION 'preview_policy_end_boundary_mismatch' USING DETAIL=observed::text;
+    END IF; END $proof$;`);
+}));
+
+it.each(["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscountGross", "totalGross"])(
+  "readiness_money_empty_scalar_%s", async field => transaction(async db => {
+    await censusComponent(db, automaticOrder + `UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,${field},amountMinor}','""');`,
+      moneyBlock, moneyObserved, { checked: 1, mismatched: 1 });
+  }));
+it("readiness_money_accepts_one_digit_native_subtotal_and_total", async () => transaction(async db => {
+  const quote = { context: { pricingPolicy: { offerPolicyVersion: "commerce.offer-policy.v2", promotionEngineVersion: "promotion-engine.v2" } },
+    subtotalGross: { amountMinor: 7, currency: "XXX" }, discountTotalGross: { amountMinor: 0, currency: "XXX" }, totalGross: { amountMinor: 7, currency: "XXX" } };
+  await censusComponent(db, `WITH fresh AS (INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+    VALUES('paid','XXX',7,${sqlJson({ quoteSnapshot: { quote } })}) RETURNING id)
+    INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) SELECT id,1,1,7,7 FROM fresh;`,
+    moneyBlock, moneyObserved, { checked: 1, mismatched: 0 });
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_order_guard_unverified" });
+}));
+it("readiness_positive_one_minor_legacy_line_is_not_nonpositive", async () => transaction(async db => {
+  await censusComponent(db, "UPDATE public.subscription_lines SET unit_price_minor=1;", legacyDecisionBlock, "to_jsonb(v_legacy_invalid_count)", 0);
+  await expect(rpc(db, "commerce_offer_policy_v2_readiness")).rejects.toMatchObject({ code: "55000", message: "catalog_price_setup_native_agreement_domain_unverified" });
+}));
+it.each(["other_list", "other_variant", "tier", "inactive", "future", "expired", "end_exact", "start_exact", "finite"] as const)(
+  "preview_stored_selection_%s", async kind => transaction(async db => {
+    await db.query(freshBaseContext);
+    const foreignSku = randomUUID();
+    await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status) VALUES($1::uuid,$2::uuid,($1::uuid)::text,'Synthetic stored selection','archived')", [foreignSku, genuine.sku]);
+    const source = readFileSync(writerPath, "utf8").split("CREATE FUNCTION public.catalog_price_setup_preview(")[1];
+    const start = source.indexOf("    SELECT count(*), min(entry.unit_price_minor)"), end = source.indexOf("    v_subscription :=", start);
+    await db.query(`DO $proof$ DECLARE v_now timestamptz:=statement_timestamp(); v_list public.price_lists%ROWTYPE; v_sku public.catalog_skus%ROWTYPE;
+      v_stored_count integer; v_stored_minor integer; BEGIN
+      SELECT * INTO v_list FROM public.price_lists WHERE status='active'; v_sku.id:='${genuine.sku}';
+      INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,active,unit_price_minor,valid_from,valid_to)
+      VALUES(${kind === "other_list" ? "'"+genuine.list+"'::uuid" : "v_list.id"},'${kind === "other_variant" ? foreignSku : genuine.sku}','subscription',${kind === "tier" ? 2 : 1},${kind !== "inactive"},1,
+        v_now${kind === "future" ? "+interval '1 microsecond'" : "-interval '2 hours'"},${kind === "expired" ? "v_now-interval '1 microsecond'" : kind === "end_exact" ? "v_now" : kind === "start_exact" || kind === "finite" ? "v_now-interval '1 microsecond'" : "NULL"});
+      INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from,valid_to)
+      VALUES(v_list.id,v_sku.id,'subscription',900,v_now${kind === "start_exact" ? "" : "-interval '1 hour'"},${kind === "finite" ? "v_now+interval '1 microsecond'" : "NULL"});
+      ${source.slice(start,end)}
+      IF v_stored_count IS DISTINCT FROM 1 OR v_stored_minor IS DISTINCT FROM 900 THEN
+        RAISE EXCEPTION 'stored_selection_mismatch' USING DETAIL=jsonb_build_array(v_stored_count,v_stored_minor)::text;
+      END IF; END $proof$;`);
+  }));
+
+it("preview_gate_end_exact_keeps_the_eligible_list", async () => transaction(async db => {
+  await db.query(`DO $proof$ DECLARE observed jsonb; BEGIN
+    UPDATE public.price_lists SET created_at=statement_timestamp()-interval '2 hours';
+    INSERT INTO public.price_lists(name,region_code,currency,valid_from,valid_to,created_at)
+    VALUES('Synthetic boundary list','ZZ','XXX',statement_timestamp()-interval '1 hour',statement_timestamp(),statement_timestamp());
+    observed:=public.catalog_price_setup_preview('${genuine.sku}','${genuine.list}',NULL);
+    IF observed->'inGate' IS DISTINCT FROM 'true'::jsonb THEN RAISE EXCEPTION 'preview_gate_end_was_inclusive'; END IF;
+    END $proof$;`);
+}));
+it("writer_refuses_two_finite_effective_bases", async () => transaction(async db => {
+  const c = await command(db);
+  await db.query("UPDATE public.price_entries SET valid_to=statement_timestamp()+interval '1 hour' WHERE id=$1", [c.expected.entryId]);
+  await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from,valid_to) VALUES($1,$2,'one_time',1001,statement_timestamp()-interval '2 hours',statement_timestamp()+interval '1 hour')", [genuine.list, genuine.sku]);
+  expect(await apply(db, c)).toEqual({ outcome: "validation_issue", reason: "base_price_ambiguous" });
+}));
