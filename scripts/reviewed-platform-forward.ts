@@ -2036,10 +2036,18 @@ function nativeConstraintAction(statement: string): { table: string; name: strin
   if (!parsed.complete || !nativeWord(tokens, 1, "CONSTRAINT") || name === null || !["ADD", "DROP"].some(verb => nativeWord(tokens, 0, verb))) return null;
   return { table: alter.table, name, verb: tokens[0]!.value.toUpperCase(), tail: tokens.slice(3) };
 }
-// Reuse the existing single-column named FK token shape; no general ALTER grammar.
+const sameSkuConstraint = "subscription_lines_catalog_sku_revision_fkey";
+// Keep the single-column grammar; the composite exception is one closed token shape.
 function nativeStoreForeignKey(table: string, action: string) {
   const { tokens, complete } = platformSqlTokens(action, false, true);
   const name = nativeIdentifier(tokens[2]), column = nativeIdentifier(tokens[6]);
+  if (name === sameSkuConstraint) {
+    const shape = tokens.map(token => token.kind === "word" ? token.value.toUpperCase() : token.kind === "symbol" ? token.value : "").join(" ");
+    if (!complete || table !== "public.subscription_lines" || shape !== "ADD CONSTRAINT SUBSCRIPTION_LINES_CATALOG_SKU_REVISION_FKEY FOREIGN KEY ( VARIANT_ID , CATALOG_SKU_REVISION_ID ) REFERENCES PUBLIC . CATALOG_SKU_REVISIONS ( SKU_ID , ID ) ON DELETE RESTRICT NOT VALID") return null;
+    return { table, name, column: "catalog_sku_revision_id", reference: "public.catalog_sku_revisions", key: "id",
+      columns: ["variant_id", "catalog_sku_revision_id"], keys: ["sku_id", "id"], deletion: "r", validated: false,
+      start: tokens[19]!.start, end: tokens[21]!.end };
+  }
   if (!complete || !nativeWord(tokens, 0, "ADD") || !nativeWord(tokens, 1, "CONSTRAINT") || !name || !nativeWord(tokens, 3, "FOREIGN") || !nativeWord(tokens, 4, "KEY") || !nativeSymbol(tokens, 5, "(") || !column || !nativeSymbol(tokens, 7, ")") || !nativeWord(tokens, 8, "REFERENCES")) return null;
   const reference = nativeQualified(tokens, 9), key = reference ? nativeIdentifier(tokens[reference.next + 1]) : null;
   if (!reference || !key || !nativeSymbol(tokens, reference.next, "(") || !nativeSymbol(tokens, reference.next + 2, ")") || !nativeWord(tokens, reference.next + 3, "ON") || !nativeWord(tokens, reference.next + 4, "DELETE")) return null;
@@ -2048,7 +2056,7 @@ function nativeStoreForeignKey(table: string, action: string) {
   const end = start + (deletion === "n" ? 4 : 3);
   const notValid = nativeWord(tokens, end, "NOT") && nativeWord(tokens, end + 1, "VALID") && tokens.length === end + 2;
   if ((!notValid && tokens.length !== end) || (deletion === "r" && !notValid)) return null;
-  return { table, name, column, reference: reference.name, key, deletion, validated: !notValid, start: tokens[start]!.start, end: tokens[end - 1]!.end };
+  return { table, name, column, reference: reference.name, key, columns: [column], keys: [key], deletion, validated: !notValid, start: tokens[start]!.start, end: tokens[end - 1]!.end };
 }
 /** Slot-local declarations only. Installed column freshness remains a catalogue obligation. */
 export function nativeStoreAddedForeignKeys(statements: readonly string[]) {
@@ -2060,7 +2068,11 @@ export function nativeStoreAddedForeignKeys(statements: readonly string[]) {
       const { tokens } = platformSqlTokens(action, false, true);
       if (nativeWord(tokens, 0, "ADD") && nativeWord(tokens, 1, "COLUMN") && nativeIdentifier(tokens[2])) columns.add(`${alter.table}.${nativeIdentifier(tokens[2])}`);
       const key = nativeStoreForeignKey(alter.table, action);
-      if (!key || key.deletion === "r") continue;
+      if (nativeWord(tokens, 0, "VALIDATE") && nativeWord(tokens, 1, "CONSTRAINT") && tokens.length === 3) {
+        const added = keys.find(key => key.table === alter.table && key.name === nativeIdentifier(tokens[2]) && key.columns.length === 2);
+        if (added) added.validated = true;
+      }
+      if (!key || (key.deletion === "r" && key.columns.length === 1)) continue;
       if (!columns.has(`${key.table}.${key.column}`)) throw new Error("reviewed native store FK delete action requires an earlier same-slot ADD COLUMN");
       keys.push(key);
     }
@@ -2076,6 +2088,7 @@ function nativeStoreAddAction(table: string, action: string): boolean {
   const { tokens, complete } = platformSqlTokens(action, false, true);
   if (!complete || !nativeWord(tokens, 0, "ADD") || !["COLUMN", "CONSTRAINT"].some(word => nativeWord(tokens, 1, word)) || nativeIdentifier(tokens[2]) === null) return false;
   const key = nativeStoreForeignKey(table, action);
+  if (nativeIdentifier(tokens[2]) === sameSkuConstraint && !key) return false;
   const checked = key ? action.slice(0, key.start) + action.slice(key.end) : action;
   return isExpandOnlyPlatformForward(`ALTER TABLE ${table} ${checked};`);
 }
@@ -2089,6 +2102,7 @@ function nativeStoreExistingStatement(statement: string, earlier: readonly strin
   })) return alter!;
   if (!alter || alter.actions.some(action => {
     const { tokens, complete } = platformSqlTokens(action, false, true);
+    if (nativeIdentifier(tokens[2]) === sameSkuConstraint && alter.actions.length !== 1) return true;
     const nullable = complete && tokens.length === 6 && nativeWord(tokens, 0, "ALTER") && nativeWord(tokens, 1, "COLUMN") && nativeIdentifier(tokens[2]) !== null && nativeWord(tokens, 3, "DROP") && nativeWord(tokens, 4, "NOT") && nativeWord(tokens, 5, "NULL");
     const validate = complete && tokens.length === 3 && nativeWord(tokens, 0, "VALIDATE") && nativeWord(tokens, 1, "CONSTRAINT") && nativeIdentifier(tokens[2]) !== null;
     return !nullable && !validate && !nativeStoreAddAction(alter.table, action);
