@@ -2,7 +2,8 @@ import { quoteConfigurations } from './quote.config.ts';
 import { demoRenewalConfig } from './renewal.config.ts';
 import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import type { StoreConfig } from '../shared/config.ts';
-import { choices, set, range, type Numbers, type SubscriptionOffers } from '../shared/subscription-offer.ts';
+import type { SubscriptionOffers } from '../shared/subscription-offer.ts';
+import { choices, set, range, type Numbers } from '../shared/policy.ts';
 import { subscriptionEditing } from './subscription-editing.ts';
 
 /** Explicit SKU expansion: new catalogue variants receive no commercial admission automatically. */

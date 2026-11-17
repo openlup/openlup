@@ -76,11 +76,12 @@ Fresh quotes, drafts and editor results admit whole-day cadences from 1 through
 Historical transport, stored data and frozen receipts retain integer representation.
 The admission limit leaves room for date arithmetic; applications own their
 offered periods.
-Hosts must check the resulting dates for the selected operation. The older
-SQL `customer_subscription_preview_bundle_as_actor` path and its quote-table
-CHECK still cap cadence at 90; lifecycle command quoting has a separate 90-day
-guard. Those historical paths need a later forward migration before they can
-serve longer periods. The public package and exact editors use separate writers.
+Hosts must check the resulting dates for the selected operation. In the current
+source candidate, native actor and command previews and the edit-quote CHECK
+admit 1..3660 after the complete catalogue includes
+`20261122190000_subscription_cadence_bound.sql`. This forward is unreleased;
+apply the matching package's complete catalogue before using longer periods.
+The public package and exact editors use separate writers.
 
 ## Lifecycle in durable storage
 
@@ -269,8 +270,10 @@ Verify your selected catalogue or applied prefix with the
 
 Adopters can configure timing and budget for fresh native failure recording,
 but cannot configure the provider-result ladder through today's public
-composition. Full ladder configurability is tracked separately. Neither a
-custom cadence nor receipt replay removes the `hard_do_not_retry` stop. Browser
+composition. The current source starter requires exactly three configured retry
+rungs at startup (`starter_database_retry_budget`), matching the database's
+attempt-four exhaustion guards. Full ladder configurability is tracked separately.
+Neither a custom cadence nor receipt replay removes the `hard_do_not_retry` stop. Browser
 request data cannot configure timing. Managed dunning, recovery and due-list
 guards retain their fixed exhaustion threshold; custom core timing does not
 alter them. Evaluate pause exhaustion against the ladder that actually recorded

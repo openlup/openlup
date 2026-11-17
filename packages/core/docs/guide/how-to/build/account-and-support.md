@@ -148,6 +148,9 @@ Command envelopes carry explicit charge-timing confirmation for order-now and
 reactivation, structured pause/cancel surveys and save-offer facts, and an
 optional slide reason. Historical survey/offer strings remain valid carriers;
 these declarations do not select a retention offer or install a browser binding.
+The current source starter selects cancellation offers from its
+[owned retention map](customize-the-starter.md#configure-cancellation-offers);
+package command envelopes retain the same reason codes and accepted-offer identity.
 
 For profile edits and invoice-correction requests, compose
 `createCustomerAccountMutationSchemas`,

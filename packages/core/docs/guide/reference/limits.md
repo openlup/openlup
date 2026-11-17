@@ -41,8 +41,11 @@ cadence does not authorize fresh recovery work; recreation refuses it with
 
 Checkout transport, resume/recovery/account reads, editor contexts, retained
 renewal terms and frozen snapshots preserve **1 through 2147483647** integer
-representation. Completed checkout/editor receipts replay before current limits,
-with ownership and fingerprint checks intact. Fresh native renewal creation or
+representation. Completed editor, native draft and renewal receipts replay before
+current limits, with ownership and fingerprint checks intact. Checkout command
+execution and saga fallback can quote before replay, so stored cadence above
+3660 can still refuse on those paths. This affects unreleased development data
+only and remains a follow-up. Fresh native renewal creation or
 starter graduation above 3660 returns `NativeRenewalCadenceError` with reason
 `cadence_limit_exceeded` and `maximumCadenceDays`; choose an executable cadence
 before starting a new renewal. Reading or replaying a frozen operation does not
@@ -54,10 +57,12 @@ The adapter reads the fingerprint and completed response together and returns
 that snapshot without entering the writer; conflicting retries cannot reopen
 the key.
 
-The current SQL subscription preview and edit-quote guards retain their **90-day**
-limit pending a separate migration. The starter also refuses configured cadences
-above 90 with `starter_database_cadence_limit`. TypeScript acceptance alone does
-not establish database-path acceptance.
+The current source candidate widens native actor and command previews and the
+edit-quote CHECK to **1..3660** through
+`20261122190000_subscription_cadence_bound.sql`. The starter uses the same bound.
+This forward is unreleased; apply the matching package's complete native
+catalogue before using longer cadences. The managed chain has no corresponding
+90-day cap and receives no migration in this change.
 
 ## Fulfillment execution limits
 
@@ -334,8 +339,9 @@ Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 character
 both demonstrations use 160. Phone and postal-code fields share the native
 destination bounds. `subscriptionOffers` owns cadences, defaults and per-SKU
 quantities; `offer.cadenceDays` is a derived UI projection. Configured days must
-be whole numbers from 1 through 90; larger values refuse with
-`starter_database_cadence_limit`. Checkout admits at most 50 selected lines and
+be whole numbers from 1 through 3660 (`MAX_CADENCE_DAYS`). Invalid offer domains
+refuse with `starter_subscription_offer_invalid`; invalid projected choices
+refuse with `starter_offer_invalid`. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and unit prices fit
 PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
 text is at most 200 characters; the shared legal revision is trimmed, nonempty

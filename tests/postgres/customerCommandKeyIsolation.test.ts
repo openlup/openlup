@@ -95,6 +95,52 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
   const identity = (principal: string) => ({ derivation: "principal-sha256.v1", actorId: principal });
 
 
+  it.each([0, 1, 90, 91, 3660, 3661])("enforces cadence %s at the quote CHECK and both preview paths", async days => {
+    const f = await fixture(), accepted = days >= 1 && days <= 3660;
+    const checkKey = `cadence-check-${days}`, actorKey = `cadence-actor-${days}`, previewKey = `cadence-command-${days}`;
+    const insert = owner.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,
+      quote_hash,expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
+      VALUES($1,$2,$3,$3,1,'[]',$4,100,100,'XXX',now()+interval '15 minutes') RETURNING proposed_cadence_days`,
+      [f.subscription, checkKey, "a".repeat(64), days]);
+    if (accepted) expect((await insert).rows).toEqual([{ proposed_cadence_days: days }]);
+    else await expect(insert).rejects.toMatchObject({ code: "23514", constraint: "subscription_edit_quotes_cadence_check" });
+
+    const actorPreview = actor(f.principal, async db => (await db.query(
+      "SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3,'[]','{}',$4,1) AS result",
+      [f.subscription, actorKey, core(f), days])).rows[0].result.preview);
+    if (accepted) {
+      expect(await actorPreview).toMatchObject({ canApply: true });
+      expect((await owner.query("SELECT proposed_cadence_days FROM public.subscription_edit_quotes WHERE subscription_id=$1 AND idempotency_key=$2",
+        [f.subscription, commandKey(f.principal, actorKey)])).rows).toEqual([{ proposed_cadence_days: days }]);
+    } else await expect(actorPreview).rejects.toMatchObject({ code: "22023", message: "subscription_edit_invalid_request" });
+
+    await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+    const payload = { cadenceDays: days, expectedTemplateVersion: 1 };
+    const preview = await system(async db => (await db.query(
+      "SELECT public.subscription_command_preview($1,$2,$3,$4,'update_plan_length',$5,$6) AS result",
+      [f.principal, f.client, previewKey, f.subscription, payload, at])).rows[0].result);
+    if (!accepted) {
+      expect(preview).toMatchObject({ status: "refused", canApply: false, reason: "subscription_edit_invalid_request" });
+      return;
+    }
+    expect(preview).toMatchObject({ status: "previewed", canApply: true });
+    expect((await owner.query("SELECT proposed_cadence_days FROM public.subscription_edit_quotes WHERE subscription_id=$1 AND quote_hash=$2",
+      [f.subscription, preview.quoteHash])).rows).toEqual([{ proposed_cadence_days: days }]);
+    if (days === 91) {
+      const apply = () => system(async db => (await db.query(
+        "SELECT public.subscription_command_apply($1,$2,$3,$4,'update_plan_length',$5,$6) AS result",
+        [f.principal, f.client, previewKey, f.subscription, { ...payload, acceptedQuoteHash: preview.quoteHash }, at])).rows[0].result);
+      const first = await apply();
+      expect(first).toMatchObject({ status: "applied", templateVersion: 2 });
+      const before = await state(f.subscription);
+      expect(before.subscription.cadence_days).toBe(91);
+      expect(await apply()).toEqual({ ...first, status: "replayed", originalStatus: "applied" });
+      expect(await state(f.subscription)).toEqual(before);
+      expect((await owner.query("SELECT count(*)::int AS n FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2",
+        [f.principal, previewKey])).rows).toEqual([{ n: 1 }]);
+    }
+  });
+
   it.each([false, true])("isolates pause from graduation, including legacy=%s and a pre-claimed fallback", async legacy => {
     for (const full of [true, false]) {
       const f = await fixture(), raw = `${full ? "starter-graduation" : "starter-cadence-normalize"}:${f.subscription}:1`;

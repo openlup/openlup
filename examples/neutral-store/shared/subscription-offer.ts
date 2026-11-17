@@ -1,8 +1,7 @@
-/** Application-owned commercial domains. Defaults and preferred choices never widen admission. */
-export type Numbers = { kind: 'set'; values: readonly number[] }
-  | { kind: 'range'; min: number; max: number; step: number };
-export const set = (...values: number[]): Numbers => ({ kind: 'set', values });
-export const range = (min: number, max: number, step: number): Numbers => ({ kind: 'range', min, max, step });
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
+import { contains, choices, maximum, type Numbers } from './policy.ts';
+export { set, range, contains, choices, maximum, type Numbers } from './policy.ts';
+
 export interface SubscriptionOffer {
   days: Numbers;
   checkoutDays?: Numbers;
@@ -16,12 +15,6 @@ export interface SubscriptionOffer {
   bySku: Readonly<Record<string, readonly { days: Numbers; quantities: Numbers }[]>>;
 }
 export type SubscriptionOffers = { classic: SubscriptionOffer; sized: SubscriptionOffer };
-export const contains = (domain: Numbers, value: number): boolean => Number.isSafeInteger(value) && (domain.kind === 'set'
-  ? domain.values.includes(value) : value >= domain.min && value <= domain.max && (value-domain.min)%domain.step === 0);
-export const maximum = (domain: Numbers): number => domain.kind === 'set' ? Math.max(...domain.values) : domain.max;
-export function choices(domain: Numbers): number[] {
-  return domain.kind === 'set' ? [...domain.values] : Array.from({ length: Math.floor((domain.max-domain.min)/domain.step)+1 }, (_, index) => domain.min+index*domain.step);
-}
 export function quantityChoices(offer: SubscriptionOffer, sku: string, days: number): number[] {
   if (!contains(offer.days,days)) return [];
   return [...new Set((Object.hasOwn(offer.bySku,sku) ? offer.bySku[sku]! : [])
@@ -47,8 +40,7 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
     } else if (![domain.min,domain.max,domain.step].every(positive) || domain.max < domain.min) invalid();
   };
   numbers(offer.days);
-  // The current starter database still has the historical 90-day SQL boundary.
-  if (maximum(offer.days) > 90) throw new Error('starter_database_cadence_limit');
+  if (maximum(offer.days) > MAX_CADENCE_DAYS) invalid();
   for (const domain of [offer.checkoutDays,offer.preferredDays]) if (domain) {
     numbers(domain); if (maximum(domain) > maximum(offer.days)) invalid();
     if (choices(domain).some(day => !contains(offer.days,day))) invalid();
