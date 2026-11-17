@@ -15,7 +15,8 @@ const resources = storeJourneyResources();
 const at = "2026-09-15T00:00:00Z";
 const products = [randomUUID(), randomUUID(), randomUUID()];
 const latest = [randomUUID(), randomUUID()];
-let source: JourneyInstallation, target: JourneyInstallation;
+let source: JourneyInstallation, target: JourneyInstallation, lifecycleSource: JourneyInstallation;
+let lifecycleHistory: Awaited<ReturnType<typeof seedPublicationHistory>>;
 let packet: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 let retainedPublication: { first: CatalogHeadRef; second: CatalogHeadRef; productId: string; receipt: unknown };
@@ -45,6 +46,8 @@ beforeAll(async () => {
   }
   retainedPublication = await seedPublicationHistory(source.owner);
   packet = await captureStoreJourney(source.owner, "catalog-document-source");
+  lifecycleSource = await resources.installation("lifecycle-source");
+  lifecycleHistory = await seedPublicationHistory(lifecycleSource.owner, 4);
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
@@ -225,8 +228,7 @@ it("refuses nonempty transient lifecycle capabilities during capture", async () 
 });
 
 it("transfers governed lifecycle facts and nullable same-SKU accepted bindings without inference", async () => {
-  const held = await resources.installation("lifecycle-source");
-  const history = await seedPublicationHistory(held.owner, 4), sourceAuthority = publicationAuthority(held.owner);
+  const held = lifecycleSource, history = lifecycleHistory, sourceAuthority = publicationAuthority(held.owner);
   const page = await sourceAuthority.readbackV3(history.first);
   if (page.outcome !== "page") throw new Error(JSON.stringify(page));
   expect(await sourceAuthority.readbackV2(history.first)).toMatchObject({ outcome: "unsupported", reason: "catalog_lifecycle_reader_required" });
