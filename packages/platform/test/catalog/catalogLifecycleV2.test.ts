@@ -70,7 +70,6 @@ it("terminal archive cannot resurrect through raw status or restoration", () => 
   const value = revision([{ op: "restore_product", productSlug: "article", expectedState: "withdrawn" }]);
   Object.assign(value.product!, { status: "archived", lifecycleState: "archived" });
   expect(() => compileCatalogPublication(value)).toThrow("catalog_lifecycle_state_conflict");
-  expect(() => catalogAuthoritativeLifecycleV2(input().skus[0]!)).toThrow();
 });
 it("keeps the primary SKU archive refusal", () => {
   const value = revision([{ op: "set_sku_lifecycle", skuCode: "ARTICLE", expectedState: "withdrawn", state: "archived" }]);
@@ -115,4 +114,58 @@ it("keeps a translated presentation edit compatible without changing identity", 
   expect(result.skus[0]!.netContent).toEqual(value.skus[0]!.netContent);
   expect(result.skus[0]!.options).toEqual(value.skus[0]!.options);
   expect(result.product.presentation).toEqual({ label: "Corrected translation" });
+});
+
+it("P32-governed-prefix: activation needs a complete product at that operation", () => {
+  const value = governed();
+  value.payload.publication.operations.splice(1, 0, { op: "set_product_lifecycle", productSlug: "article", expectedState: "draft", state: "active", children: [] });
+  // The later operations supply both fields: final-state checks cannot prove the prefix.
+  expect(() => compileCatalogPublication(value)).toThrow("catalog_publication_v3_compile_product_incomplete");
+  value.payload.publication.operations.push(value.payload.publication.operations.splice(1, 1)[0]!);
+  expect(catalogAuthoritativeLifecycleV2(compileCatalogPublication(value).product)).toBe("active");
+});
+it.each(["sellableStandalone", "sellableInSubscription"] as const)("P28-archive-enabled-flags: nonprimary archive checks %s before later clearing", flag => {
+  const value = revision([
+    { op: "set_sku_lifecycle", skuCode: "OTHER", expectedState: "withdrawn", state: "archived" },
+    { op: "set_eligibility", skuCode: "OTHER", sellableStandalone: false, sellableInSubscription: false },
+  ]);
+  const otherId = "20000000-0000-4000-8000-000000000002";
+  value.skus.push({ ...structuredClone(value.skus[0]!), id: otherId, code: "OTHER", lifecycleState: "withdrawn", [flag]: true });
+  value.payload.skus.push({ ...structuredClone(value.payload.skus[0]!), id: otherId, code: "OTHER" });
+  value.payload.product.sharedContent.requestedModes.push({ skuCode: "OTHER", modes: [] });
+  // Primary identity is different, and the later operation clears both flags.
+  expect(() => compileCatalogPublication(value)).toThrow("catalog_publication_v3_compile_archive_refused");
+  value.skus[1]![flag] = false;
+  expect(catalogAuthoritativeLifecycleV2(compileCatalogPublication(value).skus[1]!)).toBe("archived");
+});
+it("P13-governed-explicit-eligibility: v4 SKU activation needs an enabling operation", () => {
+  const value = governed();
+  value.payload.publication.operations.push({ op: "set_sku_lifecycle", skuCode: "ARTICLE", expectedState: "draft", state: "active" });
+  const parsed = catalogDraftPayloadV4Schema.safeParse(value.payload);
+  expect(parsed.success).toBe(false);
+  if (parsed.success) throw new Error("Missing explicit eligibility refusal");
+  expect(parsed.error.issues).toEqual([expect.objectContaining({ message: "activation requires explicit enabling eligibility" })]);
+  value.payload.publication.operations.push({ op: "set_eligibility", skuCode: "ARTICLE", sellableStandalone: true, sellableInSubscription: false });
+  expect(catalogDraftPayloadV4Schema.safeParse(value.payload).success).toBe(true);
+});
+it("P28-primary-immutable: an existing primary cannot switch to another owned SKU", () => {
+  const value = revision([{ op: "set_primary_sku", productSlug: "article", skuCode: "OTHER" }]);
+  const otherId = "20000000-0000-4000-8000-000000000002";
+  value.skus.push({ ...structuredClone(value.skus[0]!), id: otherId, code: "OTHER", status: "draft", lifecycleState: "draft" });
+  value.payload.skus.push({ ...structuredClone(value.payload.skus[0]!), id: otherId, code: "OTHER" });
+  value.payload.product.primarySkuId = otherId;
+  expect(() => compileCatalogPublication(value)).toThrow("catalog_publication_v3_compile_primary_immutable");
+  value.product!.primarySkuId = null;
+  expect(compileCatalogPublication(value).product.primarySkuId).toBe(otherId);
+});
+it("P09-membership-independent: withdrawal preserves nonempty admitted and excluded memberships", () => {
+  const value = revision([{ op: "set_product_lifecycle", productSlug: "article", expectedState: "active", state: "withdrawn", children: [{ skuCode: "ARTICLE", expectedState: "active" }] }]);
+  const memberships = [{ offerVersion: "example:offer-a@1", admitted: true }, { offerVersion: "example:offer-b@1", admitted: false }];
+  value.skus[0]!.memberships = structuredClone(memberships);
+  expect(compileCatalogPublication(value).skus[0]!.memberships).toEqual(memberships);
+});
+it("D-authority-unavailable: a valid legacy SKU has no governed lifecycle authority", () => {
+  const legacy = compileCatalogPublication(input()).skus[0]!;
+  expect(legacy.status).toBe("draft");
+  expect(() => catalogAuthoritativeLifecycleV2(legacy)).toThrow("catalog_lifecycle_authority_unavailable");
 });

@@ -204,6 +204,42 @@ it("verifies the complete immutable acceptance tuple and refuses forged fields",
   }
 });
 
+it.each([
+  ["D-accepted-typeRef", { typeRef: { key: "example:uninstalled", version: 1 } }],
+  ["D-accepted-definitionDigest", { definitionDigest: "f".repeat(64) }],
+  ["D-accepted-demandPolicyRef", { demandPolicyRef: "example:forged-policy@1" }],
+] as const)("%s: only the supplied tuple field differs from retained facts", async (_rule, change) => {
+  const standing = await standingActive(await seed());
+  expect(await assertCatalogAcceptedReferenceV2(db, standing.accepted)).toEqual(standing.accepted);
+  await db.query("SAVEPOINT supplied_tuple");
+  await expect(assertCatalogAcceptedReferenceV2(db, { ...standing.accepted, ...change })).rejects.toMatchObject({ code: "22023", message: "catalog_accepted_reference_mismatch" });
+  await db.query("ROLLBACK TO SAVEPOINT supplied_tuple");
+});
+it("D-acceptance-immutable: a captured order acceptance cannot be cleared", async () => {
+  const standing = await standingActive(await seed()), order = randomUUID();
+  const acceptance = { schemaVersion: 2, lines: [standing.accepted] };
+  await db.query("INSERT INTO public.commerce_orders(id,currency_code,total_amount_minor,catalog_acceptance) VALUES($1,'XXX',0,$2::jsonb)", [order,JSON.stringify(acceptance)]);
+  await db.query("SAVEPOINT immutable_acceptance");
+  // No frozen snapshot exists, and NULL needs no tuple verification: only immutability refuses.
+  await expect(db.query("UPDATE public.commerce_orders SET catalog_acceptance=NULL WHERE id=$1", [order])).rejects.toMatchObject({ code: "55000", message: "catalog_acceptance_immutable" });
+  await db.query("ROLLBACK TO SAVEPOINT immutable_acceptance");
+  expect((await db.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [order])).rows).toEqual([{ catalog_acceptance: acceptance }]);
+});
+it("D-retained-v1-bytes: the new carrier is v2 and the legacy renderer keeps its bytes", async () => {
+  const f = await seed(), standing = await standingActive(f), order = randomUUID();
+  const acceptance = { schemaVersion: 2, lines: [standing.accepted] };
+  await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,3,0,617,'XXX',$3)", [f.subscription,f.sku,standing.accepted.skuRevisionId]);
+  await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [order,f.client]);
+  await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,clock_timestamp())", [order,f.subscription,JSON.stringify({ templateId: "synthetic", shippingAmountMinor: 0, acquisitionRef: null, renewalTerms: { version: "native.renewal-terms.v1" } })]);
+  const legacy = (await db.query("SELECT public.subscription_renewal_purchase_terms($1)::text AS bytes", [f.subscription])).rows;
+  await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [f.subscription,JSON.stringify(acceptance)]);
+  const current = (await db.query("SELECT public.subscription_renewal_purchase_terms_v2($1) AS facts", [f.subscription])).rows[0].facts;
+  const expected = JSON.parse(legacy[0].bytes);
+  expect(expected.renewalTerms.version).toBe("native.renewal-terms.v1");
+  expect(current).toEqual({ ...expected, renewalTerms: { ...expected.renewalTerms, version: "native.renewal-terms.v2", catalogAcceptance: acceptance } });
+  expect((await db.query("SELECT public.subscription_renewal_purchase_terms($1)::text AS bytes", [f.subscription])).rows).toEqual(legacy);
+});
+
 async function replacement(f: Awaited<ReturnType<typeof seed>>, id: string) {
   const predecessor = randomUUID(), leaf = randomUUID();
   await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type) VALUES('lifecycle:manual','manual')");
