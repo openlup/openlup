@@ -1,8 +1,8 @@
 # Production checklist
 
 Review the serving application and its selected bindings before admitting
-traffic. OpenLup is a development preview and does not offer a supported
-production installation; this checklist is not a support promise. Read
+traffic. Use the release’s supported installation composition; this checklist
+does not qualify an application or provider setup. Read
 [Versioning and stability](../../reference/stability.md) and the [current
 limits](../../reference/limits.md) before choosing an installation path.
 

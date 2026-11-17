@@ -35,7 +35,9 @@ An export snapshot covers only the package-export part of this contract.
 Documented application dependencies cannot be reclassified as internal to
 avoid compatibility obligations. Undeclared implementation details may change
 in any release; check the selected channel’s commitments before relying on a
-surface.
+surface. The [generated maturity reference](maturity.md) lists subpath classifications
+from each package’s `release-gates.json`; use that table rather than inferring
+stability from a namespace’s name.
 
 Stable subpaths follow SemVer from 1.0.0. Status, event, reason, command and
 capability unions and literal sets are open: adding a value is a minor change.
@@ -71,8 +73,8 @@ artifact does not itself contain npm packages.
 
 ## Support window
 
-Check the versioning policy for the current and previous major’s maintenance
-scope and end-of-life rules. Upgrade to the latest minor and reproduce a defect
+Check the versioning policy for the [supported minor and maintenance scope](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/.github/VERSIONING_AND_EOL.md#support-window)
+and end-of-life rules. Upgrade to the latest minor and reproduce a defect
 there before reporting it. Releases outside their advertised support window
 receive no fixes, including security fixes. Evaluation channels do not acquire
 a support window merely because a later major exists.
@@ -96,11 +98,9 @@ forking a released artifact.
 Upgrade all `@openlup/*` packages together. Where ordered major upgrades are
 required, do not skip a major even if doing so appears to work.
 
-Database changes are forward-only, with no supported downgrade path. Before
-upgrading, take a backup and test restoring it. Schema evolution expands the
-schema, deploys code compatible with old and new shapes, backfills data, then
-removes the old shape in a later release. A code rollback must work with the
-expanded schema and must not depend on a database down migration.
+The [database upgrade guide](../upgrade/database-migrations.md#check-application-compatibility)
+owns schema evolution and code-rollback limits. Before upgrading, take a backup
+and test restoring it. Application rollback must not depend on a database down migration.
 
 ## Release policy
 

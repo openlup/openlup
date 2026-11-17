@@ -163,15 +163,16 @@ new values or events it will consume. Install required schema additions before
 deploying code that depends on them, and update producers and dispatchers
 together before enabling newly introduced event flows.
 
-An incompatible change breaks a contract a running or rollback application
-depends on. Establish the required expand, compatible deployment, backfill and
-contract sequence before using it. Catalogue acceptance proves identities and
+Within 1.x, schema changes are additive: expand and backfill while preserving
+contracts used by running and rollback applications. Contraction, including
+removing or renaming an old shape, requires a major release. An incompatible
+change must establish its expand, compatible deployment, backfill and contract
+sequence before use. Catalogue acceptance proves identities and
 the selected object inventory, not old/new application compatibility, data
 backfill completion or a safe rollback. Reverting application files does not
 undo committed SQL or durable effects.
 
-This migration recipe provides no general upgrade guarantee. Verify the
-selected chain and application combination, including replay and refusal
+Verify the selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.
 
@@ -196,4 +197,8 @@ The existing 0.23-prefix invoicing backfill proof remains **historical** and
 separate. Contraction and adjacent-pair backfill remain **PARTIAL** until a real
 retirement ships, because the 0.41→0.42 pair has no object needed only by the
 older application. This proof adds no destructive migration, down-migration or
-new admission grammar, and does not establish a general rollback guarantee.
+new admission grammar. Code rollback is proved only for the qualified adjacent
+pair, selected PostgreSQL profile and retained reads, fresh writes, replay and
+subscription assertions on the unchanged upgraded schema. It does not undo SQL
+or durable effects, prove adjacent-pair backfill or contraction, or establish a
+general rollback guarantee.

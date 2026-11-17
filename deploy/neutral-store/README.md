@@ -1,6 +1,6 @@
 # Starter application images and local rollback
 
-Status: development-preview quickstart. Both image-only and local data-bearing
+Status: local image quickstart. Both image-only and local data-bearing
 application-image rollback have been exercised. Neither
 configuration health nor image rollback establishes a complete live store.
 The binder remains application-owned at
@@ -133,7 +133,8 @@ the complete database catalogue and host-owned configuration. Real-payment,
 method-setup and card-replacement actions remain unconfigured in this starter.
 The native rail uses provider profiles; a third provider is added by a declaration plus an adapter.
 The supplied portable composition covers the reference card provider only.
-No supported, stable or production-ready deployment is claimed.
+This local recipe does not qualify a production deployment. Use the
+[supported release composition](../../.github/INSTALL_SUPPORT_POLICY.md) for installation support.
 
 ## Current limits
 

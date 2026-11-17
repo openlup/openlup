@@ -5,7 +5,7 @@ returned by a frozen claim; a legacy claim keeps execution-time configuration.
 Issue and correction seller drift changes only for eligible first-claim rows;
 buyer, line allocation, tax, identity and execution ordering remain unchanged.
 
-Status: development-preview source guidance.
+Status: current source guidance for stable 1.x.
 
 Accounting owns document history and the contracts and ports surrounding fiscal
 document issue, correction, provider synchronization, settlement evidence and
@@ -124,7 +124,7 @@ not current passing results:
 - [accountingDocumentHistory.test.ts](accountingDocumentHistory.test.ts)
 - [accountingHandlers.test.ts](../../../server/domains/accounting/accountingHandlers.test.ts)
 
-Read [contribution checks](../../../CONTRIBUTING.md#development-preview-checks)
+Read [contribution checks](../../../CONTRIBUTING.md#contribution-checks)
 for execution scope, [canonical contracts](../../../docs/platform/CANONICAL_CONTRACTS.md)
 for money/status/idempotency boundaries, and
 [Data and migrations](../../../docs/platform/DATA_AND_MIGRATIONS.md) for durable

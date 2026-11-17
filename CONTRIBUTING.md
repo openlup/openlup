@@ -1,8 +1,8 @@
 # Contributing to OpenLup
 
-OpenLup is in development preview. Contributions are welcome, but a source
-checkout is not yet a stable framework release, a supported installation, or an
-upgrade contract. The later stable-framework gate owns those commitments.
+OpenLup 1.x has a [stable compatibility contract](packages/core/docs/guide/reference/stability.md#public-api).
+Contributions preserve that contract and the [support policy](.github/INSTALL_SUPPORT_POLICY.md);
+a source checkout alone is not a supported installation.
 
 Start with the [platform documentation](docs/platform/README.md), then read the
 [public agent guide](docs/platform/AGENT_GUIDE.md) before changing a platform
@@ -12,7 +12,7 @@ request does not automatically promote its subject to an official module.
 
 For documentation changes, use the short [public writing profile and page
 template](docs/platform/README.md#write-or-update-a-page). State which reader
-and current preview it serves, verify commands from the stated working directory,
+and release or profile it serves, verify commands from the stated working directory,
 and separate current behavior from proposals or dated history. Correct the
 owning page in the same contribution as a changed public contract; a link check
 alone does not establish that an install or feature works.
@@ -112,7 +112,9 @@ its users or operators can observe.
    adapter bindings only. It keeps its own persisted names and maps the
    package's neutral names in its adapter.
 
-## Development-preview checks
+<a id="development-preview-checks"></a>
+
+## Contribution checks
 
 Release tooling shares one coherent-set version rule: `0.N.P` with N at least
 1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1, without leading zeros or a
@@ -346,7 +348,7 @@ Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
 releases cannot change npm beneath the existing assertions. `.nvmrc` pins the same
 24.21.0 runtime locally; the npm contract is unchanged. From
-the root of a materialized development-preview tree, these are the commands the
+the root of a materialized public source tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job. The inherited `native-review` job additionally
 checks exact-candidate admission when the maintainer enables `OPENLUP_NATIVE_QUEUE`;
@@ -1356,9 +1358,9 @@ cannot ship them past their announced removal.
 Platform modules are contributed package-first: a reusable module becomes an
 `@openlup/*` package with documented extension seams, and the reference
 application consumes that package. Source-only changes are for the reference
-application and documentation. While `@openlup/core` is below 1.0, the
-packages are released as one set, independently of source previews: one set
-version `0.N.P` from one commit, with each package tagged
+application and documentation. The
+packages are released as one coherent set, independently of source previews: one set
+version `MAJOR.MINOR.PATCH` from one commit, with each package tagged
 `openlup-<package>-v<version>` at that commit and republished in every set. A
 reviewed pull request, either release preparation alone or an explicitly approved
 bounded implementation-and-set-bump contribution, runs
@@ -1441,8 +1443,8 @@ hash list. Merging preparation still grants no release authority.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe
-what the preview can and cannot demonstrate. They do not turn a preview checkout
-into a stable or supported artifact.
+the supported installation and the limits of source-publication evidence.
+A checkout that builds does not by itself become a supported artifact.
 
 ## Pull requests
 

@@ -1,6 +1,6 @@
 # Catalogue extension recipes
 
-Development preview, targeting the next package set. Use matching installed
+Experimental catalogue additions target the next package set. Use matching installed
 `@openlup/*` versions and Node 24. This offline tool checks definitions,
 references, exact quantities and supplied v1 draft facts. It grants no installation,
 migration, publication or activation authority. The minimal skeleton is a fictional
