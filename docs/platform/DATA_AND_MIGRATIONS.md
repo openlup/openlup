@@ -2247,7 +2247,7 @@ name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
-narrowing rules below. Class data does not pin table columns, constraint/index
+narrowing rules below. Apart from the assignment-default exception below, class data does not pin table columns, constraint/index
 names, function security mode, language, defaults or return type; feature SQL's
 whole-file/after-hashes and feature review retain those inventory and behavior
 duties. Synthetic shape acceptance establishes no implemented destination API.
@@ -2267,8 +2267,8 @@ a block naming only grant-only functions does not.
 The conditional DO shell requires an exact `pg_roles` existence guard around
 one constant privilege EXECUTE, on admitted targets, for the same role. Function
 privileges and table revokes retain one block per role, verb and object kind
-(FUNCTION or TABLE). The fixed notice-table allowance below additionally admits
-its grant and policy. Each listed, block-classified, same-slot census table has
+(FUNCTION or TABLE). The fixed baseline and notice-table allowances below additionally admit
+their grants and policies. Each listed, block-classified, same-slot census table has
 two separate `service_role` conditional blocks: one for `SELECT (client_id)` and
 one for its derived SELECT-only policy with `USING (true)` and no WITH CHECK.
 `anon` admits revokes only; for functions, `authenticated` and `service_role`
@@ -2280,11 +2280,12 @@ statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
 another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
-except for the fixed notice-table allowance below and the listed census tables'
+except for the fixed baseline and notice-table allowances below and the listed census tables'
 client-column SELECT allowance above. Census tables keep owner-only table ACLs
 and receive only their exact column grant and derived SELECT policy.
-The native paid-notice slot alone may name `insertSelectTables`, whose complete
-value is pinned by the reader to `["public.subscription_notice_refusals"]`.
+The native paid-notice slot may name `insertSelectTables` with the complete
+value `["public.subscription_notice_refusals"]`, pinned by the reader. A separate
+baseline allowance below uses the same key; neither allows arbitrary tables.
 It is an allowance, so it may precede the table's introduction. It authorizes
 nothing until that same forward creates the table earlier in its own file.
 Only the following exact statements are admitted inside the existing service-role
@@ -2301,7 +2302,40 @@ refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
 The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
 privileges; its one policy has that role alone. With the role absent, the guarded
 grant and policy do not run and the new table stays owner-only with RLS enabled.
-This INSERT/SELECT allowance applies only to the named notice table.
+This notice INSERT/SELECT allowance applies only to the named notice table.
+
+For a frozen-cohort baseline, `insertSelectTables` may instead be exactly
+`["public.commerce_offer_policy_rollout_baselines"]`. After unconditional
+same-file table creation, each of these exact statements uses its own existing
+`service_role` existence shell, including the inner final semicolon:
+
+```sql
+GRANT SELECT, INSERT ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;
+CREATE POLICY commerce_offer_policy_baselines_service_select ON public.commerce_offer_policy_rollout_baselines FOR SELECT TO service_role USING (true);
+CREATE POLICY commerce_offer_policy_baselines_service_insert ON public.commerce_offer_policy_rollout_baselines FOR INSERT TO service_role WITH CHECK (true);
+```
+
+All three statements must occur exactly once. The real catalogue requires RLS
+enabled, owner plus service SELECT/INSERT table privileges only, no column grants
+or grant options, and precisely these two permissive policies with this role and
+these predicates. With the role absent, the table remains owner-only with no
+policies. UPDATE/DELETE grants, broader policies, other tables and other roles
+remain refused. This admission installs no feature table and enables no runtime.
+
+The exact `existingTableStatements` list may also contain:
+
+```sql
+ALTER TABLE public.subscriptions ALTER COLUMN offer_policy_assignment_state SET DEFAULT 'pending_acquisition';
+```
+
+An earlier statement in that same list must add the column with the exact action
+`ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen'`.
+No conditional addition is allowed: PostgreSQL must reject a pre-existing column.
+This preserves existing rows' legacy marker and changes only future inserts;
+the real catalogue proves the column is fresh, non-null text with the exact new
+default. Other defaults, tables, columns, reordered or missing additions, combined
+destructive actions and unlisted switches refuse. Generic expand-only admission
+continues to refuse SET DEFAULT; this exception does not change that grammar.
 
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
@@ -2340,6 +2374,8 @@ operator a forward creates for another operand type cannot hide what it adds:
   any kind is owned by the migration role. By default it carries only its owner's
   table privileges and no column privilege. The pinned notice table may carry
   service-role SELECT/INSERT with RLS enabled and its single fixed policy.
+  The pinned baseline table may carry those privileges with its separate fixed
+  SELECT and INSERT policies; a missing role leaves neither grant nor policy.
   A listed, block-classified, same-slot census table keeps owner-only table ACLs
   and may carry only `client_id` SELECT for `service_role`, with RLS enabled and
   its derived permissive SELECT policy (`USING (true)`, no WITH CHECK); each of

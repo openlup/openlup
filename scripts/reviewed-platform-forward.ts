@@ -1977,6 +1977,14 @@ export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readon
   return result;
 }
 const nativeStoreInsertSelectTables = ["public.subscription_notice_refusals"];
+const baselineTable = "public.commerce_offer_policy_rollout_baselines";
+const baselinePrivileges = [
+  `GRANT SELECT, INSERT ON TABLE ${baselineTable} TO service_role;`,
+  `CREATE POLICY commerce_offer_policy_baselines_service_select ON ${baselineTable} FOR SELECT TO service_role USING (true);`,
+  `CREATE POLICY commerce_offer_policy_baselines_service_insert ON ${baselineTable} FOR INSERT TO service_role WITH CHECK (true);`,
+];
+const assignmentDefaultSwitch = "ALTER TABLE public.subscriptions ALTER COLUMN offer_policy_assignment_state SET DEFAULT 'pending_acquisition';";
+const assignmentLegacyColumn = "ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen'";
 const nativeStoreInsertSelectGrant = "GRANT SELECT, INSERT ON public.subscription_notice_refusals TO service_role;";
 const nativeStoreInsertSelectPolicy = "CREATE POLICY subscription_notice_refusals_runtime ON public.subscription_notice_refusals FOR ALL TO service_role USING (true) WITH CHECK (true);";
 const absorptionCensusPolicy = (table: string) => `${table.slice("public.".length)}_absorption_census`;
@@ -2071,8 +2079,14 @@ function nativeStoreAddAction(table: string, action: string): boolean {
   const checked = key ? action.slice(0, key.start) + action.slice(key.end) : action;
   return isExpandOnlyPlatformForward(`ALTER TABLE ${table} ${checked};`);
 }
-function nativeStoreExistingStatement(statement: string): { table: string; actions: string[] } {
+function nativeStoreExistingStatement(statement: string, earlier: readonly string[]): { table: string; actions: string[] } {
   const alter = nativeStoreAlter(statement);
+  // This changes future inserts only. The non-conditional ADD must first mark all
+  // existing rows in this same slot; PostgreSQL independently proves freshness.
+  if (statement === assignmentDefaultSwitch && earlier.some(sql => {
+    const prior = nativeStoreAlter(sql);
+    return prior?.table === "public.subscriptions" && prior.actions.includes(assignmentLegacyColumn);
+  })) return alter!;
   if (!alter || alter.actions.some(action => {
     const { tokens, complete } = platformSqlTokens(action, false, true);
     const nullable = complete && tokens.length === 6 && nativeWord(tokens, 0, "ALTER") && nativeWord(tokens, 1, "COLUMN") && nativeIdentifier(tokens[2]) !== null && nativeWord(tokens, 3, "DROP") && nativeWord(tokens, 4, "NOT") && nativeWord(tokens, 5, "NULL");
@@ -2119,15 +2133,15 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
         || slot.insertSelectTables?.includes(table) || !absorptionCensusClassified(slot, table)))) {
       throw new Error("reviewed native store absorption census requires unique qualified tables and exact block classifications");
     }
-    if (slot.insertSelectTables !== undefined) {
+    if (slot.insertSelectTables !== undefined && JSON.stringify(slot.insertSelectTables) !== JSON.stringify([baselineTable])) {
       if (slot.row !== "G8") throw new Error("reviewed native store insertSelectTables is G8-only");
       if (JSON.stringify(slot.insertSelectTables) !== JSON.stringify(nativeStoreInsertSelectTables)) throw new Error("reviewed native store insertSelectTables is pinned by the checker");
     }
     if (slot.existingTableStatements !== undefined) {
       if (!Array.isArray(slot.existingTableStatements) || new Set(slot.existingTableStatements).size !== slot.existingTableStatements.length) throw new Error("reviewed native store existing-table statements must be unique exact texts");
-      for (const statement of slot.existingTableStatements) {
+      for (const [index, statement] of slot.existingTableStatements.entries()) {
         if (typeof statement !== "string" || sqlStatements(statement, false, false, true).length !== 1) throw new Error("reviewed native store existing-table statement is not expand-only");
-        nativeStoreExistingStatement(statement);
+        nativeStoreExistingStatement(statement, slot.existingTableStatements.slice(0, index));
       }
       nativeStoreAddedForeignKeys(slot.existingTableStatements);
     }
@@ -2203,7 +2217,7 @@ const nativeStoreRolePrivilege = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*
 
 // The sole DO exception. Keep its grammar and role policy together so a later
 // control can tighten or remove it without changing the generic SQL splitter.
-function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>(), censusTables: string[] = []): { kind: "RLS" } | { kind: "POLICY" } | { kind: "CENSUS"; table: string; action: "grant" | "policy" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
+function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>(), censusTables: string[] = []): { kind: "RLS" } | { kind: "POLICY" } | { kind: "BASELINE"; action: number } | { kind: "CENSUS"; table: string; action: "grant" | "policy" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
   let sql = statement, exactSql = statement, roleGuard: string | undefined;
   const conditional = /^DO\b/iu.test(statement);
   if (conditional) {
@@ -2218,6 +2232,12 @@ function nativeStorePrivilege(statement: string, tables: Set<string>, insertSele
     if (!action) continue;
     if (!conditional || roleGuard !== "service_role") throw new Error("reviewed native store absorption census requires the service_role conditional shell");
     return { kind: "CENSUS", table, action };
+  }
+  const baselineAction = baselinePrivileges.indexOf(exactSql);
+  if (baselineAction >= 0) {
+    if (JSON.stringify(insertSelectTables) !== JSON.stringify([baselineTable]) || !tables.has(baselineTable)
+      || !conditional || roleGuard !== "service_role") throw new Error("reviewed native store baseline requires its pinned same-slot table and service_role conditional shell");
+    return { kind: "BASELINE", action: baselineAction };
   }
   if (exactSql === nativeStoreInsertSelectGrant || exactSql === nativeStoreInsertSelectPolicy) {
     if (!insertSelectTables.includes(nativeStoreInsertSelectTables[0]!)) throw new Error("reviewed native store INSERT/SELECT requires the pinned G8 table");
@@ -2375,6 +2395,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const dropped = new Set<string>(), triggers = new Set<string>(), views = new Set<string>(), revokedViews = new Set<string>(), completedChecks = new Set<string>(), completedUniques = new Set<string>();
   const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
   let pending: { kind: "CHECK" | "UNIQUE"; key: string } | undefined;
+  const baselineActions = new Set<number>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
     const lexical = platformSqlTokens(statement, false, true), tokens = lexical.tokens, head = nativeTableHead(tokens), action = nativeConstraintAction(statement);
@@ -2449,6 +2470,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables);
     if (privilege) {
+      if (privilege.kind === "BASELINE") {
+        if (baselineActions.has(privilege.action)) throw new Error("reviewed native store duplicate baseline privilege");
+        baselineActions.add(privilege.action); continue;
+      }
       if (privilege.kind === "CENSUS") {
         if (!tables.has(privilege.table)) throw new Error("reviewed native store absorption census requires a table created earlier in the same slot");
         const seen = privilege.action === "grant" ? censusGrants : censusPolicies;
@@ -2513,5 +2538,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if ([...views].some(view => !revokedViews.has(view))) throw new Error("reviewed native store created view missing PUBLIC revoke");
   if (data.size !== slot.dataStatements.length) throw new Error("reviewed native store named data statement missing");
   if (censusTables.some(table => !censusGrants.has(table) || !censusPolicies.has(table))) throw new Error("reviewed native store absorption census requires exactly one grant and policy per listed table");
+  if (slot.insertSelectTables?.includes(baselineTable) && baselineActions.size !== baselinePrivileges.length) throw new Error("reviewed native store baseline requires its grant and both policies");
   if (existingTablePosition !== existingTableStatements.length) throw new Error("reviewed native store existing-table statement missing");
 }
