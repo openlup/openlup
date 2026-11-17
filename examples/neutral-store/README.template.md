@@ -22,8 +22,8 @@ composition and authority. Both one-time and subscription purchases are included
 
 Read `node_modules/@openlup/core/docs/guide/README.md` after installation.
 `how-to/build/customize-the-starter.md` explains the local demonstration, edit
-loop, owned configuration and application-file upgrades. `docs/proof.md` records
-the extraction modes and evidence limits. Reconstructed extraction retains its
+loop, owned configuration and application-file upgrades. `docs/proof.md` gives the current verification recipe and links the extraction
+modes and archived evidence. Reconstructed extraction retains its
 explicit reason and does not claim original released-starter provenance.
 
 After installing dependencies, build and

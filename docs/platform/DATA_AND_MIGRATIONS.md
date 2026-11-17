@@ -3,6 +3,39 @@
 Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 
 
+## Find the current SQL function definition
+
+From the repository root, print the portable manifest's baseline followed by its
+ordered forwards, then search declarations for the exact function name:
+
+```sh
+node --input-type=module -e 'import { readFileSync } from "node:fs"; const m = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")); for (const unit of [m.baseline, ...m.forward]) console.log(unit.file);'
+rg -n -i '^[[:blank:]]*CREATE[[:blank:]]+(OR[[:blank:]]+REPLACE[[:blank:]]+)?FUNCTION[[:blank:]]+(public\.)?subscription_auto_resume_due[[:blank:]]*\(' db/platform/migrations
+rg -n -i '^[[:blank:]]*DROP[[:blank:]]+FUNCTION[[:blank:]]+(IF[[:blank:]]+EXISTS[[:blank:]]+)?(public\.)?subscription_auto_resume_due[[:blank:]]*\(' db/platform/migrations
+```
+
+No matching DROP exits 1; that is not a declaration-search failure. Read complete
+statements, including multiline headers. Compare full signatures, not just names:
+overloads are separate functions. Follow CREATE/replacement and DROP statements
+in manifest order, ignoring files outside the selected chain. For qualified
+installations, select that generation's baseline/forwards through the manifest
+selection used by the runner. For a partly applied database, stop at its exact
+applied ledger prefix. Managed SQL has its own baseline and ordered forward
+chain; never mix the two rails. Calls, GRANTs and dated evidence do not identify
+the current definition.
+
+At this revision the last portable declaration of
+`subscription_auto_resume_due(integer,timestamptz)` is in
+[`20261114110000_payment_method_refs.sql`](../../db/platform/migrations/20261114110000_payment_method_refs.sql).
+Its date assignment takes `GREATEST(stored_next_cycle_at + pause_duration, p_now)`;
+it does not move the cycle earlier. Read its guards and writes as well as the
+assignment. Earlier declarations describe earlier prefixes. Verify behavior
+through the [pause-duration witness](../../tests/postgres/subscriptionPauseDuration.test.ts)
+and the [recorded-method witness](../../tests/postgres/paymentMethodRefsPgtap.test.ts),
+rather than requiring any particular textual spelling of the clamp.
+Installed readers follow the
+[package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
+
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while

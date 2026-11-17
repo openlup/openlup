@@ -158,6 +158,34 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Keep demonstration sessions across a restart | Sessions live in the current process, have a bounded lifetime and disappear on restart. Issuance stops when the session store is full. | `starter_session_capacity_exceeded` at capacity |
 | Call an unbound operation | A missing host binding refuses. Customer and operator admission may refuse first. | `host_binding_required`; `customer_session_required` or `operator_required` before admission |
 
+## Sessions and private captures
+
+Demonstration sessions have a one-hour lifetime and a capacity of 1,000 in the
+current process; restarting loses them. Issuance at capacity refuses with
+`starter_session_capacity_exceeded`.
+
+The private developer mailbox uses git-ignored `.context` storage, with 0700
+directories and 0600 files. Tokens, recovery URLs and recipient email addresses
+require private filesystem access. Keep them out of application logs and
+recovery responses. A local capture is not evidence of external delivery.
+
+## Shipment projection limits
+
+Starter shipment list/detail reads use one repeatable-read, read-only snapshot
+after native human-admin authorization on each request. Unknown fields and
+invalid selectors refuse before shipment I/O. Reading a destination never
+prepares or pins a shipment; a pinned parcel retains its destination when the
+order's current destination changes.
+
+This reduced projection keeps the captured fulfillment client ID, parcel-line
+IDs and saved-address ID null. Provider kind and tracking number come from the
+same parcel-correlated reference; historical unknown namespaces remain null.
+Item reservation links are empty and reservation locations null. It supplies
+no contact revision, digest, correction target or baseline comparison. Missing
+required facts refuse rather than omit a selected shipment. Bind the separate
+[native operator reader](../how-to/build/fulfillment.md#bind-operator-commands-and-reads)
+when those recorded facts are needed.
+
 ## Subscription editors
 
 | Action | What happens | Refusal code |
@@ -189,7 +217,8 @@ Configured support appears as plain text with an account link; missing contact
 configuration is stated explicitly. Partner submission, operator list/transition
 and review read/submit/list/moderation need the runtime database connection.
 
-Intake enforces bounded requester and email quotas over a rolling window.
+Intake permits five requester attempts and three email attempts per 60-minute
+rolling window.
 Replay is checked before quotas. Repeated contact submissions conflict without
 a time-based deduplication expiry. Public success exposes only a case reference;
 contact details require the authorized operator view.
@@ -268,14 +297,17 @@ fails closed; denied attempts add no quota count. Both quota and identity
 records reset on process restart. Unpurchased-contact retention remains the
 application owner's duty.
 
-Purchase and sign-in share the configured email bound. Phone and postal-code
-fields share the native destination bounds. Cadences and the default use whole
-days within the accepted range; checkout bounds line count and units per line
-within the configured total. Stock and unit prices fit PostgreSQL integers, with
-positive prices for every offered mode. Tax legal-basis text and the trimmed,
-nonempty legal revision have bounded lengths. Consult the
-[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
-for exact values. Configuration outside these bounds refuses before startup.
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters;
+both demonstrations use 160. Phone and postal-code fields share the native
+destination bounds. `subscriptionOffers` owns cadences, defaults and per-SKU
+quantities; `offer.cadenceDays` is a derived UI projection. Configured days must
+be whole numbers from 1 through 90; larger values refuse with
+`starter_database_cadence_limit`. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and unit prices fit
+PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
+text is at most 200 characters; the shared legal revision is trimmed, nonempty
+and at most 64 characters. Configuration outside these bounds refuses before
+startup.
 
 ## Paid-order message capture
 
