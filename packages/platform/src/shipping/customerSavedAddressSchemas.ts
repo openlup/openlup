@@ -10,6 +10,12 @@ export interface CustomerSavedAddressValidationPolicy {
   country: string;
   countryAliases: readonly string[];
   phonePrefix: string;
+  /** Optional local-country formats. Effect-free: no I/O or authorization. Throws refuse the affected field. */
+  local?: {
+    normalizePostalCode(value: string): string;
+    isValidPostalCode(value: string): boolean;
+    normalizePhone(value: string): string | null;
+  };
   normalizeTaxId(value: string | null): string | null;
   isValidTaxId(value: string): boolean;
   messages: { name: string; country: string; phone: string; postalCode: string; taxId: string };
@@ -23,20 +29,41 @@ export function createCustomerSavedAddressRequestSchemas(policy: CustomerSavedAd
   const prefix = z.string().regex(/^[0-9]{1,4}$/).parse(policy.phonePrefix);
   const aliases = policy.countryAliases.map(value => z.string().trim().min(1).max(80).parse(value).toLowerCase());
   if (typeof policy.normalizeTaxId !== 'function' || typeof policy.isValidTaxId !== 'function'
+    || (policy.local !== undefined && (!policy.local || typeof policy.local.normalizePostalCode !== 'function'
+      || typeof policy.local.isValidPostalCode !== 'function' || typeof policy.local.normalizePhone !== 'function'))
     || Object.values(policy.messages).some(value => typeof value !== 'string' || !value.trim())) throw new Error('saved_address_policy_invalid');
   const normalizeCountry = (value: string): string | null => {
     const normalized = text(value).toLowerCase();
     if (normalized === country.toLowerCase() || aliases.includes(normalized)) return country;
     return /^[a-z]{2}$/i.test(normalized) ? normalized.toUpperCase() : null;
   };
-  const postal = (value: string, selectedCountry: string | null) => {
+  const postal = (value: string, selectedCountry: string | null): string | null => {
     const normalized = text(value).toUpperCase(), digits = normalized.replace(/\D/g, '');
+    if (selectedCountry === country && policy.local) {
+      try {
+        const result = policy.local.normalizePostalCode(normalized);
+        return typeof result === 'string' && result.length > 0 && result.length <= 24 ? result : null;
+      } catch { return null; }
+    }
     return selectedCountry === country && digits.length === 5 ? `${digits.slice(0, 2)}-${digits.slice(2)}` : normalized;
+  };
+  const validPostal = (value: string | null, selectedCountry: string | null): boolean => {
+    if (!value) return false;
+    if (selectedCountry === country && policy.local) {
+      try { return policy.local.isValidPostalCode(value) === true; } catch { return false; }
+    }
+    return selectedCountry === country ? /^\d{2}-\d{3}$/.test(value) : /^[A-Z0-9][A-Z0-9 -]{1,18}[A-Z0-9]$/.test(value);
   };
   const phone = (value: string | null, selectedCountry: string | null): string | null => {
     const raw = text(value);
     if (!raw) return null;
     if (selectedCountry !== country) return raw.length >= 6 && raw.length <= 32 ? raw : null;
+    if (policy.local) {
+      try {
+        const result = policy.local.normalizePhone(raw);
+        return typeof result === 'string' && result.length > 0 && result.length <= 64 ? result : null;
+      } catch { return null; }
+    }
     const digits = raw.replace(/\D/g, '');
     if (digits.length === 9) return `+${prefix}${digits}`;
     return digits.length === 9 + prefix.length && digits.startsWith(prefix) ? `+${digits}` : null;
@@ -51,12 +78,16 @@ export function createCustomerSavedAddressRequestSchemas(policy: CustomerSavedAd
       if (recipient && (recipient.length < 2 || /https?:\/\/|www\./i.test(recipient))) issue('recipientName', policy.messages.name);
       if (!selectedCountry) issue('country', policy.messages.country);
       if (value.contactPhone && !phone(value.contactPhone, selectedCountry)) issue('contactPhone', policy.messages.phone);
-      if (!normalizedPostal || !(selectedCountry === country ? /^\d{2}-\d{3}$/.test(normalizedPostal) : /^[A-Z0-9][A-Z0-9 -]{1,18}[A-Z0-9]$/.test(normalizedPostal))) issue('postalCode', policy.messages.postalCode);
+      if (!validPostal(normalizedPostal, selectedCountry)) issue('postalCode', policy.messages.postalCode);
       if (value.kind !== 'shipping') { const tax = policy.normalizeTaxId(value.taxId ?? null); if (tax && !policy.isValidTaxId(tax)) issue('taxId', policy.messages.taxId); }
-    }).transform(value => {
+    }).transform((value, context) => {
       const selectedCountry = normalizeCountry(value.country) || value.country.trim().toUpperCase();
+      const contactPhone = phone(value.contactPhone ?? null, selectedCountry), postalCode = postal(value.postalCode, selectedCountry);
+      // Repeat normalization as before, but keep callback failures inside validation even at this stage.
+      if (value.contactPhone && !contactPhone) context.addIssue({ code: 'custom', path: ['contactPhone'], message: policy.messages.phone });
+      if (!postalCode) { context.addIssue({ code: 'custom', path: ['postalCode'], message: policy.messages.postalCode }); return z.NEVER; }
       return { ...value, recipientName: text(value.recipientName ?? null) || null,
-        contactPhone: phone(value.contactPhone ?? null, selectedCountry), postalCode: postal(value.postalCode, selectedCountry), country: selectedCountry,
+        contactPhone, postalCode, country: selectedCountry,
         companyName: value.kind === 'shipping' ? null : value.companyName ?? null,
         taxId: value.kind === 'shipping' ? null : policy.normalizeTaxId(value.taxId ?? null) };
     });
