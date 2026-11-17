@@ -1596,6 +1596,7 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         code: string;
         dimension: CatalogQuantityDimension;
         integral: boolean;
+        /** @experimental */
         factor?: CatalogUnitFactor;
     }[];
     netContentUnits: string[];
@@ -1613,11 +1614,17 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         key: string;
         kind: "boolean";
     })[];
+    /** @experimental */
     attributes?: readonly AttributeDefinition[];
+    /** @experimental */
     axes?: readonly CatalogAxisDefinition[];
+    /** @experimental */
     validatorRef?: string;
+    /** @experimental */
     subscriptionProfileRef?: CatalogProductTypeRef;
+    /** @experimental */
     taxClass?: string;
+    /** @experimental */
     labels?: Readonly<Record<string, string>>;
     validateContent: (content: unknown) => readonly CatalogDraftIssue[];
 }

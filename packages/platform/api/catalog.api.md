@@ -2762,6 +2762,7 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         code: string;
         dimension: CatalogQuantityDimension;
         integral: boolean;
+        /** @experimental */
         factor?: CatalogUnitFactor;
     }[];
     netContentUnits: string[];
@@ -2779,11 +2780,17 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         key: string;
         kind: "boolean";
     })[];
+    /** @experimental */
     attributes?: readonly AttributeDefinition[];
+    /** @experimental */
     axes?: readonly CatalogAxisDefinition[];
+    /** @experimental */
     validatorRef?: string;
+    /** @experimental */
     subscriptionProfileRef?: CatalogProductTypeRef;
+    /** @experimental */
     taxClass?: string;
+    /** @experimental */
     labels?: Readonly<Record<string, string>>;
     validateContent: (content: unknown) => readonly CatalogDraftIssue[];
 }
@@ -2904,6 +2911,7 @@ import { type CatalogDraftReadiness } from "./draftValidation.js";
 export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
     store: CatalogDraftStorePort<Record>;
     registry: CatalogProductTypeRegistry;
+    /** @experimental */
     attributeReferences?: CatalogAttributeReferencePort;
     authorizeOperator: (context: Context) => Promise<CatalogDraftOperator | null>;
 }
@@ -6145,7 +6153,9 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
     kind: "subscription_legacy";
     legacyResolved: ResolvedPrice;
 });
-export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
+export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch"
+/** @experimental */
+ | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/catalogPriceSetup.d.ts
 
@@ -6426,10 +6436,14 @@ export interface SubscriptionPricePolicyCanonicalInput extends SubscriptionPrice
 }
 export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicyCanonicalInput {
     digest: string;
-    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples. */
+    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples.
+     * @experimental
+     */
     closedFromOpen?: boolean;
 }
-export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
+export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch"
+/** @experimental */
+ | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/provenance.d.ts
 
