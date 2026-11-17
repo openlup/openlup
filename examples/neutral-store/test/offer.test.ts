@@ -29,6 +29,57 @@ function offerFixture(original: StoreConfig): StoreConfig {
   return config;
 }
 
+for (const original of Object.values(configurations)) {
+  test(`${original.id}: current owned demonstration passes startup unchanged`, () => {
+    assert.doesNotThrow(() => assertConfig(structuredClone(original)));
+  });
+}
+
+test('startup accepts 100 cart units and names the refusal at 101', () => {
+  const config = offerFixture(Object.values(configurations)[0]!);
+  config.offer.maxUnits = 100;
+  assert.doesNotThrow(() => assertConfig(config));
+  config.offer.maxUnits = 101;
+  assert.throws(() => assertConfig(config), { message: 'starter_units_above_representation' });
+});
+
+for (const kind of ['classic', 'sized'] as const) {
+  for (const domain of [set, (max: number) => range(1, max, 1)]) {
+    test(`${kind}: startup accepts per-SKU ${domain(99).kind} maximum 99 and names the refusal at 100`, () => {
+      const config = offerFixture(Object.values(configurations)[0]!);
+      const plan = config.subscriptionOffers[kind];
+      const sku = config.subscriptionEditing.catalogue[0]!.sku;
+      plan.bySku = { ...plan.bySku, [sku]: [{ days: plan.days, quantities: domain(99) }] };
+      assert.doesNotThrow(() => assertConfig(config));
+      plan.bySku = { ...plan.bySku, [sku]: [{ days: plan.days, quantities: domain(100) }] };
+      assert.throws(() => assertConfig(config), { message: 'starter_units_above_representation' });
+    });
+  }
+
+  test(`${kind}: startup accepts 50 combined base/add-on lines and names the refusal at 51`, () => {
+    const config = offerFixture(Object.values(configurations)[0]!);
+    const plan = config.subscriptionOffers[kind];
+    plan.maximumBaseLines = 38;
+    plan.maximumAddonLines = 12;
+    assert.doesNotThrow(() => assertConfig(config));
+    plan.maximumBaseLines++;
+    assert.throws(() => assertConfig(config), { message: 'starter_lines_above_representation' });
+    plan.maximumBaseLines--;
+    plan.maximumAddonLines++;
+    assert.throws(() => assertConfig(config), { message: 'starter_lines_above_representation' });
+  });
+}
+
+test('startup accepts donor quantity range 1..99 with six base and twelve add-on lines', () => {
+  const config = offerFixture(Object.values(configurations)[0]!);
+  for (const plan of Object.values(config.subscriptionOffers)) {
+    Object.assign(plan, { maximumUnits: 1782, maximumBaseLines: 6, maximumAddonLines: 12 });
+    plan.bySku = Object.fromEntries(config.subscriptionEditing.catalogue.map(product =>
+      [product.sku, [{ days: plan.days, quantities: range(1, 99, 1) }]]));
+  }
+  assert.doesNotThrow(() => assertConfig(config));
+});
+
 for (const config of Object.values(configurations).map(offerFixture)) {
   test(`${config.id}: one-time offer uses integer money and configured shipping`, () => {
     assertConfig(config);
