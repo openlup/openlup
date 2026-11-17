@@ -448,7 +448,7 @@ const DEFECTS: Defect[] = [
   { control: "the same tarball: npm's bytes match its integrity and unpack to the packed tar", plant: "gzip bytes compared", in: "release", from: "update(gunzipSync(bytes))", to: "update(bytes)" },
   { control: "the same tarball: npm's bytes match its integrity and unpack to the packed tar", plant: "npm's integrity unchecked", in: "release", from: ".digest(\"base64\")}` !== dist.integrity) throw", to: ".digest(\"base64\")}` === \"\") throw" },
   { control: "the same tarball: npm's bytes match its integrity and unpack to the packed tar", plant: "any tarball address", in: "release", from: "if (dist.tarball !== url) throw", to: "if (false) throw" },
-  { control: "a patch set keeps each package's API snapshot from its previous set", plant: "no patch check", in: "release", from: "  if (patch === 0) return;\n", to: "  return;\n" },
+  { control: "a patch set keeps each package's API snapshot from its previous set", plant: "no patch check", in: "release", from: "  if (patch !== 0) {\n", to: "  if (false) {\n" },
   { control: "a patch set keeps each package's API snapshot from its previous set", plant: "a package without an earlier tag admitted", in: "release", from: "if (previous === undefined) throw new Error(", to: "if (previous === undefined) return; if (false) throw new Error(" },
   { control: "a patch set keeps each package's API snapshot from its previous set", plant: "the whole package compared, not its API", in: "release", from: "\"--\", `${directory}/api`]", to: "\"--\", directory]" },
   { control: "a patch set keeps each package's API snapshot from its previous set", plant: "the earliest earlier tag compared", in: "release", from: ".sort((left, right) => right.patch - left.patch)", to: ".sort((left, right) => left.patch - right.patch)" },
@@ -487,7 +487,7 @@ async function load(defect: Defect): Promise<Modules> {
   expect(source.split(defect.from), "the anchor occurs exactly once").toHaveLength(2);
   // A function replacer, so a `$` in the source is never read as a replacement pattern.
   const planted = source.replace(defect.from, () => defect.to);
-  const bound = planted.replace(/(\bfrom\s+)"(\.\.?\/[^"]+)"/gu, (_, keyword: string, specifier: string) => `${keyword}${JSON.stringify(resolve(dirname(file), specifier))}`);
+  const bound = planted.replace('from "typescript"', `from ${JSON.stringify(import.meta.resolve("typescript"))}`).replace(/(\bfrom\s+)"(\.\.?\/[^"]+)"/gu, (_, keyword: string, specifier: string) => `${keyword}${JSON.stringify(resolve(dirname(file), specifier))}`);
   const copy = join(scratch, `mutant-${++mutants}-${FILES[defect.in]}`);
   writeFileSync(copy, bound);
   return { ...committed, [defect.in]: await import(pathToFileURL(copy).href), releaseScript: defect.in === "release" ? copy : committed.releaseScript };

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GithubFetch } from "../source-preview-release.ts";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
-import { RELEASE_APP, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, setReleaseInputs, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
+import { RELEASE_APP, assertPatchSetApiUnchanged, assertRegistryReady, assertReleaseCandidate, assertTagAbsent, assertVersionUnpublished, checkPackageDraft, setReleaseInputs, packageReleaseInputs, preflightPackageRelease, preparePackageRelease, readPackument, verifyPackageRelease } from "./package-release.ts";
 
 
 /** Minimal committed source snapshot for release falsifiers; classification stays explicit. */
@@ -156,8 +156,28 @@ describe("the release candidate at the target commit", () => {
     write("packages/core/package.json", JSON.stringify(manifest(version, publish)));
     git("init", "--quiet"); snapshotFixture(repo, write); git("add", "--all"); git("commit", "--quiet", "-m", "fixture");
     const head = git("rev-parse", "HEAD");
-    return { repo, out, head, write, input: packageReleaseInputs("core", "0.11.0", head, "note\n") };
+    return { repo, out, head, write, git, input: packageReleaseInputs("core", "0.11.0", head, "note\n") };
   }
+
+  it("refuses removed re-export names in a stable minor set and accepts additions", () => {
+    const ready = repository("1.0.0"), path = "packages/core/api/root.api.md";
+    ready.write("packages/core/release-gates.json", JSON.stringify({ packageSurface: { ".": { entrypoint: "dist/a.d.ts", snapshot: "api/root.api.md" } } }));
+    const report = (entry: string) => `# . API declaration snapshot\n\n## dist/a.d.ts\n\n\`\`\`ts\n${entry}\n\`\`\`\n## dist/b.d.ts\n\n\`\`\`ts\nexport declare const kept: string, removed: string;\n\`\`\`\n## dist/c.d.ts\n\n\`\`\`ts\nexport declare const starName: string;\n\`\`\`\n`;
+    const entry = 'export { kept, removed as dropped } from "./b.js"; export * from "./c.js"; export type { External } from "@else/pkg";';
+    const commit = () => { ready.git("add", "--all"); ready.git("commit", "--quiet", "-m", "report"); return ready.git("rev-parse", "HEAD"); };
+    ready.write(path, report(entry));
+    const baseline = commit();
+    ready.git("-c", "user.name=openlup-release[bot]", "-c", "user.email=334697227+openlup-release[bot]@users.noreply.github.com", "tag", "-a", "-m", "OpenLup package @openlup/core 1.0.0.", "openlup-core-v1.0.0", baseline);
+    ready.write(path, report(`${entry} export declare const added: string;`));
+    expect(() => assertPatchSetApiUnchanged(ready.repo, "packages/core", "1.1.0", commit())).not.toThrow();
+    ready.write(path, report(entry.replace(", removed as dropped", "")));
+    const removed = commit();
+    ready.write(path, report(entry)); // Only the committed target counts.
+    expect(() => assertPatchSetApiUnchanged(ready.repo, "packages/core", "1.1.0", removed)).toThrow("Removed exports: @openlup/core/./dropped; a removal needs a major set");
+    for (const version of ["0.12.0", "2.0.0"]) expect(() => assertPatchSetApiUnchanged(ready.repo, "packages/core", version, removed)).not.toThrow();
+    ready.git("rm", "-f", path);
+    expect(() => assertPatchSetApiUnchanged(ready.repo, "packages/core", "1.1.0", commit())).toThrow("Removed exports: @openlup/core/./dropped, @openlup/core/./kept, @openlup/core/./starName; a removal needs a major set");
+  });
 
   it("requires the clean target, a publishable package and exactly the requested manifest version", () => {
     const ready = repository();
@@ -252,7 +272,7 @@ describe("package-release.ts started as a command", () => {
   const ARGV = ["process", "argv"].join(".");
   const FAIL_CLOSED = "  // Started as a package-release command, yet not detected as the entry module: an exit 0 would skip every check.\n  console.error(`package release: ${" + ARGV + "[1]} started, but this module is not its entry; refusing`);\n  process.exitCode = 1;\n";
   /** `source` with its relative imports bound to the committed modules, so a copy runs from anywhere. */
-  const bound = (source: string) => source.replace(/(\bfrom\s+)"(\.\.?\/[^"]+)"/gu, (_, keyword: string, specifier: string) => `${keyword}${JSON.stringify(resolve(dirname(file), specifier))}`);
+  const bound = (source: string) => source.replace('from "typescript"', `from ${JSON.stringify(import.meta.resolve("typescript"))}`).replace(/(\bfrom\s+)"(\.\.?\/[^"]+)"/gu, (_, keyword: string, specifier: string) => `${keyword}${JSON.stringify(resolve(dirname(file), specifier))}`);
   // PACKAGE "../core" makes the command refuse at once, which shows that it ran.
   const run = (args: string[]) => {
     const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;

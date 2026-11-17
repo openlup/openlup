@@ -29,6 +29,7 @@ import { appendFileSync, readFileSync, realpathSync, writeFileSync } from "node:
 import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
+import ts from "typescript";
 import { assertSourceReleaseSnapshot } from "../oss-source-release-contract.ts";
 import { annotatedTag, type GithubFetch } from "../source-preview-release.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_DISPATCH, SET_VERSION, parsePackageReleaseTag, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
@@ -170,8 +171,37 @@ function appReleaseTags(root: string, directory: string, pattern: string): Array
   });
 }
 
+/** Resolve each report in isolation, using the existing surface's entry file. */
+function reportExportNames(root: string, directory: string, ref: string): Set<string> {
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  const reports = new Set(git("ls-tree", "-r", "--name-only", ref, "--", `${directory}/api`).trim().split("\n"));
+  const surface = JSON.parse(git("show", `${ref}:${directory}/release-gates.json`)).packageSurface ?? {};
+  const names = new Set<string>();
+  for (const [subpath, { entrypoint, snapshot }] of Object.entries(surface) as Array<[string, { entrypoint: string; snapshot: string }]>) {
+    if (!reports.has(`${directory}/${snapshot}`)) continue;
+    const report = git("show", `${ref}:${directory}/${snapshot}`);
+    const files = new Map([...report.matchAll(/^## (dist\/[^\n]+)\n\n```ts\n([\s\S]*?)^```/gmu)].map((match) => [resolve("/", match[1]!), match[2]!]));
+    const options = { noLib: true, types: [], moduleResolution: ts.ModuleResolutionKind.Node10 };
+    const host: ts.CompilerHost = { ...ts.createCompilerHost(options),
+      getCurrentDirectory: () => "/", directoryExists: () => true,
+      fileExists: (file) => files.has(file), readFile: (file) => files.get(file),
+      getSourceFile: (file, languageVersion) => files.has(file) ? ts.createSourceFile(file, files.get(file)!, languageVersion, true) : undefined,
+    };
+    const program = ts.createProgram([resolve("/", entrypoint)], options, host), checker = program.getTypeChecker();
+    const entry = program.getSourceFile(resolve("/", entrypoint));
+    const module = entry && checker.getSymbolAtLocation(entry);
+    if (!module) throw new Error(`${ref}:${directory}/${snapshot} has no declaration entry ${entrypoint}`);
+    for (const symbol of checker.getExportsOfModule(module)) {
+      // Cross-package re-exports cannot resolve within one report; omit them on both sides.
+      const declaration = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      if (declaration.declarations?.length) names.add(`@openlup/${directory.slice("packages/".length)}/${subpath}/${symbol.name}`);
+    }
+  }
+  return names;
+}
+
 /**
- * A patch set `MAJOR.MINOR.PATCH`, PATCH above 0, only fixes: the package's API snapshot (`<directory>/api/`) at
+ * Stable sets preserve export names within a major. A patch set `MAJOR.MINOR.PATCH`, PATCH above 0, only fixes: the package's API snapshot (`<directory>/api/`) at
  * `target` equals the one at its previous set, the highest release tag `openlup-<package>-vMAJOR.MINOR.<p>`
  * with p below PATCH that the release App made. A package with no such tag joins the set at a minor set.
  */
@@ -179,18 +209,29 @@ export function assertPatchSetApiUnchanged(root: string, directory: string, vers
   const set = SET_VERSION.test(version) ? version.split(".") : undefined;
   if (!set) throw new Error(`${version} is not a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1)`);
   const minor = `${set[0]}.${set[1]}.`, patch = Number(set[2]);
-  if (patch === 0) return;
-  const name = directory.slice("packages/".length);
-  const earlier = appReleaseTags(root, directory, `openlup-${name}-v${minor}*`).flatMap(({ tag, version: other }) => {
-    return other.startsWith(minor) && Number(other.slice(minor.length)) < patch ? [{ tag, patch: Number(other.slice(minor.length)) }] : [];
-  });
-  const previous = earlier.sort((left, right) => right.patch - left.patch)[0]?.tag;
-  if (previous === undefined) throw new Error(`${version} is a patch set, but ${name} has no earlier ${minor}<p> set tag; a package joins the set at a minor set`);
-  try {
-    execFileSync("git", ["diff", "--quiet", previous, target, "--", `${directory}/api`], { cwd: root, stdio: "ignore" });
-  } catch (error) {
-    if ((error as { status?: unknown }).status === 1) throw new Error(`${directory}/api differs from ${previous}; a patch set only fixes, so an API change is a minor set`);
-    throw error;
+  if (patch !== 0) {
+    const name = directory.slice("packages/".length);
+    const earlier = appReleaseTags(root, directory, `openlup-${name}-v${minor}*`).flatMap(({ tag, version: other }) => {
+      return other.startsWith(minor) && Number(other.slice(minor.length)) < patch ? [{ tag, patch: Number(other.slice(minor.length)) }] : [];
+    });
+    const previous = earlier.sort((left, right) => right.patch - left.patch)[0]?.tag;
+    if (previous === undefined) throw new Error(`${version} is a patch set, but ${name} has no earlier ${minor}<p> set tag; a package joins the set at a minor set`);
+    try {
+      execFileSync("git", ["diff", "--quiet", previous, target, "--", `${directory}/api`], { cwd: root, stdio: "ignore" });
+    } catch (error) {
+      if ((error as { status?: unknown }).status === 1) throw new Error(`${directory}/api differs from ${previous}; a patch set only fixes, so an API change is a minor set`);
+      throw error;
+    }
+  }
+  if (Number(set[0]) >= 1) {
+    const previous = appReleaseTags(root, directory, `openlup-${directory.slice("packages/".length)}-v${set[0]}.*`)
+      .filter(({ version: other }) => releaseVersionAbove(version, other))
+      .sort((left, right) => releaseVersionAbove(left.version, right.version) ? -1 : 1)[0]?.tag;
+    if (previous) {
+      const current = reportExportNames(root, directory, target);
+      const removed = [...reportExportNames(root, directory, previous)].filter((name) => !current.has(name));
+      if (removed.length) throw new Error(`Removed exports: ${removed.sort().join(", ")}; a removal needs a major set`);
+    }
   }
 }
 
