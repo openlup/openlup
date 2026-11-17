@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, installCatalogDefinitions, type CatalogDraftStoredApplyResult as CatalogDraftApplyResult,
-  type CatalogDraftStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2 } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, installCatalogDefinitions, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
+  type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -64,6 +64,25 @@ beforeAll(async () => {
     const canonicalCommand = canonicalCatalogDraftJson(command), fingerprint = createHash("sha256").update(canonicalCommand).digest("hex"), actorId = "operator:Synthetic-v2";
     const result = await journeyRpc<CatalogDraftApplyResult>(source.runtime, "catalog_draft_apply", [canonicalCommand, fingerprint, actorId]);
     expect(result).toMatchObject({ outcome: "committed", record: { payload: { schemaVersion: 2 } } });
+    commands.push({ canonicalCommand, fingerprint, actorId, result });
+  }
+  const v3DraftId = randomUUID(), v3ProductId = randomUUID(), v3SkuId = randomUUID();
+  const publicationPayload: CatalogDraftPayloadV3 = { ...payload, schemaVersion: 3,
+    product: { ...payload.product, id: v3ProductId, sharedContent: { schemaVersion: 1, catalogAction: "create", presentation: {},
+      offerMemberships: [{ skuCode: "V3-TRANSFER", offerVersion: "example:offer", admitted: false }],
+      requestedModes: [{ skuCode: "V3-TRANSFER", modes: [] }], publicationSkus: [] } },
+    skus: [{ ...payload.skus[0], id: v3SkuId, productId: v3ProductId, code: "V3-TRANSFER", priceOperations: [] }],
+    publication: { kind: "compensation", evidence: {}, operations: [
+      { op: "set_derived_sku_facts", skuCode: "OMITTED", documentRevisionNo: 1, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 }, facts: { derived: 12 } },
+    ] } };
+  for (const command of [
+    { schemaVersion: 3, action: "create", draftId: v3DraftId, commandKey: "v3:create", expectedRevision: 0, payload: publicationPayload },
+    { schemaVersion: 3, action: "abandon", draftId: v3DraftId, commandKey: "v3:abandon", expectedRevision: 1 },
+    { schemaVersion: 3, action: "resume", draftId: v3DraftId, commandKey: "v3:resume", expectedRevision: 2 },
+  ]) {
+    const canonicalCommand = canonicalCatalogDraftJson(command), fingerprint = createHash("sha256").update(canonicalCommand).digest("hex"), actorId = "operator:Synthetic-v3";
+    const result = await journeyRpc<CatalogDraftApplyResult>(source.runtime, "catalog_draft_apply", [canonicalCommand, fingerprint, actorId]);
+    expect(result).toMatchObject({ outcome: "committed", record: { payload: publicationPayload } });
     commands.push({ canonicalCommand, fingerprint, actorId, result });
   }
   // A populated live catalogue proves preservation as well as absence of

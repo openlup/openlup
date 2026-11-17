@@ -1450,6 +1450,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4722,6 +4726,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122160000_catalog_drafts_v3.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5162,6 +5170,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/draftV3.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/foundation.ts",
       "class": "public-output"
     },
@@ -5215,6 +5227,10 @@
     },
     {
       "path": "packages/platform/src/catalog/draftV2Validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftV3Schemas.ts",
       "class": "public-output"
     },
     {
@@ -9411,6 +9427,10 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogDraftHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogDraftV3.test.ts",
       "class": "public-output"
     },
     {
