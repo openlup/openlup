@@ -1775,3 +1775,51 @@ describe("closed same-SKU composite foreign key", () => {
     expect(() => listed([column, fk], column + fk + extra)).toThrow(/reviewed native store/u);
   });
 });
+
+
+describe("closed successor new-table RESTRICT foreign keys", () => {
+  const create = `CREATE TABLE public.catalog_sku_successors (
+    predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,
+    successor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,
+    publication_id uuid NOT NULL REFERENCES public.catalog_publications(id) ON DELETE RESTRICT,
+    PRIMARY KEY (predecessor_sku_id, successor_sku_id),
+    CHECK (predecessor_sku_id <> successor_sku_id)
+  );`;
+  it("admits exactly the successor new-table RESTRICT shape without broadening expand-only modes", () => {
+    for (const statement of [create, create.toLowerCase().replaceAll("on delete", "on /* action */\n delete")]) {
+      expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
+      expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+      expect(isExpandOnlyPlatformForward(statement, true)).toBe(false);
+    }
+  });
+  it.each([
+    ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`delete ${action}`, create.replace("DELETE RESTRICT", `DELETE ${action}`)]),
+    ["implicit action", create.replace(" ON DELETE RESTRICT", "")],
+    ["update action", create.replace("DELETE RESTRICT", "DELETE RESTRICT ON UPDATE RESTRICT")],
+    ["deferrable", create.replace("DELETE RESTRICT", "DELETE RESTRICT DEFERRABLE")],
+    ["match full", create.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+    ["other table", create.replace("public.catalog_sku_successors", "public.other_successors")],
+    ["other SKU target", create.replace("public.catalog_skus", "public.other_skus")],
+    ["other publication target", create.replace("public.catalog_publications", "public.other_publications")],
+    ["other target key", create.replace("(id)", "(other_id)")],
+    ["target arity", create.replace("(id)", "(id, other_id)")],
+    ["composite source", create.replace("predecessor_sku_id uuid NOT NULL REFERENCES", "predecessor_sku_id uuid NOT NULL, FOREIGN KEY (predecessor_sku_id, successor_sku_id) REFERENCES")],
+    ["PK order", create.replace("PRIMARY KEY (predecessor_sku_id, successor_sku_id)", "PRIMARY KEY (successor_sku_id, predecessor_sku_id)")],
+    ["PK arity", create.replace("PRIMARY KEY (predecessor_sku_id, successor_sku_id)", "PRIMARY KEY (predecessor_sku_id)")],
+    ...["predecessor_sku_id", "successor_sku_id", "publication_id"].map(column => [`nullable ${column}`, create.replace(`${column} uuid NOT NULL`, `${column} uuid`)]),
+    ["wrong type", create.replace("publication_id uuid", "publication_id text")],
+    ["missing check", create.replace(",\n    CHECK (predecessor_sku_id <> successor_sku_id)", "")],
+    ["broader check", create.replace("<>", "=")],
+    ["extra column", create.replace("PRIMARY KEY", "extra text, PRIMARY KEY")],
+    ["conditional creation", create.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS")],
+    ["quoted syntax", create.replace("predecessor_sku_id uuid", '"predecessor_sku_id" uuid')],
+    ["literal syntax", create.replace("predecessor_sku_id uuid", "'predecessor_sku_id' uuid")],
+    ["literal smuggling", create.replace("<> successor_sku_id", "<> successor_sku_id OR 'DELETE' = 'DELETE'")],
+    ["comment smuggling", create.replace("RESTRICT,", "RESTRICT /*,*/ SELECT 1,")],
+    ["control character", create.replace(" ON DELETE", " ON\rDELETE")],
+    ["incomplete tokens", create.replace("<> successor_sku_id", "<> successor_sku_id \\ ")],
+    ...["SELECT 1;", "DELETE FROM public.catalog_skus;", "ALTER TABLE public.catalog_skus DROP COLUMN id;", "GRANT SELECT ON TABLE public.catalog_sku_successors TO PUBLIC;", "UPDATE public.catalog_sku_successors SET publication_id=NULL;"].map(extra => [`appended ${extra}`, create + extra]),
+  ])("refuses successor new-table shape: %s", (_label, statement) => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
+});

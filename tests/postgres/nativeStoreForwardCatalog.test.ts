@@ -283,6 +283,31 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     c.confmatchtype::text AS match, c.convalidated AS validated, c.condeferrable AS deferrable,
     c.condeferred AS deferred, c.conkey::int[] AS columns, c.confkey::int[] AS keys
     FROM pg_constraint c WHERE c.contype='f'`)).rows;
+  // This is additive to every generic owner/ACL/catalogue guard above and below.
+  // Read the installed keys independently of the statement classifier.
+  const successors = after.relations.find(row => row.name === "public.catalog_sku_successors" && !oldRelations.has(row.oid));
+  for (const key of installedKeys) if (!oldRelations.has(key.relation) && key.deletion === "r" && key.relation !== successors?.oid) fail("new-table RESTRICT FK is outside the successor shape");
+  if (successors) {
+    const columns = after.columns.filter(row => row.rel === successors.name);
+    const names = ["predecessor_sku_id", "successor_sku_id", "publication_id"];
+    if (successors.kind !== "r" || JSON.stringify(columns.map(row => row.name)) !== JSON.stringify(names)
+      || columns.some(row => row.attrs.atttypid !== "2950" || row.attrs.attnotnull !== true || row.default !== null || row.attrs.attisdropped !== false)) fail("successor columns differ from the closed UUID NOT NULL shape");
+    const keys = installedKeys.filter(key => key.relation === successors.oid);
+    if (keys.length !== 3) fail("successor requires exactly three RESTRICT FKs");
+    for (const [index, name] of names.entries()) {
+      const reference = index === 2 ? "public.catalog_publications" : "public.catalog_skus";
+      const target = before.relations.find(row => row.name === reference && row.kind === "r");
+      const id = before.columns.find(row => row.rel === reference && row.name === "id");
+      const key = keys.find(key => JSON.stringify(key.columns) === JSON.stringify([columns[index]!.attrs.attnum]));
+      if (!key || !target || !id || key.target !== target.oid || JSON.stringify(key.keys) !== JSON.stringify([id.attrs.attnum])
+        || key.deletion !== "r" || key.update !== "a" || key.match !== "s" || !key.validated || key.deferrable || key.deferred) fail(`successor FK ${name} differs from its exact target, arity or RESTRICT action`);
+    }
+    const constraints = after.constraints.filter(row => row.rel === successors.name);
+    const primary = constraints.filter(row => row.def.startsWith("PRIMARY KEY"));
+    const check = constraints.filter(row => row.def.startsWith("CHECK"));
+    if (constraints.length !== 5 || primary.length !== 1 || primary[0]!.def !== "PRIMARY KEY (predecessor_sku_id, successor_sku_id)"
+      || check.length !== 1 || check[0]!.def !== "CHECK ((predecessor_sku_id <> successor_sku_id))" || !check[0]!.validated) fail("successor primary key or self-link CHECK differs from its closed shape");
+  }
   const freshKeys = installedKeys.filter(key => oldRelations.has(key.relation) && !before.constraints.some(old => old.rel === oldRelations.get(key.relation)!.name && old.name === key.name) && (["c", "n"].includes(key.deletion) || key.name === "subscription_lines_catalog_sku_revision_fkey"));
   if (freshKeys.length !== foreignKeys.length) fail("FK delete actions differ from the slot's existing-table list");
   for (const key of foreignKeys) {
@@ -917,6 +942,64 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     // The pre-existing-column case installs it before the snapshot, then only adds the FK.
     const actual=label==="a pre-existing column"?addedFk:sql;
     await expect(checkForward(pool,label==="an unlisted action"?SYNTHETIC_SLOT:fkSlot,forward(CREATED_OK,actual),false,setup)).rejects.toThrow(message);
+  });
+  const successorCreate = `CREATE TABLE public.catalog_sku_successors (
+    predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,
+    successor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,
+    publication_id uuid NOT NULL REFERENCES public.catalog_publications(id) ON DELETE RESTRICT,
+    PRIMARY KEY (predecessor_sku_id, successor_sku_id), CHECK (predecessor_sku_id <> successor_sku_id));`;
+  const successorBase = `CREATE TABLE public.catalog_skus (id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id, other_id));
+    CREATE TABLE public.catalog_publications (id uuid PRIMARY KEY);
+    CREATE TABLE public.cat_other_skus (id uuid PRIMARY KEY);
+    CREATE TABLE public.cat_other_publications (id uuid PRIMARY KEY);`;
+  it("proves successor exact targets, arity, PK order, NOT NULLs and RESTRICT with owner-only ACLs", async () => {
+    await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, successorCreate), false, successorBase);
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN"); await db.query(successorBase + successorCreate);
+      const ids = [1, 2, 3].map(value => `00000000-0000-0000-0000-${String(value).padStart(12, "0")}`);
+      await db.query("INSERT INTO public.catalog_skus(id) VALUES ($1),($2)", ids.slice(0, 2));
+      await db.query("INSERT INTO public.catalog_publications(id) VALUES ($1)", [ids[2]]);
+      await db.query("INSERT INTO public.catalog_sku_successors VALUES ($1,$2,$3)", ids);
+      expect((await db.query("SELECT confdeltype FROM pg_constraint WHERE conrelid='public.catalog_sku_successors'::regclass AND contype='f'")).rows).toEqual([{ confdeltype: "r" }, { confdeltype: "r" }, { confdeltype: "r" }]);
+      for (const [statement, values, code] of [
+        ["DELETE FROM public.catalog_skus WHERE id=$1", [ids[0]], "23503"],
+        ["DELETE FROM public.catalog_skus WHERE id=$1", [ids[1]], "23503"],
+        ["DELETE FROM public.catalog_publications WHERE id=$1", [ids[2]], "23503"],
+        ["INSERT INTO public.catalog_sku_successors VALUES ($1,$1,$2)", [ids[0], ids[2]], "23514"],
+        ["INSERT INTO public.catalog_sku_successors VALUES ($1,$2,NULL)", ids.slice(0, 2), "23502"],
+        ["INSERT INTO public.catalog_sku_successors VALUES ($1,$2,$3)", ids, "23505"],
+      ] as const) {
+        await db.query("SAVEPOINT denied");
+        await expect(db.query(statement, [...values])).rejects.toMatchObject({ code });
+        await db.query("ROLLBACK TO SAVEPOINT denied");
+      }
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each([
+    ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`delete ${action}`, successorCreate.replace("DELETE RESTRICT", `DELETE ${action}`)]),
+    ["implicit action", successorCreate.replace(" ON DELETE RESTRICT", "")],
+    ["update action", successorCreate.replace("DELETE RESTRICT", "DELETE RESTRICT ON UPDATE CASCADE")],
+    ["deferrable", successorCreate.replace("DELETE RESTRICT", "DELETE RESTRICT DEFERRABLE")],
+    ["match full", successorCreate.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+    ["other table", successorCreate.replace("public.catalog_sku_successors", "public.cat_other_successors")],
+    ["other SKU target", successorCreate.replace("public.catalog_skus", "public.cat_other_skus")],
+    ["other publication target", successorCreate.replace("public.catalog_publications", "public.cat_other_publications")],
+    ["target key", successorCreate.replace("catalog_skus(id)", "catalog_skus(other_id)")],
+    ["source and target arity", successorCreate.replace("predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT", "predecessor_sku_id uuid NOT NULL, FOREIGN KEY(predecessor_sku_id,successor_sku_id) REFERENCES public.catalog_skus(id,other_id) ON DELETE RESTRICT")],
+    ["PK order", successorCreate.replace("PRIMARY KEY (predecessor_sku_id, successor_sku_id)", "PRIMARY KEY (successor_sku_id, predecessor_sku_id)")],
+    ["PK arity", successorCreate.replace("PRIMARY KEY (predecessor_sku_id, successor_sku_id)", "PRIMARY KEY (predecessor_sku_id)")],
+    ["publication nullable", successorCreate.replace("publication_id uuid NOT NULL", "publication_id uuid")],
+    ["missing FK", successorCreate.replace(" REFERENCES public.catalog_publications(id) ON DELETE RESTRICT", "")],
+    ["missing check", successorCreate.replace(", CHECK (predecessor_sku_id <> successor_sku_id)", "")],
+    ["broader check", successorCreate.replace("<>", "=")],
+    ["extra column", successorCreate.replace("PRIMARY KEY", "extra text, PRIMARY KEY")],
+    ["appended owner change", successorCreate + "ALTER TABLE public.catalog_sku_successors OWNER TO authenticated;"],
+    ["appended table ACL", successorCreate + "GRANT SELECT ON public.catalog_sku_successors TO PUBLIC;"],
+    ["appended column ACL", successorCreate + "GRANT SELECT(publication_id) ON public.catalog_sku_successors TO authenticated;"],
+    ["appended role smuggling", successorCreate + "CREATE ROLE cat_smuggled NOLOGIN;"],
+  ])("refuses installed successor shape: %s", async (_label, statement) => {
+    await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, statement), false, successorBase)).rejects.toThrow(/catalog:/u);
   });
   const sameSkuColumn = "ALTER TABLE public.subscription_lines ADD COLUMN catalog_sku_revision_id uuid;";
   const sameSkuFk = "ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;";
