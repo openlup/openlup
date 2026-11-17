@@ -25,6 +25,22 @@ function install(root: string, name: string, version = "0.31.0"): string {
 }
 
 describe("installed agent context", () => {
+  it.each([false, true])("refuses source-package self-resolution even with an installed copy: %s", (installed) => {
+    const root = fixture();
+    if (!installed) rmSync(join(root, "node_modules"), { recursive: true });
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "@openlup/core", version: "9.9.0", exports: { "./subscription": "./source.js" } }));
+    writeFileSync(join(root, "README.md"), "# Checkout-only evidence\n");
+    const nested = join(root, "nested");
+    mkdirSync(nested);
+    for (const cwd of [root, nested]) {
+      expect(() => searchContext(cwd, "checkout-only evidence")).toThrow(/self-references are not installed package evidence/);
+      const cli = spawnSync(process.execPath, [fileURLToPath(new URL("../src/openlup-context.js", import.meta.url)), "search", "checkout-only evidence", "--json"], { cwd, encoding: "utf8" });
+      expect(cli.status).toBe(1);
+      expect(cli.stdout).toBe("");
+      expect(cli.stderr).toContain("self-references are not installed package evidence");
+    }
+  });
+
   it("returns readable exact declaration spans offline", () => {
     const root = fixture();
     const result = searchContext(root, "nextRetryAttemptAt");

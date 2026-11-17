@@ -47,6 +47,19 @@ async function toolError(cwd: string, message: unknown, expected: RegExp, hooks:
 }
 
 describe("installed context MCP protocol", () => {
+  it.each([false, true])("refuses source-package self-resolution for search and read with an installed copy: %s", async (installed) => {
+    const root = temporaryRoot();
+    if (installed) install(root);
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "@openlup/core", version: "9.9.0", exports: { "./subscription": "./source.js" } }));
+    writeFileSync(join(root, "README.md"), "# Checkout-only evidence\n");
+    const nested = join(root, "nested");
+    mkdirSync(nested);
+    for (const cwd of [root, nested]) {
+      await toolError(cwd, search({ task: "checkout-only evidence" }), /self-references are not installed package evidence/);
+      await toolError(cwd, read(), /self-references are not installed package evidence/);
+    }
+  });
+
   it("searches and reads a nested installed guide page with the existing wire shape", async () => {
     const root = fixture();
     const file = `${prefix}docs/guide/nested/page.md`;

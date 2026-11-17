@@ -215,6 +215,8 @@ reachable declared OpenLup dependencies plus required Core through Node's normal
 `node_modules` resolution, including npm workspace hoisting and linked package
 roots. It does not select another application's undeclared packages. Without an
 application manifest, local `node_modules/@openlup` installations remain usable.
+Node package self-references from a checkout are refused: source bytes are not
+installed dependency evidence. Run from an adopter application root.
 Uninstalled non-Core declarations are skipped; lookup does not validate a complete
 application installation.
 Selected versions must agree with each other and with their entries in the

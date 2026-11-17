@@ -46,8 +46,8 @@ export function installedPackageRoots(cwd: string): { name: string; root: string
     if (!/^@openlup\/[a-z0-9][a-z0-9-]*$/u.test(name)) throw new Error(`Invalid declared OpenLup package name: ${name}`);
     let manifestPath: string | undefined;
     try {
-      // Node's bare-package lookup follows normal node_modules hoisting without
-      // requiring a public package.json export or evaluating application code.
+      // Node resolves self-references before node_modules. Admit only an installed
+      // lexical location, without evaluating code or requiring a manifest export.
       manifestPath = findPackageJSON(name, join(resolve(cwd), "package.json"));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND") throw error;
@@ -56,7 +56,12 @@ export function installedPackageRoots(cwd: string): { name: string; root: string
       if (name !== "@openlup/core") return [];
       throw new Error("No installed @openlup/core found for this application; @openlup/core is required. Install Core with an npm node_modules layout; unsupported package-manager layouts cannot be searched.");
     }
-    return [{ name, root: dirname(manifestPath) }];
+    const root = dirname(manifestPath);
+    const location = relative(cwd, root).split(sep).join("/").replace(/^(?:\.\.\/)*/u, "");
+    if (location !== `node_modules/${name}`) {
+      throw new Error(`Installed dependency lookup for ${name} resolved outside node_modules; source self-references are not installed package evidence. Run from an application root with installed @openlup/* packages.`);
+    }
+    return [{ name, root }];
   });
 }
 
