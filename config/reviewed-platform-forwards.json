@@ -5523,8 +5523,7 @@
           }
         ],
         "grantOnlyFunctions": [],
-        "dataStatements": [],
-        "sha256": "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65"
+        "dataStatements": []
       }
     ]
   },
