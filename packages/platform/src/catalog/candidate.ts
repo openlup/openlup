@@ -18,11 +18,13 @@ const revision = z.number().int().min(1).max(2_147_483_647);
 const headSchema = z.object({ publicationId: id, revision, documentDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 const querySchema = z.object({ draftId: id, draftRevision: revision, expectedHead: headSchema.nullable() }).strict();
 const referencePattern = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u;
+/** @experimental */
 export class CatalogCandidateError extends Error {
   constructor(readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable") {
     super(code); this.name = "CatalogCandidateError";
   }
 }
+/** @experimental */
 export interface CatalogCandidateDeps {
   /** Authorized immutable revision read; no actor string becomes publication authority. */
   readDraft(draftId: string, revision?: number): Promise<CatalogDraftPublicationStoredRecord | null>;
@@ -39,7 +41,9 @@ export interface CatalogCandidateDeps {
 const refuse = (code: CatalogCandidateError["code"]): never => { throw new CatalogCandidateError(code); };
 const equal = (left: CatalogHeadRef | null, right: CatalogHeadRef | null): boolean => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
 
-/** No candidate state: each call reconstructs every digest input through the supplied readers. */
+/** No candidate state: each call reconstructs every digest input through the supplied readers.
+ * @experimental
+ */
 export function createCatalogCandidateService(deps: CatalogCandidateDeps): CatalogValidationPort & {
   prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
   compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;

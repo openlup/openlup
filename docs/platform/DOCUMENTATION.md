@@ -249,6 +249,13 @@ public source documentation. These verbatim archives remain outside the npm
 artifacts; each packed changelog retains the current and two previous releases.
 The release guide owns the rolling rule and package READMEs retain API ownership.
 
+Frozen starter proof/limit records and the former platform README release notes
+live under `history/`, outside the npm artifacts. Markdown archive links are rebased; the complete
+proof text attachment retains every original byte and command. Current verification remains in the
+[starter recipe](../../examples/neutral-store/docs/proof.md); limits and public
+composition contracts remain in the installed reader guide. The history route
+does not replace those semantic owners.
+
 Fulfillment routing covers the complete `fulfillment*.api.md` report family,
 including the opt-in example report, under the existing architecture owner.
 The generated source map lists that family alongside its source and witnesses;

@@ -18,7 +18,7 @@ Use [starter customization](../../packages/core/docs/guide/how-to/build/customiz
 [routes](../../packages/core/docs/guide/reference/starter-routes.md),
 [limits](../../packages/core/docs/guide/reference/limits.md) and
 [ownership](../../packages/core/docs/guide/concepts/starter-ownership.md) for reader guidance.
-The [execution record](docs/proof.md) retains development evidence.
+The [verification recipe](docs/proof.md) links current checks and archived development evidence.
 
 The headings below preserve existing links to moved guidance.
 

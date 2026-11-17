@@ -805,6 +805,13 @@ Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed l
 
 #### Run and inspect
 
+For SQL investigations, use the
+[current-definition recipe](docs/platform/DATA_AND_MIGRATIONS.md#find-the-current-sql-function-definition):
+anchor `CREATE [OR REPLACE] FUNCTION`, follow manifest baseline/forward order,
+and compare full signatures and later `DROP FUNCTION` statements. A caller or
+an earlier migration is not the effective definition. Check behavior and replay
+at the owning witness; a textual `GREATEST` match alone proves no invariant.
+
 After `npm ci`, use:
 
 ```sh

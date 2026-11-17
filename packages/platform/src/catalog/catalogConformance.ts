@@ -3,6 +3,7 @@ import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts
 /** Server-side guidance; browser contracts export the shared codes and shapes as types only. */
 const recipe = (anchor: string): string => `how-to/extend/catalogue-extension.md#${anchor}`;
 const rule = (text: string, fix: string, anchor: string): CatalogConformanceRule => Object.freeze({ severity: "error", rule: text, fix, recipe: recipe(anchor) });
+/** @experimental */
 export const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConformanceCode, CatalogConformanceRule>> = Object.freeze({
   attribute_projection_text_too_large: rule("Every projected text slot fits the unconditional composite B-tree index.", "Keep the UTF-8 text slot within 2048 bytes, including the full localized JSON map; facet/filter flags do not bypass this limit.", "add-attribute"),
   attribute_storage_too_large: rule("Each attribute object fits 1 MiB of PostgreSQL-rendered JSONB text.", "Reduce this product or SKU object's rendered UTF-8 size, including separator spaces.", "add-attribute"),
