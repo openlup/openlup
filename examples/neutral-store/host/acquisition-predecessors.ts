@@ -56,7 +56,8 @@ export function createAcquisitionRenewalBinding(db: Pool): AcquisitionRenewalBin
         lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku,
           quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })), renewalTerms };
       return (await activateNativePurchaseWithRenewal(db, { orderId: input.orderId,
-        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts, editWindowHours: input.editWindowHours })).renewalAttachment;
+        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts,
+        ...(input.editWindowHours === undefined ? {} : { editWindowHours: input.editWindowHours }) })).renewalAttachment;
     },
   };
 }
@@ -85,7 +86,8 @@ export function createInitialPurchaseActivation(db: Pool, renewal: AcquisitionRe
         renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
         lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
       return (await activateNativePurchaseWithRenewal(db, { orderId: input.orderId,
-        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts, editWindowHours: input.editWindowHours })).renewalAttachment;
+        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts,
+        ...(input.editWindowHours === undefined ? {} : { editWindowHours: input.editWindowHours }) })).renewalAttachment;
     },
   };
 }
