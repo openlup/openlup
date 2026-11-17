@@ -4572,7 +4572,10 @@ Promotion projection validates consumed scalar, nullable, range, coupling,
 reference and uniqueness facts before casts or selection. Financial predicates
 retain their acquisition and bundle semantics. Current order metadata or a
 current publication head cannot prove historical admission or frozen money
-protection; qualifying unestablished contexts raise hard refusals independently
+protection. Order-backed agreement quotes, including retained renewal lines,
+validate their governing policy pair regardless of age and refuse unproved
+historical admission before projecting quote lines. Accepted edit-event quotes
+remain independent evidence. Qualifying unestablished contexts raise hard refusals independently
 of ordinary readiness reasons. Readiness calls no capture or commerce writer
 and takes no commerce row/advisory lock. The managed rail does not supply this
 feature; the migration fragment describes the separate RLS-preserving twin.

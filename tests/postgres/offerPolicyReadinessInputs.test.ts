@@ -816,10 +816,52 @@ it.each(nativeColumns)("native_input_column_%s.%s_preserves_type_and_presence", 
   expect(result).toEqual([{ typed: true, required }]);
 });
 
+// Produce independent accepted-edit evidence through the existing service SQL route.
+async function acceptGenuineEdit(db: PoolClient) {
+  const row = (await db.query(`SELECT s.client_id,s.template_version,l.variant_id,k.sku,p.unit_price_minor,
+    to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,
+    to_char((statement_timestamp()+interval '15 minutes') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS expires
+    FROM public.subscriptions s JOIN public.subscription_lines l ON l.subscription_id=s.id
+    JOIN public.catalog_skus k ON k.id=l.variant_id JOIN public.price_entries p ON p.variant_id=k.id
+    WHERE s.id=$1`, [genuine.subscriptionId])).rows[0];
+  const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const base = [{ variantId: row.variant_id, qty: 2 }], addons: never[] = [];
+  const baseLines = [{ ...base[0], quoteLine: { sku: row.sku, quantity: 2,
+    unitPriceGross: money(Number(row.unit_price_minor)), lineSubtotalGross: money(2 * Number(row.unit_price_minor)) } }];
+  const compositionConstraint = { kind: "plan_days", value: 56 };
+  const request = { planDays: 56, nominalPlanDays: 56, base, addons, compositionConstraint };
+  const snapshot = { baseLines, addonLines: [], compositionConstraint };
+  const totals = { currentRecurringPrice: money(274), newRecurringPrice: money(274), delta: money(0) };
+  const hash = createHash("sha256").update(JSON.stringify({ request, snapshot, totals })).digest("hex"), actor = randomUUID();
+  await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','2') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+  await rpc(db, "subscription_quote_preview_record", [actor, row.client_id, genuine.subscriptionId, "update_package_template",
+    hash, row.template_version, row.expires, request, snapshot, totals, row.at]);
+  expect(await rpc(db, "subscription_package_edit_apply", [actor, row.client_id, randomUUID(), genuine.subscriptionId,
+    { ...request, ...snapshot, ...totals, expectedTemplateVersion: row.template_version, acceptedQuoteHash: hash,
+      request: { ...request, expectedTemplateVersion: row.template_version, acceptedQuoteHash: hash } }, row.at]))
+    .toMatchObject({ status: "applied" });
+}
+
+it.each(["catalog_price_setup_agreement_evidence", "catalog_price_setup_readiness_inputs"] as const)("historical_activation_order_mixed_pair_refuses_before_quote_projection_%s", async entry => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await db.query(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '48 hours',
+      metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',
+      '{"offerPolicyVersion":"commerce.offer-policy.v1","promotionEngineVersion":"promotion-engine.v2"}')
+      WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)`, [genuine.subscriptionId]);
+    await setContext(db);
+    await rpc(db, "commerce_capture_offer_policy_v2_legacy_baseline");
+    await refusal(rpc(db, entry), "catalog_price_setup_native_order_policy_pair_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
 it("genuine_native_agreement_proof_is_read_without_synthetic_history", async () => {
   const db = await populated.connect();
   try {
     await db.query("BEGIN"); await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db);
     const proof = await rpc(db, "catalog_price_setup_agreement_evidence");
     expect(proof.fingerprint).toMatch(/^[a-f0-9]{32}$/u);
     expect(proof.fingerprint).not.toBe("d41d8cd98f00b204e9800998ecf8427e");
@@ -830,11 +872,12 @@ it.each([
   ["int32 money overflow", "UPDATE public.subscription_lines SET unit_price_minor=2147483648 WHERE subscription_id=$1"],
   ["quantity mismatch", "UPDATE public.subscription_lines SET quantity=3 WHERE subscription_id=$1"],
   ["missing renewal binding", "DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1"],
-  ["missing quote scalar", "UPDATE public.commerce_orders SET metadata=jsonb_set(metadata,'{quoteSnapshot,quote,lines,0,unitPriceGross,amountMinor}','null') WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)"],
+  ["missing quote scalar", "UPDATE public.subscription_events SET payload=jsonb_set(payload,'{linePricing,0,quoteLine,unitPriceGross,amountMinor}','null') WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.update_package_template'"],
 ] as const)("retained_agreement_refuses_%s", async (_label, sql) => {
   const db = await populated.connect();
   try {
     await db.query("BEGIN"); await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db);
     await db.query(sql, [genuine.subscriptionId]);
     await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_agreement_domain_unverified");
   } finally { await db.query("ROLLBACK"); db.release(); }
@@ -926,4 +969,56 @@ it.each([
 });
 it("absent_acquisition_metadata_remains_distinct_from_JSON_null", async () => {
   expect(await rpc(owner, "catalog_price_setup_acquisition_metadata", [{ cart_mode: "subscription" }])).toBeNull();
+});
+
+it.each([
+  ["explicit v1", "commerce.offer-policy.v1", "promotion-engine.v1"],
+  ["explicit v2", "commerce.offer-policy.v2", "promotion-engine.v2"],
+  ["individual missing fallbacks", undefined, undefined], ["individual null fallbacks", null, null],
+] as const)("historical_valid_pair_%s_passes_before_unproven_admission_refusal", async (_label, offerPolicyVersion, promotionEngineVersion) => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    const metadata = { quoteSnapshot: { quote: { context: { pricingPolicy: { offerPolicyVersion, promotionEngineVersion } } } } };
+    await db.query(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '48 hours',
+      metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',$2::jsonb)
+      WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)`, [genuine.subscriptionId, metadata.quoteSnapshot.quote.context.pricingPolicy]);
+    expect(await rpc(db, "catalog_price_setup_order_policy_pair", [metadata])).toBe("");
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_order_admission_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+it.each([["older", 1], ["exact", 0], ["younger", -1]] as const)("governing_order_mixed_pair_refuses_at_24_hour_boundary_%s", async (_label, offset) => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    const at = (await db.query(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '48 hours',
+      metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',
+      '{"offerPolicyVersion":"commerce.offer-policy.v1","promotionEngineVersion":"promotion-engine.v2"}')
+      WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)
+      RETURNING to_char((created_at+interval '24 hours'+$2*interval '1 microsecond') AT TIME ZONE 'UTC',
+        'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`, [genuine.subscriptionId, offset])).rows[0].at;
+    await db.query("SAVEPOINT recent_guard");
+    if (offset > 0) expect(await rpc(db, "catalog_price_setup_assert_order_guards", [at])).toBe("");
+    else await refusal(rpc(db, "catalog_price_setup_assert_order_guards", [at]), "catalog_price_setup_native_order_policy_pair_unverified");
+    await db.query("ROLLBACK TO SAVEPOINT recent_guard");
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_order_policy_pair_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+it.each([true, false])("retained_renewal_quote_checks_its_own_historical_order_before_projection_mixed_%s", async mixed => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    const order = await orderInput(db, { quoteSnapshot: { quote: { context: { pricingPolicy: {
+      offerPolicyVersion: "commerce.offer-policy.v1", promotionEngineVersion: mixed ? "promotion-engine.v2" : "promotion-engine.v1",
+    } } } } });
+    await db.query("UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '48 hours' WHERE id=$1", [order]);
+    // Deliberately untrusted retained data cannot enable agreement success.
+    await db.query(`UPDATE public.subscription_renewal_attachments SET order_id=$2,
+      purchase_facts=jsonb_set(purchase_facts,'{renewalTerms}','{"linePricing":[]}') WHERE subscription_id=$1`, [genuine.subscriptionId, order]);
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), mixed
+      ? "catalog_price_setup_native_order_policy_pair_unverified" : "catalog_price_setup_native_order_admission_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
 });

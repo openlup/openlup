@@ -7601,7 +7601,7 @@
     },
     {
       "path": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
-      "sha256": "62c1d428c8f0ebc6115bcae40ec7884587110b5b95e8a9d8d800c3794c06b98c",
+      "sha256": "8ca01a078a021e95ddddbe327af5ac3e448364c2d66e93a12a631eb74acb1ea2",
       "functions": [
         {
           "signature": "public.subscription_prevent_offer_policy_update()",
@@ -7690,7 +7690,7 @@
         },
         {
           "signature": "public.catalog_price_setup_agreement_evidence()",
-          "afterSha256": "77f74c2f73adca58b6407b0033fb5eb738be8d31501632ac83d508e07b670e3a",
+          "afterSha256": "e8bf6704400021be10fd6f614024359a5afe93f06aa454526b1c9b511469958a",
           "beforeSha256": null
         },
         {

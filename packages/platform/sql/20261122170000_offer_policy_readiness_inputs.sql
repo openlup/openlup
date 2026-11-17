@@ -512,14 +512,13 @@ $$;
 -- It never invents an agreement ID, historical timestamp or line metadata.
 CREATE FUNCTION public.catalog_price_setup_agreement_evidence() RETURNS jsonb
  LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE s record; l record; prices jsonb; terms jsonb; quote jsonb; price jsonb;
+DECLARE s record; l record; prices jsonb; quote jsonb; price jsonb; governing_metadata jsonb;
  line_count integer; matches integer; fingerprint text:='';
 BEGIN
  FOR s IN SELECT * FROM public.subscriptions WHERE offer_policy_assignment_state='legacy_frozen' AND is_test_fixture=false ORDER BY id LOOP
   IF s.currency_code IS NULL OR char_length(s.currency_code)<>3 OR s.price_list_id IS NULL THEN
    RAISE EXCEPTION 'catalog_price_setup_native_agreement_domain_unverified' USING ERRCODE='55000';
   END IF;
-  terms:=public.subscription_renewal_purchase_terms(s.id)->'renewalTerms';
   SELECT e.payload->'linePricing' INTO prices FROM public.subscription_events e WHERE e.subscription_id=s.id
    AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template',
     'subscription.customer_self_service.swap_base_line','subscription.customer_self_service.add_addon',
@@ -527,15 +526,23 @@ BEGIN
     'subscription.customer_self_service.update_plan_length','subscription.customer_self_service.update_base_mix',
     'subscription.customer_self_service.update_portion','subscription.customer_self_service.resize_bundle',
     'subscription.customer_self_service.update_bundle') ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1;
-  prices:=COALESCE(prices,terms->'linePricing');
   IF prices IS NULL THEN
-   SELECT o.metadata#>'{quoteSnapshot,quote,lines}' INTO quote FROM public.subscription_activations a
-    JOIN public.commerce_orders o ON o.id=a.order_id WHERE a.subscription_id=s.id;
-   IF jsonb_typeof(quote) IS DISTINCT FROM 'array' THEN
+   -- Both retained renewal quote lines and activation quote lines are order-backed.
+   -- Their governing order must be checked before projecting either source, even
+   -- outside the recent-order window. Accepted edit events are independent quotes.
+   SELECT o.metadata INTO governing_metadata FROM (
+    SELECT a.order_id,0 AS priority FROM public.subscription_renewal_attachments a
+     WHERE a.subscription_id=s.id AND a.completed_at IS NOT NULL
+      AND a.purchase_facts#>'{renewalTerms,linePricing}' IS NOT NULL
+    UNION ALL SELECT a.order_id,1 FROM public.subscription_activations a WHERE a.subscription_id=s.id
+   ) source JOIN public.commerce_orders o ON o.id=source.order_id ORDER BY source.priority LIMIT 1;
+   IF NOT FOUND THEN
     RAISE EXCEPTION 'catalog_price_setup_native_agreement_domain_unverified' USING ERRCODE='55000';
    END IF;
-   SELECT jsonb_agg(jsonb_build_object('sku',v->>'sku','quantity',v->'quantity',
-    'unitAmountMinor',v#>'{unitPriceGross,amountMinor}','quoteLine',v)) INTO prices FROM jsonb_array_elements(quote) v;
+   PERFORM public.catalog_price_setup_order_policy_pair(governing_metadata);
+   -- No native attestation establishes the historical admission of this order.
+   -- Current quote bytes or a valid pair cannot substitute for that evidence.
+   RAISE EXCEPTION 'catalog_price_setup_native_order_admission_unverified' USING ERRCODE='55000';
   END IF;
   IF jsonb_typeof(prices) IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_price_setup_native_agreement_domain_unverified' USING ERRCODE='55000';
