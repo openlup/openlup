@@ -7,14 +7,16 @@ import {
 } from "./draftSchemas.js";
 import { catalogDraftStoredApplyResultSchema, catalogDraftStoredRecordSchema } from "./draftV2Schemas.js";
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
+import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublicationStoredRecordSchema } from "./draftV3Schemas.js";
 import type { z } from "./validation.js";
 import { CatalogDraftStoreError, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 
 /** Dark owner-only storage. Composition must verify the operator before use. */
-function draftStore<Record extends CatalogDraftStoredRecord>(client: PgQueryExecutor, schemas: {
+function draftStore<Record extends CatalogDraftPublicationStoredRecord>(client: PgQueryExecutor, schemas: {
   record: z.ZodType<Record>; result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
-}, v2: boolean): CatalogDraftStorePort<Record> {
+}, maxVersion: number): CatalogDraftStorePort<Record> {
   const { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
   async function call(sql: string, values: unknown[]): Promise<unknown> {
     try {
@@ -31,10 +33,10 @@ function draftStore<Record extends CatalogDraftStoredRecord>(client: PgQueryExec
   return {
     async apply(request) {
       try {
-        if (!v2) {
+        if (maxVersion < 3) {
           let version: unknown;
           try { version = JSON.parse(request.canonicalCommand)?.schemaVersion; } catch { /* SQL retains legacy malformed-input refusals. */ }
-          if (version === 2) return { outcome: "validation_issue", reason: "command_invalid" };
+          if (typeof version === "number" && version > maxVersion) return { outcome: "validation_issue", reason: "command_invalid" };
         }
         const result = await call(
           "SELECT public.catalog_draft_apply($1::text, $2::text, $3::text) AS result",
@@ -74,11 +76,16 @@ function draftStore<Record extends CatalogDraftStoredRecord>(client: PgQueryExec
 
 /** Existing v1 reader/adapter. A v2 command requires the explicit v2 adapter. */
 export function createPostgresCatalogDraftStore(client: PgQueryExecutor): CatalogDraftStorePort {
-  return draftStore(client, { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema }, false);
+  return draftStore(client, { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema }, 1);
 }
 /** Opt-in native reader/adapter for retained v1 and v2 payloads. */
 export function createPostgresCatalogDraftStoreV2(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftStoredRecord> {
-  return draftStore(client, { record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema }, true);
+  return draftStore(client, { record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema }, 2);
+}
+
+/** Explicit v3 opt-in; the v1 and v2 adapters retain their version boundaries. */
+export function createPostgresCatalogDraftStoreV3(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftPublicationStoredRecord> {
+  return draftStore(client, { record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema }, 3);
 }
 
 function refusal(error: unknown): CatalogDraftRefusal {

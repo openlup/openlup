@@ -71,3 +71,10 @@ export { createCatalogCandidateService, CatalogCandidateError } from "./candidat
 export type { CatalogCandidateDeps } from "./candidate.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
+
+export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema,
+  catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema,
+  catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema,
+  catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
+export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
+export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";

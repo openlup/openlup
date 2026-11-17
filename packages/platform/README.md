@@ -1315,10 +1315,44 @@ Legacy revise still refuses an abandoned head; every original receipt replays
 unchanged. The native forward writes only draft-owned rows. The managed rail
 does not supply this feature.
 
+Draft payload v3 adds a closed `publication` input envelope: `kind` (release or
+compensation), ordered `operations` and optional immutable draft/media evidence.
+It retains the v2 attribute and price-command grammar. Opt in through
+`createCatalogDraftHandlerV3` and `createPostgresCatalogDraftStoreV3`;
+`CatalogDraftPublicationStoredRecord` covers all three retained versions. The
+v1/v2 factories and their version-specific unions keep their admission boundaries.
+Upgrade readers before v3 authoring; stop v3 writes before rolling readers back.
+Retained v3 history continues to need a v3 reader.
+
+V3 freezes `product.sharedContent` as `CatalogDraftSharedContentV3`: version 1,
+`catalogAction`, an optional document, presentation, explicit offer memberships
+(including false), requested modes (including an empty array), and SKU publication
+facts. `extractCatalogDraftPublicationInputs` validates and extracts exactly this
+envelope and `publication`, without defaults or operation sorting. Installed
+validators own the opaque document, presentation and per-SKU facts. They receive
+the complete shared-content envelope. Industry vocabulary stays in that data.
+The [operation union](src/catalog/contracts/draftV3.ts) carries explicit
+eligibility separately from memberships/status. `set_derived_sku_facts` records
+explicit document/quantity-bound cache operations, including for omitted SKUs;
+omission alone never requests a change. The eventual publisher must verify each
+operation against its immutable source and apply the ordered prefix guards.
+These are inputs only; saving or previewing a v3 draft executes no operation.
+
+Document provenance names either `current_draft` or an exact retained receipt
+tuple. `resolveCatalogDraftProvenance` expands the former from the persisted
+record's ID, revision, command key and fingerprint; it cannot embed a fingerprint
+inside its own input bytes. Retained provenance requires matching declared draft
+evidence and later authority verification. Media claims retain the exact SKU,
+media reference, sorted unique asset set and immutable proof digest. Neither
+extraction nor a claim grants publication authority or proves external readiness.
+
 `createCatalogCandidateService` takes authorized draft/definition/lineage readers,
 the composed registry and an optional price-owner validator. `prepareCandidate`
 returns issues and an impact summary without writes. Its self-contained reference
 is `v1:<draftId>@<revision>/<publicationId>@<headRevision>`, or `/unpublished`.
+The same v1 reference format resolves v2 or v3 immutable payloads; unsupported
+payload versions refuse. The digest includes every v3 operation, its order,
+explicit eligibility, provenance, derived effects and shared-content field.
 Every reconstruction checks the current draft revision, resolves the full
 expected head including `documentDigest`, compares it with current lineage and
 checks the installed definition digest. The digest covers the parsed canonical
