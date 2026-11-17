@@ -1053,6 +1053,7 @@ it.each(["lineage","head-row","product-row","sku-row","price-guard","price-list-
     restore = await hook(packageSignature,boundary,stop.sql);
     const editing = tracked(command.invoke(e)); await blocker(h,ep,hp);
     await p.query("SAVEPOINT lock_probe");
+    try {
     if (name === "lineage" || name === "price-guard") {
       const key = name === "lineage" ? `catalog-lineage:${f.product}` : `catalog-price-setup:${f.admission.priceContextVersions[0].priceListId}:${f.sku}`;
       expect((await p.query("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS acquired", [key])).rows[0].acquired).toBe(false);
@@ -1062,7 +1063,8 @@ it.each(["lineage","head-row","product-row","sku-row","price-guard","price-list-
           : ["price_entries","id",f.admission.priceContextVersions[0].entryId];
       await expect(p.query(`SELECT 1 FROM public.${table} WHERE ${column}=$1 FOR NO KEY UPDATE NOWAIT`, [id])).rejects.toMatchObject({ code: "55P03" });
     }
-    await p.query("ROLLBACK TO SAVEPOINT lock_probe");
+
+    } finally { await p.query("ROLLBACK TO SAVEPOINT lock_probe"); }
     const paying = tracked(paid.invoke(p)); await blocker(h,pp,ep);
     await stop.release(); const result = await editing; if (!result.ok) throw result.error;
     await e.query("COMMIT"); const settled = await paying; if (!settled.ok) throw settled.error; await p.query("COMMIT");
@@ -1330,8 +1332,9 @@ it.each(["package","sized"] as const)("LC6-host-prelock-%s", async lane => {
     const paid = await payment(f); armed = true;
     const editing = tracked(invoke()); await blocker(h,ep,hp);
     await p.query("SAVEPOINT host_prelock");
-    await expect(p.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR SHARE NOWAIT", [f.subscription])).rejects.toMatchObject({ code: "55P03" });
+    const held = await tracked(p.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR SHARE NOWAIT", [f.subscription]));
     await p.query("ROLLBACK TO SAVEPOINT host_prelock");
+    expect(held.ok,"host subscription prelock").toBe(false); if (!held.ok) expect(held.error).toMatchObject({ code: "55P03" });
     const paying = tracked(paid.invoke(p)); await blocker(h,pp,ep);
     await stop.release(); const result = await editing; if (!result.ok) throw result.error; expect(result.value.status).toBe("applied");
     const settled = await paying; if (!settled.ok) throw settled.error; await p.query("COMMIT");
@@ -1367,8 +1370,9 @@ it("admission promoted promotion-head prelock", async () => {
     restore = await hook(admissionSignature,sharedBoundary,stop.sql);
     const buying = tracked(rpc(e,input.routine,input.args)); await blocker(h,ep,hp);
     await p.query("SAVEPOINT promotion_probe");
-    await expect(p.query("SELECT promotion_id FROM public.commerce_promotion_definitions WHERE promotion_id=$1 FOR SHARE NOWAIT", [id])).rejects.toMatchObject({ code: "55P03" });
+    const held = await tracked(p.query("SELECT promotion_id FROM public.commerce_promotion_definitions WHERE promotion_id=$1 FOR SHARE NOWAIT", [id]));
     await p.query("ROLLBACK TO SAVEPOINT promotion_probe");
+    expect(held.ok,"promotion head prelock").toBe(false); if (!held.ok) expect(held.error).toMatchObject({ code: "55P03" });
     const contending = tracked(rpc(p,input.routine,second.args)); await blocker(h,pp,ep);
     await stop.release(); const first = await buying; if (!first.ok) throw first.error; await e.query("COMMIT");
     const other = await contending; if (!other.ok) throw other.error; await p.query("COMMIT");
