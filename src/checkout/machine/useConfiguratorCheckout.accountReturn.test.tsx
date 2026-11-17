@@ -64,6 +64,11 @@ const KNOWN_COMPOSITION_SLUGS = ["lamb", "venison", "beef", "turkey", "salmon", 
 
 const ACCOUNT_STATUS_PATH = "/konto/zamowienie/status";
 
+const testGlobals: typeof globalThis & {
+  __OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__?: boolean;
+  __OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__?: boolean;
+} = globalThis;
+
 const formData = {
   accountPetId: "pet-123",
   dogName: "Burek",
@@ -89,14 +94,14 @@ beforeEach(() => {
   clearAccountOrderReturn();
   localStorage.clear();
   sessionStorage.clear();
-  globalThis.__OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
+  testGlobals.__OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
   globalThis.__OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = undefined;
 });
 afterEach(() => {
-  globalThis.__OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
+  testGlobals.__OPENLUP_TEST_CONFIGURATOR_LIVE_QUOTE__ = undefined;
   globalThis.__OPENLUP_TEST_SUBSCRIPTION_CHECKOUT_CONTRACT__ = undefined;
   clearAccountOrderReturn();
-  delete globalThis.__OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__;
+  delete testGlobals.__OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__;
 });
 
 function setup(accountMode: boolean) {
@@ -189,7 +194,7 @@ describe("useConfiguratorCheckout account-mode Tpay return", () => {
   });
 
   it("clears only the selected account/pet draft after an immediate paid result", async () => {
-    globalThis.__OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__ = true;
+    testGlobals.__OPENLUP_TEST_COMMERCE_FORM_PERSISTENCE__ = true;
     const accountScope = createAccountConfiguratorDraftScope("client-123", "pet-123");
     const accountKey = getConfiguratorDraftStorageKey(accountScope);
     const publicKey = getConfiguratorDraftStorageKey(PUBLIC_CONFIGURATOR_DRAFT_SCOPE);

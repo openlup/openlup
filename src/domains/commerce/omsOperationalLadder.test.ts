@@ -1,5 +1,5 @@
 import { effectiveFunctionBody } from "../../test/effectiveMigration";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 
 import type { AdminCommerceOrdersListResponse } from "./omsContracts.js";
 import { summarizeOmsListTotals } from "./omsListTotals.js";
@@ -189,19 +189,19 @@ describe("fixture-path summarizers versus the SQL counters", () => {
 
     const inventoryRung = OMS_OPERATIONAL_LADDER.find((rung) => rung.id === "inventory_not_held");
     const blockedRung = OMS_OPERATIONAL_LADDER.find((rung) => rung.id === "fulfillment_absent_and_blocked");
-    expect(inventoryRung).toBeDefined();
-    expect(blockedRung).toBeDefined();
+    assert.isDefined(inventoryRung);
+    assert.isDefined(blockedRung);
     // The short-circuit is what keeps the disagreement latent: the inventory rung
     // must stay STRICTLY ABOVE the fulfillment-blocked rung. Reordering them
     // makes divergence (b) reachable, and turns this assertion red.
-    expect(OMS_OPERATIONAL_LADDER.indexOf(inventoryRung!)).toBeLessThan(
-      OMS_OPERATIONAL_LADDER.indexOf(blockedRung!),
+    expect(OMS_OPERATIONAL_LADDER.indexOf(inventoryRung)).toBeLessThan(
+      OMS_OPERATIONAL_LADDER.indexOf(blockedRung),
     );
 
     // `not_checked` is not in ('reserved','consumed'), so the ladder stops at the
     // inventory rung on both sides and never asks fulfillment_allowed.
     expect(
-      inventoryRung!.matches({
+      inventoryRung.matches({
         orderStatus: "paid",
         activeHoldCount: 0,
         paymentStatus: "succeeded",
@@ -211,7 +211,7 @@ describe("fixture-path summarizers versus the SQL counters", () => {
         // TS eligibility would say ALLOWED for not_checked; SQL says blocked.
         fulfillmentAllowed: true,
         accountingStatus: "issued",
-      } as Parameters<typeof inventoryRung.matches>[0]),
+      }),
     ).toBe(true);
   });
 });

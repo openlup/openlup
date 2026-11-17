@@ -18,9 +18,9 @@ export function verifyRepositoryPolicy(input: {
   assert(
     policy.repository?.packageName === "@openlup/core" &&
       policy.repository.currentPhase === "platform-monorepo-phase-5" &&
-      policy.repository.packageVisibility === "public-preview" &&
+      policy.repository.packageVisibility === "public-stable" &&
       (manifest.private ?? false) === false,
-    "core must be a publishable preview-channel package of the phase-5 platform monorepo",
+    "core must be a publishable stable-channel package of the phase-5 platform monorepo",
   );
   assert(
     policy.repository.activation?.target === "platform-monorepo-phase-5" &&
@@ -72,6 +72,7 @@ export function verifyRepositoryPolicy(input: {
   );
   assert(
     policy.security?.dependabot?.required === true &&
+      Array.isArray(policy.security.dependabot.ecosystems) &&
       isDeepStrictEqual(policy.security.dependabot.ecosystems, ["npm", "github-actions"]),
     "repository policy must require npm and GitHub Actions Dependabot updates",
   );

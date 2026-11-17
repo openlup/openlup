@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { verifyRepositoryPolicy } from "../scripts/repository-policy-check.ts";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const policy = JSON.parse(readFileSync(resolve(packageRoot, "repository-policy.json"), "utf8"));
@@ -11,13 +13,13 @@ const dependabot = readFileSync(resolve(packageRoot, ".github/dependabot.yml"), 
 const codeowners = readFileSync(resolve(packageRoot, ".github/CODEOWNERS"), "utf8").trim();
 
 describe("package policy", () => {
-  it("keeps core a publishable preview-channel package of the platform monorepo rather than a separate repository", () => {
+  it("keeps core a publishable stable-channel package of the platform monorepo rather than a separate repository", () => {
     expect(policy).toMatchObject({
       schemaVersion: 5,
       repository: {
         packageName: "@openlup/core",
         currentPhase: "platform-monorepo-phase-5",
-        packageVisibility: "public-preview",
+        packageVisibility: "public-stable",
         activation: {
           target: "platform-monorepo-phase-5",
           separateRepositoryActivation: "forbidden",
@@ -75,4 +77,16 @@ describe("package policy", () => {
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toContain("package policy and local security automation ok");
   });
+});
+
+// Verify the declared state at the file-reading boundary, including refusal of legacy/unknown values.
+it.each(["public-stable", "public-preview", "unknown"])("validates repository visibility %s", (packageVisibility) => {
+  const root = mkdtempSync(join(tmpdir(), "openlup-repository-policy-"));
+  try {
+    cpSync(resolve(packageRoot, ".github"), join(root, ".github"), { recursive: true });
+    writeFileSync(join(root, "repository-policy.json"), JSON.stringify({ ...policy, repository: { ...policy.repository, packageVisibility } }));
+    const check = () => verifyRepositoryPolicy({ packageRoot: root, manifest: { private: false } });
+    if (packageVisibility === "public-stable") expect(check).not.toThrow();
+    else expect(check).toThrow(/publishable stable-channel package/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

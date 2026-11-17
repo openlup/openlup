@@ -13,16 +13,16 @@ function cloneGates(): typeof gates {
   return structuredClone(gates);
 }
 
-describe("private package surface configuration", () => {
-  it("accepts the complete current export inventory without claiming public stability", () => {
+describe("package surface configuration", () => {
+  it("accepts the complete current export inventory with stable SemVer", () => {
     expect(() => assertPackageSurfaceConfig({ manifest, gates, packageRoot })).not.toThrow();
   });
 
   it("rejects empty compatibility policy descriptions", () => {
     const candidate = cloneGates();
-    candidate.compatibilityPolicies["internal-candidate"] = "";
+    candidate.compatibilityPolicies["stable"] = "";
     expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(
-      /compatibility policy is empty: internal-candidate/,
+      /compatibility policy is empty: stable/,
     );
   });
 
@@ -34,12 +34,38 @@ describe("private package surface configuration", () => {
     );
   });
 
-  it("rejects conflating a first-party packed consumer with external consumer evidence", () => {
+  it("rejects consumer evidence without the explicit first-party boundary", () => {
     const candidate = cloneGates();
     candidate.evidence.externalConsumerEvidence.meaning = "A packed first-party consumer proves public adoption.";
     expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(
-      /external consumer evidence must exclude first-party packed consumers/,
+      /consumer evidence must state first-party npm and production use without claiming independent adoption/,
     );
+  });
+
+  it.each(["candidate", "unknown", "toString", "__proto__"])("rejects maturity %s", (maturity) => {
+    const candidate = cloneGates();
+    candidate.packageSurface["./subscription"].maturity = maturity;
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(/invalid package surface maturity/);
+  });
+
+  it.each(["stable", "experimental", "testing"])("admits the %s policy and refuses a mismatched policy", (maturity) => {
+    const candidate = cloneGates();
+    Object.assign(candidate.packageSurface["./subscription"], { maturity, compatibilityPolicy: maturity });
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).not.toThrow();
+    candidate.packageSurface["./subscription"].compatibilityPolicy = "unknown";
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(/compatibility policy differs/);
+  });
+
+  it.each(["publicStability", "artifactChannel", "phase", "versionRule"])("rejects an unknown release %s", (field) => {
+    const candidate = cloneGates();
+    candidate.packageRelease[field] = "unknown";
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(/must declare stable SemVer/);
+  });
+
+  it.each(Object.keys(gates.evidence))("rejects an unknown %s state", (name) => {
+    const candidate = cloneGates();
+    candidate.evidence[name].state = "unknown";
+    expect(() => assertPackageSurfaceConfig({ manifest, gates: candidate, packageRoot })).toThrow(/evidence taxonomy drifted/);
   });
 
   it("rejects a release-gates schema older than 5", () => {

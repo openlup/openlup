@@ -261,9 +261,9 @@ export function WeightedRanked({
               color: "#FDF8F0",
               fontSize: 12,
             }}
-            formatter={(value: number, key) => {
-              if (key === "rank1") return [`${value / 3} × #1`, "Rank 1"];
-              if (key === "rank2") return [`${value / 2} × #2`, "Rank 2"];
+            formatter={(value, key) => {
+              if (key === "rank1") return [`${Number(value) / 3} × #1`, "Rank 1"];
+              if (key === "rank2") return [`${Number(value) / 2} × #2`, "Rank 2"];
               if (key === "rank3") return [`${value} × #3`, "Rank 3"];
               return [value, key];
             }}

@@ -56,7 +56,7 @@ export const PROD_EMAIL_ENABLEMENT_FLAG_PRIORITY = [
   "COMMERCE_OUTBOX_DISPATCH_ENABLED",
 ] as const satisfies readonly ProdEmailEnablementFlag[];
 
-export const PROD_EMAIL_SLUG_ENABLEMENT_OVERRIDES = {
+export const PROD_EMAIL_SLUG_ENABLEMENT_OVERRIDES: Readonly<Partial<Record<string, ProdEmailEnablementDecision>>> = {
   "commerce-order-canceled": {
     status: "dormant_feature",
     controllingFlag: "COMMERCE_OUTBOX_DISPATCH_ENABLED",
@@ -67,11 +67,7 @@ export const PROD_EMAIL_SLUG_ENABLEMENT_OVERRIDES = {
     controllingFlag: "COMMERCE_BACK_IN_STOCK_ENABLED",
     reason: "No public notify-me UI/restock producer is active; do not activate by flipping the flag alone.",
   },
-} as const satisfies Record<string, {
-  status: ProdEmailEnablementStatus;
-  controllingFlag: ProdEmailEnablementFlag | null;
-  reason: string;
-}>;
+} as const;
 
 export type ProdEmailDormantPolicyNote = {
   id: string;

@@ -6,13 +6,18 @@ import { getOrCreateVisitorId } from "@/lib/commerceVisitorId";
 import { getCommerceOfferPricing } from "./commerceClient";
 import { useCommerceOfferPricing } from "./useCommerceOfferPricing";
 
+// Keep the intentional invalid-null boundary visible without changing the real
+// visitor-id contract, which only returns a string or undefined.
+const { getVisitorId } = vi.hoisted(() => ({
+  getVisitorId: vi.fn<() => ReturnType<typeof getOrCreateVisitorId> | null>(() => "visitor-offer-1"),
+}));
+
 vi.mock("./commerceClient", () => ({ getCommerceOfferPricing: vi.fn() }));
-vi.mock("@/lib/commerceVisitorId", () => ({ getOrCreateVisitorId: vi.fn(() => "visitor-offer-1") }));
+vi.mock("@/lib/commerceVisitorId", () => ({ getOrCreateVisitorId: getVisitorId }));
 vi.mock("@/lib/flags", () => ({ offerPolicyV2CapabilityEnabled: vi.fn(() => true) }));
 
 const getPricing = vi.mocked(getCommerceOfferPricing);
 const capabilityEnabled = vi.mocked(offerPolicyV2CapabilityEnabled);
-const getVisitorId = vi.mocked(getOrCreateVisitorId);
 
 afterEach(() => {
   vi.clearAllMocks();

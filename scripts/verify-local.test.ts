@@ -144,6 +144,14 @@ describe('real Git and subprocess refusals', () => {
     const result = await f.result(); directories.push(result.packs);
     expect(run).toHaveBeenCalledTimes(1); expect(result.phases).toHaveLength(1); expect(result.code).toBe(124);
   });
+  it('retains a broken package build and stops before dependent diagnostics', async () => {
+    const f = await fixture();
+    const run = vi.fn(async (_command, args) => ({ code: args.includes('lint') ? 17 : 0 }));
+    expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(17);
+    const result = await f.result(); directories.push(result.packs);
+    expect(result.phases.map(phase => phase.name)).toEqual(['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality', 'install', 'lint']);
+    expect(result.phases.at(-1)).toMatchObject({ name: 'lint', code: 17 });
+  });
   it('refuses identity drift between phases even if a command reports success', async () => {
     const f = await fixture(); const run = vi.fn(async () => { await writeFile(join(f.cwd, 'source.txt'), 'changed\n'); return { code: 0 }; });
     expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(1);
@@ -165,5 +173,10 @@ describe('real Git and subprocess refusals', () => {
       cwd, { ...processEnvironment, CI: 'true' }, log);
     expect(result).toMatchObject({ code: 0, worker: undefined });
     expect(await readFile(log, 'utf8')).toContain('Local verification Vitest workers=4');
+  });
+  it('retains interrupted subprocess failure rather than reporting proof', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'verify-interrupt-')); directories.push(cwd);
+    const result = await runLogged(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM")'], cwd, processEnvironment, join(cwd, 'interrupted.log'));
+    expect(result).toMatchObject({ code: 1, signal: 'SIGTERM' });
   });
 });

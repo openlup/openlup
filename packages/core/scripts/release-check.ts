@@ -12,7 +12,7 @@ const manifest = readJson("package.json");
 const gates = readJson("release-gates.json");
 const lock = readJson("package-lock.json");
 const mode = process.argv[2] ?? "all";
-// The staged npm preview channel's publication settings.
+// Directory publication keeps the preview fallback; the release workflow selects latest explicitly.
 const publishConfig = { access: "public", provenance: true, tag: "preview" };
 const repository = {
   type: "git",
@@ -54,11 +54,11 @@ function checkReleaseIdentity() {
   assertSetVersion(gates.packageRelease?.versionRule, manifest.version);
   assert(
     gates.packageRelease?.phase === "platform-monorepo-phase-5" &&
-      gates.packageRelease?.publicStability === "not-claimed" &&
-      gates.packageRelease?.artifactChannel === "npm-staged-preview",
-    "package release must stay on the staged npm preview channel without a public API stability claim",
+      gates.packageRelease?.publicStability === "stable-semver" &&
+      gates.packageRelease?.artifactChannel === "npm-stable",
+    "package release must declare stable SemVer and the stable npm channel",
   );
-  console.log(`package release identity ok (${manifest.version}, set ${setVersionRule}, npm-staged-preview)`);
+  console.log(`package release identity ok (${manifest.version}, set ${setVersionRule}, npm-stable)`);
 }
 
 function checkLock() {
