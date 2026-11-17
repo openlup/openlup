@@ -4,7 +4,8 @@ export const MIN_CHECKOUT_RESERVATION_TTL_MINUTES = 24 * 60;
 export const MAX_CHECKOUT_RESERVATION_TTL_MINUTES = 36 * 60;
 export const DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES = MIN_CHECKOUT_RESERVATION_TTL_MINUTES;
 
-// Technical ceiling (ten years, matching MAX_CADENCE_DAYS) so every accepted policy yields a representable expiry.
+// Technical ceiling (ten years, matching MAX_CADENCE_DAYS): expiries stay representable for realistic clocks;
+// a clock within ten years of the Date limit still fails closed with RangeError.
 const MAX_POLICY_MINUTES = 3660 * 24 * 60;
 
 const defaultPolicy: CheckoutReservationLifetimePolicy = {
