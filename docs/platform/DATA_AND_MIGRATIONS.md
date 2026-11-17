@@ -2261,12 +2261,13 @@ template, recipient and profile fingerprint; outbox completion is independent.
 See the [composition recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts)
 for configured timing and transport-profile limits.
 
-`checkSupersets` entries declare table, constraint, column and values;
+`checkSupersets` entries declare table, constraint, column and either values or
+an integer range as described below;
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
 DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
-IN values (with an optional trailing `NOT VALID`) or plain UNIQUE columns and
-NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
+IN values or literal integer interval (with an optional trailing `NOT VALID`), or
+plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
 additions refuse; the general expression grammar is unchanged. The protected real-PostgreSQL catalog control proves
 widening against the installed definition immediately before the slot: the old
 constraint must exist in the closed CHECK or UNIQUE shape, every old value or
@@ -2281,6 +2282,31 @@ The installed new definition must equal the entry; other constraints, columns
 and triggers remain protected. No historical SQL anchor is used for these
 entries. The issued account-consent `purposeCheck` retains its original preimage,
 values and refusal behavior unchanged.
+
+An integer-range `checkSupersets` entry replaces `values` with
+`range: { lower, upper }` and `beforeSha256`. Both endpoints must be literal
+signed 32-bit integers with lower ≤ upper. `beforeSha256` pins the exact
+`pg_get_constraintdef` text of the installed CHECK immediately before the slot,
+including any trailing `NOT VALID`. The existing table must be an ordinary table
+and the column must have PostgreSQL type `integer` (int4). The slot admits exactly
+one adjacent pair of plain `ALTER TABLE public.<table> DROP CONSTRAINT <name>;`
+and `ALTER TABLE public.<table> ADD CONSTRAINT <name> CHECK (<column> BETWEEN
+<lower> AND <upper>);`, with an optional trailing `NOT VALID`. The equivalent
+`CHECK (<column> >= <lower> AND <column> <= <upper>)` is also admitted. The
+migration runner applies the pair in one transaction; intervening statements,
+transaction control, conditional drops, CASCADE and extra ALTER actions refuse.
+
+The protected PostgreSQL catalog control verifies that the pinned old definition
+is this same inclusive interval on the same column and that the installed new
+range equals the declaration. New lower must be ≤ old lower, new upper must be
+≥ old upper, and at least one endpoint must widen strictly. Narrowing, unchanged
+ranges, missing or mismatched preimages, other columns/tables/constraint names,
+non-integer or computed bounds, casts in the forward and extra predicates refuse.
+Validation state must remain equal in both directions, including preserving
+`NOT VALID` without rechecking historical rows. Existing owner, table/column ACL,
+column and unrelated-constraint catalog protections still apply. This capability
+changes no installed CHECK by itself; feature SQL and its declarations land in a
+later change.
 
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
