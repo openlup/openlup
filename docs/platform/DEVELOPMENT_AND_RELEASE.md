@@ -100,6 +100,30 @@ not become mandatory per-PR execution just because their files exist; follow
 [execution ownership](../../CONTRIBUTING.md#contribution-checks) and the
 [selected subscription evaluation](SUBSCRIPTION_REFERENCE.md).
 
+### CI image mirror and container pulls
+
+The [CI image mirror](../../.github/workflows/mirror-ci-images.yml) and shared
+[image reader and pull loop](../../scripts/ci-image-pull.mjs) use only the
+committed [image inventory](../../config/ci-images.json); see
+[CI image mirror](../../CONTRIBUTING.md#ci-image-mirror) for pull budgets,
+digest-only verification, disposable PostgreSQL timeouts and workflow permission
+rules.
+
+One-time owner setup is required: organization **Settings → Packages → Package
+Creation** must allow Public packages (and initial private creation, because
+GHCR creates packages private). After the first authorized run, for each package
+under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
+**Package settings → Manage Actions access**, add that repository with **Write**
+access if inheritance does not already grant it. Under **Danger Zone → Change
+visibility**, select **Public** and confirm. Check anonymous mirror pulls after
+making packages public. PostgreSQL consumers with upstream sources fall back
+while packages are absent or private. The required `install-packages` PostgreSQL
+startup step and the starter browser image are mirror-only exceptions: an absent
+or inaccessible organization package fails `install-proof`. `GITHUB_TOKEN` cannot
+make a package public; linking a public repository does not change package visibility. See GitHub's
+[package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
+
 ## Local maintainer layer
 
 Without that private helper, use the public `node scripts/verify-local.mjs`
