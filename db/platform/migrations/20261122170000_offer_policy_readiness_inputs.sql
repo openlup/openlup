@@ -513,30 +513,42 @@ $$;
 CREATE FUNCTION public.catalog_price_setup_agreement_evidence() RETURNS jsonb
  LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s record; l record; prices jsonb; quote jsonb; price jsonb; governing_metadata jsonb;
+ source_event_id uuid; source_event_type text; order_backed_event boolean;
  line_count integer; matches integer; fingerprint text:='';
 BEGIN
  FOR s IN SELECT * FROM public.subscriptions WHERE offer_policy_assignment_state='legacy_frozen' AND is_test_fixture=false ORDER BY id LOOP
   IF s.currency_code IS NULL OR char_length(s.currency_code)<>3 OR s.price_list_id IS NULL THEN
    RAISE EXCEPTION 'catalog_price_setup_native_agreement_domain_unverified' USING ERRCODE='55000';
   END IF;
-  SELECT e.payload->'linePricing' INTO prices FROM public.subscription_events e WHERE e.subscription_id=s.id
+  prices:=NULL;
+  SELECT e.id,e.event_type INTO source_event_id,source_event_type FROM public.subscription_events e WHERE e.subscription_id=s.id
    AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template',
     'subscription.customer_self_service.swap_base_line','subscription.customer_self_service.add_addon',
     'subscription.customer_self_service.remove_addon','subscription.customer_self_service.update_addon_quantity',
     'subscription.customer_self_service.update_plan_length','subscription.customer_self_service.update_base_mix',
     'subscription.customer_self_service.update_portion','subscription.customer_self_service.resize_bundle',
     'subscription.customer_self_service.update_bundle') ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1;
+  -- Only these producers quote every desired line afresh. Sized edits can retain
+  -- earlier agreement quotes; graduation copies retained purchase terms.
+  order_backed_event:=source_event_type IS NOT NULL AND source_event_type NOT IN
+   ('subscription.customer_self_service.update_package_template','subscription.customer_self_service.swap_base_line');
+  IF source_event_id IS NOT NULL AND NOT order_backed_event THEN
+   SELECT e.payload->'linePricing' INTO prices FROM public.subscription_events e WHERE e.id=source_event_id;
+  END IF;
   IF prices IS NULL THEN
    -- Both retained renewal quote lines and activation quote lines are order-backed.
    -- Their governing order must be checked before projecting either source, even
-   -- outside the recent-order window. Accepted edit events are independent quotes.
+   -- outside the recent-order window. Copied/merged event quotes keep that provenance.
    SELECT o.metadata INTO governing_metadata FROM (
     SELECT a.order_id,0 AS priority FROM public.subscription_renewal_attachments a
      WHERE a.subscription_id=s.id AND a.completed_at IS NOT NULL
-      AND a.purchase_facts#>'{renewalTerms,linePricing}' IS NOT NULL
+      AND (order_backed_event OR a.purchase_facts#>'{renewalTerms,linePricing}' IS NOT NULL)
     UNION ALL SELECT a.order_id,1 FROM public.subscription_activations a WHERE a.subscription_id=s.id
    ) source JOIN public.commerce_orders o ON o.id=source.order_id ORDER BY source.priority LIMIT 1;
    IF NOT FOUND THEN
+    IF order_backed_event THEN
+     RAISE EXCEPTION 'catalog_price_setup_native_order_admission_unverified' USING ERRCODE='55000';
+    END IF;
     RAISE EXCEPTION 'catalog_price_setup_native_agreement_domain_unverified' USING ERRCODE='55000';
    END IF;
    PERFORM public.catalog_price_setup_order_policy_pair(governing_metadata);
@@ -633,7 +645,6 @@ BEGIN
  FOR o IN SELECT * FROM public.commerce_orders WHERE created_at>=p_at-interval '24 hours' AND created_at<=p_at
   AND status IN ('paid','fulfillment_pending','fulfilled','refunded') LOOP
   PERFORM public.catalog_price_setup_order_policy_pair(o.metadata);
-  PERFORM public.catalog_price_setup_order_inputs(o.id);
   IF EXISTS(SELECT 1 FROM public.commerce_promotion_claims WHERE order_id=o.id) THEN
    RAISE EXCEPTION 'catalog_price_setup_native_order_claim_guard_unverified' USING ERRCODE='55000';
   END IF;

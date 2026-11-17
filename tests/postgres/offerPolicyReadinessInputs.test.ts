@@ -822,29 +822,39 @@ it.each(nativeColumns)("native_input_column_%s.%s_preserves_type_and_presence", 
 });
 
 // Produce independent accepted-edit evidence through the existing service SQL route.
-async function acceptGenuineEdit(db: PoolClient) {
-  const row = (await db.query(`SELECT s.client_id,s.template_version,l.variant_id,k.sku,p.unit_price_minor,
+async function acceptGenuineEdit(db: PoolClient, action: "update_package_template" | "swap_base_line" = "update_package_template") {
+  const row = (await db.query(`SELECT s.client_id,s.template_version,s.cadence_days,l.id AS line_id,l.variant_id,k.sku,k.product_id,p.price_list_id,p.unit_price_minor,
     to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,
     to_char((statement_timestamp()+interval '15 minutes') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS expires
     FROM public.subscriptions s JOIN public.subscription_lines l ON l.subscription_id=s.id
     JOIN public.catalog_skus k ON k.id=l.variant_id JOIN public.price_entries p ON p.variant_id=k.id
     WHERE s.id=$1`, [genuine.subscriptionId])).rows[0];
   const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+  const fromVariantId = row.variant_id;
+  if (action === "swap_base_line") {
+    row.variant_id = randomUUID(); row.sku = `READINESS-SWAP-${row.variant_id}`;
+    await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_in_subscription) VALUES($1,$2,$3,'Synthetic independent quote',true)", [row.variant_id, row.product_id, row.sku]);
+    await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',$3,statement_timestamp()-interval '1 hour')", [row.price_list_id, row.variant_id, row.unit_price_minor]);
+  }
   const base = [{ variantId: row.variant_id, qty: 2 }], addons: never[] = [];
   const baseLines = [{ ...base[0], quoteLine: { sku: row.sku, quantity: 2,
     unitPriceGross: money(Number(row.unit_price_minor)), lineSubtotalGross: money(2 * Number(row.unit_price_minor)) } }];
   const compositionConstraint = { kind: "plan_days", value: 56 };
-  const request = { planDays: 56, nominalPlanDays: 56, base, addons, compositionConstraint };
-  const snapshot = { baseLines, addonLines: [], compositionConstraint };
+  const request = action === "swap_base_line" ? { action, fromVariantId, toVariantId: row.variant_id }
+    : { planDays: 56, nominalPlanDays: 56, base, addons, compositionConstraint };
+  const snapshot = action === "swap_base_line"
+    ? { lines: [{ ...baseLines[0], lineId: row.line_id, isAddon: false, sortOrder: 0 }], cadenceDays: row.cadence_days, compositionConstraint: null }
+    : { baseLines, addonLines: [], compositionConstraint };
   const totals = { currentRecurringPrice: money(274), newRecurringPrice: money(274), delta: money(0) };
   const hash = createHash("sha256").update(JSON.stringify({ request, snapshot, totals })).digest("hex"), actor = randomUUID();
   await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','2') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
-  await rpc(db, "subscription_quote_preview_record", [actor, row.client_id, genuine.subscriptionId, "update_package_template",
+  await rpc(db, "subscription_quote_preview_record", [actor, row.client_id, genuine.subscriptionId, action,
     hash, row.template_version, row.expires, request, snapshot, totals, row.at]);
-  expect(await rpc(db, "subscription_package_edit_apply", [actor, row.client_id, randomUUID(), genuine.subscriptionId,
-    { ...request, ...snapshot, ...totals, expectedTemplateVersion: row.template_version, acceptedQuoteHash: hash,
-      request: { ...request, expectedTemplateVersion: row.template_version, acceptedQuoteHash: hash } }, row.at]))
-    .toMatchObject({ status: "applied" });
+  const payload = { ...request, ...snapshot, ...totals, expectedTemplateVersion: row.template_version, acceptedQuoteHash: hash,
+    request: { ...request, expectedTemplateVersion: row.template_version, acceptedQuoteHash: hash } };
+  const values = [actor, row.client_id, randomUUID(), genuine.subscriptionId];
+  expect(await rpc(db, action === "swap_base_line" ? "subscription_line_edit_apply" : "subscription_package_edit_apply",
+    [...values, ...(action === "swap_base_line" ? [action] : []), payload, row.at])).toMatchObject({ status: "applied" });
 }
 
 it.each(["catalog_price_setup_agreement_evidence", "catalog_price_setup_readiness_inputs"] as const)("historical_activation_order_mixed_pair_refuses_before_quote_projection_%s", async entry => {
@@ -1027,3 +1037,95 @@ it.each([true, false])("retained_renewal_quote_checks_its_own_historical_order_b
       ? "catalog_price_setup_native_order_policy_pair_unverified" : "catalog_price_setup_native_order_admission_unverified");
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
+
+const orderBackedEvents = [
+  "subscription.starter_graduated",
+  "subscription.customer_self_service.add_addon", "subscription.customer_self_service.remove_addon",
+  "subscription.customer_self_service.update_addon_quantity", "subscription.customer_self_service.update_plan_length",
+  "subscription.customer_self_service.update_base_mix", "subscription.customer_self_service.update_portion",
+  "subscription.customer_self_service.resize_bundle", "subscription.customer_self_service.update_bundle",
+] as const;
+it.each(orderBackedEvents)("order_backed_event_%s_mixed_pair_refuses_before_projection", async eventType => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db);
+    // Adversarial input keeps matching quote lines; relabelling cannot establish independent provenance.
+    await db.query("UPDATE public.subscription_events SET event_type=$2 WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.update_package_template'", [genuine.subscriptionId, eventType]);
+    await db.query(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '48 hours',
+      metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',
+      '{"offerPolicyVersion":"commerce.offer-policy.v1","promotionEngineVersion":"promotion-engine.v2"}')
+      WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)`, [genuine.subscriptionId]);
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_order_policy_pair_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it.each(["update_package_template", "swap_base_line"] as const)("independent_full_quote_%s_does_not_borrow_historical_order_evidence", async action => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db, action);
+    await db.query(`UPDATE public.commerce_orders SET created_at=statement_timestamp()-interval '48 hours',
+      metadata=jsonb_set(metadata,'{quoteSnapshot,quote,context,pricingPolicy}',
+      '{"offerPolicyVersion":"commerce.offer-policy.v1","promotionEngineVersion":"promotion-engine.v2"}')
+      WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)`, [genuine.subscriptionId]);
+    expect((await rpc(db, "catalog_price_setup_agreement_evidence")).fingerprint).not.toBe("d41d8cd98f00b204e9800998ecf8427e");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+it.each(orderBackedEvents)("order_backed_event_%s_valid_pair_passes_but_missing_admission_refuses", async eventType => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db);
+    await db.query("UPDATE public.subscription_events SET event_type=$2 WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.update_package_template'", [genuine.subscriptionId, eventType]);
+    const metadata = (await db.query("SELECT metadata FROM public.commerce_orders WHERE id=(SELECT order_id FROM public.subscription_activations WHERE subscription_id=$1)", [genuine.subscriptionId])).rows[0].metadata;
+    expect(await rpc(db, "catalog_price_setup_order_policy_pair", [metadata])).toBe("");
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_order_admission_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+it("starter_graduation_uses_the_retained_purchase_order_without_a_linePricing_field", async () => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db);
+    await db.query("UPDATE public.subscription_events SET event_type='subscription.starter_graduated' WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.update_package_template'", [genuine.subscriptionId]);
+    const order = await orderInput(db, { quoteSnapshot: { quote: { context: { pricingPolicy: {
+      offerPolicyVersion: "commerce.offer-policy.v1", promotionEngineVersion: "promotion-engine.v2",
+    } } } } });
+    // This untrusted retained marker must be checked before its quote data can be projected.
+    await db.query(`UPDATE public.subscription_renewal_attachments SET order_id=$2,
+      purchase_facts=jsonb_set(purchase_facts,'{renewalTerms}','{"starterPack":{"graduation":{"lines":[]}}}') WHERE subscription_id=$1`, [genuine.subscriptionId, order]);
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_order_policy_pair_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+it("order_backed_event_without_a_governing_order_never_uses_its_linePricing", async () => {
+  const db = await populated.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("DELETE FROM public.subscriptions WHERE id=ANY($1::uuid[])", [legacyIds.filter(id => id !== genuine.subscriptionId)]);
+    await acceptGenuineEdit(db);
+    await db.query("UPDATE public.subscription_events SET event_type='subscription.starter_graduated' WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.update_package_template'", [genuine.subscriptionId]);
+    await db.query("DELETE FROM public.subscription_renewal_attachments WHERE subscription_id=$1", [genuine.subscriptionId]);
+    await db.query("DELETE FROM public.subscription_activations WHERE subscription_id=$1", [genuine.subscriptionId]);
+    await refusal(rpc(db, "catalog_price_setup_agreement_evidence"), "catalog_price_setup_native_order_admission_unverified");
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+it("recent_unattested_order_refuses_before_financial_projection", async () => transaction(async db => {
+  await db.query("INSERT INTO public.commerce_orders(status,metadata) VALUES('paid','{}')");
+  const at = (await db.query("SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).rows[0].value;
+  await refusal(rpc(db, "catalog_price_setup_assert_order_guards", [at]), "catalog_price_setup_native_order_admission_unverified");
+}));
+it("recent_order_claim_is_a_hard_refusal_not_agreement_or_admission_proof", async () => transaction(async db => {
+  const order = await orderInput(db), promotion = await insertPromotion(db);
+  const adjustment = (await db.query(`INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+    SELECT $1,'promotion_discount','order_total',10,promotion_id,definition_fingerprint FROM public.commerce_promotion_definitions WHERE promotion_id=$2 RETURNING id`, [order, promotion.id])).rows[0].id;
+  await db.query(`INSERT INTO public.commerce_promotion_claims(promotion_id,definition_fingerprint,adjustment_id,order_id,amount_off_minor,reserved_at,expires_at)
+    SELECT promotion_id,definition_fingerprint,$1,$2,10,statement_timestamp(),statement_timestamp()+interval '1 hour'
+    FROM public.commerce_promotion_definitions WHERE promotion_id=$3`, [adjustment, order, promotion.id]);
+  const at = (await db.query("SELECT to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).rows[0].value;
+  await refusal(rpc(db, "catalog_price_setup_assert_order_guards", [at]), "catalog_price_setup_native_order_claim_guard_unverified");
+}));

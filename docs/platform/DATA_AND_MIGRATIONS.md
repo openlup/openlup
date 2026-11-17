@@ -4574,8 +4574,13 @@ retain their acquisition and bundle semantics. Current order metadata or a
 current publication head cannot prove historical admission or frozen money
 protection. Order-backed agreement quotes, including retained renewal lines,
 validate their governing policy pair regardless of age and refuse unproved
-historical admission before projecting quote lines. Accepted edit-event quotes
-remain independent evidence. Qualifying unestablished contexts raise hard refusals independently
+historical admission before projecting quote lines. Graduation and sized edit
+events can copy or merge retained purchase quotes, so their event identity does
+not establish independence. Only complete fresh package quotes and classic
+base-line swaps supply independent event evidence; their amounts must still
+match the current template and renewal bindings. Order money utilities are not
+called by readiness before admission. Qualifying unestablished contexts raise
+hard refusals independently
 of ordinary readiness reasons. Readiness calls no capture or commerce writer
 and takes no commerce row/advisory lock. The managed rail does not supply this
 feature; the migration fragment describes the separate RLS-preserving twin.
