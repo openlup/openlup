@@ -19,6 +19,11 @@ Node 24 or newer is required; the source adoption recipe uses npm 11.19.0. Decla
 shipped `src/`; JavaScript source maps are not shipped. Read [AGENTS.md](AGENTS.md) for the compiled wiring
 example and application ownership rules.
 
+The prepared `1.0.1` set supersedes published `1.0.0`, which failed exact-set
+qualification for starter upgrades. It documents the required owned-file
+migration; runtime, exports and SQL are identical to 1.0.0. Qualification of
+1.0.1 is recorded after publication.
+
 ## Package Surface Maturity
 
 | Export | Role | Maturity | Package smoke |

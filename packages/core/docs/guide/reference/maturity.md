@@ -10,7 +10,7 @@ for package policy definitions and release boundaries.
 | `stable` | `stable` |
 | `testing` | `testing` |
 
-[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/core/scripts/public-api-config.ts)
+[Compatibility policy mapping](https://github.com/openlup/openlup/blob/openlup-core-v1.0.1/packages/core/scripts/public-api-config.ts)
 <!-- /generated:compatibility-policies -->
 
 ## `@openlup/core`
@@ -121,6 +121,6 @@ for package policy definitions and release boundaries.
 | `./subscriptions` | capability | stable |
 | `./subscriptions/contracts` | capability | stable |
 
-4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/AGENTS.md#subpath-maturity).
+4 subpaths omitted because their names are provider-specific. Complete list: [package.json](https://github.com/openlup/openlup/blob/openlup-core-v1.0.1/packages/platform/package.json) and [Subpath maturity](https://github.com/openlup/openlup/blob/openlup-core-v1.0.1/packages/platform/AGENTS.md#subpath-maturity).
 <!-- /generated:maturity:platform -->
 

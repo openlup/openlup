@@ -4,6 +4,13 @@ Status: historical record, 2026-11-11.
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.42.0]
+
+- Publishable on the npm `latest` dist-tag as `0.42.0`, from tag
+  `openlup-core-v0.42.0`.
+
+- Republish unchanged Core runtime, exports and SQL with the complete `0.42.0`
+  package set. The reader guide adds the native payments upgrade notes.
 ## [0.41.0]
 
 - Publishable on the npm `latest` dist-tag as `0.41.0`, from tag

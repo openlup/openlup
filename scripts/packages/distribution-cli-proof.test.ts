@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
-import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -63,4 +63,29 @@ it("retains a failed pair receipt when published visibility refuses before execu
     expect(receipt.result).toBe("FAIL"); expect(receipt.upgrade.result).toBe("FAIL");
     expect(receipt.upgrade.endedAt).toBe(receipt.endedAt);
   } finally { if (previous === undefined) delete env.OPENLUP_REGISTRY_READY; else env.OPENLUP_REGISTRY_READY = previous; }
+});
+
+it("migrates the 0.43 starter contracts and creates only the documented target-only owned files through the CLI", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const created = ["owned/quote-shipping.ts", "owned/renewal-policy.ts", "owned/catalogue.json"];
+  const replaced = ["owned/store.config.ts", "owned/quote-copy.ts", "owned/subscription-editing.ts", "owned/catalogue.ts"];
+  for (const path of [...created, ...replaced]) candidate(path, `candidate ${path}`);
+  for (const path of replaced) write(path, `previous ${path}`);
+  const from = starterUpgradeSnapshot(app, "0.43.0"), to = starterUpgradeSnapshot(target, "1.0.1");
+  migrateStarterOwned(app, target, from, to);
+  expect(Object.keys(to.files).filter(path => path.startsWith("owned/"))).toEqual(created);
+  expect(Object.keys(from.files).some(path => path.startsWith("owned/"))).toBe(false);
+  for (const path of replaced) expect(readFileSync(join(app, path), "utf8")).toBe(`candidate ${path}`);
+  write("from.json", from); write("to.json", to);
+  const run = () => spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app, "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+  write(created[0], "local divergence");
+  const refused = run(); expect(refused.status).toBe(1); assertUpgradeConflict(JSON.parse(refused.stdout), created[0]);
+  rmSync(join(app, created[0]));
+  const result = run(); expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout).applied.sort()).toEqual([...created].sort());
+  for (const path of created) expect(readFileSync(join(app, path), "utf8")).toBe(`candidate ${path}`);
+  expect(JSON.parse(run().stdout).applied).toEqual([]);
+  write("owned/quote-copy.ts", "later customization");
+  migrateStarterOwned(app, target, { ...from, version: "1.0.0" }, to);
+  expect(readFileSync(join(app, "owned/quote-copy.ts"), "utf8")).toBe("later customization");
 });

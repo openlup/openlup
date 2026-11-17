@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.0.1]
+
+- Publishable on the npm `latest` dist-tag as `1.0.1`, from tag
+  `openlup-outbox-v1.0.1`.
+
+- Republish unchanged runtime, exports and SQL with the exact `@openlup/core@1.0.1`
+  peer. The packaged starter migration supersedes published 1.0.0 after failed
+  starter-upgrade qualification; qualification of 1.0.1 is recorded after publication.
+
 ## [1.0.0]
 
 - Publishable on the npm `latest` dist-tag as `1.0.0`, from tag
@@ -19,11 +28,3 @@ Migration: keep a default branch for unknown union and literal-set values. Check
 
 - Republish unchanged Outbox runtime, exports and SQL with the complete `0.43.0`
   package set and exact `@openlup/core@0.43.0` peer.
-
-## [0.42.0]
-
-- Publishable on the npm `latest` dist-tag as `0.42.0`, from tag
-  `openlup-outbox-v0.42.0`.
-
-- Republish unchanged Outbox runtime, exports and SQL with the complete `0.42.0`
-  package set.

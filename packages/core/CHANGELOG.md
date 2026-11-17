@@ -10,6 +10,26 @@ in the source repository.
 
 ## [Unreleased]
 
+## [1.0.1]
+
+- Publishable on the npm `latest` dist-tag as `1.0.1`, from tag
+  `openlup-core-v1.0.1`.
+
+- docs: document the required owned-file migration from the 0.43.0 starter,
+  using target-only snapshot entries and the existing installed upgrade CLI.
+  Runtime, exports and SQL are identical to 1.0.0. The published 1.0.0 set did
+  not pass exact-set qualification for starter upgrades and is superseded by
+  1.0.1; 1.0.1 qualification is recorded after publication.
+
+Migration: Starter applications from 0.43.0 must add `owned/quote-shipping.ts`,
+`owned/renewal-policy.ts` and `owned/catalogue.json` only to the target snapshot,
+and migrate the contracts in `owned/store.config.ts`, `owned/quote-copy.ts`,
+`owned/subscription-editing.ts` and `owned/catalogue.ts` before applying managed
+files. Use the target extraction's bytes for pristine files; preserve local
+values when adapting customized files. Follow the starter section in the
+1.0.0 upgrade guide shipped with this set. Npm-only applications require no
+owned-file migration.
+
 ## [1.0.0]
 
 - Preserve the experimental registry readiness code annotation in emitted declarations;
@@ -130,11 +150,3 @@ separate migration.
 - Keep the shared fulfillment status facade and generated JSON neutral; provider dictionaries own translation. Canonical `packed` remains preferred and every historical display alias keeps its customer-step result.
 
 Migration: shared status-map JSON no longer carries adapter trace columns. Consumers needing provider translation use adapter-owned dictionaries. Existing status tokens, ranks, effects and customer steps are unchanged.
-
-## [0.42.0]
-
-- Publishable on the npm `latest` dist-tag as `0.42.0`, from tag
-  `openlup-core-v0.42.0`.
-
-- Republish unchanged Core runtime, exports and SQL with the complete `0.42.0`
-  package set. The reader guide adds the native payments upgrade notes.
