@@ -180,14 +180,14 @@ review reports, actual checks and remaining gates; this plan grants no authority
 
 | Wave | Current result |
 | --- | --- |
-| W0 | Complete: private declaration and hoisted-install failures reproduced; command profiles frozen. Existing t1–t4 observations retained, with no model rerun. |
-| W1 | The existing subscription-engine, outbox-worker and provider-adapter guide routes point to public entries and meaningful refusal tests. No second guide is needed; final PR7 consumption remains external. |
-| W2–W4 | Implemented: honest declaration leads, app-selected Node/npm resolution, owning-lock checks and confined MCP paths. Installed packed consumer and offline executable recipe are exercised; Core agent startup points hoisted users to that same recipe. |
-| W5 | Residual source/artifact preparation, commands, failures and distinct timing units are in the delivery evidence for PR8. No external transmission or duplicate benchmark is implied. |
-| W6 | Implemented: read-only prerequisite observations, cheap-first checks and real runner discovery with actionable unconfirmed-test warnings. No build cache or skip mechanism. Contributor observations are documented outside PR7's reserved test-guide section; its preflight-list handoff stays with PR7. |
-| W7 | Existing test fixtures and unreserved app/tooling types repaired without changing commerce rules or amounts. Effective strict inventories remain explicit; global flags await the reserved declaration/fixture seams below. |
+| W0 | Complete: private declaration and hoisted-install failures reproduced; command profiles frozen. Original t1–t4 observations remain frozen; this programme adds no model rerun. |
+| W1 | The existing subscription-engine, outbox-worker and provider-adapter routes remain canonical. PR7 #756 has landed and its current guide/history separation is consumed; no second guide is needed. |
+| W2–W4 | Source implementation delivered in #757. The existing Core consumer now also uses a real offline npm workspace: the public import, installed-manifest CLI recipe and MCP agree on the hoisted artifact/version; MCP reads its returned citation, application scans exclude the sibling, and a contradictory owning lock refuses. Existing flat, NodeNext/Bundler and browser proof remains. |
+| W5 | Our source/artifact evidence is retained in #757 and this follow-up. PR8 #758 delivered the [manual regression procedure](agent-dx-regression.md); its measurement owner keeps paired runs, counting units and A5. No duplicate benchmark is introduced. |
+| W6 | Delivered in #757: read-only prerequisites, cheap-first checks and real runner discovery. Build reuse remains measured no-change. After PR7 landed, its test-guide menu gained a pointer to the existing read-only plan; the canonical explanation and all obligations remain unchanged. |
+| W7 | The initial unreserved fixture/type repairs are delivered in #757. This follow-up adds declarations at two stable JavaScript edges, with compiler refusal witnesses and unchanged implementation/consumers. Effective strict inventories remain explicit; global flags await the reserved fixtures and qualification owners below. |
 | W8 | Measured no-change on nodeHostRuntimeDrain and disposableDockerReap: their shared setup and distinct resource ownership already protect the relevant failure classes. No pooling or helper rewrite. |
-| W9 | Local evidence is bound to the delivered source; global strictness and joint PR8/A5 acceptance remain open. No overall 10x or stable-framework claim. |
+| W9 | Deterministic source/artifact evidence stays candidate-bound. PR8's procedure is delivered externally; the full model matrix, released A5 and global strictness remain open. No overall 10x or stable-framework claim. |
 
 W6's five-sample planted-fault profile measured median time to first failure
 37.068 s → 0.690 s (98.14% lower), with fault children deliberately cancelled at
@@ -204,24 +204,33 @@ in the parent run. Real PostgreSQL was used and post-run resource checks found
 no matching containers. The image was cached; cold-pull time is unmeasured.
 No 25% improvement is claimed.
 
-Remaining W7 boundaries are the original money/catalogue fixture and
-qualification/admission owners: bundleAdminFixtures, checkout-refusal-recovery
-evidence, installation inventory, order-money AST, distribution CLI proof,
-release BOM, platform cold consumer and SQL admission. Missing declarations at
-the shared disposable-Docker and review-derived module edges are held with those
-owners. Explicit strict inventories decreased from 40 to 4 app diagnostics and
-31 to 29 tooling diagnostics against the initial source base. Both still exit 2;
-all remaining diagnostics are at the named reserved fixtures or shared control
-declaration edges. Do not add ambient any, exclusions or weakened flags to hide
-them. Exact residual diagnostics and actual compiler exits travel in the PR evidence.
-A passing ordinary typecheck is not a passing strict inventory.
+W7's earlier declaration-edge hold is reconciled by named, disjoint type-only
+files: `scripts/disposable-docker.d.mts` and `scripts/agent-review-derived.d.mts`.
+The active catalogue/stable-release changes touch neither edge nor these files.
+Their JavaScript, cleanup policy, merge/qualification validation and existing
+consumers are unchanged. Types retain unknown inventory profile data, malformed
+classification input and optional sweep fields; compiler fixtures reject false
+guarantees without suppressions. This does not replace the unbound database-type
+seam or transfer ownership of the implementations.
 
-At the 2026-11-17 inspection of main `f37e977f36b7aba44ca3a18f41fd35f2a5b5cb2a`,
-PR6 #751 was merged and PR7 was in progress in its own worktree, without a
-submitted pull request. PR8 remained pending after PR7. The latest listed package
-set was 0.43.0, published before PR1–6. Source-candidate hooks and local tarballs do not close
-the separate blind adopter A5 journey, PR8 regression or P1-SF/DEMO acceptance.
-A5 identifiers in other programmes refer to their own outcomes.
+Prepared strict inventories decreased from the initial 40/31 app/tooling
+diagnostics to 4/29 in #757 and now 3/25. Both projects still exit 2. The remaining
+app diagnostics are in `bundleAdminFixtures`; tooling diagnostics are in
+checkout-refusal-recovery evidence, order-money AST, distribution CLI proof,
+release BOM, platform cold consumer and SQL admission. These money/catalogue and
+qualification/admission owners remain excluded. No global flag, debt or source
+exclusion is changed. Exact diagnostics and compiler exits travel in PR evidence;
+a passing ordinary typecheck is not a passing strict inventory. Probe only after
+the existing package builds: absent `dist` produces an incomparable cascade.
+
+At the inspection of main `edb2c10836d75d026bc07c895a63edef8f3bccad`, PR7 #756
+and PR8 #758 are merged. PR8 records a procedure, not a completed full rerun.
+External observations on candidate `966c32e16`, before #757, cover only the Terra
+t2–t4 pairs; t2 remains partial and t1 awaits a release. They do not settle the full
+paired matrix or establish an overall speed gain. The latest listed set remains
+0.43.0, published before PR1–8. Source hooks and local tarballs do not close the
+separate released blind A5 journey or P1-SF/DEMO acceptance. A5 identifiers in
+other programmes refer to their own outcomes.
 
 Self-retro: real CLI and packed-artifact checks exposed path assumptions that
 mocks missed. Shared compiler/build outputs must be serialized. Measurements
