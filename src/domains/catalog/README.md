@@ -154,3 +154,8 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+Draft payload v3's publication input envelope and opt-in readers are owned by the
+[package catalogue contract](../../../packages/platform/README.md#catalog).
+The source reference composition remains unbound; neither draft persistence nor
+candidate preview executes publication operations or enables a capability.

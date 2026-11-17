@@ -5353,6 +5353,20 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalogue-lc1b",
+        "path": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_draft_apply(text,text,text)",
+            "beforeSha256": "fd417168158be5d5b98bb2f6c56100ff6f1188c644585b368bd29b502f3fa562",
+            "searchPath": "pg_catalog, public"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -7439,6 +7453,17 @@
           "signature": "public.catalog_draft_apply(text,text,text)",
           "beforeSha256": "3c7855753981ee98018ba7000470b2275405a7db0c63e81429298a2c610c47d4",
           "afterSha256": "fd417168158be5d5b98bb2f6c56100ff6f1188c644585b368bd29b502f3fa562"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
+      "sha256": "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd",
+      "functions": [
+        {
+          "signature": "public.catalog_draft_apply(text,text,text)",
+          "beforeSha256": "fd417168158be5d5b98bb2f6c56100ff6f1188c644585b368bd29b502f3fa562",
+          "afterSha256": "554ddda70f3e7b7eba6d23d839404887dd1842ee7c71df6b70e66082df71857c"
         }
       ]
     }

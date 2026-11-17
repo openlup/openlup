@@ -23,12 +23,13 @@ const scalar = z.union([z.string(), z.boolean(), catalogQuantitySchema, catalogA
 const attributes = z.record(z.string(), z.union([scalar, z.array(scalar)]));
 // Keep the legacy leaf grammar without its cross-product refinement; check ownership below.
 const legacy = catalogDraftPayloadSchema;
-const sku = legacy.shape.skus.element.omit({ priceRef: true }).extend({
+export const catalogDraftSkuV2Schema = legacy.shape.skus.element.omit({ priceRef: true }).extend({
   attributes: attributes.optional(), priceOperations: z.array(catalogDraftPriceOperationV2Schema).optional(),
 }).strict();
+export const catalogDraftProductV2Schema = legacy.shape.product.extend({ attributes: attributes.optional() }).strict();
 export const catalogDraftPayloadV2Schema: z.ZodType<CatalogDraftPayloadV2> = z.object({
-  schemaVersion: z.literal(2), product: legacy.shape.product.extend({ attributes: attributes.optional() }).strict(),
-  skus: z.array(sku).max(10_000),
+  schemaVersion: z.literal(2), product: catalogDraftProductV2Schema,
+  skus: z.array(catalogDraftSkuV2Schema).max(10_000),
 }).strict().superRefine((payload, context) => {
   try { canonicalCatalogDraftJson(payload); } catch { context.addIssue({ code: "custom", message: "payload must be bounded safe JSON" }); }
   const { attributes: _attributes, ...product } = payload.product;
