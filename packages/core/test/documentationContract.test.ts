@@ -746,6 +746,17 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(inward)).toThrow("points into the guide; use a relative link");
   });
 
+  it("accepts pinned guide JSON assets while retaining tag and existence checks", () => {
+    const path = "packages/core/docs/guide/fixtures/catalogue.json";
+    const roots = guideFixture(`# Guide\n\n[Pack](${repositoryLink(path)})\n`, { "fixtures/catalogue.json": "{}\n" });
+    expect(() => checkGuide(roots)).not.toThrow();
+    const page = join(roots.core, "docs/guide/README.md");
+    writeFileSync(page, `# Guide\n\n[Pack](${repositoryLink(path, "openlup-core-v1.0.0")})\n`);
+    expect(() => checkGuide(roots)).toThrow("must pin openlup-core-v1.2.3");
+    writeFileSync(page, `# Guide\n\n[Missing](${repositoryLink(path + ".missing")})\n`);
+    expect(() => checkGuide(roots)).toThrow("targets a path missing from the repository");
+  });
+
   it("refuses a stale generated region and --write regenerates it from release gates", () => {
     const roots = guideFixture(`# Guide\n\n${coreRegion("| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | stable |\n")}`);
     expect(() => checkGuide(roots)).toThrow("generated region maturity:outbox is stale");

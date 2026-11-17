@@ -2531,8 +2531,10 @@ operator a forward creates for another operand type cannot hide what it adds:
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
 - No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
-  excepted. Listed CHECKs retain their hash-bound old values in the positive IN
-  form PostgreSQL deparses. Listed UNIQUE replacements retain every old key
+  excepted. Listed value-list CHECKs retain their old values in the positive IN
+  form PostgreSQL deparses. Listed integer-range CHECKs bind the installed
+  definition's exact hash and strictly widen its inclusive int4 interval on the
+  same column, preserving validation state. Listed UNIQUE replacements retain every old key
   column and the exact declared new definition; their old indexes may be replaced.
   Other existing constraints and indexes keep the same protections.
 - The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,

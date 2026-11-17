@@ -10,6 +10,39 @@ in the source repository.
 
 ## [Unreleased]
 
+## [1.1.0]
+
+- Publishable on the npm `latest` dist-tag as `1.1.0`, from tag
+  `openlup-core-v1.1.0`.
+
+- docs: document the required owned-file migration from the 0.43.0 starter,
+  using target-only snapshot entries and the existing installed upgrade CLI.
+  The published 1.0.0 set did not pass exact-set qualification for starter
+  upgrades and is superseded by 1.1.0; 1.1.0 qualification is recorded after
+  publication. This migration guide changes no runtime or SQL.
+
+Migration: Starter applications from 0.43.0 must add `owned/quote-shipping.ts`,
+`owned/renewal-policy.ts` and `owned/catalogue.json` only to the target snapshot,
+and migrate the contracts in `owned/store.config.ts`, `owned/quote-copy.ts`,
+`owned/subscription-editing.ts` and `owned/catalogue.ts` before applying managed
+files. Use the target extraction's bytes for pristine files; preserve local
+values when adapting customized files. Follow the starter section in the
+1.0.0 upgrade guide shipped with this set. Npm-only applications require no
+owned-file migration. Starters targeting 1.1.0 also migrate
+`owned/renewal.config.ts` with the required `subscriptionCare.retention`
+mapping/default and the existing three-rung retry budget, as described in the
+1.1.0 upgrade guide; this also applies when upgrading a 1.0.0 starter.
+
+Align the current source starter and reader guidance with `MAX_CADENCE_DAYS`
+(1..3660 whole days), removing the former starter database refusal above 90.
+Applications continue to choose their offered cadences.
+
+Migration: apply the matching platform package's complete native catalogue,
+including `20261122190000_subscription_cadence_bound.sql`, before using longer
+cadences. This change is unreleased. Checkout-command and saga-fallback replay
+of stored cadence above 3660 can still quote before replay; that unreleased
+development-data case remains a follow-up.
+
 ## [1.0.0]
 
 - Preserve the experimental registry readiness code annotation in emitted declarations;
@@ -130,11 +163,3 @@ separate migration.
 - Keep the shared fulfillment status facade and generated JSON neutral; provider dictionaries own translation. Canonical `packed` remains preferred and every historical display alias keeps its customer-step result.
 
 Migration: shared status-map JSON no longer carries adapter trace columns. Consumers needing provider translation use adapter-owned dictionaries. Existing status tokens, ranks, effects and customer steps are unchanged.
-
-## [0.42.0]
-
-- Publishable on the npm `latest` dist-tag as `0.42.0`, from tag
-  `openlup-core-v0.42.0`.
-
-- Republish unchanged Core runtime, exports and SQL with the complete `0.42.0`
-  package set. The reader guide adds the native payments upgrade notes.

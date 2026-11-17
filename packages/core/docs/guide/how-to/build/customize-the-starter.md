@@ -18,7 +18,7 @@ they are ordinary public source files, not release assets. Keep the pair and
 source revision together. No author checkout, workspace install or package
 packing is needed.
 
-Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
+Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the download commands in `examples/neutral-store/README.md`, under “Start
 from an exact source archive”. Those commands download the exact source archive
 and both inputs at the commits above. In the download directory, after unpacking
@@ -77,7 +77,7 @@ node --experimental-strip-types host/server.ts
 ```
 
 This host does not compose the database-backed actions. Pass `--configuration`
-and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/server.ts)
+and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/server.ts)
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
@@ -139,12 +139,49 @@ Invalid document, return or hold settings refuse with
 `starter_order_controls_configuration_invalid`. A control being absent from a
 page does not make its configuration optional.
 
+## Keep business configuration owned
+
+In the current source candidate, keep one owned configuration entry per domain,
+such as `owned/renewal.config.ts` or `owned/quote.config.ts`, and compose it in
+`owned/store.config.ts`. Browser and host read that same input. Managed policy
+helpers hold selection and validation mechanics, with business values in owned
+files. `shared/policy.ts` supplies `set`, `range` and text `choice(default, ...allowed)`;
+`assertChoice` checks a nonempty, duplicate-free subset of the domain vocabulary
+whose default belongs to that subset. These helpers remain starter-local.
+
+Use static data for maps, sets, ranges, windows and ladders. Use a side-effect-free
+callback only for an algorithm that normalizes or refuses input; it must not
+authorize, write or read mutable state. Keep such callbacks in an owned module
+imported by the host, outside `StoreConfig`. Each domain assertion runs once
+from `assertConfig` at startup and refuses invalid data or unsupported database
+bounds with a named error code.
+
+## Configure cancellation offers
+
+In the current source candidate, edit `subscriptionCare.retention` in
+`owned/renewal.config.ts`, composed through `renewal` in `owned/store.config.ts`:
+
+```ts
+const retention = {
+  offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' },
+  defaultOffer: 'pause',
+} as const;
+```
+
+These defaults preserve the starter's existing offers. Every other configured
+reason uses `defaultOffer`. Keys must belong to `retentionReasons`; values and
+the default must be `skip`, `reschedule` or `pause`. `assertRetention`, called
+from `assertConfig`, refuses unknown keys or kinds with
+`starter_retention_configuration_invalid`. The browser uses the same map for
+the displayed offer and its submitted kind. Reason codes, accepted-offer IDs
+and native command authorization keep their existing meaning.
+
 ## Configure subscription offers
 
 In the current source candidate, edit `subscriptionOffers` in
 `owned/store.config.ts`. The released archive above retains its original behavior;
 these additions need the matching source candidate and admission ports.
-The managed typed helper accepts sets and stepped ranges:
+The managed `shared/policy.ts` helper accepts sets and stepped ranges:
 
 ```text
 { days: set(28, 56), defaultDays: 28, minimumBaseUnits: 6,
@@ -172,9 +209,11 @@ commands still require current rules, authentication, locks and quote/fact guard
 Graduation retains its own cadence and must admit the purchased lines separately.
 
 Reapply the demonstration installation and restart after changing the servicing
-minimum; runtime admission refuses installed-minimum drift. The current starter
-refuses configuration above 90 days because historical SQL still has that limit.
-Wider package DTOs alone do not establish database support for longer cadences.
+minimum; runtime admission refuses installed-minimum drift. The current source
+starter admits whole-day cadences from 1 through `MAX_CADENCE_DAYS` (3660).
+Apply the complete native catalogue, including
+`20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
+This forward is unreleased; use the matching installed package's migration guide.
 
 ## Compose shipping quotes
 
@@ -419,16 +458,16 @@ Unchanged copied bytes alone do not establish working behavior. See
 
 ## Protect local sessions and messages
 
-Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/sessions.ts)
+Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/sessions.ts)
 owns expiry and capacity; a full store refuses with
 `starter_session_capacity_exceeded`. Customer ownership and operator membership are rechecked against
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
 Read `identity.jsonl` through the application container's filesystem as its
-`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/native-composition.ts)
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/native-composition.ts)
 defines its private location.
-The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/native-composition.ts)
+The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/native-composition.ts)
 creates the file with owner-only permissions. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 
@@ -548,7 +587,12 @@ they install no timer or HTTP endpoint. An existing scheduler may invoke them.
 Messages are captured locally, which does not establish delivery to recipients.
 
 `owned/renewal.config.ts` controls renewal enablement, population, retry timing,
-batch limits and leases. Renewal is disabled by default; paid-order mail still
+batch limits and leases. Startup requires exactly three `retryBackoffHours`
+entries or refuses with `starter_database_retry_budget`: database guards exhaust
+on attempt four. This does not install a provider ladder; provider-recorded
+failures retain the SQL default `[24,72,168]` hours described under
+[durable retry timing](../../concepts/subscriptions.md#durable-retry-timing).
+Renewal is disabled by default; paid-order mail still
 runs in that case. Keep renewal and care lease durations within the validator's
 bounds. The native job ledger and session exclusion prevent overlapping renewal
 or care invocations for the same selection.

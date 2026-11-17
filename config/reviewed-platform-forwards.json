@@ -5524,6 +5524,37 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "CADENCE-S3",
+        "path": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "4fecbcac3f60d0c4edf525bbdad73644bdf2bbaaa6b116b2c5d283d830cb2655",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "checkSupersets": [
+          {
+            "table": "public.subscription_edit_quotes",
+            "constraint": "subscription_edit_quotes_cadence_check",
+            "column": "proposed_cadence_days",
+            "range": {
+              "lower": 1,
+              "upper": 3660
+            },
+            "beforeSha256": "79ff33c0c0b85ec4fbf96ccd2b7905b1c65b23d482107a3cfdaab622f1edc4aa"
+          }
+        ]
       }
     ]
   },
@@ -7763,6 +7794,22 @@
           "signature": "public.catalog_price_setup_apply(text,text)",
           "beforeSha256": null,
           "afterSha256": "49e8cce6b3212d7200be5d57abb3a6e602affcf79f47e5a4c2cc6c1dd16048be"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+      "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8",
+      "functions": [
+        {
+          "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d",
+          "afterSha256": "b7a39487ea9bbd498b022ec74da0db961c265fe632bd6193e8ea67d023aa3ef4"
+        },
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "4fecbcac3f60d0c4edf525bbdad73644bdf2bbaaa6b116b2c5d283d830cb2655",
+          "afterSha256": "35bcc1e11ebc7ddd2d0b7c7d0e2e2bcf820d2167c9568089273940c830bf1cc6"
         }
       ]
     }
