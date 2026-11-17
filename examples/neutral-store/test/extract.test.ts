@@ -50,6 +50,11 @@ test('extract creates an independent repository and refuses to overwrite an exis
       if (name.startsWith('@openlup/')) assert.match(specifier as string, /^file:artifacts\/.+\.tgz$/);
     }
     for (const file of ownership.demoData) assert.ok(ownership.owned.includes(file), file);
+    assert.ok(ownership.owned.includes('owned/quote-shipping.ts'));
+    for (const file of ['host/quote-composition.ts', 'shared/config.ts', 'test/quote-shipping.test.ts']) {
+      assert.ok(ownership.managed.includes(file), file);
+      assert.ok(!ownership.owned.includes(file), file);
+    }
     assert.ok(ownership.demoDataNote.includes('customer environment'));
     assert.ok(ownership.pageCopyRequiredFor.length > 0);
     assert.ok(ownership.pageCopyRule.includes('managed to owned'));

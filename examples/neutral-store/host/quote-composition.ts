@@ -9,10 +9,11 @@ import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, Acqu
   ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
   type AcquisitionQuoteRequest, type ResolvedAcquisitionTerms, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQuotePromotionV2,
-  createQuoteAutomaticPromotions, createQuotePromotionCodeAdjustments, createQuoteShippingPromotions,
+  createQuoteAutomaticPromotions, createQuotePromotionCodeAdjustments,
   createPromotionQuoteAcceptance, type PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import { verifyProductDocument } from './editor-catalogue.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
+import { createQuoteShipping } from '../owned/quote-shipping.ts';
 import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
@@ -72,11 +73,8 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       minimumProductPayableMinor: config.quote.acquisition.minimumProductPayableMinor });
     const automatic = createQuoteAutomaticPromotions<Request>({ ...promo, ...v2, acquisition, resolveEmailEligibility: () => typeof email === 'string' && email.length > 0 });
     const codes = createQuotePromotionCodeAdjustments({ minimumProductPayableMinor: config.quote.acquisition.minimumProductPayableMinor });
-    const shipping = createQuoteShippingPromotions({ ...automatic, ...codes,
-      promoDataPort: createPostgresCommercePromoDataPort(db),
-      commerceSettingsPort: { getShippingSettings: async () => ({ legacyFlatMinor: 0, policy: { version: 'shipping-policy.v1',
-        current: { enabled: true, flatMinor: config.offer.shippingMinor, freeThresholdMinor: config.offer.freeShippingFromMinor,
-          effectiveFrom: config.quote.policy.effectiveFrom } } }) } });
+    const shipping = createQuoteShipping<Request>(config, { ...automatic, ...codes,
+      promoDataPort: createPostgresCommercePromoDataPort(db) });
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
       { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({

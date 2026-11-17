@@ -98,9 +98,10 @@ Refuse unsupported destinations, currencies or missing weight facts before
 provider I/O; do not silently substitute a successful zero rate. Use a scripted
 client to verify the shipping amount in the final total, promotion interactions
 and zero-I/O refusals. This preview supplies no dedicated carrier-rate
-conformance runner. In the starter, the quote composition is currently managed
-source; follow the [source-copy ownership process](../build/customize-the-starter.md#change-a-page-or-add-a-route)
-if you change it.
+conformance runner. The current source starter exposes this composition in
+`owned/quote-shipping.ts`; follow [compose shipping quotes](../build/customize-the-starter.md#compose-shipping-quotes).
+The released 0.43.0 starter retains its original managed composition and
+[source-copy ownership process](../build/customize-the-starter.md#change-a-page-or-add-a-route).
 
 ### Card and wallet payment template
 

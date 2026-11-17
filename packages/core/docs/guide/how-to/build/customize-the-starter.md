@@ -176,6 +176,43 @@ minimum; runtime admission refuses installed-minimum drift. The current starter
 refuses configuration above 90 days because historical SQL still has that limit.
 Wider package DTOs alone do not establish database support for longer cadences.
 
+## Compose shipping quotes
+
+In the current source candidate, `owned/quote-shipping.ts` owns shipping quote
+composition. The released 0.43.0 archive above retains its original managed
+composition; use the matching candidate for this hook. `host/quote-composition.ts`
+calls the typed factory and stays managed, as does `shared/config.ts`.
+
+The default factory wires `createQuoteShippingPromotions` to the host's promotion
+ports and the shipping policy from `offer.shippingMinor`,
+`offer.freeShippingFromMinor` and `quote.policy.effectiveFrom`. The free threshold
+uses the product amount after discounts. The quote retains shipping terms for
+acceptance and later delivery pricing.
+
+Keep carrier configuration and clients in the owned server file or its
+application-owned adapters. Read credentials from private runtime inputs there;
+never commit their values or expose them to the browser. The starter request
+carries destination input in `request.checkout`; validate its country and resolve
+trusted weight facts before carrier I/O. To mount a resolver, set the factory's
+`resolver` default to your application resolver using its `config` and `deps` arguments.
+Its typed return binds the existing public `resolveQuoteShippingPromotions`
+callback; no managed-source copy or shared configuration extension is needed.
+That callback replaces shipping **and** promotion evaluation. Compose the
+automatic and code policies, free threshold and retained shipping/acquisition
+terms deliberately; returning a carrier fee alone drops those policies.
+`ShippingRateDataPort` manages an administrative flat rate and audit, not a
+carrier quotation. See [carrier quote composition](../extend/provider-adapters.md#quote-a-carrier-shipping-rate-by-weight-at-checkout)
+for the public contract and trusted destination/weight responsibilities.
+
+From the extracted application with its selected packages installed, run
+`node --experimental-strip-types --test test/quote-shipping.test.ts`.
+Keep its frozen default transcript unchanged when relocating composition.
+An offline adapter must prove the rate
+in the final total for both purchase modes and refuse an unsupported country
+before any carrier or data-port call in its resolver. The public quote engine
+reads catalogue and prices before invoking this hook; that resolver witness
+does not establish zero database reads for the whole checkout request.
+
 ## Change identity and an offer rule
 
 Edit `brand.name`, its localized `brand.strapline`, `offer.layout` (`list` or
