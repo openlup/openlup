@@ -1512,7 +1512,9 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
     kind: "subscription_legacy";
     legacyResolved: ResolvedPrice;
 });
-export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
+export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch"
+/** @experimental */
+ | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/catalogPriceSetup.d.ts
 
@@ -1793,10 +1795,14 @@ export interface SubscriptionPricePolicyCanonicalInput extends SubscriptionPrice
 }
 export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicyCanonicalInput {
     digest: string;
-    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples. */
+    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples.
+     * @experimental
+     */
     closedFromOpen?: boolean;
 }
-export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
+export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch"
+/** @experimental */
+ | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/provenance.d.ts
 
@@ -3982,6 +3988,7 @@ export declare const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
     effectiveFrom: z.ZodString;
     effectiveTo: z.ZodNullable<z.ZodString>;
     digest: z.ZodString;
+    /** @experimental */
     closedFromOpen: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
 export declare class SubscriptionPricePolicyDigestError extends Error {

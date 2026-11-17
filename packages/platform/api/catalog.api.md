@@ -462,6 +462,7 @@ export interface CatalogAttributeProjectionValue {
     canonical_unit: string | null;
     canonical_value: string | null;
 }
+/** @experimental */
 declare const validatedAttributes: unique symbol;
 /** @experimental */
 export type CatalogAttributeValidation = {
@@ -1148,6 +1149,7 @@ export declare const CATALOG_CONFORMANCE_RULES: Readonly<Record<CatalogConforman
 ```ts
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 /** Labels and callbacks are never definition identity. Runtime schemas bound the metadata. */
+/** @experimental */
 export declare function catalogDefinitionJson(definition: CatalogProductTypeInput): string;
 /** The same canonical metadata bytes are used by installation and registry checks.
  * @experimental
@@ -1852,22 +1854,28 @@ export interface CatalogPackInput {
         version: number;
     }[];
 }
+/** @experimental */
 type Profile<P extends CatalogPackInput> = P extends {
     subscriptionProfiles: readonly (infer R)[];
 } ? R : never;
+/** @experimental */
 type ProfileKeys<P extends CatalogPackInput> = Profile<P> extends infer R ? R extends {
     key: infer K extends string;
 } ? K : never : never;
+/** @experimental */
 type ProfileVersions<P extends CatalogPackInput> = Profile<P> extends infer R ? R extends {
     version: infer V extends number;
 } ? V : never : never;
 /** Keep authoring inputs closed, including referenced objects and nested union members. */
+/** @experimental */
 type Exact<Input, Shape> = unknown extends Shape ? Input : Input extends (...args: never[]) => unknown ? Input extends Shape ? Input : never : Input extends readonly unknown[] ? Shape extends readonly (infer Item)[] ? {
     [I in keyof Input]: Exact<Input[I], Item>;
 } : never : Input extends object ? Shape extends unknown ? Input extends Shape ? {
     [K in keyof Input]: K extends keyof Shape ? Exact<Input[K], Shape[K]> : never;
 } : never : never : Input extends Shape ? Input : never;
+/** @experimental */
 type Units<T extends CatalogProductTypeInput> = T["units"][number]["code"];
+/** @experimental */
 type QuantityIn<T extends CatalogProductTypeInput, Codes extends string> = T["units"][number] extends infer U ? U extends {
     code: Codes;
     dimension: CatalogQuantity["dimension"];
@@ -1875,17 +1883,21 @@ type QuantityIn<T extends CatalogProductTypeInput, Codes extends string> = T["un
     unit: U["code"];
     dimension: U["dimension"];
 } : never : never;
+/** @experimental */
 type UnitCodesFor<T extends CatalogProductTypeInput, D extends CatalogQuantity["dimension"]> = T["units"][number] extends infer U ? U extends {
     code: string;
     dimension: D;
 } ? U["code"] : never : never;
+/** @experimental */
 type AttributeKeys<T extends CatalogProductTypeInput> = T extends {
     attributes: readonly (infer A)[];
 } ? A extends {
     key: infer K extends string;
     scope: "variant";
 } ? K : never : never;
+/** @experimental */
 type Dimension<T extends CatalogProductTypeInput> = T["dimensions"][number];
+/** @experimental */
 type TypedOption<D, T extends CatalogProductTypeInput> = D extends {
     kind: "choice";
     values: readonly string[];
@@ -1909,9 +1921,11 @@ type TypedOption<D, T extends CatalogProductTypeInput> = D extends {
     value: boolean;
 } : CatalogOptionValue;
 /** Recursive view of values frozen by defineCatalogPack; callbacks keep their signatures. */
+/** @experimental */
 type CatalogReadonly<T> = T extends (...args: never[]) => unknown ? T : T extends object ? {
     readonly [K in keyof T]: CatalogReadonly<T[K]>;
 } : T;
+/** @experimental */
 type SelectedOptions<T extends CatalogProductTypeInput, Selected extends string> = [Extract<Dimension<T>, {
     key: Selected;
 }>] extends [never] ? Readonly<Record<string, never>> : {
@@ -1919,6 +1933,7 @@ type SelectedOptions<T extends CatalogProductTypeInput, Selected extends string>
         key: Selected;
     }> as D["key"]]: TypedOption<D, T>;
 };
+/** @experimental */
 type DraftForType<T extends CatalogProductTypeInput, Selected extends string = Dimension<T>["key"]> = Omit<CatalogReadonly<CatalogDraftPayload>, "product" | "skus"> & {
     product: Omit<CatalogReadonly<CatalogDraftPayload["product"]>, "type" | "dimensions"> & {
         type: Pick<T, "key" | "version">;
@@ -1935,12 +1950,15 @@ type DraftForType<T extends CatalogProductTypeInput, Selected extends string = D
  * @experimental
  */
 export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
+/** @experimental */
 type DraftInput = CatalogReadonly<CatalogDraftPayload>;
+/** @experimental */
 type Attribute<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = T extends {
     attributes: readonly (infer A)[];
 } ? Extract<A, {
     scope: Scope;
 }> : never;
+/** @experimental */
 type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
     kind: "list";
     item: infer I;
@@ -1970,6 +1988,7 @@ type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
 } ? {
     readonly [K in V["requiredLocales"][number]]: string;
 } : unknown) : V extends CatalogAttributeValueType | CatalogAttributeScalarType ? string : never;
+/** @experimental */
 type RequiredAttribute<A> = A extends {
     required: true;
 } ? A : A extends {
@@ -1977,6 +1996,7 @@ type RequiredAttribute<A> = A extends {
         min: infer N extends number;
     };
 } ? number extends N ? never : N extends 0 ? never : A : never;
+/** @experimental */
 type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = {
     readonly [A in Attribute<T, Scope> as A extends {
         key: infer K extends string;
@@ -1990,17 +2010,21 @@ type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" 
         valueType: infer V;
     } ? AttributeValue<V, T> : never;
 };
+/** @experimental */
 type AttributeField<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = [RequiredAttribute<Attribute<T, Scope>>] extends [never] ? {
     attributes?: TypedAttributes<T, Scope>;
 } : {
     attributes: TypedAttributes<T, Scope>;
 };
+/** @experimental */
 type DraftV2ForType<T extends CatalogProductTypeInput, Selected extends string> = {
     schemaVersion: 2;
     product: Omit<DraftForType<T, Selected>["product"], "attributes"> & AttributeField<T, "product">;
     skus: readonly (Omit<DraftForType<T, Selected>["skus"][number], "priceRef" | "attributes"> & AttributeField<T, "variant"> & Pick<CatalogReadonly<CatalogDraftPayloadV2["skus"][number]>, "priceOperations">)[];
 };
+/** @experimental */
 type AnyDraftInput = DraftInput | CatalogReadonly<CatalogDraftPayloadV2>;
+/** @experimental */
 type SelectedDraft<P extends CatalogPackInput, D extends AnyDraftInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? D["product"]["type"] extends Pick<T, "key" | "version"> ? (D extends {
     schemaVersion: 2;
 } ? DraftV2ForType<T, D["product"]["dimensions"][number]> : DraftForType<T, D["product"]["dimensions"][number]>) & {
@@ -2027,6 +2051,7 @@ type SelectedDraft<P extends CatalogPackInput, D extends AnyDraftInput> = P["typ
         } : unknown : unknown);
     };
 } : never : never : never;
+/** @experimental */
 type AttributeReferences<V, T extends CatalogProductTypeInput> = V extends {
     kind: "quantity";
 } ? V & {
@@ -2039,18 +2064,21 @@ type AttributeReferences<V, T extends CatalogProductTypeInput> = V extends {
 } ? V & {
     item: AttributeReferences<Item, T>;
 } : V;
+/** @experimental */
 type AttributeInput<A, T extends CatalogProductTypeInput> = A extends {
     key: string;
     valueType: unknown;
 } ? string extends A["key"] ? never : A & {
     valueType: AttributeReferences<A["valueType"], T>;
 } : never;
+/** @experimental */
 type DimensionInput<D, T extends CatalogProductTypeInput> = D extends {
     kind: "quantity";
     dimension: infer K extends CatalogQuantity["dimension"];
 } ? D & {
     units: readonly UnitCodesFor<T, K>[];
 } : D;
+/** @experimental */
 type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInput> = T extends unknown ? string extends T["key"] | Units<T> ? never : number extends T["version"] ? never : T & {
     key: `${P["namespace"]}:${string}`;
     netContentUnits: readonly Units<T>[];
@@ -2064,6 +2092,7 @@ type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInpu
         attributeKey: AttributeKeys<T>;
     }[];
 } : never;
+/** @experimental */
 type PackReferences<P extends CatalogPackInput> = string extends P["namespace"] | P["taxClasses"][number]["key"] | ProfileKeys<P> ? never : number extends ProfileVersions<P> ? never : {
     types: {
         readonly [I in keyof P["types"]]: P["types"][I] extends CatalogProductTypeInput ? TypeReferences<P, P["types"][I]> : P["types"][I];
@@ -2733,6 +2762,7 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         code: string;
         dimension: CatalogQuantityDimension;
         integral: boolean;
+        /** @experimental */
         factor?: CatalogUnitFactor;
     }[];
     netContentUnits: string[];
@@ -2750,15 +2780,22 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         key: string;
         kind: "boolean";
     })[];
+    /** @experimental */
     attributes?: readonly AttributeDefinition[];
+    /** @experimental */
     axes?: readonly CatalogAxisDefinition[];
+    /** @experimental */
     validatorRef?: string;
+    /** @experimental */
     subscriptionProfileRef?: CatalogProductTypeRef;
+    /** @experimental */
     taxClass?: string;
+    /** @experimental */
     labels?: Readonly<Record<string, string>>;
     validateContent: (content: unknown) => readonly CatalogDraftIssue[];
 }
 /** Readonly authoring counterpart; the existing mutable definition API stays compatible. */
+/** @experimental */
 export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units" | "netContentUnits" | "dimensions"> & {
     units: readonly CatalogProductTypeDefinition["units"][number][];
     netContentUnits: readonly string[];
@@ -2874,6 +2911,7 @@ import { type CatalogDraftReadiness } from "./draftValidation.js";
 export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
     store: CatalogDraftStorePort<Record>;
     registry: CatalogProductTypeRegistry;
+    /** @experimental */
     attributeReferences?: CatalogAttributeReferencePort;
     authorizeOperator: (context: Context) => Promise<CatalogDraftOperator | null>;
 }
@@ -3402,6 +3440,7 @@ import type { CatalogDraftPriceOperationV2, CatalogDraftPayloadV2, CatalogDraftC
  * @experimental
  */
 export declare const catalogDraftPriceOperationV2Schema: z.ZodType<CatalogDraftPriceOperationV2>;
+/** @experimental */
 export declare const catalogDraftSkuV2Schema: z.ZodObject<{
     id: z.ZodGUID;
     code: z.ZodOptional<z.ZodString>;
@@ -3484,6 +3523,7 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
     }, z.core.$strict>, z.ZodRecord<z.ZodString, z.ZodString>]>>]>>>;
     priceOperations: z.ZodOptional<z.ZodArray<z.ZodType<CatalogDraftPriceOperationV2, unknown, z.core.$ZodTypeInternals<CatalogDraftPriceOperationV2, unknown>>>>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogDraftProductV2Schema: z.ZodObject<{
     id: z.ZodGUID;
     type: z.ZodObject<{
@@ -3568,6 +3608,7 @@ export declare const catalogDraftPublicationOperationV3Schema: z.ZodType<Catalog
 /** @experimental */
 export declare const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublicationInputsV3>;
 /** Removes only the additive carrier/version for existing scalar, attribute and price validation. */
+/** @experimental */
 export declare function catalogDraftV3ValidationPayload(payload: CatalogDraftPayloadV3): {
     schemaVersion: 2;
     product: Omit<import("./index.js").CatalogDraftPayloadV2["product"], "sharedContent"> & {
@@ -3946,6 +3987,7 @@ export declare const catalogProductTypeRefSchema: z.ZodObject<{
     key: z.ZodString;
     version: z.ZodNumber;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
     key: z.ZodString;
     version: z.ZodNumber;
@@ -4451,91 +4493,115 @@ export declare const BUNDLE_MIGRATIONS: readonly [{
     readonly url: URL;
 }];
 /** Catalog foundation projections; install the complete canonical catalogue. */
-export declare const CATALOG_MIGRATIONS: readonly [{
-    readonly id: "20260807140000_read_parity_catalog";
-    readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql";
-    readonly position: 1;
-    readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
-    readonly url: URL;
-}, {
-    readonly id: "20260810120000_storefront_catalog_attributes";
-    readonly catalogPath: "db/platform/migrations/20260810120000_storefront_catalog_attributes.sql";
-    readonly position: 8;
-    readonly sha256: "2bf938f5d0076193557bea834f86dbd9bcb7f3e2de00f99fb91cc1229b93a14b";
-    readonly url: URL;
-}, {
-    readonly id: "20260827220000_catalog_document_revision_foundation";
-    readonly catalogPath: "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql";
-    readonly position: 58;
-    readonly sha256: "715e74d655b76d35b8a49e0d2a5625594a6c4856863f369cd1eadcd1fb1ae90e";
-    readonly url: URL;
-}, {
-    readonly id: "20260827220001_catalog_document_revision_foundation_validate";
-    readonly catalogPath: "db/platform/migrations/20260827220001_catalog_document_revision_foundation_validate.sql";
-    readonly position: 59;
-    readonly sha256: "f3cd7fb61dcebac1cf0468cf2d7c1f9dd036817ab0094c72864266e307b269de";
-    readonly url: URL;
-}, {
-    readonly id: "20260908100000_catalog_draft_foundation";
-    readonly catalogPath: "db/platform/migrations/20260908100000_catalog_draft_foundation.sql";
-    readonly position: 61;
-    readonly sha256: "ac0d614cdb2874df8fbdbbbda4f9455986ef95241fe1334b0b54a1fa6478ab2e";
-    readonly url: URL;
-}, {
-    readonly id: "20261122100000_catalog_definition_binding";
-    readonly catalogPath: "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
-    readonly position: 142;
-    readonly sha256: "3236260783b90d8210d324d656bf5b9406ec9deeb59e943f0bda3f3aa337b6cb";
-    readonly url: URL;
-}, {
-    readonly id: "20261122110000_catalog_quantities";
-    readonly catalogPath: "db/platform/migrations/20261122110000_catalog_quantities.sql";
-    readonly position: 143;
-    readonly sha256: "7c347d2449ca970a6edd4ec77a03892680a901450d817f243456b1b08840573a";
-    readonly url: URL;
-}, {
-    readonly id: "20261122120000_catalog_attributes";
-    readonly catalogPath: "db/platform/migrations/20261122120000_catalog_attributes.sql";
-    readonly position: 144;
-    readonly sha256: "a33c24d3e7904125cd8e8df489b2c995e83ddbf70fb2fd4dbc6f3c463cdfb7d1";
-    readonly url: URL;
-}, {
-    readonly id: "20261122130000_catalog_variant_axes";
-    readonly catalogPath: "db/platform/migrations/20261122130000_catalog_variant_axes.sql";
-    readonly position: 145;
-    readonly sha256: "48bc16639ca567aba31f2257f7cd79ca7c562be4cd4aedc4020aedf70e273c70";
-    readonly url: URL;
-}, {
-    readonly id: "20261122140000_subscription_price_policy_close_digest";
-    readonly catalogPath: "db/platform/migrations/20261122140000_subscription_price_policy_close_digest.sql";
-    readonly position: 146;
-    readonly sha256: "3a30959d1a0721fc48455242ec31d2c31d1f52694aefaca80531bac4b270eb78";
-    readonly url: URL;
-}, {
-    readonly id: "20261122150000_catalog_drafts_v2";
-    readonly catalogPath: "db/platform/migrations/20261122150000_catalog_drafts_v2.sql";
-    readonly position: 147;
-    readonly sha256: "3336df885007ea87d0d53d18edbf55ae444027cdfeee555486a1371ad23e6376";
-    readonly url: URL;
-}, {
-    readonly id: "20261122160000_catalog_drafts_v3";
-    readonly catalogPath: "db/platform/migrations/20261122160000_catalog_drafts_v3.sql";
-    readonly position: 148;
-    readonly sha256: "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd";
-    readonly url: URL;
-}, {
-    readonly id: "20261122170000_offer_policy_readiness_inputs";
-    readonly catalogPath: "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql";
-    readonly position: 149;
-    readonly sha256: "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f";
-    readonly url: URL;
-}, {
-    readonly id: "20261122180000_catalog_base_price_writer";
-    readonly catalogPath: "db/platform/migrations/20261122180000_catalog_base_price_writer.sql";
-    readonly position: 150;
-    readonly sha256: "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65";
-    readonly url: URL;
-}];
+export declare const CATALOG_MIGRATIONS: readonly [
+    {
+        readonly id: "20260807140000_read_parity_catalog";
+        readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql";
+        readonly position: 1;
+        readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
+        readonly url: URL;
+    },
+    {
+        readonly id: "20260810120000_storefront_catalog_attributes";
+        readonly catalogPath: "db/platform/migrations/20260810120000_storefront_catalog_attributes.sql";
+        readonly position: 8;
+        readonly sha256: "2bf938f5d0076193557bea834f86dbd9bcb7f3e2de00f99fb91cc1229b93a14b";
+        readonly url: URL;
+    },
+    {
+        readonly id: "20260827220000_catalog_document_revision_foundation";
+        readonly catalogPath: "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql";
+        readonly position: 58;
+        readonly sha256: "715e74d655b76d35b8a49e0d2a5625594a6c4856863f369cd1eadcd1fb1ae90e";
+        readonly url: URL;
+    },
+    {
+        readonly id: "20260827220001_catalog_document_revision_foundation_validate";
+        readonly catalogPath: "db/platform/migrations/20260827220001_catalog_document_revision_foundation_validate.sql";
+        readonly position: 59;
+        readonly sha256: "f3cd7fb61dcebac1cf0468cf2d7c1f9dd036817ab0094c72864266e307b269de";
+        readonly url: URL;
+    },
+    {
+        readonly id: "20260908100000_catalog_draft_foundation";
+        readonly catalogPath: "db/platform/migrations/20260908100000_catalog_draft_foundation.sql";
+        readonly position: 61;
+        readonly sha256: "ac0d614cdb2874df8fbdbbbda4f9455986ef95241fe1334b0b54a1fa6478ab2e";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122100000_catalog_definition_binding";
+        readonly catalogPath: "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
+        readonly position: 142;
+        readonly sha256: "3236260783b90d8210d324d656bf5b9406ec9deeb59e943f0bda3f3aa337b6cb";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122110000_catalog_quantities";
+        readonly catalogPath: "db/platform/migrations/20261122110000_catalog_quantities.sql";
+        readonly position: 143;
+        readonly sha256: "7c347d2449ca970a6edd4ec77a03892680a901450d817f243456b1b08840573a";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122120000_catalog_attributes";
+        readonly catalogPath: "db/platform/migrations/20261122120000_catalog_attributes.sql";
+        readonly position: 144;
+        readonly sha256: "a33c24d3e7904125cd8e8df489b2c995e83ddbf70fb2fd4dbc6f3c463cdfb7d1";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122130000_catalog_variant_axes";
+        readonly catalogPath: "db/platform/migrations/20261122130000_catalog_variant_axes.sql";
+        readonly position: 145;
+        readonly sha256: "48bc16639ca567aba31f2257f7cd79ca7c562be4cd4aedc4020aedf70e273c70";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122140000_subscription_price_policy_close_digest";
+        readonly catalogPath: "db/platform/migrations/20261122140000_subscription_price_policy_close_digest.sql";
+        readonly position: 146;
+        readonly sha256: "3a30959d1a0721fc48455242ec31d2c31d1f52694aefaca80531bac4b270eb78";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122150000_catalog_drafts_v2";
+        readonly catalogPath: "db/platform/migrations/20261122150000_catalog_drafts_v2.sql";
+        readonly position: 147;
+        readonly sha256: "3336df885007ea87d0d53d18edbf55ae444027cdfeee555486a1371ad23e6376";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122160000_catalog_drafts_v3";
+        readonly catalogPath: "db/platform/migrations/20261122160000_catalog_drafts_v3.sql";
+        readonly position: 148;
+        readonly sha256: "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122170000_offer_policy_readiness_inputs";
+        readonly catalogPath: "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql";
+        readonly position: 149;
+        readonly sha256: "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261122180000_catalog_base_price_writer";
+        readonly catalogPath: "db/platform/migrations/20261122180000_catalog_base_price_writer.sql";
+        readonly position: 150;
+        readonly sha256: "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65";
+        readonly url: URL;
+    }
+];
 ```
 ## dist/catalog/validation.d.ts
 
@@ -6105,7 +6171,9 @@ export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
     kind: "subscription_legacy";
     legacyResolved: ResolvedPrice;
 });
-export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
+export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch"
+/** @experimental */
+ | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/catalogPriceSetup.d.ts
 
@@ -6386,10 +6454,14 @@ export interface SubscriptionPricePolicyCanonicalInput extends SubscriptionPrice
 }
 export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicyCanonicalInput {
     digest: string;
-    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples. */
+    /** A one-time close preserves NULL as the original digest end. Omitted on legacy tuples.
+     * @experimental
+     */
     closedFromOpen?: boolean;
 }
-export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch" | "subscription_price_policy_original_tuple_unverified";
+export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch"
+/** @experimental */
+ | "subscription_price_policy_original_tuple_unverified";
 ```
 ## dist/pricing/contracts/provenance.d.ts
 
@@ -8575,6 +8647,7 @@ export declare const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
     effectiveFrom: z.ZodString;
     effectiveTo: z.ZodNullable<z.ZodString>;
     digest: z.ZodString;
+    /** @experimental */
     closedFromOpen: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strict>;
 export declare class SubscriptionPricePolicyDigestError extends Error {
