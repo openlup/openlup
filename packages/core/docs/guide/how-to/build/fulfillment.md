@@ -404,7 +404,7 @@ intrinsics to defeat their own certification is outside the threat model.
 Snapshots, closed schemas and captured intrinsics reduce accidental misuse;
 they are not an attestation.
 
-For adapter authors using this development preview, the experimental
+For adapter authors, the testing
 `@openlup/platform/fulfillment/testing` entry re-exports the existing runner and
 captured dispatch adapter. `createScriptedFulfillmentFake` supplies per-operation
 FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. Enqueue copies

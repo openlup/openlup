@@ -1,6 +1,6 @@
 # server/infra/email - provider-neutral email transport
 
-Status: development-preview source contract.
+Status: current source contract.
 M04 B1 verification uses the package transport conformance, neutral caller
 transcripts and `emailEgressReference.test.ts` wire witnesses. These use synthetic
 senders and intercepted HTTP; no mail is sent and no provider account is inspected.

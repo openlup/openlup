@@ -2,7 +2,7 @@
 
 `@openlup/core` provides framework-independent TypeScript contracts and pure logic
 for subscription and bundle commerce. An application binds its ports and owns
-composition. This is a development preview: pin an exact version and upgrade all
+composition. Pin an exact version and upgrade all
 `@openlup/*` packages together after reading their changelogs.
 
 ```sh
@@ -51,8 +51,8 @@ The table follows `release-gates.json`: stable exports use SemVer from 1.0.0; ex
 - `conformanceEvidence`: required only when a declared port/adapter seam needs
   a framework-free suite;
 - `dogfoodEvidence`: first-party integration seams, not independent adoption;
-- `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
-  remains package smoke, not external adoption.
+- `externalConsumerEvidence`: first-party demo-store and production evidence;
+  see the [release evidence boundary](docs/guide/reference/stability.md#release-evidence).
 
 ## Channel and stability
 
@@ -60,14 +60,12 @@ The table follows `release-gates.json`: stable exports use SemVer from 1.0.0; ex
   provenance from its release tag `openlup-core-v<version>` after a protected
   release approval. Versions up to `0.11.0` were published on the `preview`
   dist-tag only. `npm publish` from this directory is refused.
-- **Versions:** below 1.0 every `@openlup/*` package shares one set version
-  `0.N.P`: a minor set for any API, behaviour or schema change, a patch set for
-  a fix only.
-- **Stability:** development preview. Any version may change an export, and
-  each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
-  version and read the changelog when you upgrade.
+- **Versions and stability:** follow the [stable API contract](docs/guide/reference/stability.md#public-api)
+  and upgrade the coherent package set together. Unions and literal sets are open:
+  additions are minor; consumers must keep a default branch for unknown values.
+  Read [the changelog](CHANGELOG.md) before upgrading.
 
-The experimental `./outbox`, `./standard-schema` and `./readiness` subpaths
+The `./outbox`, `./standard-schema` and `./readiness` subpaths
 provide infrastructure contracts. `checkReadiness` checks inert contributions,
 complete host inventory, actual schedule/route function bindings and a bounded
 schema probe. It never migrates, leases or sends. Only `ready` admits a candidate;
@@ -320,7 +318,7 @@ under `docs/guide/` if it exists; a guide without a detected source repository
 root refuses. `npm run docs:check -- --write` refreshes generated regions in
 `README.md`, `AGENTS.md` and the guide.
 
-The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/CONTRIBUTING.md#development-preview-checks)
+The [repository neutrality checks](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative
 to this source package. This process interface reads JSON containing source paths,
 contents and a policy
@@ -331,7 +329,7 @@ export and changes no matcher or kernel behavior.
 Repository lint keeps this package's production source independent of configured
 provider SDKs and explicit industry contract names. Adopter adapters compose
 providers; generic ports can forward opaque extension data. See the
-[syntax scope and exceptions](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/CONTRIBUTING.md#development-preview-checks).
+[syntax scope and exceptions](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks).
 
 The repository checker also calls the UI neutrality counting process with
 `--counts-json` to count its existing patterns over the supplied sources. Running that checker without

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This development-preview package does not promise a supported installation.
+        Package surfaces are classified as stable, experimental or testing in the [stability reference](../../docs/guide/reference/stability.md#public-api); stable exports follow SemVer. Installation support is defined by the [installation support policy](https://github.com/openlup/openlup/blob/main/.github/INSTALL_SUPPORT_POLICY.md).
         File one report per page. For a bug in the software, use the bug report
         form. Report security issues through SECURITY.md.
   - type: input

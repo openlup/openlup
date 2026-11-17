@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Core accepts deterministic commerce rules and provider-neutral contracts. UI, storage, HTTP, job, credential, and provider-specific behavior belongs in product or adapter code. This development-preview package does not make an external-adoption promise.
+        Core accepts deterministic commerce rules and provider-neutral contracts. UI, storage, HTTP, job, credential, and provider-specific behavior belongs in product or adapter code. Package surfaces are classified as stable, experimental or testing in the [stability reference](../../docs/guide/reference/stability.md#public-api); stable exports follow SemVer.
   - type: textarea
     id: problem
     attributes:
@@ -27,11 +27,11 @@ body:
     attributes:
       label: Likely package surface
       options:
-        - subscription (candidate)
-        - bundle (candidate)
-        - pricing (candidate)
+        - subscription (stable)
+        - bundle (stable)
+        - pricing (stable)
         - experimental or testing surface
-        - new internal candidate export
+        - new export (classify as stable, experimental or testing)
         - adapter outside core
         - unsure
     validations:
@@ -40,7 +40,7 @@ body:
     id: proposal
     attributes:
       label: Proposed contract or behavior
-      description: Include inputs, outputs, failure behavior, and internal candidate drift impact.
+      description: Include inputs, outputs, failure behavior, and compatibility and maturity impact.
     validations:
       required: true
   - type: textarea

@@ -51,3 +51,9 @@ export * from "./acquisitionOfferPricing.js";
 export * from "./acquisitionOfferPricingHandler.js";
 export * from "./acquisitionReadiness.js";
 export type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
+
+export { CATALOG_PRICE_SETUP_MAX_MINOR, catalogPriceSetupCommandSchema, catalogPriceSetupExpectedSchema, catalogPriceSetupPreviewQuerySchema, catalogPriceSetupPreviewSchema, catalogPriceSetupReceiptSchema, catalogPriceSetupRefusalSchema, catalogPriceSetupPreviewResultSchema, catalogPriceSetupApplyResultSchema, canonicalCatalogPriceSetupCommand } from "./catalogPriceSetupSchemas.js";
+export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
+export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
+export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
+export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
