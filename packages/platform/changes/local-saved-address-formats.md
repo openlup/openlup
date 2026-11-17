@@ -11,3 +11,9 @@
   configured-prefix phone behavior. Platform length bounds, normalization order,
   aliases, foreign-country handling and message keys remain in force. Removing
   the compatible defaults is separate future work; no migration is required.
+
+Migration: no change is required. Before: `CustomerSavedAddressValidationPolicy`
+had `country`, `countryAliases`, `phonePrefix`, tax callbacks and `messages`.
+After: it also accepts optional `local: { normalizePostalCode(value),
+isValidPostalCode(value), normalizePhone(value) }`; omitting it keeps the
+current behaviour.
