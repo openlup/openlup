@@ -7868,7 +7868,7 @@
     },
     {
       "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
-      "sha256": "567bca06147c40cbdac23df32c05591c7dc47c15053417d6bef5fec3342d15a1",
+      "sha256": "790b939a838bbaadc3caafeb4cb985c43bd9b0ccc822d9048bd8d00ce4811b59",
       "functions": [
         {
           "signature": "public.catalog_price_setup_apply(text,text)",
@@ -7908,7 +7908,7 @@
         {
           "signature": "public.catalog_price_setup_prelock(uuid,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "a9be9f554f0ab8416f8d5f24fdf9b4f8fc1f9687830d0184cec8a4cb28bb99ab"
+          "afterSha256": "ed36ea8e952154d8ca2263f949e39ad89d88c969867083a17bcbf2932dda98f6"
         },
         {
           "signature": "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)",

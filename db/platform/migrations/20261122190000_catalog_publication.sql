@@ -456,7 +456,7 @@ BEGIN
   FOR item IN SELECT value FROM jsonb_array_elements(p_batch) LOOP
     command_key := NULL;
     BEGIN command_key := ((item->>'canonicalCommand')::jsonb)->>'commandKey';
-    EXCEPTION WHEN invalid_text_representation THEN NULL; END;
+    EXCEPTION WHEN invalid_text_representation OR untranslatable_character THEN NULL; END;
     sorted_batch := sorted_batch || jsonb_build_array(item || jsonb_build_object('key',command_key));
   END LOOP;
   FOR item IN SELECT value FROM jsonb_array_elements(sorted_batch) ORDER BY value->>'key',value->>'canonicalCommand' LOOP
