@@ -5,6 +5,7 @@
  * Source revision 5a89d18b0574583080ee9ff5ef5758890fbd0408,
  * server/domains/platform/invoicePositionSnapshot.ts:183-185 (unchanged body).
  * @beta
+ * @experimental
  */
 export function cataloguePositionNetFromGross(gross: number, vatRateBps: number): number {
   const denominator = BigInt(10_000 + vatRateBps);
@@ -17,6 +18,7 @@ export function cataloguePositionNetFromGross(gross: number, vatRateBps: number)
  * Source revision 5a89d18b0574583080ee9ff5ef5758890fbd0408,
  * server/domains/platform/invoicePositionSnapshot.ts:211-239 (unchanged body).
  * @beta
+ * @experimental
  */
 export function allocateCatalogueDiscountedGrossTotals(lineTotals: number[], chargedTotal: number): number[] {
   const linesTotal = lineTotals.reduce((sum, total) => sum + total, 0);

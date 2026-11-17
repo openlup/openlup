@@ -1,13 +1,17 @@
 import type { CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 import { catalogAttributesReadyForPublication, type CatalogAttributeProjectionValue, type CatalogAttributeValidation } from "./attributeValidation.js";
 
+/** @experimental */
 export interface CatalogAttributeProjectionRow extends CatalogAttributeProjectionValue {
   sku_id: string; publication_revision: string;
 }
+/** @experimental */
 export type CatalogAttributeProjectionPreparation =
   | { prepared: false; issues: readonly CatalogDefinitionIssue[] }
   | { prepared: true; rows: readonly Readonly<CatalogAttributeProjectionRow>[] };
-/** Pure preparation for the publisher's executor: never persists or switches a generation. */
+/** Pure preparation for the publisher's executor: never persists or switches a generation.
+ * @experimental
+ */
 export function prepareCatalogAttributeProjection(
   validation: CatalogAttributeValidation, publicationRevision: string,
 ): CatalogAttributeProjectionPreparation {
