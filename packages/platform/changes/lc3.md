@@ -32,3 +32,10 @@ does not depend on a native-only role. The native readiness-input mapping and it
 audited never-populated baseline delta require their managed equivalents. Existing
 industry-specific catalogue columns are untouched; this price-only change needs
 no relaxation. The managed rail does not supply this feature.
+
+Stable 1.0 coordination (CD-S1-1): all new catalogue base-price writer symbols,
+including contracts, schemas, handler/store ports and factories, canonical command
+serialization and refusal helpers, are marked `@experimental` from their introduction.
+They are outside the 1.0.0 SemVer promise. Existing catalogue readers retain their
+current status. New result/kind unions and the hard-refusal reason tuple grow by
+addition only (D3); no existing union member is removed or renamed.

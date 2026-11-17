@@ -1092,7 +1092,9 @@ export declare function rejectCatalogFactsFromPublicQuote(response: {
 
 ```ts
 import { type CatalogPriceSetupApplyResult, type CatalogPriceSetupPreview, type CatalogPriceSetupPreviewQuery, type CatalogPriceSetupRefusal } from "./catalogPriceSetupSchemas.js";
-/** Persistence for the use case. Answers are validated here, never trusted. */
+/** Persistence for the use case. Answers are validated here, never trusted.
+ * @experimental
+ */
 export interface CatalogPriceSetupStorePort {
     preview(query: CatalogPriceSetupPreviewQuery): Promise<unknown>;
     apply(input: {
@@ -1100,6 +1102,7 @@ export interface CatalogPriceSetupStorePort {
         fingerprint: string;
     }): Promise<unknown>;
 }
+/** @experimental */
 export interface CatalogPriceSetupHandlerDeps<Context> {
     /** Bound to the same administrator's session that `authorizeOperator` verified. */
     store: CatalogPriceSetupStorePort;
@@ -1108,11 +1111,14 @@ export interface CatalogPriceSetupHandlerDeps<Context> {
         actorId: string;
     } | null>;
 }
+/** @experimental */
 export type CatalogPriceSetupReadback = {
     outcome: "confirmed" | "diverged";
     preview: CatalogPriceSetupPreview;
 } | CatalogPriceSetupRefusal;
-/** Dark use case: mounting requires a verified administrator authorizer and a session-bound store. */
+/** Dark use case: mounting requires a verified administrator authorizer and a session-bound store.
+ * @experimental
+ */
 export declare function createCatalogPriceSetupHandler<Context>(deps: CatalogPriceSetupHandlerDeps<Context>): {
     preview(input: unknown, context: Context): Promise<CatalogPriceSetupPreview | CatalogPriceSetupRefusal>;
     apply(input: unknown, context: Context): Promise<CatalogPriceSetupApplyResult>;
@@ -1126,10 +1132,15 @@ export declare function createCatalogPriceSetupHandler<Context>(deps: CatalogPri
 
 ```ts
 import { z } from "zod";
-/** The largest amount a price row holds: the database integer maximum. */
+/** The largest amount a price row holds: the database integer maximum.
+ * @experimental
+ */
 export declare const CATALOG_PRICE_SETUP_MAX_MINOR = 2147483647;
+/** @experimental */
 export declare const catalogPriceSetupReasonsSchema: z.ZodArray<z.ZodString>;
-/** The base the caller saw: none yet, or one effective row and its amount. */
+/** The base the caller saw: none yet, or one effective row and its amount.
+ * @experimental
+ */
 export declare const catalogPriceSetupExpectedSchema: z.ZodUnion<readonly [z.ZodObject<{
     entryId: z.ZodNull;
     unitPriceMinor: z.ZodNull;
@@ -1137,7 +1148,9 @@ export declare const catalogPriceSetupExpectedSchema: z.ZodUnion<readonly [z.Zod
     entryId: z.ZodGUID;
     unitPriceMinor: z.ZodNumber;
 }, z.core.$strict>]>;
-/** One exact-SKU base price: gross, one-time, minimum quantity one, never a subscription price. */
+/** One exact-SKU base price: gross, one-time, minimum quantity one, never a subscription price.
+ * @experimental
+ */
 export declare const catalogPriceSetupCommandSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     commandKey: z.ZodString;
@@ -1155,11 +1168,13 @@ export declare const catalogPriceSetupCommandSchema: z.ZodObject<{
         unitPriceMinor: z.ZodNumber;
     }, z.core.$strict>]>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogPriceSetupPreviewQuerySchema: z.ZodObject<{
     variantId: z.ZodGUID;
     priceListId: z.ZodGUID;
     unitPriceMinor: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogPriceSetupSubscriptionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"derived">;
     revisionId: z.ZodGUID;
@@ -1173,6 +1188,7 @@ export declare const catalogPriceSetupSubscriptionSchema: z.ZodDiscriminatedUnio
     kind: z.ZodLiteral<"unresolved">;
     reason: z.ZodString;
 }, z.core.$strict>], "kind">;
+/** @experimental */
 export declare const catalogPriceSetupPreviewSchema: z.ZodObject<{
     outcome: z.ZodLiteral<"preview">;
     variantId: z.ZodGUID;
@@ -1209,6 +1225,7 @@ export declare const catalogPriceSetupPreviewSchema: z.ZodObject<{
         }, z.core.$strict>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogPriceSetupReceiptSchema: z.ZodObject<{
     commandKey: z.ZodString;
     variantId: z.ZodGUID;
@@ -1225,6 +1242,7 @@ export declare const catalogPriceSetupReceiptSchema: z.ZodObject<{
         validFrom: z.ZodString;
     }, z.core.$strict>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogPriceSetupRefusalSchema: z.ZodObject<{
     outcome: z.ZodEnum<{
         conflict: "conflict";
@@ -1235,6 +1253,7 @@ export declare const catalogPriceSetupRefusalSchema: z.ZodObject<{
     reason: z.ZodString;
     reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strict>;
+/** @experimental */
 export declare const catalogPriceSetupPreviewResultSchema: z.ZodUnion<readonly [z.ZodObject<{
     outcome: z.ZodLiteral<"preview">;
     variantId: z.ZodGUID;
@@ -1280,6 +1299,7 @@ export declare const catalogPriceSetupPreviewResultSchema: z.ZodUnion<readonly [
     reason: z.ZodString;
     reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strict>]>;
+/** @experimental */
 export declare const catalogPriceSetupApplyResultSchema: z.ZodUnion<readonly [z.ZodObject<{
     outcome: z.ZodEnum<{
         replayed: "replayed";
@@ -1311,16 +1331,23 @@ export declare const catalogPriceSetupApplyResultSchema: z.ZodUnion<readonly [z.
     reason: z.ZodString;
     reasons: z.ZodOptional<z.ZodArray<z.ZodString>>;
 }, z.core.$strict>]>;
+/** @experimental */
 export type CatalogPriceSetupCommand = z.infer<typeof catalogPriceSetupCommandSchema>;
+/** @experimental */
 export type CatalogPriceSetupPreviewQuery = z.infer<typeof catalogPriceSetupPreviewQuerySchema>;
+/** @experimental */
 export type CatalogPriceSetupPreview = z.infer<typeof catalogPriceSetupPreviewSchema>;
+/** @experimental */
 export type CatalogPriceSetupReceipt = z.infer<typeof catalogPriceSetupReceiptSchema>;
+/** @experimental */
 export type CatalogPriceSetupRefusal = z.infer<typeof catalogPriceSetupRefusalSchema>;
+/** @experimental */
 export type CatalogPriceSetupApplyResult = z.infer<typeof catalogPriceSetupApplyResultSchema>;
 /**
  * The exact bytes the command routine fingerprints: a valid command as JSON with sorted
  * keys. Every field is bounded by the schema, so the text stays far below the 4096 bytes
  * the database routine accepts. Throws on anything the schema refuses.
+ * @experimental
  */
 export declare function canonicalCatalogPriceSetupCommand(input: unknown): string;
 ```
@@ -1665,7 +1692,9 @@ export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "act
 ## dist/pricing/contracts/catalogPriceSetup.d.ts
 
 ```ts
-/** Immediate, positive, gross base replacement; later command versions are reserved. */
+/** Immediate, positive, gross base replacement; later command versions are reserved.
+ * @experimental
+ */
 export interface CatalogPriceSetupCommand {
     schemaVersion: 1;
     commandKey: string;
@@ -1683,20 +1712,24 @@ export interface CatalogPriceSetupCommand {
         unitPriceMinor: number;
     };
 }
+/** @experimental */
 export interface CatalogPriceSetupEntry {
     entryId: string;
     unitPriceMinor: number;
     validFrom: string;
 }
+/** @experimental */
 export interface CatalogPriceSetupReadiness {
     ready: boolean;
     reasons: string[];
 }
+/** @experimental */
 export interface CatalogPriceSetupPreviewQuery {
     variantId: string;
     priceListId: string;
     unitPriceMinor?: number;
 }
+/** @experimental */
 export type CatalogPriceSetupSubscription = {
     kind: "derived";
     revisionId: string;
@@ -1710,6 +1743,7 @@ export type CatalogPriceSetupSubscription = {
     kind: "unresolved";
     reason: string;
 };
+/** @experimental */
 export interface CatalogPriceSetupPreview {
     outcome: "preview";
     variantId: string;
@@ -1724,6 +1758,7 @@ export interface CatalogPriceSetupPreview {
         readiness: CatalogPriceSetupReadiness;
     };
 }
+/** @experimental */
 export interface CatalogPriceSetupReceipt {
     commandKey: string;
     variantId: string;
@@ -1732,11 +1767,13 @@ export interface CatalogPriceSetupReceipt {
     previous: CatalogPriceSetupEntry | null;
     current: CatalogPriceSetupEntry;
 }
+/** @experimental */
 export interface CatalogPriceSetupRefusal {
     outcome: "conflict" | "validation_issue" | "unauthorized" | "dependency_unavailable";
     reason: string;
     reasons?: string[];
 }
+/** @experimental */
 export type CatalogPriceSetupApplyResult = {
     outcome: "committed" | "replayed";
     receipt: CatalogPriceSetupReceipt;
@@ -2686,17 +2723,25 @@ export interface CommercePriceAuthorityPort {
 ```ts
 import type { CatalogPriceSetupRefusal } from "./contracts/catalogPriceSetup.js";
 import type { CatalogPriceSetupStorePort } from "./catalogPriceSetupHandler.js";
-/** The authenticated transaction's executor; publication may use its own connection. */
+/** The authenticated transaction's executor; publication may use its own connection.
+ * @experimental
+ */
 export interface CatalogPriceSetupQueryExecutor {
     query(sql: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
     }>;
 }
-/** Session-bound SQL authority derives the actor; composition verifies the session. */
+/** Session-bound SQL authority derives the actor; composition verifies the session.
+ * @experimental
+ */
 export declare function createPostgresCatalogPriceSetupStore(client: CatalogPriceSetupQueryExecutor): CatalogPriceSetupStorePort;
-/** Explicit whitelist: arbitrary database text never reaches a caller. */
+/** Explicit whitelist: arbitrary database text never reaches a caller.
+ * @experimental
+ */
 export declare const CATALOG_PRICE_SETUP_HARD_REFUSALS: readonly ["native_promotion_unverified", "native_cohort_unverified", "native_order_unverified", "native_agreement_unverified", "settlement_context_unverified", "native_promotion_domain_unverified", "native_price_domain_unverified", "native_catalog_domain_unverified", "native_policy_domain_unverified", "native_agreement_domain_unverified", "native_job_domain_unverified", "native_order_domain_unverified", "native_order_policy_pair_unverified", "native_order_admission_unverified", "native_order_guard_unverified", "native_order_claim_guard_unverified"];
-/** Preserve refusal precedence, including hard evidence failures before/after writes. */
+/** Preserve refusal precedence, including hard evidence failures before/after writes.
+ * @experimental
+ */
 export declare function catalogPriceSetupRefusal(error: unknown): CatalogPriceSetupRefusal;
 ```
 ## dist/pricing/pricingPolicyToken.d.ts

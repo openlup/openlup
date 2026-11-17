@@ -76,7 +76,9 @@ export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "act
 ## dist/pricing/contracts/catalogPriceSetup.d.ts
 
 ```ts
-/** Immediate, positive, gross base replacement; later command versions are reserved. */
+/** Immediate, positive, gross base replacement; later command versions are reserved.
+ * @experimental
+ */
 export interface CatalogPriceSetupCommand {
     schemaVersion: 1;
     commandKey: string;
@@ -94,20 +96,24 @@ export interface CatalogPriceSetupCommand {
         unitPriceMinor: number;
     };
 }
+/** @experimental */
 export interface CatalogPriceSetupEntry {
     entryId: string;
     unitPriceMinor: number;
     validFrom: string;
 }
+/** @experimental */
 export interface CatalogPriceSetupReadiness {
     ready: boolean;
     reasons: string[];
 }
+/** @experimental */
 export interface CatalogPriceSetupPreviewQuery {
     variantId: string;
     priceListId: string;
     unitPriceMinor?: number;
 }
+/** @experimental */
 export type CatalogPriceSetupSubscription = {
     kind: "derived";
     revisionId: string;
@@ -121,6 +127,7 @@ export type CatalogPriceSetupSubscription = {
     kind: "unresolved";
     reason: string;
 };
+/** @experimental */
 export interface CatalogPriceSetupPreview {
     outcome: "preview";
     variantId: string;
@@ -135,6 +142,7 @@ export interface CatalogPriceSetupPreview {
         readiness: CatalogPriceSetupReadiness;
     };
 }
+/** @experimental */
 export interface CatalogPriceSetupReceipt {
     commandKey: string;
     variantId: string;
@@ -143,11 +151,13 @@ export interface CatalogPriceSetupReceipt {
     previous: CatalogPriceSetupEntry | null;
     current: CatalogPriceSetupEntry;
 }
+/** @experimental */
 export interface CatalogPriceSetupRefusal {
     outcome: "conflict" | "validation_issue" | "unauthorized" | "dependency_unavailable";
     reason: string;
     reasons?: string[];
 }
+/** @experimental */
 export type CatalogPriceSetupApplyResult = {
     outcome: "committed" | "replayed";
     receipt: CatalogPriceSetupReceipt;
