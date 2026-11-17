@@ -114,6 +114,14 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Release tooling shares one coherent-set version rule: `0.N.P` with N at least
+1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1, without leading zeros or a
+prerelease. Patch sets compare API snapshots with the latest earlier patch in
+the same major and minor; an API change still requires a minor or major set.
+Within a stable major, the unprivileged preflight before approval refuses removed
+export names against the latest earlier release App tag in that major; a removal
+needs a major set.
+
 [Development, diagnostics and preview releases](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 explains CI triggers, diagnostics and release mechanics. The commands below
 describe CI and optional full local feedback; required verification runs in hosted CI under
@@ -1030,7 +1038,7 @@ retry and other startup errors, and preserves a named volume and another
 container. Cross-run reclamation is limited to the labelled dead-owner contract
 above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
-Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
+Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. Tests under `tests/postgres/` have a 60-second test floor, preserving any larger derived or explicit per-test budget; their hook budgets are unchanged. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 

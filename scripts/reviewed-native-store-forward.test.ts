@@ -888,6 +888,55 @@ function parameterForward(text: string, mutate: (slot: NativeStoreSlot) => void,
 const addCheck = (slot: NativeStoreSlot) => { slot.checkSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_status", column: "status", values: ["open", "closed", "paused"] }]; };
 const addUnique = (slot: NativeStoreSlot) => { slot.uniqueSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_key", columns: ["id", "extra"], nullsNotDistinct: true }]; };
 
+const rangeCheck = (expression = "days BETWEEN 1 AND 3660", tail = "") => `ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_days;
+ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_days CHECK (${expression})${tail};`;
+const addRange = (slot: NativeStoreSlot) => { slot.checkSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_days", column: "days",
+  range: { lower: 1, upper: 3660 }, beforeSha256: sqlSha256("CHECK (((days >= 1) AND (days <= 90)))") }]; };
+
+describe("integer range CHECK admission", () => {
+  it.each(["days BETWEEN 1 AND 3660", "days >= 1 AND days <= 3660"])("admits the exact adjacent pair: %s", expression => {
+    expect(() => parameterForward(rangeCheck(expression), addRange)).not.toThrow();
+    expect(() => parameterForward(rangeCheck(expression, " NOT VALID"), addRange)).not.toThrow();
+    expect(isExpandOnlyPlatformForward(rangeCheck(expression))).toBe(false);
+  });
+  it("admits signed int4 endpoints", () => {
+    expect(() => parameterForward(rangeCheck("days BETWEEN -2147483648 AND 2147483647"), slot => {
+      addRange(slot); Object.assign(slot.checkSupersets![0]!, { range: { lower: -2147483648, upper: 2147483647 } });
+    })).not.toThrow();
+  });
+  it.each([
+    "days BETWEEN 2 AND 3660", "days BETWEEN 1 AND 89", "other_days BETWEEN 1 AND 3660",
+    "days BETWEEN 1.0 AND 3660", "days BETWEEN 1 AND 3660.5", "days BETWEEN '1' AND 3660",
+    "days BETWEEN 1::integer AND 3660", "days BETWEEN (1 + 0) AND 3660", "days BETWEEN lower_bound AND 3660",
+    "days BETWEEN 1 AND 3660 OR true", "days BETWEEN 1 AND 3660 AND other_days > 0",
+    "days > 1 AND days <= 3660", "days >= 1 AND other_days <= 3660", "days >= 1 OR days <= 3660",
+    "days NOT BETWEEN 1 AND 3660", "days BETWEEN SYMMETRIC 1 AND 3660",
+    "days BETWEEN -2147483649 AND 3660", "days BETWEEN 1 AND 2147483648",
+  ])("refuses an unlisted or non-literal interval: %s", expression => {
+    expect(() => parameterForward(rangeCheck(expression), addRange)).toThrow(/CHECK must match/u);
+  });
+  it.each(["NO INHERIT", "NOT VALID NO INHERIT", "NOT VALID NOT VALID"])("refuses extra CHECK options: %s", option => {
+    expect(() => parameterForward(rangeCheck(undefined, ` ${option}`), addRange)).toThrow(/CHECK must match/u);
+  });
+  it("requires the same table and constraint, exactly once, with no transaction boundary or intervening statement", () => {
+    const pair = rangeCheck(), [drop, add] = pair.split("\n");
+    for (const text of ["", drop!, add!, `${pair}\n${pair}`, pair.replaceAll("fixture_parameters", "other_table"), pair.replaceAll("fixture_days", "other_check"),
+      pair.replace(";\n", ";\nCOMMIT;\n"), pair.replace(";\n", ";\nCREATE TABLE public.gap(id int);\n"),
+      pair.replace("DROP CONSTRAINT", "DROP CONSTRAINT IF EXISTS"), pair.replace(";\n", " CASCADE;\n"), `${pair}\nCOMMIT;`]) {
+      expect(() => parameterForward(text, addRange)).toThrow(/complete named|must match|duplicate|closed shapes|adjacent/u);
+    }
+    expect(() => parameterForward(pair, () => {})).toThrow(/closed shapes/u);
+  });
+  it.each([
+    { range: { lower: 1.5, upper: 3660 } }, { range: { lower: "1", upper: 3660 } },
+    { range: { lower: 1, upper: 2147483648 } }, { range: { lower: 90, upper: 1 } },
+    { range: { lower: 1, upper: 3660, extra: true } }, { range: null },
+    { beforeSha256: undefined }, { beforeSha256: "wrong" }, { values: ["open"] },
+  ])("refuses malformed range declarations or a missing preimage pin: %j", fields => {
+    expect(() => parameterForward(rangeCheck(), slot => { addRange(slot); Object.assign(slot.checkSupersets![0]!, fields); })).toThrow(/invalid CHECK superset entry/u);
+  });
+});
+
 describe("registry-defined native capabilities", () => {
   it("admits a fresh later eighth slot from data and keeps all issued data unchanged", () => {
     expect(readReviewedForwardRegistry(encode(production))).toEqual(production);
