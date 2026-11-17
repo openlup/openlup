@@ -259,9 +259,9 @@ and 11 after the initial decline if each runs and fails when due. Days 1, 3 and
 Sandbox observation recording is separate from provider-result recording;
 configuring the starter sandbox does not establish provider retry timing.
 The current definitions are `payment_provider_result_apply` in
-[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
+[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
 and both failure overloads in
-[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
+[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Verify your selected catalogue or applied prefix with the
 [current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).
 

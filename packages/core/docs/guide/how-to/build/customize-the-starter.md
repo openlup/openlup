@@ -11,14 +11,14 @@ create it. For the released **0.43.0 starter recipe**, use Node 24,
 npm 11.19.0, Git, curl and tar. Start in a directory with no application named
 `my-store`; the extractor refuses a nonempty destination.
 
-This recipe selects source commit `6facc3e72441ade5813397f65ac7edbe34fd1d0f`
-(`openlup-core-v0.43.0`) and the manifest/lock pair from input commit
+This historical recipe selects the 0.43.0 source commit
+`6facc3e72441ade5813397f65ac7edbe34fd1d0f` and the manifest/lock pair from input commit
 `87dadb251b27b72a18718b08ac39951dd4f1fdd0`. The inputs were added after the release;
 they are ordinary public source files, not release assets. Keep the pair and
 source revision together. No author checkout, workspace install or package
 packing is needed.
 
-Use the [repository's released-starter entry](https://github.com/openlup/openlup#run-the-starter-store)
+Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the download commands in `examples/neutral-store/README.md`, under “Start
 from an exact source archive”. Those commands download the exact source archive
 and both inputs at the commits above. In the download directory, after unpacking
