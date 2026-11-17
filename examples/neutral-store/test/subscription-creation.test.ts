@@ -23,7 +23,7 @@ for (const original of Object.values(configurations)) {
 }
 
 test('both ordinary and acquisition activation carry the host creation input', async () => {
-  const seen: { sql: string; values?: unknown[] }[] = [];
+  const seen: { sql: string; values: unknown[] | undefined }[] = [];
   const db = { async query(sql: string, values?: unknown[]) {
     seen.push({ sql, values });
     if (sql.includes('subscription_register_renewal_purchase')) throw new Error('synthetic_registration_unavailable');
