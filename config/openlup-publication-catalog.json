@@ -1462,6 +1462,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4770,6 +4774,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122190000_catalog_publication.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5234,6 +5242,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/publication.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/resolveProductMedia.ts",
       "class": "public-output"
     },
@@ -5315,6 +5327,18 @@
     },
     {
       "path": "packages/platform/src/catalog/publicationPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationPortsV2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationValidation.ts",
       "class": "public-output"
     },
     {
@@ -9523,6 +9547,38 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogProductTypeIssues.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPublication.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPublicationAdopter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPublicationCompiler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPublicationGrammar.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/categoryDocument.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/categoryDocumentInput.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/categoryMembership.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
       "class": "public-output"
     },
     {
@@ -29682,6 +29738,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogPublication.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogQuantities.test.ts",
       "class": "public-output"
     },
@@ -30815,66 +30875,6 @@
     },
     {
       "path": "vitest.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/sql/20261122190000_catalog_publication.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/catalog/contracts/publication.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/catalog/publicationPortsV2.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/catalog/publicationStore.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/catalog/publicationValidation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/catalogPublication.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/catalogPublicationAdopter.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/catalogPublicationCompiler.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/catalogPublicationGrammar.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/fixtures/categoryDocument.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/fixtures/categoryDocumentInput.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/fixtures/categoryMembership.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/postgres/catalogPublication.test.ts",
       "class": "public-output"
     }
   ],
