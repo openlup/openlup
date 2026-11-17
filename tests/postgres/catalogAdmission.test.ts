@@ -28,6 +28,7 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-admission-${process.pid}`, password: "synthetic-admission" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Admission requires real PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
+  await pool.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
   await installCatalogDefinitions(pool, { id: "example:admission", namespace: "example", version: 1, openlupRange: "0.44.x",
@@ -720,5 +721,22 @@ it("sized retained reduction survives withdrawal while increased demand refuses"
     expect((await pool.query("SELECT quantity,unit_price_minor,catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription])).rows)
       .toEqual([{ quantity: 1,unit_price_minor: "617",catalog_sku_revision_id: f.reference.skuRevisionId }]);
     expect((await pool.query("SELECT status,next_cycle_at=$2::timestamptz AS anchor FROM public.subscriptions WHERE id=$1", [f.subscription,f.anchor])).rows).toEqual([{ status: "active",anchor: true }]);
+  }
+});
+
+it("CatalogAdmissionPort locks multiple contexts and preserves its service-only execution boundary", async () => {
+  const a = await fixture(packs[0]), b = await fixture(packs[1]), port = createPostgresCatalogAdmission();
+  const input: CatalogAdmissionInput = { ...a.admission,purpose: "order",heads: [...b.admission.heads,...a.admission.heads],
+    skuRevisions: [...b.admission.skuRevisions,...a.admission.skuRevisions],
+    priceContextVersions: [...b.admission.priceContextVersions,...a.admission.priceContextVersions] };
+  const signature = "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)";
+  expect((await pool.query("SELECT EXISTS(SELECT 1 FROM pg_proc p,aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') AS allowed", [signature])).rows).toEqual([{ allowed: false }]);
+  for (const role of ["anon","authenticated","service_role"] as const) {
+    const db = await session();
+    try {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      if (role === "service_role") await port.assertCurrent(db,input);
+      else await expect(port.assertCurrent(db,input)).rejects.toMatchObject({ code: "42501" });
+    } finally { await db.query("ROLLBACK"); db.release(); }
   }
 });

@@ -105,17 +105,24 @@ BEGIN
  -- The price writer owns these guards. Exact row bytes bind existing provenance,
  -- including equal-money replacement and validity-window changes.
  FOR price_context IN SELECT value FROM jsonb_array_elements(p_price_context_versions)
-  ORDER BY value->>'priceListId',value->>'skuId',value->>'entryId' LOOP
-  PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-price-setup:'||(price_context->>'priceListId')||':'||(price_context->>'skuId'),0));
+  ORDER BY (value->>'priceListId')::uuid,(value->>'skuId')::uuid LOOP
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-price-setup:'||((price_context->>'priceListId')::uuid)::text||':'||((price_context->>'skuId')::uuid)::text,0));
+ END LOOP;
+ PERFORM p.id FROM public.price_lists p WHERE p.id IN
+  (SELECT (v->>'priceListId')::uuid FROM jsonb_array_elements(p_price_context_versions) v) ORDER BY p.id FOR SHARE;
+ PERFORM p.id FROM public.price_entries p WHERE p.id IN
+  (SELECT (v->>'entryId')::uuid FROM jsonb_array_elements(p_price_context_versions) v) ORDER BY p.id FOR SHARE;
+ FOR price_context IN SELECT value FROM jsonb_array_elements(p_price_context_versions)
+  ORDER BY (value->>'entryId')::uuid LOOP
   IF p_purpose='account' AND price_context->>'priceListId' IS DISTINCT FROM subscription.price_list_id::text THEN
    RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
   PERFORM 1 FROM public.price_lists WHERE id=(price_context->>'priceListId')::uuid
-   AND (p_purpose<>'account' OR currency=subscription.currency_code) AND status='active' AND valid_from<=statement_timestamp() AND (valid_to IS NULL OR valid_to>statement_timestamp()) FOR SHARE;
+   AND (p_purpose<>'account' OR currency=subscription.currency_code) AND status='active' AND valid_from<=statement_timestamp() AND (valid_to IS NULL OR valid_to>statement_timestamp());
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
   PERFORM 1 FROM public.price_entries p WHERE p.id=(price_context->>'entryId')::uuid
    AND p.price_list_id=(price_context->>'priceListId')::uuid AND p.variant_id=(price_context->>'skuId')::uuid
    AND p.active AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
-   AND to_jsonb(p)=price_context->'entry' FOR SHARE;
+   AND to_jsonb(p)=price_context->'entry';
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
  END LOOP;
 END;
