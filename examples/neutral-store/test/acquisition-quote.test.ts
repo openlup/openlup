@@ -150,3 +150,95 @@ test('configured native shipping reaches the installed graph rather than an inte
   await assert.rejects(quotes.quote({ cart: { ...cart,mode: 'one_time',cadenceDays: null } },{ ...context,config: changed }),/catalog_authority_unavailable/);
   assert.ok(reads > 0);
 });
+
+test('forged fresh cadence/SKU/quantity refuse quote and checkout with zero writes', async () => {
+  let writes = 0;
+  const db = { query: async (sql: string) => {
+    if (!sql.trimStart().startsWith('SELECT')) writes++;
+    return { rows: [] };
+  } } as unknown as Pool;
+  const quotes = createNativeQuoteService(db,unavailable);
+  const actions = composePurchaseCapabilities(db,{} as never,undefined,{} as never,{ predecessors: unavailable });
+  const bindings = { ...pendingBindings(),actions };
+  for (const [selected,code] of [
+    [{ ...cart,cadenceDays: 35 },'cadence_unavailable'],
+    [{ ...cart,lines: [{ sku: 'UNKNOWN',quantity: 1 }] },'unknown_sku'],
+    [{ ...cart,lines: [{ sku: cart.lines[0]!.sku,quantity: 13 }] },'quantity_invalid'],
+  ] as const) {
+    const input = { ...payload,cart: selected,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY };
+    await assert.rejects(quotes.quote(input,context),{ message: code });
+    const result = await dispatchAction(bindings,'checkout.create',input,context);
+    assert.deepEqual(result,{ ok: false,code });
+  }
+  assert.equal(writes,0);
+});
+
+test('authenticated completed checkout replay survives withdrawn offers and still compares structural identity', async () => {
+  const { createHash } = await import('node:crypto');
+  const { canonicalCatalogDraftJson } = await import('@openlup/platform/catalog');
+  const { pricingPolicy } = await import('../host/quote-composition.ts');
+  const { starterTermsAdmission } = await import('../host/editor-ports.ts');
+  const { demoIdentifier } = await import('../host/editor-catalogue.ts');
+  const changed = structuredClone(config);
+  changed.subscriptionOffers.classic.bySku = {};
+  const actor = { principalRef: '00000000-0000-4000-8000-000000000001',customerRef: '00000000-0000-4000-8000-000000000002',operatorRef: null };
+  const input = { ...payload,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY };
+  const checkout = Object.fromEntries(['configuration','country','termsRevision','firstName','lastName','phone','line1','line2','city','postalCode']
+    .map(key => [key,input[key as keyof typeof input] ?? null]).concat([['email',payload.email],['purchaser',actor.customerRef]]));
+  const identity = createHash('sha256').update(canonicalCatalogDraftJson({ mode: cart.mode,cadenceDays: cart.cadenceDays,
+    lines: cart.lines,promoCodes: [],pricingPolicy,acquisitionCapability: ACQUISITION_TERMS_CAPABILITY,checkout })).digest('hex');
+  const money = { amountMinor: 1000,currency: 'XTS' };
+  const snapshot = { quote: { lines: [],subtotalGross: money,totalGross: money,discountTotalGross: { ...money,amountMinor: 0 },currency: 'XTS',
+    context: { mode: 'subscription',cadenceDays: 28,starterRequest: identity } } };
+  let writes = 0;
+  const db = { query: async (sql: string) => {
+    if (!sql.trimStart().startsWith('SELECT')) writes++;
+    if (sql.includes('SELECT email')) return { rows: [{ email: payload.email }] };
+    if (sql.includes('commerce_order_draft_receipts')) return { rows: [{ snapshot,completed: true,id: '00000000-0000-4000-8000-000000000003',status: 'paid',total_amount_minor: 1000,currency_code: 'XTS' }] };
+    // isInitialCheckoutOrder's canonical kind fence.
+    return { rows: [{ initial_checkout: true }] };
+  } } as unknown as Pool;
+  const actions = composePurchaseCapabilities(db,{} as never,undefined,{} as never,{ predecessors: unavailable });
+  const bindings = { ...pendingBindings(),actions };
+  const result = await dispatchAction(bindings,'checkout.create',input,{ ...context,config: changed,actor });
+  assert.deepEqual(result,{ ok: true,value: { orderRef: '00000000-0000-4000-8000-000000000003',status: 'paid',total: money },replayed: true });
+  const conflict = await dispatchAction(bindings,'checkout.create',{ ...input,cart: { ...cart,cadenceDays: 56 } },{ ...context,config: changed,actor });
+  assert.deepEqual(conflict,{ ok: false,code: 'starter_command_conflict' });
+  const terms = { subscriptionId: 'fixture',nominalPlanDays: 28,cadenceDays: 28,
+    base: [{ sku: cart.lines[0]!.sku,variantId: demoIdentifier(config,'sku',cart.lines[0]!.sku),qty: 6 }],addons: [] };
+  await assert.rejects(async () => starterTermsAdmission(db,changed,'classic')(terms),/subscription_reprice_terms_not_admitted/);
+  assert.equal(writes,0);
+});
+
+test('full-result admission covers exact/frozen unchanged base and add-ons, identity and installed-minimum drift', async () => {
+  const { starterTermsAdmission } = await import('../host/editor-ports.ts');
+  const { demoIdentifier } = await import('../host/editor-catalogue.ts');
+  const { set, range } = await import('../shared/subscription-offer.ts');
+  const configured = structuredClone(config);
+  for (const plan of Object.values(configured.subscriptionOffers)) {
+    plan.days = set(28,56); plan.defaultDays = 28;
+    plan.bySku = Object.fromEntries(configured.subscriptionEditing.catalogue.map(product => [product.sku,[{ days: plan.days,quantities: range(1,99,1) }]]));
+  }
+  const sku = configured.offer.products[0]!.sku, extra = `${sku}-EXTRA`;
+  const line = (sku: string,qty: number) => ({ sku,qty,variantId: demoIdentifier(configured,'sku',sku) });
+  let minimum = String(configured.subscriptionOffers.classic.minimumBaseUnits),writes = 0;
+  const db = { query: async (sql: string) => {
+    if (!sql.trimStart().startsWith('SELECT')) writes++;
+    return { rows: [{ value_text: minimum }] };
+  } } as unknown as Pool;
+  const terms = { subscriptionId: 'fixture',nominalPlanDays: 28,cadenceDays: 28,base: [line(sku,6)],addons: [line(extra,2)] };
+  for (const mode of ['classic','sized'] as const) {
+    const admit = starterTermsAdmission(db,configured,mode);
+    await admit(terms);
+    configured.subscriptionOffers[mode].bySku = { [sku]: [{ days: set(28,56),quantities: set(6) }],
+      [extra]: [{ days: set(28,56),quantities: set(2) }] };
+    for (const invalid of [{ ...terms,cadenceDays: 35 },{ ...terms,nominalPlanDays: 35 },
+      { ...terms,base: [line(sku,7)] },{ ...terms,addons: [line(extra,3)] },
+      { ...terms,base: [{ ...line(sku,6),variantId: demoIdentifier(configured,'sku','OTHER') }] }]) {
+      await assert.rejects(async () => admit(invalid),/subscription_reprice_terms_not_admitted/);
+    }
+    minimum = '5'; await assert.rejects(async () => admit(terms),/subscription_reprice_terms_not_admitted/);
+    minimum = String(configured.subscriptionOffers.classic.minimumBaseUnits);
+  }
+  assert.equal(writes,0);
+});

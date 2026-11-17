@@ -66,6 +66,8 @@ const owned = [
   "subscription_delivery_alignment_control", "outbox_dormant_event_types",
   "subscription_reminder_ledger", "transactional_delivery_receipts",
   "subscription_notice_refusals",
+  // AUTHORITATIVE installation marking and the separate, audited baseline.
+  "commerce_offer_policy_cohort_marking", "commerce_offer_policy_rollout_baselines",
 ] as const;
 
 // Intentionally not carried: single-use authorization state must stay in its

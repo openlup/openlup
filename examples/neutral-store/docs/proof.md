@@ -756,8 +756,14 @@ separation and a replacement token. The committed continuity proof consists of
 these source tests and the clean-index root proof. A real-browser second-submit
 check was confirmed in a local run that is not part of the committed suite.
 The root real-HTTP PostgreSQL regression needs only the three package builds;
-it uses neither starter UI assets nor a browser. It checks cadence 120 acceptance
-and cadence 121 refusal before any contact write. The shared e-mail boundary
+it uses neither starter UI assets nor a browser. Its host control changes the owned
+`subscriptionOffers` input to admit a maximum of 89 days. It checks 89-day checkout
+acceptance with readback and 90-day refusal before any contact registrar call or
+durable contact write. Both days fit the current SQL limit, so this proves the
+independent HTTP offer admission guard. Starter configuration tests separately
+check 90-day acceptance and the explicit `starter_database_cadence_limit` refusal
+above 90 for both classic and sized offers; SQL widening remains deferred.
+`offer.cadenceDays` is only a derived UI projection. The shared e-mail boundary
 checks a 160-character guest
 purchase through payment, native challenge, sign-in and account order visibility;
 161 characters refuse before any contact write. A lower configured value governs

@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -1637,5 +1637,141 @@ describe("replacement of an earlier native-store creation", () => {
       : attack === "missing creation pin" ? /bound predecessor/u
       : attack === "changed header" ? /replacement header drifted/u : /actual base function before-hash drifted/u;
     expect(() => assertNativeStoreForward(s.value, s.slot.path, Buffer.from(text), s.prefix)).toThrow(message);
+  });
+});
+
+const assignmentAdd = "ALTER TABLE public.subscriptions ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen';";
+const assignmentSwitch = "ALTER TABLE public.subscriptions ALTER COLUMN offer_policy_assignment_state SET DEFAULT 'pending_acquisition';";
+const baselineTable = "public.commerce_offer_policy_rollout_baselines";
+const baselineGrant = `GRANT SELECT, INSERT ON TABLE ${baselineTable} TO service_role;`;
+const baselineSelect = `CREATE POLICY commerce_offer_policy_baselines_service_select ON ${baselineTable} FOR SELECT TO service_role USING (true);`;
+const baselineInsert = `CREATE POLICY commerce_offer_policy_baselines_service_insert ON ${baselineTable} FOR INSERT TO service_role WITH CHECK (true);`;
+const baselineShape = `CREATE TABLE ${baselineTable} (id text PRIMARY KEY);
+ALTER TABLE ${baselineTable} ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE ${baselineTable} FROM PUBLIC;
+${[baselineGrant, baselineSelect, baselineInsert].map(noticeDo).join("\n")}`;
+
+describe("native baseline admission", () => {
+  const assignment = (statements: string[], text = statements.join("\n")) => check(`${sql()}\n${text}`, value => {
+    value.nativeStoreForwardClass!.slots[0]!.existingTableStatements = statements;
+  });
+  const baseline = (text: string, tables = [baselineTable]) => check(`${sql()}\n${text}`, value => {
+    value.nativeStoreForwardClass!.slots[0]!.insertSelectTables = tables;
+  });
+  it("admits the exact fresh-column legacy-to-pending default switch", () => {
+    expect(() => assignment([assignmentAdd, assignmentSwitch])).not.toThrow();
+    expect(isExpandOnlyPlatformForward(assignmentSwitch)).toBe(false);
+  });
+  it.each([
+    ["other default", [assignmentAdd, assignmentSwitch.replace("pending_acquisition", "assigned_acquisition")]],
+    ["other initial default", [assignmentAdd.replace("legacy_frozen", "pending_acquisition"), assignmentSwitch]],
+    ["switch before addition", [assignmentSwitch, assignmentAdd]],
+    ["no addition", [assignmentSwitch]],
+    ["conditional addition", [assignmentAdd.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"), assignmentSwitch]],
+    ["other table", [assignmentAdd, assignmentSwitch].map(text => text.replace("public.subscriptions", "public.fixture_row"))],
+    ["other column", [assignmentAdd, assignmentSwitch].map(text => text.replace("offer_policy_assignment_state", "other_state"))],
+    ["non-expand companion", [assignmentAdd, assignmentSwitch.replace(";", ", DROP COLUMN id;")]],
+    ["drop default", [assignmentAdd, assignmentSwitch.replace("SET DEFAULT 'pending_acquisition'", "DROP DEFAULT")]],
+  ])("refuses assignment default %s", (_label, statements) => {
+    expect(() => assignment(statements)).toThrow(/existing-table statement is not expand-only/u);
+  });
+  it("refuses the canonical assignment switch when its only legacy ADD targets another table", () => {
+    const otherAdd = assignmentAdd.replace("public.subscriptions", "public.fixture_row");
+    expect(() => assignment([otherAdd])).not.toThrow();
+    expect(() => assignment([otherAdd, assignmentSwitch])).toThrow("reviewed native store existing-table statement is not expand-only");
+  });
+  it("refuses an unlisted, changed or duplicated switch", () => {
+    for (const statements of [[], [assignmentAdd], [assignmentAdd, assignmentSwitch]]) {
+      expect(() => assignment(statements, assignmentAdd + assignmentSwitch + assignmentSwitch)).toThrow(/existing-table|closed shapes/u);
+    }
+  });
+  it("admits the pinned baseline service grant and separate policies", () => {
+    expect(() => baseline(baselineShape)).not.toThrow();
+  });
+  it.each([
+    ["UPDATE grant", baselineShape.replace("SELECT, INSERT", "SELECT, INSERT, UPDATE")],
+    ["DELETE grant", baselineShape.replace("SELECT, INSERT", "SELECT, INSERT, DELETE")],
+    ["grant option", baselineShape.replace("TO service_role;", "TO service_role WITH GRANT OPTION;")],
+    ["broader policy", baselineShape.replace("FOR SELECT TO", "FOR ALL TO")],
+    ["UPDATE policy", baselineShape.replace("FOR SELECT TO", "FOR UPDATE TO")],
+    ["DELETE policy", baselineShape.replace("FOR SELECT TO", "FOR DELETE TO")],
+    ["other predicate", baselineShape.replace("WITH CHECK (true)", "WITH CHECK (false)")],
+    ["other role", baselineShape.replaceAll("service_role", "authenticated")],
+    ["other table", baselineShape.replaceAll(baselineTable, "public.fixture_baseline")],
+    ["no same-file creation", baselineShape.replace(`CREATE TABLE ${baselineTable} (id text PRIMARY KEY);`, "")],
+    ["unconditional grant", baselineShape.replace(noticeDo(baselineGrant), baselineGrant)],
+    ["unconditional policy", baselineShape.replace(noticeDo(baselineSelect), baselineSelect)],
+    ["mismatched role shell", baselineShape.replace(noticeDo(baselineGrant), noticeDo(baselineGrant).replace("rolname='service_role'", "rolname='authenticated'"))],
+    ["duplicate grant", baselineShape + noticeDo(baselineGrant)],
+    ["duplicate policy", baselineShape + noticeDo(baselineInsert)],
+  ])("refuses baseline %s", (_label, text) => {
+    expect(() => baseline(text)).toThrow(/reviewed native store/u);
+  });
+  it.each(["SELECT", "INSERT", "UPDATE", "DELETE", "REFERENCES", "TRIGGER"].flatMap(privilege =>
+    ["table", "column"].flatMap(scope => ["direct", "guarded"].map(shell => ({ privilege, scope, shell }))),
+  ))("refuses appended baseline $privilege $scope GRANT in $shell admission", ({ privilege, scope, shell }) => {
+    const grant = `GRANT ${privilege}${scope === "column" ? " (id)" : ""} ON TABLE ${baselineTable} TO service_role;`;
+    expect(() => baseline(baselineShape + (shell === "guarded" ? noticeDo(grant) : grant)))
+      .toThrow(shell === "guarded" ? "reviewed native store conditional privilege target or role refused" : "reviewed native store refuses statement outside its closed shapes");
+  });
+  it.each([baselineGrant, baselineSelect, baselineInsert])("refuses an incomplete baseline without %s", statement => {
+    expect(() => baseline(baselineShape.replace(noticeDo(statement), ""))).toThrow(/requires its grant and both policies/u);
+  });
+  it("refuses an unlisted or widened baseline allowance", () => {
+    expect(() => baseline(baselineShape, [])).toThrow(/G8-only/u);
+    expect(() => baseline(baselineShape, [baselineTable, noticeTable])).toThrow(/G8-only/u);
+    expect(() => check(`${sql()}\n${baselineShape}`)).toThrow(/baseline requires/u);
+  });
+});
+
+describe("closed same-SKU composite foreign key", () => {
+  const column = "ALTER TABLE public.subscription_lines ADD COLUMN catalog_sku_revision_id uuid;";
+  const fk = "ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;";
+  const validate = "ALTER TABLE public.subscription_lines VALIDATE CONSTRAINT subscription_lines_catalog_sku_revision_fkey;";
+  const listed = (statements: string[], actual = statements.join("\n")) => parameterForward(actual, slot => { slot.existingTableStatements = statements; });
+  it("admits only the ordered same-SKU RESTRICT NOT VALID shape and its later validation", () => {
+    for (const statements of [[column, fk], [column, fk, validate]]) {
+      expect(() => listed(statements)).not.toThrow();
+      expect(nativeStoreAddedForeignKeys(statements)).toMatchObject([{ table: "public.subscription_lines",
+        columns: ["variant_id", "catalog_sku_revision_id"], reference: "public.catalog_sku_revisions",
+        keys: ["sku_id", "id"], deletion: "r", validated: statements.includes(validate) }]);
+    }
+    expect(isExpandOnlyPlatformForward(fk)).toBe(false);
+  });
+  it.each([
+    ["source arity", fk.replace("variant_id, ", "")],
+    ["target arity", fk.replace("sku_id, ", "")],
+    ["both arities", fk.replace("variant_id, ", "").replace("sku_id, ", "")],
+    ["source order", fk.replace("variant_id, catalog_sku_revision_id", "catalog_sku_revision_id, variant_id")],
+    ["target order", fk.replace("sku_id, id", "id, sku_id")],
+    ["both orders", fk.replace("variant_id, catalog_sku_revision_id", "catalog_sku_revision_id, variant_id").replace("sku_id, id", "id, sku_id")],
+    ["other source column", fk.replace("(variant_id,", "(other_id,")],
+    ["other target column", fk.replace("(sku_id,", "(other_id,")],
+    ["other source relation", fk.replace("public.subscription_lines", "public.other_lines")],
+    ["other target relation", fk.replace("public.catalog_sku_revisions", "public.other_revisions")],
+    ["other constraint", fk.replace("subscription_lines_catalog_sku_revision_fkey", "other_fkey")],
+    ["VALID on add", fk.replace(" NOT VALID", "")],
+    ["implicit NO ACTION", fk.replace(" ON DELETE RESTRICT", "")],
+    ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`ON DELETE ${action}`, fk.replace("DELETE RESTRICT", `DELETE ${action}`)]),
+    ...["RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`ON UPDATE ${action}`, fk.replace(" NOT VALID", ` ON UPDATE ${action} NOT VALID`)]),
+    ["deferrable", fk.replace(" NOT VALID", " DEFERRABLE NOT VALID")],
+    ["MATCH FULL", fk.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+    ["appended SELECT", `${fk} SELECT 1;`],
+    ["appended DELETE", `${fk} DELETE FROM public.subscription_lines;`],
+    ["appended ALTER", `${fk} ALTER TABLE public.subscription_lines DROP COLUMN variant_id;`],
+    ["another ALTER action", fk.replace(";", ", ADD COLUMN extra text;")],
+    ["literal smuggling", fk.replace(" NOT VALID", " NOT VALID 'SELECT'")],
+    ["incomplete tokens", fk.replace(" NOT VALID", " NOT VALID \\")],
+  ])("refuses same-SKU FK %s", (_label, statement) => {
+    expect(() => listed([column, statement])).toThrow(/reviewed native store/u);
+  });
+  it("requires the exact same-SKU statements once in their declared order", () => {
+    expect(() => listed([column, fk], column + fk + fk)).toThrow(/reviewed native store/u);
+    expect(() => listed([column, fk], fk + column)).toThrow(/reviewed native store/u);
+    expect(() => listed([column, fk], column)).toThrow(/reviewed native store/u);
+    expect(() => listed([fk])).toThrow(/earlier same-slot ADD COLUMN/u);
+  });
+  it.each(["SELECT 1;", "DELETE FROM public.subscription_lines;", "UPDATE public.subscription_lines SET variant_id=NULL;", "GRANT UPDATE ON TABLE public.subscription_lines TO service_role;"])("retains generic refusal after a same-SKU FK: %s", extra => {
+    expect(() => listed([column, fk], column + fk + extra)).toThrow(/reviewed native store/u);
   });
 });

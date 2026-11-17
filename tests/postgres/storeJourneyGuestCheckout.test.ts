@@ -24,7 +24,13 @@ import { postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 const resources = storeJourneyResources();
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
 const words = { en: "Synthetic collection", pl: "Synthetic collection" };
+const days = { kind: "set", values: [28] } as const;
+const subscriptionOffer = { days, defaultDays: 28, minimumBaseUnits: 6, checkoutMinimumBaseUnits: 1,
+  maximumUnits: 10, maximumBaseLines: 6, maximumAddonLines: 12,
+  bySku: Object.fromEntries(["JOURNEY-GUEST", "JOURNEY-GUEST-L"].map(sku => [sku,
+    [{ days, quantities: { kind: "range" as const, min: 1, max: 99, step: 1 } }]])) };
 const config: StoreConfig = {
+  subscriptionOffers: { classic: subscriptionOffer, sized: subscriptionOffer },
   renewal: demoRenewalConfig("journey"),
   subscriptionEditing: undefined as never,
   quote: { ...quoteConfigurations.coffee, acquisition: { ...quoteConfigurations.coffee.acquisition, enabled: true, minimumProductPayableMinor: 274 } },
@@ -53,7 +59,7 @@ const config: StoreConfig = {
   legal: { revision: "synthetic-1", returnsDays: 14, demoOnly: true },
   features: { reviews: false, acquisition: false, research: false, partners: false, risk: false, normalizedIngest: false },
 };
-config.subscriptionEditing = subscriptionEditing(config.offer.products);
+config.subscriptionEditing = subscriptionEditing(config.offer.products, config.subscriptionOffers);
 config.subscriptionEditing.catalogue = config.subscriptionEditing.catalogue.filter(product => !product.isAddon);
 assertConfig(config);
 
@@ -121,10 +127,16 @@ it.each(["one_time", "subscription"] as const)("joins anonymous %s purchase, tra
     expect(await documents(target)).toEqual(await documents(source));
     const before = await purchaseRows(source);
     expect(await purchaseRows(target)).toEqual(before);
+    const withdrawn = structuredClone(config);
+    withdrawn.subscriptionOffers.classic.bySku = {};
+    withdrawn.subscriptionEditing = subscriptionEditing(withdrawn.offer.products, withdrawn.subscriptionOffers);
+    if (mode === "one_time") withdrawn.offer.products[0]!.permittedPurchaseModes = ["subscription"];
     const replays: unknown[] = [];
     for (let index = 0; index < 2; index++) {
-      replays.push(await actions[index]!["checkout.create"]!(payload, context));
+      replays.push(await actions[index]!["checkout.create"]!(payload, { ...context, config: withdrawn }));
       expect(replays[index]).toMatchObject({ ok: true, replayed: true, value: { orderRef: order.orderRef, status: "paid" } });
+      expect(await purchaseRows([source, target][index]!)).toEqual(before);
+      expect(await actions[index]!["checkout.create"]!(payload, { ...context, config: withdrawn, commandKey: `withdrawn-${mode}` })).toMatchObject({ ok: false });
       expect(await purchaseRows([source, target][index]!)).toEqual(before);
     }
     expect(replays[1]).toEqual(replays[0]);

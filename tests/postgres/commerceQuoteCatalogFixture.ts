@@ -30,6 +30,13 @@ config.purchase.stock.quantities = Object.fromEntries(config.offer.products.map(
 config.subscriptionEditing.catalogue = config.offer.products.map(product => ({
   ...config.subscriptionEditing.catalogue[0]!, ...product, groupKey: product.sku, stockQuantity: 1,
 }));
+// The fixture replaces SKU identities; its owned offer rules must follow them too.
+for (const offer of Object.values(config.subscriptionOffers)) {
+  const rules = Object.values(offer.bySku)[0]!;
+  offer.bySku = Object.fromEntries(config.offer.products
+    .filter(product => product.permittedPurchaseModes.includes("subscription"))
+    .map(product => [product.sku, structuredClone(rules)]));
+}
 export const seed = buildDemoSeed(config);
 export const digest = (value: unknown) => createHash("sha256").update(canonicalCatalogDraftJson(value)).digest("hex");
 export function documentFor(index: number, revisionNo = 2) {

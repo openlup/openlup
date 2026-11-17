@@ -1,10 +1,11 @@
+import { quantityChoices } from '../../shared/subscription-offer.ts';
 import type { PackageEditPreview } from '@openlup/platform/subscriptions/contracts';
 import type { EditorCandidate, EditorSubscription } from '../../shared/subscription-edit.ts';
 import type { PageContext } from '../context.ts';
 import { el, link } from '../dom.ts';
 import { routes } from '../../shared/routes.ts';
 import { classicDraft, classicChanged, classicRequest, changeClassicQuantity, removeClassicLine, addClassicLine,
-  distributeClassic, toggleClassicAddon, units, type ClassicDraft } from '../editors/classic-model.ts';
+  distributeClassic, toggleClassicAddon, validClassic, units, type ClassicDraft } from '../editors/classic-model.ts';
 import { editorAction, editorAccount, text, notice, control, date, quoteRows, key, replaceEditor } from '../editors/view.ts';
 import { isRecord } from '../../shared/offer.ts';
 
@@ -18,6 +19,10 @@ export function classicEditorPage(context: PageContext): HTMLElement {
   const id = context.query.get('subscription') ?? '';
   const label = (variantId: string) => catalog.find(product => product.variantId === variantId)?.name[context.locale]
     ?? subscription.lines.find(line => line.variantId === variantId)?.title ?? variantId;
+  const offer = context.config.subscriptionOffers.classic;
+  const eligible = (sku: string) => quantityChoices(offer,sku,draft.planDays);
+  const admitted = (value = draft) => validClassic(value,offer,[...catalog,...subscription.lines.map(line => ({ variantId: line.variantId,sku: line.sku ?? '' }))]);
+  const quantity = (id: string, direction: -1 | 1) => changeClassicQuantity(draft,id,direction,values.minimumBaseUnits,values.maximumQuantity,offer,catalog);
   const changed = () => classicChanged(baseline,draft);
   function change(next: ClassicDraft) { draft = next; preview = null; error = ''; lineError = null; render(); }
   function render() {
@@ -55,17 +60,17 @@ export function classicEditorPage(context: PageContext): HTMLElement {
         const row = el('div',{ class: 'panel','data-testid': `editor-line-${line.variantId}` },el('h3',{},name),
           el('p',{},`${line.qty} × ${catalog.find(item => item.variantId === line.variantId)?.physicalSize ?? '—'} g`),
           el('output',{ 'aria-label': text(context,'quantity') },line.qty),
-          control(text(context,'decrease',{ name }),() => change(changeClassicQuantity(draft,line.variantId,-1,values.minimumBaseUnits,values.maximumQuantity)),
-            previewing || line.qty <= 1 || units(draft.base) <= values.minimumBaseUnits),
-          control(text(context,'increase',{ name }),() => change(changeClassicQuantity(draft,line.variantId,1,values.minimumBaseUnits,values.maximumQuantity)),previewing || line.qty >= values.maximumQuantity),remove);
+          control(text(context,'decrease',{ name }),() => change(quantity(line.variantId,-1)),
+            previewing || quantity(line.variantId,-1) === draft),
+          control(text(context,'increase',{ name }),() => change(quantity(line.variantId,1)),previewing || quantity(line.variantId,1) === draft),remove);
         if (refusal) row.append(el('p',{ id: hint,class: 'small' },refusal));
         if (lineError?.id === line.variantId) row.append(el('p',{ role: 'alert' },lineError.message));
         lines.append(row);
       }
-      lines.append(control(text(context,'distribute'),() => change(distributeClassic(draft)),previewing));
+      lines.append(control(text(context,'distribute'),() => change(distributeClassic(draft)),previewing || !admitted(distributeClassic(draft))));
       const candidates = el('fieldset',{},el('legend',{},text(context,'candidates')));
-      for (const item of catalog.filter(product => product.selectable && product.sellable && !product.isAddon && !draft.base.some(line => line.variantId === product.variantId))) {
-        const add = control(text(context,'add',{ name: item.name[context.locale] }),() => change(addClassicLine(draft,item.variantId,values.maximumBaseLines)),previewing || draft.base.length >= values.maximumBaseLines);
+      for (const item of catalog.filter(product => product.selectable && product.sellable && eligible(product.sku).length > 0 && !product.isAddon && !draft.base.some(line => line.variantId === product.variantId))) {
+        const add = control(text(context,'add',{ name: item.name[context.locale] }),() => change(addClassicLine(draft,item.variantId,values.maximumBaseLines,eligible(item.sku)[0]!)),previewing || draft.base.length >= values.maximumBaseLines);
         add.setAttribute('data-variant',item.variantId);
         candidates.append(el('div',{},add,el('span',{ class: 'small' },text(context,'sizeValue',{ size: item.physicalSize }))));
       }
@@ -80,7 +85,7 @@ export function classicEditorPage(context: PageContext): HTMLElement {
           { name: label(line.variantId),quantity: line.qty }),() => change(toggleClassicAddon(draft,baseline,line.variantId))))));
       if (catalogLoading) page.append(el('p',{ role: 'status' },text(context,'catalogLoading')));
       if (catalogFailed) page.append(el('p',{ role: 'alert' },text(context,'catalogUnavailable')));
-      page.append(control(text(context,'review'),review,catalogLoading || catalogFailed || previewing || !changed() || units(draft.base) < values.minimumBaseUnits),
+      page.append(control(text(context,'review'),review,catalogLoading || catalogFailed || previewing || !changed() || !admitted()),
         el('p',{},text(context,'units',{ count: units(draft.base) })),
         el('div',{ 'data-testid': 'sized-invitation' },el('p',{},text(context,'invitationBody')),
           link(text(context,'invitation'),`${routes.sizedEdit[context.locale]}?subscription=${encodeURIComponent(id)}&optIn=1`)));
@@ -90,7 +95,7 @@ export function classicEditorPage(context: PageContext): HTMLElement {
     page.append(close); replaceEditor(root,page);
   }
   async function review() {
-    if (previewing || !changed() || catalogLoading || catalogFailed || units(draft.base) < values.minimumBaseUnits) return;
+    if (previewing || !changed() || catalogLoading || catalogFailed || !admitted()) return;
     previewing = true; error = ''; render();
     try {
       const result = await editorAction('subscription.preview',{ request: classicRequest(subscription,draft) },key('classic-preview')) as PackageEditPreview;

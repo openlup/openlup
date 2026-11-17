@@ -80,6 +80,15 @@ and authoritative refusal presentation.
 development-preview draft seam. Product types are installed by composition,
 never supplied as draft data, and absent facts stay readiness issues.
 
+The package adds explicit v2 draft schemas and v1-or-v2 stored readers. V2
+persists typed attributes and immediate positive gross base-price commands as
+data; it does not mount a writer. Its versioned resume preserves old abandonment
+receipts and reservations. Stateless candidate preparation uses injected
+authorized revision, definition and full publication-head readers; it grants no
+human publisher authority. See the [package catalogue owner](../../../packages/platform/README.md#catalog)
+for versioned APIs, reader upgrade order and the native-only boundary. Existing
+v1 commands and the managed baseline remain unchanged.
+
 - A quantity dimension may declare `role: "net_content"`; a type has at most
   one, and all of its units must be net-content units. A SKU option on it must
   state the same quantity as the SKU's `netContent`
@@ -145,3 +154,8 @@ bounded public-source inventory. A repository path establishes source existence
 at the reviewed commit; a listed `/api/...` value is a logical interface
 coordinate. Mounting needs separate dispatcher or registry evidence, and even a
 mounted reference interface is not proof that an adopter deployment exposes it.
+
+Draft payload v3's publication input envelope and opt-in readers are owned by the
+[package catalogue contract](../../../packages/platform/README.md#catalog).
+The source reference composition remains unbound; neither draft persistence nor
+candidate preview executes publication operations or enables a capability.

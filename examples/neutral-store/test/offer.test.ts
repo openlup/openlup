@@ -1,8 +1,9 @@
+import { set, range } from '../shared/subscription-offer.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { configurations } from '../owned/store.config.ts';
 import { assertConfig, parseHostArguments, type StoreConfig } from '../shared/config.ts';
-import { evaluateOffer, type Cart } from '../shared/offer.ts';
+import { evaluateOffer, validateCart, type Cart } from '../shared/offer.ts';
 import { createBrowserCart } from '../client/cart.ts';
 
 function cart(config: StoreConfig): Cart {
@@ -13,6 +14,11 @@ function cart(config: StoreConfig): Cart {
 // Managed algorithm tests own their rule boundaries; adopter settings remain mutable.
 function offerFixture(original: StoreConfig): StoreConfig {
   const config = structuredClone(original);
+  for (const plan of Object.values(config.subscriptionOffers)) {
+    plan.days = set(14,28,56); plan.defaultDays = 28;
+    plan.bySku = Object.fromEntries(config.subscriptionEditing.catalogue.map(product => [product.sku,[{ days: plan.days,quantities: range(1,99,1) }]]));
+  }
+  config.quote.acquisition.graduationCadenceDays = 28;
   Object.assign(config.offer, { minUnits: 1, maxUnits: 12, shippingMinor: 0,
     freeShippingFromMinor: 0, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,
     cadenceDays: [14, 28, 56], defaultCadenceDays: 28 });
@@ -246,12 +252,23 @@ test('fictional market formats validate without a named deployment market', () =
 
 for (const original of Object.values(configurations)) test(`${original.id}: admission independently enforces native cadence, line and quantity bounds`, () => {
   const config = offerFixture(original);
-  config.offer.cadenceDays = [120, 121]; config.offer.maxUnits = 100;
-  const input = { ...cart(config), mode: 'subscription', cadenceDays: 120 };
+  config.subscriptionOffers.classic.days = set(90);
+  config.subscriptionOffers.classic.bySku = { [config.offer.products[0]!.sku]: [{ days: set(90),quantities: set(1,2) }] };
+  config.offer.maxUnits = 100;
+  const input = { ...cart(config), mode: 'subscription', cadenceDays: 90 };
   assert.ok(evaluateOffer(config, input).ok);
-  assert.deepEqual(evaluateOffer(config, { ...input, cadenceDays: 121 }), { ok: false, issues: [{ code: 'cadence_unavailable' }] });
+  assert.deepEqual(evaluateOffer(config, { ...input, cadenceDays: 91 }), { ok: false, issues: [{ code: 'cadence_unavailable' }] });
   assert.equal(evaluateOffer(config, { ...input, lines: [{ sku: config.offer.products[0]!.sku, quantity: 100 }] }).ok, false);
   config.offer.products = Array.from({ length: 51 }, (_, index) => ({ ...config.offer.products[0]!, sku: `BOUND-${index}` }));
   assert.deepEqual(evaluateOffer(config, { ...input, lines: config.offer.products.map(product => ({ sku: product.sku, quantity: 1 })) }),
     { ok: false, issues: [{ code: 'cart_invalid' }] });
+});
+
+test('graduation checks servicing cadence without widening checkout choices', () => {
+  const config = offerFixture(Object.values(configurations)[0]!);
+  config.subscriptionOffers.classic.checkoutDays = set(14,21);
+  config.subscriptionOffers.classic.days = set(14,21,28);
+  const selected = { ...cart(config),mode: 'subscription',cadenceDays: 28 };
+  assert.equal(validateCart(config,selected).ok,false);
+  assert.equal(validateCart(config,selected,'graduation').ok,true);
 });

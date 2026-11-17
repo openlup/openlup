@@ -201,7 +201,20 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
           || expressions[0]?.qual !== "true" || expressions[0]?.check_expr !== null))) fail(`new relation ${row.name} exceeds its absorption census shape`);
       censusSeen.add(censusIdentity); continue;
     }
-    if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
+    if (row.name === "public.commerce_offer_policy_rollout_baselines" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
+      const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
+      const acl = row.acl.filter(item => !item.startsWith(`${row.owner}:`));
+      const policies = (await db.query(`SELECT polname, polcmd::text, polpermissive, polroles::text[],
+        pg_get_expr(polqual,polrelid) AS qual, pg_get_expr(polwithcheck,polrelid) AS check_expr
+        FROM pg_policy WHERE polrelid=$1::oid ORDER BY polcmd`, [row.oid])).rows;
+      const expected = role ? [
+        { polname: "commerce_offer_policy_baselines_service_insert", polcmd: "a", polpermissive: true, polroles: [String(role)], qual: null, check_expr: "true" },
+        { polname: "commerce_offer_policy_baselines_service_select", polcmd: "r", polpermissive: true, polroles: [String(role)], qual: "true", check_expr: null },
+      ] : [];
+      if (row.kind !== "r" || !row.rls || row.forceRls
+        || JSON.stringify(acl) !== JSON.stringify(role ? ["service_role:INSERT", "service_role:SELECT"] : [])
+        || JSON.stringify(policies) !== JSON.stringify(expected)) fail("baseline exceeds its pinned service SELECT/INSERT shape");
+    } else if (row.name === "public.subscription_notice_refusals" && JSON.stringify(slot.insertSelectTables) === JSON.stringify([row.name])) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const acl = row.acl.filter(item => !item.startsWith(`${row.owner}:`));
       const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
@@ -213,6 +226,15 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (row.columnAcls !== null) fail(`new relation ${row.name} has column privileges ${JSON.stringify(row.columnAcls)}`);
   }
   if (slot.absorptionCensusTables?.some(table => !censusSeen.has(table))) fail("absorption census requires a new relation in this slot");
+
+  if (slot.insertSelectTables?.includes("public.commerce_offer_policy_rollout_baselines")
+    && !after.relations.some(row => row.name === "public.commerce_offer_policy_rollout_baselines" && !oldRelations.has(row.oid))) fail("baseline requires a new relation in this slot");
+  if (slot.existingTableStatements?.includes(ASSIGNMENT_SWITCH)) {
+    const field = (column: Snapshot["columns"][number]) => column.rel === "public.subscriptions" && column.name === "offer_policy_assignment_state";
+    const column = after.columns.find(field);
+    if (before.columns.some(field) || !column || column.default !== "'pending_acquisition'::text"
+      || column.attrs.attnotnull !== true || column.attrs.atttypid !== "25") fail("assignment default switch requires a fresh non-null text column and its exact future default");
+  }
 
   const newViews = after.relations.filter(row => !oldRelations.has(row.oid) && row.kind === "v").map(row => row.name).sort();
   if (JSON.stringify(newViews) !== JSON.stringify((slot.createdViews ?? []).map(view => view.name).sort())) fail("created views differ from the slot list");
@@ -253,7 +275,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     } else if (def !== old.def) fail(`constraint ${constraintKey(old)} was dropped or rewritten`);
   }
 
-  // Only declared fresh-column FK actions may extend an existing table. Read the
+  // Declared fresh-column FK actions and the closed same-SKU pair extend an existing table. Read the
   // actual target, key, action and validation state from PostgreSQL, not SQL history.
   const foreignKeys = nativeStoreAddedForeignKeys(slot.existingTableStatements ?? []);
   const installedKeys = (await db.query(`SELECT c.conrelid::int AS relation, c.conname AS name,
@@ -261,18 +283,19 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     c.confmatchtype::text AS match, c.convalidated AS validated, c.condeferrable AS deferrable,
     c.condeferred AS deferred, c.conkey::int[] AS columns, c.confkey::int[] AS keys
     FROM pg_constraint c WHERE c.contype='f'`)).rows;
-  const freshKeys = installedKeys.filter(key => oldRelations.has(key.relation) && !before.constraints.some(old => old.rel === oldRelations.get(key.relation)!.name && old.name === key.name) && ["c", "n"].includes(key.deletion));
+  const freshKeys = installedKeys.filter(key => oldRelations.has(key.relation) && !before.constraints.some(old => old.rel === oldRelations.get(key.relation)!.name && old.name === key.name) && (["c", "n"].includes(key.deletion) || key.name === "subscription_lines_catalog_sku_revision_fkey"));
   if (freshKeys.length !== foreignKeys.length) fail("FK delete actions differ from the slot's existing-table list");
   for (const key of foreignKeys) {
     const table = before.relations.find(row => row.name === key.table && row.kind === "r");
     const installed = freshKeys.find(row => row.relation === table?.oid && row.name === key.name);
     const column = after.columns.find(row => row.rel === key.table && row.name === key.column);
     const target = after.relations.find(row => row.name === key.reference && row.kind === "r");
-    const targetKey = after.columns.find(row => row.rel === key.reference && row.name === key.key);
+    const sourceColumns = key.columns.map(name => after.columns.find(row => row.rel === key.table && row.name === name)?.attrs.attnum);
+    const targetColumns = key.keys.map(name => after.columns.find(row => row.rel === key.reference && row.name === name)?.attrs.attnum);
     if (!table || !column || before.columns.some(row => row.rel === key.table && row.name === key.column)) fail("FK delete action requires a fresh column on an existing table");
-    if (!installed || !target || !targetKey || installed.target !== target.oid || installed.deletion !== key.deletion || installed.validated !== key.validated
+    if (!installed || !target || sourceColumns.includes(undefined) || targetColumns.includes(undefined) || installed.target !== target.oid || installed.deletion !== key.deletion || installed.validated !== key.validated
       || installed.update !== "a" || installed.match !== "s" || installed.deferrable || installed.deferred
-      || JSON.stringify(installed.columns) !== JSON.stringify([column!.attrs.attnum]) || JSON.stringify(installed.keys) !== JSON.stringify([targetKey!.attrs.attnum])) fail("FK target, key, delete action or validation state differs from its entry");
+      || JSON.stringify(installed.columns) !== JSON.stringify(sourceColumns) || JSON.stringify(installed.keys) !== JSON.stringify(targetColumns)) fail("FK target, key, delete action or validation state differs from its entry");
     for (const old of before.columns.filter(row => row.rel === key.table)) if (JSON.stringify(after.columns.find(row => row.rel === old.rel && row.name === old.name)) !== JSON.stringify(old)) fail(`FK table column ${old.rel}.${old.name} changed`);
   }
 
@@ -343,6 +366,7 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
 
 // ---- Synthetic cases: the comparator itself, on real PostgreSQL ---------------------------------
 const SYNTHETIC_BASE = `
+CREATE TABLE public.subscriptions (id int PRIMARY KEY);
 CREATE TABLE public.clients (id uuid PRIMARY KEY);
 CREATE TABLE public.client_absorption_policy (table_name text PRIMARY KEY, disposition text NOT NULL, note text);
 CREATE TABLE public.cat_existing_table (id int PRIMARY KEY, owner_ref uuid NOT NULL);
@@ -396,6 +420,17 @@ const TRIGGER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT,
 };
 const TRIGGER_SQL = `${TRIGGER_FUNCTION}\n${TRIGGER_REVOKE}\n${TRIGGER_BEFORE}\n${TRIGGER_AFTER}`;
 
+const ASSIGNMENT_ADD = "ALTER TABLE public.subscriptions ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen';";
+const ASSIGNMENT_SWITCH = "ALTER TABLE public.subscriptions ALTER COLUMN offer_policy_assignment_state SET DEFAULT 'pending_acquisition';";
+const ASSIGNMENT_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, existingTableStatements: [ASSIGNMENT_ADD, ASSIGNMENT_SWITCH] };
+const BASELINE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, insertSelectTables: ["public.commerce_offer_policy_rollout_baselines"] };
+const BASELINE_TABLE = "CREATE TABLE public.commerce_offer_policy_rollout_baselines (id int);";
+const BASELINE_SQL = `${BASELINE_TABLE}
+ALTER TABLE public.commerce_offer_policy_rollout_baselines ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.commerce_offer_policy_rollout_baselines FROM PUBLIC;
+${guarded("service_role", "GRANT SELECT, INSERT ON TABLE", "public.commerce_offer_policy_rollout_baselines TO service_role;")}
+${guarded("service_role", "CREATE POLICY commerce_offer_policy_baselines_service_select ON", "public.commerce_offer_policy_rollout_baselines FOR SELECT TO service_role USING (true);")}
+${guarded("service_role", "CREATE POLICY commerce_offer_policy_baselines_service_insert ON", "public.commerce_offer_policy_rollout_baselines FOR INSERT TO service_role WITH CHECK (true);")}`;
 const NOTICE_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, insertSelectTables: ["public.subscription_notice_refusals"] };
 const NOTICE_TABLE = "CREATE TABLE public.subscription_notice_refusals (id int); ALTER TABLE public.subscription_notice_refusals ENABLE ROW LEVEL SECURITY; REVOKE ALL ON TABLE public.subscription_notice_refusals FROM PUBLIC;";
 const NOTICE_GRANT = guarded("service_role", "GRANT SELECT, INSERT ON", "public.subscription_notice_refusals TO service_role;");
@@ -602,6 +637,72 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   }, postgresSetupTimeoutMs);
   afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
+  it("admits the fresh assignment default switch and preserves historical rows", async () => {
+    await checkForward(pool, ASSIGNMENT_SLOT, forward(CREATED_OK, ASSIGNMENT_ADD + ASSIGNMENT_SWITCH));
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query("INSERT INTO public.subscriptions(id) VALUES (1)");
+      await db.query(ASSIGNMENT_ADD + ASSIGNMENT_SWITCH);
+      await db.query("INSERT INTO public.subscriptions(id) VALUES (2)");
+      expect((await db.query("SELECT id, offer_policy_assignment_state AS state FROM public.subscriptions ORDER BY id")).rows)
+        .toEqual([{ id: 1, state: "legacy_frozen" }, { id: 2, state: "pending_acquisition" }]);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each([
+    ["other default", ASSIGNMENT_ADD + ASSIGNMENT_SWITCH.replace("pending_acquisition", "assigned_acquisition"), ""],
+    ["other column", ASSIGNMENT_ADD.replace("offer_policy_assignment_state", "other_state") + ASSIGNMENT_SWITCH.replace("offer_policy_assignment_state", "other_state"), ""],
+    ["other table", (ASSIGNMENT_ADD + ASSIGNMENT_SWITCH).replaceAll("public.subscriptions", "public.cat_parameters"), ""],
+    ["nullable column", ASSIGNMENT_ADD.replace(" NOT NULL", "") + ASSIGNMENT_SWITCH, ""],
+    ["dropped default", ASSIGNMENT_ADD + ASSIGNMENT_SWITCH.replace("SET DEFAULT 'pending_acquisition'", "DROP DEFAULT"), ""],
+    ["pre-existing column", ASSIGNMENT_SWITCH, ASSIGNMENT_ADD],
+  ])("refuses assignment switch with %s in PostgreSQL", async (_label, sql, setup) => {
+    await expect(checkForward(pool, ASSIGNMENT_SLOT, forward(CREATED_OK, sql), false, setup)).rejects.toThrow(/assignment default switch/u);
+  });
+  it("admits only the pinned baseline service grant and SELECT/INSERT policies", async () => {
+    await checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL));
+  });
+  it.skipIf(!serviceRole)("enforces baseline SELECT/INSERT and UPDATE/DELETE denial with NOBYPASSRLS", async () => {
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query("ALTER ROLE service_role NOBYPASSRLS");
+      await db.query(BASELINE_SQL);
+      await db.query("SET LOCAL ROLE service_role");
+      await db.query("INSERT INTO public.commerce_offer_policy_rollout_baselines VALUES (1)");
+      expect((await db.query("SELECT id FROM public.commerce_offer_policy_rollout_baselines")).rows).toEqual([{ id: 1 }]);
+      expect((await db.query("SELECT row_security_active('public.commerce_offer_policy_rollout_baselines') AS active")).rows[0].active).toBe(true);
+      for (const sql of ["UPDATE public.commerce_offer_policy_rollout_baselines SET id=2", "DELETE FROM public.commerce_offer_policy_rollout_baselines"]) {
+        await db.query("SAVEPOINT denied");
+        await expect(db.query(sql)).rejects.toMatchObject({ code: "42501" });
+        await db.query("ROLLBACK TO SAVEPOINT denied");
+      }
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each([
+    ["UPDATE grant", BASELINE_SQL.replace("SELECT, INSERT ON TABLE", "SELECT, INSERT, UPDATE ON TABLE")],
+    ["DELETE grant", BASELINE_SQL.replace("SELECT, INSERT ON TABLE", "SELECT, INSERT, DELETE ON TABLE")],
+    ["grant option", BASELINE_SQL.replace("TO service_role;", "TO service_role WITH GRANT OPTION;")],
+    ["browser grant", BASELINE_SQL + "GRANT SELECT ON TABLE public.commerce_offer_policy_rollout_baselines TO authenticated;"],
+    ["broader policy", BASELINE_SQL.replace("FOR SELECT TO service_role USING (true)", "FOR ALL TO service_role USING (true)")],
+    ["other policy role", BASELINE_SQL.replace("FOR INSERT TO service_role", "FOR INSERT TO authenticated")],
+    ["other table", BASELINE_SQL.replaceAll("public.commerce_offer_policy_rollout_baselines", "public.cat_other_baseline")],
+    ["RLS disabled", BASELINE_SQL.replace("ENABLE ROW", "DISABLE ROW")],
+  ].filter(([label]) => serviceRole || ["other table", "browser grant", "RLS disabled"].includes(label!)))("refuses baseline %s in PostgreSQL", async (_label, sql) => {
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, sql))).rejects.toThrow(/baseline|grants/u);
+  });
+  it.each((serviceRole ? ["UPDATE", "DELETE", "REFERENCES", "TRIGGER"] : []))("refuses appended baseline %s table privileges in PostgreSQL", async privilege => {
+    const grant = `GRANT ${privilege} ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;`;
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/baseline exceeds its pinned/u);
+  });
+  it.each((serviceRole ? ["SELECT", "INSERT", "UPDATE", "REFERENCES"] : []))("refuses baseline %s column privileges through the generic catalog guard", async privilege => {
+    const grant = `GRANT ${privilege} (id) ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;`;
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/new relation public\.commerce_offer_policy_rollout_baselines has column privileges/u);
+  });
+  it.each((serviceRole ? ["DELETE", "TRIGGER"] : []))("refuses invalid baseline %s column GRANT syntax in PostgreSQL", async privilege => {
+    const grant = `GRANT ${privilege} (id) ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;`;
+    await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/invalid privilege type .* for column/u);
+  });
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
   it("admits only the client census column and SELECT policy on a new block-classified table", async () => {
     await checkForward(pool, CENSUS_SLOT, forward(CREATED_OK, CENSUS_SQL));
@@ -816,6 +917,83 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     // The pre-existing-column case installs it before the snapshot, then only adds the FK.
     const actual=label==="a pre-existing column"?addedFk:sql;
     await expect(checkForward(pool,label==="an unlisted action"?SYNTHETIC_SLOT:fkSlot,forward(CREATED_OK,actual),false,setup)).rejects.toThrow(message);
+  });
+  const sameSkuColumn = "ALTER TABLE public.subscription_lines ADD COLUMN catalog_sku_revision_id uuid;";
+  const sameSkuFk = "ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;";
+  const sameSkuValidate = "ALTER TABLE public.subscription_lines VALIDATE CONSTRAINT subscription_lines_catalog_sku_revision_fkey;";
+  const sameSkuSlot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], existingTableStatements: [sameSkuColumn, sameSkuFk] };
+  const sameSkuBase = `CREATE TABLE public.subscription_lines (id int PRIMARY KEY, variant_id uuid NOT NULL, other_id uuid);
+    CREATE TABLE public.catalog_sku_revisions (sku_id uuid NOT NULL, id uuid PRIMARY KEY, other_id uuid, UNIQUE (sku_id, id), UNIQUE (id, sku_id), UNIQUE (other_id, id));
+    CREATE TABLE public.cat_other_lines (LIKE public.subscription_lines);
+    ALTER TABLE public.cat_other_lines ADD COLUMN catalog_sku_revision_id uuid;
+    CREATE TABLE public.cat_other_revisions (sku_id uuid, id uuid, UNIQUE (sku_id, id));
+    INSERT INTO public.subscription_lines (id, variant_id) VALUES (1, '00000000-0000-0000-0000-000000000001');
+    INSERT INTO public.catalog_sku_revisions (sku_id, id) VALUES
+      ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011'),
+      ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000012');`;
+  it("proves ordered same-SKU keys, RESTRICT, validation and historical NULL preservation", async () => {
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      await db.query(sameSkuBase);
+      const historical = (await db.query("SELECT * FROM public.subscription_lines ORDER BY id")).rows;
+      const before = await pinned(db, () => snapshot(db));
+      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      await db.query(sameSkuColumn + sameSkuFk);
+      await pinned(db, async () => assertSlotCatalog(db, sameSkuSlot, before, await snapshot(db), migrationRole));
+      expect((await db.query("SELECT convalidated, confdeltype FROM pg_constraint WHERE conname='subscription_lines_catalog_sku_revision_fkey'")).rows)
+        .toEqual([{ convalidated: false, confdeltype: "r" }]);
+      await db.query(sameSkuValidate);
+      const validatedSlot = { ...sameSkuSlot, existingTableStatements: [sameSkuColumn, sameSkuFk, sameSkuValidate] };
+      await pinned(db, async () => assertSlotCatalog(db, validatedSlot, before, await snapshot(db), migrationRole));
+      expect((await db.query("SELECT convalidated FROM pg_constraint WHERE conname='subscription_lines_catalog_sku_revision_fkey'")).rows[0].convalidated).toBe(true);
+      expect((await db.query("SELECT * FROM public.subscription_lines ORDER BY id")).rows)
+        .toEqual(historical.map(row => ({ ...row, catalog_sku_revision_id: null })));
+      await db.query("UPDATE public.subscription_lines SET catalog_sku_revision_id='00000000-0000-0000-0000-000000000011' WHERE id=1");
+      for (const denied of [
+        "UPDATE public.subscription_lines SET catalog_sku_revision_id='00000000-0000-0000-0000-000000000012' WHERE id=1",
+        "UPDATE public.subscription_lines SET variant_id='00000000-0000-0000-0000-000000000002' WHERE id=1",
+        "DELETE FROM public.catalog_sku_revisions WHERE id='00000000-0000-0000-0000-000000000011'",
+        "UPDATE public.catalog_sku_revisions SET sku_id='00000000-0000-0000-0000-000000000002' WHERE id='00000000-0000-0000-0000-000000000011'",
+      ]) {
+        await db.query("SAVEPOINT denied");
+        await expect(db.query(denied)).rejects.toMatchObject({ code: "23503", constraint: "subscription_lines_catalog_sku_revision_fkey" });
+        await db.query("ROLLBACK TO SAVEPOINT denied");
+      }
+      await db.query("INSERT INTO public.subscription_lines (id, variant_id) VALUES (2, '00000000-0000-0000-0000-000000000002')");
+      expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE id=2")).rows[0].catalog_sku_revision_id).toBeNull();
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it.each([
+    ["source arity", sameSkuFk.replace("variant_id, ", "")],
+    ["target arity", sameSkuFk.replace("sku_id, ", "")],
+    ["both arities", sameSkuFk.replace("variant_id, ", "").replace("sku_id, ", "")],
+    ["source order", sameSkuFk.replace("variant_id, catalog_sku_revision_id", "catalog_sku_revision_id, variant_id")],
+    ["target order", sameSkuFk.replace("sku_id, id", "id, sku_id")],
+    ["both orders", sameSkuFk.replace("variant_id, catalog_sku_revision_id", "catalog_sku_revision_id, variant_id").replace("sku_id, id", "id, sku_id")],
+    ["other source column", sameSkuFk.replace("(variant_id,", "(other_id,")],
+    ["other target column", sameSkuFk.replace("(sku_id,", "(other_id,")],
+    ["other source relation", sameSkuFk.replace("public.subscription_lines", "public.cat_other_lines")],
+    ["other target relation", sameSkuFk.replace("public.catalog_sku_revisions", "public.cat_other_revisions")],
+    ["other constraint", sameSkuFk.replace("subscription_lines_catalog_sku_revision_fkey", "other_fkey")],
+    ["VALID on add", sameSkuFk.replace(" NOT VALID", "")],
+    ["implicit NO ACTION", sameSkuFk.replace(" ON DELETE RESTRICT", "")],
+    ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`ON DELETE ${action}`, sameSkuFk.replace("DELETE RESTRICT", `DELETE ${action}`)]),
+    ...["RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"].map(action => [`ON UPDATE ${action}`, sameSkuFk.replace(" NOT VALID", ` ON UPDATE ${action} NOT VALID`)]),
+    ["deferrable", sameSkuFk.replace(" NOT VALID", " DEFERRABLE NOT VALID")],
+    ["MATCH FULL", sameSkuFk.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+    ["unlisted validation", sameSkuFk + sameSkuValidate],
+    ["appended column mutation", sameSkuFk + "ALTER TABLE public.subscription_lines ALTER COLUMN variant_id SET DEFAULT gen_random_uuid();"],
+    ["appended grant", sameSkuFk + "GRANT SELECT ON TABLE public.subscription_lines TO authenticated;"],
+  ])("refuses installed same-SKU FK drift: %s", async (_label, statement) => {
+    await expect(checkForward(pool, sameSkuSlot, sameSkuColumn + statement, false, sameSkuBase))
+      .rejects.toThrow(/catalog:|number of referencing and referenced columns/u);
+  });
+  it("refuses a missing, unlisted or pre-existing same-SKU binding and missing validation", async () => {
+    await expect(checkForward(pool, sameSkuSlot, sameSkuColumn, false, sameSkuBase)).rejects.toThrow(/FK delete actions differ/u);
+    await expect(checkForward(pool, { ...sameSkuSlot, existingTableStatements: [] }, sameSkuColumn + sameSkuFk, false, sameSkuBase)).rejects.toThrow(/FK delete actions differ/u);
+    await expect(checkForward(pool, sameSkuSlot, sameSkuFk, false, sameSkuBase + sameSkuColumn)).rejects.toThrow(/fresh column/u);
+    await expect(checkForward(pool, { ...sameSkuSlot, existingTableStatements: [sameSkuColumn, sameSkuFk, sameSkuValidate] }, sameSkuColumn + sameSkuFk, false, sameSkuBase)).rejects.toThrow(/validation state/u);
   });
   const freshTrigger=TRIGGER_BEFORE.replace("public.cat_existing_table","public.cat_trigger_table");
   const freshCreate="CREATE TABLE public.cat_trigger_table(id int,owner_ref uuid); REVOKE ALL ON TABLE public.cat_trigger_table FROM PUBLIC;";

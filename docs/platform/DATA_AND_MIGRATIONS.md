@@ -476,6 +476,19 @@ products, SKUs or prices beyond the captured live catalogue. The parameterized
 [`transfer_round_trip_matrix`](../../tests/postgres/connectedStoreCatalogDrafts.test.ts)
 checks all four relations and command replay against real PostgreSQL.
 
+The versioned draft forward at position 147 changes only `catalog_draft_apply`.
+It admits v2 payloads beside unchanged v1 commands and receipts. V2 carries
+attribute values and complete immediate base-price commands as immutable data;
+it changes no live catalogue or commerce row. Its resume appends an open revision
+copying the abandoned payload and leaves reservations and abandonment receipts
+intact. These JSONB additions use the existing authoritative capture entries and
+restore order, with no trigger exception or new privacy/absorption class. The
+matrix covers two v2 price plans, abandonment, resume and original replay.
+Apply schema first, then compatible v1/v2 readers before enabling authoring.
+Rollback stops new v2 writes and retains a reader for existing v2 history.
+The managed rail does not supply this feature; the
+[migration note](../../packages/platform/changes/lc1.md) records its managed design.
+
 None of these four relations references `public.clients`, so no client
 absorption-policy entry applies. Revision `actor_id` is an opaque operator
 identifier and can be personal data; free-form draft payloads can also contain
@@ -2134,6 +2147,17 @@ only after the same ordered list adds that column (including an ADD COLUMN and
 named constraint companion in one ALTER). The catalogue proves the column did
 not exist before the slot, the exact referenced table/key, delete action and
 validation state, with prior columns, constraints and ACLs unchanged.
+One composite exception admits the single-action statement
+`ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;`.
+The revision column must be added earlier in the same slot's ordered list.
+The existing listed `VALIDATE CONSTRAINT` action may follow it; the catalogue
+proof checks that final validation state, ordered `conkey`/`confkey`, RESTRICT,
+default update and match actions, and non-deferrability. PostgreSQL witnesses
+prove same-SKU pairing and preservation of historical NULL bindings. Other
+arity, column order, columns, relations, actions, validation on add and appended
+statements refuse. Only the exact FK action is masked before the existing generic
+guards; their other refusals remain in force. This control change installs no
+binding, changes no agreement and activates no catalogue capability.
 SET NULL/CASCADE on pre-existing columns and dropped or rewritten foreign keys
 remain refused. Other drops, column type changes, renames and ownership changes
 refuse even when listed. Every listed statement must appear once in order, with internal bytes unchanged; an unlisted
@@ -2234,7 +2258,7 @@ name freshness, enabled binding, events and owner-only function ACL.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
-narrowing rules below. Class data does not pin table columns, constraint/index
+narrowing rules below. Apart from the assignment-default exception below, class data does not pin table columns, constraint/index
 names, function security mode, language, defaults or return type; feature SQL's
 whole-file/after-hashes and feature review retain those inventory and behavior
 duties. Synthetic shape acceptance establishes no implemented destination API.
@@ -2254,8 +2278,8 @@ a block naming only grant-only functions does not.
 The conditional DO shell requires an exact `pg_roles` existence guard around
 one constant privilege EXECUTE, on admitted targets, for the same role. Function
 privileges and table revokes retain one block per role, verb and object kind
-(FUNCTION or TABLE). The fixed notice-table allowance below additionally admits
-its grant and policy. Each listed, block-classified, same-slot census table has
+(FUNCTION or TABLE). The fixed baseline and notice-table allowances below additionally admit
+their grants and policies. Each listed, block-classified, same-slot census table has
 two separate `service_role` conditional blocks: one for `SELECT (client_id)` and
 one for its derived SELECT-only policy with `USING (true)` and no WITH CHECK.
 `anon` admits revokes only; for functions, `authenticated` and `service_role`
@@ -2267,11 +2291,12 @@ statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
 another slot or an unqualified/IF NOT EXISTS creation refuses. Table grants refuse
-except for the fixed notice-table allowance below and the listed census tables'
+except for the fixed baseline and notice-table allowances below and the listed census tables'
 client-column SELECT allowance above. Census tables keep owner-only table ACLs
 and receive only their exact column grant and derived SELECT policy.
-The native paid-notice slot alone may name `insertSelectTables`, whose complete
-value is pinned by the reader to `["public.subscription_notice_refusals"]`.
+The native paid-notice slot may name `insertSelectTables` with the complete
+value `["public.subscription_notice_refusals"]`, pinned by the reader. A separate
+baseline allowance below uses the same key; neither allows arbitrary tables.
 It is an allowance, so it may precede the table's introduction. It authorizes
 nothing until that same forward creates the table earlier in its own file.
 Only the following exact statements are admitted inside the existing service-role
@@ -2288,7 +2313,45 @@ refuse. The existing revoke and RLS-enable narrowing paths are unchanged.
 The table keeps RLS enabled and only owner plus service-role SELECT/INSERT
 privileges; its one policy has that role alone. With the role absent, the guarded
 grant and policy do not run and the new table stays owner-only with RLS enabled.
-This INSERT/SELECT allowance applies only to the named notice table.
+This notice INSERT/SELECT allowance applies only to the named notice table.
+
+For a frozen-cohort baseline, `insertSelectTables` may instead be exactly
+`["public.commerce_offer_policy_rollout_baselines"]`. After unconditional
+same-file table creation, each of these exact statements uses its own existing
+`service_role` existence shell, including the inner final semicolon:
+
+```sql
+GRANT SELECT, INSERT ON TABLE public.commerce_offer_policy_rollout_baselines TO service_role;
+CREATE POLICY commerce_offer_policy_baselines_service_select ON public.commerce_offer_policy_rollout_baselines FOR SELECT TO service_role USING (true);
+CREATE POLICY commerce_offer_policy_baselines_service_insert ON public.commerce_offer_policy_rollout_baselines FOR INSERT TO service_role WITH CHECK (true);
+```
+
+All three statements must occur exactly once. The real catalogue requires RLS
+enabled, owner plus service SELECT/INSERT table privileges only, no column grants
+or grant options, and precisely these two permissive policies with this role and
+these predicates. With the role absent, the table remains owner-only with no
+policies. The allowance does not bypass the generic column-ACL guard. Every
+column grant, including SELECT/INSERT/UPDATE/REFERENCES, and every extra table
+GRANT outside the exact statement above is refused by static admission; the
+real catalogue independently refuses added column or table privileges. PostgreSQL
+also refuses DELETE/TRIGGER column-grant syntax. Broader policies, other tables
+and other roles remain refused. This admission installs no feature table and enables no runtime.
+
+The exact `existingTableStatements` list may also contain:
+
+```sql
+ALTER TABLE public.subscriptions ALTER COLUMN offer_policy_assignment_state SET DEFAULT 'pending_acquisition';
+```
+
+An earlier statement targeting `public.subscriptions` in that same list must add
+the column with the exact action
+`ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen'`.
+No conditional addition is allowed: PostgreSQL must reject a pre-existing column.
+This preserves existing rows' legacy marker and changes only future inserts;
+the real catalogue proves the column is fresh, non-null text with the exact new
+default. Other defaults, tables, columns, reordered or missing additions, combined
+destructive actions and unlisted switches refuse. Generic expand-only admission
+continues to refuse SET DEFAULT; this exception does not change that grammar.
 
 The existing expand-only grammar and every other class retain their refusals.
 Each feature PR using this narrowing must provide real-PostgreSQL proof that its
@@ -2327,6 +2390,8 @@ operator a forward creates for another operand type cannot hide what it adds:
   any kind is owned by the migration role. By default it carries only its owner's
   table privileges and no column privilege. The pinned notice table may carry
   service-role SELECT/INSERT with RLS enabled and its single fixed policy.
+  The pinned baseline table may carry those privileges with its separate fixed
+  SELECT and INSERT policies; a missing role leaves neither grant nor policy.
   A listed, block-classified, same-slot census table keeps owner-only table ACLs
   and may carry only `client_id` SELECT for `service_role`, with RLS enabled and
   its derived permissive SELECT policy (`USING (true)`, no WITH CHECK); each of
@@ -4488,3 +4553,45 @@ recorded parcel sequence to the adapter's outbound-identity codec. Each replaced
 function has its own before/after pin; no table or capture/restore membership is
 added. The [fulfillment recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-replacement-and-customer-alignment)
 owns host composition.
+
+## Native offer-policy inputs
+
+The native `20261122170000_offer_policy_readiness_inputs` unit supplies unbound
+read-only inputs for a later price writer. It marks existing subscriptions as
+legacy, switches future ordinary inserts to pending acquisition, and records
+installation-time count, sorted-ID fingerprint and database time separately from
+the operator's later audited baseline. It changes no agreed price, quantity,
+status, cadence, renewal operation, order or delivery clock.
+
+The parameterless `commerce_capture_offer_policy_v2_legacy_baseline()` routine is
+an explicit service-authorized audit step. It is never run by installation or
+restore. All legacy non-fixture statuses participate. The insert-once baseline
+retains its original fingerprint/time on replay. An audited zero requires empty
+marking provenance, an empty current cohort and no positive baseline replacement;
+a populated cohort becoming empty retains the original empty-baseline error.
+Native RLS grants service SELECT/INSERT on baselines only; browser access and
+ordinary service UPDATE/DELETE are denied. Marking has no service DML grant.
+
+The connected transfer profile carries both authoritative evidence tables and
+the subscription evidence columns. Its existing pristine-target transaction
+reconciles the target marking row against actual installation data, then restores
+the source marking and baseline without recapture. The baseline INSERT guard
+rechecks zero provenance after the subscriptions are restored. Owner-controlled
+transfer remains outside the runtime catalogue lock order.
+
+Promotion projection validates consumed scalar, nullable, range, coupling,
+reference and uniqueness facts before casts or selection. Financial predicates
+retain their acquisition and bundle semantics. Current order metadata or a
+current publication head cannot prove historical admission or frozen money
+protection. Order-backed agreement quotes, including retained renewal lines,
+validate their governing policy pair regardless of age and refuse unproved
+historical admission before projecting quote lines. Graduation and sized edit
+events can copy or merge retained purchase quotes, so their event identity does
+not establish independence. Only complete fresh package quotes and classic
+base-line swaps supply independent event evidence; their amounts must still
+match the current template and renewal bindings. Order money utilities are not
+called by readiness before admission. Qualifying unestablished contexts raise
+hard refusals independently
+of ordinary readiness reasons. Readiness calls no capture or commerce writer
+and takes no commerce row/advisory lock. The managed rail does not supply this
+feature; the migration fragment describes the separate RLS-preserving twin.

@@ -27,12 +27,12 @@ test('missing native checkout binding cannot produce a fake order', async () => 
     { ok: false, code: 'host_binding_required' });
 });
 
-test('host offer admission rejects a cart that the client attempts to underpay', async () => {
+test('malformed cart identity refuses before delegating to a checkout binding', async () => {
   let called = 0;
   const bindings = pendingBindings();
   bindings.actions['checkout.create'] = async () => { called++; return { ok: true, value: null }; };
   const result = await dispatchAction(bindings, 'checkout.create', { cart: { schemaVersion: 1,
-    configuration: context.config.id, mode: 'one_time', lines: [{ sku: 'UNKNOWN', quantity: 1 }] },
+    configuration: context.config.id, mode: 'one_time', lines: [{ sku: 'UNKNOWN', quantity: 0 }] },
   termsAccepted: true, termsRevision: context.config.legal.revision }, context);
   assert.equal(result.ok, false);
   assert.equal(called, 0);
@@ -45,18 +45,18 @@ test('declared customer identifiers in browser payload do not establish a sessio
 });
 
 for (const original of Object.values(configurations)) {
-  test(`${original.id}: a restorable partial selection still refuses before the checkout binding`, async () => {
+  test(`${original.id}: checkout delegates current membership to the receipt-aware binding`, async () => {
     const config: StoreConfig = structuredClone(original);
     config.offer.minUnits = 3;
     let called = 0;
     const bindings = pendingBindings();
-    bindings.actions['checkout.create'] = async () => { called++; return { ok: true, value: null }; };
+    bindings.actions['checkout.create'] = async () => { called++; return { ok: false, code: 'fixture_receipt_binding' }; };
     const result = await dispatchAction(bindings, 'checkout.create', {
       cart: { schemaVersion: 1, configuration: config.id, mode: 'one_time', cadenceDays: null,
         lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] },
       termsAccepted: true, termsRevision: config.legal.revision,
     }, { ...context, config });
-    assert.deepEqual(result, { ok: false, code: 'minimum_units' });
-    assert.equal(called, 0);
+    assert.deepEqual(result, { ok: false, code: 'fixture_receipt_binding' });
+    assert.equal(called, 1);
   });
 }

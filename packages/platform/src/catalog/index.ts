@@ -64,3 +64,17 @@ export type { CatalogAttributeReference, CatalogAttributeReferenceResolution, Ca
 export { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 export type { CatalogAttributeProjectionRow, CatalogAttributeProjectionPreparation } from "./attributeProjection.js";
 export { CatalogCombinationError, canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, validateCatalogCombinationChangesV2 } from "./variantCombination.js";
+export { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalogDraftCommandV2Schema, catalogDraftStoredPayloadSchema,
+  catalogDraftStoredCommandSchema, catalogDraftStoredRecordSchema, catalogDraftStoredApplyResultSchema } from "./draftV2Schemas.js";
+export { validateCatalogDraftV2 } from "./draftV2Validation.js";
+export { createCatalogCandidateService, CatalogCandidateError } from "./candidate.js";
+export type { CatalogCandidateDeps } from "./candidate.js";
+export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
+export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
+
+export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema,
+  catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema,
+  catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema,
+  catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
+export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
+export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";

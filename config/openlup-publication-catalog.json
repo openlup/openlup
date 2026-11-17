@@ -1446,6 +1446,18 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261122150000_catalog_drafts_v2.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261122160000_catalog_drafts_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -2530,6 +2542,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/quote-shipping.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote.config.ts",
       "class": "public-output"
     },
@@ -2650,6 +2666,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/subscription-offer.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/starter-release.json",
       "class": "public-output"
     },
@@ -2738,6 +2758,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/quote-shipping.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/recovery-entry.test.ts",
       "class": "public-output"
     },
@@ -2755,6 +2779,10 @@
     },
     {
       "path": "examples/neutral-store/test/subscription-models.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-offer.test.ts",
       "class": "public-output"
     },
     {
@@ -4718,6 +4746,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261122150000_catalog_drafts_v2.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122160000_catalog_drafts_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5082,6 +5122,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/candidate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5130,6 +5174,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/contracts/candidate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/contracts/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5143,6 +5191,14 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/draft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/draftV2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/draftV3.ts",
       "class": "public-output"
     },
     {
@@ -5191,6 +5247,18 @@
     },
     {
       "path": "packages/platform/src/catalog/draftSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftV2Schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftV2Validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftV3Schemas.ts",
       "class": "public-output"
     },
     {
@@ -9378,11 +9446,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/catalogCandidate.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/catalogDraftContracts.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/catalog/catalogDraftHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogDraftV3.test.ts",
       "class": "public-output"
     },
     {
@@ -11179,6 +11255,10 @@
     },
     {
       "path": "packages/platform/test/pricing/handlerFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/pricing/nativeReadinessInputs.test.ts",
       "class": "public-output"
     },
     {
@@ -29554,6 +29634,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogDraftV2.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogQuantities.test.ts",
       "class": "public-output"
     },
@@ -30195,6 +30279,14 @@
     },
     {
       "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/offerPolicyReadinessInputs.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/offerPolicyReadinessTransfer.test.ts",
       "class": "public-output"
     },
     {

@@ -1289,6 +1289,81 @@ server `catalogDraftPayloadSchema.parse(draft)`; the schema validates and return
 the v1 wire payload. Attribute definitions describe the closed value-kind grammar;
 attribute values and prices are not added to v1 drafts.
 
+Draft payload v2 adds product/SKU `attributes` and per-SKU `priceOperations` in
+place of `priceRef`. Each price operation is the complete version-1 immediate
+base command: `schemaVersion`, `commandKey`, `variantId`, `priceListId`, fixed
+`mode: "one_time"`, `minQty: 1`, `amountKind: "gross"`, positive integer
+`unitPriceMinor` and `expected: {entryId, unitPriceMinor}` (both null or both set).
+It changes no live price. Zero new prices and unknown payload versions refuse.
+`catalogDraftPayloadV2Schema` and `catalogDraftCommandV2Schema` validate that
+version; the original schemas and v1 bytes remain unchanged. The opt-in `createPostgresCatalogDraftStoreV2` and `createCatalogDraftHandlerV2`
+use the explicit `CatalogDraftStoredRecord` union and its stored-record/result
+schemas to read both versions. The original factories retain v1 admission and
+result types. Upgrade readers before enabling v2 authoring.
+Stop v2 authoring before rolling back; retained v2 history still needs a v2 reader.
+`draftsFor` also types v2 values against their declared attribute scopes and kinds,
+including required attributes in inline, referenced, readonly and mutable inputs.
+For incomplete interactive authoring use the wire schema: missing required
+attributes remain saveable and `validateCatalogDraftV2` reports publication
+readiness issues through the existing attribute validator and reference resolver.
+Complete axis options reuse the v2 combination owner, so equivalent units cannot
+hide duplicate combinations; missing options remain publication readiness issues.
+
+The version-2 `resume` command takes no payload and reopens the same abandoned
+draft by appending an open revision with its retained payload and reservations.
+Legacy revise still refuses an abandoned head; every original receipt replays
+unchanged. The native forward writes only draft-owned rows. The managed rail
+does not supply this feature.
+
+Draft payload v3 adds a closed `publication` input envelope: `kind` (release or
+compensation), ordered `operations` and optional immutable draft/media evidence.
+It retains the v2 attribute and price-command grammar. Opt in through
+`createCatalogDraftHandlerV3` and `createPostgresCatalogDraftStoreV3`;
+`CatalogDraftPublicationStoredRecord` covers all three retained versions. The
+v1/v2 factories and their version-specific unions keep their admission boundaries.
+Upgrade readers before v3 authoring; stop v3 writes before rolling readers back.
+Retained v3 history continues to need a v3 reader.
+
+V3 freezes `product.sharedContent` as `CatalogDraftSharedContentV3`: version 1,
+`catalogAction`, an optional document, presentation, explicit offer memberships
+(including false), requested modes (including an empty array), and SKU publication
+facts. `extractCatalogDraftPublicationInputs` validates and extracts exactly this
+envelope and `publication`, without defaults or operation sorting. Installed
+validators own the opaque document, presentation and per-SKU facts. They receive
+the complete shared-content envelope. Industry vocabulary stays in that data.
+The [operation union](src/catalog/contracts/draftV3.ts) carries explicit
+eligibility separately from memberships/status. `set_derived_sku_facts` records
+explicit document/quantity-bound cache operations, including for omitted SKUs;
+omission alone never requests a change. The eventual publisher must verify each
+operation against its immutable source and apply the ordered prefix guards.
+These are inputs only; saving or previewing a v3 draft executes no operation.
+
+Document provenance names either `current_draft` or an exact retained receipt
+tuple. `resolveCatalogDraftProvenance` expands the former from the persisted
+record's ID, revision, command key and fingerprint; it cannot embed a fingerprint
+inside its own input bytes. Retained provenance requires matching declared draft
+evidence and later authority verification. Media claims retain the exact SKU,
+media reference, sorted unique asset set and immutable proof digest. Neither
+extraction nor a claim grants publication authority or proves external readiness.
+
+`createCatalogCandidateService` takes authorized draft/definition/lineage readers,
+the composed registry and an optional price-owner validator. `prepareCandidate`
+returns issues and an impact summary without writes. Its self-contained reference
+is `v1:<draftId>@<revision>/<publicationId>@<headRevision>`, or `/unpublished`.
+The same v1 reference format resolves v2 or v3 immutable payloads; unsupported
+payload versions refuse. The digest includes every v3 operation, its order,
+explicit eligibility, provenance, derived effects and shared-content field.
+Every reconstruction checks the current draft revision, resolves the full
+expected head including `documentDigest`, compares it with current lineage and
+checks the installed definition digest. The digest covers the parsed canonical
+payload, installed definition evidence and that complete expected head. No
+candidate table or cache is needed across process restarts. `validate(candidateRef)`
+reconstructs the preview; `compareCandidate` additionally checks the caller's
+complete expected head and digest. Required readiness issues and unavailable
+price validation block publication; a publisher must reconstruct and refuse all
+issues inside its own transaction. A draft actor or service credential cannot
+construct `VerifiedCatalogPublisher`. This change supplies no publisher or binding.
+
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,
 unit codes, type versions, tax-class keys and profile references retain literal
@@ -1641,6 +1716,24 @@ from their host composition; only the immutable managed baseline predicates
 await an owner decision. Pricing VAT calculation retains
 both exported helpers and their signatures: `calculateIncludedVat` delegates to
 `splitIncludedVat` through a distinct named wrapper using the same arithmetic.
+
+### Native offer-policy readiness inputs
+
+The catalogue SQL descriptor includes native-only, unbound readiness inputs for
+price-writer integration. Installation distinguishes existing subscriptions
+from future pending acquisition and records the original cohort marking; it
+never performs the operator's audit or captures the rollout baseline.
+
+After auditing every legacy non-fixture subscription, including paused and
+cancelled rows, service authority can explicitly invoke
+`commerce_capture_offer_policy_v2_legacy_baseline()`. Capture takes no caller
+count or fingerprint and never overwrites an existing baseline. A zero baseline
+requires empty installation provenance and a currently empty cohort. Missing
+provenance, changed membership and incomplete financial or historical order
+proof fail closed. The internal helpers only read; they grant no writer,
+provider, deployment or activation capability. Existing TypeScript readiness
+contracts and subscription agreement/schedule behavior remain unchanged.
+See the [migration and transfer owner](../../docs/platform/DATA_AND_MIGRATIONS.md#native-offer-policy-inputs).
 
 ## Scheduled jobs
 

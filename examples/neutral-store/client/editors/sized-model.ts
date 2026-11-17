@@ -1,3 +1,4 @@
+import { admitsTerms, admitsLine, quantityChoices } from '../../shared/subscription-offer.ts';
 import type { SizedParcelLeverKind, SizedEditContext, SizedEditRequest } from '@openlup/platform/subscriptions/contracts';
 import type { EditorCandidate, SubscriptionEditorConfig } from '../../shared/subscription-edit.ts';
 import { units } from './classic-model.ts';
@@ -17,35 +18,47 @@ export function sizedBaseline(context: SizedEditContext,catalog: readonly Editor
     lines.push({ ...product,qty: saved.qty,withdrawn: !product.sellable });
   }
   const draft = { cadenceDays: pending ? context.marker!.graduation.cadenceDays : context.cadenceDays,dailyNeed: Number(constraint.dailyNeed),constraint,lines };
-  return validSized(draft,policy) ? draft : null;
+  // Retained agreements remain readable after commercial domains shrink.
+  return lines.length > 0 && new Set(lines.map(line => line.groupId)).size === lines.length
+    && lines.every(line => Number.isSafeInteger(line.qty) && line.qty > 0) ? draft : null;
 }
 export function validSized(draft: SizedDraft,policy: Policy): boolean {
-  return draft.lines.length > 0 && draft.lines.length <= policy.maximumCoreLines && units(draft.lines) >= policy.minimumCoreUnits
+  return admitsTerms(policy.offer,draft.cadenceDays,draft.lines) && draft.lines.length > 0 && draft.lines.length <= policy.maximumCoreLines && units(draft.lines) >= policy.minimumCoreUnits
     && policy.allowedCadences.includes(draft.cadenceDays) && new Set(draft.lines.map(line => line.groupId)).size === draft.lines.length
     && draft.lines.every(line => Number.isSafeInteger(line.qty) && line.qty > 0 && line.qty <= policy.maximumQuantity);
 }
 export function changeableSized(before: SizedDraft,after: SizedDraft,policy: Policy): boolean {
-  return validSized(after,policy) && after.lines.every(line => {
+  // Permit explicit local repair of several incompatible retained lines, one at a time.
+  // Review still requires the complete resulting set to pass validSized.
+  return after.lines.length > 0 && after.lines.length <= policy.maximumCoreLines && units(after.lines) >= policy.minimumCoreUnits
+    && policy.allowedCadences.includes(after.cadenceDays) && new Set(after.lines.map(line => line.groupId)).size === after.lines.length
+    && after.lines.every(line => {
     const old = before.lines.find(item => item.variantId === line.variantId);
-    return (!line.withdrawn || old?.qty === line.qty) && (line.sellable || old !== undefined && line.qty <= old.qty)
+    return Number.isSafeInteger(line.qty) && line.qty > 0
+      && (old?.qty === line.qty || line.qty <= policy.maximumQuantity && admitsLine(policy.offer,line.sku,after.cadenceDays,line.qty))
+      && (!line.withdrawn || old?.qty === line.qty) && (line.sellable || old !== undefined && line.qty <= old.qty)
       && (line.sellableNow !== null && line.qty <= line.sellableNow || old !== undefined && line.qty <= old.qty);
   });
 }
 export function changeSizedQuantity(draft: SizedDraft,id: string,direction: -1 | 1,policy: Policy): SizedDraft | null {
   const line = draft.lines.find(item => item.variantId === id);
   if (!line || line.withdrawn || direction < 0 && line.qty <= 1 || direction > 0 && (!line.sellable || !line.selectable)) return null;
-  const after = { ...draft,lines: draft.lines.map(item => item === line ? { ...item,qty: item.qty+direction } : item) };
+  const quantities = quantityChoices(policy.offer,line.sku,draft.cadenceDays);
+  const quantity = direction > 0 ? quantities.find(qty => qty > line.qty) : quantities.findLast(qty => qty < line.qty);
+  if (quantity === undefined) return null;
+  const after = { ...draft,lines: draft.lines.map(item => item === line ? { ...item,qty: quantity } : item) };
   return changeableSized(draft,after,policy) ? after : null;
 }
-export function preferredSized(catalog: readonly EditorCandidate[],group: string,policy: Policy,count = 1,nominalOnly = false,excluded?: string): EditorCandidate | null {
+export function preferredSized(catalog: readonly EditorCandidate[],group: string,policy: Policy,count: number | undefined = undefined,nominalOnly = false,excluded?: string,days = policy.offer.defaultDays): EditorCandidate | null {
   const eligible = catalog.filter(item => item.groupId === group && !item.isAddon && item.variantId !== excluded && item.sellable && item.selectable
-    && item.sellableNow !== null && item.sellableNow >= count && (!nominalOnly || policy.nominalSizes.includes(item.physicalSize)));
+    && item.sellableNow !== null && item.sellableNow >= (count ?? quantityChoices(policy.offer,item.sku,days)[0] ?? Infinity)
+    && (count === undefined ? quantityChoices(policy.offer,item.sku,days).length > 0 : admitsLine(policy.offer,item.sku,days,count)) && (!nominalOnly || policy.nominalSizes.includes(item.physicalSize)));
   return [...eligible].sort((a,b) => Number(!policy.nominalSizes.includes(a.physicalSize))-Number(!policy.nominalSizes.includes(b.physicalSize))
     || Math.abs(a.physicalSize-policy.preferredSize)-Math.abs(b.physicalSize-policy.preferredSize) || a.physicalSize-b.physicalSize)[0] ?? null;
 }
 export function toggleSizedGroup(draft: SizedDraft,group: string,catalog: readonly EditorCandidate[],policy: Policy): SizedDraft | null {
-  const current = draft.lines.find(line => line.groupId === group),product = current ? null : preferredSized(catalog,group,policy);
-  const lines = current ? draft.lines.filter(line => line !== current) : product ? [...draft.lines,{ ...product,qty: 1,withdrawn: false }] : [];
+  const current = draft.lines.find(line => line.groupId === group),product = current ? null : preferredSized(catalog,group,policy,undefined,false,undefined,draft.cadenceDays);
+  const lines = current ? draft.lines.filter(line => line !== current) : product ? [...draft.lines,{ ...product,qty: quantityChoices(policy.offer,product.sku,draft.cadenceDays)[0]!,withdrawn: false }] : [];
   const after = { ...draft,lines };
   return changeableSized(draft,after,policy) ? after : null;
 }
@@ -66,7 +79,7 @@ export function recoverSizedCatalog(draft: SizedDraft,catalog: readonly EditorCa
   for (const line of next.lines) {
     // Only known stock loss admits local nominal-size recovery. Unknown stock preserves the exact line.
     if (line.sellableNow === null || line.sellableNow >= line.qty) continue;
-    const replacement = preferredSized(catalog,line.groupId,policy,line.qty,true,line.variantId);
+    const replacement = preferredSized(catalog,line.groupId,policy,line.qty,true,line.variantId,draft.cadenceDays);
     if (replacement) next = chooseSizedSize(next,line.groupId,replacement.variantId,catalog,policy) ?? next;
   }
   return next;

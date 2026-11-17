@@ -594,6 +594,32 @@ export type BundlePricePreview = {
     }[];
 };
 ```
+## dist/catalog/contracts/candidate.d.ts
+
+```ts
+import type { CatalogHeadRef } from "./lifecycle.js";
+import type { CatalogDraftIssue } from "./productTypes.js";
+export interface CatalogCandidateQuery {
+    draftId: string;
+    draftRevision: number;
+    expectedHead: CatalogHeadRef | null;
+}
+export interface CatalogCandidatePreview {
+    candidateRef: string;
+    candidateDigest: string;
+    issues: readonly CatalogDraftIssue[];
+    impact: {
+        productId: string;
+        skuIds: readonly string[];
+        priceOperationCount: number;
+    };
+}
+export interface CatalogCandidateComparison {
+    candidateRef: string;
+    candidateDigest: string;
+    expectedHead: CatalogHeadRef | null;
+}
+```
 ## dist/catalog/contracts/catalogConformance.d.ts
 
 ```ts
@@ -616,6 +642,8 @@ export interface CatalogDefinitionIssue {
 
 ```ts
 import type { CatalogDraftPayload } from "./draft.js";
+import type { CatalogDraftPayloadV2 } from "./draftV2.js";
+import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
 import type { CatalogProductTypeInput, CatalogOptionValue, CatalogQuantity } from "./productTypes.js";
 export interface CatalogPackInput {
     id: string;
@@ -715,15 +743,95 @@ type DraftForType<T extends CatalogProductTypeInput, Selected extends string = D
  * Omitted Selected covers all installed dimensions; draftsFor infers the selection. */
 export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
 type DraftInput = CatalogReadonly<CatalogDraftPayload>;
-type SelectedDraft<P extends CatalogPackInput, D extends DraftInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? D["product"]["type"] extends Pick<T, "key" | "version"> ? DraftForType<T, D["product"]["dimensions"][number]> & {
+type Attribute<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = T extends {
+    attributes: readonly (infer A)[];
+} ? Extract<A, {
+    scope: Scope;
+}> : never;
+type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
+    kind: "list";
+    item: infer I;
+} ? readonly AttributeValue<I, T>[] : V extends {
+    kind: "boolean";
+} ? boolean : V extends {
+    kind: "quantity";
+    units: readonly string[];
+} ? QuantityIn<T, V["units"][number]> : V extends {
+    kind: "enum";
+    values: readonly {
+        id: string;
+    }[];
+} ? V["values"][number]["id"] : V extends {
+    kind: "reference";
+    allowlist: readonly string[];
+} ? {
+    readonly namespace: V["allowlist"][number];
+    readonly id: string;
+} : V extends {
+    kind: "localized_text";
+    locales: readonly string[];
+} ? {
+    readonly [K in V["locales"][number]]?: string;
+} & (V extends {
+    requiredLocales: readonly string[];
+} ? {
+    readonly [K in V["requiredLocales"][number]]: string;
+} : unknown) : V extends CatalogAttributeValueType | CatalogAttributeScalarType ? string : never;
+type RequiredAttribute<A> = A extends {
+    required: true;
+} ? A : A extends {
+    cardinality: {
+        min: infer N extends number;
+    };
+} ? number extends N ? never : N extends 0 ? never : A : never;
+type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = {
+    readonly [A in Attribute<T, Scope> as A extends {
+        key: infer K extends string;
+    } ? K : never]?: A extends {
+        valueType: infer V;
+    } ? AttributeValue<V, T> : never;
+} & {
+    readonly [A in RequiredAttribute<Attribute<T, Scope>> as A extends {
+        key: infer K extends string;
+    } ? K : never]: A extends {
+        valueType: infer V;
+    } ? AttributeValue<V, T> : never;
+};
+type AttributeField<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = [RequiredAttribute<Attribute<T, Scope>>] extends [never] ? {
+    attributes?: TypedAttributes<T, Scope>;
+} : {
+    attributes: TypedAttributes<T, Scope>;
+};
+type DraftV2ForType<T extends CatalogProductTypeInput, Selected extends string> = {
+    schemaVersion: 2;
+    product: Omit<DraftForType<T, Selected>["product"], "attributes"> & AttributeField<T, "product">;
+    skus: readonly (Omit<DraftForType<T, Selected>["skus"][number], "priceRef" | "attributes"> & AttributeField<T, "variant"> & Pick<CatalogReadonly<CatalogDraftPayloadV2["skus"][number]>, "priceOperations">)[];
+};
+type AnyDraftInput = DraftInput | CatalogReadonly<CatalogDraftPayloadV2>;
+type SelectedDraft<P extends CatalogPackInput, D extends AnyDraftInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? D["product"]["type"] extends Pick<T, "key" | "version"> ? (D extends {
+    schemaVersion: 2;
+} ? DraftV2ForType<T, D["product"]["dimensions"][number]> : DraftForType<T, D["product"]["dimensions"][number]>) & {
+    product: D["product"] & (D extends {
+        schemaVersion: 2;
+    } ? D["product"] extends {
+        attributes: infer A;
+    } ? {
+        attributes: Exact<A, TypedAttributes<T, "product">>;
+    } : unknown : unknown);
     skus: {
-        readonly [I in keyof D["skus"]]: D["skus"][I] extends {
+        readonly [I in keyof D["skus"]]: (D["skus"][I] extends {
             options: infer O;
         } ? Omit<D["skus"][I], "options"> & {
             options: {
                 readonly [K in Exclude<keyof O, D["product"]["dimensions"][number]>]: never;
             };
-        } : D["skus"][I];
+        } : D["skus"][I]) & (D extends {
+            schemaVersion: 2;
+        } ? D["skus"][I] extends {
+            attributes: infer A;
+        } ? {
+            attributes: Exact<A, TypedAttributes<T, "variant">>;
+        } : unknown : unknown);
     };
 } : never : never : never;
 type AttributeReferences<V, T extends CatalogProductTypeInput> = V extends {
@@ -770,8 +878,8 @@ type PackReferences<P extends CatalogPackInput> = string extends P["namespace"] 
 };
 /** Authoring preserves literals; it does not validate or execute pack callbacks. */
 export declare function defineCatalogPack<const P extends CatalogPackInput>(pack: P & Exact<P, CatalogPackInput> & PackReferences<P>): CatalogReadonly<P>;
-/** v1 authoring only; attributes and prices join the versioned draft payload separately. */
-export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): <const D extends readonly DraftInput[]>(drafts: D & Exact<D, DraftInput[]> & {
+/** v1 stays unchanged; v2 authoring adds definition-typed attributes and complete price commands. */
+export declare function draftsFor<const P extends CatalogPackInput>(pack: P & (string extends P["types"][number]["key"] ? never : unknown)): <const D extends readonly AnyDraftInput[]>(drafts: D & Exact<D, AnyDraftInput[]> & {
     readonly [I in keyof D]: SelectedDraft<P, D[I]>;
 }) => D;
 export {};
@@ -873,6 +981,226 @@ export interface CatalogDraftListQuery {
 }
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export declare function canonicalCatalogDraftJson(input: unknown): string;
+```
+## dist/catalog/contracts/draftV2.d.ts
+
+```ts
+import type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
+import type { CatalogQuantity } from "./productTypes.js";
+/** One immediate positive gross base replacement. Expectations are wholly null or wholly set. */
+export interface CatalogDraftPriceOperationV2 {
+    schemaVersion: 1;
+    commandKey: string;
+    variantId: string;
+    priceListId: string;
+    mode: "one_time";
+    minQty: 1;
+    amountKind: "gross";
+    unitPriceMinor: number;
+    expected: {
+        entryId: null;
+        unitPriceMinor: null;
+    } | {
+        entryId: string;
+        unitPriceMinor: number;
+    };
+}
+export type CatalogAttributeScalarValue = string | boolean | CatalogQuantity | {
+    namespace: string;
+    id: string;
+} | Readonly<Record<string, string>>;
+export type CatalogAttributeValue = CatalogAttributeScalarValue | readonly CatalogAttributeScalarValue[];
+/** Immutable v2 data; later versions never reinterpret or rewrite this payload. */
+export interface CatalogDraftPayloadV2 {
+    schemaVersion: 2;
+    product: CatalogDraftPayload["product"] & {
+        attributes?: Record<string, CatalogAttributeValue>;
+    };
+    skus: (Omit<CatalogDraftPayload["skus"][number], "priceRef"> & {
+        attributes?: Record<string, CatalogAttributeValue>;
+        priceOperations?: CatalogDraftPriceOperationV2[];
+    })[];
+}
+export interface CatalogDraftCommandV2 {
+    schemaVersion: 2;
+    action: "create" | "revise" | "abandon" | "resume";
+    draftId: string;
+    commandKey: string;
+    expectedRevision: number;
+    payload?: CatalogDraftPayloadV2;
+}
+export type CatalogDraftStoredPayload = CatalogDraftPayload | CatalogDraftPayloadV2;
+export type CatalogDraftStoredCommand = CatalogDraftCommand | CatalogDraftCommandV2;
+export interface CatalogDraftStoredRecord extends CatalogDraftSummary {
+    payload: CatalogDraftStoredPayload;
+}
+export type CatalogDraftStoredApplyResult = {
+    outcome: "committed" | "replayed";
+    record: CatalogDraftStoredRecord;
+} | CatalogDraftRefusal;
+```
+## dist/catalog/contracts/draftV3.d.ts
+
+```ts
+import type { CatalogDraftPayloadV2, CatalogDraftStoredCommand, CatalogDraftStoredPayload } from "./draftV2.js";
+import type { CatalogDraftSummary, CatalogDraftRefusal } from "./draft.js";
+import type { CatalogQuantity } from "./productTypes.js";
+export type CatalogPublicationJson = null | boolean | number | string | CatalogPublicationJson[] | {
+    [key: string]: CatalogPublicationJson;
+};
+export type CatalogPublicationFacts = {
+    [key: string]: CatalogPublicationJson;
+};
+/** Immutable source receipt; current_draft is expanded from the persisted record, never hashed into itself. */
+export type CatalogDraftProvenanceV3 = {
+    source: "current_draft";
+} | {
+    source: "retained_draft";
+    draftId: string;
+    draftRevision: number;
+    draftCommandKey: string;
+    draftFingerprint: string;
+};
+export interface CatalogDraftClaimV3 {
+    draftId: string;
+    revision: number;
+    commandKey: string;
+    fingerprint: string;
+}
+export interface CatalogDraftMediaClaimV3 {
+    skuCode: string;
+    mediaRef: string;
+    assetRefs: string[];
+    revisionDigest: string;
+}
+export interface CatalogDraftPublicationSkuV3 {
+    skuCode: string;
+    title: string;
+    minQuantity: number;
+    isAddon: boolean;
+    facts: CatalogPublicationFacts;
+}
+export interface CatalogDraftMembershipV3 {
+    skuCode: string;
+    offerVersion: string;
+    admitted: boolean;
+}
+/** Frozen extraction envelope. Installed validators own the opaque document, presentation and SKU facts. */
+export interface CatalogDraftSharedContentV3 {
+    schemaVersion: 1;
+    catalogAction: "create" | "revise";
+    document?: CatalogPublicationFacts;
+    presentation: CatalogPublicationFacts;
+    offerMemberships: CatalogDraftMembershipV3[];
+    requestedModes: {
+        skuCode: string;
+        modes: ("one_time" | "subscription")[];
+    }[];
+    publicationSkus: CatalogDraftPublicationSkuV3[];
+}
+/** Array order is authoritative, including repeated legal operations and explicit omitted-SKU cache effects. */
+export type CatalogDraftPublicationOperationV3 = {
+    op: "create_product";
+    productId: string;
+    productSlug: string;
+    name: string;
+} | {
+    op: "register_document_revision";
+    productSlug: string;
+    revisionId: string;
+    revisionNo: number;
+    documentRef: string;
+    sourceRef: string;
+    canonicalText: string;
+    digest: string;
+    provenance: CatalogDraftProvenanceV3;
+} | ({
+    op: "create_sku";
+    skuId: string;
+    productSlug: string;
+    documentRevisionNo: number;
+} & CatalogDraftPublicationSkuV3) | {
+    op: "create_identifier";
+    skuCode: string;
+    scheme: string;
+    issuer: string;
+    value: string;
+    packagingLevel: "unit" | "case";
+    quantity: number;
+    isPrimary: boolean;
+    label: string | null;
+    sourceRef: string | null;
+} | {
+    op: "set_eligibility";
+    skuCode: string;
+    sellableStandalone: boolean;
+    sellableInSubscription: boolean;
+} | {
+    op: "set_sku_status";
+    skuCode: string;
+    status: "active" | "archived";
+} | {
+    op: "move_document_pointer";
+    productSlug: string;
+    documentRevisionNo: number;
+} | {
+    op: "set_primary_sku";
+    productSlug: string;
+    skuCode: string;
+} | {
+    op: "set_product_status";
+    productSlug: string;
+    status: "active" | "archived";
+} | ({
+    op: "set_offer_membership";
+} & CatalogDraftMembershipV3) | {
+    op: "set_product_presentation";
+    productSlug: string;
+    presentation: CatalogPublicationFacts | null;
+} | {
+    op: "set_sku_metadata";
+    skuCode: string;
+    logisticsRef: string | null;
+} | {
+    op: "set_derived_sku_facts";
+    skuCode: string;
+    documentRevisionNo: number;
+    netContent: CatalogQuantity;
+    facts: CatalogPublicationFacts;
+};
+export interface CatalogDraftPublicationInputsV3 {
+    kind: "release" | "compensation";
+    operations: CatalogDraftPublicationOperationV3[];
+    evidence: {
+        drafts?: CatalogDraftClaimV3[];
+        media?: CatalogDraftMediaClaimV3[];
+    };
+}
+/** Additive stored version; v1 and v2 are never reinterpreted. Prices retain the v2 command grammar. */
+export interface CatalogDraftPayloadV3 extends Omit<CatalogDraftPayloadV2, "schemaVersion" | "product"> {
+    schemaVersion: 3;
+    product: Omit<CatalogDraftPayloadV2["product"], "sharedContent"> & {
+        sharedContent: CatalogDraftSharedContentV3;
+    };
+    publication: CatalogDraftPublicationInputsV3;
+}
+export interface CatalogDraftCommandV3 {
+    schemaVersion: 3;
+    action: "create" | "revise" | "abandon" | "resume";
+    draftId: string;
+    commandKey: string;
+    expectedRevision: number;
+    payload?: CatalogDraftPayloadV3;
+}
+export type CatalogDraftPublicationStoredPayload = CatalogDraftStoredPayload | CatalogDraftPayloadV3;
+export type CatalogDraftPublicationStoredCommand = CatalogDraftStoredCommand | CatalogDraftCommandV3;
+export interface CatalogDraftPublicationStoredRecord extends CatalogDraftSummary {
+    payload: CatalogDraftPublicationStoredPayload;
+}
+export type CatalogDraftPublicationStoredApplyResult = {
+    outcome: "committed" | "replayed";
+    record: CatalogDraftPublicationStoredRecord;
+} | CatalogDraftRefusal;
 ```
 ## dist/catalog/contracts/foundation.d.ts
 
@@ -980,6 +1308,9 @@ export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
 export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetainedCombinationV2, CatalogCombinationChangeV2 } from "./variantAxes.js";
+export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
+export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./candidate.js";
+export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
