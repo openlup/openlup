@@ -14,7 +14,8 @@ type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
-  "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control"] as const;
+  "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
+  "commerce_offer_policy_cohort_marking"] as const;
 type SettingsTable = typeof settings[number];
 
 /** Explicit source evidence for the finite managed identity portion of a transfer. */
@@ -243,7 +244,8 @@ const order = [
   "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
-  "subscriptions", "subscription_events", "subscription_quote_previews", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
+  "catalog_price_setup_receipts",
+  "subscriptions", "commerce_offer_policy_rollout_baselines", "subscription_events", "subscription_quote_previews", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines",
   "payment_method_refs", "payment_method_ref_receipts", "subscription_method_states",
   "subscription_renewal_operations", "subscription_lines", "subscription_cycles", "commerce_orders", "commerce_order_items",
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
@@ -586,7 +588,7 @@ async function insert(client: PoolClient, table: Rows, row: string): Promise<voi
   if ((await client.query(`SELECT 1 FROM ${name} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
 }
 async function restoreSettings(client: PoolClient, baseline: Rows, source: Rows): Promise<void> {
-  // Exactly seven read-approved factory tables. Each deletion matches one whole
+  // Closed read-approved factory tables, including installation marking. Each deletion matches one whole
   // verified pristine row, never arbitrary existing data or an inferred diff.
   if (!settings.includes(source.table as SettingsTable) || source.table !== baseline.table) fail("invalid_input");
   for (const row of baseline.rows) {
@@ -643,6 +645,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // The guard admits only classic inserts. The binder acts only on opt-in
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
+    commerce_offer_policy_rollout_baselines: ["commerce_offer_policy_baseline_insert_guard"],
     subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject"],
     commerce_order_operations: ["communication_refund_subject"],
   };

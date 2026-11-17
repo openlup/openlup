@@ -19,8 +19,11 @@ projections to NULL and never creates publication history. Keep the new reader
 while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 The price boundary uses the existing version 2 command through the price owner's
-same-transaction writer; installed binding and its price-dependent proofs await
-that writer.
+same-transaction writer. The shared price-owner phases reserve sorted receipt
+keys before sorted contexts, verify every child belongs to the parent, and apply
+the original commands on the publisher's executor. Standalone apply uses these
+same phases in its single SQL transaction. Existing commands, receipts, refusals
+and agreed subscriber prices are unchanged.
 
 Managed divergence design: equivalent managed tables would store publications,
 heads, full SKU revisions, kinded receipts and immutable candidate decisions,

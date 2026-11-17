@@ -270,6 +270,47 @@ runtime login. Restricted-bootstrap installation is a separate qualification
 and will reuse these connection roles when it lands. Hosted endpoints remain
 unqualified by this local witness.
 
+## Native base-price writes
+
+The publication forward extracts the price writer's receipt preparation and
+transactional apply phases without rewriting existing receipt rows. Its internal
+functions are owner-only and recheck the authenticated human. Standalone apply
+retains its existing authenticated entry and runs the same phases in one SQL
+transaction. Publication shares its executor: receipt keys precede contexts,
+every child is checked against its parent, and a later publication failure rolls
+back child prices and receipts. Install the complete native prefix before using
+this composition; the managed rail does not supply it.
+
+The unbound native base-price writer follows the readiness-input unit in the
+complete catalogue at position 150. Its [package projection](../../packages/platform/src/catalog/sql.ts)
+is a sparse descriptor, not an install chain. The migration adds a catalogue-local
+receipt relation and human-session preview/apply routines. No catalogue or
+subscription row is backfilled and no capability is activated. Existing readers
+retain ordinary price-entry storage; new callers explicitly bind the
+[pricing use case](../../packages/platform/README.md#pricing).
+
+Receipts and price history are authoritative connected-store transfer data.
+Capture and restore exact command keys, fingerprints, actor metadata and original
+responses; a restored completed command replays before target reads. The receipt
+relation contains no customer foreign key. Runtime/browser table access remains
+denied; the bounded routines derive the active human administrator from the
+verified session. Readiness only selects and hard-refuses unavailable native
+proof, including cohort membership and historical order protection.
+
+The writer preserves the existing ordinary-reason aggregation defect. A reason
+already present before a write does not block another occurrence of that reason;
+hard evidence failures are exceptions and cannot be bypassed this way. See the
+[writer witnesses](../../tests/postgres/catalogBasePriceWriter.test.ts) for
+rollback, replay, provisional-write visibility and a committed change preserving
+native subscriber money through renewal, edit reads and actual resume.
+
+The managed rail does not supply this feature. Its twin needs separate SQL
+admission and equivalent administrator/RLS, input-provenance and receipt controls
+over incumbent managed tables; it must not infer historical evidence from a
+current catalogue head. Industry-specific managed catalogue columns are unaffected.
+Unbind callers to roll back use; retain committed receipts/history and correct a
+price with a subsequent expected-base command.
+
 ## Compatible data transfer
 
 Native publication heads, immutable publications, full SKU revisions, kinded
@@ -2155,6 +2196,21 @@ database. A backslash inside a dollar body is data, and the earlier files of the
 prefix keep the older reading.
 Adding columns or new CHECKs to an existing table retains the expand-only path.
 A new table may declare foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; only those actions are masked before the default expand-only check, with all other expression and statement refusals retained.
+A separate closed shape admits only a new
+`public.catalog_sku_successors` table with three `uuid NOT NULL` columns:
+`predecessor_sku_id` and `successor_sku_id` each reference
+`public.catalog_skus(id)`, and `publication_id` references
+`public.catalog_publications(id)`, all with explicit `ON DELETE RESTRICT`.
+Its primary key is `(predecessor_sku_id, successor_sku_id)`, in that order,
+and its sole check is `predecessor_sku_id <> successor_sku_id`. Only this
+complete statement gains the RESTRICT action and inequality syntax before the
+existing generic expression and statement guards. Other tables, targets,
+arities, key orders, nullable columns, actions, extra clauses and smuggled or
+appended destructive SQL refuse. The real PostgreSQL catalogue proof adds exact
+installed FK targets, ordered keys, `confdeltype='r'`, default update/match
+actions, validation and non-deferrability, the primary key and check, while
+retaining every existing ownership, ACL and catalogue guard. This admission
+control adds no feature SQL, publication binding or catalogue capability.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
@@ -4572,3 +4628,45 @@ recorded parcel sequence to the adapter's outbound-identity codec. Each replaced
 function has its own before/after pin; no table or capture/restore membership is
 added. The [fulfillment recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-replacement-and-customer-alignment)
 owns host composition.
+
+## Native offer-policy inputs
+
+The native `20261122170000_offer_policy_readiness_inputs` unit supplies unbound
+read-only inputs for a later price writer. It marks existing subscriptions as
+legacy, switches future ordinary inserts to pending acquisition, and records
+installation-time count, sorted-ID fingerprint and database time separately from
+the operator's later audited baseline. It changes no agreed price, quantity,
+status, cadence, renewal operation, order or delivery clock.
+
+The parameterless `commerce_capture_offer_policy_v2_legacy_baseline()` routine is
+an explicit service-authorized audit step. It is never run by installation or
+restore. All legacy non-fixture statuses participate. The insert-once baseline
+retains its original fingerprint/time on replay. An audited zero requires empty
+marking provenance, an empty current cohort and no positive baseline replacement;
+a populated cohort becoming empty retains the original empty-baseline error.
+Native RLS grants service SELECT/INSERT on baselines only; browser access and
+ordinary service UPDATE/DELETE are denied. Marking has no service DML grant.
+
+The connected transfer profile carries both authoritative evidence tables and
+the subscription evidence columns. Its existing pristine-target transaction
+reconciles the target marking row against actual installation data, then restores
+the source marking and baseline without recapture. The baseline INSERT guard
+rechecks zero provenance after the subscriptions are restored. Owner-controlled
+transfer remains outside the runtime catalogue lock order.
+
+Promotion projection validates consumed scalar, nullable, range, coupling,
+reference and uniqueness facts before casts or selection. Financial predicates
+retain their acquisition and bundle semantics. Current order metadata or a
+current publication head cannot prove historical admission or frozen money
+protection. Order-backed agreement quotes, including retained renewal lines,
+validate their governing policy pair regardless of age and refuse unproved
+historical admission before projecting quote lines. Graduation and sized edit
+events can copy or merge retained purchase quotes, so their event identity does
+not establish independence. Only complete fresh package quotes and classic
+base-line swaps supply independent event evidence; their amounts must still
+match the current template and renewal bindings. Order money utilities are not
+called by readiness before admission. Qualifying unestablished contexts raise
+hard refusals independently
+of ordinary readiness reasons. Readiness calls no capture or commerce writer
+and takes no commerce row/advisory lock. The managed rail does not supply this
+feature; the migration fragment describes the separate RLS-preserving twin.

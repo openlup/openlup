@@ -1357,6 +1357,31 @@
       ],
       "doc": "packages/core/docs/guide/how-to/build/customize-the-starter.md",
       "anchor": "#customize-the-starter-store"
+    },
+    {
+      "id": "native-offer-policy-inputs",
+      "when": "Native offer-policy marking, audited baseline capture and read-only input evidence",
+      "paths": [
+        "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql",
+        "packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql",
+        "packages/platform/test/pricing/nativeReadinessInputs.test.ts",
+        "tests/postgres/offerPolicyReadinessInputs.test.ts",
+        "tests/postgres/offerPolicyReadinessTransfer.test.ts"
+      ],
+      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
+      "anchor": "#native-offer-policy-inputs"
+    },
+    {
+      "id": "native-base-price-writer",
+      "when": "Native immediate base-price writes, session authority, read-only readiness and receipt transfer",
+      "paths": [
+        "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
+        "packages/platform/sql/20261122180000_catalog_base_price_writer.sql",
+        "tests/postgres/catalogBasePriceWriter.test.ts",
+        "tests/postgres/catalogBasePriceTransfer.test.ts"
+      ],
+      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
+      "anchor": "#native-base-price-writes"
     }
   ]
 }

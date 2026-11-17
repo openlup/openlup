@@ -616,8 +616,17 @@ function platformSqlTokens(sql: string, reviewedCreationTable = false, native = 
 export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable = false): boolean {
   return expandOnlyPlatformForward(sql, reviewedCreationTable, false);
 }
+// Only this complete new-table statement gains RESTRICT and the self-link inequality.
+// Token kinds remain distinct: quoted names and literals cannot impersonate syntax.
+function nativeCatalogSuccessorsCreation(sql: string): boolean {
+  const parsed = platformSqlTokens(sql, false, true);
+  const shape = "CREATE TABLE PUBLIC . CATALOG_SKU_SUCCESSORS ( PREDECESSOR_SKU_ID UUID NOT NULL REFERENCES PUBLIC . CATALOG_SKUS ( ID ) ON DELETE RESTRICT , SUCCESSOR_SKU_ID UUID NOT NULL REFERENCES PUBLIC . CATALOG_SKUS ( ID ) ON DELETE RESTRICT , PUBLICATION_ID UUID NOT NULL REFERENCES PUBLIC . CATALOG_PUBLICATIONS ( ID ) ON DELETE RESTRICT , PRIMARY KEY ( PREDECESSOR_SKU_ID , SUCCESSOR_SKU_ID ) , CHECK ( PREDECESSOR_SKU_ID < > SUCCESSOR_SKU_ID ) ) ;";
+  return parsed.complete && parsed.tokens.every(token => token.kind === "word" || token.kind === "symbol")
+    && parsed.tokens.map(token => token.value.toUpperCase()).join(" ") === shape;
+}
 function expandOnlyPlatformForward(sql: string, reviewedCreationTable: boolean, newTableForeignKeyActions: boolean): boolean {
-  const parsed = platformSqlTokens(sql, reviewedCreationTable);
+  const successors = newTableForeignKeyActions && nativeCatalogSuccessorsCreation(sql);
+  const parsed = platformSqlTokens(sql, reviewedCreationTable, successors);
   if (!parsed.complete) return false;
   const tokens = parsed.tokens.map(token => token.kind === "string" || token.kind === "number" ? "<literal>" : token.kind === "quoted" ? reviewedCreationTable ? token.value.toUpperCase() : `"${token.value.toUpperCase()}"` : token.value.toUpperCase());
   const statements: string[][] = [[]];
@@ -650,7 +659,7 @@ function expandOnlyPlatformForward(sql: string, reviewedCreationTable: boolean, 
     // Base admission remains unchanged; the expand-only checks above only add refusals.
     // Pinned new tables use scalar operators/casts and these foreign-key actions.
     // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
-    const checked = (reviewedCreationTable || newTableForeignKeyActions) && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;
+    const checked = (reviewedCreationTable || newTableForeignKeyActions) && /^CREATE TABLE /u.test(text) ? text.replace(successors ? / ON DELETE RESTRICT(?= |$)/gu : / ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;
     if (checked.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "INHERITS", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
     if (text === "BEGIN" || text === "COMMIT") return true;
     if (/^INSERT INTO /u.test(text)) {
@@ -2537,6 +2546,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (slot.dataStatements.includes(statement)) { data.add(statement); continue; }
     const indexCreation = nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, nativeWord(tokens, 1, "UNIQUE") ? 2 : 1, "INDEX");
     const newTable = head?.verb === "CREATE" && head.kind === "TABLE" && head.table !== null && !tables.has(head.table) && nativeSymbol(tokens, head.next, "(") && Boolean(nativeQualified(tokens, 2));
+    if (head?.verb === "CREATE" && head.table === "public.catalog_sku_successors" && (!newTable || !nativeCatalogSuccessorsCreation(statement))) throw new Error("reviewed native store successor table differs from its closed RESTRICT shape");
     if ((indexCreation || head?.kind === "TABLE") && expandOnlyPlatformForward(statement, false, newTable)) {
       if (head?.verb === "CREATE" && head.table && nativeSymbol(tokens, head.next, "(") && nativeQualified(tokens, 2)) tables.add(head.table);
       continue;
