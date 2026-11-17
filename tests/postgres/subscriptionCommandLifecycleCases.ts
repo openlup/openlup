@@ -3,6 +3,9 @@ import { expect,it } from 'vitest';
 import type { Pool,PoolClient } from 'pg';
 import { createPostgresSubscriptionCommands, createPostgresSubscriptionCommandStore, NATIVE_SUBSCRIPTION_CAPABILITIES, type SubscriptionQueryExecutor } from '@openlup/platform/subscriptions';
 import type { SubscriptionCommand, SubscriptionCommandReceipt } from '@openlup/platform/subscriptions/contracts';
+import { admitCareCommand } from '../../examples/neutral-store/shared/renewal-config.ts';
+import { demoSubscriptionCare } from '../../examples/neutral-store/owned/renewal.config.ts';
+import { choice } from '../../examples/neutral-store/shared/policy.ts';
 import { AT,call,failure,later,sandboxRenewal as renewal,request } from './subscriptionNativeFixture.js';
 export function registerCommandCases(h:{pool:Pool}) {
 async function fixture() {
@@ -21,19 +24,150 @@ type F=Awaited<ReturnType<typeof fixture>>;
 const invoke=(f:F,key:string,action:string,payload:unknown={},preview=false,db:Pool|PoolClient=h.pool,at=AT)=>
  call(db,preview?'subscription_command_preview':'subscription_command_apply',[f.actor,f.client,key,f.subscription,action,payload,at]);
 const bundle=(f:F)=>({coreLines:[{variantId:f.sku,qty:2}],compositionConstraint:{kind:'units',value:2},expectedTemplateVersion:1});
- async function effects() {
- const tables=(await h.pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+ async function effects(db:Pool|PoolClient=h.pool) {
+ const tables=(await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
  expect(tables.map(t=>t.tablename)).toEqual(expect.arrayContaining(['subscriptions','subscription_command_receipts',
   'subscription_edit_quotes','subscription_events','subscription_renewal_terms','subscription_renewal_term_lines']));
   const result:Record<string,unknown>={};
   for(const {tablename} of tables) {
    const name=String(tablename).replaceAll('"','""');
-   result[name]=(await h.pool.query(`SELECT count(*)::int AS count,COALESCE(jsonb_agg(
+   result[name]=(await db.query(`SELECT count(*)::int AS count,COALESCE(jsonb_agg(
     jsonb_build_object('row',to_jsonb(t),'xmin',t.xmin::text) ORDER BY to_jsonb(t)::text),'[]'::jsonb) AS rows
     FROM public."${name}" t`)).rows[0];
   }
   return result;
  }
+ const withTransaction=async<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>)=>{
+  const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+  catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+ };
+it.each([false,true])('preserves native lifecycle results with today\'s policy selected=%s',async selected=>{
+ const f=await fixture(),config=demoSubscriptionCare();
+ const port=createPostgresSubscriptionCommands({withTransaction,
+  ...(selected?{admitSubscriptionCommand:(facts:Parameters<typeof admitCareCommand>[1])=>admitCareCommand(config,facts)}:{}),
+  async futureTerms(){throw Error('unexpected_future_terms');},
+ });
+ const base={actor:{kind:'customer' as const,actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT};
+ const commands:SubscriptionCommand[]=[
+  {...base,idempotencyKey:'default-pause',action:'pause',pausePreset:'2_weeks',reason:null,survey:null,saveOffer:null},
+  {...base,idempotencyKey:'default-resume',action:'resume',reason:null,confirmedChargeTiming:false},
+  {...base,idempotencyKey:'default-skip',action:'skip',reason:null,confirmedChargeTiming:false},
+  {...base,idempotencyKey:'default-cancel',action:'cancel',reason:null,confirmedChargeTiming:false},
+  {...base,idempotencyKey:'default-reactivate',action:'reactivate',confirmedChargeTiming:true},
+ ];
+ for(const command of commands) expect(await port.apply(command)).toMatchObject({outcome:'applied'});
+ expect((await h.pool.query('SELECT status FROM public.subscriptions WHERE id=$1',[f.subscription])).rows[0].status).toBe('active');
+});
+it('refuses forged presets and disabled actions before any writing call or public-row change',async()=>{
+ const f=await fixture(),config=demoSubscriptionCare(),calls:string[]=[];
+ config.actions.active=['pause','cancel'];
+ const port=createPostgresSubscriptionCommands({
+  withTransaction:work=>withTransaction(db=>work({async query(sql,values){calls.push(sql);return db.query(sql,values);}})),
+  admitSubscriptionCommand:facts=>admitCareCommand(config,facts),
+  async futureTerms(){throw Error('must_not_translate_or_price');},
+ });
+ const base={actor:{kind:'customer' as const,actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT};
+ const before=await effects();
+ await expect(port.apply({...base,idempotencyKey:'forged-pause-preset',action:'pause',pausePreset:'forged',reason:null,survey:null,saveOffer:null}))
+  .rejects.toThrow('starter_pause_preset_not_admitted');
+ await expect(port.apply({...base,idempotencyKey:'disabled-skip-action',action:'skip',reason:null,confirmedChargeTiming:false}))
+  .rejects.toThrow('starter_subscription_action_not_admitted');
+ await expect(port.preview({...base,idempotencyKey:'disabled-edit-action',action:'edit_future_terms',shippingAddressId:'host',planDays:28,cadenceDays:28,
+  expectedTemplateVersion:1,acceptedQuoteHash:'',confirmedChargeTiming:false,coreLines:[],addonLines:[],compositionConstraint:'host'}))
+  .rejects.toThrow('starter_subscription_action_not_admitted');
+ expect(calls.filter(sql=>sql.includes('SELECT public.subscription_command_'))).toEqual([]);
+ expect(await effects()).toEqual(before);
+ expect((await h.pool.query('SELECT * FROM public.subscription_command_receipts WHERE actor_id=$1',[f.actor])).rows).toEqual([]);
+});
+it('replays a completed pause after its preset and action are removed, but refuses a fresh withdrawn preset',async()=>{
+ const f=await fixture(),config=demoSubscriptionCare(),facts:Parameters<typeof admitCareCommand>[1][]=[];
+ const port=createPostgresSubscriptionCommands({withTransaction,admitSubscriptionCommand:async current=>{facts.push(current);admitCareCommand(config,current);},
+  async futureTerms(){throw Error('unexpected_future_terms');},
+ });
+ const base={actor:{kind:'customer' as const,actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT};
+ const command:Extract<SubscriptionCommand,{action:'pause'}>={...base,idempotencyKey:'withdrawn-pause-preset',action:'pause',pausePreset:'1_month',reason:'pause_duration=1_month',survey:null,saveOffer:null};
+ const applied=await port.apply(command);
+ expect(applied).toMatchObject({outcome:'applied',originalState:'paused'});
+ expect(facts).toEqual([{action:'pause',pausePreset:'1_month',reason:'pause_duration=1_month',subscriptionStatus:'active',paymentBlocker:null}]);
+ config.pausePresets=choice('2_weeks','2_weeks','indefinite');config.actions.active=['cancel'];
+ const before=await effects();
+ expect(await port.apply({...command,now:later(500)})).toEqual({...applied,outcome:'replayed'});
+ expect(await port.apply({...command,reason:'changed'})).toEqual({outcome:'refused',reason:'subscription_command_idempotency_conflict'});
+ await expect(port.apply({...command,actor:{...command.actor,clientId:randomUUID()}})).rejects.toThrow('subscription_command_forbidden');
+ expect(facts).toHaveLength(1);expect(await effects()).toEqual(before);
+ await port.apply({...base,idempotencyKey:'resume-after-preset-removal',action:'resume',reason:null,confirmedChargeTiming:false});
+ config.actions.active=['pause','cancel'];
+ const beforeFresh=await effects();
+ await expect(port.apply({...command,idempotencyKey:'fresh-withdrawn-preset'})).rejects.toThrow('starter_pause_preset_not_admitted');
+ expect(await effects()).toEqual(beforeFresh);
+});
+it.each(['pause','cancel'] as const)('rechecks payment admission after waiting for the subscription lock: %s',async action=>{
+ const f=await fixture(),config=demoSubscriptionCare(),seen:Parameters<typeof admitCareCommand>[1][]=[],calls:string[]=[];
+ config.actions.whilePaymentBlocked=[];
+ const locker=await h.pool.connect(),waiter=await h.pool.connect();
+ let pending:Promise<unknown>|undefined;
+ try {
+  const blocking=(await locker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+  const waiting=(await waiter.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+  await locker.query('BEGIN');
+  await locker.query('SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE',[f.subscription]);
+  // The dunning writer holds the same lock but never updates the subscription row.
+  await locker.query("INSERT INTO public.subscription_dunning_cases(subscription_id,client_id,idempotency_key,status) VALUES($1,$2,$3,'open')",[f.subscription,f.client,randomUUID()]);
+  const before=await effects(locker);
+  const port=createPostgresSubscriptionCommands({
+   async withTransaction(work) {
+    await waiter.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    try {const result=await work({async query(sql,values){calls.push(sql);return waiter.query(sql,values);}});await waiter.query('COMMIT');return result;}
+    catch(error){await waiter.query('ROLLBACK');throw error;}
+   },
+   admitSubscriptionCommand:facts=>{seen.push(facts);admitCareCommand(config,facts);},
+   async futureTerms(){throw Error('unexpected_future_terms');},
+  });
+  const base={actor:{kind:'customer' as const,actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT,idempotencyKey:`wait-dunning-${action}`,reason:null};
+  const command:SubscriptionCommand=action==='pause'?{...base,action,pausePreset:'2_weeks',survey:null,saveOffer:null}:{...base,action,confirmedChargeTiming:false};
+  pending=port.apply(command).then(value=>({value}),error=>({error}));
+  await expect.poll(async()=> (await locker.query(`SELECT EXISTS(SELECT 1 FROM pg_locks
+   WHERE pid=$1 AND NOT granted AND $2::int=ANY(pg_blocking_pids($1))) AS blocked`,[waiting,blocking])).rows[0].blocked,{timeout:5000}).toBe(true);
+  expect(seen).toEqual([]);
+  await locker.query('COMMIT');
+  const result=await pending;
+  expect(seen).toEqual([{action,pausePreset:action==='pause'?'2_weeks':null,reason:null,subscriptionStatus:'active',paymentBlocker:'payment_blocked'}]);
+  expect(result).toEqual({error:new Error('starter_subscription_action_not_admitted')});
+  expect(calls.filter(sql=>sql.includes('SELECT public.subscription_command_'))).toEqual([]);
+  expect(await effects(locker)).toEqual(before);
+  expect((await locker.query('SELECT * FROM public.subscription_command_receipts WHERE actor_id=$1',[f.actor])).rows).toEqual([]);
+ } finally {await locker.query('ROLLBACK');await pending;locker.release();waiter.release();}
+});
+it.each(['REPEATABLE READ','SERIALIZABLE'] as const)('refuses fresh admission under %s while preserving completed replay',async isolation=>{
+ const f=await fixture(),seen:Parameters<typeof admitCareCommand>[1][]=[];
+ const command:SubscriptionCommand={actor:{kind:'customer',actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT,
+  idempotencyKey:'isolation-completed-pause',action:'pause',pausePreset:'2_weeks',reason:null,survey:null,saveOffer:null};
+ const original=createPostgresSubscriptionCommands({withTransaction,async futureTerms(){throw Error('unexpected_future_terms');}});
+ const applied=await original.apply(command);
+ expect(applied).toMatchObject({outcome:'applied'});
+ const port=createPostgresSubscriptionCommands({
+  withTransaction:work=>withTransaction(async db=>{await db.query(`SET TRANSACTION ISOLATION LEVEL ${isolation}`);return work(db);}),
+  admitSubscriptionCommand:facts=>{seen.push(facts);},async futureTerms(){throw Error('unexpected_future_terms');},
+ });
+ const before=await effects();
+ expect(await port.apply(command)).toEqual({...applied,outcome:'replayed'});
+ await expect(port.apply({...command,idempotencyKey:'isolation-fresh-pause'})).rejects.toThrow('subscription_command_admission_isolation_unsupported');
+ expect(seen).toEqual([]);expect(await effects()).toEqual(before);
+});
+it.each(['open','expired'] as const)('supplies %s payment facts and preserves native fences under permissive admission',async status=>{
+ const f=await fixture(),seen:Parameters<typeof admitCareCommand>[1][]=[];
+ await h.pool.query("INSERT INTO public.subscription_dunning_cases(subscription_id,client_id,idempotency_key,status,expired_at) VALUES($1,$2,$3,$4,CASE WHEN $4='expired' THEN $5::timestamptz END)",[f.subscription,f.client,randomUUID(),status,AT]);
+ const store=createPostgresSubscriptionCommandStore({withTransaction,admitSubscriptionCommand:async facts=>{seen.push(facts);}});
+ const input={actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:`permissive-${status}`,action:'skip_next_cycle',payload:{},now:AT};
+ const result=await store.apply(input);
+ expect(result).toMatchObject({status:status==='open'?'refused':'applied',...(status==='open'?{reason:'subscription_command_payment_blocked'}:{})});
+ expect(seen).toEqual([{action:'skip',pausePreset:null,reason:null,subscriptionStatus:'active',paymentBlocker:status==='open'?'payment_blocked':'payment_expired'}]);
+ const g=await renewal(h.pool);
+ expect(await store.apply({...input,actorId:randomUUID(),clientId:g.client,subscriptionId:g.subscription,idempotencyKey:`in-flight-${status}`,action:'cancel'}))
+  .toMatchObject({status:'refused',reason:'subscription_command_payment_blocked'});
+ expect(await store.apply({...input,idempotencyKey:`wrong-state-${status}`,action:'reactivate',payload:{confirmedChargeTiming:true}}))
+  .toMatchObject({status:'refused',reason:status==='open'?'subscription_command_payment_blocked':'subscription_lifecycle_invalid_transition'});
+});
 it('maps PostgreSQL cast and overflow messages to a closed code on fresh and stored refusals',async()=>{
  const f=await fixture();
  const binding={async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
