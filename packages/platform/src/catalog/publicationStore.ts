@@ -275,6 +275,16 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         if (prepared.payload.product.documentRevision) documentRevisions.push(prepared.payload.product.documentRevision.revisionNo);
         const preliminary = await load(db, command.productId, undefined, true, documentRevisions);
         const retainedSources = await lockCandidate(db, prepared, preliminary);
+        const prices = prepared.payload.skus.flatMap(sku => sku.priceOperations ?? []);
+        let prelockedBatch: unknown;
+        if (prices.length) {
+          require(deps.prices, "catalog_price_writer_unavailable", "dependency_unavailable");
+          const ids = [...new Set(prices.map(price => price.variantId))];
+          const ownership = await tuple(db, `SELECT id AS sku_id,product_id FROM public.catalog_skus WHERE id=ANY($1::uuid[])
+            UNION ALL SELECT sku_id,product_id FROM public.catalog_draft_sku_reservations WHERE draft_id=$2::uuid AND sku_id=ANY($1::uuid[])`, [ids, prepared.record.draftId]);
+          require(ownership.every(row => row.product_id === command.productId) && ids.every(id => ownership.some(row => row.sku_id === id)), "catalog_price_parent_mismatch");
+          prelockedBatch = await deps.prices!.prelock(db, capability, command.productId, prices);
+        }
         const current = await load(db, command.productId, undefined, prepared.payload.publication.kind === "compensation", documentRevisions);
         require(equal(command.expectedHead, prepared.expectedHead) && equal(current.head, command.expectedHead), "head_conflict", "conflict");
         await candidate(db, command.candidateRef, command.candidateDigest, command.productId);
@@ -325,11 +335,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(Number.isSafeInteger(next) && next <= 2_147_483_647, "catalog_publication_revision_limit");
         const publicationId = randomUUID();
         await applyOperations(db, prepared.payload, compiled, current, fingerprint, prepared.definition);
-        const prices = prepared.payload.skus.flatMap(sku => sku.priceOperations ?? []);
         if (prices.length) {
-          require(deps.prices, "catalog_price_writer_unavailable", "dependency_unavailable");
           for (const price of prices) require(compiled.skus.some(sku => sku.id === price.variantId && sku.productId === command.productId), "catalog_price_parent_mismatch");
-          const prelockedBatch = await deps.prices!.prelock(db, capability, command.productId, prices);
           // The sole atomic price write call. It uses this executor and cannot commit independently.
           await deps.prices!.applyInTransaction(db, capability, command.productId, prelockedBatch);
         }

@@ -1314,3 +1314,24 @@ it.each(["material", "inconclusive"] as const)("refuses %s same-SKU physical cha
   expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "sku_identity_change_requires_new_sku" });
   expect(await snapshot()).toEqual(before);
 });
+
+it.each(["foreign child before contexts", "reserved child prelocks before catalogue effects"])("price boundary: %s", async mode => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.skus[0].priceOperations = [{ schemaVersion: 1, commandKey: "price:boundary", variantId: data.skuId,
+    priceListId: randomUUID(), mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 100, expected: { entryId: null, unitPriceMinor: null } }];
+  const command = await save(payload, data.draftId, 1);
+  if (mode === "foreign child before contexts") await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status) VALUES($1,$2,$3,'Misbound legacy row','draft')", [data.skuId, foreignPublished.data.productId, payload.skus[0].code]);
+  await approve(command); const before = await snapshot(); let prelocked = false;
+  const target = createPostgresCatalogPublication({ ...dependencies(), prices: {
+    prelock: async (executor, _actor, productId, commands) => {
+      prelocked = true; expect(productId).toBe(data.productId); expect(commands).toEqual(payload.skus[0].priceOperations);
+      expect((await executor.query("SELECT id FROM public.catalog_products WHERE id=$1", [productId])).rows).toEqual([]);
+      expect((await executor.query("SELECT id FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows).toEqual([]);
+      throw new Error("Stop after observing the real pre-effect boundary; no price writer is simulated");
+    }, applyInTransaction: async () => { throw new Error("This boundary witness must never apply a price"); },
+  } });
+  const capability = (await target.authorize(null))!, result = await target.publish(command, capability);
+  expect(result).toEqual(mode === "foreign child before contexts" ? { outcome: "validation_issue", reason: "catalog_price_parent_mismatch" }
+    : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+  expect(prelocked).toBe(mode !== "foreign child before contexts"); expect(await snapshot()).toEqual(before);
+});
