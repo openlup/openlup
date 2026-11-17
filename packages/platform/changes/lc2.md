@@ -14,7 +14,9 @@ Migration: install the native forward and upgrade readers before composing the
 new version 2 publication API. Existing publication ports retain their version 1
 DTOs through adapters. Nullable projection/canonical-text columns preserve old
 readers; unknown legacy lineage refuses rather than manufacturing retained
-history. Keep the new reader while retained publications reference it. Publication
+history. Managed-to-native ingress defaults only absent product/SKU publication
+projections to NULL and never creates publication history. Keep the new reader
+while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 The price boundary uses the existing donor command through the price owner's
 same-transaction writer; installed binding and its price-dependent proofs await

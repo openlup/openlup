@@ -1180,3 +1180,24 @@ it("refuses unknown nonempty relations and Storage without a selected object sou
       await managed.owner.query("DELETE FROM storage.objects WHERE bucket_id='retained'; DELETE FROM storage.buckets WHERE id='retained'");
   }
 });
+
+it("catalog_transfer_initializes_only_absent_publication_fields", async () => {
+  const facts = (value: Awaited<ReturnType<typeof mapSource>>, table: string) => value.packet.owned.find(value => value.table === table)!.rows.map(value => JSON.parse(value) as Record<string, unknown>);
+  const legacy = await mapSource();
+  for (const table of ["catalog_products", "catalog_skus"]) { expect(facts(legacy, table)).toHaveLength(1); expect(facts(legacy, table)[0].publication_facts).toBeNull(); }
+  for (const table of ["catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions"])
+    expect(facts(legacy, table)).toEqual([]);
+  await managed.owner.query("ALTER TABLE public.catalog_products ADD COLUMN publication_facts jsonb");
+  await managed.owner.query("ALTER TABLE public.catalog_skus ADD COLUMN publication_facts jsonb");
+  try {
+    const supplied = { opaque: "source-provided projection" };
+    for (const table of ["catalog_products", "catalog_skus"]) await managed.owner.query(`UPDATE public.${table} SET publication_facts=$1::jsonb`, [JSON.stringify(supplied)]);
+    const explicit = await mapSource();
+    for (const table of ["catalog_products", "catalog_skus"]) expect(facts(explicit, table).every(row => JSON.stringify(row.publication_facts) === JSON.stringify(supplied))).toBe(true);
+    await managed.owner.query("UPDATE public.catalog_skus SET publication_facts=NULL");
+    expect(facts(await mapSource(), "catalog_skus").every(row => row.publication_facts === null)).toBe(true);
+  } finally {
+    await managed.owner.query("ALTER TABLE public.catalog_products DROP COLUMN publication_facts");
+    await managed.owner.query("ALTER TABLE public.catalog_skus DROP COLUMN publication_facts");
+  }
+});

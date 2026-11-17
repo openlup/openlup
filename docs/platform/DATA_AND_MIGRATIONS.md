@@ -299,6 +299,10 @@ refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
 
+Managed-to-native retained transfer also initializes absent product and SKU
+`publication_facts` to NULL, preserves supplied values and creates no publication
+history, decision or receipt from a legacy row.
+
 Managed-to-native retained transfer initializes only absent product `type_key`
 and `type_version` fields to NULL. Supplied values, including explicit NULLs,
 are preserved; the generic missing-column refusal still applies to every other
