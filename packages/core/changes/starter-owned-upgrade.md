@@ -228,8 +228,11 @@ A callback throw refuses the affected field with its configured policy message.
 pause presets and both pause defaults. `test/address-outcomes.test.ts` matches
 the demonstration wording for a change that applies from the next parcel.
 `browser/acquisition.spec.ts` also uses the demonstration saved-address formats,
-account actions and pause defaults. After extraction, these are application
-tests. If you keep the callback-free policy, narrow action lists, omit
+account actions and pause defaults. The browser specs (`browser/*.spec.ts`,
+including `editor-components.spec.ts`, `e4.spec.ts`, `journey.spec.ts` and
+`subscription-journeys.spec.ts`) locate controls by their demonstration labels,
+such as "Back to account"; rewording owned copy requires updating those
+locators. After extraction, these are application tests. If you keep the callback-free policy, narrow action lists, omit
 `retention.pausePreset` or rewrite copy, adapt or replace the affected fixtures
 and assertions in your application. Startup validation defines the configuration
 contract.
