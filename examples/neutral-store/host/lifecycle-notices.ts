@@ -25,7 +25,7 @@ export function createLifecycleNoticeHost(input: {
 }) {
   const { config } = input;
   const capture = createNoticeArtifacts(input.capture);
-  assertRenewalConfig(config.renewal);
+  assertRenewalConfig(config.renewal, config.market.locales);
   const origin = new URL(input.publicOrigin);
   if (origin.origin !== input.publicOrigin || origin.username || origin.password) throw new Error('starter_notice_origin_invalid');
 
