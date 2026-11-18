@@ -1676,8 +1676,9 @@ Keep the events before the refused preparation, repeat each later `prepare` at
 its recorded head and record the same reports, each delta report naming its new
 delta.
 
-`verify` and hosted admission refuse a session invalidated by a protected
-review-path list change on main. To recover, fetch main and merge `origin/main`
+`status --explain` reports a session invalidated by a protected review-path list
+change on main, and `prepare`, `prepare --new`, `verify` and hosted admission
+refuse it. To recover, fetch main and merge `origin/main`
 if the checkout still uses the old list. Move
 `.context/scratch/agent-review/session.json` aside, run `prepare` with the
 existing intent, and obtain a fresh full review. Give the new reviewers every
@@ -1688,6 +1689,7 @@ session cannot be reused in this procedure.
 `verify` refuses dirty, mismatched, partial or missing evidence and unclosed
 blockers. On the CI-only route no reviewer report is needed. Source admission
 checks the live head, tree and floor using trusted main's tooling.
+Hosted admission evaluates the review rules with the trusted main checkout for that run.
 
 ```sh
 node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -

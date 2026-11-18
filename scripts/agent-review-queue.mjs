@@ -92,7 +92,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
       } catch (error) { currentReason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
-      if (!decision.ok) { currentReason = `${decision.code}: ${decision.reason}`; continue; }
+      if (!decision.ok) { currentReason ??= `${decision.code}: ${decision.reason}`; continue; }
       const forwardApproval = needsForwardApproval(candidate.changedPaths);
       // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
       if (forwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head);

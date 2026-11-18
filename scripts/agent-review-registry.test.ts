@@ -527,7 +527,7 @@ describe('real Git coverage histories', () => {
 });
 
 describe('historical review rules', () => {
-  const rulesMismatch = /^recorded policy or base rules differ\. The protected review-path list may have changed on main\. Start a fresh session and obtain a fresh full review.*CONTRIBUTING\.md#native-review-and-accountability/u;
+  const recovery = /Move \.context\/scratch\/agent-review\/session\.json aside, run prepare with the existing intent and obtain a fresh full review\. Re-raise every open material finding.*CONTRIBUTING\.md#native-review-and-accountability/u;
 
   async function driftedRules() {
     const addedControl = 'fixture-guard.ts';
@@ -548,6 +548,9 @@ describe('historical review rules', () => {
     await f.report({ ordinary: true, delta: edge.delta });
     await expect(f.cli('verify')).resolves.toBe(0);
 
+    const main = await f.mainMove(() => f.write('scripts/reviewed-platform-forward.ts', `export const NATIVE_CATALOG_CONTROLS = ['${addedControl}'];\n`));
+    f.git('merge', '--no-ff', '-qm', 'integrate updated protected list', main);
+    // The CLI runs in this process, so model the merged classifier with the updated list.
     const includes = NATIVE_CATALOG_CONTROLS.includes.bind(NATIVE_CATALOG_CONTROLS);
     vi.spyOn(NATIVE_CATALOG_CONTROLS, 'includes').mockImplementation(path => path === addedControl || includes(path));
     expect(verdict(first, first.candidate, Date.now()).reason).toContain('2 independent PASS reports required');
@@ -589,26 +592,49 @@ describe('historical review rules', () => {
     expect(await readFile(path, 'utf8')).toBe(original);
   });
 
-  it('reports historical rules drift and keeps the history through either preparation mode', async () => {
+  it('refuses a stale session after merging changed rules and preserves its bytes through either preparation mode', async () => {
     const f = await driftedRules();
     const original = await readFile(f.path, 'utf8');
     const session = await f.state();
     expect(await captureReviewRules(f.cwd, session.candidate)).toEqual(session.candidate.rules);
-    await expect(validateEconomySession(f.cwd, session)).rejects.toThrow(rulesMismatch);
-    await expect(f.cli('verify')).rejects.toThrow(rulesMismatch);
+    await expect(validateEconomySession(f.cwd, session)).rejects.toThrow(recovery);
+    await expect(f.cli('verify')).rejects.toThrow(recovery);
     await expect(f.cli('status', '--explain')).resolves.toBe(0);
     expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toMatchObject({
-      status: 'invalid', reason: expect.stringMatching(rulesMismatch),
-      nextAction: expect.stringMatching(/^Start a fresh session.*CONTRIBUTING\.md#native-review-and-accountability/u),
+      status: 'invalid', reason: expect.stringMatching(/^recorded policy or base rules differ/u),
+      candidate: { status: 'stale', observed: { head: f.git('rev-parse', 'HEAD') } },
+      nextAction: expect.stringMatching(recovery),
     });
-    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    await expect(f.cli('prepare', f.request)).rejects.toThrow(recovery);
+    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(recovery);
     expect(await readFile(f.path, 'utf8')).toBe(original);
-    await expect(f.cli('prepare', '--new', f.request)).resolves.toBe(0);
-    const next = await f.state();
-    expect(next.history.slice(0, -1)).toEqual(session.history);
-    expect(next.candidate).not.toHaveProperty('coverage');
-    await expect(f.cli('verify')).rejects.toThrow(rulesMismatch);
   });
+
+  it('refuses local verification when Git cannot read a v2 session’s historical policy', async () => {
+    const policy = 'scripts/agent-review-decide.mjs';
+    const f = await fixture(false, [], { [policy]: 'export const REVIEW_RULES_VERSION = 2;\n' });
+    expect((await f.review()).version).toBe(2);
+    await expect(f.cli('verify')).resolves.toBe(0);
+    const blob = f.git('rev-parse', `${f.base}:${policy}`);
+    await rm(join(f.cwd, '.git', 'objects', blob.slice(0, 2), blob.slice(2)));
+    await expect(f.cli('verify')).rejects.toThrow('Could not read review rules from Git');
+  });
+
+  it.each(['scripts/agent-review-decide.mjs', 'scripts/reviewed-platform-forward.ts'])(
+    'refuses local verification before merging a main-only change to %s', async policy => {
+      const f = await fixture();
+      const session = await f.review();
+      await expect(f.cli('verify')).resolves.toBe(0);
+      await f.mainMove(() => f.write(policy, 'export const REVIEW_RULES_VERSION = 3;\n// Changed on main.\n'));
+      expect(f.git('rev-parse', 'HEAD')).toBe(session.candidate.head);
+      await expect(f.cli('verify')).rejects.toThrow('Fetch and merge origin/main before verifying local review');
+      await expect(f.cli('status', '--explain')).resolves.toBe(0);
+      expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toMatchObject({
+        status: 'invalid', verified: false,
+        nextAction: expect.stringContaining('Fetch and merge origin/main before verifying local review'),
+      });
+    },
+  );
 });
 
 describe('coverage preconditions in real histories', () => {

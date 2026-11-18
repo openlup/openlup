@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, REVIEW_RULES_MISMATCH, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, REVIEW_CLASSIFIER_CHANGED, REVIEW_RULES_MISMATCH, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -32,10 +32,17 @@ export async function captureCommittedReviewCandidate(cwd, base, head, runGit = 
   }
   return { base, head, tree, changedPaths, modeChanged, clean: true };
 }
-export async function captureSessionCandidate(cwd, base, { runGit = git, env = processEnvironment } = {}) {
+export async function captureSessionCandidate(cwd, base, { runGit = git, env = processEnvironment, checkMainRules = false } = {}) {
   const head = (await runGit(cwd, 'rev-parse', '--verify', 'HEAD^{commit}')).trim();
   const forks = (await runGit(cwd, 'merge-base', '--all', head, 'origin/main')).trim().split('\n');
   demand(forks.length === 1 && SHA.test(forks[0]), 'HEAD must have a single fork point with origin/main');
+  if (checkMainRules) {
+    try { await runGit(cwd, 'diff', '--quiet', forks[0], 'origin/main', '--', REVIEW_RULES_PATH, 'scripts/reviewed-platform-forward.ts'); }
+    catch (error) {
+      if (error.code === 1) throw new Error(REVIEW_CLASSIFIER_CHANGED);
+      throw new Error('invalid: Could not compare review classifier sources with origin/main.', { cause: error });
+    }
+  }
   const pinned = env.OPENLUP_STACK_BASE;
   demand(pinned === undefined || SHA.test(pinned), 'OPENLUP_STACK_BASE must be a full commit digest');
   base ??= pinned ?? forks[0];
@@ -259,12 +266,16 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
   return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
     delta: digest(await git(cwd, 'diff', '--binary', ...index, '--no-renames', from, to)), proof };
 }
-// Shared by verification and the read-only status explanation.
 async function validateRecordedCandidates(cwd, session, runGit) {
   let rulesMismatch = false;
   for (const event of session.history) {
     if (event.type !== 'prepare') continue;
     const { candidate } = event;
+    if (session.version === 2) {
+      // Legacy sessions have no snapshot to compare, but Git read errors still refuse verification.
+      await captureReviewRules(cwd, candidate, runGit);
+      continue;
+    }
     const actual = await captureCommittedReviewCandidate(cwd, candidate.base, candidate.head, runGit);
     for (const key of ['base', 'head', 'tree', 'changedPaths', 'modeChanged']) demand(digest(actual[key]) === digest(candidate[key]), 'recorded candidate diff differs');
     const rules = await captureReviewRules(cwd, actual, runGit);
@@ -281,6 +292,11 @@ async function validateRecordedCandidates(cwd, session, runGit) {
 export async function validateEconomySession(cwd, session, runGit = git) {
   if (session.version !== 3) return;
   await validateRecordedCandidates(cwd, session, runGit);
+  await validateRecordedCoverage(cwd, session);
+}
+
+async function validateRecordedCoverage(cwd, session) {
+  if (session.version !== 3) return;
   // Historical edges can be replayed only under matching rules.
   for (let index = 0; index < session.history.length; index++) {
     const event = session.history[index];
@@ -385,6 +401,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     let session; try { session = await boundedJson(path, 8 * 1024 * 1024); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (verb === 'prepare') {
       const fresh = args[0] === '--new'; if (fresh) args.shift();
+      if (session?.version === 3) await validateRecordedCandidates(cwd, session, git);
       const spec = await boundedJson(args[0] ?? join(directory, 'intent.json'));
       const observed = { ...await captureSessionCandidate(cwd, undefined, { env }), intent: spec.intent, authorSessionId: spec.authorSessionId ?? env.CODEX_THREAD_ID };
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
@@ -422,13 +439,11 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       if (!args.length) { console.log(JSON.stringify(session, null, 2)); return 0; }
       const readGit = (root, ...gitArgs) => git(root, '--no-optional-locks', ...gitArgs);
       let observed;
-      try { observed = await captureSessionCandidate(cwd, undefined, { env, runGit: readGit }); }
+      try { observed = await captureSessionCandidate(cwd, undefined, { env, runGit: readGit, checkMainRules: true }); }
       catch (error) { observed = { error: error.message }; }
       let recordedCandidateError;
-      if (session.version === 3 && observed.clean && ['base', 'head', 'tree'].every(key => session.candidate?.[key] === observed[key])) {
-        try { await validateRecordedCandidates(cwd, session, readGit); }
-        catch (error) { recordedCandidateError = error.message; }
-      }
+      try { await validateRecordedCandidates(cwd, session, readGit); }
+      catch (error) { recordedCandidateError = error.message; }
       console.log(JSON.stringify(explainSession(session, observed, Date.now(), { recordedCandidateError }), null, 2));
       return 0;
     }
@@ -437,11 +452,14 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       demand(args.shift() === '--' && args[0], 'verify-command [--resource PROFILE] -- CMD ARGS...');
       return verifyCandidateCommand({ cwd, session, command: args[0], args: args.slice(1), resource, env });
     }
-    const observed = await captureSessionCandidate(cwd, session.candidate.base, { env });
+    const verify = verb === 'verify';
+    if (verify) await validateRecordedCandidates(cwd, session, git);
+    const observed = await captureSessionCandidate(cwd, session.candidate.base, { env, checkMainRules: verify });
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
     if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now()); await saveState(path, session); return 0; }
-    await validateEconomySession(cwd, session);
+    if (verify) await validateRecordedCoverage(cwd, session);
+    else await validateEconomySession(cwd, session);
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
     if (verb === 'receipt') console.log(`${session.version === 3 ? ECONOMY_RECEIPT_MARKER : RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receiptSummary(session, Number(args[0]), Date.now()))}\n\`\`\``);

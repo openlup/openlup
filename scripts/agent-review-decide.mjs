@@ -5,8 +5,9 @@ import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
 export const REVIEW_RULES_VERSION = 3;
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
 export const RECEIPT_MARKER = '<!-- openlup-native-review-receipt v2 -->';
-const FRESH_REVIEW_GUIDANCE = 'Start a fresh session and obtain a fresh full review (see CONTRIBUTING.md#native-review-and-accountability).';
+const FRESH_REVIEW_GUIDANCE = 'Move .context/scratch/agent-review/session.json aside, run prepare with the existing intent and obtain a fresh full review. Re-raise every open material finding from the old session (see CONTRIBUTING.md#native-review-and-accountability).';
 export const REVIEW_RULES_MISMATCH = `recorded policy or base rules differ. The protected review-path list may have changed on main. ${FRESH_REVIEW_GUIDANCE}`;
+export const REVIEW_CLASSIFIER_CHANGED = 'Review classifier sources changed on origin/main. Fetch and merge origin/main before verifying local review.';
 const SHA = /^[a-f0-9]{40}$/u;
 const RISKS = ['prose', 'routine', 'behavior', 'unknown'];
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -294,10 +295,11 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     : candidateStatus === 'dirty' ? 'dirty'
       : candidateStatus === 'stale' ? 'stale'
         : missingReports > 0 || openMaterial?.length ? 'needs_agent_review' : 'verify_required';
-  const nextAction = candidateStatus === 'unreadable'
-    ? `Resolve the Git comparison or OPENLUP_STACK_BASE error (${observed?.error ?? 'candidate unreadable'}) before running prepare or verify.`
-    : invalidReason === REVIEW_RULES_MISMATCH
-      ? FRESH_REVIEW_GUIDANCE
+  const nextAction = invalidReason === REVIEW_RULES_MISMATCH
+    ? FRESH_REVIEW_GUIDANCE
+    : candidateStatus === 'unreadable'
+      ? observed?.error === REVIEW_CLASSIFIER_CHANGED ? REVIEW_CLASSIFIER_CHANGED
+        : `Resolve the Git comparison or OPENLUP_STACK_BASE error (${observed?.error ?? 'candidate unreadable'}) before running prepare or verify.`
       : invalidReason
         ? `Resolve the reported session error (${invalidReason}) before running verify.`
         : candidateStatus === 'dirty'
@@ -379,7 +381,7 @@ export function admit({ receipt, observed, now }) {
   if (!observed.baseValid) return result(false, 'stale', 'review base must be the exact fork point on main');
   const legacyFloor = Math.max(legacyRequiredReviewers(receipt.risk), legacyRequiredReviewers(legacyClassifyRisk(observed)));
   const floor = observed.legacyRules === true ? legacyFloor : Math.max(legacyFloor, candidateFloor(observed, receipt.risk));
-  if (receipt.reviewers.length < floor) return result(false, 'needs_agent_review', `${floor} independent reviewers required by the diff`);
+  if (receipt.reviewers.length < floor) return result(false, 'needs_agent_review', `${floor} independent reviewers required by the diff (see CONTRIBUTING.md#native-review-and-accountability for recovery)`);
   return result(true, 'reviewed', 'reviewed');
 }
 const TRUST_PATHS = [/^\.github\//u, /^scripts\/agent-review-/u, /^scripts\/documentation-git\.ts$/u, /^(?:packages\/[^/]+\/)?package(?:-lock)?\.json$/u, /^(?:db\/platform|supabase)\/migrations\//u, /^config\/platform-migration-manifest\.json$/u];

@@ -223,7 +223,7 @@ describe('hosted review decisions', () => {
         expect(f.enqueue).toHaveBeenCalledTimes(1);
       } else {
         await expect(f.execute()).rejects.toThrow('Current native review is unavailable');
-        expect(log).toHaveBeenCalledWith('needs_agent_review: needs_agent_review: 2 independent reviewers required by the diff');
+        expect(log).toHaveBeenCalledWith('needs_agent_review: needs_agent_review: 2 independent reviewers required by the diff (see CONTRIBUTING.md#native-review-and-accountability for recovery)');
         expect(f.enqueue).not.toHaveBeenCalled();
       }
       expect(f.runGit).toHaveBeenCalledWith(expect.any(String), 'show', `${receipt.base}:scripts/agent-review-decide.mjs`);
