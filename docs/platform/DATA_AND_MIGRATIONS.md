@@ -272,6 +272,17 @@ unqualified by this local witness.
 
 ## Native base-price writes
 
+The native successor forward adds immutable pair provenance and four RLS-enabled,
+owner-controlled storage tables. It preserves original schedule arbiters,
+composite shapes and legacy reader/replay results. Version 2 stores select
+successor generations explicitly; historical roots remain schedule lineage.
+The synchronous paid-fact producer must be installed before successor payment
+use. Install opened-event dispatch and M04 bindings before the producer hooks;
+no backfill or runtime activation runs. The
+[package migration note](../../packages/platform/changes/lc10.md) gives the
+reader transition and managed divergence design. The managed rail does not
+supply this feature.
+
 The publication forward extracts the price writer's receipt preparation and
 transactional apply phases without rewriting existing receipt rows. Its internal
 functions are owner-only and recheck the authenticated human. Standalone apply

@@ -120,6 +120,14 @@ hosted endpoint.
 
 ## Native retained-store transfer preparation
 
+The authoritative profile carries immutable SKU successor pairs, explicit
+proposals and all generation, wait and reservation history. Restore installs
+catalogue provenance before proposals, original waits before successor waits,
+and native realization parents before generation links. Generation chains are
+restored in predecessor order with their original bytes and command receipts.
+Their insert guards validate retained ownership and graph links without
+producing opened observations. These additions do not activate a runtime.
+
 The native profile also carries offer-policy installation marking and its separate
 audited baseline as authoritative data. Restore reconciles the actual pristine
 marking row, preserves the source audit timestamps/fingerprint and restores the

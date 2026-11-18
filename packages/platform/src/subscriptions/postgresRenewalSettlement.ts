@@ -28,31 +28,7 @@ export function createPostgresRenewalSettlementPort(
     // The existing routine creates gross item rows. Finish the retained money
     // projection before the deferred line-sum constraint can commit it.
     if (snapshot && row.replayed !== true) {
-      const pricing = snapshot.pricingSnapshot;
-      if (pricing.discountAmountMinor) {
-        await db.query("DELETE FROM public.commerce_order_items WHERE order_id=$1::uuid", [row.orderId]);
-        await db.query(`WITH source AS (
-          SELECT (value->>'lineOrdinal')::integer AS ordinal,k.id AS sku_id,
-            (value->>'quantity')::integer AS quantity,(value->>'unitAmountMinor')::bigint AS unit,
-            (value->>'quantity')::bigint*(value->>'unitAmountMinor')::bigint AS gross
-          FROM jsonb_array_elements($2::jsonb) JOIN public.catalog_skus k ON k.sku=value->>'sku'
-        ), bases AS (
-          SELECT source.*,floor(gross::numeric*($4::bigint-$3::bigint)/$4::bigint)::bigint AS effective_base,
-            mod(gross::numeric*($4::bigint-$3::bigint),$4::bigint) AS fraction FROM source
-        ), allocated AS (
-          SELECT bases.*,effective_base+CASE WHEN row_number() OVER(ORDER BY fraction DESC,ordinal)
-            <= $4::bigint-$3::bigint-(SELECT sum(effective_base) FROM bases) THEN 1 ELSE 0 END AS effective FROM bases
-        ), split AS (
-          SELECT allocated.*,quantity-(effective%quantity)::integer AS qty,effective/quantity AS price FROM allocated
-          UNION ALL SELECT allocated.*,(effective%quantity)::integer,effective/quantity+1 FROM allocated WHERE effective%quantity>0
-        ) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor,
-          source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,promotion_discount_allocated_minor,promotion_allocation_fingerprint)
-        SELECT $1::uuid,sku_id,row_number() OVER(ORDER BY ordinal,price,qty)::integer,qty,price,price*qty,
-          ordinal,unit,unit*qty,(unit-price)*qty,$5::text FROM split WHERE qty>0`,
-        [row.orderId, JSON.stringify(snapshot.orderSnapshot.lines), pricing.discountAmountMinor, pricing.productSubtotalAmountMinor, snapshot.frozenFingerprint]);
-      }
-      if (pricing.shippingAmountMinor) await db.query(`INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor)
-        VALUES($1::uuid,'shipping_charge','shipping',$2)`, [row.orderId, pricing.shippingAmountMinor]);
+      await applyNativeRenewalMoney(db,snapshot,row.orderId);
     }
     return {
       contractVersion: "platform.subscription.renewal.v1" as const,
@@ -103,4 +79,33 @@ function requiredText(value: unknown, field: string): string {
   const result = typeof value === "string" ? value.trim() : "";
   if (!result) throw new Error(`subscription_renewal_${field}_invalid`);
   return result;
+}
+
+/** Existing retained-money projection, shared by explicit generation preparation. */
+export async function applyNativeRenewalMoney(db: SubscriptionQueryExecutor, snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot, orderId: unknown): Promise<void> {
+      const pricing = snapshot.pricingSnapshot;
+      if (pricing.discountAmountMinor) {
+        await db.query("DELETE FROM public.commerce_order_items WHERE order_id=$1::uuid", [orderId]);
+        await db.query(`WITH source AS (
+          SELECT (value->>'lineOrdinal')::integer AS ordinal,k.id AS sku_id,
+            (value->>'quantity')::integer AS quantity,(value->>'unitAmountMinor')::bigint AS unit,
+            (value->>'quantity')::bigint*(value->>'unitAmountMinor')::bigint AS gross
+          FROM jsonb_array_elements($2::jsonb) JOIN public.catalog_skus k ON k.sku=value->>'sku'
+        ), bases AS (
+          SELECT source.*,floor(gross::numeric*($4::bigint-$3::bigint)/$4::bigint)::bigint AS effective_base,
+            mod(gross::numeric*($4::bigint-$3::bigint),$4::bigint) AS fraction FROM source
+        ), allocated AS (
+          SELECT bases.*,effective_base+CASE WHEN row_number() OVER(ORDER BY fraction DESC,ordinal)
+            <= $4::bigint-$3::bigint-(SELECT sum(effective_base) FROM bases) THEN 1 ELSE 0 END AS effective FROM bases
+        ), split AS (
+          SELECT allocated.*,quantity-(effective%quantity)::integer AS qty,effective/quantity AS price FROM allocated
+          UNION ALL SELECT allocated.*,(effective%quantity)::integer,effective/quantity+1 FROM allocated WHERE effective%quantity>0
+        ) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor,
+          source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,promotion_discount_allocated_minor,promotion_allocation_fingerprint)
+        SELECT $1::uuid,sku_id,row_number() OVER(ORDER BY ordinal,price,qty)::integer,qty,price,price*qty,
+          ordinal,unit,unit*qty,(unit-price)*qty,$5::text FROM split WHERE qty>0`,
+        [orderId, JSON.stringify(snapshot.orderSnapshot.lines), pricing.discountAmountMinor, pricing.productSubtotalAmountMinor, snapshot.frozenFingerprint]);
+      }
+      if (pricing.shippingAmountMinor) await db.query(`INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor)
+        VALUES($1::uuid,'shipping_charge','shipping',$2)`, [orderId, pricing.shippingAmountMinor]);
 }

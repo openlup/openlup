@@ -242,6 +242,7 @@ const order = [
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
   "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
+  "catalog_sku_successors",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "catalog_price_setup_receipts",
@@ -276,6 +277,7 @@ const order = [
   "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
   "payment_dunning_case_attribution", "payment_refund_evidence",
   "subscription_stock_wait_cases",
+  "subscription_successor_proposals", "subscription_successor_operations_v2", "subscription_successor_wait_cases_v2", "subscription_successor_reservations_v2",
   "subscriber_profiles", "subscriber_review_access_grants", "subscriber_retention_intents", "commerce_order_reviews", "commerce_order_review_media",
   "commerce_order_review_command_receipts", "commerce_order_review_audit", "invoicing_cutover", "invoicing_duties", "invoicing_seller_revisions",
   "invoicing_buyer_snapshots", "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults", "invoicing_document_observations", "invoicing_delivery_receipts",
@@ -601,7 +603,8 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
   const fields = table === "commerce_orders" ? ["recovery_root_order_id", "recreated_from_order_id"]
     : table === "fulfillment_shipments" ? ["replaces_shipment_id"]
       : table === "invoicing_duties" ? ["parent_duty_id"]
-        : table === "catalog_publications" ? ["previous_id"] : [];
+        : table === "catalog_publications" ? ["previous_id"]
+          : table === "subscription_successor_operations_v2" ? ["predecessor_generation_id"] : [];
   if (!fields.length) return [...rows];
   const pending = new Map<string, { row: string; parents: string[] }>();
   for (const row of rows) {
@@ -651,6 +654,11 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     commerce_order_operations: ["communication_refund_subject"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
     subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
+    catalog_sku_successors: ["catalog_sku_successors_guard_v2"],
+    subscription_successor_proposals: ["subscription_successor_proposals_guard_v2"],
+    subscription_successor_operations_v2: ["subscription_successor_operations_guard_v2"],
+    subscription_successor_wait_cases_v2: ["subscription_successor_wait_guard_v2"],
+    subscription_successor_reservations_v2: ["subscription_successor_reservations_guard_v2"],
   };
   const actual = (await client.query<{ table: string; name: string }>(`SELECT c.relname AS table,t.tgname AS name FROM pg_catalog.pg_trigger t
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

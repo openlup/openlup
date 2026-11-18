@@ -18,6 +18,7 @@ const templates: Readonly<Record<string, string>> = Object.freeze({
   payment_expired: "subscription-payment-expired",
   payment_recovered: "subscription-payment-recovered", winback_eligible: "subscription-winback",
   stock_wait_started: "subscription-stock-wait-started", stock_wait_resumed: "subscription-stock-wait-resumed",
+  predecessor_withdrawn: "subscription-predecessor-withdrawn", successor_offered: "subscription-successor-offered",
 });
 export function subscriptionLifecycleTemplate(eventType: string, retryAttempt?: number | null): string | null {
   // Installed dunning SQL uses rung 3 for every value other than exactly 1 or 2.

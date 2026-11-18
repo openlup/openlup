@@ -1,3 +1,5 @@
+import { catalogSuccessorStoredCommandSchema, catalogSuccessorStoredRecordSchema, catalogSuccessorStoredApplyResultSchema, catalogSuccessorValidationPayload } from "./successorPublication.js";
+import type { CatalogSuccessorStoredRecord, CatalogSuccessorStoredCommand } from "./contracts/successors.js";
 import { catalogLifecycleStoredCommandSchema, catalogLifecycleStoredRecordSchema, catalogLifecycleStoredApplyResultSchema, catalogLifecycleValidationPayload } from "./lifecycleV2.js";
 import { createHash } from "node:crypto";
 import {
@@ -21,7 +23,7 @@ import {
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { validateCatalogDraft, type CatalogDraftReadiness } from "./draftValidation.js";
 
-export interface CatalogDraftHandlerDeps<Context, Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftHandlerDeps<Context, Record extends CatalogSuccessorStoredRecord = CatalogDraftRecord> {
   store: CatalogDraftStorePort<Record>;
   registry: CatalogProductTypeRegistry;
   attributeReferences?: CatalogAttributeReferencePort;
@@ -41,8 +43,8 @@ function failure(error: unknown): CatalogDraftRefusal {
 }
 
 /** Dark use case: mounting requires a verified operator authorizer at composition. */
-function draftHandler<Context, Record extends CatalogLifecycleStoredRecord>(deps: CatalogDraftHandlerDeps<Context, Record>, schemas: {
-  command: z.ZodType<CatalogLifecycleStoredCommand>; record: z.ZodType<Record>;
+function draftHandler<Context, Record extends CatalogSuccessorStoredRecord>(deps: CatalogDraftHandlerDeps<Context, Record>, schemas: {
+  command: z.ZodType<CatalogSuccessorStoredCommand>; record: z.ZodType<Record>;
   result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }) {
   const { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
@@ -80,7 +82,7 @@ function draftHandler<Context, Record extends CatalogLifecycleStoredRecord>(deps
         let readiness: CatalogDraftReadiness | undefined;
         if (command.payload) {
           const validation = command.payload.schemaVersion !== 1
-            ? await validateCatalogDraftV2(command.payload.schemaVersion === 2 ? command.payload : catalogLifecycleValidationPayload(command.payload), deps.registry, deps.attributeReferences)
+            ? await validateCatalogDraftV2(command.payload.schemaVersion === 2 ? command.payload : catalogLifecycleValidationPayload(command.payload.schemaVersion === 5 ? catalogSuccessorValidationPayload(command.payload) : command.payload), deps.registry, deps.attributeReferences)
             : validateCatalogDraft(command.payload, deps.registry);
           if (!validation.valid) return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: validation.issues };
           readiness = validation.readiness;
@@ -146,4 +148,11 @@ export function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDe
  */
 export function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogLifecycleStoredRecord>) {
   return draftHandler(deps, { command: catalogLifecycleStoredCommandSchema, record: catalogLifecycleStoredRecordSchema, result: catalogLifecycleStoredApplyResultSchema });
+}
+
+/** Explicit successor authoring dialect; prior handlers retain their schemas.
+ * @experimental
+ */
+export function createCatalogDraftHandlerV5<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogSuccessorStoredRecord>) {
+  return draftHandler(deps, { command: catalogSuccessorStoredCommandSchema, record: catalogSuccessorStoredRecordSchema, result: catalogSuccessorStoredApplyResultSchema });
 }

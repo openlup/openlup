@@ -1,3 +1,4 @@
+import type { CatalogSuccessorStoredRecord } from "./contracts/successors.js";
 import type {
   CatalogDraftGetQuery, CatalogDraftListQuery,
   CatalogDraftPage, CatalogDraftRefusal,
@@ -8,7 +9,7 @@ import type { CatalogLifecycleStoredRecord, CatalogLifecycleStoredCommand } from
 
 /** Portable adapters accept this actor only after the injected operator authorizer succeeds. */
 export interface CatalogDraftOperator { actorId: string }
-export interface CatalogDraftStorePort<Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftStorePort<Record extends CatalogSuccessorStoredRecord = CatalogDraftRecord> {
   apply(input: { canonicalCommand: string; fingerprint: string; actorId: string }): Promise<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
   get(query: CatalogDraftGetQuery, actorId: string): Promise<Record | null>;
   list(query: CatalogDraftListQuery, actorId: string): Promise<CatalogDraftPage>;

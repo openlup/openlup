@@ -392,3 +392,15 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   need(changed || payload.publication.kind === "compensation" && payload.publication.operations.length > 0, "catalog_publication_v3_compile_change_noop");
   return { product: result, skus: sorted, documents, activation, changed };
 }
+
+/** Successor declarations live in a separate manifest version.
+ * @experimental
+ */
+export const catalogSuccessorPublicationStateSchema = z.union([catalogPublicationStateSchema, z.object({
+  schemaVersion: z.literal(4), product: governedSchema(catalogPublishedProductSchema, "definitionDigest"),
+  skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()),
+  successors: z.array(z.object({ successorSkuId: id, successorOf: id }).strict()).min(1).max(10_000),
+}).strict().refine(value => value.skus.every((sku,index) => index === 0 || value.skus[index - 1]!.skuId < sku.skuId)
+  && value.skus.some(sku => sku.skuId === value.product.primarySkuId)
+  && value.successors.every((pair,index) => pair.successorSkuId !== pair.successorOf && value.skus.some(sku => sku.skuId === pair.successorSkuId)
+    && (index === 0 || value.successors[index - 1]!.successorSkuId < pair.successorSkuId)))]);

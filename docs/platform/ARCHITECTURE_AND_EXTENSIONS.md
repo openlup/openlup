@@ -1868,6 +1868,22 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+The experimental native successor store separates immutable schedule lineage
+from generation execution. An explicit accepted proposal may replace an unpaid
+stock-wait basket at the agreed quote; an offer alone never changes service.
+Legacy operations, cases and receipts retain their original APIs. New case
+readers use an explicit kind, and new generations own their native order, cycle,
+intent and reservation links. New mixed writers acquire existing targets
+nonblocking and roll back on contention; catalogue locks remain shared and last.
+
+Opened-wait and withdrawal publication consumers share one notice completion
+writer. Commit a source claim before entering commerce, then acknowledge only a
+committed M04 handoff or authoritative obsolescence. Missing recipients or
+lineage retry. The message identity uses the withdrawal episode and immutable
+operation, so worker claim generations cannot create duplicate notices. Native
+generation-aware retry, delivery and transfer bindings require host qualification
+before activation; package construction activates nothing.
+
 Native package, exact, sized and transaction-local legacy edit previews include a versioned per-line agreement disclosure. The complete current renewal-term baseline, currency and original lane digest bind the accepted hash. Missing or ambiguous terms and unavailable currency refuse; currency differences refuse without conversion. Added and removed sides are null, while a real zero remains numeric. Existing lane pricing, historical successful replay and subscription timing stay with their owners. The legacy bridge requires one authenticated transaction connection. These additions are experimental and unbound.
 
 The native preview-prune helper accepts a retention and batch limit, returns the deleted count and retains accepted history. The recorder delegates with its existing seven-day/500-row values; deployments own any independent invocation. See the [migration note](../../packages/platform/changes/lc9.md) for installation and managed-rail limits.

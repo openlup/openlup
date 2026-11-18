@@ -1,3 +1,5 @@
+import { catalogSuccessorStoredRecordSchema, catalogSuccessorStoredApplyResultSchema } from "./successorPublication.js";
+import type { CatalogSuccessorStoredRecord } from "./contracts/successors.js";
 import { catalogLifecycleStoredRecordSchema, catalogLifecycleStoredApplyResultSchema } from "./lifecycleV2.js";
 import {
   catalogDraftApplyResultSchema, catalogDraftRecordSchema,
@@ -16,7 +18,7 @@ import { CatalogDraftStoreError, type CatalogDraftStorePort } from "./draftPorts
 import type { PgQueryExecutor } from "../data/index.js";
 
 /** Dark owner-only storage. Composition must verify the operator before use. */
-function draftStore<Record extends CatalogLifecycleStoredRecord>(client: PgQueryExecutor, schemas: {
+function draftStore<Record extends CatalogSuccessorStoredRecord>(client: PgQueryExecutor, schemas: {
   record: z.ZodType<Record>; result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }, maxVersion: number): CatalogDraftStorePort<Record> {
   const { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
@@ -35,7 +37,7 @@ function draftStore<Record extends CatalogLifecycleStoredRecord>(client: PgQuery
   return {
     async apply(request) {
       try {
-        if (maxVersion < 4) {
+        if (maxVersion < 5) {
           let version: unknown;
           try { version = JSON.parse(request.canonicalCommand)?.schemaVersion; } catch { /* SQL retains legacy malformed-input refusals. */ }
           if (typeof version === "number" && version > maxVersion) return { outcome: "validation_issue", reason: "command_invalid" };
@@ -107,4 +109,11 @@ function refusal(error: unknown): CatalogDraftRefusal {
  */
 export function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): CatalogDraftStorePort<CatalogLifecycleStoredRecord> {
   return draftStore(client, { record: catalogLifecycleStoredRecordSchema, result: catalogLifecycleStoredApplyResultSchema }, 4);
+}
+
+/** Explicit successor dialect opt-in.
+ * @experimental
+ */
+export function createPostgresCatalogDraftStoreV5(client: PgQueryExecutor): CatalogDraftStorePort<CatalogSuccessorStoredRecord> {
+  return draftStore(client, { record: catalogSuccessorStoredRecordSchema, result: catalogSuccessorStoredApplyResultSchema }, 5);
 }

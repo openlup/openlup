@@ -7,6 +7,10 @@ export type SubscriptionLifecycleFact = {
   | { kind: "payment_recovered"; paymentEvidenceRef: string }
   | { kind: "stock_wait_started" | "stock_wait_resumed"; frozenFingerprint: string }
   | { kind: "winback_eligible"; cancelledAt: string; paymentMethodRef: string }
+  /** @experimental */
+  | { kind: "predecessor_withdrawn"; frozenFingerprint: string; withdrawalPublicationId: string; predecessors: { skuId: string; skuCode: string }[] }
+  /** @experimental */
+  | { kind: "successor_offered"; proposalId: string; predecessorSkuId: string; successorSkuId: string; quoteHash: string; expiresAt: string }
 );
 /** M04 receives a descriptor; host owns copy, recipient, consent and transport. */
 export interface SubscriptionLifecycleMessageDescriptor {

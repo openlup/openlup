@@ -48,7 +48,7 @@ export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/c
 /** @experimental */
 export type CatalogObligationFamilyV2 = "template" | "pending_activation" | "frozen_renewal" | "outstanding_order" | "replacement" | "stock_wait" | "graduation";
 /** @experimental */
-export interface CatalogBoundObligationV2 { family: CatalogObligationFamilyV2; sourceId: string; subscriptionId: string | null; skuId: string; skuCode: string; skuRevisionId: string | null }
+export interface CatalogBoundObligationV2 { caseKind?: "legacy" | "successor"; family: CatalogObligationFamilyV2; sourceId: string; subscriptionId: string | null; skuId: string; skuCode: string; skuRevisionId: string | null }
 /** @experimental */
 export type CatalogBoundObligationsV2 =
   | { schemaVersion: 2; outcome: "complete"; obligations: CatalogBoundObligationV2[] }

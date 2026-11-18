@@ -94,3 +94,8 @@ export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./
 
 export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
 export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+export { createPostgresSuccessorStore } from "./postgresSuccessorStore.js";
+export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuccessorStore.js";
+export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
+export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
+export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";

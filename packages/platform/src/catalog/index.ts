@@ -92,3 +92,10 @@ export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
 export { createPostgresCatalogAdmission } from "./admission.js";
 export type { CatalogAdmissionPort } from "./admission.js";
+export type { CatalogWithdrawalImpactPort, CatalogSkuSuccessor, CatalogDraftPayloadV5, CatalogDraftCommandV5,
+  CatalogSuccessorStoredCommand, CatalogSuccessorStoredRecord, CatalogFullPublicationV4 } from "./contracts/successors.js";
+export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSuccessorStoredPayloadSchema,
+  catalogSuccessorStoredCommandSchema, catalogSuccessorStoredRecordSchema, catalogSuccessorStoredApplyResultSchema } from "./successorPublication.js";
+export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
+export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
+export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";

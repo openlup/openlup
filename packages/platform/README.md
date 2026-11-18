@@ -1488,6 +1488,25 @@ obligation until every creation and handoff lane is qualified under the
 [catalogue lock order](../../docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order).
 No agreement, quantity, price or cycle schedule is changed by a lifecycle write.
 
+Experimental successor authoring uses `catalogDraftPayloadV5Schema` and the V5
+draft factories. A `create_sku` operation may declare `successorOf`; the publication
+retains that exact pair in manifest version 4, read with `readbackV4`. Older
+schemas remain strict. `createPostgresCatalogWithdrawalImpact` calls the same
+unpaginated obligation query as archive, including successor generations and
+waits. Unknown or unavailable evidence never means no obligations.
+
+`createPostgresSuccessorStore` accepts server-owned LC9 preview enrichment and a
+native renewal codec. Offers require explicit acceptance. Only the dedicated
+unpaid-wait command can supersede a frozen basket outside the ordinary edit
+window; it retains the original cycle anchor and refuses paid or provider-owned
+work. Existing legacy operation and case readers remain unchanged; version 2
+case reads require an explicit kind. New execution identities never alias the
+root operation. `createPostgresSuccessorNotices` binds opened and publication
+facts to the same notice writer and the existing M04 descriptor port. Recipient
+failures retry, and durable message keys survive source-event and worker replay.
+These factories register no workers or capabilities. Follow the
+[migration instructions](changes/lc10.md) before composing a host runtime.
+
 Publication preserves omitted SKU revisions unless an explicit compatible derived
 operation changes them. Material or inconclusive changes require successor SKU
 identity. A document change revalidates affected omitted siblings. Nonmass or

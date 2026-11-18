@@ -75,6 +75,9 @@ const owned = [
   "commerce_offer_policy_cohort_marking", "commerce_offer_policy_rollout_baselines",
   // AUTHORITATIVE catalogue-local exact-command replay evidence.
   "catalog_price_setup_receipts",
+  // AUTHORITATIVE successor provenance and accepted generation history.
+  "catalog_sku_successors", "subscription_successor_proposals", "subscription_successor_operations_v2",
+  "subscription_successor_wait_cases_v2", "subscription_successor_reservations_v2",
 ] as const;
 
 // Intentionally not carried: single-use authorization state must stay in its
