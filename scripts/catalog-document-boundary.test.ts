@@ -49,6 +49,7 @@ const SQL_DOCUMENT_INTERPRETATION = new RegExp(
 );
 const OPAQUE_DOCUMENT = String.raw`\b(?:document|document_payload|revision_document_payload)\b`;
 const DOCUMENT_INTERPRETATION = new RegExp(String.raw`\b(?:parse|safeParse|validate|canonicalize)\s*\([^();,]*${OPAQUE_DOCUMENT}`);
+const BARE_CANONICAL_TEXT_INTERPRETATION = /(?<![\w$.])(?:parse|safeParse|validate|canonicalize)\s*\(\s*canonicalText\b/;
 const LOG_OR_STRINGIFY = /\b(?:console|logger)\s*[.[]|\bJSON\s*\.\s*stringify\s*\(/;
 const DOCUMENT_DISCLOSURE = new RegExp(String.raw`(?:\b(?:console|logger)\s*(?:\.\s*\w+|\[[^\]]+\])\s*\(|\bJSON\s*\.\s*stringify\s*\()[^;]*${OPAQUE_DOCUMENT}`);
 
@@ -118,6 +119,17 @@ function exactUses(actual: readonly string[], expected: readonly string[]): bool
     && actual.every(line => expected.includes(line));
 }
 
+function readsWholeDocumentRow(source: string): boolean {
+  return source.split(/[`;]/).some(statement => {
+    if (/\bselect\s+\*\s+from\s+(?:public\.)?catalog_product_document_revisions\b/i.test(statement)) return true;
+    const tables = statement.matchAll(/\b(?:from|join)\s+(?:public\.)?(catalog_product_document_revisions)\b(?:\s+(?:as\s+)?([a-z_][\w]*))?/gi);
+    return [...tables].some(([, table, alias]) => {
+      const row = alias && !SQL_RESERVED_WORDS.has(alias.toLowerCase()) ? alias : table;
+      return new RegExp(String.raw`\b(?:to_jsonb|row_to_json|to_json)\s*\(\s*${row}\s*\)|\b${row}\s*\.\s*\*`, "i").test(statement);
+    });
+  });
+}
+
 // This exact opt-in reader may transport an unknown value only to host policy.
 // Any second selection or other use of the value requires another boundary decision.
 function opaqueQuotePayloadPassThrough(source: string, payloadLines: readonly string[]): boolean {
@@ -139,11 +151,15 @@ function violations(files: readonly SourceFile[]): string[] {
     const documentMethods = lines.filter(line => DOCUMENT_METHOD.test(line)).map(line => line.trim());
     const installedCanonicalization = file.path === PUBLICATION_COMPILER
       && exactUses(documentMethods, PUBLICATION_CANONICALIZATION_USES);
-    if ((documentMethods.length > 0 && !installedCanonicalization) || DOCUMENT_INTERPRETATION.test(file.source)) {
+    if ((documentMethods.length > 0 && !installedCanonicalization) || DOCUMENT_INTERPRETATION.test(file.source)
+      || BARE_CANONICAL_TEXT_INTERPRETATION.test(file.source)) {
       found.push(`${file.path}: parses, validates, or canonicalizes a private document`);
     }
     if (SQL_DOCUMENT_INTERPRETATION.test(file.source)) {
       found.push(`${file.path}: interprets the SQL document payload`);
+    }
+    if (readsWholeDocumentRow(file.source)) {
+      found.push(`${file.path}: document rows must use explicit projections`);
     }
     if (readsDormantCatalogSkuGtin(file.source)) {
       found.push(`${file.path}: reads dormant catalog_skus.gtin`);
@@ -235,12 +251,24 @@ describe("portable catalog document boundary", () => {
   });
 
   it.each([
+    "SELECT to_jsonb(d) FROM public.catalog_product_document_revisions d;",
+    "SELECT row_to_json(saved) FROM public.catalog_product_document_revisions AS saved;",
+    "SELECT saved.* FROM public.catalog_product_document_revisions saved;",
+    "SELECT * FROM public.catalog_product_document_revisions;",
+  ])("refuses a whole document row projection: %s", source => {
+    expect(violations([{ path: PUBLICATION_WRITER, source }])).toContain(
+      `${PUBLICATION_WRITER}: document rows must use explicit projections`,
+    );
+  });
+
+  it.each([
     "canonicalizeDocument(document);",
     "otherRules.canonicalizeDocument(document);",
     'import { canonicalizeDocument } from "./privateCanonicalizer.js";',
     "canonicalize(document);",
     "parse(document);",
     "validate(document);",
+    "parse(canonicalText);",
   ])("refuses an unapproved document method: %s", use => {
     const source = [...PUBLICATION_CANONICALIZATION_USES, use].join("\n");
     expect(violations([{ path: PUBLICATION_COMPILER, source }])).toContain(`${PUBLICATION_COMPILER}: ${publicationRefusal(PUBLICATION_COMPILER)}`);

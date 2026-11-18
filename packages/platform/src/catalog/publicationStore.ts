@@ -116,7 +116,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       coalesce((SELECT jsonb_agg(to_jsonb(r)) FROM public.catalog_sku_revisions r WHERE r.product_id=$1::uuid AND r.id IN (
         SELECT (entry->>'revisionId')::uuid FROM public.catalog_publications p, jsonb_array_elements(p.canonical_state::jsonb->'skus') entry
         WHERE p.id=coalesce($2::uuid,(SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid)))),'[]'::jsonb) AS revisions,
-      coalesce((SELECT jsonb_agg(to_jsonb(d)) FROM public.catalog_product_document_revisions d WHERE d.product_id=$1::uuid AND (
+      coalesce((SELECT jsonb_agg(jsonb_build_object('id',d.id,'product_id',d.product_id,'revision_no',d.revision_no,
+        'schema_id',d.schema_id,'document_ref',d.document_ref,'source_ref',d.source_ref,'digest',d.digest,
+        'canonical_text',d.canonical_text,'provenance',d.provenance))
+        FROM public.catalog_product_document_revisions d WHERE d.product_id=$1::uuid AND (
         d.id=(SELECT document_revision_id FROM public.catalog_publications p WHERE p.id=coalesce($2::uuid,(SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid)))
         OR d.revision_no=ANY($3::integer[]) OR ($2::uuid IS NULL AND d.revision_no=(SELECT max(revision_no) FROM public.catalog_product_document_revisions WHERE product_id=$1::uuid)))),'[]'::jsonb) AS documents`,
     [productId, historical?.publicationId ?? null, documentRevisions]);
