@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { configurations } from '../owned/store.config.ts';
 import { starterCatalogue, selectCatalogueConfiguration } from '../host/catalogue-selection.ts';
 import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
 import { installStarterCatalogueDefinitions } from '../installation/install.ts';
@@ -8,6 +9,13 @@ import { starterQuoteCatalogue } from '../host/editor-catalogue.ts';
 
 for (const entry of starterCatalogue.list()) test(`MC5-N-005 ${entry.configuration.id} drives boot, authoring, install and read composition`, async () => {
   const { configuration, draftType } = entry;
+  assert.equal(selectCatalogueConfiguration(configuration.id), configuration);
+  const replacement = structuredClone(configuration);
+  replacement.offer.shippingMinor++;
+  try {
+    configurations[configuration.id] = replacement;
+    assert.equal(selectCatalogueConfiguration(configuration.id), replacement);
+  } finally { configurations[configuration.id] = configuration; }
   if (entry.pack === null) {
     assert.equal(entry.scope, null);
     assert.ok(entry.types.resolve(draftType)?.netContentUnits.includes('starter:each'));
@@ -26,7 +34,6 @@ for (const entry of starterCatalogue.list()) test(`MC5-N-005 ${entry.configurati
       pack.types.map(type => [type.key, type.version]));
     return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(payload.manifest).digest('hex') } }] };
   } };
-  assert.equal(selectCatalogueConfiguration(configuration.id), configuration);
   assert.equal(starterQuoteCatalogue(executor, configuration, entry).registration, entry);
   const explicitConfig = { ...configuration, id: 'programmatic' };
   assert.equal(starterQuoteCatalogue(executor, explicitConfig).registration, undefined);

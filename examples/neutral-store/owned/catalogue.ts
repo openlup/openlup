@@ -23,6 +23,6 @@ const demonstrationPack: CatalogPackInput = {
 };
 
 export const starterCatalogue = createStarterCatalogueRegistry([
-  { configuration: configurations.supplements!, pack: demonstrationPack, draftType, offerVersion: 'classic' },
-  { configuration: configurations.coffee!, pack: demonstrationPack, draftType, offerVersion: 'classic' },
+  { get configuration() { return configurations.supplements!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
+  { get configuration() { return configurations.coffee!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
 ], defaultConfigurationId);

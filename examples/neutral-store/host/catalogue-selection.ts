@@ -1,3 +1,4 @@
+import type { StoreConfig } from '../shared/config.ts';
 import type { CatalogProductTypeRegistry } from '@openlup/platform/catalog/contracts';
 import * as owned from '../owned/catalogue.ts';
 import { configurations, defaultConfigurationId } from '../owned/store.config.ts';
@@ -11,14 +12,13 @@ const authored = owned as Partial<{ starterCatalogue: StarterCatalogueRegistry; 
 function retainedRegistry(types: CatalogProductTypeRegistry | undefined) {
   const draftType = { key: 'starter:item', version: 1 };
   if (!types?.resolve(draftType)) throw new Error('starter_catalogue_upgrade_required');
-  const entries = new Map(Object.values(configurations).map(configuration => [configuration.id,
-    { configuration, types, draftType, pack: null, scope: null } satisfies Legacy]));
+  const entry = (configuration: StoreConfig): Legacy => ({ configuration, types, draftType, pack: null, scope: null });
   return {
-    list: () => [...entries.values()],
+    list: () => Object.values(configurations).map(entry),
     select(id: string = defaultConfigurationId) {
-      const entry = entries.get(id);
-      if (!entry) throw new Error('starter_configuration_unknown');
-      return entry;
+      const configuration = Object.hasOwn(configurations, id) ? configurations[id] : undefined;
+      if (configuration?.id !== id) throw new Error('starter_configuration_unknown');
+      return entry(configuration);
     },
   };
 }

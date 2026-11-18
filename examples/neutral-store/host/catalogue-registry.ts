@@ -10,14 +10,20 @@ export interface StarterCatalogueRegistration {
 }
 
 export function createStarterCatalogueRegistry(registrations: readonly StarterCatalogueRegistration[], defaultId: string) {
-  const entries = new Map(registrations.map(({ configuration, pack, draftType, offerVersion }) => {
+  const entries = new Map(registrations.map(registration => {
+    const { configuration, pack, draftType, offerVersion } = registration;
     if (!configuration?.id || !offerVersion || offerVersion.length > 240 || offerVersion.trim() !== offerVersion) {
       throw new Error('starter_catalogue_registration_invalid');
     }
     const types = createCatalogProductTypeRegistry(pack.types);
     if (!types.resolve(draftType)) throw new Error('starter_catalogue_registration_invalid');
     const type = { key: draftType.key, version: draftType.version };
-    return [configuration.id, { configuration, pack, types, draftType: type,
+    const id = configuration.id;
+    return [id, { get configuration() {
+      const selected = registration.configuration;
+      if (selected?.id !== id) throw new Error('starter_catalogue_registration_invalid');
+      return selected;
+    }, pack, types, draftType: type,
       scope: { types: [type], offerVersion } satisfies CatalogServingScopeV2 }];
   }));
   if (entries.size !== registrations.length || !entries.has(defaultId)) throw new Error('starter_catalogue_registration_invalid');

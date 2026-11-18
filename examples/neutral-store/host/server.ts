@@ -14,7 +14,7 @@ import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const options = parseHostArguments(process.argv.slice(2));
-const registration = starterCatalogue.select(options.configuration);
+const registration = { ...starterCatalogue.select(options.configuration) };
 const config = registration.configuration;
 assertConfig(config);
 const configuredPort = options.port;
