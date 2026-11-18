@@ -185,9 +185,9 @@ review reports, actual checks and remaining gates; this plan grants no authority
 | W2–W4 | Source implementation delivered in #757. The existing Core consumer now also uses a real offline npm workspace: the public import, installed-manifest CLI recipe and MCP agree on the hoisted artifact/version; MCP reads its returned citation, application scans exclude the sibling, and a contradictory owning lock refuses. Existing flat, NodeNext/Bundler and browser proof remains. |
 | W5 | Our source/artifact evidence is retained in #757 and this follow-up. PR8 #758 delivered the [manual regression procedure](agent-dx-regression.md); its measurement owner keeps paired runs, counting units and A5. No duplicate benchmark is introduced. |
 | W6 | Delivered in #757: read-only prerequisites, cheap-first checks and real runner discovery. Build reuse remains measured no-change. After PR7 landed, its test-guide menu gained a pointer to the existing read-only plan; the canonical explanation and all obligations remain unchanged. |
-| W7 | The initial unreserved fixture/type repairs are delivered in #757. This follow-up adds declarations at two stable JavaScript edges, with compiler refusal witnesses and unchanged implementation/consumers. Effective strict inventories remain explicit; global flags await the reserved fixtures and qualification owners below. |
+| W7 | The initial unreserved fixture/type repairs are delivered in #757. This follow-up adds declarations at two stable JavaScript edges, with compiler refusal witnesses and unchanged implementation/consumers. The final W7 batch repairs the remaining typed boundaries and enables effective strictness in both root source projects. |
 | W8 | Measured no-change on nodeHostRuntimeDrain and disposableDockerReap: their shared setup and distinct resource ownership already protect the relevant failure classes. No pooling or helper rewrite. |
-| W9 | Deterministic source/artifact evidence stays candidate-bound. PR8's procedure is delivered externally; the full model matrix, released A5 and global strictness remain open. No overall 10x or stable-framework claim. |
+| W9 | Deterministic source/artifact evidence stays candidate-bound. PR8's procedure is delivered externally. W7 has local compiler evidence; the full model matrix and released A5 remain open. No overall 10x or stable-framework claim. |
 
 W6's five-sample planted-fault profile measured median time to first failure
 37.068 s → 0.690 s (98.14% lower), with fault children deliberately cancelled at
@@ -214,23 +214,30 @@ guarantees without suppressions. This does not replace the unbound database-type
 seam or transfer ownership of the implementations.
 
 Prepared strict inventories decreased from the initial 40/31 app/tooling
-diagnostics to 4/29 in #757 and now 3/25. Both projects still exit 2. The remaining
-app diagnostics are in `bundleAdminFixtures`; tooling diagnostics are in
-checkout-refusal-recovery evidence, order-money AST, distribution CLI proof,
-release BOM, platform cold consumer and SQL admission. These money/catalogue and
-qualification/admission owners remain excluded. No global flag, debt or source
-exclusion is changed. Exact diagnostics and compiler exits travel in PR evidence;
-a passing ordinary typecheck is not a passing strict inventory. Probe only after
-the existing package builds: absent `dist` produces an incomparable cascade.
+diagnostics to 4/29 in #757 and 3/25 in #767. The final owner-authorized
+batch measured 3/25 on `656a1206e`, then resolved those diagnostics through
+fixture defaults, strict narrowing and declarations at JavaScript import
+boundaries. The changes retain the same money, catalogue, checkout, SQL and
+qualification decisions. Tooling reads the existing JavaScript modules' inferred
+and JSDoc types. The separate integration-test project keeps its previously
+resolved compiler settings and file selection.
+
+Both `tsconfig.app.json` and `tsconfig.node.json` now compile cleanly with strict
+mode enabled in the project files. The actual compilers reject a planted
+implicit-any parameter (`TS7006`) and unsafe null access (`TS18047`) in each
+project. `tsc --showConfig` confirms the project flags and root-file selection;
+no compatibility debt or source exclusions are added. Build the workspace
+packages before the probes so their `dist` declarations are present.
 
 At the inspection of main `edb2c10836d75d026bc07c895a63edef8f3bccad`, PR7 #756
 and PR8 #758 are merged. PR8 records a procedure, not a completed full rerun.
 External observations on candidate `966c32e16`, before #757, cover only the Terra
-t2–t4 pairs; t2 remains partial and t1 awaits a release. They do not settle the full
-paired matrix or establish an overall speed gain. The latest listed set remains
-0.43.0, published before PR1–8. Source hooks and local tarballs do not close the
-separate released blind A5 journey or P1-SF/DEMO acceptance. A5 identifiers in
-other programmes refer to their own outcomes.
+t2–t4 pairs; t2 remains partial and t1 was not run against that candidate.
+The qualified 1.2.0 set now includes the landed changes. The benchmark owner
+still needs the matched comparison and the separate released blind A5 journey.
+[Distribution evidence](../DISTRIBUTION_EVIDENCE.md) records the published set
+and qualification; [the measurement procedure](agent-dx-regression.md) owns the
+separate A5 and P1-SF/DEMO evidence boundaries.
 
 Self-retro: real CLI and packed-artifact checks exposed path assumptions that
 mocks missed. Shared compiler/build outputs must be serialized. Measurements

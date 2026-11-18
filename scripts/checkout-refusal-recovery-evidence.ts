@@ -1,4 +1,13 @@
-export function assertCheckoutRefusalRecoveryAttemptIdentity({ scenario, moneyEvidence, status }) {
+type RecoveryAttemptEvidence = {
+  scenario: string;
+  moneyEvidence?: { paymentAttempt?: { id?: unknown } | null } | null;
+  status?: {
+    payment?: { paymentAttemptId?: unknown } | null;
+    recoveryGuidance?: { paymentAttemptId?: unknown } | null;
+  } | null;
+};
+
+export function assertCheckoutRefusalRecoveryAttemptIdentity({ scenario, moneyEvidence, status }: RecoveryAttemptEvidence) {
   const expectedPaymentAttemptId = moneyEvidence?.paymentAttempt?.id;
   if (typeof expectedPaymentAttemptId !== "string" || expectedPaymentAttemptId.length === 0) {
     throw new Error(`${scenario}: money evidence active payment attempt id is missing`);

@@ -14,7 +14,10 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
-/** The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration. */
+/**
+ * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
+ * @param {readonly string[]} changedPaths
+ */
 export function needsForwardApproval(changedPaths) {
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path));
 }

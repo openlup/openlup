@@ -71,11 +71,7 @@ export type SubscribeEntryRefusal =
   | "offer_not_subscribable"
   | "details_incomplete";
 
-/**
- * ⛔ Discriminated on a STRING, not on a boolean `ok`. `tsconfig.app.json` runs with
- * `strict: false`, where a `true`/`false` discriminant does not narrow and the refusal
- * branch silently type-checks as the success branch.
- */
+/** The status distinguishes a prepared command from a refusal reason. */
 export type SubscribeEntryCommandResult =
   | { status: "ready"; command: CheckoutCommandV1 }
   | { status: "refused"; reason: SubscribeEntryRefusal };

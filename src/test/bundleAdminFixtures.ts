@@ -54,6 +54,7 @@ export function bundleDetail(overrides: Partial<BundleDetailView> = {}): GetBund
       compositionConstraint: null,
       metadata: {},
       resolvedCurrency: CURRENCY,
+      availability: null,
       components: [
         {
           sku: "UNIT-ALPHA-001",
@@ -139,12 +140,11 @@ export function pricePreview(
 /**
  * Catalog fixtures for the composition editor's unit picker.
  *
- * The optional detail fields are spread from ONE base object rather than restated
- * per SKU. Fields the unit picker never reads are OMITTED rather than set to null:
- * the contract marks them optional, and naming them would spend this publishable
- * family's ratchet headroom on fixture noise the test does not depend on.
+ * Required nullable details share one neutral default across the fixture SKUs.
  */
 const SKU_BASE = {
+  petType: null,
+  kcalPerUnit: null,
   netWeightGrams: null,
   formatCode: null,
   unitFormCode: null,

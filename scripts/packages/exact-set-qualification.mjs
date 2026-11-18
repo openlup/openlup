@@ -17,7 +17,12 @@ const json = path => JSON.parse(readFileSync(path, 'utf8'));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const refuse = detail => { throw new Error(`exact-set-qualification: ${detail}`); };
 
-/** Required dependencies remain explicit inputs even when npm will refuse their platform. */
+/**
+ * Required dependencies remain explicit inputs even when npm will refuse their platform.
+ * @param {{ os?: string | readonly string[], cpu?: string | readonly string[], libc?: string | readonly string[] }} manifest
+ * @param {boolean} optional
+ * @param {{ os: string, cpu: string, libc?: string }} target
+ */
 export function starterDependencyMatchesPlatform(manifest, optional, target) {
   return !optional || ["os", "cpu", "libc"].every(key => {
     if (key === "libc" && target.os !== "linux") return true;
@@ -29,7 +34,22 @@ export function starterDependencyMatchesPlatform(manifest, optional, target) {
   });
 }
 
-/** One starter proof for locally packed candidates and verified, committed released locks. */
+/**
+ * One starter proof for locally packed candidates and verified, committed released locks.
+ * @overload
+ * @param {string} checkout
+ * @param {ReadonlyMap<string, import('./pack-manifest-input.ts').VerifiedPack>} input
+ * @param {(name: string) => string} packInstalled
+ * @returns {void}
+ */
+/**
+ * @overload
+ * @param {string} checkout
+ * @param {{mode: 'released' | 'candidate', application: string, environment: NodeJS.ProcessEnv,
+ *   run: (command: string, args: string[], cwd: string) => string, lockfileSha256: string,
+ *   packages: string[], verifyInstalled: () => void}} input
+ * @returns {void}
+ */
 export function proveNeutralStarterConsumer(checkout, input, packInstalled = undefined) {
   const started = performance.now();
   const released = "mode" in input ? input : undefined, starter = join(checkout, "examples/neutral-store");
