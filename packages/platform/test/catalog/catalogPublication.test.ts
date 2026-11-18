@@ -285,6 +285,7 @@ it("cycle1 retained source must belong to the publication product", () => {
 it.each(["declared", "retained", "current draft id", "current revision", "v2 exclusion", "absent SKU", "ambiguous"])(
   "cycle1 operation source selection preserves %s precedence", kind => {
     const data = retainedPublicationInput();
+    data.product!.status = "active"; data.skus[0].status = "active";
     const claim = (record: typeof data.record) => ({ draftId: record.draftId, revision: record.revision, commandKey: record.commandKey, fingerprint: record.fingerprint });
     const older = { ...structuredClone(data.record), payload: structuredClone(data.payload) }, selected = { ...structuredClone(data.record), payload: structuredClone(data.payload) };
     older.draftId = "30000000-0000-4000-8000-000000000002"; older.revision = kind === "current draft id" ? 3 : 1;
@@ -473,6 +474,7 @@ it.each(["current", "before"])("cycle1 eligibility refuses archived state at the
 });
 it("cycle1 an unrelated archived SKU does not prevent eligibility", () => {
   const data = publicationWithSecondary(), primary = data.skus[0]; data.skus[1].status = "archived";
+  data.product!.status = "active"; primary.status = "active";
   data.payload.skus = [{ ...data.payload.skus[0], id: primary.id, code: primary.code, netContent: primary.netContent, options: primary.options,
     grossMass: primary.grossMass!, identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: "5901234123457", packagingLevel: "unit" }] }];
   data.payload.product.sharedContent.publicationSkus = [{ skuCode: primary.code, title: primary.title, minQuantity: primary.minQuantity, isAddon: primary.isAddon, facts: primary.facts }];
@@ -594,7 +596,7 @@ it.each(["archived SKU", "archived product", "absent identifier", "nonprimary GT
     if (kind === "absent identifier") second.identifiers = [];
     if (kind === "nonprimary GTIN") second.identifiers[0].isPrimary = false;
     if (kind === "foreign nonprimary identifier") { second.identifiers[0].scheme = "example:identifier"; second.identifiers[0].isPrimary = false; }
-    if (kind === "absent logistics") second.logisticsRef = null;
+    if (kind === "absent logistics") { second.logisticsRef = null; delete data.payload.skus[0].logisticsRef; }
     if (kind === "absent membership") second.memberships = [];
     if (kind === "declined membership") second.memberships[0].admitted = false;
     expect(() => compileCatalogPublication(data)).toThrow(kind.startsWith("archived") ? "catalog_publication_v3_compile_sku_archived" : "catalog_publication_v3_activation_readiness_failed");
@@ -641,7 +643,9 @@ describe.each([50_000, 50_001])("cycle1 default capacity boundary at %i SKUs", c
       delete data.payload.product.primarySkuId;
       const facts = { skuCode: next.code, title: next.title, minQuantity: next.minQuantity, isAddon: next.isAddon, facts: next.facts };
       data.payload.product.sharedContent.publicationSkus = [facts]; data.payload.product.sharedContent.requestedModes = [{ skuCode: next.code, modes: [] }];
-      data.payload.publication.operations = [{ op: "create_sku", productSlug: "article", skuId: next.id, documentRevisionNo: 1, ...facts }];
+      data.payload.publication.operations = [{ op: "create_sku", productSlug: "article", skuId: next.id, documentRevisionNo: 1, ...facts },
+        { op: "create_identifier", skuCode: next.code, scheme: "gs1:gtin", issuer: "example", value: "4006381333931",
+          packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null }];
     }
     try { result = compileCatalogPublication(data); } catch (error) { refusal = error; }
   });
@@ -669,14 +673,13 @@ it.each(["missing", "archived"])("cycle1 final primary refuses a %s retained SKU
   else data.skus[0].status = "archived";
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_compile_primary_foreign");
 });
-it("cycle1 activating a secondary SKU does not activate the draft product", () => {
+it("a scoped secondary SKU effect leaves the draft product otherwise unchanged", () => {
   const data = publicationWithSecondary();
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "SECOND", sellableStandalone: true, sellableInSubscription: false },
     { op: "set_sku_status", skuCode: "SECOND", status: "active" }];
-  const result = compileCatalogPublication(data);
-  expect(result.product.status).toBe("draft");
-  expect(result.skus.find(sku => sku.id === result.product.primarySkuId)?.status).toBe("draft");
-  expect(result.skus.find(sku => sku.code === "SECOND")?.status).toBe("active");
+  const issued = compileCatalogPublication(data);
+  expect(issued.product.status).toBe("draft");
+  expect(issued.skus.find(sku => sku.code === "SECOND")?.status).toBe("active");
 });
 it.each([true, false])("cycle1 changed=%s retains the matching product source and content", changed => {
   const data = retainedPublicationInput(), before = structuredClone(data.product!);
@@ -900,6 +903,7 @@ it.each([
   sku.logisticsRef = "example:logistics";
   sku.memberships = [{ offerVersion: "example:offer", admitted: true }];
   sku.sellableStandalone = !standalone;
+  data.product!.status = "active"; sku.status = "active";
   data.payload.product.sharedContent.requestedModes = modes === null ? [] : [{ skuCode: sku.code, modes: [...modes] }];
   if (source === "retained") {
     data.retainedSources = [structuredClone(data.record)];
@@ -1022,10 +1026,40 @@ it.each([
   else delete sku.grossMass;
   if (enabled) {
     sku.options = { pack_size: { kind: "quantity", value: sku.netContent } };
-    Object.assign(data.skus[1], { netContent: sku.netContent, options: sku.options, grossMass: sku.grossMass ?? null });
+    Object.assign(data.skus[1], { netContent: sku.netContent, options: sku.options, grossMass: sku.grossMass ?? null, status: "active" });
+    data.product!.status = "active";
     data.payload.publication.operations = [{ op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false }];
   }
   data.rules = { ...data.rules, validateSkuAmounts: amounts => BigInt(amounts.netGrams) <= 9_999_999n };
   if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
   else expect(compileCatalogPublication(data).skus.find(value => value.id === sku.id)?.grossMass).toEqual(sku.grossMass ?? null);
+});
+
+it.each([
+  ["complete structural plan", null],
+  ["missing new SKU", "catalog_publication_sku_effect_missing"],
+  ["missing unit identifier", "catalog_publication_identifier_effect_missing"],
+  ["missing case identifier", "catalog_publication_identifier_effect_missing"],
+  ["missing membership", "catalog_publication_membership_effect_missing"],
+  ["missing logistics", "catalog_publication_metadata_effect_missing"],
+  ["missing presentation", "catalog_publication_presentation_effect_missing"],
+] as const)("publication reconciles the sealed structural and activation effects: %s", (mode, reason) => {
+  const existing = mode === "missing presentation";
+  const data = existing ? retainedPublicationInput() : input();
+  const sku = data.payload.skus[0], skuCode = sku.code!, content = data.payload.product.sharedContent;
+  if (mode === "missing new SKU") {
+    data.payload.skus.push({ ...sku, id: "20000000-0000-4000-8000-000000000002", code: "NEW",
+      identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: "4006381333931", packagingLevel: "unit" }] });
+  }
+  if (mode === "missing unit identifier") data.payload.publication.operations = data.payload.publication.operations.filter(op => op.op !== "create_identifier");
+  if (mode === "missing case identifier") sku.identifiers!.push({ scheme: "gs1:gtin", issuer: "example", value: "4006381333931", packagingLevel: "case", quantity: 6 });
+  if (mode === "missing membership") content.offerMemberships.push({ skuCode, offerVersion: "example:offer", admitted: false });
+  if (mode === "missing logistics") sku.logisticsRef = "example:logistics";
+  if (mode === "missing presentation") {
+    content.presentation = { routePath: { en: "/authored" } };
+    sku.logisticsRef = "example:logistics";
+    data.payload.publication.operations = [{ op: "set_sku_metadata", skuCode, logisticsRef: sku.logisticsRef }];
+  }
+  if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
+  else expect(compileCatalogPublication(data).skus).toMatchObject([{ code: skuCode, identifiers: [{ value: sku.identifiers![0].value }] }]);
 });

@@ -76,7 +76,17 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
         const current = head ? await deps.readPublicationState?.(head) : { product: null, skus: [], documents: [], retainedSources: [] };
         if (!current || head && current.product?.id !== record.productId)
           unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
-        else compiled = compileCatalogPublication({ ...current, record, payload, definition, rules });
+        else {
+          compiled = compileCatalogPublication({ ...current, record, payload, definition, rules });
+          if (compiled.activation && current.product) {
+            const enabled = new Set(payload.publication.operations.flatMap(op => op.op === "set_eligibility"
+              && (op.sellableStandalone || op.sellableInSubscription) ? [op.skuCode] : []));
+            const promotesSku = compiled.skus.every(sku => !enabled.has(sku.code)
+              || current.skus.find(before => before.id === sku.id)?.status !== "draft" || sku.status === "active");
+            if (!promotesSku || current.product.status === "draft" && compiled.product.status !== "active")
+              hard.push({ path: "publication.operations", code: "catalog_publication_activation_effect_missing" });
+          }
+        }
       } catch (error) {
         if (error instanceof CatalogPublicationError) hard.push({ path: "publication", code: error.code });
         else unknown.push({ path: "publication", code: "publication_preparation_unavailable" });

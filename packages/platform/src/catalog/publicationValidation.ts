@@ -186,6 +186,15 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
     need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
   } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
 }
+function matchesAuthoredIdentifier(
+  authored: NonNullable<CatalogDraftPayloadV3["skus"][number]["identifiers"]>[number],
+  published: Pick<CatalogPublishedSku["identifiers"][number], "scheme" | "issuer" | "value" | "packagingLevel" | "quantity">,
+) {
+  return authored.scheme === published.scheme && authored.issuer === published.issuer
+    && (authored.scheme === "gs1:gtin" ? isValidGtin(authored.value) && authored.value.padStart(14, "0") === published.value.padStart(14, "0")
+      : authored.value === published.value)
+    && authored.packagingLevel === published.packagingLevel && (authored.quantity ?? 1) === published.quantity;
+}
 function checkedDocument(canonicalText: string, reference: CatalogPublicationDocument["reference"], slug: string, rules: CatalogPublicationRules) {
   need(createHash("sha256").update(canonicalText).digest("hex") === reference.digest, "catalog_publication_v3_document_invalid");
   let document: unknown, identity: ReturnType<CatalogPublicationRules["identifyDocument"]>, canonical: string;
@@ -255,6 +264,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     return { source, payload: source.payload, sku: source.payload.skus.find(sku => sku.code === code)! };
   }
   let activation = false;
+  let clearedPresentation = false;
   for (const operation of payload.publication.operations) {
     if ("productSlug" in operation) need(operation.productSlug === slug, "catalog_publication_scope_expansion");
     if (operation.op === "create_product") {
@@ -306,9 +316,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     } else if (operation.op === "create_identifier") {
       const sku = knownSku(operation.skuCode), source = sourceSku(operation.skuCode);
       need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
-      need(source.sku.identifiers?.some(identifier => identifier.scheme === operation.scheme && identifier.issuer === operation.issuer
-        && (identifier.scheme === "gs1:gtin" ? isValidGtin(identifier.value) && identifier.value.padStart(14, "0") === operation.value.padStart(14, "0") : identifier.value === operation.value)
-        && identifier.packagingLevel === operation.packagingLevel && (identifier.quantity ?? 1) === operation.quantity), "catalog_publication_identifier_source_mismatch");
+      need(source.sku.identifiers?.some(identifier => matchesAuthoredIdentifier(identifier, operation)), "catalog_publication_identifier_source_mismatch");
       const { op: _op, skuCode: _code, ...identifier } = operation;
       if (identifier.scheme === "gs1:gtin") {
         need(isValidGtin(identifier.value) && !gtins.has(identifier.value.padStart(14, "0")), "catalog_publication_v3_compile_identifier_conflict");
@@ -352,6 +360,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       if (operation.presentation !== null)
         need(equal(operation.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_source_mismatch");
       knownProduct().presentation = operation.presentation;
+      clearedPresentation = operation.presentation === null;
     } else if (operation.op === "set_sku_metadata") {
       const sku = knownSku(operation.skuCode), source = sourceSku(sku.code);
       need(operation.logisticsRef === (source.sku.logisticsRef ?? null), "catalog_publication_logistics_source_mismatch");
@@ -372,6 +381,16 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     "catalog_publication_document_source_mismatch");
   result.attributes = payload.product.attributes ?? result.attributes; result.axes = [...payload.product.dimensions];
   result.content = payload.product.sharedContent; result.source = claim;
+  for (const [code, authored] of incoming) {
+    const sku = skus.get(code!);
+    need(sku, "catalog_publication_sku_effect_missing");
+    if (created.has(code!)) need(authored.identifiers?.every(identifier =>
+      sku!.identifiers.some(stored => matchesAuthoredIdentifier(identifier, stored))), "catalog_publication_identifier_effect_missing");
+    if (authored.logisticsRef) need(sku!.logisticsRef === authored.logisticsRef, "catalog_publication_metadata_effect_missing");
+  }
+  for (const intent of payload.product.sharedContent.offerMemberships)
+    need(skus.get(intent.skuCode)?.memberships.some(row => row.offerVersion === intent.offerVersion && row.admitted === intent.admitted),
+      "catalog_publication_membership_effect_missing");
   const productPhysicalChange = input.product !== null && !equal(
     [input.product.type, input.product.axes, input.product.attributes, input.product.document],
     [result.type, result.axes, result.attributes, result.document]);
@@ -408,6 +427,8 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   }
   need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
   need(result.primarySkuId && result.document && (input.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
+  if (!clearedPresentation)
+    need(equal(result.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
   const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
   need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
   if (payload.publication.operations.some(operation => operation.op === "set_product_status" && operation.status === "active")) {

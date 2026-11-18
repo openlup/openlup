@@ -427,6 +427,7 @@ const witnesses = [
 it.each(witnesses)("%s", () => {
   const data = input(), base = data.payload;
   base.product.sharedContent.offerMemberships = [{ skuCode: "ARTICLE", offerVersion: "example:offer", admitted: false }];
+  base.publication.operations.push({ op: "set_offer_membership", ...base.product.sharedContent.offerMemberships[0] });
   expect(catalogDraftPayloadV3Schema.safeParse(base).success).toBe(true);
   for (const version of [0, 1, 2, 4, "3", null]) expect(catalogDraftPayloadV3Schema.safeParse({ ...base, schemaVersion: version }).success).toBe(false);
   for (const value of [null, [], { ...base, extra: true }, { ...base, product: { ...base.product, id: "not-an-id" } },

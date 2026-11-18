@@ -137,6 +137,8 @@ it.each([
   ["activation ready", "staged", "ready", []],
   ["activation blocked", "staged", "blocked-input", []],
   ["activation unknown", "staged", "unknown", []],
+  ["activation without SKU promotion", "blocked-input", "blocked-input", ["catalog_publication_activation_effect_missing"]],
+  ["activation without product promotion", "blocked-input", "blocked-input", ["catalog_publication_activation_effect_missing"]],
 ] as const)("the v3 facade reports preparation and activation for %s", async (mode, structural, activation, codes) => {
   const fixture = publicationInput(), { payload, record } = fixture;
   if (mode.includes("trade identifier") || mode.includes("hard issue")) delete payload.skus[0].identifiers;
@@ -158,7 +160,13 @@ it.each([
       { op: "set_sku_metadata", skuCode, logisticsRef: sku.logisticsRef },
       { op: "set_offer_membership", ...payload.product.sharedContent.offerMemberships[0] },
       { op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false },
+      { op: "set_sku_status", skuCode, status: "active" },
+      { op: "set_product_status", productSlug: payload.product.slug!, status: "active" },
     ];
+    if (mode === "activation without SKU promotion")
+      payload.publication.operations = payload.publication.operations.filter(op => op.op !== "set_sku_status" && op.op !== "set_product_status");
+    if (mode === "activation without product promotion")
+      payload.publication.operations = payload.publication.operations.filter(op => op.op !== "set_product_status");
   }
   const deps = {
     readDraft: async () => structuredClone(record), registry: publicationRegistry,
