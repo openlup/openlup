@@ -7,7 +7,7 @@
         "objectInventorySha256": "7a2ee47a77c69db981e0b97677e17f044f38a4c2bc57647f64463d15d5c9bb55",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+            "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
             "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
           },
           {
@@ -626,7 +626,7 @@
         "objectInventorySha256": "a2eaef77c1d5544e60ae5eb084fd0de7c2c9f0ae8c3d43b6efde186e5dd056ab",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+            "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
             "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
           },
           {
@@ -1265,7 +1265,7 @@
         "objectInventorySha256": "d025605473e63011ffadf83a49e9d4c463820f7725296e3328dc1c0db13cf7da",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+            "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
             "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
           },
           {
@@ -1904,7 +1904,7 @@
         "objectInventorySha256": "5205dab27a77005275da2f5d54291d4447688672087a922499ed1b9a318762ee",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+            "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
             "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
           },
           {
@@ -2539,7 +2539,7 @@
         "objectInventorySha256": "fbaf448a309d88dd2f3d96720981b9f43014eb07a9229687ec0c04ae4eac0f18",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+            "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
             "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50"
           },
           {

@@ -5627,7 +5627,7 @@
       },
       {
         "row": "catalogue-lc5",
-        "path": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+        "path": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_draft_apply(text,text,text)",
@@ -8023,7 +8023,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
+      "path": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
       "sha256": "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50",
       "functions": [
         {

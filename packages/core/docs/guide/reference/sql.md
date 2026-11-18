@@ -168,7 +168,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261122170000_offer_policy_readiness_inputs.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122170000_offer_policy_readiness_inputs.sql) |
 | [`20261122180000_catalog_base_price_writer.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122180000_catalog_base_price_writer.sql) |
 | [`20261122190000_catalog_publication.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122190000_catalog_publication.sql) |
-| [`20261122200001_catalog_lifecycle.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122200001_catalog_lifecycle.sql) |
+| [`20261123180000_catalog_lifecycle.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261123180000_catalog_lifecycle.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |
