@@ -630,7 +630,6 @@ export * from "./clients.js";
 ## dist/operations/schemas.d.ts
 
 ```ts
-import type { ZodType } from "zod";
 import { z } from "./validation.js";
 export declare const adminPipelineTesterSchema: z.ZodObject<{
     id: z.ZodString;
@@ -769,8 +768,6 @@ export declare const platformControlPlaneMutationResponseSchema: z.ZodObject<{
     revision: z.ZodNullable<z.ZodNumber>;
     recordedAt: z.ZodString;
 }, z.core.$strip>;
-/** @experimental Derive inline JSON Schema from the Zod contract used by a tool. */
-export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
 ```
 ## dist/operations/validation.d.ts
 

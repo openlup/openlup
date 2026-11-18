@@ -135,9 +135,11 @@ when qualifying it for installed runtime use.
 6. Prove absence preserves behavior, refusal happens before a write, completed
    receipts replay, open commitments keep their terms, two sessions cannot
    overwrite one another, and rollback restores both a prior value and absence.
-7. Build the workspaces, run `node scripts/settings-catalogue.ts --write` and
-   update the owning reader-guide page. The package gate checks the generated
-   bytes against the domain exports.
+7. Keep descriptive entries in the owning domain's `settings-data.json`.
+   Export an executable descriptor only when a validator or reader uses it.
+   Build the workspaces, run `node scripts/settings-catalogue.ts --write` and
+   update the owner's reader-guide page. The package gate checks the generated
+   bytes against the domain data and executable descriptors.
 8. Include each refusal's specific remediation and next command.
 
 Use a neutral default supported by evidence, or record a matching reference-code provenance. Record the exact

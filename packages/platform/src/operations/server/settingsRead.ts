@@ -1,4 +1,3 @@
-import { toolInputSchema } from "../index.js";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
 import {
   settingRefusals, settingsCatalogue, settingsListRequest, settingsListResult,
@@ -97,10 +96,13 @@ export function invalidSettingsCommand(): { refusal: SettingRefusal } {
   return refuse("commerce_setting_read_input_invalid");
 }
 
+const toolSchema = (schema: z.ZodType, io: "input" | "output" = "input"): Record<string, unknown> =>
+  z.toJSONSchema(schema, { target: "draft-07", io, reused: "inline" });
+
 // Keep the derived result union and advertise the object root required by MCP.
 const outputSchema = (result: z.ZodType): Record<string, unknown> => ({
   type: "object",
-  ...toolInputSchema(z.union([result, settingsRefusalResult]), "output"),
+  ...toolSchema(z.union([result, settingsRefusalResult]), "output"),
 });
 
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
@@ -108,14 +110,14 @@ export const settingsReadTools = [
   {
     name: "settings__list",
     description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.",
-    inputSchema: toolInputSchema(settingsListRequest),
+    inputSchema: toolSchema(settingsListRequest),
     outputSchema: outputSchema(settingsListResult),
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__show",
     description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.",
-    inputSchema: toolInputSchema(settingsShowRequest),
+    inputSchema: toolSchema(settingsShowRequest),
     outputSchema: outputSchema(settingsShowResult),
     annotations: { readOnlyHint: true },
   },

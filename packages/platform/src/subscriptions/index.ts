@@ -85,5 +85,3 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
-export { subscriptionSettings } from "./settings.js";
-export { subscriptionsSettingBoundaries } from "./settingBoundaries.js";

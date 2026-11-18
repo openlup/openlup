@@ -38,4 +38,3 @@ export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHa
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
 export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
-export { fulfillmentSettingBoundaries } from "./settingBoundaries.js";

@@ -2052,7 +2052,6 @@ export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
 export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
-export { pricingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -3947,12 +3946,6 @@ export interface QuoteShippingPromotionResult extends QuotePromotionResult {
     acquisitionTerms?: ResolvedAcquisitionTerms;
 }
 ```
-## dist/pricing/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by pricing. */
-export declare const pricingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
-```
 ## dist/pricing/subscriptionPricePolicy.d.ts
 
 ```ts
@@ -4912,8 +4905,6 @@ export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
 export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
 export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
-export { savedAddressValidationSetting } from "./settings.js";
-export { shippingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -4998,49 +4989,6 @@ export declare function createPostgresCustomerDefaultsPort(db: SavedAddressQuery
 ```ts
 import type { DeliverySelectionEvidence, DeliverySelectionSources } from "./contracts/delivery.js";
 export declare function resolveDeliverySelectionEvidence(sources: DeliverySelectionSources): DeliverySelectionEvidence;
-```
-## dist/shipping/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by shipping. */
-export declare const shippingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
-```
-## dist/shipping/settings.d.ts
-
-```ts
-/** @experimental Discovery metadata for the host's saved-address callback. */
-export declare const savedAddressValidationSetting: {
-    readonly key: "savedAddressValidation";
-    readonly domain: "shipping";
-    readonly kind: "callback";
-    readonly goal: "Customize validation and normalization of the postal code and phone on saved customer addresses.";
-    readonly schemaVersion: 1;
-    readonly rules: readonly [];
-    readonly examples: readonly [];
-    readonly fallback: null;
-    readonly absentMeans: {
-        readonly description: "The platform uses the standard normalization and validation for the supplied address policy.";
-        readonly source: "shipping address policy";
-        readonly value: null;
-    };
-    readonly defaultBasis: {
-        readonly kind: "neutral";
-    };
-    readonly whyThisDefault: "Hosts can choose address formats required by their delivery integrations while preserving existing behavior by default.";
-    readonly effect: {
-        readonly appliesTo: "Subsequent saved-address submissions after deployment.";
-        readonly frozenOn: readonly ["Existing saved addresses and captured delivery destinations keep their stored values."];
-        readonly impact: "customer-promise";
-    };
-    readonly runtime: {
-        readonly level: "read-only";
-        readonly reason: "The callbacks are executable host code.";
-    };
-    readonly change: {
-        readonly file: "owned/acquisition-policy.ts";
-        readonly symbol: "savedAddressValidation";
-    };
-};
 ```
 ## dist/shipping/shippingRatePorts.d.ts
 

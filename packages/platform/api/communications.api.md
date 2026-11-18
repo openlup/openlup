@@ -1704,7 +1704,6 @@ export * from './ecommerceEvents.js';
 export * from './postgresEcommerceEvents.js';
 export { withCheckoutRecoverySendEvidence } from './checkoutRecoverySendEvidence.js';
 export * from './ecommerceEventPrivacy.js';
-export { communicationsSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/communications/integrationEventSignature.d.ts
 
@@ -2302,12 +2301,6 @@ export declare function createRegisteredPublicPreferenceTokenPort<Purpose extend
 }): {
     updatePreference(payload: CommunicationPreferenceTokenPayload<Purpose>, state: PublicPreferenceState): Promise<unknown>;
 };
-```
-## dist/communications/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by communications. */
-export declare const communicationsSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/communications/shipmentNotifications.d.ts
 
@@ -4070,7 +4063,6 @@ export { createFulfillmentParcelContactPrivacyContributor } from './parcelContac
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
-export { identitySettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -5264,12 +5256,6 @@ import type { PersonalDataContributor } from './privacyPorts.js';
 import type { PgQueryExecutor } from '../data/index.js';
 /** Compose with identity authorization, the subscriptions veto and account-event ownership. */
 export declare function createCustomerSavedAddressPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
-```
-## dist/identity/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by identity. */
-export declare const identitySettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/identity/sql.d.ts
 

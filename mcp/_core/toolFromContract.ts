@@ -1,7 +1,4 @@
-import type { ZodType } from "zod";
-import { toolInputSchema } from "@openlup/platform/operations";
-
-export { toolInputSchema };
+import { z, type ZodType } from "zod";
 import type { BffClient } from "./bffClient.js";
 
 /**
@@ -39,6 +36,15 @@ export interface McpToolDefinition {
 
 export interface McpToolCallContext {
   readonly bffClient: BffClient;
+}
+
+/** Derive a tool's JSON Schema from its Zod request contract. Never hand-author this. */
+export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input"): Record<string, unknown> {
+  return z.toJSONSchema(schema, {
+    target: "draft-07",
+    io,
+    reused: "inline",
+  }) as Record<string, unknown>;
 }
 
 /**

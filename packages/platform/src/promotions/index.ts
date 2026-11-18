@@ -23,4 +23,3 @@ export type { PromotionStatus, AdminPromotion, AdminPromotionV2Mirror, AdminProm
 export type { QuoteAcquisitionBinding } from "./quoteAcquisitionBinding.js";
 export { createQuoteShippingPromotions } from "./quoteShippingPolicy.js";
 export type { QuoteShippingPromotionsDeps } from "./quoteShippingPolicy.js";
-export { promotionsSettingBoundaries } from "./settingBoundaries.js";

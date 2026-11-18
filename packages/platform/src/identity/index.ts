@@ -74,4 +74,3 @@ export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPriv
 
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
-export { identitySettingBoundaries } from "./settingBoundaries.js";

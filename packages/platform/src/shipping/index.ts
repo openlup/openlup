@@ -42,5 +42,3 @@ export const CUSTOMER_SAVED_ADDRESS_MIGRATIONS = [{ id: '20261110190000_customer
 export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
 export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
-export { savedAddressValidationSetting } from "./settings.js";
-export { shippingSettingBoundaries } from "./settingBoundaries.js";

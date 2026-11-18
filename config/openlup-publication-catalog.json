@@ -5094,7 +5094,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/account-support/settingBoundaries.ts",
+      "path": "packages/platform/src/account-support/settings-data.json",
       "class": "public-output"
     },
     {
@@ -5450,7 +5450,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/catalog/settingBoundaries.ts",
+      "path": "packages/platform/src/catalog/settings-data.json",
       "class": "public-output"
     },
     {
@@ -6362,15 +6362,15 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/commerce/server/settingBoundaries.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/commerce/server/starterTermsPort.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/commerce/server/supabaseCommerceReturnsPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/settings-data.json",
       "class": "public-output"
     },
     {
@@ -6758,7 +6758,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/settingBoundaries.ts",
+      "path": "packages/platform/src/communications/settings-data.json",
       "class": "public-output"
     },
     {
@@ -7278,7 +7278,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/fulfillment/settingBoundaries.ts",
+      "path": "packages/platform/src/fulfillment/settings-data.json",
       "class": "public-output"
     },
     {
@@ -7662,7 +7662,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/identity/settingBoundaries.ts",
+      "path": "packages/platform/src/identity/settings-data.json",
       "class": "public-output"
     },
     {
@@ -7754,7 +7754,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/inventory/settingBoundaries.ts",
+      "path": "packages/platform/src/inventory/settings-data.json",
       "class": "public-output"
     },
     {
@@ -7922,7 +7922,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/invoicing/settingBoundaries.ts",
+      "path": "packages/platform/src/invoicing/settings-data.json",
       "class": "public-output"
     },
     {
@@ -8518,7 +8518,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/payments/settingBoundaries.ts",
+      "path": "packages/platform/src/payments/settings-data.json",
       "class": "public-output"
     },
     {
@@ -8914,7 +8914,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/pricing/settingBoundaries.ts",
+      "path": "packages/platform/src/pricing/settings-data.json",
       "class": "public-output"
     },
     {
@@ -9030,7 +9030,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/promotions/settingBoundaries.ts",
+      "path": "packages/platform/src/promotions/settings-data.json",
       "class": "public-output"
     },
     {
@@ -9254,11 +9254,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/shipping/settingBoundaries.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/shipping/settings.ts",
+      "path": "packages/platform/src/shipping/settings-data.json",
       "class": "public-output"
     },
     {
@@ -9466,11 +9462,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/subscriptions/settingBoundaries.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/subscriptions/settings.ts",
+      "path": "packages/platform/src/subscriptions/settings-data.json",
       "class": "public-output"
     },
     {

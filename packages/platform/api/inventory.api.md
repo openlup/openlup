@@ -439,7 +439,6 @@ export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
 export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } from "./renewalStockProtection.js";
-export { inventorySettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -949,12 +948,6 @@ export declare function createInventorySubscriptionForecastResponseSchema(provid
         recommendedProductionQty: z.ZodNumber;
     }, z.core.$strict>;
 }, z.core.$strict>;
-```
-## dist/inventory/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by inventory. */
-export declare const inventorySettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/inventory/sql.d.ts
 

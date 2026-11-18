@@ -78,4 +78,3 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
   catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
-export { catalogSettingBoundaries } from "./settingBoundaries.js";

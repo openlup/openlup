@@ -2650,7 +2650,6 @@ export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHa
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
 export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
-export { fulfillmentSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 
@@ -3686,12 +3685,6 @@ export declare function createScriptedFulfillmentFake<Calls extends Record<strin
     assertDrained(): void;
 }>;
 export {};
-```
-## dist/fulfillment/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by fulfillment. */
-export declare const fulfillmentSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/fulfillment/shipmentsOverviewHandler.d.ts
 

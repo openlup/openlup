@@ -1718,7 +1718,6 @@ export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscr
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
 export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
-export { paymentsSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -2463,12 +2462,6 @@ export declare const paymentSchemaDescriptor: {
     readonly absenceReopen: "supported";
     readonly cumulativeRefund: "supported";
 };
-```
-## dist/payments/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by payments. */
-export declare const paymentsSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/payments/sql.d.ts
 

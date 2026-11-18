@@ -45,21 +45,14 @@ async function run(args: string[]) {
     const db = new pg.Pool({ connectionString: databaseUrl });
     try {
       const { readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } = await import('@openlup/platform/inventory');
-      const { readCheckoutRecoveryReminderOverride, describeCheckoutRecoveryReminderSetting, checkoutRecoveryReminderAbsence } = await import('@openlup/platform/commerce/server');
+      const { readCheckoutRecoveryReminderObservation } = await import('@openlup/platform/commerce/server');
       const { checkoutWavePolicy } = await import('../owned/acquisition-policy.ts');
       const readers: Record<string, SettingReader> = {
         [describeRenewalStockProtectionSetting().key]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
-        [describeCheckoutRecoveryReminderSetting().key]: async () => {
-          const policy = await readCheckoutRecoveryReminderOverride(db);
-          if (policy) return {
-            present: true, revision: policy.revision, value: { ...policy,
-              abandonedCart: [...policy.abandonedCart], checkoutRecovery: [...policy.checkoutRecovery] },
-          };
-          return { present: false, effective: checkoutRecoveryReminderAbsence(checkoutWavePolicy) };
-        },
+        checkout_recovery_reminders: () => readCheckoutRecoveryReminderObservation(db, checkoutWavePolicy),
       };
       print(await showSetting({ key: value }, readers), values.json);
     } finally {

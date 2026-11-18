@@ -29,6 +29,7 @@
     "AGENTS.md",
     "dist/**",
     "src/**",
+    "!src/*/settings-data.json",
     "sql/**",
     "README.md",
     "CHANGELOG.md",

@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
-import { checkoutRecoveryReminderAbsence, describeCheckoutRecoveryReminderSetting, installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOverride, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
+import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
 import { explainSetting, listSettings, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
 import {
   settingsListRequest, settingsListResult, settingsShowRequest, settingsShowResult,
 } from "../../src/operations/server/settingsCatalog.js";
-import { toolInputSchema } from "../../src/operations/index.js";
+import { z } from "zod";
 
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
@@ -33,13 +33,12 @@ describe("renewal stock policy descriptor", () => {
 
 it("isolates inventory and reminder reads and installs from mutated discovery data", async () => {
   const inventory = describeRenewalStockProtectionSetting();
-  const reminders = describeCheckoutRecoveryReminderSetting();
   Object.assign(inventory, { key: "different" });
   inventory.fallback.renewalProtectionDays = 99;
-  Object.assign(reminders, { key: "different" });
-  Object.assign(reminders.fallback.abandonedCart[0], { afterHours: 77 });
-  reminders.absentMeans.value.abandonedCart[0]!.afterHours = 66;
   const query = vi.fn(async () => ({ rows: [] }));
+  const reminderObservation = await readCheckoutRecoveryReminderObservation({ query });
+  if (reminderObservation.present) throw new Error("Expected an absent schedule");
+  reminderObservation.effective.abandonedCart[0]!.afterHours = 66;
   const inventoryDefault = { revision: "default", renewalProtectionDays: 14 };
   const reminderDefault = {
     revision: "default",
@@ -48,10 +47,10 @@ it("isolates inventory and reminder reads and installs from mutated discovery da
   } as const;
   expect(await readRenewalStockProtectionPolicy({ query })).toEqual(inventoryDefault);
   expect(await readCheckoutRecoveryReminderSchedule({ query })).toEqual(reminderDefault);
-  expect(checkoutRecoveryReminderAbsence().abandonedCart).toEqual(reminderDefault.abandonedCart);
   await installRenewalStockProtectionPolicy({ query }, inventoryDefault);
   await installCheckoutRecoveryReminderSchedule({ query }, reminderDefault);
   expect(query.mock.calls).toEqual([
+    [expect.stringMatching(/^SELECT /u), ["checkout_recovery_reminders"]],
     [expect.stringMatching(/^SELECT /u), ["inventory_renewal_protection"]],
     [expect.stringMatching(/^SELECT /u), ["checkout_recovery_reminders"]],
     [expect.stringMatching(/^INSERT /u), ["inventory_renewal_protection", JSON.stringify(inventoryDefault)]],
@@ -76,10 +75,7 @@ describe("settings show", () => {
     const query = vi.fn(async () => ({ rows: [] }));
     const checkoutRecovery = [{ stage: "first", afterHours: 2 }, { stage: "last", afterHours: 15 }];
     expect(await showSetting({ key }, {
-      [key]: async () => {
-        expect(await readCheckoutRecoveryReminderOverride({ query })).toBeUndefined();
-        return { present: false, effective: checkoutRecoveryReminderAbsence({ firstOffsetSeconds: 7200, finalOffsetSeconds: 54000 }) };
-      },
+      [key]: () => readCheckoutRecoveryReminderObservation({ query }, { firstOffsetSeconds: 7200, finalOffsetSeconds: 54000 }),
     })).toMatchObject({ observation: { state: "absent", source: "host call parameters, with SQL defaults for omitted offsets",
       value: { abandonedCart, checkoutRecovery } } });
     expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/^SELECT /u), [key]);
@@ -92,10 +88,7 @@ describe("settings show", () => {
   ] as const)("uses SQL defaults for omitted host offsets in %j", async (policy, first, last) => {
     const query = vi.fn(async () => ({ rows: [] }));
     expect(await showSetting({ key }, {
-      [key]: async () => {
-        expect(await readCheckoutRecoveryReminderOverride({ query })).toBeUndefined();
-        return { present: false, effective: checkoutRecoveryReminderAbsence(policy) };
-      },
+      [key]: () => readCheckoutRecoveryReminderObservation({ query }, policy),
     })).toMatchObject({ observation: {
       state: "absent", source: "host call parameters, with SQL defaults for omitted offsets",
       value: { abandonedCart, checkoutRecovery: [{ stage: "first", afterHours: first }, { stage: "last", afterHours: last }] },
@@ -136,7 +129,7 @@ it("projects read-only MCP inputs and results from the settings read contracts",
     [list, settingsListRequest], [show, settingsShowRequest],
   ] as const) {
     expect(tool.annotations).toEqual({ readOnlyHint: true });
-    expect(tool.inputSchema).toEqual(toolInputSchema(request));
+    expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
   }
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });

@@ -37,6 +37,7 @@ describe("tarball gate", () => {
     expect(check(files.map(file => packedFile(file)))).toEqual([]);
     expect(check([packedFile(files[0]!, "{ }")])).toEqual(["changed-file"]);
     expect(check([packedFile("settings-other.json")])).toEqual(["package-content-allowlist"]);
+    expect(check([packedFile("src/inventory/settings-data.json")])).toEqual(["package-content-allowlist"]);
     expect(rules(packed([[files[0]!, "{}"]]))).toEqual(["package-content-allowlist"]);
   });
   it("actual npm files lists exclude fragments for every admitted package; the tarball gate refuses a leak", () => {

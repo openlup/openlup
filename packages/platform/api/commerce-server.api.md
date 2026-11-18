@@ -7857,89 +7857,6 @@ export declare function withCheckoutRecoveryPaymentHold<Input extends {
 ```ts
 import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
-/** @experimental Describe the effective waves when no installed schedule exists. */
-export declare function checkoutRecoveryReminderAbsence(policy?: Pick<CheckoutRecoveryWavePolicy, "firstOffsetSeconds" | "finalOffsetSeconds">): {
-    abandonedCart: ({
-        stage: "first";
-        afterHours: 1;
-    } | {
-        stage: "gentle";
-        afterHours: 24;
-    } | {
-        stage: "last";
-        afterHours: 72;
-    })[];
-    checkoutRecovery: {
-        stage: string;
-        afterHours: number;
-    }[] | null;
-};
-/** @experimental Discovery metadata for the installed schedule and absent-row behavior. */
-export declare function describeCheckoutRecoveryReminderSetting(): {
-    readonly key: "checkout_recovery_reminders";
-    readonly domain: "commerce";
-    readonly kind: "installed";
-    readonly goal: "Find when checkout recovery and abandoned cart reminders are sent.";
-    readonly schemaVersion: 1;
-    readonly rules: readonly [];
-    readonly examples: readonly [];
-    readonly fallback: {
-        readonly revision: "default";
-        readonly abandonedCart: readonly [{
-            readonly stage: "first";
-            readonly afterHours: 1;
-        }, {
-            readonly stage: "gentle";
-            readonly afterHours: 24;
-        }, {
-            readonly stage: "last";
-            readonly afterHours: 72;
-        }];
-        readonly checkoutRecovery: readonly [{
-            readonly stage: "first";
-            readonly afterHours: 1;
-        }, {
-            readonly stage: "last";
-            readonly afterHours: 20;
-        }];
-    };
-    readonly absentMeans: {
-        readonly description: "Checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.";
-        readonly source: "host call parameters, with SQL defaults for omitted offsets";
-        readonly value: {
-            abandonedCart: ({
-                stage: "first";
-                afterHours: 1;
-            } | {
-                stage: "gentle";
-                afterHours: 24;
-            } | {
-                stage: "last";
-                afterHours: 72;
-            })[];
-            checkoutRecovery: {
-                stage: string;
-                afterHours: number;
-            }[] | null;
-        };
-    };
-    readonly defaultBasis: {
-        readonly kind: "reference-code";
-    };
-    readonly whyThisDefault: "The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.";
-    readonly effect: {
-        readonly appliesTo: "Scheduling new reminder waves.";
-        readonly frozenOn: readonly ["Enqueued messages and send receipts retain their recorded identity."];
-        readonly impact: "customer-promise";
-    };
-    readonly runtime: {
-        readonly level: "read-only";
-        readonly reason: "Runtime editing needs episode lineage and delivery replay evidence.";
-    };
-    readonly change: {
-        readonly operation: "installCheckoutRecoveryReminderSchedule";
-    };
-};
 interface Executor {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
@@ -7949,8 +7866,43 @@ interface Executor {
 export declare function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void>;
 /** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export declare function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule>;
-/** @experimental Read the installed schedule when a policy row exists. */
-export declare function readCheckoutRecoveryReminderOverride(db: Executor): Promise<CheckoutRecoveryReminderSchedule | undefined>;
+/** @experimental Observe an installed override or the effective waves for an absent row. */
+export declare function readCheckoutRecoveryReminderObservation(db: Executor, policy?: Pick<CheckoutRecoveryWavePolicy, "firstOffsetSeconds" | "finalOffsetSeconds">): Promise<{
+    readonly present: true;
+    readonly revision: string;
+    readonly value: {
+        readonly abandonedCart: readonly {
+            stage: "first" | "gentle" | "last";
+            afterHours: number;
+        }[];
+        readonly checkoutRecovery: readonly {
+            stage: "first" | "last";
+            afterHours: number;
+        }[];
+        readonly revision: string;
+    };
+    readonly effective?: undefined;
+} | {
+    readonly present: false;
+    readonly effective: {
+        abandonedCart: ({
+            stage: "first";
+            afterHours: 1;
+        } | {
+            stage: "gentle";
+            afterHours: 24;
+        } | {
+            stage: "last";
+            afterHours: 72;
+        })[];
+        checkoutRecovery: {
+            stage: string;
+            afterHours: number;
+        }[] | null;
+    };
+    readonly revision?: undefined;
+    value?: undefined;
+}>;
 export {};
 ```
 ## dist/commerce/server/checkoutRecoveryToken.d.ts
@@ -10309,8 +10261,7 @@ export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.j
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
-export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOverride, describeCheckoutRecoveryReminderSetting, checkoutRecoveryReminderAbsence } from "./checkoutRecoveryReminderSchedule.js";
-export { commerceSettingBoundaries } from "./settingBoundaries.js";
+export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -11321,12 +11272,6 @@ export declare function createManagedReservationSweepPort(client: ReservationSwe
         limit: number;
     }): Promise<RetryHoldSweepCounts>;
 };
-```
-## dist/commerce/server/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by commerce. */
-export declare const commerceSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/commerce/server/starterTermsPort.d.ts
 
@@ -14015,7 +13960,6 @@ export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHa
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
 export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
-export { fulfillmentSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 
@@ -15051,12 +14995,6 @@ export declare function createScriptedFulfillmentFake<Calls extends Record<strin
     assertDrained(): void;
 }>;
 export {};
-```
-## dist/fulfillment/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by fulfillment. */
-export declare const fulfillmentSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/fulfillment/shipmentsOverviewHandler.d.ts
 
@@ -17065,7 +17003,6 @@ export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
 export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
-export { pricingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -18960,12 +18897,6 @@ export interface QuoteShippingPromotionResult extends QuotePromotionResult {
     acquisitionTerms?: ResolvedAcquisitionTerms;
 }
 ```
-## dist/pricing/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by pricing. */
-export declare const pricingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
-```
 ## dist/pricing/subscriptionPricePolicy.d.ts
 
 ```ts
@@ -19925,8 +19856,6 @@ export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
 export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
 export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
-export { savedAddressValidationSetting } from "./settings.js";
-export { shippingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -20011,49 +19940,6 @@ export declare function createPostgresCustomerDefaultsPort(db: SavedAddressQuery
 ```ts
 import type { DeliverySelectionEvidence, DeliverySelectionSources } from "./contracts/delivery.js";
 export declare function resolveDeliverySelectionEvidence(sources: DeliverySelectionSources): DeliverySelectionEvidence;
-```
-## dist/shipping/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by shipping. */
-export declare const shippingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
-```
-## dist/shipping/settings.d.ts
-
-```ts
-/** @experimental Discovery metadata for the host's saved-address callback. */
-export declare const savedAddressValidationSetting: {
-    readonly key: "savedAddressValidation";
-    readonly domain: "shipping";
-    readonly kind: "callback";
-    readonly goal: "Customize validation and normalization of the postal code and phone on saved customer addresses.";
-    readonly schemaVersion: 1;
-    readonly rules: readonly [];
-    readonly examples: readonly [];
-    readonly fallback: null;
-    readonly absentMeans: {
-        readonly description: "The platform uses the standard normalization and validation for the supplied address policy.";
-        readonly source: "shipping address policy";
-        readonly value: null;
-    };
-    readonly defaultBasis: {
-        readonly kind: "neutral";
-    };
-    readonly whyThisDefault: "Hosts can choose address formats required by their delivery integrations while preserving existing behavior by default.";
-    readonly effect: {
-        readonly appliesTo: "Subsequent saved-address submissions after deployment.";
-        readonly frozenOn: readonly ["Existing saved addresses and captured delivery destinations keep their stored values."];
-        readonly impact: "customer-promise";
-    };
-    readonly runtime: {
-        readonly level: "read-only";
-        readonly reason: "The callbacks are executable host code.";
-    };
-    readonly change: {
-        readonly file: "owned/acquisition-policy.ts";
-        readonly symbol: "savedAddressValidation";
-    };
-};
 ```
 ## dist/shipping/shippingRatePorts.d.ts
 

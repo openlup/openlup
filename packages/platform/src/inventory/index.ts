@@ -27,4 +27,3 @@ export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
 export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } from "./renewalStockProtection.js";
-export { inventorySettingBoundaries } from "./settingBoundaries.js";

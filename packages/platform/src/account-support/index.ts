@@ -89,4 +89,3 @@ export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEve
 
 export { createPostgresCustomerBillingProfilePort, createCustomerBillingProfileSchemas, createCustomerBillingProfilesHandler } from "./customerAccount/billingProfiles.js";
 export type { BillingProfileTaxPolicy } from "./customerAccount/billingProfiles.js";
-export { account_supportSettingBoundaries } from "./settingBoundaries.js";

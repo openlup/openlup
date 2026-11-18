@@ -1657,7 +1657,6 @@ export { createInvoiceContribution } from "./contribution.js";
 export { claimInvoiceSellerRevision } from "./sellerRevision.js";
 export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";
 export { createPostgresBillingInvoiceStore } from "./postgresInvoiceStore.js";
-export { invoicingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/invoicing/issue.d.ts
 
@@ -2159,12 +2158,6 @@ export declare function claimInvoiceSellerRevision<Seller extends object>(read: 
     readonly seller: Seller;
     readonly revisionRef: string;
 }>;
-```
-## dist/invoicing/settingBoundaries.d.ts
-
-```ts
-/** @experimental Informational catalogue entries owned by invoicing. */
-export declare const invoicingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/invoicing/settlementSync.d.ts
 
