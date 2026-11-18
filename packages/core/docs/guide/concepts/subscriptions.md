@@ -111,6 +111,48 @@ admit 1..3660 after the complete catalogue includes
 apply the matching package's complete catalogue before using longer periods.
 The public package and exact editors use separate writers.
 
+## Admit account commands
+
+In the unreleased source candidate for the next minor, compose optional
+`admitSubscriptionCommand: SubscriptionCommandAdmission` on
+`NativeSubscriptionCommandBinding`, used by `createPostgresSubscriptionCommands`
+and `createPostgresSubscriptionCommandStore`. This additive API belongs to the
+stable subscriptions and subscriptions/contracts subpaths. Omitting it preserves
+native command behavior, including the existing queries and refusal receipts.
+
+Your host authenticates and authorizes the actor before invoking the port.
+The port takes the actor/key lock, checks receipt identity and fingerprint,
+and returns a completed replay before current admission. For fresh preview
+and apply (including apply of a pending preview), it locks the owned subscription
+and supplies `action`, nullable `pausePreset` and `reason`, `subscriptionStatus`
+and nullable `paymentBlocker`. Payment facts follow account projection precedence:
+open dunning is `payment_blocked`, otherwise expired dunning is `payment_expired`,
+otherwise failed/retry-scheduled cycles are `payment_failed`, otherwise null.
+Native skip/slide names map to `skip`/`slide`; native bundle and add-on edits map
+to `edit_future_terms`.
+
+Use READ COMMITTED in `withTransaction`. Payment facts are read in a separate
+statement after the subscription lock is acquired, so they include a dunning
+case committed while the command waited. PostgreSQL also gives READ UNCOMMITTED
+these statement snapshots. REPEATABLE READ and SERIALIZABLE retain the older
+transaction snapshot; fresh admission throws
+`subscription_command_admission_isolation_unsupported` before the callback or
+writes. Completed receipt replay still returns before this isolation check.
+
+Return normally to admit or throw an error with a named application code to
+refuse. The error propagates through the transaction, before host term translation,
+pricing, quotes, receipts, events or other durable writes. Keep this callback
+effect-free: evaluate the supplied facts and owned static data only. Do not
+authorize, read mutable state, perform provider I/O or write anything. Native
+authorization, lifecycle state, in-flight payment and delivery-alignment fences
+remain unconditional; admission cannot relax them.
+
+A narrowed action list or removed pause preset still permits a matching
+completed receipt to replay its stored result. Changed payloads conflict before
+admission. Apply current policy to fresh work, without rewriting existing
+obligations. Expose the same owned choices in your account UI; hiding a control
+alone does not enforce command admission.
+
 ## Lifecycle in durable storage
 
 The [engine status matrix and dunning continuity](subscription-engine.md#the-status-matrix-and-dunning-continuity)

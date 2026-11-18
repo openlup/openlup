@@ -205,6 +205,17 @@ export interface SubscriptionBundleLine {
     sku: string;
     quantity: number;
 }
+/** Optional, effect-free host admission for a fresh native command. Runs after
+ * ownership/key/fingerprint checks and completed replay, before pricing or writes.
+ * Return to admit; throw an error with a named code to refuse. Never authorize,
+ * perform I/O or replace the unconditional native lifecycle/payment/delivery fences. */
+export type SubscriptionCommandAdmission = (facts: {
+    action: SubscriptionCommand["action"];
+    pausePreset: string | null;
+    reason: string | null;
+    subscriptionStatus: string;
+    paymentBlocker: string | null;
+}) => void | Promise<void>;
 export interface SubscriptionCommandReceipt {
     actorId: string;
     idempotencyKey: string;
@@ -1964,7 +1975,7 @@ export declare function createPostgresSubscriptionAutoResume(executor: Subscript
 ## dist/subscriptions/postgresCommandStore.d.ts
 
 ```ts
-import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeSubscriptionCommand {
     actorId: string;
@@ -1976,6 +1987,9 @@ export interface NativeSubscriptionCommand {
     now: string;
 }
 export interface NativeSubscriptionCommandBinding {
+    /** Optional effect-free policy. Completed receipts bypass current admission;
+     * thrown named errors propagate and roll back without a refusal receipt. */
+    admitSubscriptionCommand?: SubscriptionCommandAdmission;
     /** Server-owned timing policy, separate from customer fields. Omit for compatibility timings. */
     lifecycleTerms?: SubscriptionLifecycleTerms;
     /** Optional adopter taxonomy; the package validates shape without owning reason values. */
@@ -2000,7 +2014,7 @@ export interface NativeSubscriptionCommandBinding {
 }
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
  * Preview is a separate persisted transaction; apply never executes payment. */
-export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">): {
+export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes" | "admitSubscriptionCommand">): {
     preview(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
     apply(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
 };

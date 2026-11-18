@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -1869,6 +1869,63 @@ describe("closed successor new-table RESTRICT foreign keys", () => {
     ["incomplete tokens", create.replace("<> successor_sku_id", "<> successor_sku_id \\ ")],
     ...["SELECT 1;", "DELETE FROM public.catalog_skus;", "ALTER TABLE public.catalog_skus DROP COLUMN id;", "GRANT SELECT ON TABLE public.catalog_sku_successors TO PUBLIC;", "UPDATE public.catalog_sku_successors SET publication_id=NULL;"].map(extra => [`appended ${extra}`, create + extra]),
   ])("refuses successor new-table shape: %s", (_label, statement) => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
+});
+
+
+describe("closed successor storage RESTRICT tables", () => {
+  it.each(Object.entries(NATIVE_SUCCESSOR_TABLE_SQL))("admits exact successor storage: %s without broadening other modes", (_name, create) => {
+    for (const statement of [create, create.toLowerCase().replaceAll("on delete", "on /* action */\n delete")]) {
+      expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
+      expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+      expect(isExpandOnlyPlatformForward(statement, true)).toBe(false);
+    }
+  });
+  const refusals = Object.entries(NATIVE_SUCCESSOR_TABLE_SQL).flatMap(([name, create]) => {
+    const cases: [string, string][] = [
+      ["other table", create.replace(name, "public.other_successor_storage")],
+      ["conditional creation", create.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS")],
+      ["extra column", create.replace("id uuid PRIMARY KEY,", "id uuid PRIMARY KEY, extra text,")],
+      ["extra CHECK", create.replace(/\);$/u, ", CHECK (true));")],
+      ["extra UNIQUE", create.replace(/\);$/u, ", UNIQUE (id));")],
+      ["column order", create.replace("id uuid PRIMARY KEY,\n", "").replace(/\);$/u, ", id uuid PRIMARY KEY);")],
+      ["quoted syntax", create.replace("id uuid PRIMARY KEY", '"id" uuid PRIMARY KEY')],
+      ["literal syntax", create.replace("id uuid PRIMARY KEY", "'id' uuid PRIMARY KEY")],
+      ["literal case", create.replace("'abcdef0123456789'", "'ABCDEF0123456789'")],
+      ["comment smuggling", create.replace("RESTRICT,", "RESTRICT /*,*/ SELECT 1,")],
+      ["control smuggling", create.replace(" ON DELETE", " ON\rDELETE")],
+      ["dollar smuggling", create.replace("id uuid PRIMARY KEY", () => "id uuid PRIMARY KEY DEFAULT $$DELETE$$")],
+      ...["SELECT 1;", `DELETE FROM ${name};`, `UPDATE ${name} SET id=NULL;`, `ALTER TABLE ${name} DROP COLUMN id;`, `GRANT SELECT ON ${name} TO PUBLIC;`].map(extra => [`appended ${extra}`, create + extra] as [string, string]),
+    ];
+    for (const line of create.split("\n").slice(1, -1)) {
+      const column = line.trim().split(" ")[0]!;
+      cases.push([`${column} name`, create.replace(line, line.replace(column, "unlisted_column"))]);
+      cases.push([`${column} type`, create.replace(line, line.replace(/ (uuid|jsonb|integer|bigint|text|timestamptz)(?= |,|$)/u, " numeric"))]);
+      if (line.includes("NOT NULL")) cases.push([`${column} nullable`, create.replace(line, line.replace(" NOT NULL", ""))]);
+      if (line.includes("PRIMARY KEY")) cases.push([`${column} missing PK`, create.replace(line, line.replace(" PRIMARY KEY", ""))]);
+      if (line.includes(" UNIQUE")) cases.push([`${column} missing UNIQUE`, create.replace(line, line.replace(" UNIQUE", ""))]);
+      if (line.includes(" CHECK")) cases.push([`${column} changed CHECK`, create.replace(line, line.replace(/ CHECK \(.*\)(,?)$/u, " CHECK (true)$1"))]);
+      if (line.includes(" DEFAULT")) cases.push([`${column} changed DEFAULT`, create.replace(line, line.replace(/ DEFAULT (?:'[^']*'|now\(\)|1)/u, " DEFAULT NULL"))]);
+      if (line.includes(" REFERENCES")) {
+        for (const action of ["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION", ""]) cases.push([`${column} action ${action || "implicit"}`, create.replace(line, line.replace("ON DELETE RESTRICT", action ? `ON DELETE ${action}` : ""))]);
+        for (const [label, actual] of [
+          ["target", line.replace(/REFERENCES public\.\w+/u, "REFERENCES public.other_target")],
+          ["target key", line.replace("(id)", "(other_id)")],
+          ["target arity", line.replace("(id)", "(id, other_id)")],
+          ["missing FK", line.replace(/ REFERENCES .*?(,?)$/u, "$1")],
+          ["update", line.replace("DELETE RESTRICT", "DELETE RESTRICT ON UPDATE CASCADE")],
+          ["match", line.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+          ["deferred", line.replace("DELETE RESTRICT", "DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED")],
+        ]) cases.push([`${column} ${label}`, create.replace(line, actual!)]);
+      }
+    }
+    return cases.map(([label, statement]) => {
+      if (statement === create) throw new Error(`ineffective refusal fixture: ${name}: ${label}`);
+      return [`${name}: ${label}`, statement];
+    });
+  });
+  it.each(refusals)("refuses successor storage statement: %s", (_label, statement) => {
     expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
   });
 });

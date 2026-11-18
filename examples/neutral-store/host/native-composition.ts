@@ -7,7 +7,7 @@ import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
 import { isUuid } from './recurring-fence.ts';
-import { assertSubscriptionCare } from '../shared/renewal-config.ts';
+import { admitCareCommand, assertSubscriptionCare } from '../shared/renewal-config.ts';
 import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
@@ -265,6 +265,7 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
     const port = createPostgresSubscriptionCommands({
       lifecycleTerms: context.config.renewal.subscriptionCare.terms,
       retentionReasonCodes: context.config.renewal.subscriptionCare.retentionReasons,
+      admitSubscriptionCommand: facts => admitCareCommand(context.config.renewal.subscriptionCare, facts),
       async withTransaction(work) {
         const db = await pool.connect();
         try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
@@ -282,7 +283,6 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
         if (input.confirmedChargeTiming !== true) return refuse('subscription_command_charge_timing_not_confirmed');
         command = { ...base, action: input.action, confirmedChargeTiming: true }; break;
       case 'pause':
-        if (!['2_weeks', '1_month', 'indefinite'].includes(String(input.pausePreset))) return refuse('starter_input_invalid');
         command = { ...base, action: 'pause', pausePreset: String(input.pausePreset), reason,
           survey: input.survey as Extract<SubscriptionCommand, { action: 'pause' }>['survey'] ?? null,
           saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'pause' }>['saveOffer'] ?? null }; break;
@@ -296,9 +296,14 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
       default:
         command = { ...base, action: input.action as 'skip' | 'resume', reason, confirmedChargeTiming: input.confirmedChargeTiming === true };
     }
-    const result = await port.apply(command);
-    if ('supported' in result) return refuse(result.refusalCode);
-    if (result.outcome === 'refused') return refuse(result.reason);
-    return { ok: true, value: result, replayed: result.outcome === 'replayed' };
+    try {
+      const result = await port.apply(command);
+      if ('supported' in result) return refuse(result.refusalCode);
+      if (result.outcome === 'refused') return refuse(result.reason);
+      return { ok: true, value: result, replayed: result.outcome === 'replayed' };
+    } catch (error) {
+      if (error instanceof Error && ['starter_subscription_action_not_admitted', 'starter_pause_preset_not_admitted'].includes(error.message)) return refuse(error.message);
+      throw error;
+    }
   };
 }
