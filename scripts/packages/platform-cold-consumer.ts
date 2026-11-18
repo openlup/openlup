@@ -2003,7 +2003,7 @@ process.exit(0);
 export function proveCatalogConformanceConsumer(consumer: string, compiler: string): void {
   console.log(consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { cpSync, existsSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join, sep } from "node:path";
@@ -2037,7 +2037,13 @@ const cases = [
  { name: "catalogue_transport_matrix", async run() {
    const second = join(process.cwd(), "another 'copy'");
    cpSync(skeleton, second, { recursive: true });
-   const baseline = readdirSync(process.cwd(), {recursive:true}).map(String).sort();
+   const appSnapshot = () => readdirSync(process.cwd(), {recursive:true, withFileTypes:true}).map(entry => {
+     const path = join(entry.parentPath, entry.name);
+     const contents = entry.isFile() ? [statSync(path).mode, createHash("sha256").update(readFileSync(path)).digest("hex")]
+       : entry.isSymbolicLink() ? readlinkSync(path) : null;
+     return JSON.stringify([path, contents]);
+   }).sort();
+   const baseline = appSnapshot();
    const reports = [owned, second].map(path => invoke(["catalogue", "project", "--trusted-packs", join(path,"catalogue.ts")]));
    const bytes = reports.map(({transport}) => readFileSync(transport.subjectPath, "utf8"));
    for (const {exitCode, transport: proof} of reports) {
@@ -2052,7 +2058,7 @@ const cases = [
    const replay = JSON.parse(shell.stdout);
    assert.equal(shell.status, 0); assert.equal(replay.transport.subjectHash, reports[0].transport.subjectHash);
    assert.equal(bytes[0], bytes[1]);
-   assert.deepEqual(readdirSync(process.cwd(), {recursive:true}).map(String).sort(), baseline);
+   assert.deepEqual(appSnapshot(), baseline);
    const { pack } = await import(pathToFileURL(join(owned,"pack.ts")).href);
    const { fixtures } = await import(pathToFileURL(join(owned,"fixtures.ts")).href);
    const { catalogDraftRegistry, catalogueConformance } = await import(pathToFileURL(join(owned,"catalogue.ts")).href);
