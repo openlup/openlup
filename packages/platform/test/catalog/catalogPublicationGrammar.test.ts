@@ -1,11 +1,13 @@
 import { expect, it } from "vitest";
+import { createPostgresCatalogPublication } from "../../src/catalog/publicationStore.js";
+import { CATALOG_PUBLICATION_LIMITS, type CatalogPublicationReceiptV2 } from "../../src/catalog/contracts/publication.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js";
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
 import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, catalogPublishedProductSchema, compileCatalogPublication, publicationDigest } from "../../src/catalog/publicationValidation.js";
-import { input, registry } from "./fixtures/publicationInput.js";
+import { input, registry, rules } from "./fixtures/publicationInput.js";
 
 // Conservative aliases cover shared target grammar/identity predicates. Each
 // executes the closed-contract matrix, rather than asserting a source-code token.
@@ -306,7 +308,6 @@ const witnesses = [
   "W39_V5-1790_predicate_precedence_boundary",
   "W39_V5-1791_predicate_precedence_boundary",
   "W39_V5-1792_predicate_precedence_boundary",
-  "W39_V5-1794_predicate_precedence_boundary",
   "W03_V5-1798_predicate_precedence_boundary",
   "W03_V5-1799_predicate_precedence_boundary",
   "W03_V5-1800_predicate_precedence_boundary",
@@ -548,4 +549,73 @@ it("cycle1 primary identifier keeps independent scheme and packaging guards", ()
   expect(catalogPublishedSkuSchema.safeParse(foreignScheme).success).toBe(false);
   const primaryCase = structuredClone(sku); primaryCase.identifiers[0].packagingLevel = "case"; primaryCase.identifiers[0].quantity = 2;
   expect(catalogPublishedSkuSchema.safeParse(primaryCase).success).toBe(false);
+});
+
+it("W39_V5-1794_predicate_precedence_boundary", async () => {
+  const { payload, record } = input();
+  const productId = payload.product.id;
+  const actorId = "70000000-0000-4000-8000-000000000001";
+  const documentDigest = payload.product.documentRevision!.digest;
+  const suffix = (value: number) => String(value).padStart(12, "0");
+  const headAt = (revision: number) => ({
+    publicationId: `50000000-0000-4000-8000-${suffix(revision)}`, revision, documentDigest,
+  });
+  const history = Array.from({ length: 20 }, (_, index) => {
+    const revision = 20 - index;
+    const head = headAt(revision), previousHead = revision > 1 ? headAt(revision - 1) : null;
+    const receipt: CatalogPublicationReceiptV2 = {
+      schemaVersion: 2, productId, commandKey: `publish:${revision}`, fingerprint: "a".repeat(64), actorId,
+      head, previousHead, publicationDigest: "b".repeat(64), committedAt: "2026-01-01T00:00:00.000000Z",
+      changes: Array.from({ length: 2500 }, (_, index) => {
+        const variantId = `60000000-0000-4000-8000-${suffix(index + 1)}`;
+        return { productId, variantId, sku: `SKU-${suffix(index + 1)}`, state: "active", variantRevision: revision,
+          publicationHead: head, draftRef: { draftId: record.draftId, revision } };
+      }),
+    };
+    return { revision, id: head.publicationId, result: receipt, scope_id: productId,
+      command_key: receipt.commandKey, fingerprint: receipt.fingerprint, actor_id: actorId, publication_id: head.publicationId };
+  });
+  const historyQueries: unknown[][] = [];
+  const target = createPostgresCatalogPublication({
+    registry, rules, authorizeHuman: async () => ({ ok: false }),
+    transactions: { run: work => work({ async query(sql, params) {
+      if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
+      if (sql.startsWith("SELECT EXISTS")) return { rows: [{ unknown: false }] };
+      if (sql.startsWith("SELECT p.revision,p.id,r.result")) {
+        const [scope, highWater, before] = params!;
+        historyQueries.push(params!);
+        return { rows: history.filter(row => row.scope_id === scope &&
+          (highWater === null || row.revision <= Number(highWater)) && (before === null || row.revision < Number(before))) };
+      }
+      if (sql.startsWith("SELECT p.revision,p.digest,d.digest")) {
+        const stored = history.find(row => row.id === params?.[0] && row.scope_id === params?.[1]);
+        if (!stored) throw new Error("Unknown history receipt");
+        const { result } = stored;
+        return { rows: [{ revision: result.head.revision, digest: result.publicationDigest, document_digest: documentDigest,
+          previous_id: result.previousHead?.publicationId ?? null, previous_revision: result.previousHead?.revision ?? null,
+          previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt }] };
+      }
+      throw new Error("Unexpected history query");
+    } }) },
+    readiness: async () => { throw new Error("Unexpected readiness call"); },
+    verifyMedia: async () => { throw new Error("Unexpected media call"); },
+  });
+
+  const first = await target.reads.history(productId, null);
+  expect(first.outcome).toBe("page");
+  if (first.outcome !== "page" || first.nextCursor === null) throw new Error("Missing history continuation");
+  expect(first.receipts.map(receipt => receipt.head.revision)).toEqual([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5]);
+  expect(JSON.parse(Buffer.from(first.nextCursor, "base64url").toString("utf8"))).toEqual({
+    schemaVersion: 1, kind: "history", productId, highWater: 20, before: 5,
+  });
+  const rest = await target.reads.history(productId, first.nextCursor);
+  expect(rest.outcome).toBe("page");
+  if (rest.outcome !== "page") throw new Error("Missing history remainder");
+  expect(rest.receipts.map(receipt => receipt.head.revision)).toEqual([4, 3, 2, 1]);
+  expect(rest.nextCursor).toBeNull();
+  expect(historyQueries).toEqual([[productId, null, null], [productId, 20, 5]]);
+
+  const bytes = Buffer.byteLength(JSON.stringify(first));
+  expect(bytes).toBeLessThanOrEqual(CATALOG_PUBLICATION_LIMITS.historyBytes);
+  expect(bytes + Buffer.byteLength(JSON.stringify(rest.receipts[0])) + 1).toBeGreaterThan(CATALOG_PUBLICATION_LIMITS.historyBytes);
 });
