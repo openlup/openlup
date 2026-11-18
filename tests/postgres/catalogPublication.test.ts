@@ -10,6 +10,7 @@ import type { PgQueryExecutor } from "@openlup/platform/data";
 import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
+const publicationReadsForward = "db/platform/migrations/20261123170000_catalog_publication_reads.sql";
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 let db: Pool;
 let priceDb: Pool;
@@ -56,10 +57,10 @@ beforeAll(async () => {
   }
   await db.query(readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8"));
   await db.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
-  // The forward must revoke direct helper access even with explicit installer defaults.
-  await db.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role");
-  await db.query(readFileSync("db/platform/migrations/20261123170000_catalog_publication_reads.sql", "utf8"));
-  await db.query("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated, service_role");
+  // Service execution must come from the forward's grant. Keep direct browser-role defaults to exercise their revokes.
+  await db.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated");
+  await db.query(readFileSync(publicationReadsForward, "utf8"));
+  await db.query("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated");
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -71,7 +72,18 @@ beforeAll(async () => {
   const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication" }); containers.push(priceContainer);
   if (!await waitForPostgresTcpReady(priceContainer.connectionString)) throw new Error("Price publication witnesses require real PostgreSQL");
   priceDb = new Pool({ connectionString: priceContainer.connectionString }); pools.push(priceDb);
-  for (const unit of [manifest.baseline, ...manifest.forward]) await priceDb.query(readFileSync(unit.file, "utf8"));
+  for (const unit of [manifest.baseline, ...manifest.forward]) {
+    const sql = readFileSync(unit.file, "utf8");
+    if (unit.file !== publicationReadsForward) {
+      await priceDb.query(sql);
+      continue;
+    }
+    // The helper revokes must also work when the installer grants service execution by default.
+    await priceDb.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
+    await priceDb.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO service_role");
+    await priceDb.query(sql);
+    await priceDb.query("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM service_role");
+  }
   await installCatalogDefinitions(priceDb, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await priceDb.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication-prices@example.invalid')", [admin]);
   await priceDb.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -3132,8 +3144,8 @@ describe("governed publication reads", () => {
     return { ...data, payload, receipt, code, logisticsRef };
   }
 
-  async function isolated(work: (connection: PoolClient) => Promise<void>) {
-    const connection = await db.connect();
+  async function isolated(work: (connection: PoolClient) => Promise<void>, pool = db) {
+    const connection = await pool.connect();
     try { await connection.query("BEGIN"); await work(connection); }
     finally { await connection.query("ROLLBACK"); connection.release(); }
   }
@@ -3390,8 +3402,15 @@ describe("governed publication reads", () => {
         if (role === "lc2r_reader") await connection.query("CREATE ROLE lc2r_reader NOLOGIN");
         await connection.query(`SET LOCAL ROLE ${role}`);
         const values = [...args(headDigest)];
-        if (role === "service_role") expect((await connection.query(sql, values)).rows).toHaveLength(1);
-        else await expect(connection.query(sql, values)).rejects.toMatchObject({ code: "42501" });
+        if (role === "service_role") {
+          expect((await connection.query(sql, values)).rows).toHaveLength(1);
+          const { rows } = await connection.query(`SELECT
+            has_function_privilege('public.catalog_publication_read_head()', 'EXECUTE') AS head,
+            has_function_privilege('public.catalog_publication_read_member(uuid)', 'EXECUTE') AS member`);
+          expect(rows).toEqual([{ head: false, member: false }]);
+        } else {
+          await expect(connection.query(sql, values)).rejects.toMatchObject({ code: "42501" });
+        }
       });
     }
   });
@@ -3407,7 +3426,7 @@ describe("governed publication reads", () => {
     await connection.query(`SET LOCAL ROLE ${role}`);
     await expect(connection.query(sql, [...parameters])).rejects
       .toMatchObject({ code: "42501", message: `permission denied for function ${name}` });
-  }));
+  }, role === "service_role" ? priceDb : db));
 
   // Rewrite sealed fixture bytes only in the rollback scope. Reseal every
   // unrelated carrier so a secondary check cannot mask the targeted change.
