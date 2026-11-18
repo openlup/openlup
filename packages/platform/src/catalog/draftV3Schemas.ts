@@ -55,7 +55,7 @@ export const catalogDraftPublicationOperationV3Schema: z.ZodType<CatalogDraftPub
   z.object({ op: z.literal("set_product_status"), productSlug: slug, status: z.enum(["active", "archived"]) }).strict(),
   membership.extend({ op: z.literal("set_offer_membership") }).strict(),
   z.object({ op: z.literal("set_product_presentation"), productSlug: slug, presentation: facts.nullable() }).strict(),
-  z.object({ op: z.literal("set_sku_metadata"), skuCode: code, logisticsRef: reference.nullable() }).strict(),
+  z.object({ op: z.literal("set_sku_metadata"), skuCode: code, logisticsRef: text.nullable() }).strict(),
   z.object({ op: z.literal("set_derived_sku_facts"), skuCode: code, documentRevisionNo: documentRevision, netContent: catalogQuantitySchema, facts }).strict(),
 ]);
 /** @experimental */
@@ -63,7 +63,7 @@ export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublic
   kind: z.enum(["release", "compensation"]), operations: z.array(catalogDraftPublicationOperationV3Schema),
   evidence: z.object({
     drafts: z.array(z.object({ draftId: id, revision, commandKey: reference, fingerprint: digest }).strict()).min(1).max(100).optional(),
-    media: z.array(z.object({ skuCode: code, mediaRef: reference, assetRefs: z.array(reference).max(32)
+    media: z.array(z.object({ skuCode: code, mediaRef: text, assetRefs: z.array(reference).max(32)
       .refine(values => values.every((value, index) => index === 0 || values[index - 1]! < value)), revisionDigest: digest }).strict()).min(1).optional(),
   }).strict(),
 }).strict().superRefine((input, context) => {
@@ -107,10 +107,12 @@ export function catalogDraftV3ValidationPayload(payload: CatalogDraftPayloadV3) 
 /** @experimental */
 export const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3> = z.object({
   schemaVersion: z.literal(3), product: catalogDraftProductV2Schema.extend({ sharedContent: catalogDraftSharedContentV3Schema }).strict(),
-  skus: z.array(catalogDraftSkuV2Schema).max(10_000), publication: catalogDraftPublicationInputsV3Schema,
+  skus: z.array(catalogDraftSkuV2Schema.extend({ logisticsRef: text.optional() })).max(10_000), publication: catalogDraftPublicationInputsV3Schema,
 }).strict().superRefine((payload, context) => {
   try { canonicalCatalogDraftJson(payload); } catch { context.addIssue({ code: "custom", message: "payload must be bounded safe JSON" }); }
-  const base = catalogDraftPayloadV2Schema.safeParse(catalogDraftV3ValidationPayload(payload));
+  const legacy = catalogDraftV3ValidationPayload(payload);
+  // V3 validates logistics on its own leaf. Keep v2's remaining shape and ownership checks.
+  const base = catalogDraftPayloadV2Schema.safeParse({ ...legacy, skus: legacy.skus.map(({ logisticsRef: _logistics, ...sku }) => sku) });
   if (!base.success) for (const issue of base.error.issues) context.addIssue({ code: "custom", path: issue.path, message: issue.message });
 });
 /** @experimental */

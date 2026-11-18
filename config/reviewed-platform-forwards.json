@@ -8028,7 +8028,7 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "3bbe26e483d3a7a915c72ae16450dea2afa95390f3e2d5670c68d98414766788",
+      "sha256": "58c7d3da28f7310990d54132fea5ff6a1776e4e0b4bf5a708e2571ac8d9a97c3",
       "functions": [
         {
           "signature": "public.catalog_price_setup_apply(text,text)",

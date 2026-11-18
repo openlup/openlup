@@ -1,3 +1,4 @@
+import { parseCatalogCandidateReference } from "./candidate.js";
 import { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "../pricing/index.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PgQueryExecutor } from "../data/index.js";
@@ -24,14 +25,15 @@ const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publicati
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const key = z.string().min(1).max(240).refine(value => value.trim() === value);
+const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 && !/[\u0000\uD800-\uDFFF]/u.test(value));
+const referenceSchema = z.string().refine(value => parseCatalogCandidateReference(value) !== null);
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
 const commandSchema = z.object({ schemaVersion: z.literal(2).optional(), commandKey: key, productId: id,
-  candidateRef: z.string().min(1).max(200), candidateDigest: digest, expectedHead: headSchema.nullable(),
+  candidateRef: referenceSchema, candidateDigest: digest, expectedHead: headSchema.nullable(),
   changes: z.array(z.object({ variantId: id, expectedRevision: z.number().int().min(0).max(2_147_483_646), state: z.enum(["active", "withdrawn"]) }).strict()).max(10_000),
 }).strict();
 const decisionSchema = z.object({ schemaVersion: z.literal(2), action: z.enum(["approve", "revoke"]), productId: id, commandKey: key,
-  candidateRef: z.string().min(1).max(200), candidateDigest: digest, reason: z.string().min(1).max(1000).refine(value => value.trim() === value) }).strict();
+  candidateRef: referenceSchema, candidateDigest: digest, reason: z.string().refine(value => /[^ ]/u.test(value) && Buffer.byteLength(value) <= 1000).nullable() }).strict();
 const bindingSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
 const equal = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
@@ -174,16 +176,16 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     return result;
   }
   async function candidate(db: PgQueryExecutor, reference: string, expectedDigest: string, productId: string) {
-    const match = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u.exec(reference);
-    require(match && id.safeParse(match[1]).success && revision.safeParse(Number(match[2])).success, "candidate_invalid");
+    const parsed = parseCatalogCandidateReference(reference);
+    if (!parsed) return publicationRefuse("candidate_invalid");
     let expectedHead: CatalogHeadRef | null = null;
-    if (match![3] !== "unpublished") {
+    if (parsed.head) {
       const rows = await tuple(db, `SELECT p.id,p.revision,d.digest FROM public.catalog_publications p
-        JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id WHERE p.id=$1::uuid AND p.product_id=$2::uuid`, [match![4], productId]);
-      require(rows.length === 1 && rows[0]!.revision === Number(match![5]), "head_conflict", "conflict");
+        JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id WHERE p.id=$1::uuid AND p.product_id=$2::uuid`, [parsed.head.publicationId, productId]);
+      require(rows.length === 1 && rows[0]!.id === parsed.head.publicationId && rows[0]!.revision === parsed.head.revision, "head_conflict", "conflict");
       expectedHead = headSchema.parse({ publicationId: rows[0]!.id, revision: rows[0]!.revision, documentDigest: rows[0]!.digest });
     }
-    const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [match![1], Number(match![2])]);
+    const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [parsed.draftId, parsed.draftRevision]);
     const raw = observedRow(rows).record;
     const header = z.object({ payload: z.object({ product: z.object({ type: catalogProductTypeRefSchema }) }) }).safeParse(raw);
     if (header.success) {
@@ -191,7 +193,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       if (definition) assertCatalogPublicationMassInputs((raw as { payload: unknown }).payload, definition);
     }
     const record = catalogDraftPublicationStoredRecordSchema.parse(raw);
-    require(record.draftId === match![1] && record.revision === Number(match![2]), readInvalid, "dependency_unavailable");
+    require(record.draftId === parsed.draftId && record.revision === parsed.draftRevision, readInvalid, "dependency_unavailable");
     require(record.productId === productId && record.payload.schemaVersion === 3, "candidate_invalid");
     const payload = record.payload as CatalogDraftPayloadV3, definition = deps.registry.resolve(payload.product.type);
     require(definition && definition.validatorRef, "catalog_definition_drift");

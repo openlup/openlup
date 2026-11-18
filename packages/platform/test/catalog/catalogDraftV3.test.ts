@@ -122,3 +122,15 @@ it("catalog_candidate_digest_covers_v3_publication_inputs", async () => {
     }
   }
 });
+
+it.each([240, 500, 501])("v3 permits the donor metadata width for %d UTF-16 units", size => {
+  const data = payload(), reference = "é".repeat(size);
+  data.skus[0].logisticsRef = reference;
+  data.publication.operations.push({ op: "set_sku_metadata", skuCode: "ARTICLE", logisticsRef: reference });
+  data.publication.evidence.media = [{ skuCode: "ARTICLE", mediaRef: reference, assetRefs: ["a"], revisionDigest: "a".repeat(64) }];
+  const { publication: _publication, ...older } = data;
+  expect(catalogDraftPayloadV2Schema.safeParse({ ...older, schemaVersion: 2 }).success).toBe(size <= 240);
+  expect(catalogDraftPayloadV3Schema.safeParse(data).success).toBe(size <= 500);
+  data.publication.evidence.media[0].assetRefs = ["a".repeat(241)];
+  expect(catalogDraftPayloadV3Schema.safeParse(data).success).toBe(false);
+});

@@ -787,7 +787,7 @@ it.each([
       ["catalog_sku_revisions", { revision: 0 }, "23514"], ["catalog_sku_revisions", { digest: "bad" }, "23514"],
       ["catalog_sku_revisions", { full_facts: "{}", digest: createHash("sha256").update("{}").digest("hex") }, "23514"],
       ["catalog_publication_heads", { revision: 0 }, "23514"], ["catalog_publication_heads", { product_id: null }, "23502"],
-      ["catalog_operator_receipts", { kind: "" }, "23514"], ["catalog_operator_receipts", { command_key: " bad " }, "23514"],
+      ["catalog_operator_receipts", { kind: "" }, "23514"], ["catalog_operator_receipts", { command_key: "" }, "23514"],
       ["catalog_operator_receipts", { fingerprint: "A".repeat(64) }, "23514"], ["catalog_operator_receipts", { result: [] }, "23514"],
       ["catalog_operator_receipts", { result: null }, "23502"],
       ["catalog_publication_decisions", { action: "unknown" }, "23514"], ["catalog_publication_decisions", { candidate_reference_digest: "bad" }, "23514"],
@@ -3164,6 +3164,63 @@ it.each(["archive eligible product", "leave last membership", "live eligible", "
     } finally { await connection.query("ROLLBACK"); connection.release(); }
   }));
 
+it.each([
+  ["publish", "  padded  ", true],
+  ["publish", " ", true],
+  ["publish", "é".repeat(99) + "x", true],
+  ["publish", "é".repeat(100), true],
+  ["publish", "é".repeat(100) + "x", false],
+  ["publish", "", false],
+  ["approve", null, true],
+  ["approve", "  readable reason  ", true],
+  ["revoke", "\t", true],
+  ["revoke", "  ", false],
+  ["revoke", "é".repeat(500), true],
+  ["revoke", "é".repeat(500) + "x", false],
+  ["anchor UUID", "------------------------------------", false],
+  ["anchor revision", "40000000-0000-4000-8000-000000000001", false],
+] as const)("publication uses field-specific UTF-8 wire bounds for %s (%j)", async (kind, value, valid) => {
+  const data = await draft(), command = data.publication;
+  if (kind === "publish") {
+    await approve(command);
+    const submitted = { ...command, commandKey: value! }, stable = await snapshot();
+    const result = await authority.publish(submitted, actor);
+    if (valid) {
+      expect(result).toMatchObject({ outcome: "committed", receipt: { commandKey: value } });
+      if (result.outcome !== "committed") throw new Error("Missing publication receipt");
+      expect(await authority.publish(submitted, actor)).toEqual({ outcome: "replayed", receipt: result.receipt });
+      expect(await authority.receipt({ productId: data.productId, commandKey: value! }, actor)).toEqual({ outcome: "found", receipt: result.receipt });
+    } else {
+      expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
+      expect(await snapshot()).toEqual(stable);
+    }
+    return;
+  }
+  if (kind.startsWith("anchor")) {
+    let reached = false;
+    const target = createPostgresCatalogPublication(dependencies(sql => {
+      if (sql.includes("JOIN public.catalog_product_document_revisions")) reached = true;
+    }));
+    const capability = (await target.authorize(null))!;
+    const candidateRef = `v1:${data.draftId}@1/${value}@${kind.endsWith("UUID") ? 1 : 2_147_483_648}`;
+    expect(await target.publish({ ...command, candidateRef }, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
+    expect(reached).toBe(false);
+    return;
+  }
+  if (kind === "revoke") await approve(command);
+  const submitted = { schemaVersion: 2 as const, action: kind as "approve" | "revoke", productId: data.productId, commandKey: "decision:wire",
+    candidateRef: command.candidateRef, candidateDigest: command.candidateDigest, reason: value };
+  const stable = await snapshot(), result = await authority.decision(submitted, actor);
+  if (valid) {
+    expect(result).toMatchObject({ outcome: "committed", receipt: { reason: value } });
+    if (result.outcome !== "committed") throw new Error("Missing decision receipt");
+    expect(await authority.decision(submitted, actor)).toEqual({ outcome: "replayed", receipt: result.receipt });
+  } else {
+    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
+    expect(await snapshot()).toEqual(stable);
+  }
+});
+
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);
   payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation"; payload.skus = []; delete payload.product.primarySkuId;
@@ -3270,8 +3327,8 @@ it.each(["one kind", "max kind", "empty kind", "padded kind", "long kind", "one 
     if (["empty kind", "padded kind", "long kind"].includes(mode)) rejection = { code: "23514", constraint: "catalog_operator_receipts_kind_check" };
   }
   if (mode.endsWith("key")) {
-    row.command_key = mode === "one key" ? "x" : mode === "max key" ? "x".repeat(240) : mode === "empty key" ? "" : mode === "padded key" ? " key " : "x".repeat(241);
-    if (["empty key", "padded key", "long key"].includes(mode)) rejection = { code: "23514", constraint: "catalog_operator_receipts_command_key_check" };
+    row.command_key = mode === "one key" ? "x" : mode === "max key" ? "é".repeat(100) : mode === "empty key" ? "" : mode === "padded key" ? " key " : "é".repeat(100) + "x";
+    if (["empty key", "long key"].includes(mode)) rejection = { code: "23514", constraint: "catalog_operator_receipts_command_key_check" };
   }
   if (mode === "short fingerprint" || mode === "nonhex fingerprint") { row.fingerprint = mode === "short fingerprint" ? "a".repeat(63) : "g".repeat(64); rejection = { code: "23514", constraint: "catalog_operator_receipts_fingerprint_check" }; }
   if (mode === "empty object") row.result = "{}";
@@ -3294,15 +3351,17 @@ it.each(["one kind", "max kind", "empty kind", "padded kind", "long kind", "one 
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
 
-it.each(["one reason", "max reason", "blank reason", "long reason", "padded long reason", "action", "short candidate digest", "nonhex candidate digest", "short reference digest", "nonhex reference digest", "short fingerprint", "nonhex fingerprint"] as const)("cycle1 native decision SQL admission: %s", async mode => {
+it.each(["one reason", "max reason", "null reason", "tab reason", "blank reason", "long reason", "padded long reason", "action", "short candidate digest", "nonhex candidate digest", "short reference digest", "nonhex reference digest", "short fingerprint", "nonhex fingerprint"] as const)("cycle1 native decision SQL admission: %s", async mode => {
   const decision = (await db.query("SELECT to_jsonb(d) AS value FROM public.catalog_publication_decisions d WHERE product_id=$1 LIMIT 1", [foreignPublished.data.productId])).rows[0].value as Record<string, unknown>;
   const receipt = (await db.query("SELECT to_jsonb(r) AS value FROM public.catalog_operator_receipts r WHERE kind=$3 AND scope_id=$1 AND command_key=$2", [decision.product_id, decision.command_key, decision.action])).rows[0].value as Record<string, unknown>;
   decision.id = randomUUID(); decision.command_key = `constraint:${randomUUID()}`; receipt.command_key = decision.command_key;
   let constraint = "catalog_publication_decisions_reason_check";
   if (mode === "one reason") decision.reason = "x";
-  if (mode === "max reason") decision.reason = "x".repeat(1000);
+  if (mode === "max reason") decision.reason = "é".repeat(500);
+  if (mode === "null reason") decision.reason = null;
+  if (mode === "tab reason") decision.reason = "\t";
   if (mode === "blank reason") decision.reason = " ";
-  if (mode === "long reason") decision.reason = "x".repeat(1001);
+  if (mode === "long reason") decision.reason = "é".repeat(500) + "x";
   if (mode === "padded long reason") decision.reason = ` ${"x".repeat(1000)}`;
   if (mode === "action") { decision.action = "deny"; constraint = "catalog_publication_decisions_action_check"; }
   for (const [label, field] of [["candidate digest", "candidate_digest"], ["reference digest", "candidate_reference_digest"], ["fingerprint", "fingerprint"]]) {
@@ -3313,7 +3372,7 @@ it.each(["one reason", "max reason", "blank reason", "long reason", "padded long
     await client.query("BEGIN");
     await client.query("INSERT INTO public.catalog_operator_receipts SELECT (jsonb_populate_record(NULL::public.catalog_operator_receipts,$1::jsonb)).*", [JSON.stringify(receipt)]);
     const insert = client.query("INSERT INTO public.catalog_publication_decisions SELECT (jsonb_populate_record(NULL::public.catalog_publication_decisions,$1::jsonb)).*", [JSON.stringify(decision)]);
-    if (mode === "one reason" || mode === "max reason") expect((await insert).rowCount).toBe(1); else await expect(insert).rejects.toMatchObject({ code: "23514", constraint });
+    if (["one reason", "max reason", "null reason", "tab reason"].includes(mode)) expect((await insert).rowCount).toBe(1); else await expect(insert).rejects.toMatchObject({ code: "23514", constraint });
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
 

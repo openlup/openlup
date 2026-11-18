@@ -1626,7 +1626,7 @@ export interface CatalogDecisionCommandV2 {
     commandKey: string;
     candidateRef: string;
     candidateDigest: string;
-    reason: string;
+    reason: string | null;
 }
 /** @experimental */
 export interface CatalogPublishedIdentifier {
@@ -1721,7 +1721,7 @@ export interface CatalogDecisionReceiptV2 {
     candidateRef: string;
     candidateDigest: string;
     actorId: string;
-    reason: string;
+    reason: string | null;
     decidedAt: string;
 }
 /** @experimental */

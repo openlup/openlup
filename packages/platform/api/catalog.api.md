@@ -1112,6 +1112,21 @@ import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/l
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import { compileCatalogPublication, type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
+/** Exact reference decoding shared by the facade and the transaction admission.
+ * @experimental
+ */
+export declare function parseCatalogCandidateReference(value: string): {
+    draftId: string;
+    draftRevision: number;
+    head: null;
+} | {
+    draftId: string;
+    draftRevision: number;
+    head: {
+        publicationId: string;
+        revision: number;
+    };
+} | null;
 /** @experimental */
 export declare class CatalogCandidateError extends Error {
     readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable";
@@ -2892,7 +2907,7 @@ export interface CatalogDecisionCommandV2 {
     commandKey: string;
     candidateRef: string;
     candidateDigest: string;
-    reason: string;
+    reason: string | null;
 }
 /** @experimental */
 export interface CatalogPublishedIdentifier {
@@ -2987,7 +3002,7 @@ export interface CatalogDecisionReceiptV2 {
     candidateRef: string;
     candidateDigest: string;
     actorId: string;
-    reason: string;
+    reason: string | null;
     decidedAt: string;
 }
 /** @experimental */
@@ -5045,7 +5060,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "3bbe26e483d3a7a915c72ae16450dea2afa95390f3e2d5670c68d98414766788";
+        readonly sha256: "58c7d3da28f7310990d54132fea5ff6a1776e4e0b4bf5a708e2571ac8d9a97c3";
         readonly url: URL;
     }
 ];

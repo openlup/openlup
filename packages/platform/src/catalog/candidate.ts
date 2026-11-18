@@ -20,6 +20,18 @@ const revision = z.number().int().min(1).max(2_147_483_647);
 const headSchema = z.object({ publicationId: id, revision, documentDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 const querySchema = z.object({ draftId: id, draftRevision: revision, expectedHead: headSchema.nullable() }).strict();
 const referencePattern = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u;
+/** Exact reference decoding shared by the facade and the transaction admission.
+ * @experimental
+ */
+export function parseCatalogCandidateReference(value: string) {
+  if (typeof value !== "string" || value.length > 200) return null;
+  const match = referencePattern.exec(value);
+  if (!match || !id.safeParse(match[1]).success || !revision.safeParse(Number(match[2])).success) return null;
+  const draftId = match[1]!, draftRevision = Number(match[2]);
+  if (match[3] === "unpublished") return { draftId, draftRevision, head: null };
+  if (!id.safeParse(match[4]).success || !revision.safeParse(Number(match[5])).success) return null;
+  return { draftId, draftRevision, head: { publicationId: match[4]!, revision: Number(match[5]) } };
+}
 /** @experimental */
 export class CatalogCandidateError extends Error {
   constructor(readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable") {
@@ -140,20 +152,18 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
   }
   async function reconstruct(candidateRef: string): Promise<{ preview: CatalogCandidatePreview; head: CatalogHeadRef | null }> {
     try {
-      if (typeof candidateRef !== "string" || candidateRef.length > 200) return refuse("candidate_invalid");
-      const match = referencePattern.exec(candidateRef);
-      if (!match || !id.safeParse(match[1]).success || !revision.safeParse(Number(match[2])).success) return refuse("candidate_invalid");
+      const reference = parseCatalogCandidateReference(candidateRef);
+      if (!reference) return refuse("candidate_invalid");
       let expectedHead: CatalogHeadRef | null = null;
-      if (match[3] !== "unpublished") {
-        if (!id.safeParse(match[4]).success || !revision.safeParse(Number(match[5])).success) return refuse("candidate_invalid");
-        const resolved = await deps.resolveHead({ publicationId: match[4]!, revision: Number(match[5]) });
-        const parsed = headSchema.safeParse(resolved);
-        if (!parsed.success || parsed.data.publicationId !== match[4] || parsed.data.revision !== Number(match[5])) return refuse("head_conflict");
+      if (reference.head) {
+        const parsed = headSchema.safeParse(await deps.resolveHead(reference.head));
+        if (!parsed.success || parsed.data.publicationId !== reference.head.publicationId
+          || parsed.data.revision !== reference.head.revision) return refuse("head_conflict");
         expectedHead = parsed.data;
       }
-      const raw = await deps.readDraft(match[1]!, Number(match[2]));
+      const raw = await deps.readDraft(reference.draftId, reference.draftRevision);
       const parsed = catalogDraftPublicationStoredRecordSchema.safeParse(raw);
-      if (!parsed.success || parsed.data.draftId !== match[1] || parsed.data.revision !== Number(match[2])) return refuse("candidate_invalid");
+      if (!parsed.success || parsed.data.draftId !== reference.draftId || parsed.data.revision !== reference.draftRevision) return refuse("candidate_invalid");
       const record = parsed.data, payload = record.payload;
       const canonicalPayload = canonicalCatalogDraftJson(payload);
       const latest = await deps.readDraft(record.draftId);

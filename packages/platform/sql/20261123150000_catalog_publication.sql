@@ -58,7 +58,7 @@ CREATE TABLE public.catalog_sku_revisions (
 CREATE TABLE public.catalog_operator_receipts (
  kind text NOT NULL CHECK (kind = btrim(kind) AND length(kind) BETWEEN 1 AND 80),
  scope_id uuid NOT NULL,
- command_key text NOT NULL CHECK (command_key = btrim(command_key) AND length(command_key) BETWEEN 1 AND 240),
+ command_key text NOT NULL CHECK (octet_length(command_key) BETWEEN 1 AND 200),
  fingerprint text NOT NULL CHECK (length(fingerprint) = 64 AND translate(fingerprint,'abcdef0123456789','') = ''),
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  publication_id uuid REFERENCES public.catalog_publications(id),
@@ -77,7 +77,7 @@ CREATE TABLE public.catalog_publication_decisions (
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  command_key text NOT NULL,
  fingerprint text NOT NULL CHECK (length(fingerprint) = 64 AND translate(fingerprint,'abcdef0123456789','') = ''),
- reason text NOT NULL CHECK (length(btrim(reason)) BETWEEN 1 AND 1000 AND length(reason) BETWEEN 1 AND 1000),
+ reason text CHECK (length(btrim(reason)) BETWEEN 1 AND 1000 AND octet_length(reason) BETWEEN 1 AND 1000),
  decided_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  UNIQUE(product_id,command_key),
  FOREIGN KEY(product_id,command_key) REFERENCES public.catalog_operator_receipts(scope_id,command_key)

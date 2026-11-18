@@ -24,7 +24,10 @@ Changed complete facts retain compatible attribute, axis, gross-mass and asset
 updates without refreshing unrelated fields. Candidate preparation reports staged,
 pending, unknown and blocked evidence. Creation binds the name to the sealed
 document. An explicit null presentation clears an existing presentation, and
-moving to an off-head document requires its matching registration.
+moving to an off-head document requires its matching registration. Publication
+and decision command keys preserve whitespace and accept up to 200 UTF-8 bytes.
+A decision reason may be null. A supplied reason preserves whitespace, requires
+text beyond ASCII spaces, and accepts up to 1,000 UTF-8 bytes.
 
 Migration: install the native forward and upgrade readers before composing the
 new version 2 publication API. Existing publication ports retain their version 1

@@ -53,7 +53,8 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
   id, productId: id, code, title: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
   netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
-  attributes, facts, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32), logisticsRef: ref.nullable(),
+  attributes, facts, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32),
+  logisticsRef: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(),
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict().superRefine((sku, context) => {
   if (!sku.memberships.every((row, index) => index === 0 || comparePublicationText(sku.memberships[index - 1]!.offerVersion, row.offerVersion) < 0)

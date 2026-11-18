@@ -12,7 +12,7 @@ export interface CatalogPublishCommandV2 extends CatalogPublishCommand { schemaV
 /** @experimental */
 export interface CatalogDecisionCommandV2 {
   schemaVersion: 2; action: "approve" | "revoke"; productId: string; commandKey: string;
-  candidateRef: string; candidateDigest: string; reason: string;
+  candidateRef: string; candidateDigest: string; reason: string | null;
 }
 /** @experimental */
 export interface CatalogPublishedIdentifier {
@@ -49,7 +49,7 @@ export interface CatalogPublicationReceiptV2 extends CatalogPublicationReceipt {
 /** @experimental */
 export interface CatalogDecisionReceiptV2 {
   schemaVersion: 2; action: "approve" | "revoke"; productId: string; commandKey: string; fingerprint: string;
-  candidateRef: string; candidateDigest: string; actorId: string; reason: string; decidedAt: string;
+  candidateRef: string; candidateDigest: string; actorId: string; reason: string | null; decidedAt: string;
 }
 /** @experimental */
 export interface CatalogRetainedSourceBinding {
