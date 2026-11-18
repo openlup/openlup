@@ -244,6 +244,14 @@ and `preferredDays` distinguish acquisition choices and visible recommendations
 within `days`. Defaults and recommendations never grant admission. One-time
 purchases keep their own purchase-mode and cart limits.
 
+Startup accepts `offer.maxUnits` up to 100 and each SKU quantity domain up to
+99; exceeding either refuses with `starter_units_above_representation`.
+In each subscription offer, `maximumBaseLines + maximumAddonLines` may total
+50; exceeding it refuses with `starter_lines_above_representation`.
+These are fixed [representation bounds](../../reference/limits.md#quantity-and-line-representation);
+choose lower business limits in owned configuration. Completed receipts and
+paid-order reads remain valid after those limits are lowered.
+
 The same input derives checkout choices, editor candidates and quantity controls,
 and admits the full resulting set through the classic, exact and sized ports.
 Changing cadence preserves quantities. Existing active commitments remain as

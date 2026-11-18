@@ -2,6 +2,10 @@ import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import { contains, choices, maximum, type Numbers } from './policy.ts';
 export { set, range, contains, choices, maximum, type Numbers } from './policy.ts';
 
+// Mirror checkoutCommandSchemas.ts's private transport bounds for startup validation.
+const MAX_CHECKOUT_LINE_QUANTITY = 99;
+const MAX_CHECKOUT_LINES = 50;
+
 export interface SubscriptionOffer {
   days: Numbers;
   checkoutDays?: Numbers;
@@ -49,13 +53,16 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
   if (!contains(offer.days,offer.defaultDays) || !contains(offer.checkoutDays ?? offer.days,offer.defaultDays)
     || ![offer.minimumBaseUnits,offer.maximumUnits,offer.maximumBaseLines,offer.maximumAddonLines].every(positive)
     || offer.maximumUnits < offer.minimumBaseUnits) invalid();
+  if (offer.maximumBaseLines + offer.maximumAddonLines > MAX_CHECKOUT_LINES) {
+    throw new Error('starter_lines_above_representation');
+  }
   for (const [sku,rules] of Object.entries(offer.bySku)) {
     if (!skus.includes(sku) || !rules.length) invalid();
     const seen = new Set<number>();
     for (const rule of rules) {
       numbers(rule.days); numbers(rule.quantities);
       if (maximum(rule.days) > maximum(offer.days)) invalid();
-      if (maximum(rule.quantities) > 99) invalid();
+      if (maximum(rule.quantities) > MAX_CHECKOUT_LINE_QUANTITY) throw new Error('starter_units_above_representation');
       for (const day of choices(rule.days)) {
         if (!contains(offer.days,day) || seen.has(day)) invalid();
         seen.add(day);

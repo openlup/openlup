@@ -96,6 +96,11 @@ servicing minimum, then restart; admission refuses installed-minimum drift. Do n
 server-only or browser-only commercial rule. Public package engines still own
 order, payment and subscription truth.
 
+Startup refuses `offer.maxUnits > 100` or per-SKU quantity maxima above 99 with
+`starter_units_above_representation`; combined base/add-on line allowances above
+50 refuse with `starter_lines_above_representation`. Keep owned limits within
+these representation bounds; narrowing them preserves completed receipt replay.
+
 Read the installed `node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md`
 before changing a page. Editing a managed page makes
 that page an owned source copy; record the ownership

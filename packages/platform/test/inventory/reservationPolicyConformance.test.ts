@@ -7,6 +7,7 @@ import {
   normalizedTtlMinutes,
   reservationPolicyFor,
   type AutomaticRenewalInventoryPort,
+  type CheckoutReservationLifetimePolicy,
 } from "../../src/inventory/index.js";
 import type {
   AutomaticRenewalReservationResult,
@@ -25,7 +26,7 @@ describe("reservation policy and native renewal store conformance", () => {
     for (const value of [undefined, null, 0, -1, NaN, Infinity, -Infinity]) {
       expect(normalizedTtlMinutes(value)).toBe(1440);
     }
-    expect([1, 1440, 1800.9, 3000].map(normalizedTtlMinutes)).toEqual([1440, 1440, 1800, 2160]);
+    expect([1, 1440, 1800.9, 3000].map(value => normalizedTtlMinutes(value))).toEqual([1440, 1440, 1800, 2160]);
     const input: ReservationPolicyInput = { reservationKind: "checkout_payment_window",
       paymentTargetKind: "one_time_order", orderMode: "one_time", now: new Date(now), checkoutTtlMinutes: 1800.9 };
     const policy: ReservationPolicy = reservationPolicyFor(input);
@@ -34,6 +35,67 @@ describe("reservation policy and native renewal store conformance", () => {
       expect(reservationPolicyFor({ ...input, reservationKind })).toEqual({ expiresAt: null, ttlMinutes: null });
     }
     expect(input.now.toISOString()).toBe(now);
+  });
+
+  it.each([
+    [undefined, 1440], [null, 1440], [0, 1440], [-1, 1440], [NaN, 1440],
+    [Infinity, 1440], [-Infinity, 1440], [0.5, 1440], [1, 1440], [1440, 1440],
+    [1800.9, 1800], [2160, 2160], [3000, 2160], [Number.MAX_SAFE_INTEGER, 2160], [Number.MAX_VALUE, 2160],
+  ])("keeps default and explicit adopter lifetimes identical for %s", (value, expected) => {
+    const adopterPolicy: CheckoutReservationLifetimePolicy = { minMinutes: 1440, maxMinutes: 2160, defaultMinutes: 1440 };
+    const expiry = { 1440: "2026-10-21T10:00:00.000Z", 1800: "2026-10-21T16:00:00.000Z", 2160: "2026-10-21T22:00:00.000Z" };
+    expect(normalizedTtlMinutes(value)).toBe(expected);
+    expect(normalizedTtlMinutes(value, adopterPolicy)).toBe(expected);
+    for (const reservationKind of ["checkout_payment_window", "subscription_retry_window"]) {
+      const input: ReservationPolicyInput = { reservationKind, paymentTargetKind: "one_time_order",
+        orderMode: "one_time", now: new Date(now), checkoutTtlMinutes: value };
+      expect(reservationPolicyFor(input)).toEqual(reservationKind === "checkout_payment_window"
+        ? { expiresAt: expiry[expected as keyof typeof expiry], ttlMinutes: expected }
+        : { expiresAt: null, ttlMinutes: null });
+      expect(reservationPolicyFor(input, adopterPolicy)).toEqual(reservationPolicyFor(input));
+    }
+  });
+
+  it("uses custom bounds and fallback only for checkout payment windows", () => {
+    const policy: CheckoutReservationLifetimePolicy = { minMinutes: 10, maxMinutes: 60, defaultMinutes: 30 };
+    for (const value of [undefined, null, 0, -1, NaN, Infinity]) expect(normalizedTtlMinutes(value, policy)).toBe(30);
+    expect([0.5, 1, 10, 45.9, 60, Number.MAX_VALUE].map(value => normalizedTtlMinutes(value, policy)))
+      .toEqual([10, 10, 10, 45, 60, 60]);
+    const input: ReservationPolicyInput = { reservationKind: "checkout_payment_window", paymentTargetKind: "one_time_order",
+      orderMode: "one_time", now: new Date(now), checkoutTtlMinutes: 100 };
+    expect(reservationPolicyFor(input, policy)).toEqual({ expiresAt: "2026-10-20T11:00:00.000Z", ttlMinutes: 60 });
+    expect(reservationPolicyFor({ ...input, reservationKind: "subscription_retry_window" }, policy))
+      .toEqual({ expiresAt: null, ttlMinutes: null });
+    expect(normalizedTtlMinutes(10, { minMinutes: 1, maxMinutes: 1, defaultMinutes: 1 })).toBe(1);
+  });
+
+  it("refuses malformed or unordered policies on every helper call, including other reservation kinds", () => {
+    const valid: CheckoutReservationLifetimePolicy = { minMinutes: 10, maxMinutes: 60, defaultMinutes: 30 };
+    const invalid: unknown[] = [null, {}, { ...valid, minMinutes: 61 }, { ...valid, defaultMinutes: 9 }, { ...valid, defaultMinutes: 61 }];
+    for (const field of ["minMinutes", "maxMinutes", "defaultMinutes"] as const) {
+      for (const value of [0, -1, 0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, Number.MAX_SAFE_INTEGER, 3660 * 24 * 60 + 1, "30", null, undefined]) {
+        invalid.push({ ...valid, [field]: value });
+      }
+    }
+    for (const candidate of invalid) {
+      const policy = candidate as CheckoutReservationLifetimePolicy;
+      expect(() => normalizedTtlMinutes(null, policy)).toThrow("reservation_policy_invalid");
+      for (const reservationKind of ["checkout_payment_window", "subscription_retry_window"]) {
+        expect(() => reservationPolicyFor({ reservationKind, paymentTargetKind: "one_time_order",
+          orderMode: "one_time", now: new Date(now) }, policy)).toThrow("reservation_policy_invalid");
+      }
+    }
+  });
+
+  it("keeps every accepted policy expiry representable at the ten-year ceiling", () => {
+    const ceiling = 3660 * 24 * 60;
+    for (const policy of [{ minMinutes: 1, maxMinutes: ceiling, defaultMinutes: 30 }, { minMinutes: 1, maxMinutes: ceiling, defaultMinutes: ceiling }]) {
+      for (const checkoutTtlMinutes of [Number.MAX_VALUE, null]) {
+        const result = reservationPolicyFor({ reservationKind: "checkout_payment_window", paymentTargetKind: "one_time_order",
+          orderMode: "one_time", now: new Date(now), checkoutTtlMinutes }, policy);
+        expect(Number.isFinite(Date.parse(result.expiresAt!))).toBe(true);
+      }
+    }
   });
 
   it("preserves reserve statuses, replay and exact fenced arguments without changing identity", async () => {

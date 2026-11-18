@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, expectTypeOf, it } from "vitest";
-import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput } from "@openlup/platform/inventory";
+import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, reservationPolicyFor, type PurchaseReservationInput } from "@openlup/platform/inventory";
 import { createPostgresAdminInventoryPort } from "@openlup/platform/inventory";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import { z } from "zod";
@@ -277,6 +277,25 @@ it("persists the ordered batch, serializes JS arrays as JSON, and refuses every 
   await expect(release(held.reservations[1].reservationId, AT, key)).rejects.toThrow("fulfillment_purchase_reservation_idempotency_conflict");
   expect(await rows(input.orderId)).toEqual(released);
   expect(await budget(f)).toMatchObject({ hard_hold_quantity: 3, available_quantity: 7 });
+});
+it("keeps the stored checkout expiry on replay and read after the host changes lifetime policy", async () => {
+  const policyInput = { reservationKind: "checkout_payment_window", paymentTargetKind: "one_time_order",
+    orderMode: "one_time", now: new Date(AT) };
+  const original = reservationPolicyFor(policyInput);
+  const input = { ...await purchase(await stock()), expiresAt: original.expiresAt };
+  const held = await port().reserveOrderItems(input);
+  const before = await rows(input.orderId);
+  expect(before.map(row => new Date(row.header.expires_at).toISOString())).toEqual([original.expiresAt]);
+
+  const narrowed = reservationPolicyFor(policyInput, { minMinutes: 10, maxMinutes: 60, defaultMinutes: 30 });
+  expect(narrowed.expiresAt).not.toBe(original.expiresAt);
+  // Replay carries the original command expiry; applying today's policy would change its identity.
+  expect(await port().reserveOrderItems({ ...input, now: later(2) })).toMatchObject({ replayed: true,
+    reservations: [{ reservationId: held.reservations[0].reservationId, replayed: true }] });
+  expect(await rows(input.orderId)).toEqual(before);
+  await expect(port().reserveOrderItems({ ...input, expiresAt: narrowed.expiresAt }))
+    .rejects.toThrow("fulfillment_purchase_reservation_idempotency_conflict");
+  expect(await rows(input.orderId)).toEqual(before);
 });
 it("retains SQL-only expiry identity across spellings, zones and microsecond changes", async () => {
   for (const [expiry, equivalent, changed, receiptText] of [

@@ -10,6 +10,9 @@ import { assertEditorConfig, type SubscriptionEditorConfig } from './subscriptio
 
 import { assertSubscriptionOffer, type SubscriptionOffers } from './subscription-offer.ts';
 
+// Starter cart representation bound; owned offers may choose a lower maximum.
+const MAX_STARTER_OFFER_UNITS = 100;
+
 export type Locale = 'en' | 'pl';
 export type Localized = Record<Locale, string>;
 export type PurchaseMode = 'one_time' | 'subscription';
@@ -140,8 +143,9 @@ export function assertConfig(config: StoreConfig): void {
     offer.subscriptionRoundingQuantumMinor]) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
   }
+  if (offer.maxUnits > MAX_STARTER_OFFER_UNITS) throw new Error('starter_units_above_representation');
   if (offer.shippingMinor > 2147483647 || offer.freeShippingFromMinor > 2147483647
-    || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
+    || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
     || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > MAX_CADENCE_DAYS
