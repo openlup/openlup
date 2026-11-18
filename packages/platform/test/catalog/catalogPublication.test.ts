@@ -379,10 +379,12 @@ it.each([
   ["wrong digest before invalid JSON", "catalog_publication_v3_document_digest_mismatch"],
   ["correct digest with invalid JSON", "catalog_publication_v3_document_invalid"],
   ["valid schema with noncanonical encoding", "catalog_publication_v3_document_not_canonical"],
+  ["different schema with noncanonical encoding", "catalog_publication_v3_document_invalid"],
 ] as const)("publication document admission reports %s", (mode, reason) => {
   const data = input(), operation = data.payload.publication.operations.find(operation => operation.op === "register_document_revision");
   if (!operation) throw new Error("Missing document operation");
-  operation.canonicalText = mode.startsWith("valid") ? ` ${operation.canonicalText}` : "{ invalid json";
+  if (mode.startsWith("different")) data.payload.product.documentRevision!.schemaId = "example:document.v2";
+  operation.canonicalText = mode.includes("noncanonical") ? ` ${operation.canonicalText}` : "{ invalid json";
   if (!mode.startsWith("wrong")) {
     const digest = createHash("sha256").update(operation.canonicalText).digest("hex");
     operation.digest = digest;
@@ -511,7 +513,7 @@ it.each([["colliding", "duplicate_combination"], ["distinct", "catalog_publicati
     expect(() => compileCatalogPublication(data)).toThrow(reason);
   });
 
-it.each(["duplicate code", "duplicate ID", "invalid facts", "authentic roster"] as const)(
+it.each(["duplicate code", "duplicate ID", "invalid facts", "invalid product", "authentic roster"] as const)(
   "publication compiler validates the complete retained roster: %s", mode => {
     const data = publicationWithSecondary(), [first, second] = data.skus;
     data.payload.publication.kind = "compensation";
@@ -521,8 +523,9 @@ it.each(["duplicate code", "duplicate ID", "invalid facts", "authentic roster"] 
     if (mode === "duplicate code") { second.code = first.code; data.skus = [second, first]; }
     if (mode === "duplicate ID") second.id = first.id;
     if (mode === "invalid facts") Reflect.deleteProperty(second, "source");
+    if (mode === "invalid product") data.product!.name = "";
     if (mode === "authentic roster") expect(compileCatalogPublication(data).skus.map(sku => sku.code)).toEqual([first.code, second.code]);
-    else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_sku_revision_invalid");
+    else expect(() => compileCatalogPublication(data)).toThrow(mode === "invalid product" ? "catalog_publication_read_invalid" : "catalog_publication_sku_revision_invalid");
   });
 
 it.each([
@@ -1092,10 +1095,12 @@ it.each([
   ["wrong document revision", "catalog_publication_v3_document_invalid"],
   ["unused bad document", "catalog_publication_v3_document_digest_mismatch"],
   ["old prefix with equal derived facts", "catalog_publication_v3_compile_document_stale"],
+  ["old prefix with colliding combination", "duplicate_combination"],
+  ["derived cache bound to old prefix", "catalog_publication_derived_source_mismatch"],
   ["bare older move", "catalog_publication_v3_document_reference_stale"],
   ["matched older registration", null],
 ] as const)("publication binds the exact authored and installed document tuple: %s", (mode, reason) => {
-  const data = mode === "old prefix with equal derived facts" ? publicationWithSecondary() : retainedPublicationInput();
+  const data = mode.startsWith("old prefix") ? publicationWithSecondary() : retainedPublicationInput();
   const content = data.payload.product.sharedContent;
   const current = data.documents[0]!;
   const newerContent = { ...content.document, revisionNo: 2 };
@@ -1106,18 +1111,30 @@ it.each([
   data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: content.presentation }];
   if (mode === "missing reference") delete data.payload.product.documentRevision;
   else if (mode === "unused bad document") data.documents = [...data.documents, { ...newer, reference: { ...newer.reference, digest: "c".repeat(64) } }];
-  else if (mode === "old prefix with equal derived facts") {
-    const secondary = data.skus.pop()!, sku = data.payload.skus[0];
+  else if (mode.startsWith("old prefix") || mode === "derived cache bound to old prefix") {
     content.document = newerContent; data.payload.product.documentRevision = newer.reference;
     const register = { op: "register_document_revision" as const, productSlug: "article", revisionId: newer.reference.id,
       revisionNo: 2, documentRef: newer.reference.documentRef, sourceRef: newer.reference.sourceRef, canonicalText,
       digest: newer.reference.digest, provenance: { source: "current_draft" as const } };
-    data.payload.publication.operations = [
+    if (mode === "derived cache bound to old prefix") {
+      const sku = data.skus[0];
+      data.payload.publication.operations = [
+        { op: "set_derived_sku_facts", skuCode: sku.code, documentRevisionNo: 1, netContent: sku.netContent, facts: sku.facts },
+        register, { op: "move_document_pointer", productSlug: "article", documentRevisionNo: 2 },
+      ];
+    } else {
+      const secondary = data.skus.pop()!, sku = data.payload.skus[0];
+      if (mode === "old prefix with colliding combination") {
+        sku.netContent = data.skus[0].netContent;
+        sku.options = data.skus[0].options;
+      }
+      data.payload.publication.operations = [
       { op: "create_sku", productSlug: "article", skuId: secondary.id, documentRevisionNo: 1, ...content.publicationSkus[0] },
       { op: "create_identifier", skuCode: sku.code!, scheme: "gs1:gtin", issuer: "example", value: "4006381333931",
         quantity: 1, packagingLevel: "unit", isPrimary: true, label: null, sourceRef: null },
       register, { op: "move_document_pointer", productSlug: "article", documentRevisionNo: 2 },
-    ];
+      ];
+    }
   } else if (mode === "bare older move" || mode === "matched older registration") {
     data.documents = [...data.documents, newer];
     data.product!.document = newer.reference;

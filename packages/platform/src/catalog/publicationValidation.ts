@@ -225,22 +225,29 @@ export function catalogPublicationMediaIssue(mediaRef: unknown, assets: readonly
   return claim.mediaRef === mediaRef && equal([...assets].sort(comparePublicationText), claim.assetRefs)
     ? null : "media_readiness_mismatch";
 }
-function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument["reference"], "digest" | "documentRef" | "revisionNo">,
+function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument["reference"], "digest" | "documentRef" | "revisionNo">
+  & { schemaId?: string | undefined },
   slug: string, rules: CatalogPublicationRules) {
   need(createHash("sha256").update(canonicalText).digest("hex") === reference.digest, "catalog_publication_v3_document_digest_mismatch");
   let document: unknown, identity: ReturnType<CatalogPublicationRules["identifyDocument"]>, canonical: string;
   try {
     document = JSON.parse(canonicalText);
-    canonical = rules.canonicalizeDocument(document);
     identity = rules.identifyDocument(document);
+    need(identity?.productSlug === slug && identity.documentRef === reference.documentRef && identity.revisionNo === reference.revisionNo
+      && (reference.schemaId === undefined || identity.schemaId === reference.schemaId), "catalog_publication_v3_document_invalid");
+    canonical = rules.canonicalizeDocument(document);
   } catch { return publicationRefuse("catalog_publication_v3_document_invalid"); }
-  need(identity?.productSlug === slug && identity.documentRef === reference.documentRef && identity.revisionNo === reference.revisionNo,
-    "catalog_publication_v3_document_invalid");
   need(canonical === canonicalText, "catalog_publication_v3_document_not_canonical");
-  return { document, schemaId: identity.schemaId };
+  return document;
 }
 type PublicationSourceInput = Pick<CatalogPublicationCompileInput, "record" | "payload" | "retainedSources" | "rules">;
 type PublicationOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
+
+function assertDerivedSource(operation: Extract<PublicationOperation, { op: "set_derived_sku_facts" }>,
+  original: Pick<CatalogPublishedSku, "netContent"> | undefined, authoredRevision: number | undefined) {
+  need(original && equal(original.netContent, operation.netContent) && operation.documentRevisionNo === authoredRevision,
+    "catalog_publication_derived_source_mismatch");
+}
 
 function publicationAuthorship({ record, payload, retainedSources, rules }: PublicationSourceInput) {
   const sources = [record, ...retainedSources];
@@ -260,16 +267,17 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
     return { source, payload: source.payload, sku };
   }
   function document(operation: Extract<PublicationOperation, { op: "register_document_revision" }>): CatalogPublicationDocument {
-    const { document, schemaId } = checkedDocument(operation.canonicalText, operation, slug, rules);
     const provenance = resolveCatalogDraftProvenance(operation.provenance, record);
     const source = sources.find(source => source.draftId === provenance.draftId && source.revision === provenance.draftRevision
       && source.commandKey === provenance.draftCommandKey && source.fingerprint === provenance.draftFingerprint);
+    const schemaId = source?.payload.schemaVersion === 3 ? source.payload.product.documentRevision?.schemaId : undefined;
+    const document = checkedDocument(operation.canonicalText, { ...operation, schemaId }, slug, rules);
     if (source?.payload.schemaVersion !== 3 || source.productId !== payload.product.id) return publicationRefuse("catalog_publication_document_source_missing");
     const reference = source.payload.product.documentRevision;
     if (!reference || reference.id !== operation.revisionId || reference.revisionNo !== operation.revisionNo
       || reference.documentRef !== operation.documentRef || reference.sourceRef !== operation.sourceRef || reference.digest !== operation.digest)
       return publicationRefuse("catalog_publication_document_source_mismatch");
-    need(schemaId === reference.schemaId && equal(document, source.payload.product.sharedContent.document), "catalog_publication_v3_document_invalid");
+    need(equal(document, source.payload.product.sharedContent.document), "catalog_publication_v3_document_invalid");
     return { reference, canonicalText: operation.canonicalText, provenance };
   }
   function productOperation(operation: Extract<PublicationOperation, { productSlug: string }>) {
@@ -321,8 +329,7 @@ export function assertCatalogPublicationAuthorship(input: PublicationSourceInput
     if (operation.op === "register_document_revision") authored.document(operation);
     if (operation.op === "set_derived_sku_facts") {
       const actual = input.skus.find(sku => sku.code === operation.skuCode);
-      need(actual && equal(actual.netContent, operation.netContent) && operation.documentRevisionNo === payload.product.documentRevision?.revisionNo,
-        "catalog_publication_derived_source_mismatch");
+      assertDerivedSource(operation, actual, payload.product.documentRevision?.revisionNo);
     } else if ("skuCode" in operation) authored.skuOperation(operation);
   }
 }
@@ -346,6 +353,8 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
   const payload = catalogDraftPayloadV3Schema.parse(input.payload);
   assertCatalogPublicationPreparation(payload, input);
   need(input.skus.length === 0 || input.product !== null, "catalog_publication_source_invalid");
+  need(input.product === null || catalogPublishedProductSchema.safeParse(input.product).success,
+    "catalog_publication_read_invalid", "dependency_unavailable");
   need(input.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
   const retainedIds = new Set<string>(), retainedCodes = new Set<string>();
   for (const sku of input.skus) {
@@ -384,8 +393,7 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
   need(authoredDocument, "document_reference_missing");
   for (const document of documents) {
     need(document.reference.productId === payload.product.id, "catalog_publication_document_source_mismatch");
-    need(checkedDocument(document.canonicalText, document.reference, slug, input.rules).schemaId === document.reference.schemaId,
-      "catalog_publication_v3_document_invalid");
+    checkedDocument(document.canonicalText, document.reference, slug, input.rules);
   }
   function knownProduct(): CatalogPublishedProduct { return product ?? publicationRefuse("catalog_publication_v3_compile_product_absent"); }
   function knownSku(code: string): CatalogPublishedSku { return skus.get(code) ?? publicationRefuse("catalog_publication_v3_compile_sku_absent"); }
@@ -420,8 +428,6 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
       need(!skus.has(operation.skuCode) && ![...skus.values()].some(sku => sku.id === operation.skuId), "catalog_publication_v3_compile_sku_conflict");
       const source = authorship.skuOperation(operation);
       need(source.sku.netContent?.dimension === "mass", "catalog_publication_mass_required_until_mc5");
-      need(knownProduct().document?.revisionNo === operation.documentRevisionNo
-        && equal(source.payload.product.documentRevision, knownProduct().document), "catalog_publication_v3_compile_document_stale");
       const sku: CatalogPublishedSku = { id: operation.skuId, productId: knownProduct().id, code: operation.skuCode, title: operation.title,
         status: "draft", minQuantity: operation.minQuantity, isAddon: operation.isAddon, sellableStandalone: false, sellableInSubscription: false,
         netContent: source.sku.netContent!, grossMass: source.sku.grossMass ?? null, options: source.sku.options, attributes: source.sku.attributes ?? {},
@@ -429,6 +435,8 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
       existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing.options)));
       const identity = combination(sku.options);
       need(!existingCombinations.has(identity), "duplicate_combination");
+      need(knownProduct().document?.revisionNo === operation.documentRevisionNo
+        && equal(source.payload.product.documentRevision, knownProduct().document), "catalog_publication_v3_compile_document_stale");
       existingCombinations.add(identity);
       need(equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
       skus.set(sku.code, sku); created.add(sku.code);
@@ -489,8 +497,8 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
     } else if (operation.op === "set_derived_sku_facts") {
       const sku = knownSku(operation.skuCode);
       const original = originalById.get(sku.id);
-      need(original && equal(operation.netContent, original.netContent) && knownProduct().document?.revisionNo === operation.documentRevisionNo,
-        "catalog_publication_derived_source_mismatch");
+      assertDerivedSource(operation, original, authoredDocument.revisionNo);
+      need(knownProduct().document?.revisionNo === operation.documentRevisionNo, "catalog_publication_derived_source_mismatch");
       need(equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
       sku.facts = operation.facts;
     } else { const _exhaustive: never = operation; publicationRefuse("catalog_publication_operation_invalid"); }
