@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
+import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
+import { input } from "./fixtures/publicationInput.js";
 import { expect, it } from "vitest";
 import { catalogOfferMembershipSchema, catalogProductPresentationSchema, catalogSkuMetadataSchema } from "./fixtures/categoryMembership.js";
 import { categoryDocument } from "./fixtures/categoryDocumentInput.js";
@@ -140,4 +144,45 @@ it.each([
   expect(catalogSkuMetadataSchema.safeParse({ skuCode: "ARTICLE-ONE", logisticsRef: "example:logistics" }).success).toBe(true);
   for (const logisticsRef of [null, "", " ref ", "x".repeat(501)])
     expect(catalogSkuMetadataSchema.safeParse({ skuCode: "ARTICLE-ONE", logisticsRef }).success).toBe(false);
+});
+
+const analysisKeys = ["crudeProtein", "crudeFat", "moisture", "crudeAsh", "crudeFibre"] as const;
+it.each([
+  ["healthy", null],
+  ["net ceiling", "catalog_publication_authored_amounts_invalid"],
+  ["add-on", "catalog_publication_adopter_validation_failed"],
+  ["net ceiling and add-on", "catalog_publication_authored_amounts_invalid"],
+  ["additive scale", "catalog_publication_v3_document_invalid"],
+  ...analysisKeys.map(key => [key, "catalog_publication_v3_document_invalid"] as const),
+] as const)("ordered publication enforces the installed category predicate for %s", (mode, refusal) => {
+  const fixture = categoryDocument(), source = input(), sku = source.payload.skus[0], product = source.payload.product;
+  const document = { ...fixture, schemaVersion: "example.product-document.v2", productSlug: product.slug!, name: "Synthetic article",
+    additives: [{ ordinal: 1, additiveKey: "a", labels: { pl: "A", en: "A" }, quantity: { unscaled: 1,
+      scale: mode === "additive scale" ? 5 : 4, unit: "MG_PER_KG" } }],
+    analyticsAsFed: { ...fixture.analyticsAsFed } as Partial<typeof fixture.analyticsAsFed> };
+  if ((analysisKeys as readonly string[]).includes(mode)) delete document.analyticsAsFed[mode as typeof analysisKeys[number]];
+  const addon = mode === "add-on" || mode === "net ceiling and add-on";
+  const grams = mode.startsWith("net ceiling") ? "10000000" : "9999999";
+  sku.netContent = { dimension: "mass", unit: "openlup:g", unscaled: grams, scale: 0 };
+  product.sharedContent.publicationSkus[0].isAddon = addon;
+  product.sharedContent.document = document;
+  const canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
+  Object.assign(product.documentRevision!, { schemaId: document.schemaVersion, documentRef: document.id, digest });
+  for (const op of source.payload.publication.operations) {
+    if (op.op === "create_sku") op.isAddon = addon;
+    if (op.op === "register_document_revision") Object.assign(op, { documentRef: document.id, canonicalText, digest });
+  }
+  source.rules = { ...source.rules,
+    deriveSkuFacts: () => ({ derived: 12 }),
+    identifyDocument: () => ({ schemaId: document.schemaVersion, documentRef: document.id, productSlug: document.productSlug, revisionNo: document.revisionNo }),
+    canonicalizeDocument(value) {
+      const { name: _name, ...category } = value as typeof document;
+      productDocumentV2Schema.parse(category);
+      return canonicalCatalogDraftJson(value);
+    },
+    validateSkuAmounts: ({ netGrams }) => BigInt(netGrams) <= 9_999_999n,
+    validateProduct: (_product, skus) => skus.some(sku => sku.isAddon) ? ["package_unsupported"] : [],
+  };
+  if (refusal) expect(() => compileCatalogPublication(source)).toThrow(refusal);
+  else expect(compileCatalogPublication(source).skus).toMatchObject([{ isAddon: false, netContent: sku.netContent }]);
 });
