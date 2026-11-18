@@ -299,6 +299,9 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
   return { document, productOperation, skuOperation };
 }
 
+/** Check the authored operation inputs before resolving the publication head.
+ * @experimental
+ */
 export function assertCatalogPublicationAuthorship(input: PublicationSourceInput & { skus: readonly CatalogPublishedSku[] }) {
   const { payload } = input;
   const authored = publicationAuthorship(input);
@@ -321,6 +324,9 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   validateAfterReadiness();
   return effects;
 }
+/** Compile ordered effects and defer the final eligibility check until readiness is known.
+ * @experimental
+ */
 export function compileCatalogPublicationEffects(input: CatalogPublicationCompileInput) {
   const canonicalPayload = canonicalCatalogDraftJson(input.payload);
   // Check the temporary numeric domain before strict positive-quantity decoding,

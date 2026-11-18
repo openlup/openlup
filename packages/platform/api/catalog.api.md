@@ -4645,6 +4645,13 @@ export declare function catalogPublicationAffected(payload: CatalogDraftPayloadV
     source: (code: string) => boolean;
     priced: (sku: CatalogPublishedSku) => boolean;
 };
+type PublicationSourceInput = Pick<CatalogPublicationCompileInput, "record" | "payload" | "retainedSources" | "rules">;
+/** Check the authored operation inputs before resolving the publication head.
+ * @experimental
+ */
+export declare function assertCatalogPublicationAuthorship(input: PublicationSourceInput & {
+    skus: readonly CatalogPublishedSku[];
+}): void;
 /** Ordered publication compiler using installed definitions; never persists or calls commerce.
  * @experimental
  */
@@ -4654,6 +4661,17 @@ export declare function compileCatalogPublication(input: CatalogPublicationCompi
     documents: CatalogPublicationDocument[];
     activation: boolean;
     changed: boolean;
+};
+/** Compile ordered effects and defer the final eligibility check until readiness is known.
+ * @experimental
+ */
+export declare function compileCatalogPublicationEffects(input: CatalogPublicationCompileInput): {
+    product: CatalogPublishedProduct;
+    skus: CatalogPublishedSku[];
+    documents: CatalogPublicationDocument[];
+    activation: boolean;
+    changed: boolean;
+    validateAfterReadiness: () => void;
 };
 export {};
 ```
@@ -5060,7 +5078,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "58c7d3da28f7310990d54132fea5ff6a1776e4e0b4bf5a708e2571ac8d9a97c3";
+        readonly sha256: "43bb985529ddd68a8ef6b69f8eb869a1fe3181e33d6b7e1b2d93e38c987e0705";
         readonly url: URL;
     }
 ];
