@@ -5,7 +5,7 @@ import { mapCustomerOrderLines } from "../../src/account-support/orderHistory.js
 import { nativeStockWaitDeficits } from "../../src/subscriptions/postgresStockWaitStore.js";
 import type { RenewalFrozenSnapshotV3 } from "../../src/subscriptions/contracts/renewal.js";
 import { asLegacyIntegralGrams } from "../../src/catalog/physicalQuantity.js";
-import { productLdV2 } from "../../src/marketing/seo/jsonLd.js";
+import { productLdV2 } from "../../src/marketing/seo/productLdV2.js";
 import { buildTypedProductPayload } from "../../src/fulfillment/omnipack/omnipackProductPayload.js";
 import type { CatalogQuantity } from "../../src/catalog/contracts/productTypes.js";
 

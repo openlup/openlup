@@ -1223,6 +1223,7 @@ import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, Fulfillm
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { type OmnipackObservationCodecs } from "./observation.js";
 import { omnipackIntakeOrderIdentity } from "./intake.js";
+import { type TypedProductPayloadInput } from "./omnipackProductPayload.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -1263,6 +1264,10 @@ export interface OmnipackFulfillmentAdapterConfig {
     product?: {
         resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null>;
     };
+    /** An explicit packaged quantity for product registration. @experimental */
+    typedProduct?: {
+        resolvePushMetadata: (sku: string) => Promise<TypedProductPayloadInput | null>;
+    };
 }
 /** No route, schedule, environment reader or default binding is installed. */
 export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
@@ -1276,7 +1281,6 @@ export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfill
     stockSync: FulfillmentStockSyncProvider;
     productSync: FulfillmentProductSyncProvider;
 };
-export { buildTypedProductPayload } from "./omnipackProductPayload.js";
 ```
 ## dist/fulfillment/omnipack/intake.d.ts
 
@@ -1437,12 +1441,13 @@ export declare class OmnipackProductPayloadError extends Error {
     constructor(code: string);
 }
 export declare function buildOmnipackProductPayload(input: OmnipackProductInput): Record<string, unknown>;
-/** Build a registration payload from the explicit packaged gross mass. @experimental */
-export declare function buildTypedProductPayload(input: Omit<OmnipackProductInput, "pack"> & {
+/** Explicit packaged gross mass for the existing product-registration lane. @experimental */
+export interface TypedProductPayloadInput extends Omit<OmnipackProductInput, "pack"> {
     pack: (Omit<OmnipackProductPack, "weightGrams"> & {
         grossMass: CatalogQuantity | null;
     }) | null;
-}): Record<string, unknown>;
+}
+export declare function buildTypedProductPayload(input: TypedProductPayloadInput): Record<string, unknown>;
 ```
 ## dist/fulfillment/omnipack/omnipackStatusVocabulary.d.ts
 

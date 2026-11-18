@@ -68,10 +68,12 @@ export function buildOmnipackProductPayload(input: OmnipackProductInput): Record
   };
 }
 
-/** Build a registration payload from the explicit packaged gross mass. @experimental */
-export function buildTypedProductPayload(input: Omit<OmnipackProductInput, "pack"> & {
+/** Explicit packaged gross mass for the existing product-registration lane. @experimental */
+export interface TypedProductPayloadInput extends Omit<OmnipackProductInput, "pack"> {
   pack: (Omit<OmnipackProductPack, "weightGrams"> & { grossMass: CatalogQuantity | null }) | null;
-}): Record<string, unknown> {
+}
+
+export function buildTypedProductPayload(input: TypedProductPayloadInput): Record<string, unknown> {
   let weightGrams = Number.NaN;
   const gross = input.pack?.grossMass;
   if (gross?.dimension === "mass") {

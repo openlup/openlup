@@ -8034,6 +8034,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/seo/productLdV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/seo/serializeJsonLd.ts",
       "class": "public-output"
     },

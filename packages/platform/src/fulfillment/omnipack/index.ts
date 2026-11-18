@@ -11,6 +11,7 @@ import { createReconciliationPagePort, reconciliationObservation } from "./recon
 import { dispatchEvidence, operationError } from "../dispatchProjection.js";
 import { correlationReference, digest, eventKind, observation, reference, refusal, timestamp, type OmnipackObservationCodecs } from "./observation.js";
 import { omnipackIntakeOrderIdentity } from "./intake.js";
+import { buildTypedProductPayload, type TypedProductPayloadInput } from "./omnipackProductPayload.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 
 // Internal error projection: retain diagnostics without exposing a provider payload or cause.
@@ -63,6 +64,8 @@ export interface OmnipackFulfillmentAdapterConfig {
   observationCodecs?: OmnipackObservationCodecs;
   /** Writes occur only through deliberate calls; scheduled composition must remain pull-only. */
   product?: { resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null> };
+  /** An explicit packaged quantity for product registration. @experimental */
+  typedProduct?: { resolvePushMetadata: (sku: string) => Promise<TypedProductPayloadInput | null> };
 }
 
 /** No route, schedule, environment reader or default binding is installed. */
@@ -85,7 +88,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     || !Number.isSafeInteger(config.http.timeoutMs) || config.http.timeoutMs <= 0
     || !Number.isSafeInteger(config.http.safeReadRetries) || config.http.safeReadRetries < 0
     || !/^\/[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\/?$/u.test(config.http.productPath)
-    || !eventKind(config.notification.expectedEvent)) throw new Error("Invalid fulfillment configuration");
+    || !eventKind(config.notification.expectedEvent)
+    || (config.product !== undefined && config.typedProduct !== undefined)) throw new Error("Invalid fulfillment configuration");
   const client = createOmnipackClient({ ...config.http }, config.http.fetchImpl);
   // Copy the profile so host selection never mutates the exported default-off descriptor.
   const capabilities: FulfillmentCapabilityDescriptor = structuredClone(omnipackFulfillmentCapabilities);
@@ -321,11 +325,21 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       async ensureProduct(sku) {
         requireSync();
         try {
-          const metadata = await config.product?.resolvePushMetadata(sku);
+          let metadata: Record<string, unknown> | null | undefined;
+          if (config.typedProduct) {
+            const typed = await config.typedProduct.resolvePushMetadata(sku);
+            if (typed && typed.sku !== sku) throw new OmnipackSyncError("malformed", "createProduct");
+            metadata = typed && buildTypedProductPayload(typed);
+          } else {
+            metadata = await config.product?.resolvePushMetadata(sku);
+          }
           if (!metadata) return null;
           await client.createProduct(metadata, sku);
           return { replayed: false };
-        } catch (error) { throw syncFailure("createProduct", error); }
+        } catch (error) {
+          if (error instanceof OmnipackSyncError) throw error;
+          throw syncFailure("createProduct", error);
+        }
       },
       async getProductPacks(sku) {
         requireSync();
@@ -382,5 +396,3 @@ function stockFailure(error: unknown, operation: "get_stock" | "get_stock_moveme
     operation, status: error.status, code: error.code, retryable,
   } });
 }
-
-export { buildTypedProductPayload } from "./omnipackProductPayload.js";
