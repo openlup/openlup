@@ -15,3 +15,5 @@ export type * from "./fulfillmentRecovery.js";
 
 // M11 K3a OMS browser-safe DTOs and ports; no imports from runtime schema modules.
 export type * from "./omsTypes.js";
+
+export type { CheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminders.js";

@@ -94,7 +94,7 @@ and 3,625 code-class bytes against the current comparison base. Absolute totals
 are 2,443,732 packed bytes and 1,956,516 code-class bytes. No cap changes are made.
 These are focused checks; canonical verification remains pending.
 
-A hosted full-root shard timed out the 150,000-row history case (run 41695619688, shard 2/4, 10,726 ms against the 10,000 ms default; timing only, no assertion mismatch); its explicit per-test deadline now fixes that cause without changing assertions or fixtures, and no follow-up is needed.
+An archived full-root shard timed out the 150,000-row history case (run 41695619688 on 2026-11-03, shard 2/4, 10,726 ms against the 10,000 ms default; timing only, no assertion mismatch); its explicit per-test deadline now fixes that cause without changing assertions or fixtures, and no follow-up is needed.
 
 Timeout measurement: pinned Node 24.21.0/npm 11.19.0, one local Vitest worker,
 unchanged candidate source, disposable real PostgreSQL, focused verbose/JSON

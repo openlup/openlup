@@ -1,8 +1,9 @@
 // Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 
-import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
-export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 export type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 const catalogFactsFields = {
   skuId: z.string().uuid(),
@@ -42,15 +43,37 @@ const catalogFactsV2ProvenanceSchema = z
   })
   .strict();
 
-/**
- * Server-only evidence for a strict quote line. V1 remains readable for
- * historical and explicitly pre-cutover legacy subscription observations; v2
- * records the policy which derived a current subscription amount.
- */
-export const catalogFactsProvenanceSchema = z.union([
+const catalogFactsV3ProvenanceSchema = z
+  .object({
+    version: z.literal(CATALOG_FACTS_OFFER_PROVENANCE_VERSION),
+    offerPriceReference: z.string().trim().min(1).max(120),
+    mode: z.literal("one_time"),
+    ...catalogFactsFields,
+  })
+  .strict();
+
+const legacyCatalogFactsProvenanceSchema = z.union([
   catalogFactsV1ProvenanceSchema,
   catalogFactsV2ProvenanceSchema,
 ]);
+
+/** Server-only evidence for strict catalog, subscription policy and one-time offer prices. */
+export const catalogFactsProvenanceSchema = z.transform<CatalogFactsProvenance, CatalogFactsProvenance>((input: unknown, context) => {
+  // Keep the existing union diagnostics for historical and unrecognized inputs.
+  const schema = typeof input === "object" && input !== null && "version" in input
+    && input.version === CATALOG_FACTS_OFFER_PROVENANCE_VERSION
+    ? catalogFactsV3ProvenanceSchema
+    : legacyCatalogFactsProvenanceSchema;
+  const result = schema.safeParse(input);
+  if (result.success) return result.data;
+  for (const issue of result.error.issues) {
+    // The legacy union emits non-union issues only from the one branch that
+    // can continue, so its enclosing quote refinements must still run.
+    const canContinue = schema === legacyCatalogFactsProvenanceSchema && issue.code !== "invalid_union";
+    context.addIssue({ ...issue, continue: canContinue ? true : undefined });
+  }
+  return z.NEVER;
+});
 
 
 

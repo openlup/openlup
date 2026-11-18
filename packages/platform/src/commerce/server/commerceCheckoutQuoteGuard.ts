@@ -7,7 +7,7 @@ import type { CommerceQuotePort } from "../ports.js";
 import { resolveCheckoutOffer, withCheckoutOfferContext, type CheckoutOfferPolicyPort } from "./checkoutOfferPolicyPort.js";
 import type { CheckoutQuoteSnapshot, ExpectedCheckoutQuote } from "./checkoutQuoteTypes.js";
 import type { StarterOfferGuardResult } from "./commerceStarterOfferGuard.js";
-export type CheckoutQuoteGuardResult<Snapshot, Response> = { kind: "accepted"; quoteSnapshot: Snapshot } | { kind: "price_changed"; response: Response; starterOfferRejection?: string };
+export type CheckoutQuoteGuardResult<Snapshot, Response> = { kind: "accepted"; quoteSnapshot: Snapshot; requiresOfferReview?: true } | { kind: "price_changed"; response: Response; starterOfferRejection?: string };
 export function createCheckoutQuoteGuard<Intent extends NeutralIntent, Provisioned extends { clientId: string }, Request, Snapshot extends CheckoutQuoteSnapshot, Response, Terms, Plan>(bindings: {
   buildQuoteRequest(intent: Intent, provisioned: Provisioned, policy?: PricingPolicySnapshot): Request;
   responseSchema: z.ZodType<Response>;
@@ -65,18 +65,21 @@ async function resolveCheckoutQuoteGuard(input: {
   );
   const hasCurrentV2Promotion = authoritativeQuote.quote.discounts.some((discount) =>
     discount.promotionEngineVersion === "promotion-engine.v2");
-  const requiresPromotionAcceptance = Boolean(input.promotionAcceptanceToken) || hasCurrentV2Promotion
+  const requiresAcceptance = Boolean(input.promotionAcceptanceToken) || hasCurrentV2Promotion
     || hasShippingTerms(authoritativeQuote.quote)
-    || authoritativeQuote.quote.context?.acquisitionTerms !== undefined;
-  const promotionAcceptanceValid = !requiresPromotionAcceptance || Boolean(
-    expectedQuote && input.promotionAcceptanceToken && input.verifyPromotionAcceptance?.({
-      token: input.promotionAcceptanceToken,
-      request: quoteRequest,
-      quote: authoritativeQuote.quote,
-      expectedTotal: expectedQuote.totalGross,
-    }),
-  );
-  const priceAccepted = promotionAcceptanceValid
+    || authoritativeQuote.quote.context?.acquisitionTerms !== undefined
+    || offer?.requireQuoteAcceptance === true;
+  const acceptanceInput = expectedQuote && input.promotionAcceptanceToken ? {
+    token: input.promotionAcceptanceToken,
+    quote: authoritativeQuote.quote,
+    expectedTotal: expectedQuote.totalGross,
+  } : null;
+  const acceptanceValid = !requiresAcceptance || Boolean(acceptanceInput && (
+    offer?.requireQuoteAcceptance === true
+      ? offer.port.verifyQuoteAcceptance?.({ ...acceptanceInput, intent, offerVersion: offer.offerVersion })
+      : input.verifyPromotionAcceptance?.({ ...acceptanceInput, request: quoteRequest })
+  ));
+  const priceAccepted = acceptanceValid
     && (!expectedQuote || !quoteTotalChanged(expectedQuote, authoritativeQuote));
   // The starter guard runs only once the price itself is accepted: a moved total
   // is already a rejection, and re-quoting a steady package for a basket that is
@@ -97,6 +100,7 @@ async function resolveCheckoutQuoteGuard(input: {
     const persisted = withoutPricingPolicyToken(authoritativeQuote);
     return {
       kind: "accepted",
+      ...(offer?.requireQuoteAcceptance === true ? { requiresOfferReview: true } : {}),
       quoteSnapshot: await withCheckoutOfferContext(offer, intent, bindings.withStarterPackContext(
         persisted,
         starter.kind === "minted" ? starter.plan : null,

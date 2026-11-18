@@ -697,6 +697,8 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
+    installCheckoutRecoveryReminderSchedule: "function",
+    readCheckoutRecoveryReminderSchedule: "function",
     cancelAbandonedCheckout: "function",
     cancelUnstartedPromotionCheckout: "function",
     classifyCheckoutRecoveryTokenState: "function",

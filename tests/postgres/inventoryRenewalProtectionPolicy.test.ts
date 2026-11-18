@@ -1,3 +1,4 @@
+import { installCheckoutRecoveryReminderSchedule } from "@openlup/platform/commerce/server";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
@@ -120,6 +121,7 @@ it("restricted native startup refuses drift before serving or writing, with inst
     expect(await createPostgresStockAvailability(runtime, { sourceKey: source, now: () => AT }).availableToPromise(sku, AT))
       .toMatchObject({ availableQuantity: 61 });
     await expect(installRenewalStockProtectionPolicy(runtime, config.inventory.renewalProtection)).rejects.toMatchObject({ code: "42501" });
+    await installCheckoutRecoveryReminderSchedule(db, config.checkoutRecoveryReminders);
     const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config);
     await bindings.close();
   } finally { await runtime.end(); }

@@ -6031,8 +6031,9 @@ export declare function createCatalogFactsProvenance(input: {
     resolvedLineAmountMinor: number;
     baseUnitAmountMinor: number;
     policy?: PolicyDerivedSubscriptionFacts;
+    offerPriceReference?: string;
 }): CatalogFactsProvenance;
-export declare function catalogFactsForQuoteLine(enabled: boolean, item: CommerceQuoteCatalogItem, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts): CatalogFactsProvenance | undefined;
+export declare function catalogFactsForQuoteLine(enabled: boolean, item: CommerceQuoteCatalogItem, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts, offerPriceReference?: string): CatalogFactsProvenance | undefined;
 /** Public responses retain every money field but never server-only catalog identifiers. */
 export declare function projectPublicQuoteSnapshot<Snapshot extends CreateQuoteResponse>(snapshot: Snapshot): Snapshot;
 export {};
@@ -6041,11 +6042,6 @@ export {};
 
 ```ts
 import { z } from "zod";
-/**
- * Server-only evidence for a strict quote line. V1 remains readable for
- * historical and explicitly pre-cutover legacy subscription observations; v2
- * records the policy which derived a current subscription amount.
- */
 export declare const catalogFactsProvenanceSchema: z.ZodUnion<readonly [z.ZodObject<{
     skuId: z.ZodString;
     documentRevisionId: z.ZodString;
@@ -6076,6 +6072,19 @@ export declare const catalogFactsProvenanceSchema: z.ZodUnion<readonly [z.ZodObj
     policyRevisionId: z.ZodString;
     policyDigest: z.ZodString;
     mode: z.ZodLiteral<"subscription">;
+}, z.core.$strict>, z.ZodObject<{
+    skuId: z.ZodString;
+    documentRevisionId: z.ZodString;
+    documentDigest: z.ZodString;
+    basePriceEntryId: z.ZodString;
+    atTime: z.ZodString;
+    currency: z.ZodString;
+    resolvedUnitAmountMinor: z.ZodNumber;
+    resolvedLineAmountMinor: z.ZodNumber;
+    baseUnitAmountMinor: z.ZodNumber;
+    version: z.ZodLiteral<"catalog_facts_v3">;
+    offerPriceReference: z.ZodString;
+    mode: z.ZodLiteral<"one_time">;
 }, z.core.$strict>]>;
 /** Reject server-only provenance at every HTTP response schema boundary. */
 export declare function rejectCatalogFactsFromPublicQuote(response: {
@@ -6828,7 +6837,7 @@ export type { CommerceCurrency, CommerceTaxCountry, CommerceTaxCategory, Commerc
 export { COMMERCE_CONTRACT_VERSION } from "./quote.js";
 export type { CommerceQuotePricingComponent, CommerceQuoteContext, CommerceQuoteLine, CommercePromotionCustomerSemantic, CommerceQuoteDiscount, CommerceCodeRejectionReason, CommerceCodeRejection, CommerceQuote, CreateQuoteRequest, CreateQuoteResponse } from "./quote.js";
 export type { QuotePromotionEvidence, CommerceCodeRejectionDetail } from "./evidence.js";
-export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./provenance.js";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "./provenance.js";
 export type { CatalogFactsProvenance } from "./provenance.js";
 export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
 export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";
@@ -6982,6 +6991,7 @@ export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_di
 ```ts
 export declare const CATALOG_FACTS_PROVENANCE_VERSION: "catalog_facts_v1";
 export declare const CATALOG_FACTS_POLICY_PROVENANCE_VERSION: "catalog_facts_v2";
+export declare const CATALOG_FACTS_OFFER_PROVENANCE_VERSION: "catalog_facts_v3";
 interface CatalogFactsFields {
     skuId: string;
     documentRevisionId: string;
@@ -7002,6 +7012,10 @@ export type CatalogFactsProvenance = CatalogFactsFields & ({
     policyRevisionId: string;
     policyDigest: string;
     mode: "subscription";
+} | {
+    version: typeof CATALOG_FACTS_OFFER_PROVENANCE_VERSION;
+    offerPriceReference: string;
+    mode: "one_time";
 });
 export {};
 ```
@@ -7300,6 +7314,7 @@ export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStr
 export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
 export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
 export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
+export type { OneTimeOfferPricing } from "./oneTimeOfferPricing.js";
 export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";
 export type { QuoteSnapshotExpectMessages } from "./commerceQuoteSnapshotExpect.js";
 export { createDbBackedCommerceQuoteSnapshotVerifier } from "./dbBackedCommerceQuoteSnapshotVerifier.js";
@@ -7705,6 +7720,31 @@ export declare function createCommerceOfferPricingSchemas<ScopeV1 extends string
     }, z.core.$strict>]>;
 };
 ```
+## dist/pricing/oneTimeOfferPricing.d.ts
+
+```ts
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+import { CommerceQuoteError } from "./quotePorts.js";
+/** Exact, uniform per-unit allocations for an entire authorized one-time offer. */
+export interface OneTimeOfferPricing {
+    priceReference: string;
+    currency: string;
+    lines: ReadonlyArray<{
+        sku: string;
+        quantity: number;
+        unitGrossMinor: number;
+    }>;
+}
+export declare function resolveOneTimeOfferPricing(input: OneTimeOfferPricing | undefined, request: CreateQuoteRequest, currency: string, useStrictCatalog: boolean): {
+    priceReference: string;
+    bySku: Map<string, {
+        sku: string;
+        quantity: number;
+        unitGrossMinor: number;
+    }>;
+} | undefined;
+export declare function invalidOfferPricing(): CommerceQuoteError;
+```
 ## dist/pricing/ports.d.ts
 
 ```ts
@@ -7826,6 +7866,7 @@ export declare const quoteCodeRejectionDetailSchema: z.ZodDiscriminatedUnion<[z.
 ```ts
 import type { CreateQuoteRequest, CreateQuoteResponse } from "./contracts/quote.js";
 import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+import type { OneTimeOfferPricing } from "./oneTimeOfferPricing.js";
 /**
  * Server-resolved options for promo evaluation. Passed OUT-OF-BAND by the caller
  * (orchestration -> provisioned.clientId; preview -> session/null) — NEVER sourced
@@ -7834,6 +7875,8 @@ import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
 export interface CreateQuoteOptions {
     clientId?: string | null;
     pricingPolicy?: PricingPolicySnapshot;
+    /** Resolved and authorized by the host, outside the public quote request. */
+    oneTimeOfferPricing?: OneTimeOfferPricing;
 }
 export interface CommerceQuotePort<Request = CreateQuoteRequest, Response = CreateQuoteResponse> {
     createQuote(request: Request, options?: CreateQuoteOptions): Promise<Response>;
@@ -8077,6 +8120,19 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             policyRevisionId: z.ZodString;
             policyDigest: z.ZodString;
             mode: z.ZodLiteral<"subscription">;
+        }, z.core.$strict>, z.ZodObject<{
+            skuId: z.ZodString;
+            documentRevisionId: z.ZodString;
+            documentDigest: z.ZodString;
+            basePriceEntryId: z.ZodString;
+            atTime: z.ZodString;
+            currency: z.ZodString;
+            resolvedUnitAmountMinor: z.ZodNumber;
+            resolvedLineAmountMinor: z.ZodNumber;
+            baseUnitAmountMinor: z.ZodNumber;
+            version: z.ZodLiteral<"catalog_facts_v3">;
+            offerPriceReference: z.ZodString;
+            mode: z.ZodLiteral<"one_time">;
         }, z.core.$strict>]>>;
     }, z.core.$strip>;
     quoteCodeRejectionSchema: z.ZodObject<{
@@ -8172,6 +8228,19 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 policyRevisionId: z.ZodString;
                 policyDigest: z.ZodString;
                 mode: z.ZodLiteral<"subscription">;
+            }, z.core.$strict>, z.ZodObject<{
+                skuId: z.ZodString;
+                documentRevisionId: z.ZodString;
+                documentDigest: z.ZodString;
+                basePriceEntryId: z.ZodString;
+                atTime: z.ZodString;
+                currency: z.ZodString;
+                resolvedUnitAmountMinor: z.ZodNumber;
+                resolvedLineAmountMinor: z.ZodNumber;
+                baseUnitAmountMinor: z.ZodNumber;
+                version: z.ZodLiteral<"catalog_facts_v3">;
+                offerPriceReference: z.ZodString;
+                mode: z.ZodLiteral<"one_time">;
             }, z.core.$strict>]>>;
         }, z.core.$strip>>;
         discounts: z.ZodArray<z.ZodObject<{
@@ -8372,6 +8441,19 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     policyRevisionId: z.ZodString;
                     policyDigest: z.ZodString;
                     mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v3">;
+                    offerPriceReference: z.ZodString;
+                    mode: z.ZodLiteral<"one_time">;
                 }, z.core.$strict>]>>;
             }, z.core.$strip>>;
             discounts: z.ZodArray<z.ZodObject<{
@@ -8573,6 +8655,19 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     policyRevisionId: z.ZodString;
                     policyDigest: z.ZodString;
                     mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v3">;
+                    offerPriceReference: z.ZodString;
+                    mode: z.ZodLiteral<"one_time">;
                 }, z.core.$strict>]>>;
             }, z.core.$strip>>;
             discounts: z.ZodArray<z.ZodObject<{
@@ -8775,6 +8870,19 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     policyRevisionId: z.ZodString;
                     policyDigest: z.ZodString;
                     mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v3">;
+                    offerPriceReference: z.ZodString;
+                    mode: z.ZodLiteral<"one_time">;
                 }, z.core.$strict>]>>;
             }, z.core.$strip>>;
             discounts: z.ZodArray<z.ZodObject<{
@@ -8976,6 +9084,19 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     policyRevisionId: z.ZodString;
                     policyDigest: z.ZodString;
                     mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v3">;
+                    offerPriceReference: z.ZodString;
+                    mode: z.ZodLiteral<"one_time">;
                 }, z.core.$strict>]>>;
             }, z.core.$strip>>;
             discounts: z.ZodArray<z.ZodObject<{
