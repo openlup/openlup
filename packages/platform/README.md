@@ -1010,8 +1010,9 @@ an atomic ordered item batch over finalized order items, per-reservation release
 and bounded expiry. The trusted host supplies its observed-stock source and
 server payment status, wires checkout compensation and schedules expiry. Item
 arrays are serialized as JSON for node-postgres. Existing native ATP counts its
-live holds together with renewal holds, while the fourteen-day subscription
-priority remains in force for purchase admission. Matching replay retains the
+live holds together with renewal holds, while the installed subscription
+priority horizon (`inventory_renewal_protection`, default 14 days) remains in
+force for purchase admission. Matching replay retains the
 reservation identity and current status; changed keyed input and elapsed initial
 expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
