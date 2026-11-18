@@ -27,13 +27,17 @@ This qualifies the 1.0.0 npm set without an image; it remains superseded by 1.1.
 
 ## Released starter inputs
 
+Start from the [1.1.0 demo store](https://github.com/openlup/demo-store) or use
+release-matched starter inputs when available. This repository retains the
+historical 0.43.0 pair described below.
+
 The source-only pairs under `examples/neutral-store/release-inputs/<tag>/`
 retain the exact `manifest.json` and `package-lock.json` bytes from
 `prepareReleasedStarter` in the [existing qualification producer](../../scripts/packages/exact-set-qualification.mjs).
 They are public source files delivered by ordinary contributions, not release
 assets: the [package publisher](../../scripts/packages/package-release.ts)
 requires immutable, assetless releases. Preserve every historical pair unchanged;
-add a new directory for another tag. The [starter recipe](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application)
+add a new directory for another tag. The [historical 0.43.0 starter recipe](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application)
 selects input commit `87dadb251b27b72a18718b08ac39951dd4f1fdd0` separately
 from the released source commit. Fetch both inputs from that exact commit,
 never from a moving branch or an independently resolved replacement lock.

@@ -952,10 +952,11 @@ remains binding.
 The direct truth store behind `paymentSchemaDescriptor` retains its invoker SQL
 and requires the host's existing executor and privileges.
 
-The source preview's additive sandbox-attempt forward
-`20261101222000_sandbox_payment_attempts.sql` adds two private tables and four
-bounded runtime routines. `payment_simulator_attempts` owns active dispatch,
-replay/fingerprint and synthetic method facts; `payment_simulator_observations`
+The published `@openlup/platform` package includes the sandbox simulator export and its
+matching native forward, `20261101222000_sandbox_payment_attempts.sql`. That
+additive forward adds two private tables and four bounded runtime routines.
+`payment_simulator_attempts` owns active dispatch, replay/fingerprint and
+synthetic method facts; `payment_simulator_observations`
 owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
@@ -2880,7 +2881,7 @@ readback but never new or nonterminal claims. Apply this ordered forward before
 selecting that public replay behavior; the managed chain and separate adopter
 native copies require their own adoption rather than changing implicitly.
 
-The source preview's sandbox-attempt suffix adds nullable review metadata without
+The published native sandbox-attempt forward adds nullable review metadata without
 rewriting existing truth rows or changing the open/settled checks. Existing
 non-sandbox truth does not read or require simulator storage. New sandbox truth
 requires an exact durable server observation and active-attempt match; accepted

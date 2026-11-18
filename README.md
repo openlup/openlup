@@ -78,11 +78,11 @@ Use the same exact version for every `@openlup/*` package you install. See
 
 ### Run the starter store
 
-Follow [released-starter adoption](examples/neutral-store/README.md#start-from-an-exact-source-archive)
-for the exact 0.43.0 source archive and immutable manifest/lock inputs, released
-extraction, `npm ci` and `./lifecycle up`. The local demonstration supports both
-subscriptions and one-time purchases. Select the stable release’s supported artifact set
-under the [install policy](.github/INSTALL_SUPPORT_POLICY.md).
+Start from the [1.1.0 demo store](https://github.com/openlup/demo-store) or use
+[release-matched starter inputs](docs/platform/DISTRIBUTION_EVIDENCE.md#released-starter-inputs)
+when available.
+The local demonstration supports both subscriptions and one-time purchases.
+Select the supported artifact set under the [install policy](.github/INSTALL_SUPPORT_POLICY.md).
 
 ### A small example
 
