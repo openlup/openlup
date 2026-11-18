@@ -5984,7 +5984,7 @@
         "replacedFunctions": [],
         "createdFunctions": [
           {
-            "signature": "public.catalog_legacy_net_grams(uuid,text,numeric,smallint,text)",
+            "signature": "public.catalog_legacy_net_grams(uuid,text,pg_catalog.numeric,integer,text)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -8589,12 +8589,12 @@
     },
     {
       "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
-      "sha256": "260de21a18383d2ab86cc4506d06690ca70263d842b9fd3fa47cece535d754ff",
+      "sha256": "4537f2bcf6ed524dc3cb23658e1c4ef928abc580692251afb672726c1275a6ed",
       "functions": [
         {
-          "signature": "public.catalog_legacy_net_grams(uuid,text,numeric,smallint,text)",
+          "signature": "public.catalog_legacy_net_grams(uuid,text,pg_catalog.numeric,integer,text)",
           "beforeSha256": null,
-          "afterSha256": "26613fca9cdaa1037fad25dd043935e25481a4d371a5da0551d3cd6ba8ac644f"
+          "afterSha256": "77cfbb7144fbd370700b2a05b5abbc79a209102a61cae9c28789d58e6e921aa5"
         }
       ]
     }

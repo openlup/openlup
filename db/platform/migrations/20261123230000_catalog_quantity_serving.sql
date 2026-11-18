@@ -1,6 +1,6 @@
 -- Keep unadopted legacy rows and frozen publication evidence readable.
 -- A governed live row has a nullable, exact integer-gram projection.
-CREATE FUNCTION public.catalog_legacy_net_grams(p_product_id uuid, p_dimension text, p_unscaled numeric, p_scale smallint, p_unit text)
+CREATE FUNCTION public.catalog_legacy_net_grams(p_product_id uuid, p_dimension text, p_unscaled pg_catalog.numeric, p_scale integer, p_unit text)
 RETURNS integer LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_grams numeric;
@@ -34,7 +34,7 @@ BEGIN
   RETURN NULL;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_legacy_net_grams(uuid,text,numeric,smallint,text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_legacy_net_grams(uuid,text,pg_catalog.numeric,integer,text) FROM PUBLIC;
 
 ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;
 ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (
