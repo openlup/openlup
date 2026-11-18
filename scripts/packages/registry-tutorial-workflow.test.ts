@@ -165,6 +165,7 @@ describe("the blocking registry tutorial after publication", () => {
 
   const tarball = "https://registry.example.test/package.tgz";
   const available = [{ value: "0.13.1" }, { value: tarball }, { value: "200" }];
+  const count = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).length;
   function registryWait(answers: Array<{ value?: string; fail?: boolean }>, expire = false, event = "workflow_run") {
     const directory = mkdtempSync(join(tmpdir(), "openlup-registry-wait-"));
     try {
@@ -185,7 +186,8 @@ console.log(answer.value ?? "");
       writeFileSync(join(bin, "timeout"), '#!/bin/sh\nshift\nexec "$@"\n');
       for (const name of ["npm", "curl", "sleep", "timeout"]) chmodSync(join(bin, name), 0o755);
       const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
-      const source = expire ? wait.replace("SECONDS + visibility_seconds", "SECONDS + 0") : wait;
+      const source = expire
+        ? 'clock=0\n' + wait.replaceAll("SECONDS", "clock").replace('  if [ "$ready" = true ]', '  clock=$deadline\n  if [ "$ready" = true ]') : wait;
       const result = spawnSync("bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", source], {
         cwd: ROOT, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: "openlup-core-v0.13.1", GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary, EVENT_NAME: event }, encoding: "utf8", timeout: 5000,
       });
@@ -199,7 +201,7 @@ console.log(answer.value ?? "");
     expect(wait).toContain("visibility_seconds=1800\ndeadline=$((SECONDS + visibility_seconds))");
     expect(step(tutorial, REGISTRY_WAIT)).toContain("        timeout-minutes: 31\n");
     expect(wait).toContain('timeout "$remaining" npm view "$spec" version');
-    expect(wait).toContain("  done\n  if [ \"$ready\" = true ] && (( SECONDS <= deadline )); then\n    echo 'ready=true'");
+    expect(wait).toContain("  done\n  if [ \"$ready\" = true ] && (( SECONDS < deadline )); then\n    echo 'ready=true'");
     expect(wait).toContain("if (( delay < 30 )); then delay=$((delay + 5)); fi");
     const packages = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { name: string }) => `${entry.name}@0.13.1`);
     const green = packages.flatMap(() => available);
@@ -216,22 +218,21 @@ console.log(answer.value ?? "");
   });
 
   it("qualifies historical dispatch versions without waiting for latest", () => {
-    const count = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).length;
     const result = registryWait(Array.from({ length: count }, () => available).flat(), false, "workflow_dispatch");
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe("ready=true\n");
     expect(result.requests).toHaveLength(3 * count);
   });
 
-  it("warns and defers without running the tutorial when the bounded propagation wait expires", () => {
-    const result = registryWait([], true);
+  it("warns and defers when the final successful probe reaches the deadline exactly", () => {
+    const result = registryWait(Array.from({ length: count }, () => available).flat(), true, "workflow_dispatch");
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe("");
     expect(result.stdout).toContain("::warning title=Guide tutorial::");
     expect(result.summary).toContain("Guide tutorial: deferred");
     expect(result.summary).not.toContain("(advisory)");
     expect(result.summary).toContain("0.13.1 was not visible on npm within 30 minutes.");
-    expect(result.requests).toEqual([]);
+    expect(result.requests).toHaveLength(3 * count);
     expect(step(tutorial, "Start the pinned package-proof PostgreSQL service")).toContain(REGISTRY_READY);
     expect(step(tutorial, REGISTRY_STEP)).toContain(REGISTRY_READY);
   });
