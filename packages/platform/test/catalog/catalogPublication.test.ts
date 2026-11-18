@@ -15,6 +15,10 @@ it("W32_V5-0597_predicate_precedence_boundary", () => {
   data.payload.publication.operations.splice(1, 1);
   data.payload.publication.operations.push({ op: "set_product_status", productSlug: "article", status: "active" });
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_active_primary_required");
+  const staged = compileCatalogPublication(input());
+  data.product = staged.product; data.skus = staged.skus; data.documents = staged.documents;
+  data.payload.product.sharedContent.catalogAction = "revise";
+  data.payload.publication.operations = [{ op: "set_product_status", productSlug: "article", status: "active" }];
   data.payload.skus[0].grossMass = data.payload.skus[0].netContent;
   data.payload.skus[0].logisticsRef = "example:logistics";
   data.payload.product.sharedContent.requestedModes = [{ skuCode: "ARTICLE", modes: ["one_time"] }];
@@ -307,7 +311,7 @@ it.each(["declared", "retained", "current draft id", "current revision", "v2 exc
     if (kind === "ambiguous") data.payload.publication.evidence.drafts!.unshift(claim(older));
     if (kind === "absent SKU") data.retainedSources = [];
     data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "ARTICLE", sellableStandalone: true, sellableInSubscription: false }];
-    if (kind === "absent SKU") expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_operation_source_missing");
+    if (kind === "absent SKU" || kind === "retained") expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_operation_source_missing");
     else if (kind === "ambiguous") expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_operation_source_ambiguous");
     else expect(compileCatalogPublication(data).skus[0].sellableStandalone).toBe(true);
   });
@@ -333,13 +337,12 @@ it.each(["draftId", "draftRevision", "draftCommandKey", "draftFingerprint"] as c
   });
 it.each(["revisionId", "revisionNo", "documentRef", "sourceRef", "digest"] as const)(
   "cycle1 document operation independently binds authored %s", field => {
-    const data = input(), operation = data.payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
-    if (operation.op !== "register_document_revision") throw new Error("Missing document fixture");
-    if (field === "revisionId") operation.revisionId = "40000000-0000-4000-8000-000000000002";
-    if (field === "revisionNo") operation.revisionNo = 2;
-    if (field === "documentRef") operation.documentRef = "example:other-document";
-    if (field === "sourceRef") operation.sourceRef = "example:other-source";
-    if (field === "digest") operation.digest = "c".repeat(64);
+    const data = input(), reference = data.payload.product.documentRevision!;
+    if (field === "revisionId") reference.id = "40000000-0000-4000-8000-000000000002";
+    if (field === "revisionNo") reference.revisionNo = 2;
+    if (field === "documentRef") reference.documentRef = "example:other-document";
+    if (field === "sourceRef") reference.sourceRef = "example:other-source";
+    if (field === "digest") reference.digest = "c".repeat(64);
     expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_document_source_mismatch");
   });
 
@@ -356,13 +359,46 @@ it("cycle1 document source parent is checked before its document tuple", () => {
   data.payload.publication.evidence.drafts = [{ draftId: foreign.draftId, revision: foreign.revision, commandKey: foreign.commandKey, fingerprint: foreign.fingerprint }];
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_document_source_missing");
 });
+it.each([["malformed and revoked", "", false], ["valid and revoked", "operator:key", true]] as const)(
+  "publication checks command syntax before live membership: %s", async (_name, commandKey, checkMembership) => {
+    const data = input(), statements: string[] = [];
+    const target = createPostgresCatalogPublication({
+      registry, rules, readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false,
+      authorizeHuman: async () => ({ ok: true, role: "admin", isMachineActor: false, userId: data.record.draftId }),
+      transactions: { run: work => work({ async query(sql) { statements.push(sql); return { rows: [{ allowed: false }] }; } }) },
+    });
+    const capability = (await target.authorize(null))!;
+    const result = await target.publish({ productId: data.record.productId, commandKey, candidateRef: `v1:${data.record.draftId}@1/unpublished`,
+      candidateDigest: "a".repeat(64), expectedHead: null, changes: [] }, capability);
+    expect(result).toEqual(checkMembership ? { outcome: "unauthorized", reason: "publisher_not_authorized" }
+      : { outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
+    expect(statements.some(sql => sql.includes("platform_human_membership_is_administrator"))).toBe(checkMembership);
+  });
+
+it.each([
+  ["wrong digest before invalid JSON", "catalog_publication_v3_document_digest_mismatch"],
+  ["correct digest with invalid JSON", "catalog_publication_v3_document_invalid"],
+  ["valid schema with noncanonical encoding", "catalog_publication_v3_document_not_canonical"],
+] as const)("publication document admission reports %s", (mode, reason) => {
+  const data = input(), operation = data.payload.publication.operations.find(operation => operation.op === "register_document_revision");
+  if (!operation) throw new Error("Missing document operation");
+  operation.canonicalText = mode.startsWith("valid") ? ` ${operation.canonicalText}` : "{ invalid json";
+  if (!mode.startsWith("wrong")) {
+    const digest = createHash("sha256").update(operation.canonicalText).digest("hex");
+    operation.digest = digest;
+    data.payload.product.documentRevision!.digest = digest;
+  }
+  expect(() => compileCatalogPublication(data)).toThrow(reason);
+});
+
 it.each(["absent reference", "wrong digest", "different authored document"])("cycle1 document verification preserves %s refusal", kind => {
   const data = input(), operation = data.payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
   if (operation.op !== "register_document_revision") throw new Error("Missing document fixture");
   if (kind === "absent reference") delete data.payload.product.documentRevision;
   if (kind === "wrong digest") { data.payload.product.documentRevision!.digest = "c".repeat(64); operation.digest = "c".repeat(64); }
   if (kind === "different authored document") data.payload.product.sharedContent.document = { ...data.payload.product.sharedContent.document, derived: 13 };
-  expect(() => compileCatalogPublication(data)).toThrow(kind === "absent reference" ? "document_reference_missing" : "catalog_publication_v3_document_invalid");
+  expect(() => compileCatalogPublication(data)).toThrow(kind === "absent reference" ? "document_reference_missing"
+    : kind === "wrong digest" ? "catalog_publication_v3_document_digest_mismatch" : "catalog_publication_v3_document_invalid");
 });
 
 it("cycle1 pointer source mismatch precedes the next operation refusal", () => {
@@ -463,6 +499,18 @@ function publicationWithSecondary() {
   data.payload.publication.operations = [];
   return data;
 }
+it.each([["colliding", "duplicate_combination"], ["distinct", "catalog_publication_v3_compile_sku_absent"]] as const)(
+  "publication refuses %s SKU creation before a later primary operation", (mode, reason) => {
+    const data = publicationWithSecondary(), draft = data.payload.skus[0], facts = data.payload.product.sharedContent.publicationSkus[0];
+    data.skus.pop();
+    if (mode === "colliding") { draft.netContent = data.skus[0].netContent; draft.options = data.skus[0].options; }
+    data.payload.publication.operations = [
+      { op: "create_sku", productSlug: "article", skuId: draft.id, documentRevisionNo: 1, ...facts },
+      { op: "set_primary_sku", productSlug: "article", skuCode: "MISSING" },
+    ];
+    expect(() => compileCatalogPublication(data)).toThrow(reason);
+  });
+
 it.each(["duplicate code", "duplicate ID", "invalid facts", "authentic roster"] as const)(
   "publication compiler validates the complete retained roster: %s", mode => {
     const data = publicationWithSecondary(), [first, second] = data.skus;
@@ -476,6 +524,61 @@ it.each(["duplicate code", "duplicate ID", "invalid facts", "authentic roster"] 
     if (mode === "authentic roster") expect(compileCatalogPublication(data).skus.map(sku => sku.code)).toEqual([first.code, second.code]);
     else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_sku_revision_invalid");
   });
+
+it.each([
+  ["retained GTIN", "catalog_publication_identifier_source_mismatch"],
+  ["same padded GTIN", null],
+  ["status without authored SKU", "catalog_publication_operation_source_missing"],
+  ["eligibility without authored SKU", "catalog_publication_operation_source_missing"],
+  ["membership without authored SKU", "catalog_publication_operation_source_missing"],
+  ["metadata without authored SKU", "catalog_publication_operation_source_missing"],
+  ["derived effect on new SKU", "catalog_publication_derived_source_mismatch"],
+  ["omitted materialized derived effect", null],
+  ["foreign owner on create", "catalog_publication_operation_source_mismatch"],
+] as const)("publication binds each SKU effect to its applicable source: %s", (mode, reason) => {
+  const creating = mode === "derived effect on new SKU";
+  const data = creating ? input() : publicationWithSecondary();
+  const sku = data.payload.skus[0];
+  const code = sku.code!;
+  if (mode === "retained GTIN" || mode === "same padded GTIN") {
+    sku.identifiers![0].value = mode === "retained GTIN" ? "5901234123457" : "04006381333931";
+    data.payload.publication.kind = "compensation";
+    data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
+  } else if (mode === "foreign owner on create") {
+    data.skus.pop();
+    const prior = structuredClone(data.record);
+    prior.payload.skus[0].productId = "10000000-0000-4000-8000-000000000078";
+    const { draftId, revision, commandKey, fingerprint } = prior;
+    data.retainedSources = [prior];
+    data.record = { ...data.record, revision: 2, commandKey: "draft:second" };
+    const content = data.payload.product.sharedContent;
+    const [facts] = content.publicationSkus;
+    data.payload.skus = [];
+    Object.assign(content, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
+    data.payload.publication.evidence.drafts = [{ draftId, revision, commandKey, fingerprint }];
+    data.payload.publication.operations = [{ op: "create_sku", productSlug: "article", skuId: sku.id, documentRevisionNo: 1, ...facts }];
+  } else {
+    const derived = { op: "set_derived_sku_facts" as const, skuCode: code, documentRevisionNo: 1, netContent: sku.netContent!, facts: { derived: 12 } };
+    if (creating) data.payload.publication.operations.push(derived);
+    else {
+      const content = data.payload.product.sharedContent;
+      content.requestedModes = [{ skuCode: code, modes: [] }];
+      content.offerMemberships = [{ skuCode: code, offerVersion: "example:offer", admitted: true }];
+      const prior = structuredClone(data.record);
+      data.retainedSources = [prior];
+      data.record = { ...data.record, revision: 2, commandKey: "draft:second" };
+      data.payload.skus = [];
+      Object.assign(content, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
+      data.payload.publication.kind = "compensation";
+      data.payload.publication.operations = mode.startsWith("status") ? [{ op: "set_sku_status", skuCode: code, status: "archived" }]
+        : mode.startsWith("eligibility") ? [{ op: "set_eligibility", skuCode: code, sellableStandalone: false, sellableInSubscription: false }]
+        : mode.startsWith("membership") ? [{ op: "set_offer_membership", skuCode: code, offerVersion: "example:offer", admitted: true }]
+        : mode.startsWith("metadata") ? [{ op: "set_sku_metadata", skuCode: code, logisticsRef: "example:logistics" }] : [derived];
+    }
+  }
+  if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
+  else expect(compileCatalogPublication(data).skus.find(row => row.code === code)?.facts).toEqual({ derived: 12 });
+});
 
 it.each(["current", "before"])("cycle1 eligibility refuses archived state at the %s boundary", kind => {
   const data = publicationWithSecondary(), second = data.skus[1];
@@ -500,6 +603,7 @@ it("cycle1 an unrelated archived SKU does not prevent eligibility", () => {
 it.each(["standalone", "subscription", "primary", "allowed"])("cycle1 archive guard independently checks %s", kind => {
   const data = publicationWithSecondary(), second = data.skus[1]; second.status = "active";
   second.sellableStandalone = kind === "standalone"; second.sellableInSubscription = kind === "subscription";
+  if (kind === "primary") data.payload.skus.push({ ...input().payload.skus[0], options: data.skus[0].options });
   data.payload.publication.operations = [{ op: "set_sku_status", skuCode: kind === "primary" ? "ARTICLE" : "SECOND", status: "archived" }];
   if (kind === "allowed") expect(compileCatalogPublication(data).skus[1].status).toBe("archived");
   else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_compile_archive_refused");
@@ -612,7 +716,10 @@ it.each(["archived SKU", "absent identifier", "nonprimary GTIN", "foreign nonpri
     if (kind === "absent logistics") { second.logisticsRef = null; delete data.payload.skus[0].logisticsRef; }
     if (kind === "absent membership") second.memberships = [];
     if (kind === "declined membership") second.memberships[0].admitted = false;
-    expect(() => compileCatalogPublication(data)).toThrow(kind.startsWith("archived") ? "catalog_publication_v3_compile_sku_archived" : "catalog_publication_v3_activation_readiness_failed");
+    const reason = kind === "archived SKU" ? "catalog_publication_v3_compile_sku_archived"
+      : kind === "absent identifier" || kind === "foreign nonprimary identifier" ? "catalog_publication_identifier_source_mismatch"
+        : "catalog_publication_v3_activation_readiness_failed";
+    expect(() => compileCatalogPublication(data)).toThrow(reason);
   });
 
 it.each(["primary", "document", "presentation"])("cycle1 final completeness independently requires %s", kind => {
@@ -775,10 +882,17 @@ it.each([
   expect(() => compileCatalogPublication(prepare())).toThrow(reason);
 });
 
-it("cycle1 a created SKU uses the selected immutable source facts", () => {
-  const data = input(); data.record = { ...data.record, payload: structuredClone(data.payload) };
-  data.payload.skus[0].netContent = { ...data.payload.skus[0].netContent!, unscaled: "101" };
-  expect(compileCatalogPublication(data).skus[0].netContent).toEqual(data.record.payload.skus[0].netContent);
+it.each(["presentation", "physical facts", "exact copy"] as const)("publication compiler binds the immutable draft payload: %s", mode => {
+  const data = input();
+  data.record = { ...data.record, payload: structuredClone(data.payload) };
+  if (mode === "presentation") {
+    data.payload.product.sharedContent.presentation = { name: "Different authored intent" };
+    const presentation = data.payload.publication.operations.find(operation => operation.op === "set_product_presentation")!;
+    if (presentation.op === "set_product_presentation") presentation.presentation = data.payload.product.sharedContent.presentation;
+  }
+  if (mode === "physical facts") data.payload.skus[0].netContent = { ...data.payload.skus[0].netContent!, unscaled: "101" };
+  if (mode === "exact copy") expect(compileCatalogPublication(data).skus[0].netContent).toEqual(data.record.payload.skus[0].netContent);
+  else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_source_mismatch");
 });
 
 it.each([false, true])("cycle1 retained roster order cannot manufacture a material change: reversed=%s", reversed => {
@@ -812,7 +926,7 @@ it("keeps the legacy publication refusal for an unrecognized publisher", async (
   const capability = await issuedByAnotherAuthority.authorize(null);
   if (!capability) throw new Error("Missing test capability");
   expect(await target.publication.publish({ productId: input().payload.product.id, commandKey: "publish:1",
-    candidateRef: "candidate", candidateDigest: "a".repeat(64), expectedHead: null, changes: [] }, capability))
+    candidateRef: `v1:${input().record.draftId}@1/unpublished`, candidateDigest: "a".repeat(64), expectedHead: null, changes: [] }, capability))
     .toEqual({ outcome: "unauthorized", reason: "publisher_not_authorized" });
 });
 

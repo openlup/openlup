@@ -133,7 +133,7 @@ it.each(witnesses)("%s", () => {
     ["catalog_publication_eligibility_source_mismatch", data => { data.payload.publication.operations.push({ op: "set_eligibility", skuCode: "ARTICLE", sellableStandalone: true, sellableInSubscription: false }); }],
     ["catalog_publication_presentation_source_mismatch", data => { mutate(data, "set_product_presentation", { presentation: { wrong: true } }); }],
     ["catalog_publication_document_source_mismatch", data => { mutate(data, "register_document_revision", { sourceRef: "example:other" }); }],
-    ["catalog_publication_v3_document_invalid", data => { mutate(data, "register_document_revision", { canonicalText: "not JSON" }); }],
+    ["catalog_publication_v3_document_digest_mismatch", data => { mutate(data, "register_document_revision", { canonicalText: "not JSON" }); }],
     ["catalog_publication_v3_document_invalid", data => {
       const text = '{ "derived":12,"schemaVersion":1 }', digest = createHash("sha256").update(text).digest("hex");
       data.payload.product.documentRevision!.digest = digest; mutate(data, "register_document_revision", { canonicalText: text, digest });

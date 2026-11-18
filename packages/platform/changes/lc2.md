@@ -47,6 +47,9 @@ writes with publication and checks cross-format identity collisions. The managed
 equivalent can use the same row triggers and transaction-local relation guards. Keep the new reader
 while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
+Registration checks each source against its immutable draft receipt. A new SKU
+can be created and priced in the same issuance. Enabling sale requires a later
+issuance with a current source that matches the materialized SKU.
 The price boundary uses the existing version 2 command through the price owner's
 same-transaction writer. The shared price-owner phases reserve sorted receipt
 keys before sorted contexts, verify every child belongs to the parent, and apply

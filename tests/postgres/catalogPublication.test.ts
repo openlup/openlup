@@ -92,9 +92,12 @@ async function save(payload: CatalogDraftPayloadV3, draftId: string, expectedRev
     .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: catalogDefinitionDigest(definition) }])).update(",").update(canonicalCatalogDraftJson(head)).update("]").digest("hex");
   return { commandKey: `publish:${expectedRevision + 1}`, productId: payload.product.id, candidateRef, candidateDigest, expectedHead: head, changes: [] } satisfies CatalogPublishCommand;
 }
-async function approve(publication: CatalogPublishCommand, target = authority, capability = actor, commandKey = `approve:${publication.commandKey}`) {
-  const decision = { schemaVersion: 2 as const, action: "approve" as const, productId: publication.productId, commandKey,
+function approvalCommand(publication: CatalogPublishCommand, commandKey = `approve:${publication.commandKey}`) {
+  return { schemaVersion: 2 as const, action: "approve" as const, productId: publication.productId, commandKey,
     candidateRef: publication.candidateRef, candidateDigest: publication.candidateDigest, reason: "Verified exact candidate" };
+}
+async function approve(publication: CatalogPublishCommand, target = authority, capability = actor, commandKey = `approve:${publication.commandKey}`) {
+  const decision = approvalCommand(publication, commandKey);
   const result = await target.decision(decision, capability); expect(result.outcome, JSON.stringify(result)).toBe("committed"); return decision;
 }
 async function commit(publication: CatalogPublishCommand, target = authority, capability = actor) {
@@ -293,7 +296,7 @@ it.each([
   const revocableAuthority = createPostgresCatalogPublication(deps), capability = (await revocableAuthority.authorize(null))!;
   const data = await draft(); await commit(data.publication, revocableAuthority, capability);
   expect(await authority.publish(data.publication, Object.freeze({}) as typeof actor)).toMatchObject({ outcome: "unauthorized" });
-  expect(await authority.publish(null as never, Object.freeze({}) as typeof actor)).toMatchObject({ outcome: "unauthorized" });
+  expect(await authority.publish(null as never, Object.freeze({}) as typeof actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
   expect(await authority.publish({ ...data.publication, unknown: true } as never, actor)).toMatchObject({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
   await db.query("SELECT public.platform_revoke_human_membership($1,$2,'Synthetic offboarding')", [admin, revocable]);
   const before = await snapshot();
@@ -1094,6 +1097,9 @@ it.each([
   "W36_V5-0530_predicate_precedence_boundary"
 ])("%s", async () => {
   const data = await draft(), payload = structuredClone(data.payload), sku = payload.skus[0];
+  const first = await commit(data.publication);
+  payload.product.sharedContent.catalogAction = "revise";
+  payload.publication.operations = payload.publication.operations.filter(operation => operation.op === "set_product_presentation" || operation.op === "set_offer_membership");
   const skuCode = sku.code!, proof = { skuCode, mediaRef: "example:media", assetRefs: ["panel"], revisionDigest: "a".repeat(64) };
   sku.assetRefs = ["panel"]; sku.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "200", scale: 0 }; sku.logisticsRef = "example:logistics";
   payload.product.sharedContent.presentation.mediaRef = "example:media";
@@ -1108,17 +1114,22 @@ it.each([
   // No effects can precede these refusals, even when the host cannot prove media.
   for (const [index, claim] of [undefined, { ...proof, assetRefs: ["other"] }, { ...proof, mediaRef: "example:other" }, proof].entries()) {
     if (claim) payload.publication.evidence.media = [claim]; else delete payload.publication.evidence.media;
-    const command = await save(payload, data.draftId, index + 1); await approve(command); const before = await snapshot(); let checked = false;
+    const command = await save(payload, data.draftId, index + 1, first.head);
+    let checked = false;
     const target = createPostgresCatalogPublication({ ...dependencies(), verifyMedia: async (_executor, supplied) => { checked = true; expect(supplied).toEqual(proof); return false; } });
-    const capability = (await target.authorize(null))!, result = await target.publish(command, capability);
-    expect(result).toMatchObject({ outcome: "validation_issue", reason: index === 1 || index === 2 ? "catalog_publication_media_evidence_mismatch" : "catalog_publication_media_readiness_unproven" });
+    const capability = (await target.authorize(null))!;
+    const invalidClaim = index === 1 || index === 2;
+    if (!invalidClaim) await approve(command, target, capability);
+    const before = await snapshot();
+    const result = invalidClaim ? await target.decision(approvalCommand(command), capability) : await target.publish(command, capability);
+    expect(result).toEqual({ outcome: "validation_issue", reason: invalidClaim ? "catalog_publication_media_evidence_mismatch" : "catalog_publication_media_readiness_unproven" });
     expect(checked).toBe(index === 3); expect(await snapshot()).toEqual(before);
   }
   // Dark media does not imply activation or invoke a proof/readiness network check.
   payload.publication.evidence.media = [proof]; payload.product.sharedContent.requestedModes = [{ skuCode, modes: [] }];
   payload.publication.operations = payload.publication.operations.filter(op => op.op !== "set_eligibility" && op.op !== "set_sku_status");
   const target = createPostgresCatalogPublication({ ...dependencies(), verifyMedia: async () => { throw new Error("Dark media must not need activation proof"); }, globalReadiness: async () => ({ ready: false, reasons: ["unrelated_global_red"] }) });
-  const capability = (await target.authorize(null))!, command = await save(payload, data.draftId, 5);
+  const capability = (await target.authorize(null))!, command = await save(payload, data.draftId, 5, first.head);
   await commit(command, target, capability);
 });
 
@@ -1308,13 +1319,18 @@ async function priceDraft(active = true, slug?: string) {
   payload.skus[0].logisticsRef = "example:logistics";
   payload.publication.operations.push({op:"set_sku_metadata",skuCode,logisticsRef:"example:logistics"});
   payload.skus[0].priceOperations = [{schemaVersion:1,commandKey:`price:${data.skuId}`,variantId:data.skuId,priceListId:priceList,mode:"one_time",minQty:1,amountKind:"gross",unitPriceMinor:1000,expected:{entryId:null,unitPriceMinor:null}}];
-  if(active) {
+  let head: CatalogHeadRef | null = null;
+  if (active) {
+    head = (await commit(data.publication)).head;
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.publication.operations = payload.publication.operations.filter(operation => operation.op === "set_product_presentation"
+      || operation.op === "set_offer_membership" || operation.op === "set_sku_metadata");
     payload.product.sharedContent.requestedModes = [{skuCode,modes:["one_time"]}];
     payload.product.sharedContent.offerMemberships[0].admitted = true;
     const membership = payload.publication.operations.find(op=>op.op==="set_offer_membership")!; if(membership.op==="set_offer_membership") membership.admitted=true;
     payload.publication.operations.push({op:"set_eligibility",skuCode,sellableStandalone:true,sellableInSubscription:false},{op:"set_sku_status",skuCode,status:"active"});
   }
-  return {...data,payload,publication:await save(payload,data.draftId,1)};
+  return { ...data, payload, publication: await save(payload, data.draftId, 1, head) };
 }
 const invalidReadiness = { outcome: "dependency_unavailable", reason: "catalog_publication_readiness_invalid" };
 const affirmative = { ready: true, reasons: [] };
@@ -1358,7 +1374,7 @@ it.each([
     const presentation = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
     if (presentation.op === "set_product_presentation") presentation.presentation = payload.product.sharedContent.presentation;
     payload.publication.evidence.media = [{ skuCode: sku.code!, mediaRef, assetRefs, revisionDigest: "a".repeat(64) }];
-    command = await save(payload, data.draftId, 2);
+    command = await save(payload, data.draftId, 2, data.publication.expectedHead);
   }
   await approve(command);
   const before = await snapshot();
@@ -1421,15 +1437,15 @@ async function priceInputMatrix(group: "context"|"global") {
     } finally {await connection.query("ROLLBACK");connection.release();}
   }
   const result=await publishApproved(data.publication,target,capability);
-  expect(result.head.revision).toBe(1);
+  expect(result.head.revision).toBe(2);
   expect((await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0].value).toMatchObject({ready:true,reasons:[]});
 }
 async function priceActivationMatrix() {
   const data=await priceDraft(), target=realPriceAuthority(), capability=(await target.authorize(null))!;
   const missing=structuredClone(data.payload); delete missing.skus[0].priceOperations;
-  const absent=await save(missing,data.draftId,2); await approve(absent,target,capability); const before=await snapshot();
+  const absent=await save(missing,data.draftId,2,data.publication.expectedHead); await approve(absent,target,capability); const before=await snapshot();
   expect((await target.publish(absent,capability)).outcome).not.toBe("committed");expect(await snapshot()).toEqual(before);
-  const command=await save(data.payload,data.draftId,3); await approve(command,target,capability);
+  const command=await save(data.payload,data.draftId,3,data.publication.expectedHead); await approve(command,target,capability);
   // A real global red verdict refuses after the child write, and rolls it back.
   // An unavailable settlement context also refuses; neither is a ready stand-in.
   for(const context of ["global red","unknown context"]) {
@@ -1544,7 +1560,7 @@ it.each(["W22_V5-2173_predicate_precedence_boundary",
   "W22_V5-2243_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceInputMatrix("global"); }));
 
 it("catalog_publish_rolls_back_price_and_document_failure", async()=>inPriceDatabase(async()=>{
-  const data=await priceDraft(), target=realPriceAuthority(), capability=(await target.authorize(null))!; await approve(data.publication,target,capability);
+  const data=await priceDraft(false), target=realPriceAuthority(), capability=(await target.authorize(null))!; await approve(data.publication,target,capability);
   const before=await snapshot(); let written=false;
   const failing=realPriceAuthority(undefined,async(sql,executor)=>{
     if(sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) {
@@ -1709,16 +1725,17 @@ it.each([["cycle1 retained omitted activation source advanced refuses", "advance
     { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
   ];
   const command = await save(payload, data.draftId, 2, first.head);
+  await approve(command, target, capability);
   if (mode === "abandoned") {
     const text = canonicalCatalogDraftJson({ schemaVersion: 3, action: "abandon", draftId: data.draftId, commandKey: "close-source", expectedRevision: 3 });
     expect((await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS value", [text,createHash("sha256").update(text).digest("hex")])).rows[0].value.outcome).toBe("committed");
   }
-  await approve(command, target, capability); const before = await snapshot();
+  const before = await snapshot();
   expect(await target.publish(command, capability)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
   expect(await snapshot()).toEqual(before);
 }));
 async function withdrawalUnderRed() { await inPriceDatabase(async () => {
-  const data = await priceDraft(), payload = structuredClone(data.payload), second = structuredClone(payload.skus[0]);
+  const data = await priceDraft(false), payload = structuredClone(data.payload), second = structuredClone(payload.skus[0]);
   second.id = randomUUID(); second.code = `SKU-${second.id}`;
   second.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "101", scale: 0 };
   second.options = { pack_size: { kind: "quantity", value: second.netContent } };
@@ -1727,23 +1744,34 @@ async function withdrawalUnderRed() { await inPriceDatabase(async () => {
   payload.skus.push(second);
   const facts = { ...payload.product.sharedContent.publicationSkus[0], skuCode: second.code };
   payload.product.sharedContent.publicationSkus.push(facts);
-  payload.product.sharedContent.requestedModes.push({ skuCode: second.code!, modes: ["one_time"] });
+  payload.product.sharedContent.requestedModes.push({ skuCode: second.code!, modes: [] });
+  payload.product.sharedContent.offerMemberships[0].admitted = true;
+  const firstMembership = payload.publication.operations.find(operation => operation.op === "set_offer_membership")!;
+  if (firstMembership.op === "set_offer_membership") firstMembership.admitted = true;
   payload.product.sharedContent.offerMemberships.push({ skuCode: second.code!, offerVersion: "example:offer", admitted: true });
   payload.publication.operations.push({ op: "create_sku", skuId: second.id, productSlug: payload.product.slug!, documentRevisionNo: 1, ...facts },
     { op: "create_identifier", skuCode: second.code!, scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null },
     { op: "set_offer_membership", skuCode: second.code!, offerVersion: "example:offer", admitted: true },
-    { op: "set_sku_metadata", skuCode: second.code!, logisticsRef: "example:logistics" },
-    { op: "set_eligibility", skuCode: second.code!, sellableStandalone: true, sellableInSubscription: false },
-    { op: "set_sku_status", skuCode: second.code!, status: "active" });
+    { op: "set_sku_metadata", skuCode: second.code!, logisticsRef: "example:logistics" });
   const initial = await save(payload, data.draftId, 2), target = realPriceAuthority(), capability = (await target.authorize(null))!;
-  const first = await commit(initial, target, capability), withdrawal = structuredClone(payload);
+  const structural = await commit(initial, target, capability);
+  const activation = structuredClone(payload);
+  activation.product.sharedContent.catalogAction = "revise";
+  activation.product.sharedContent.requestedModes = activation.skus.map(sku => ({ skuCode: sku.code!, modes: ["one_time"] }));
+  activation.publication.operations = activation.skus.flatMap(sku => [
+    { op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false },
+    { op: "set_sku_status", skuCode: sku.code!, status: "active" },
+  ]);
+  activation.skus.forEach(sku => { delete sku.priceOperations; });
+  const first = await commit(await save(activation, data.draftId, 3, structural.head), target, capability);
+  const withdrawal = structuredClone(activation);
   withdrawal.product.sharedContent.catalogAction = "revise";
   withdrawal.skus = [withdrawal.skus[0]]; delete withdrawal.skus[0].priceOperations;
   withdrawal.product.sharedContent.publicationSkus = [withdrawal.product.sharedContent.publicationSkus[0]];
   withdrawal.product.sharedContent.offerMemberships = [withdrawal.product.sharedContent.offerMemberships[0]];
   withdrawal.product.sharedContent.requestedModes = [{ skuCode: withdrawal.skus[0].code!, modes: [] }];
   withdrawal.publication.operations = [{ op: "set_eligibility", skuCode: withdrawal.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }];
-  const command = await save(withdrawal, data.draftId, 3, first.head), connection = await db.connect();
+  const command = await save(withdrawal, data.draftId, 4, first.head), connection = await db.connect();
   try {
     await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
     await connection.query("UPDATE public.price_entries SET valid_to=statement_timestamp()-interval '1 microsecond' WHERE variant_id=$1 AND valid_to IS NULL", [second.id]);
@@ -1754,7 +1782,7 @@ async function withdrawalUnderRed() { await inPriceDatabase(async () => {
     const scoped = realPriceAuthority(connection, sql => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) readinessReads.push(sql); }), actor = (await scoped.authorize(null))!;
     const receipt = await commit(command, scoped, actor);
     expect(readinessReads).toEqual([]);
-    expect(receipt.head.revision).toBe(2);
+    expect(receipt.head.revision).toBe(first.head.revision + 1);
     expect((await connection.query("SELECT id,sellable_standalone FROM public.catalog_skus WHERE product_id=$1 ORDER BY id", [data.productId])).rows).toEqual([
       { id: data.skuId, sellable_standalone: false }, { id: second.id, sellable_standalone: true },
     ].sort((a,b) => a.id.localeCompare(b.id)));
@@ -2062,7 +2090,7 @@ it("cycle1 native publication replay refuses another real human and malformed re
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [other]);
   const otherAuthority = createPostgresCatalogPublication({ ...dependencies(), authorizeHuman: async () => ({ ok: true, userId: other, role: "admin", isMachineActor: false }) });
   const otherActor = (await otherAuthority.authorize(null))!; const before = await snapshot();
-  expect(await otherAuthority.publish(data.publication, otherActor)).toEqual({ outcome: "unauthorized", reason: "catalog_publication_operator_mismatch" });
+  expect(await otherAuthority.publish(data.publication, otherActor)).toEqual({ outcome: "conflict", reason: "catalog_publication_command_key_reused" });
   for (const mode of ["extra row", "kind", "fingerprint"]) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
       if (!sql.includes("FROM public.catalog_operator_receipts WHERE") || !sql.startsWith("SELECT kind,")) return;
@@ -2206,14 +2234,14 @@ it("cycle1 native publication locks and verifies its installed active tax class"
 it("cycle1 native draft admission binds every claim identity and the open current head", async () => {
   const data = await draft(), missing = structuredClone(data.payload);
   missing.publication.evidence.drafts = [{ draftId: randomUUID(), revision: 2, commandKey: "missing:claim", fingerprint: "c".repeat(64) }];
-  const command = await save(missing, data.draftId, 1); await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  const command = await save(missing, data.draftId, 1); const before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
   expect(await snapshot()).toEqual(before);
   const closed = await draft(), abandon = canonicalCatalogDraftJson({ schemaVersion: 3, action: "abandon", draftId: closed.draftId, commandKey: "close:current", expectedRevision: 1 });
   expect((await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [abandon, createHash("sha256").update(abandon).digest("hex")])).rows[0].result.outcome).toBe("committed");
   const abandoned = { ...closed.publication, candidateRef: `v1:${closed.draftId}@2/unpublished` };
-  await approve(abandoned); const closedBefore = await snapshot();
-  expect(await authority.publish(abandoned, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  const closedBefore = await snapshot();
+  expect(await authority.decision(approvalCommand(abandoned), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
   expect(await snapshot()).toEqual(closedBefore);
 });
 
@@ -2231,8 +2259,8 @@ it("cycle1 native retained source claims bind product command and fingerprint", 
   const foreign = await draft(), record = (await db.query("SELECT public.catalog_draft_record($1,1) AS record", [foreign.draftId])).rows[0].record;
   const local = await draft(), payload = structuredClone(local.payload);
   payload.publication.evidence.drafts = [{ draftId: record.draftId, revision: record.revision, commandKey: record.commandKey, fingerprint: record.fingerprint }];
-  const foreignClaim = await save(payload, local.draftId, 1); await approve(foreignClaim); const claimedBefore = await snapshot();
-  expect(await authority.publish(foreignClaim, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+  const foreignClaim = await save(payload, local.draftId, 1); const claimedBefore = await snapshot();
+  expect(await authority.decision(approvalCommand(foreignClaim), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
   expect(await snapshot()).toEqual(claimedBefore);
 });
 
@@ -2242,15 +2270,15 @@ it.each(["eligibility", "membership"] as const)("cycle1 native omitted %s withdr
   payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
   payload.publication.operations = mode === "eligibility" ? [{ op: "set_eligibility", skuCode: data.payload.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }]
     : [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: false }];
-  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
-  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: mode === "eligibility" ? "catalog_publication_eligibility_source_mismatch" : "catalog_publication_membership_source_mismatch" });
+  const command = await save(payload, data.draftId, 2, first.head); const before = await snapshot();
+  expect(await target.decision(approvalCommand(command), capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_operation_source_missing" });
   expect(await snapshot()).toEqual(before);
 }));
 
 it.each(["draft eligible", "active ineligible"] as const)("cycle1 native document move excludes an omitted %s SKU from activation source admission", async mode => inPriceDatabase(async () => {
   const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); }), capability = (await target.authorize(null))!, data = await priceDraft(), initial = structuredClone(data.payload);
   if (mode === "draft eligible") initial.publication.operations = initial.publication.operations.filter(operation => operation.op !== "set_sku_status");
-  let head = (await commit(await save(initial, data.draftId, 2), target, capability)).head, revision = 3;
+  let head = (await commit(await save(initial, data.draftId, 2, data.publication.expectedHead), target, capability)).head, revision = 3;
   if (mode === "active ineligible") {
     const withdrawal = structuredClone(initial); delete withdrawal.skus[0].priceOperations; withdrawal.product.sharedContent.catalogAction = "revise";
     withdrawal.product.sharedContent.requestedModes = [{ skuCode: withdrawal.skus[0].code!, modes: [] }];
@@ -2276,8 +2304,12 @@ it.each(["membership", "product activation"] as const)("cycle1 native omitted ac
   payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
   payload.publication.operations = mode === "membership" ? [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: true }]
     : [{ op: "set_product_status", productSlug: payload.product.slug!, status: "active" }];
-  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
-  expect(await target.publish(command, capability)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  const command = await save(payload, data.draftId, 2, first.head);
+  if (mode === "product activation") await approve(command, target, capability);
+  const before = await snapshot();
+  const result = mode === "membership" ? await target.decision(approvalCommand(command), capability) : await target.publish(command, capability);
+  expect(result).toEqual(mode === "membership" ? { outcome: "validation_issue", reason: "catalog_publication_operation_source_missing" }
+    : { outcome: "conflict", reason: "catalog_publication_draft_advanced" });
   expect(await snapshot()).toEqual(before);
 }));
 
@@ -2287,7 +2319,7 @@ it("cycle1 native presentation alone does not reactivate an omitted eligible SKU
   payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
   payload.product.sharedContent.presentation = { routePath: { en: "/changed-presentation" } };
   payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
-  expect((await commit(await save(payload, data.draftId, 2, first.head), target, capability)).head.revision).toBe(2);
+  expect((await commit(await save(payload, data.draftId, 2, first.head), target, capability)).head.revision).toBe(first.head.revision + 1);
 }));
 
 it.each(["document", "product", "archive"] as const)("cycle1 native omitted activation admission keeps %s scope refusal precedence", async mode => inPriceDatabase(async () => {
@@ -2296,9 +2328,16 @@ it.each(["document", "product", "archive"] as const)("cycle1 native omitted acti
   payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
   payload.publication.operations = mode === "document" ? [{ op: "move_document_pointer", productSlug: "other-product", documentRevisionNo: 1 }]
     : [{ op: "set_product_status", productSlug: mode === "product" ? "other-product" : payload.product.slug!, status: mode === "archive" ? "archived" : "active" }];
-  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
-  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: mode === "archive" ? "catalog_publication_v3_compile_sku_archived" : "catalog_publication_scope_expansion" });
-  expect(await snapshot()).toEqual(before);
+  const command = await save(payload, data.draftId, 2, first.head);
+  if (mode === "archive") {
+    const receipt = await commit(command, target, capability);
+    expect(await target.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { status: "archived" },
+      items: [{ facts: { status: "active", sellableStandalone: true } }] });
+  } else {
+    const before = await snapshot();
+    expect(await target.decision(approvalCommand(command), capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_scope_expansion" });
+    expect(await snapshot()).toEqual(before);
+  }
 }));
 
 it("cycle1 native incremental dark SKU runs structural readiness for its affected set", async () => inPriceDatabase(async () => {
@@ -2337,27 +2376,41 @@ it("cycle1 native new SKU activation checks only its affected structural and pri
     { op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false },
     { op: "set_sku_status", skuCode: sku.code!, status: "active" },
   ];
-  const command: CatalogPublishCommand = { ...await save(payload, data.draftId, 2, first.head), changes: [{ variantId: sku.id, expectedRevision: 0, state: "active" }] };
+  const sameIssuance = await save(payload, data.draftId, 2, first.head);
+  await approve(sameIssuance, target, capability);
+  const unchanged = await snapshot();
+  expect(await target.publish(sameIssuance, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_operation_source_mismatch" });
+  expect(await snapshot()).toEqual(unchanged);
+  const enabling = payload.publication.operations.filter(operation => operation.op === "set_sku_status" || operation.op === "set_eligibility");
+  payload.publication.operations = payload.publication.operations.filter(operation => operation.op !== "set_sku_status" && operation.op !== "set_eligibility");
+  const staged = await commit(await save(payload, data.draftId, 3, first.head), target, capability);
+  expect(await target.readbackV2(staged.head)).toMatchObject({ outcome: "page", items: expect.arrayContaining([{ reference: expect.objectContaining({ skuId: sku.id, revision: 1 }),
+    facts: expect.objectContaining({ status: "draft", sellableStandalone: false }) }]) });
+  expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active", [sku.id])).rows)
+    .toEqual([{ unit_price_minor: 1000 }]);
+  delete sku.priceOperations;
+  payload.publication.operations = enabling;
+  const command: CatalogPublishCommand = { ...await save(payload, data.draftId, 4, staged.head), changes: [{ variantId: sku.id, expectedRevision: 1, state: "active" }] };
   const connection = await db.connect();
   try {
     await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
     expect((await connection.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0].value).toMatchObject({ ready: true, reasons: [] });
     const reads: unknown[][] = [], scoped = realPriceAuthority(connection, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); }), identity = (await scoped.authorize(null))!;
     await approve(command, scoped, identity); const before = await snapshot(connection);
-    for (const changes of [[{ variantId: randomUUID(), expectedRevision: 0, state: "active" as const }], [{ variantId: sku.id, expectedRevision: 0, state: "withdrawn" as const }]]) {
+    for (const changes of [[{ variantId: randomUUID(), expectedRevision: 0, state: "active" as const }], [{ variantId: sku.id, expectedRevision: 1, state: "withdrawn" as const }]]) {
       expect(await scoped.publish({ ...command, changes }, identity)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_variant_state_mismatch" });
       expect(await snapshot(connection)).toEqual(before);
     }
-    expect(await scoped.publish(command, identity)).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2 } } });
-    expect(reads).toEqual([[sku.id, false], [sku.id, false], [sku.id, true], [sku.id, true]]);
+    expect(await scoped.publish(command, identity)).toMatchObject({ outcome: "committed", receipt: { head: { revision: staged.head.revision + 1 } } });
+    expect(reads).toEqual([[sku.id, true], [sku.id, true]]);
   } finally { await connection.query("ROLLBACK"); connection.release(); }
 }));
 
 it("cycle1 native archiving an ineligible product skips activation readiness", async () => inPriceDatabase(async () => {
   const reads: string[] = [], target = realPriceAuthority(undefined, sql => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(sql); });
   const capability = (await target.authorize(null))!, data = await draft(), first = await commit(data.publication, target, capability);
-  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
-  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise";
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = [];
   payload.publication.operations = [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: false },
     { op: "set_product_status", productSlug: payload.product.slug!, status: "archived" }];
   reads.length = 0;
@@ -2370,7 +2423,7 @@ it("cycle1 native eligibility alone requires prices without a structural operati
   const capability = (await target.authorize(null))!, data = await priceDraft(), initial = structuredClone(data.payload);
   initial.product.sharedContent.requestedModes = [{ skuCode: initial.skus[0].code!, modes: [] }];
   initial.publication.operations = initial.publication.operations.filter(operation => operation.op !== "set_eligibility" && operation.op !== "set_sku_status");
-  const first = await commit(await save(initial, data.draftId, 2), target, capability), payload = structuredClone(initial);
+  const first = await commit(await save(initial, data.draftId, 2, data.publication.expectedHead), target, capability), payload = structuredClone(initial);
   payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
   payload.product.sharedContent.requestedModes = [{ skuCode: payload.skus[0].code!, modes: ["one_time"] }];
   payload.publication.operations = [{ op: "set_eligibility", skuCode: payload.skus[0].code!, sellableStandalone: true, sellableInSubscription: false }];
@@ -2430,13 +2483,16 @@ it("cycle1 native candidate validation refuses invalid fields and unrelated miss
     const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise";
     if (field === "attribute") payload.skus[0].attributes = { not_installed: "value" }; else delete payload.product.slug;
     payload.publication.operations = [{ op: "set_product_presentation", productSlug: data.payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
-    const command = await save(payload, data.draftId, field === "attribute" ? 1 : 2, first.head); await approve(command); const before = await snapshot();
-    expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+    const command = await save(payload, data.draftId, field === "attribute" ? 1 : 2, first.head);
+    if (field === "attribute") await approve(command);
+    const before = await snapshot();
+    const result = field === "attribute" ? await authority.publish(command, actor) : await authority.decision(approvalCommand(command), actor);
+    expect(result).toEqual({ outcome: "validation_issue", reason: field === "attribute" ? "candidate_invalid" : "catalog_publication_scope_expansion" });
     expect(await snapshot()).toEqual(before);
   }
   const initial = await draft(), payload = structuredClone(initial.payload); delete payload.product.primarySkuId;
-  const command = await save(payload, initial.draftId, 1); await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  const command = await save(payload, initial.draftId, 1); const before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_compile_primary_foreign" });
   expect(await snapshot()).toEqual(before);
 });
 
@@ -2480,24 +2536,24 @@ it("cycle1 native explicit inactive media refuses an advanced recorded SKU sourc
   payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.presentation = { mediaRef: "example:current-presentation" };
   payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
   payload.publication.evidence.media = [{ skuCode: initial.skus[0].code!, mediaRef: "example:original-media", assetRefs: ["example:original-asset"], revisionDigest: first.publicationDigest }];
-  const command = await save(payload, data.draftId, 4, second.head); await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  const command = await save(payload, data.draftId, 4, second.head); const before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
   expect(await snapshot()).toEqual(before);
 });
 
 it.each(["command", "fingerprint"] as const)("cycle1 native explicit current draft claim rejects an altered %s", async field => {
   const data = await draft(), payload = structuredClone(data.payload);
   payload.publication.evidence.drafts = [{ draftId: data.draftId, revision: 2, commandKey: field === "command" ? "other:command" : "draft:2", fingerprint: "c".repeat(64) }];
-  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+  const command = await save(payload, data.draftId, 1); const before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
   expect(await snapshot()).toEqual(before);
 });
 
 it("cycle1 native unknown media SKU retains the named evidence refusal", async () => {
   const data = await draft(), payload = structuredClone(data.payload);
   payload.publication.evidence.media = [{ skuCode: "MISSING", mediaRef: "example:missing", assetRefs: [], revisionDigest: "a".repeat(64) }];
-  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
+  const command = await save(payload, data.draftId, 1); const before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
   expect(await snapshot()).toEqual(before);
 });
 
@@ -2561,8 +2617,9 @@ it.each(["direct media", "resumed activation", "resumed media"] as const)("cycle
     : [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
   if (mode !== "resumed activation") payload.publication.evidence.media = [{ skuCode: pending.code, mediaRef: "example:pending-media", assetRefs: ["pending-asset"], revisionDigest: first.publicationDigest }];
   const command = mode === "direct media" ? await save(payload, data.draftId, 3, first.head) : await saveResumed(payload, data.draftId, 3, first.head);
-  await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: mode === "resumed activation" ? "catalog_publication_operation_source_missing" : "catalog_publication_media_evidence_mismatch" });
+  const before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue",
+    reason: mode === "resumed activation" ? "catalog_publication_operation_source_missing" : "catalog_publication_media_evidence_mismatch" });
   expect(await snapshot()).toEqual(before);
 });
 
@@ -2583,12 +2640,11 @@ async function saveResumed(payload: CatalogDraftPayloadV3, draftId: string, expe
 }
 it.each([false, true])("cycle1 native resumed claim independently binds its current command: altered=%s", async wrongCommand => {
   const data = await draft(), payload = structuredClone(data.payload), command = await saveResumed(payload, data.draftId, 1, null, wrongCommand);
-  await approve(command); const before = await snapshot();
-  const result = await authority.publish(command, actor);
   if (wrongCommand) {
-    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+    const before = await snapshot();
+    expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
     expect(await snapshot()).toEqual(before);
-  } else expect(result).toMatchObject({ outcome: "committed", receipt: { changes: [{ draftRef: { draftId: data.draftId, revision: 4 } }] } });
+  } else expect(await commit(command)).toMatchObject({ changes: [{ draftRef: { draftId: data.draftId, revision: 4 } }] });
 });
 
 it("cycle1 native price writes require their SKU in the compiled materialized roster", async () => inPriceDatabase(async () => {
@@ -2670,7 +2726,7 @@ it.each(["facts", "logistics", "membership", "status", "eligibility", "untouched
       expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
       expect(await snapshot(connection)).toEqual(before);
     } else {
-      expect(result).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2 }, changes: [] } });
+      expect(result).toMatchObject({ outcome: "committed", receipt: { head: { revision: first.head.revision + 1 }, changes: [] } });
       expect((await connection.query("SELECT publication_facts FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows[0].publication_facts)
         .toMatchObject({ facts: { derived: 12 }, logisticsRef: "example:logistics", memberships: [{ offerVersion: "example:offer", admitted: true }], status: "active", sellableStandalone: true });
     }
@@ -2698,9 +2754,9 @@ it.each(["presentation", "untouched status", "untouched presentation", "untouche
 });
 
 it.each(["old transaction", "current foreign"] as const)("cycle1 native pointer cleanup never consumes another capability: %s", async mode => inPriceDatabase(async () => {
-  const target = realPriceAuthority(), capability = (await target.authorize(null))!, other = await priceDraft();
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, other = await priceDraft(false);
   await commit(other.publication, target, capability);
-  const data = await priceDraft(); await approve(data.publication, target, capability);
+  const data = await priceDraft(false); await approve(data.publication, target, capability);
   const documentId = other.payload.product.documentRevision!.id, sentinel = "c".repeat(64), connection = await db.connect();
   let oldTransaction: string | undefined;
   try {
@@ -2721,10 +2777,12 @@ it.each(["other transaction", "other document"] as const)("cycle1 native pointer
   const oldDocument = data.payload.product.documentRevision!.id, payload = structuredClone(data.payload);
   const content = { ...payload.product.sharedContent.document, revisionNo: 2 }, canonicalText = canonicalCatalogDraftJson(content), digest = createHash("sha256").update(canonicalText).digest("hex");
   const document = { ...payload.product.documentRevision!, id: randomUUID(), revisionNo: 2, digest };
-  const registration = payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
-  if (registration.op !== "register_document_revision") throw new Error("Missing registration fixture");
   payload.product.documentRevision = document; payload.product.sharedContent.document = content; payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
-  payload.publication.operations = [{ ...registration, revisionId: document.id, revisionNo: 2, canonicalText, digest }, { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
+  payload.publication.operations = [
+    { op: "register_document_revision", productSlug: payload.product.slug!, revisionId: document.id, revisionNo: 2,
+      documentRef: document.documentRef, sourceRef: document.sourceRef, canonicalText, digest, provenance: { source: "current_draft" } },
+    { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+  ];
   const command = await save(payload, data.draftId, 2, first.head); await approve(command, initial, initialActor);
   const fingerprint = createHash("sha256").update(canonicalCatalogDraftJson([command, admin])).digest("hex"), oldTransaction = (await db.query("SELECT xmin::text AS transaction FROM public.catalog_publications WHERE id=$1", [first.head.publicationId])).rows[0].transaction;
   const connection = await db.connect(); let injected = false;
@@ -2758,7 +2816,7 @@ it.each(["facts", "title", "net content", "gross mass", "attributes", "assets", 
     if (mode === "assets") await connection.query("UPDATE public.catalog_skus SET asset_ref='asset:unaddressed' WHERE id=$1", [data.skuId]);
     const target = realPriceAuthority(connection), capability = (await target.authorize(null))!, before = await snapshot(connection), result = await target.publish(command, capability);
     if (mode !== "clean") { expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" }); expect(await snapshot(connection)).toEqual(before); }
-    else { expect(result).toMatchObject({ outcome: "committed", receipt: { changes: [{ variantId: data.skuId, variantRevision: 2 }] } }); expect((await connection.query("SELECT publication_facts->>'logisticsRef' AS ref FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows).toEqual([{ ref: "example:changed-logistics" }]); }
+    else { expect(result).toMatchObject({ outcome: "committed", receipt: { changes: [{ variantId: data.skuId, variantRevision: first.changes[0].variantRevision + 1 }] } }); expect((await connection.query("SELECT publication_facts->>'logisticsRef' AS ref FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows).toEqual([{ ref: "example:changed-logistics" }]); }
   } finally { await connection.query("ROLLBACK"); connection.release(); }
 }));
 
@@ -2870,9 +2928,8 @@ it.each([
     if (assetRefs[0] === lower) {
       await commit(command);
     } else {
-      await approve(command);
       const stable = await snapshot();
-      expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
+      expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
       expect(await snapshot()).toEqual(stable);
     }
     return;
@@ -3018,8 +3075,10 @@ it.each([
     } } : {}),
   } });
   const capability = (await target.authorize(null))!;
-  await approve(command);
-  const stable = await snapshot(), result = await target.publish(command, capability);
+  const invalidName = mode === "missing name" || mode === "different name";
+  if (!invalidName) await approve(command);
+  const stable = await snapshot();
+  const result = invalidName ? await target.decision(approvalCommand(command), capability) : await target.publish(command, capability);
   if (expected === "committed") {
     expect(result).toMatchObject({ outcome: "committed" });
     if (result.outcome !== "committed" || !("head" in result.receipt)) throw new Error("Missing publication receipt");
@@ -3528,6 +3587,147 @@ it.each(["legacy GTIN first", "row locker first", "publisher first with collidin
     }
   });
 
+it("publication binds an omitted SKU to its newest authored issuance without rewriting SKU facts", async () => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!;
+  const data = await priceDraft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload);
+  delete payload.skus[0].priceOperations;
+  payload.product.sharedContent.presentation = { headline: "New catalogue presentation" };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  const second = await commit(await save(payload, data.draftId, 2, first.head), target, capability);
+  const before = await target.readbackV2(first.head), after = await target.readbackV2(second.head);
+  if (before.outcome !== "page" || after.outcome !== "page") throw new Error("Expected retained catalogue facts");
+  expect(after.items[0].reference).toEqual(before.items[0].reference);
+  payload.skus = [];
+  delete payload.product.primarySkuId;
+  Object.assign(payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
+  const authored = { ...payload.product.sharedContent.document, revisionNo: 2 };
+  const canonicalText = canonicalCatalogDraftJson(authored), digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+  const document = { ...payload.product.documentRevision!, id: revisionId, revisionNo: 2, digest };
+  payload.product.sharedContent.document = authored;
+  payload.product.documentRevision = document;
+  payload.publication.operations = [
+    { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo: 2,
+      documentRef: document.documentRef, sourceRef: document.sourceRef, canonicalText, digest, provenance: { source: "current_draft" } },
+    { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+  ];
+  const command = await save(payload, data.draftId, 3, second.head);
+  await approve(command, target, capability);
+  let selected: unknown;
+  const reader = realPriceAuthority(undefined, (sql, _executor, rows) => {
+    if (sql.includes("SELECT DISTINCT ON (sku.sku)")) selected = rows.map(row => [row.draft_id, row.revision]);
+  });
+  const identity = (await reader.authorize(null))!;
+  expect(await reader.publish(command, identity)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  expect(selected).toEqual([[data.draftId, 3]]);
+}));
+
+it.each([["changed materialized quantity", "catalog_publication_derived_source_mismatch"],
+  ["unchanged materialized quantity", "head_conflict"]] as const)("publication checks %s before resolving the expected head", async (mode, reason) => {
+  const data = await draft(), first = await commit(data.publication), payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise";
+  payload.publication.kind = "compensation";
+  const sku = payload.skus[0];
+  payload.publication.operations = [{ op: "set_derived_sku_facts", skuCode: sku.code!, documentRevisionNo: 1, netContent: sku.netContent!, facts: { derived: 12 } }];
+  const command = await save(payload, data.draftId, 1, first.head);
+  await approve(command);
+  const changed = mode.startsWith("changed");
+  if (changed) await db.query("UPDATE public.catalog_skus SET net_weight_g=101 WHERE id=$1", [data.skuId]);
+  try {
+    const before = await snapshot();
+    expect(await authority.publish({ ...command, expectedHead: null }, actor)).toEqual({
+      outcome: changed ? "validation_issue" : "conflict", reason,
+    });
+    expect(await snapshot()).toEqual(before);
+  } finally {
+    if (changed) await db.query("UPDATE public.catalog_skus SET net_weight_g=100 WHERE id=$1", [data.skuId]);
+  }
+});
+
+it.each(["fresh decision", "publish", "wrong receipt fingerprint", "wrong head owner", "closed claimed revision",
+  "replay without live definition", "crossed retained claims", "unused off-head declaration"] as const)(
+  "publication binds immutable draft evidence before live effects: %s", async mode => {
+    const data = await draft();
+    if (mode === "unused off-head declaration") {
+      const first = await commit(data.publication), payload = structuredClone(data.payload);
+      const content = payload.product.sharedContent;
+      content.catalogAction = "revise";
+      content.presentation = { label: "Revise presentation" };
+      payload.product.documentRevision = { ...payload.product.documentRevision!, id: randomUUID(), revisionNo: 2 };
+      payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation }];
+      const command = await saveResumed(payload, data.draftId, 1, first.head);
+      const stable = await snapshot();
+      expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" });
+      expect(await snapshot()).toEqual(stable);
+      return;
+    }
+    if (mode === "crossed retained claims") {
+      const first = await commit(data.publication), command = await revise(data, first.head);
+      const page = await authority.readbackV2(first.head);
+      if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+      const item = page.items[0];
+      const confused = { ...item.facts, source: { ...item.facts.source, fingerprint: "a".repeat(64) } };
+      const full = canonicalCatalogDraftJson(confused), digest = createHash("sha256").update(full).digest("hex");
+      const manifest = canonicalCatalogDraftJson({ schemaVersion: 2, product: page.product, skus: [{ ...item.reference, digest }] });
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+        await client.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3 WHERE id=$1", [item.reference.revisionId, full, digest]);
+        await client.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+        await client.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+          [first.head.publicationId, manifest, createHash("sha256").update(manifest).digest("hex")]);
+        const target = createPostgresCatalogPublication({ ...dependencies(), transactions: {
+          run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION") ? Promise.resolve({ rows: [] }) : client.query(sql, values) }),
+        } });
+        const capability = (await target.authorize(null))!;
+        expect(await target.decision(approvalCommand(command), capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+      return;
+    }
+    const command = data.publication;
+    const decision = mode === "fresh decision"
+      ? { schemaVersion: 2 as const, action: "approve" as const, productId: data.productId, commandKey: "approve:evidence",
+        candidateRef: command.candidateRef, candidateDigest: command.candidateDigest, reason: null }
+      : await approve(command);
+    if (mode === "replay without live definition") {
+      const target = createPostgresCatalogPublication({ ...dependencies(), registry: createCatalogProductTypeRegistry([]) });
+      const capability = (await target.authorize(null))!;
+      expect(await target.decision(decision, capability)).toMatchObject({ outcome: "replayed", receipt: decision });
+      return;
+    }
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      if (mode === "wrong head owner") {
+        await client.query("UPDATE public.catalog_draft_heads SET product_id=$2 WHERE draft_id=$1", [data.draftId, randomUUID()]);
+      } else if (mode === "closed claimed revision") {
+        await client.query("ALTER TABLE public.catalog_draft_revisions DISABLE TRIGGER catalog_draft_revisions_immutable");
+        await client.query("UPDATE public.catalog_draft_revisions SET status='abandoned' WHERE draft_id=$1 AND revision=1", [data.draftId]);
+      } else {
+        await client.query("ALTER TABLE public.catalog_draft_command_receipts DISABLE TRIGGER catalog_draft_receipts_immutable");
+        if (mode === "wrong receipt fingerprint")
+          await client.query("UPDATE public.catalog_draft_command_receipts SET fingerprint=$2 WHERE draft_id=$1 AND revision=1", [data.draftId, "c".repeat(64)]);
+        else await client.query("DELETE FROM public.catalog_draft_command_receipts WHERE draft_id=$1 AND revision=1", [data.draftId]);
+      }
+      const target = createPostgresCatalogPublication({ ...dependencies(), transactions: {
+        run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION") ? Promise.resolve({ rows: [] }) : client.query(sql, values) }),
+      } });
+      const capability = (await target.authorize(null))!;
+      const result = mode === "fresh decision" ? await target.decision(decision, capability) : await target.publish(command, capability);
+      expect(result).toEqual(mode === "wrong head owner"
+        ? { outcome: "conflict", reason: "catalog_publication_draft_advanced" }
+        : { outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+      expect((await client.query("SELECT id FROM public.catalog_publications WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
+
 it.each(["stale head", "future SKU revision", "duplicate code outside page", "wrong observation status", "duplicate observation"] as const)(
   "publication retained reads distinguish an internally consistent but false state: %s", async mode => {
     const data = await draft(), first = await commit(data.publication);
@@ -3632,6 +3832,47 @@ it.each(["missing draft", "draft executor outage", "missing definition", "actual
       if (mode === "actual projection drift") await db.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, name]);
     }
   });
+
+it.each([
+  [false, "catalog_publication_v3_structural_readiness_failed"],
+  [true, "catalog_publication_v3_active_primary_required"],
+] as const)("publication checks structural readiness before active primary: ready=%s", async (ready, reason) => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.operations.push({ op: "set_product_status", productSlug: payload.product.slug!, status: "active" });
+  const command = await save(payload, data.draftId, 1);
+  const target = createPostgresCatalogPublication({ ...dependencies(),
+    readiness: async () => ({ ready, reasons: ready ? [] : ["fixture_structural_block"] }),
+  });
+  const capability = (await target.authorize(null))!;
+  await approve(command, target, capability);
+  const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason });
+  expect(await snapshot()).toEqual(before);
+});
+
+it.each(["product", "SKU"] as const)("publication stores only effects reached in the %s creation prefix", async mode => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  const sku = payload.skus[0];
+  sku.logisticsRef = "example:dispatch";
+  payload.publication.operations.push({ op: "set_sku_metadata", skuCode: sku.code!, logisticsRef: sku.logisticsRef });
+  const command = await save(payload, data.draftId, 1);
+  const table = mode === "product" ? "catalog_products" : "catalog_skus";
+  const identity = mode === "product" ? data.productId : data.skuId;
+  let prefix: unknown;
+  const target = createPostgresCatalogPublication(dependencies(async (sql, executor) => {
+    if (sql.startsWith(`INSERT INTO public.${table}(`)) {
+      prefix = (await executor.query(`SELECT publication_facts FROM public.${table} WHERE id=$1`, [identity])).rows[0].publication_facts;
+    }
+  }));
+  const capability = (await target.authorize(null))!;
+  const receipt = await commit(command, target, capability);
+  expect(prefix).toMatchObject(mode === "product"
+    ? { status: "draft", document: null, primarySkuId: null, presentation: null }
+    : { status: "draft", sellableStandalone: false, sellableInSubscription: false, identifiers: [], memberships: [], logisticsRef: null });
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page",
+    product: { document: { id: payload.product.documentRevision!.id }, primarySkuId: data.skuId },
+    items: [{ facts: { logisticsRef: sku.logisticsRef, identifiers: [{ scheme: "gs1:gtin" }] } }] });
+});
 
 it.each([
   "first missing", "middle missing", "last missing", "duplicate", "wrong kind", "wrong actor", "wrong scope",
