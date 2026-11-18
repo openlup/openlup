@@ -56,3 +56,12 @@ it.each([false, true])("catalog_capabilities_and_writer_disable LC8-D-026 quote 
   expect(before).toEqual(fails ? { outcome: "dependency_unavailable", reason: "dependency_unavailable" } : { outcome: "ready", value: ["version 1"] });
   expect(read).toHaveBeenCalledTimes(1);
 });
+
+it("catalog_capabilities_and_writer_disable LC8-D-001 never selects an available alternate authority", async () => {
+  const alternate = vi.fn(async () => []);
+  const binding = createCatalogRuntimeBinding<{ shopper: typeof alternate; publicationRead: typeof alternate }>({ ports: {
+    publicationRead: { port: alternate, enabled: () => true, observe: async () => "ready" },
+  } });
+  expect(await binding.use("shopper", port => port())).toMatchObject({ outcome: "unsupported" });
+  expect(alternate).not.toHaveBeenCalled();
+});

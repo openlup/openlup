@@ -36,6 +36,16 @@ const skuRecord = z.object({ id, productId: id, code: z.string(), facts: rawSku,
 const unavailable = () => publicationRefuse("catalog_adoption_lineage_invalid", "dependency_unavailable");
 const drift = () => publicationRefuse("catalog_publication_live_drift", "conflict");
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+function projectionBytes(value: unknown) {
+  // Observation timestamps carry source provenance. They do not define identity
+  // and their displayed offset depends on the reader's session time zone.
+  const { created_at: _created, updated_at: _updated, ...facts } = value as Record<string, unknown>;
+  return publicationJson(facts);
+}
+
+function equalIdentifiers(left: unknown[], right: unknown[]) {
+  return left.length === right.length && left.every((value, index) => projectionBytes(value) === projectionBytes(right[index]));
+}
 
 type AdoptedProduct = Omit<CatalogPublishedProductV3, "source"> & { source: null };
 type AdoptedSku = Omit<CatalogPublishedSkuV3, "source"> & { source: null };
@@ -57,7 +67,7 @@ export function decodeAdoptedPublication<Context, Stored extends StoredAdoption>
     || !state.skus.every(({ skuId }, index) => index === 0 || state.skus[index - 1]!.skuId < skuId)
     || !state.skus.some(reference => reference.skuId === productRow.primary_sku_id)
     || state.skus.length !== revisions.length) return unavailable();
-  if (live && publicationJson(live.product) !== publicationJson(productRow)) return drift();
+  if (live && (!live.product || projectionBytes(live.product) !== projectionBytes(productRow))) return drift();
   const retainedDocument: CatalogPublicationDocument = {
     reference: { id: doc.id, productId: doc.product_id, schemaId: doc.schema_id, revisionNo: doc.revision_no,
       documentRef: doc.document_ref, sourceRef: doc.source_ref, digest: doc.digest },
@@ -83,8 +93,8 @@ export function decodeAdoptedPublication<Context, Stored extends StoredAdoption>
     if (record.id !== reference.skuId || skuRow.id !== record.id || record.productId !== productRow.id
       || skuRow.product_id !== productRow.id || skuRow.sku !== record.code || seenCodes.has(record.code)) return unavailable();
     seenCodes.add(record.code);
-    if (live && (!live.skus.some(row => publicationJson(row) === publicationJson(skuRow))
-      || publicationJson(live.identifiers.filter(row => row.catalog_sku_id === skuRow.id)) !== publicationJson(record.identifiers))) return drift();
+    if (live && (!live.skus.some(row => projectionBytes(row) === projectionBytes(skuRow))
+      || !equalIdentifiers(live.identifiers.filter(row => row.catalog_sku_id === skuRow.id), record.identifiers))) return drift();
     const options = (skuRow.option_values ?? {}) as AdoptedSku["options"];
     const identity = canonicalizeCatalogCombinationV2({ definition, axes, options });
     const sku: AdoptedSku = { schemaVersion: 3, lifecycleState: skuRow.status,

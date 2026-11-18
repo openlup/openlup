@@ -3,6 +3,7 @@ import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutatio
 import { createPersonalDataContributorRegistry, createCustomerBillingPrivacyContributor, createCustomerSavedAddressPrivacyContributor,
   createCustomerPreferencePrivacyContributor, createFulfillmentParcelContactPrivacyContributor, type PersonalDataContributor } from '@openlup/platform/identity';
 import type { PgQueryExecutor } from '@openlup/platform/data';
+import { createCatalogRuntimeBinding } from '@openlup/platform/catalog';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
@@ -50,8 +51,35 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
     ] });
 }
 
+const catalogueActions = {
+  shopper: ['offer.validate', 'checkout.create', 'checkout.read'],
+  settlement: ['checkout.tokenPay', 'checkout.inlineRetry', 'checkout.payment', 'checkout.paymentLink', 'payment.simulate', 'payment.recover'],
+  account: ['account.read', 'account.orders'],
+  editor: ['subscription.catalog', 'subscription.preview', 'subscription.command'],
+} as const;
+
+type CatalogueAction = (typeof catalogueActions)[keyof typeof catalogueActions][number];
+type CatalogueService = Record<keyof typeof catalogueActions, Partial<Record<CatalogueAction, ActionBinding>>>;
+type CatalogueServices = NonNullable<Parameters<typeof createCatalogRuntimeBinding<CatalogueService>>[0]>;
+
+function bindCatalogueActions(actions: ApplicationBindings['actions'], selection: { configId: string; services: CatalogueServices }) {
+  const runtime = createCatalogRuntimeBinding<CatalogueService>(selection.services);
+  for (const lane of Object.keys(catalogueActions) as (keyof typeof catalogueActions)[]) {
+    for (const operation of catalogueActions[lane]) {
+      const legacy = actions[operation];
+      actions[operation] = async (payload, context) => {
+        if (context.config.id !== selection.configId) return legacy ? legacy(payload, context) : refused('host_binding_required');
+        const result = await runtime.use(lane, async handlers =>
+          handlers[operation]?.(payload, context) ?? refused('catalog_capability_unsupported'));
+        return result.outcome === 'ready' ? result.value : refused(result.reason);
+      };
+    }
+  }
+}
+
 /** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring,
+  catalogue?: Parameters<typeof bindCatalogueActions>[1]): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
@@ -214,6 +242,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const value = await oms.getOrderDetail({ view: 'control_plane_v1', orderId });
     return value ? success(value) : refused('starter_order_not_found');
   };
+  if (catalogue) bindCatalogueActions(actions, catalogue);
   return {
     personalData: createStarterPersonalDataRegistry(),
     actions,

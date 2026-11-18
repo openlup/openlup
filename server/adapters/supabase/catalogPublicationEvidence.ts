@@ -9,7 +9,7 @@ const headSchema = z.object({ protocol: z.enum(["v1", "v2", "v3"]), event_id: id
   state_canonical_text: z.string().min(2).max(16_777_216).nullable(),
 }).strict().refine(head => head.protocol === "v1"
   ? head.event_id === null && head.event_sequence === null && (head.state_digest === null) === (head.state_canonical_text === null)
-  : head.event_id !== null && head.event_sequence !== null && head.state_digest !== null && head.state_canonical_text !== null);
+  : head.event_id !== null && head.event_sequence !== null && head.state_canonical_text !== null);
 
 const member = z.object({ skuId: id, skuCode: code, productId: id, productSlug: code,
   netWeightG: z.number().int().min(1).max(9_999_999), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
@@ -21,6 +21,11 @@ const querySchema = z.object({ offerVersion: code, mode: z.enum(["one_time", "su
 const pageSchema = z.object({ protocol: z.enum(["v1", "v2", "v3"]), headDigest: digest.nullable(), items: z.array(member).max(100),
   nextCursor: id.nullable(),
 }).strict();
+const activation = z.object({ protocol: z.literal("v3"), headDigest: digest, items: z.array(z.object({
+  skuCode: code, skuId: id.nullable(), ready: z.boolean(), reasons: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,119}$/u)).max(32),
+  logisticsRef: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(),
+}).strict().refine(item => item.ready === (item.reasons.length === 0)
+  && (!item.ready || item.skuId !== null && item.logisticsRef !== null))).max(100) }).strict();
 const scopeSchema = z.array(member.omit({ presentation: true, logisticsRef: true })).max(100);
 const missingMethod = "Could not find the function public.catalog_offer_memberships_page(p_cursor, p_limit, p_mode, p_offer_version) in the schema cache";
 type AuthorityFailure = "response_invalid" | "store_unavailable" | "authority_changed" | "compatibility_identity_mismatch" | "query_invalid";
@@ -55,7 +60,7 @@ export function createManagedCatalogPublicationEvidence(input: {
   validateState: StateValidator;
   expectedMembers(headDigest: string, query: z.infer<typeof querySchema>): Promise<z.infer<typeof scopeSchema>>;
 }) {
-  return async (query: z.input<typeof querySchema>) => {
+  const read = async (query: z.input<typeof querySchema>) => {
     const parsed = querySchema.safeParse(query);
     if (!parsed.success) return refusal("query_invalid");
     const request = parsed.data;
@@ -102,4 +107,23 @@ export function createManagedCatalogPublicationEvidence(input: {
       return unavailable();
     }
   };
+  return Object.assign(read, {
+    async activationReadiness(skuCodes: readonly string[], expectedHeadDigest: string) {
+      if (skuCodes.length < 1 || skuCodes.length > 100 || new Set(skuCodes).size !== skuCodes.length
+        || !skuCodes.every(skuCode => code.safeParse(skuCode).success)
+        || !digest.safeParse(expectedHeadDigest).success) return refusal("query_invalid");
+      try {
+        const response = await input.client.rpc("catalog_publication_v3_activation_readiness", {
+          p_sku_codes: [...skuCodes], p_expected_head_digest: expectedHeadDigest,
+        });
+        if (response.error !== null) return response.error.code === "40001" ? refusal("authority_changed") : unavailable();
+        const observed = activation.safeParse(response.data);
+        if (!observed.success) return invalid();
+        const { headDigest, items } = observed.data;
+        if (headDigest !== expectedHeadDigest || items.length !== skuCodes.length
+          || items.some((item, index) => item.skuCode !== skuCodes[index])) return refusal("authority_changed");
+        return { outcome: "verified" as const, headDigest, items };
+      } catch { return unavailable(); }
+    },
+  });
 }

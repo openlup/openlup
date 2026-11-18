@@ -319,6 +319,7 @@ it.each(["compatible", "material", "inconclusive"] as const)("catalog_legacy_bin
   expect(next).toMatchObject({ outcome: "committed", receipt: { previousHead: first.receipt.head, head: { revision: 2 } } });
   expect(await authority.reads.current(product)).toMatchObject({ outcome: "found", head: { revision: 2 }, observations: [{ draftRef: { draftId, revision: 1 } }] });
   expect(await authority.reads.readback(first.receipt.head)).toMatchObject({ outcome: "found", observations: [{ draftRef: null }] });
+  expect(await adopt(product, sourceDigest, "adopt", admin, documentText)).toEqual({ outcome: "replayed", receipt: first.receipt });
   expect(await asActor(db => createPostgresCatalogAdoptionReader(db)({ productId: product, skuId: sku }))).toMatchObject({
     outcome: "found", readback: { head: first.receipt.head, current: false },
   });

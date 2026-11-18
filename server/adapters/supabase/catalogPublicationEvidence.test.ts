@@ -53,3 +53,42 @@ it("catalog_native_managed_contract_conformance LC8-D-028 recognizes a sealed pr
   expect(rpc).toHaveBeenLastCalledWith("catalog_publication_v2_current_state", {});
   expect(expectedMembers).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["LC8-D-003 zero codes", [], digest, null, "query_invalid"],
+  ["LC8-D-003 duplicate codes", ["A", "A"], digest, null, "query_invalid"],
+  ["LC8-D-003 cap", Array.from({ length: 101 }, (_, i) => String(i)), digest, null, "query_invalid"],
+  ["LC8-D-003 invalid digest", ["A"], "bad", null, "query_invalid"],
+  ["LC8-D-003 wrong head", [], digest, { headDigest: "a".repeat(64) }, "authority_changed"],
+  ["LC8-D-003 wrong count", [], digest, { items: [] }, "authority_changed"],
+  ["LC8-D-003 wrong order", [], digest, { reversed: true }, "authority_changed"],
+  ["LC8-D-003 missing ready identity", [], digest, { skuId: null }, "response_invalid"],
+  ["LC8-D-003 missing ready reference", [], digest, { logisticsRef: null }, "response_invalid"],
+  ["LC8-D-003 readiness and reasons disagree", [], digest, { reasons: ["not_ready"] }, "response_invalid"],
+] as const)("catalog_capabilities_and_writer_disable %s", async (_rule, codes, expected, variant, reason) => {
+  const identities = ["A", "B"];
+  const items = identities.map(skuCode => ({ skuCode, skuId: sku, ready: true, logisticsRef: "physical:reference", reasons: [] }));
+  if (variant && "reversed" in variant) items.reverse();
+  const data = { protocol: "v3", headDigest: digest, items,
+    ...(variant && "headDigest" in variant ? { headDigest: variant.headDigest } : {}),
+    ...(variant && "items" in variant ? { items: variant.items } : {}),
+    ...(variant && ("skuId" in variant || "logisticsRef" in variant || "reasons" in variant) ? { items: [{ ...items[0], ...variant }, items[1]] } : {}),
+  };
+  const rpc = vi.fn().mockResolvedValue(ok(data));
+  const port = createManagedCatalogPublicationEvidence({ client: { rpc }, validateState: () => true, expectedMembers: async () => [] });
+  expect(await port.activationReadiness(variant === null ? codes : identities, expected)).toEqual({ outcome: "refused", reason });
+  expect(rpc).toHaveBeenCalledTimes(variant === null ? 0 : 1);
+});
+
+it("catalog_capabilities_and_writer_disable LC8-D-003 admits ordered exact readiness", async () => {
+  const items = [
+    { skuCode: "AAA", skuId: sku, logisticsRef: "physical:reference", ready: true, reasons: [] },
+    { skuCode: "BBB", skuId: null, logisticsRef: null, ready: false, reasons: ["sku_not_materialized"] },
+  ];
+  const rpc = vi.fn().mockResolvedValue(ok({ protocol: "v3", headDigest: digest, items }));
+  const port = createManagedCatalogPublicationEvidence({ client: { rpc }, validateState: () => true, expectedMembers: async () => [] });
+  expect(await port.activationReadiness(["AAA", "BBB"], digest)).toEqual({ outcome: "verified", headDigest: digest, items });
+  expect(rpc).toHaveBeenCalledExactlyOnceWith("catalog_publication_v3_activation_readiness", {
+    p_sku_codes: ["AAA", "BBB"], p_expected_head_digest: digest,
+  });
+});
