@@ -23,7 +23,7 @@ it("W2 preserves the normalized new-purchase quantity, fixed default horizon and
 
 it("W2 binds native ATP rather than a host override and exposes no renewal waiver or allocation call", async () => {
   const nativeRow = { ...row, source: "provider", providerForSale: 10, safetyStock: 0, available: 5 };
-  const query = vi.fn(async (text: string, _values?: unknown[]) => text.includes("commerce_settings") ? { rows: [] } : { rows: [{ response: [nativeRow] }] });
+  const query = vi.fn(async (text: string, _values?: unknown[]) => text.includes("inventory_renewal_protection_days") ? { rows: [{ days: 14 }] } : { rows: [{ response: [nativeRow] }] });
   const injected = { read: vi.fn() };
   const now = () => new Date(0).toISOString();
   const binding = createInventoryBindings({ dataKind: "postgres", provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") },
@@ -36,7 +36,7 @@ it("W2 binds native ATP rather than a host override and exposes no renewal waive
   }
   const sql = `SELECT public.inventory_new_purchase_stock_read(
           $1::text,$2::jsonb,$3::timestamptz) AS response`;
-  const policyRead = ["SELECT value_text FROM public.commerce_settings WHERE key=$1", ["inventory_renewal_protection"]];
+  const policyRead = ["SELECT public.inventory_renewal_protection_days() AS days"];
   expect(query.mock.calls).toEqual([policyRead, [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]],
     policyRead, [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]]]);
   expect(injected.read).not.toHaveBeenCalled();

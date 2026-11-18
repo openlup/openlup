@@ -3,7 +3,7 @@ import { createPostgresStockAvailability } from "../../src/inventory/postgresSto
 it("keeps native one-time availability behind installed priority and missing/stale stock facts", async () => {
   const row = { sku: "sku", catalogSkuId: null, source: "provider", providerForSale: 10, activeHolds: 3,
     safetyStock: 0, available: 2, stale: true, renewalDemand: 5, availableForNewPurchases: 2, excludedOrderHolds: 0 };
-  const query = vi.fn().mockImplementation(async (sql: string) => sql.includes("commerce_settings") ? { rows: [] } : { rows: [{ response: [row] }] });
+  const query = vi.fn().mockImplementation(async (sql: string) => sql.includes("inventory_renewal_protection_days") ? { rows: [{ days: 14 }] } : { rows: [{ response: [row] }] });
   const store = createPostgresStockAvailability({ query }, { sourceKey: "warehouse", now: () => "2026-10-24" });
   expect(await store.readPort.read({ skus: ["sku"], horizonDays: 14, excludeOrderId: null })).toEqual(new Map([["sku", row]]));
   expect(query.mock.calls[1][1]).toEqual(["warehouse", '["sku"]', "2026-10-24"]);
