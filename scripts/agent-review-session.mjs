@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, digest, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -336,12 +336,29 @@ export async function verifyCandidateCommand({ cwd, session, command, args = [],
   const after = await snapshot(cwd, before.base, { env }); const final = verdict(session, after, Date.now()); demand(final.ok, final.reason, final.code);
   return code;
 }
+const SESSION_HELP = `Usage:
+  node scripts/agent-review-session.mjs --help
+  node scripts/agent-review-session.mjs prepare [--new] [intent.json]
+  node scripts/agent-review-session.mjs status [--explain]
+  node scripts/agent-review-session.mjs record <report.json>
+  node scripts/agent-review-session.mjs verify
+  node scripts/agent-review-session.mjs receipt <PR>
+  node scripts/agent-review-session.mjs verify-command [--resource PROFILE] -- <command> [args...]
+
+status prints the raw recorded session JSON.
+status --explain compares the recorded session with the local checkout without writing Git objects, running generators or claiming verify completion.`;
+
 export async function sessionMain(argv = process.argv.slice(2), { cwd = process.cwd(), env = processEnvironment } = {}) {
-  const [verb, ...args] = argv; demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, verify, status, receipt <PR>, or verify-command');
+  const [verb, ...args] = argv;
+  if (verb === '--help' || verb === '-h' || verb === 'help') {
+    demand(args.length === 0, 'use --help without extra arguments');
+    console.log(SESSION_HELP); return 0;
+  }
+  demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, verify, status [--explain], receipt <PR>, verify-command or --help');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
-  await mkdir(directory, { recursive: true });
   let lock;
   if (['prepare', 'record'].includes(verb)) {
+    await mkdir(directory, { recursive: true });
     try { lock = await open(join(directory, '.session.lock'), 'wx', 0o600); }
     catch (error) { if (error.code === 'EEXIST') throw new Error('invalid: session is busy; retry after the active transaction finishes'); throw error; }
   }
@@ -381,7 +398,18 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
     demand([2, 3].includes(session?.version), 'prepare a version-2 session before review');
-    if (verb === 'status') { console.log(JSON.stringify(session, null, 2)); return 0; }
+    if (verb === 'status') {
+      demand(args.length === 0 || (args.length === 1 && args[0] === '--explain'), 'use status [--explain]');
+      if (!args.length) { console.log(JSON.stringify(session, null, 2)); return 0; }
+      let observed;
+      try {
+        observed = await captureSessionCandidate(cwd, undefined, {
+          env, runGit: (root, ...gitArgs) => git(root, '--no-optional-locks', ...gitArgs),
+        });
+      } catch (error) { observed = { error: error.message }; }
+      console.log(JSON.stringify(explainSession(session, observed, Date.now()), null, 2));
+      return 0;
+    }
     if (verb === 'verify-command') {
       const resource = args[0] === '--resource' ? args.splice(0, 2)[1] : undefined;
       demand(args.shift() === '--' && args[0], 'verify-command [--resource PROFILE] -- CMD ARGS...');

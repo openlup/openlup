@@ -1634,10 +1634,21 @@ Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local mai
 reference before preparation so the cheap merge preflight catches known conflicts.
 
 ```sh
+node scripts/agent-review-session.mjs --help
 node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json
+node scripts/agent-review-session.mjs status --explain
 node scripts/agent-review-session.mjs record report.json
 node scripts/agent-review-session.mjs verify
 ```
+
+`status` prints the raw recorded session JSON. `status --explain` compares the
+recorded session with the local checkout (`clean`, `dirty` or `stale`), reports
+the required reviewer floor (`0/1/2`), missing reports, open material findings,
+repair or resolution delta scope and digest, and the next action without writing
+Git objects, running generators or claiming `verify` completion.
+`verify` confirms local review evidence. Before printing a receipt, `receipt`
+runs the merge preflight against the locally fetched `origin/main`, subject to
+the stack rules above.
 
 Each fresh reviewer supplies a complete report:
 
