@@ -7,7 +7,7 @@ export type { CommerceCurrency, CommerceTaxCountry, CommerceTaxCategory, Commerc
 export { COMMERCE_CONTRACT_VERSION } from "./quote.js";
 export type { CommerceQuotePricingComponent, CommerceQuoteContext, CommerceQuoteLine, CommercePromotionCustomerSemantic, CommerceQuoteDiscount, CommerceCodeRejectionReason, CommerceCodeRejection, CommerceQuote, CreateQuoteRequest, CreateQuoteResponse } from "./quote.js";
 export type { QuotePromotionEvidence, CommerceCodeRejectionDetail } from "./evidence.js";
-export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./provenance.js";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "./provenance.js";
 export type { CatalogFactsProvenance } from "./provenance.js";
 export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
 export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";

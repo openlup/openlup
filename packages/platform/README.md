@@ -1407,81 +1407,25 @@ price validation block publication; a publisher must reconstruct and refuse all
 issues inside its own transaction. A draft actor or service credential cannot
 construct `VerifiedCatalogPublisher`.
 
-`createPostgresCatalogPublication` supplies an unbound native authority. The new
-publication contracts, compiler and shared price transaction entry points are
-`@experimental`. Publication status and outcome unions grow by addition; removing,
-renaming or narrowing an existing value requires a major version. Its host
-provides fresh single-connection transactions, human authorization, installed
-document/derived-fact validators and transaction-local readiness adapters. Nothing
-mounts the authority or changes a capability flag. `authorize` mints an opaque
-publisher only for a human administrator; every command rechecks native membership
-before replay. `decision` persists alternating approve/revoke decisions against
-the exact candidate reference and digest. Publication requires approval; a later
-revocation leaves the publication and its original replay receipt intact.
+`createPostgresCatalogPublication` is an unbound native publisher. Its contracts,
+compiler and shared price writer are `@experimental`. Status and outcome unions
+grow by addition. Compose it with single-connection transactions, human
+administrator authorization, installed validators and transaction-local
+readiness. Commands recheck membership before replay and publication requires
+persisted approval of the exact immutable v3 candidate.
 
-The writer revalidates immutable v3 inputs, applies their ordered effects and
-checks full native readback in one transaction. It takes catalogue locks only.
-Compensation reapplies explicit effects even when their retained values are
-unchanged. It preserves unaddressed facts; remaining projection drift rolls back
-the publication rather than silently refreshing those facts.
-Compatible complete-fact updates persist changed attributes, axes, gross mass and
-asset values without refreshing other retained fields.
-The native price boundary defaults to the price owner's transaction writer. It
-prelocks receipts before contexts and calls `applyInTransaction` once on that same
-executor, after catalogue effects and before readiness. Its adapter must throw on
-any child refusal; it cannot open or commit another transaction. Installed
-readiness adapters perform no external I/O or commerce locking. Media evidence
-is prepared before admission and verified against its immutable claim. Required
-evidence never defaults to ready.
+Publication checks the ordered effects and native projection in one transaction,
+including child prices, receipts and outbox. Adapters keep to catalogue locks
+and verify required evidence locally. Omitted SKUs retain their revisions unless
+an explicit compatible operation changes them. Material or inconclusive changes
+require successor identity. A net mass outside the legacy integer-gram range
+refuses while gross mass retains its exact scale.
 
-`publish` returns a version 2 receipt; `publication` adapts it to the existing
-publication port. `reads.current` checks projection drift. `reads.readback` and
-`readbackV2` read exact retained heads after subsequent publications. Full facts
-are paged with a product-bound high-water cursor. `receipt(scope, publisher)` and
-the publisher-bound `readPort` recover a lost response without republishing.
-History is bounded to 100 receipts per page. The unbound `reads.receipt` refuses
-because it has no human authority.
-
-`resolveRetained` requires both an opaque read scope and a host accepted-source
-authorizer. In one consistent read, that authorizer verifies the caller's account,
-order or fulfilment access and the persisted line binding. The resolver then
-matches the exact publication, document and SKU revision. Missing legacy binding
-refuses as `retained_revision_unavailable`; current facts cannot repair it. This
-read grants no fresh-sale admission. Hosts still own accepted-source persistence
-and the later acceptance fence.
-
-Publication preserves omitted SKU revisions unless an explicit compatible derived
-operation changes them. Material or inconclusive changes require successor SKU
-identity. A document change revalidates affected omitted siblings. Nonmass or
-missing net content refuses as `catalog_publication_mass_required_until_mc5`;
-the legacy net-weight projection requires positive integer grams from 1 through
-2,147,483,647. Fractional, zero, negative or out-of-range net content refuses as
-`catalog_publication_integral_grams_required` until versioned quantity readers
-arrive. Gross mass retains exact scaled storage; it is never rounded to integer
-grams. Count and volume publication journeys remain incomplete. Hard preparation
-requires a valid unit GTIN even for dark facts. Activation source admission checks
-gross mass against net content with exact arithmetic.
-
-Setting a product status to active requires an active primary SKU with at least one
-eligibility flag enabled. Publication enforces physical combination uniqueness
-across all statuses within its SKU roster. The forward preserves legacy draft
-combinations and issuer-scoped identifiers. Publication checks an incoming
-normalized GTIN against every live GTIN regardless of issuer. Document moves, product activation and membership admission recheck the
-current open source of each affected active, eligible SKU, including omitted rows.
-Explicit media evidence also requires a current open authored source, even without
-activation. Every explicit draft claim binds its stored command and fingerprint,
-including a claim naming the current draft.
-Structural readiness includes a transaction-local product check for presentation
-changes, even when the affected SKU set is empty. Price readiness uses the
-affected SKU set. Withdrawal-only publication can succeed while an untouched sibling's price is expired or the global gate is red.
-The global readiness gate runs when an eligibility operation enables a flag.
-An expected-head conflict precedes live-projection drift.
-Draft input retains its 1 MiB ceiling. Publication validation shares scalar and
-attribute rules while counting full UTF-8 envelopes: SKU facts 2 MiB, manifest
-16 MiB, receipt 8 MiB, history 16 MiB and full-fact page 8 MiB/100 items. It never
-truncates an item or regenerates legacy document bytes. All synchronous effects,
-including receipt, outbox and readback, roll back together. A later cache failure
-does not undo a committed publication.
+`reads.current` checks drift. Retained readback uses exact revisions and
+product-bound pagination. Recovery requires a verified publisher. Retained
+account, order and fulfilment reads use an authorized persisted line binding.
+See the [native catalogue publication contract](../../docs/platform/DATA_AND_MIGRATIONS.md#native-catalogue-publication)
+for the write order, refusal boundaries, read methods and limits.
 
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,
@@ -2111,7 +2055,7 @@ The monorepo's package artifact checker enforces this package's
 `release-gates.json` caps and packed content allowlist. Only
 `--release-set <version>` checks compressed growth against the last released
 baseline, with explanations in the new set's changelog section and release body.
-For the prepared `1.1.0` set, comparison uses the published `1.0.0` tarball;
+For the published `1.1.0` set, comparison used the published `1.0.0` tarball;
 releases before `0.43.0` remain in the source-only `CHANGELOG-HISTORY.md`. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
 [package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
@@ -2126,8 +2070,9 @@ artifact evidence.
 
 The payments entry also exports verified ingress, canonical truth fingerprints, method lifecycle/refusal handoff, reconciliation/verify-now and three runner-independent conformance functions. A new internal boundary projects verified envelopes into the contributed processing carrier: original bytes reach verification unchanged, receipt time starts processing, and durable first receipt overrides redelivery time. Full-reversal chargebacks use the existing dispute path. Snapshot and delta observations preserve original payment money; missing observation, required money or identity refuses before terminal application. Missing money, amounts that are not safe positive integers, or blank currencies on succeeded, refunded or disputed adapter evidence use the existing amount-mismatch refusal before ingestion or terminal application; ingress returns the existing processing-failure response. Failed and pending evidence may still omit money. Hosts own durable stores and response transport. Conformance requires safe positive integer amounts and nonblank currencies on settling money and checks exact identity/money, capability/port agreement and transient-secret exclusion; its evidence contains no handoff. Real-store durability still requires a selected-store proof.
 
-The paragraph below records the earlier direct-truth-only profile; the current
-source preview adds the provider store described immediately afterwards.
+The next paragraph records the earlier direct-truth-only profile. The published
+package includes the provider store described below and its matching native
+migration.
 
 `createPostgresPaymentTruthPort` accepts the platform data executor structural
 shape and `PostgresPaymentTruthOptions` from the contracts entry. It preserves
@@ -2285,9 +2230,10 @@ This composition selects card provider only. The second reference provider's por
 composition and live-provider qualification remain follow-up work. Existing
 managed exports and the default sandbox bindings remain available.
 
-The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
-native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
-commands use the existing `sandbox` settlement channel only. The host authorizes
+The published package includes `createPostgresSandboxPaymentSimulator` and its
+matching native migration. The simulator requires the complete native chain
+through `20261101222000_sandbox_payment_attempts.sql`. Its server commands use
+the existing `sandbox` settlement channel only. The host authorizes
 `beginAttempt`, `recordObservation` and `readAttempt`; do not expose those commands
 as unauthenticated browser actions. No key or provider SDK is needed. Beginning
 records dispatch conservatively; a replay returns the same row with `replayed`
@@ -2701,9 +2647,9 @@ savepoint, preserving its existing add-on lookup and due anchor.
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.
 Hosts supply trusted purchase facts and current method identity and retry pending
-attachment duties. These source-preview exports require the selected database
-forward; they claim no real PSP, mandate, automatic repair, default runner or
-published complete migration chain. See the
+attachment duties. The published package includes these exports and the matching
+native migrations. This composition requires the selected database forward and
+supplies no real PSP, mandate, automatic repair or default runner. See the
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 for the fingerprint dialect, transaction boundaries and recovery limits.
 

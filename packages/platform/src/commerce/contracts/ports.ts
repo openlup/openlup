@@ -108,11 +108,21 @@ export interface CommercePackageSizingPort<Input, Result> {
   eligibleVariantIds(): Promise<Set<string>>;
 }
 
-export type CheckoutOfferResolution = { kind: "bound"; offerVersion: string } | { kind: "refused"; reason: string };
+export type CheckoutOfferResolution =
+  | { kind: "bound"; offerVersion: string; requireQuoteAcceptance?: boolean }
+  | { kind: "refused"; reason: string };
 /** Offer policy binds or refuses an opaque client ask; evidence is server minted. No executor is included. */
 export interface CheckoutOfferPolicyPort<Intent, Quote> {
   resolve(input: { intent: Intent; checkoutKind: CheckoutKind }): Promise<CheckoutOfferResolution>;
   evidence(input: { intent: Intent; offerVersion: string; quote: Quote }): Promise<Record<string, unknown>>;
+  /** Required when the bound result opts in. Verifies the scoped review over the authoritative offer. */
+  verifyQuoteAcceptance?(input: {
+    token: string;
+    intent: Intent;
+    offerVersion: string;
+    quote: Quote;
+    expectedTotal: { amountMinor: number; currency: string };
+  }): boolean;
 }
 
 /** Shared journey projection; pricing and host metadata types are supplied by composition. */

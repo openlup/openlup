@@ -382,6 +382,84 @@ current catalogue head. Industry-specific managed catalogue columns are unaffect
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+## Native catalogue publication
+
+`createPostgresCatalogPublication` supplies an unbound native authority. The new
+publication contracts, compiler and shared price transaction entry points are
+`@experimental`. Publication status and outcome unions grow by addition; removing,
+renaming or narrowing an existing value requires a major version. Its host
+provides fresh single-connection transactions, human authorization, installed
+document/derived-fact validators and transaction-local readiness adapters. Nothing
+mounts the authority or changes a capability flag. `authorize` mints an opaque
+publisher only for a human administrator; every command rechecks native membership
+before replay. `decision` persists alternating approve/revoke decisions against
+the exact candidate reference and digest. Publication requires approval; a later
+revocation leaves the publication and its original replay receipt intact.
+
+The writer revalidates immutable v3 inputs, applies their ordered effects and
+checks full native readback in one transaction. It takes catalogue locks only.
+Compensation reapplies explicit effects even when their retained values are
+unchanged. It preserves unaddressed facts; remaining projection drift rolls back
+the publication rather than silently refreshing those facts.
+Compatible complete-fact updates persist changed attributes, axes, gross mass and
+asset values without refreshing other retained fields.
+The native price boundary defaults to the price owner's transaction writer. It
+prelocks receipts before contexts and calls `applyInTransaction` once on that same
+executor, after catalogue effects and before readiness. Its adapter must throw on
+any child refusal; it cannot open or commit another transaction. Installed
+readiness adapters perform no external I/O or commerce locking. Media evidence
+is prepared before admission and verified against its immutable claim. Required
+evidence never defaults to ready.
+
+`publish` returns a version 2 receipt; `publication` adapts it to the existing
+publication port. `reads.current` checks projection drift. `reads.readback` and
+`readbackV2` read exact retained heads after subsequent publications. Full facts
+are paged with a product-bound high-water cursor. `receipt(scope, publisher)` and
+the publisher-bound `readPort` recover a lost response without republishing.
+History is bounded to 100 receipts per page. The unbound `reads.receipt` refuses
+because it has no human authority.
+
+`resolveRetained` requires both an opaque read scope and a host accepted-source
+authorizer. In one consistent read, that authorizer verifies the caller's account,
+order or fulfilment access and the persisted line binding. The resolver then
+matches the exact publication, document and SKU revision. Missing legacy binding
+refuses as `retained_revision_unavailable`; current facts cannot repair it. This
+read grants no fresh-sale admission. Hosts still own accepted-source persistence
+and the later acceptance fence.
+
+Publication preserves omitted SKU revisions unless an explicit compatible derived
+operation changes them. Material or inconclusive changes require successor SKU
+identity. A document change revalidates affected omitted siblings. Nonmass or
+missing net content refuses as `catalog_publication_mass_required_until_mc5`;
+the legacy net-weight projection requires positive integer grams from 1 through
+2,147,483,647. Fractional, zero, negative or out-of-range net content refuses as
+`catalog_publication_integral_grams_required` until versioned quantity readers
+arrive. Gross mass retains exact scaled storage; it is never rounded to integer
+grams. Count and volume publication journeys remain incomplete. Hard preparation
+requires a valid unit GTIN even for dark facts. Activation source admission checks
+gross mass against net content with exact arithmetic.
+
+Setting a product status to active requires an active primary SKU with at least one
+eligibility flag enabled. Publication enforces physical combination uniqueness
+across all statuses within its SKU roster. The forward preserves legacy draft
+combinations and issuer-scoped identifiers. Publication checks an incoming
+normalized GTIN against every live GTIN regardless of issuer. Document moves, product activation and membership admission recheck the
+current open source of each affected active, eligible SKU, including omitted rows.
+Explicit media evidence also requires a current open authored source, even without
+activation. Every explicit draft claim binds its stored command and fingerprint,
+including a claim naming the current draft.
+Structural readiness includes a transaction-local product check for presentation
+changes, even when the affected SKU set is empty. Price readiness uses the
+affected SKU set. Withdrawal-only publication can succeed while an untouched sibling's price is expired or the global gate is red.
+The global readiness gate runs when an eligibility operation enables a flag.
+An expected-head conflict precedes live-projection drift.
+Draft input retains its 1 MiB ceiling. Publication validation shares scalar and
+attribute rules while counting full UTF-8 envelopes: SKU facts 2 MiB, manifest
+16 MiB, receipt 8 MiB, history 16 MiB and full-fact page 8 MiB/100 items. It never
+truncates an item or regenerates legacy document bytes. All synchronous effects,
+including receipt, outbox and readback, roll back together. A later cache failure
+does not undo a committed publication.
+
 ## Compatible data transfer
 
 Native publication heads, immutable publications, full SKU revisions, kinded
@@ -984,10 +1062,11 @@ remains binding.
 The direct truth store behind `paymentSchemaDescriptor` retains its invoker SQL
 and requires the host's existing executor and privileges.
 
-The source preview's additive sandbox-attempt forward
-`20261101222000_sandbox_payment_attempts.sql` adds two private tables and four
-bounded runtime routines. `payment_simulator_attempts` owns active dispatch,
-replay/fingerprint and synthetic method facts; `payment_simulator_observations`
+The published `@openlup/platform` package includes the sandbox simulator export and its
+matching native forward, `20261101222000_sandbox_payment_attempts.sql`. That
+additive forward adds two private tables and four bounded runtime routines.
+`payment_simulator_attempts` owns active dispatch, replay/fingerprint and
+synthetic method facts; `payment_simulator_observations`
 owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
@@ -2912,7 +2991,7 @@ readback but never new or nonterminal claims. Apply this ordered forward before
 selecting that public replay behavior; the managed chain and separate adopter
 native copies require their own adoption rather than changing implicitly.
 
-The source preview's sandbox-attempt suffix adds nullable review metadata without
+The published native sandbox-attempt forward adds nullable review metadata without
 rewriting existing truth rows or changing the open/settled checks. Existing
 non-sandbox truth does not read or require simulator storage. New sandbox truth
 requires an exact durable server observation and active-attempt match; accepted
