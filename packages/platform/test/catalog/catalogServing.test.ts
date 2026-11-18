@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { createDbBackedCommerceQuotePort } from "../../src/pricing/index.js";
+import { createPostgresCustomerOrderHistoryReadStore } from "../../src/account-support/postgresOrderHistory.js";
 import { mapCustomerOrderLines } from "../../src/account-support/orderHistory.js";
 import { nativeStockWaitDeficits } from "../../src/subscriptions/postgresStockWaitStore.js";
 import type { RenewalFrozenSnapshotV3 } from "../../src/subscriptions/contracts/renewal.js";
@@ -8,6 +9,7 @@ import { productLdV2 } from "../../src/marketing/seo/jsonLd.js";
 import { buildTypedProductPayload } from "../../src/fulfillment/omnipack/omnipackProductPayload.js";
 import type { CatalogQuantity } from "../../src/catalog/contracts/productTypes.js";
 
+import { createPostgresBundleCatalogStore } from "../../src/catalog/bundleCatalogStore.js";
 import { createCatalogServingReader } from "../../src/catalog/servingRead.js";
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
 import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
@@ -181,7 +183,7 @@ it("catalog_volume_quotes_without_gram_coercion MC5-N-001", async () => {
       },
     },
     taxProfile, supportedTaxProfiles: [taxProfile], regionCode: "ZZ", currency: "XXX",
-    now: () => "2026-01-01T00:00:00Z", hasPromotionCodePort: false,
+    now: () => "2030-01-01T00:00:00Z", hasPromotionCodePort: false,
     lineContext(_line, item) {
       expect(item.netContent).toEqual(volume);
       expect(item.acceptedReference.skuRevisionId).toBe(revisionId);
@@ -213,9 +215,50 @@ it.each([
     size: null, required: 2, available: 1, reserved: 0, missing: 1 }]);
   const order = mapCustomerOrderLines([{
     id: revisionId, sku_id: publicationId, quantity: 2, unit_price_cents: 1490, total_cents: 2980,
-    ...(typedContent ? { accepted_net_content: typedContent } : {}),
   }], [], "XXX", { display: () => ({ title: "Retained label", variantName: null }) });
-  expect(order).toEqual([{ ...physical, lineId: revisionId, skuId: publicationId, title: "Retained label", variantName: null,
+  expect(order).toEqual([{ lineId: revisionId, skuId: publicationId, title: "Retained label", variantName: null,
     quantity: 2, unitPrice: { amountMinor: 1490, currency: "XXX" }, total: { amountMinor: 2980, currency: "XXX" },
     listTotal: null, discount: null }]);
+  const retained = createPostgresCustomerOrderHistoryReadStore({
+    async query(sql, inputs) {
+      expect(sql).toContain("JOIN owned_orders");
+      expect(inputs).toEqual([publicationId, revisionId, revisionId]);
+      return { rows: [{ row: { id: revisionId, sku_id: publicationId, net_content: typedContent } }] };
+    },
+  }, { principalId: publicationId, clientId: revisionId, readInvoiceSummaries: async () => new Map() });
+  expect(await retained.readRetainedLineContent(revisionId)).toEqual(typedContent
+    ? [{ lineId: revisionId, skuId: publicationId, netContent: typedContent }] : []);
+});
+
+it.each([
+  ["MC5-N-002 count", count, true],
+  ["MC5-N-002 volume", volume, true],
+  ["MC5-N-002 incomplete count", { ...count, scale: 1 }, false],
+  ["MC5-N-002 mismatched unit", { ...count, unit: volume.unit }, false],
+  ["MC5-D-014 unknown", null, false],
+] as const)("catalog_bundle_content_only_boundary %s", async (_case, typed_content, visible) => {
+  const read = createPostgresBundleCatalogStore({
+    async query(sql: string) {
+      if (sql.includes("FROM unnest")) return { rows: [{
+        variant_id: revisionId, bundle_id: publicationId, sku: "ARTICLE", title: null, product_slug: "article",
+        sku_status: "active", product_status: "active", document_ready: true,
+        identifiers: [{ isPrimary: true, packKind: "unit", kind: "gtin", packQuantity: 1, normalizedValue: "5901234123457" }],
+        typed_content, net_weight_g: null, sellable_standalone: true,
+        quantity: 2, sort_order: 0, reference_unit_price_minor: 542, reference_price_count: 1,
+      }] };
+      if (sql.includes("FROM public.catalog_bundles b")) return { rows: [{
+        id: publicationId, code: "SET", title: "Set", fulfillment_mode: "virtual", currency: "XXX", region_code: "ZZ",
+        mode: "one_time", target_price_minor: 713, price_list_id: revisionId,
+      }] };
+      return { rows: [{ id: revisionId }] };
+    },
+  }, { priceAuthority: "effective" });
+  const result = await read.listActiveBundleCompositions({ currency: "XXX", regionCode: "ZZ", atTime: "2030-01-01T00:00:00Z" });
+  if (visible) expect(result).toMatchObject([{ targetPriceMinor: 713, components: [{ quantity: 2, referenceUnitPriceMinor: 542 }] }]);
+  else expect(result).toEqual([]);
+});
+
+it("neutral_listing_does_not_require_ingredients MC5-N-003", async () => {
+  const { items } = await reader("count").list({ cursor: null, limit: 100 });
+  expect(items).toMatchObject([{ product: { title: "Synthetic article", type: scope.types[0] }, sku: { netContent: count } }]);
 });

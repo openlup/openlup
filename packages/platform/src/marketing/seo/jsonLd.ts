@@ -161,7 +161,8 @@ export function breadcrumbLd(items: { name: string; url?: string }[], pageUrl: s
 export function productLdV2(origin: string, product: Omit<ProductFacts, "netContent"> & {
   weight?: import("@openlup/core/catalog").CatalogQuantity | null;
 }) {
-  const node = productLd(origin, product);
+  const { netContent: _legacy, ...facts } = product as ProductFacts;
+  const node = productLd(origin, facts);
   if (product.weight?.dimension !== "mass") return node;
   const mass = canonicalizeCatalogQuantity(product.weight);
   const value = Number(mass.unscaled) / 10 ** mass.scale;

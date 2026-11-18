@@ -1,3 +1,4 @@
+import { catalogProductTypeRefSchema } from "./productTypeSchemas.js";
 import { createCatalogServingReader, type CatalogServingScopeV2 } from "./servingRead.js";
 import { asLegacyIntegralGrams, catalogPhysicalUnits } from "./physicalQuantity.js";
 import type { CatalogQuantity, CatalogProductTypeDefinition } from "./contracts/productTypes.js";
@@ -22,7 +23,7 @@ import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
-import { catalogSkuStateSchema as catalogPublishedSkuSchema, catalogSuccessorPublicationStateSchema as catalogPublicationManifestSchema, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
+import { catalogSkuStateSchema as catalogPublishedSkuSchema, catalogSuccessorPublicationStateSchema as catalogPublicationManifestSchema, assertCatalogPublicationMassShapes, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -177,6 +178,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       expectedHead = headSchema.parse({ publicationId: rows[0]!.id, revision: rows[0]!.revision, documentDigest: rows[0]!.digest });
     }
     const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [match![1], Number(match![2])]);
+    const header = z.object({ payload: z.object({ product: z.object({ type: catalogProductTypeRefSchema }) }) }).safeParse(rows[0]?.record);
+    if (header.success) {
+      const definition = deps.registry.resolve(header.data.payload.product.type);
+      if (definition) assertCatalogPublicationMassShapes((rows[0]!.record as { payload: unknown }).payload, definition);
+    }
     const record = catalogDraftPublicationStoredRecordSchema.parse(rows[0]?.record);
     require(record.productId === productId && record.payload.schemaVersion >= 3, "candidate_invalid");
     const payload = record.payload as CatalogDraftPayloadV3 | CatalogDraftPayloadV4 | CatalogDraftPayloadV5, definition = deps.registry.resolve(payload.product.type);

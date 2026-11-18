@@ -3880,6 +3880,7 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
         kind: z.ZodLiteral<"boolean">;
         value: z.ZodBoolean;
     }, z.core.$strict>], "kind">>;
+    productId: z.ZodGUID;
     netContent: z.ZodOptional<z.ZodObject<{
         dimension: z.ZodEnum<{
             count: "count";
@@ -3890,7 +3891,6 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
         scale: z.ZodNumber;
         unit: z.ZodString;
     }, z.core.$strict>>;
-    productId: z.ZodGUID;
     identifiers: z.ZodOptional<z.ZodArray<z.ZodObject<{
         scheme: z.ZodString;
         issuer: z.ZodString;
@@ -4915,6 +4915,7 @@ export interface CatalogPublicationCompileInput {
     capacity?: number;
 }
 export declare function catalogPublicationClaim(record: CatalogDraftPublicationStoredRecord): CatalogDraftClaimV3;
+export declare function assertCatalogPublicationMassShapes(payload: unknown, definition: CatalogProductTypeDefinition): void;
 /** Hard preparation guard, independent of dark/activation readiness. */
 export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4): void;
 /** Exact comparison after owner-defined conversion within the same dimension. */

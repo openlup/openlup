@@ -106,6 +106,21 @@ export function catalogPublicationClaim(record: CatalogDraftPublicationStoredRec
 const equal = (a: unknown, b: unknown): boolean => publicationJson(a) === publicationJson(b);
 const need = (condition: unknown, reason: string): void => { if (!condition) publicationRefuse(reason); };
 const authoredSlug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
+// Preserve the incumbent validation result for malformed legacy mass inputs.
+// A structurally valid mass is admitted regardless of the legacy gram range.
+export function assertCatalogPublicationMassShapes(payload: unknown, definition: CatalogProductTypeDefinition): void {
+  const header = z.object({ skus: z.array(z.object({ netContent: z.unknown().optional(), grossMass: z.unknown().optional() })) }).safeParse(payload);
+  if (!header.success) return;
+  const units = catalogPhysicalUnits(definition);
+  for (const sku of header.data.skus) for (const value of [sku.netContent, sku.grossMass]) {
+    if (!value || typeof value !== "object" || !("dimension" in value) || value.dimension !== "mass") continue;
+    try {
+      canonicalizeCatalogQuantity(catalogQuantitySchema.parse(value), units);
+    } catch {
+      publicationRefuse("catalog_publication_integral_grams_required");
+    }
+  }
+}
 /** Hard preparation guard, independent of dark/activation readiness. */
 export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4): void {
   need(authoredSlug.safeParse(payload.product.slug).success, "commerce_product_slug_unsupported");
@@ -129,6 +144,7 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
 }
 export function compileCatalogPublication(input: CatalogPublicationCompileInput): { product: CatalogProductState; skus: CatalogSkuState[]; documents: CatalogPublicationDocument[]; activation: boolean; changed: boolean } {
   canonicalCatalogDraftJson(input.payload);
+  assertCatalogPublicationMassShapes(input.payload, input.definition);
   const governed = input.payload.schemaVersion === 4;
   const payload = governed ? catalogDraftPayloadV4Schema.parse(input.payload) : catalogDraftPayloadV3Schema.parse(input.payload);
   if (governed && input.product) catalogAuthoritativeLifecycleV2(input.product);

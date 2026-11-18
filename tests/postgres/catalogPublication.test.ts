@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
+import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions, createPostgresCatalogSkuEnvelopeReadPort,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
@@ -533,7 +533,7 @@ it.each([
   ["MC5-N-001 oversized net", "mass", "openlup:g", "2147483648", 0],
   ["MC5-N-003 count", "count", "openlup:piece", "56", 0],
   ["MC5-N-003 volume", "volume", "openlup:ml", "50", 0],
-] as const)("catalog_publish_typed_readiness_and_projection %s", async (_case, dimension, unit, unscaled, scale) => {
+] as const)("catalog_v2_readback_matches_publication / legacy_reader_refuses_non_mass_quantity %s", async (_case, dimension, unit, unscaled, scale) => {
   const data = await draft(), payload = structuredClone(data.payload);
   const netContent = { dimension, unit, unscaled, scale };
   payload.skus[0]!.netContent = netContent;
@@ -543,6 +543,8 @@ it.each([
   expect(read).toMatchObject({ outcome: "page", items: [{ facts: { netContent } }] });
   const rows = await db.query("SELECT net_weight_g, net_content_unscaled::text, net_content_scale FROM public.catalog_skus WHERE id=$1", [data.skuId]);
   expect(rows.rows).toEqual([{ net_weight_g: null, net_content_unscaled: unscaled, net_content_scale: scale }]);
+  await expect(createPostgresCatalogSkuEnvelopeReadPort(db).getSkuEnvelopeById(data.skuId))
+    .rejects.toMatchObject({ code: "quantity_requires_v2" });
   await expect(db.query("UPDATE public.catalog_skus SET net_weight_g=0 WHERE id=$1", [data.skuId]))
     .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
 });

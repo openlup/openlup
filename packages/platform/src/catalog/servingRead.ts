@@ -164,7 +164,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
           }
           const projected: ServingItem[] = [];
           const document = documents.find(document => document.reference.id === product.document?.id);
-          if (!document || !product.document || deps.rules.validateProduct(product, skus, [document]).length !== 0) {
+          if (!document || !product.document || !product.name.trim() || deps.rules.validateProduct(product, skus, [document]).length !== 0) {
             return fail("catalog_document_schema_invalid");
           }
           if (!product.primarySkuId || !skus.some(sku => sku.id === product.primarySkuId)) return fail("catalog_primary_trade_item_invalid");

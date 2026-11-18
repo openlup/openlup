@@ -1,3 +1,4 @@
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import { deriveOrderMoney } from "../commerce/index.js";
 import { toOrderMoneyHeader } from "./orderHistory.js";
 import type { CustomerOrderHistoryReadStore, CustomerOrderHistoryRow } from "./orderHistory.js";
@@ -9,10 +10,15 @@ export interface NativeOrderHistoryOptions extends NativeAccountReadScope {
   readInvoiceSummaries: CustomerOrderHistoryReadStore["readInvoiceSummaries"];
 }
 
+/** Experimental current-format complement to the existing order line projection. @experimental */
+interface NativeOrderLineContentPort {
+  readRetainedLineContent(orderId: string): Promise<{ lineId: string; skuId: string; netContent: CatalogQuantity }[]>;
+}
+
 /** Native table shapes translated to the existing customer order projection contract. */
 export function createPostgresCustomerOrderHistoryReadStore(
   executor: OperatorQueryExecutor, options: NativeOrderHistoryOptions,
-): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource {
+): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource & NativeOrderLineContentPort {
   const rows = accountRows(executor, options), clientId = options.clientId;
   const { readInvoiceSummaries } = options;
   const orderHeaders = async (predicate: string, values: unknown[], detail = false) => (await rows(`
@@ -32,16 +38,24 @@ export function createPostgresCustomerOrderHistoryReadStore(
       return (await orderHeaders("WHERE o.id=$3::uuid", [orderId], true))[0] ?? null;
     },
     async readOrderLines(orderId) {
-      const result = await rows(`SELECT item.*,o.metadata,o.currency_code,o.total_amount_minor,
-        (SELECT accepted->'netContent'
-         FROM jsonb_array_elements(CASE WHEN to_jsonb(o)#>>'{catalog_acceptance,schemaVersion}' = '2'
-           THEN to_jsonb(o)#>'{catalog_acceptance,lines}' ELSE '[]'::jsonb END) accepted
-         WHERE accepted->>'skuId' = item.sku_id::text) AS accepted_net_content
-        FROM public.commerce_order_items item JOIN owned_orders o ON o.id=item.order_id
+      const result = await rows(`SELECT item.*,o.metadata,o.currency_code,o.total_amount_minor FROM public.commerce_order_items item
+        JOIN owned_orders o ON o.id=item.order_id
         WHERE o.id=$3::uuid ORDER BY item.line_ordinal,item.id`, [orderId]);
       // The existing projector owns aggregate reconciliation and its diagnostic-only
       // read fallback. Derived per-line VAT rounding is not a snapshot refusal.
       return result.map(line);
+    },
+    async readRetainedLineContent(orderId) {
+      const result = await rows(`SELECT item.id, item.sku_id,
+        (SELECT accepted->'netContent'
+         FROM jsonb_array_elements(CASE WHEN to_jsonb(o)#>>'{catalog_acceptance,schemaVersion}' = '2'
+           THEN to_jsonb(o)#>'{catalog_acceptance,lines}' ELSE '[]'::jsonb END) accepted
+         WHERE accepted->>'skuId' = item.sku_id::text) AS net_content
+        FROM public.commerce_order_items item JOIN owned_orders o ON o.id=item.order_id
+        WHERE o.id=$3::uuid ORDER BY item.line_ordinal,item.id`, [orderId]);
+      return result.flatMap(row => row.net_content == null ? [] : [{
+        lineId: text(row.id), skuId: text(row.sku_id), netContent: row.net_content as CatalogQuantity,
+      }]);
     },
     async readPaymentStatuses(orderIds) {
       const result = await rows(`SELECT DISTINCT ON(intent.order_id) intent.order_id,intent.status
@@ -146,10 +160,9 @@ function header(row: CustomerOrderHistoryRow, detail: boolean): CustomerOrderHis
   }
   return translated;
 }
-function line({ accepted_net_content, ...row }: CustomerOrderHistoryRow): CustomerOrderHistoryRow {
-  const physical = accepted_net_content == null ? {} : { accepted_net_content };
+function line(row: CustomerOrderHistoryRow): CustomerOrderHistoryRow {
   const metadata = record(row.metadata), quote = record(record(metadata.quoteSnapshot).quote);
-  if (!Object.keys(quote).length) return { ...row, ...physical, unit_price_cents: minor(row.unit_amount_minor), total_cents: minor(row.line_amount_minor) };
+  if (!Object.keys(quote).length) return { ...row, unit_price_cents: minor(row.unit_amount_minor), total_cents: minor(row.line_amount_minor) };
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const promoted = row.source_line_ordinal != null;
   const captured = record(lines[minor(promoted ? row.source_line_ordinal : row.line_ordinal) - 1]);
@@ -166,7 +179,7 @@ function line({ accepted_net_content, ...row }: CustomerOrderHistoryRow): Custom
     || catalogTotal - discount !== effective || rate > 10000) {
     throw new Error("native_account_order_line_snapshot_mismatch");
   }
-  return { id: row.id, sku_id: row.sku_id, ...physical, quantity, unit_price_cents: catalogUnit,
+  return { id: row.id, sku_id: row.sku_id, quantity, unit_price_cents: catalogUnit,
     total_cents: catalogTotal, vat_rate_bps: rate, discount_allocated_cents: discount,
     effective_total_cents: effective, effective_net_cents: Math.round(effective * 10000 / (10000 + rate)),
     product_snapshot: { quoteLine: captured }, variant_snapshot: { sku: captured.sku } };

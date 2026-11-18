@@ -2691,7 +2691,7 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
 
 ```ts
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
@@ -2704,6 +2704,8 @@ export declare const successorNoticeSources: readonly ["catalog.publication.comm
  */
 export declare function createPostgresSuccessorNotices(options: {
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Decode frozen content for notices of the versioned renewal dialect. */
+    renewalCodec?: Pick<NativeRenewalCodec, "decode">;
     /** Optional presentation eviction after verifying the persisted commit event. */
     invalidateCatalogueProduct?(productId: string): void;
     /** Bind the catalogue owner's complete withdrawal-impact port. */

@@ -109,3 +109,14 @@ it("classifies published physical identity with both immutable document contexts
   } };
   expect(() => compileCatalogPublication(data)).toThrow("sku_identity_change_requires_new_sku"); expect(classified).toBe(true);
 });
+
+it.each([
+  ["net zero", "netContent", "0"],
+  ["net negative", "netContent", "-1"],
+  ["gross zero", "grossMass", "0"],
+  ["gross negative", "grossMass", "-1"],
+] as const)("catalog_publish_typed_readiness_and_projection malformed mass %s", (_name, field, unscaled) => {
+  const data = input();
+  data.payload.skus[0]![field] = { dimension: "mass", unit: "openlup:g", scale: 0, unscaled };
+  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_integral_grams_required");
+});
