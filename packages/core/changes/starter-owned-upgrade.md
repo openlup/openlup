@@ -126,10 +126,15 @@ Omitting the new file prevents module loading with `ERR_MODULE_NOT_FOUND`.
 Import the owned `market` registry into `owned/store.config.ts` and
 spread it into every `market` object, preserving local country, currency and
 timezone. In `owned/renewal.config.ts`, use `market.defaultLocale` for
-`notices.locale`. Every country notice mapping must select a locale in the
-owned registry's `market.locales`. Remove or remap entries for any locale you
-drop from the registry. Invalid notice locale or country mappings refuse with
-`starter_renewal_configuration_invalid`. Change the two product text reads in
+`notices.locale`. Startup refuses unsupported notice locales or country keys
+other than two uppercase letters with `starter_renewal_configuration_invalid`.
+A country mapping to a platform-supported locale outside `market.locales`
+passes startup validation. Notice delivery falls back to `market.defaultLocale`.
+For example, mapping `PL` to `pl` in an English-only registry delivers notices
+in English. Keep mappings within `market.locales` by removing or remapping
+entries for dropped locales.
+
+Change the two product text reads in
 `owned/demo-seed.ts` to `name[config.market.defaultLocale]` and
 `description[config.market.defaultLocale]`.
 
@@ -170,6 +175,19 @@ The platform trims and collapses input whitespace and uppercases postal input
 before normalization. Postal input and output are bounded to 24 characters and
 phone input and local output to 64. Return `null` to refuse a supplied phone.
 A callback throw refuses the affected field with its configured policy message.
+
+#### Managed tests that pin demonstration values
+
+`test/e4-oms.test.ts` expects the demonstration postal and phone formats.
+`test/renewal.test.ts` expects the demonstration account action lists, allowed
+pause presets and both pause defaults. `test/address-outcomes.test.ts` matches
+the demonstration wording for a change that applies from the next parcel.
+`browser/acquisition.spec.ts` also uses the demonstration saved-address formats,
+account actions and pause defaults. After extraction, these are application
+tests. If you keep the callback-free policy, narrow action lists, omit
+`retention.pausePreset` or rewrite copy, adapt or replace the affected fixtures
+and assertions in your application. Startup validation defines the configuration
+contract.
 
 After reconciliation, apply the managed snapshots, install the target's exact
 dependencies and run typechecking, build, application tests and startup checks.

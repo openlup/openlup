@@ -3,7 +3,8 @@
 Use the starter's ownership inventory to decide which application files you
 customize and which updates need review.
 
-For a 0.43.0 starter upgrade, follow the [required owned-file migration](../upgrade/v1-0-0.md#starter-applications-from-0430).
+For a starter upgrade, follow the per-release owned-file migration linked from
+[Upgrade application files](../upgrade/application-files.md).
 
 ## Read the inventory
 
