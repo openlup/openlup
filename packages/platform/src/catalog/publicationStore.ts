@@ -319,7 +319,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         if (profileRef) {
           const resolved = deps.subscriptionProfiles?.resolve(profileRef);
           if (!resolved) return publicationRefuse("profile_missing");
-          if (!resolved.bound || !await hasInstalledSubscriptionProfile(db, profileRef, resolved.profile)) {
+          if (!resolved.bound || !await hasInstalledSubscriptionProfile(db, profileRef, resolved)) {
             publicationRefuse("policy_binding_missing");
           }
           const installedBound = await observeCatalogSubscriptionCadenceBound(db);

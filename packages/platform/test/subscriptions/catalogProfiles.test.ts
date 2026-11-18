@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CatalogQuantity } from "@openlup/core/catalog";
 import { defineCatalogPack } from "../../src/catalog/contracts/catalogPack.js";
+import { hasInstalledSubscriptionProfile } from "../../src/catalog/installedSubscriptionProfiles.js";
 import { catalogPackIssues } from "../../src/catalog/productTypeIssues.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogSubscriptionProfileBinding, type CatalogProfileLine } from "../../src/subscriptions/catalogProfileBinding.js";
@@ -123,6 +124,16 @@ describe("profile_attachment_continuity_matrix", () => {
 
   it("SP1-D-022 legacy_subscription_without_profile_is_unchanged", () => {
     expect(binding.check({ cadenceDays: 500, lineItems: [{ ...base, profileRef: undefined, quantity: 0 }] })).toEqual({ kind: "legacy" });
+  });
+
+  it.each([
+    ["equal", definition, base.profileDigest!, true, 1],
+    ["different digest", definition, "e".repeat(64), false, 0],
+    ["different version", { ...definition, version: 2 }, base.profileDigest!, false, 1],
+  ] as const)("SP1-D-023 installed binding (%s)", async (_case, installed, digest, expected, queries) => {
+    const query = vi.fn(async () => ({ rows: [{ profile: installed }] }));
+    expect(await hasInstalledSubscriptionProfile({ query }, profileRef, { profile: definition, digest })).toBe(expected);
+    expect(query).toHaveBeenCalledTimes(queries);
   });
 
   it("SP1-D-022 exact older definition retained when a higher version is introduced", () => {

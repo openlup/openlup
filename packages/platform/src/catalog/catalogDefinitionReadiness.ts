@@ -32,7 +32,7 @@ export async function observeCatalogDefinitionReadiness(
       const resolved = profiles?.resolve(definition.subscriptionProfileRef);
       if (resolved?.bound && installedBound === undefined) installedBound = await observeCatalogSubscriptionCadenceBound(readExecutor);
       if (!resolved?.bound || installedBound == null || Math.max(...resolved.profile.allowedCadenceDays) > installedBound
-        || !await hasInstalledSubscriptionProfile(readExecutor, definition.subscriptionProfileRef, resolved.profile)) {
+        || !await hasInstalledSubscriptionProfile(readExecutor, definition.subscriptionProfileRef, resolved)) {
         registryDigest = null;
       }
     }
