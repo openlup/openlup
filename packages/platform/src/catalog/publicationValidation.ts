@@ -222,7 +222,9 @@ export function catalogPublicationMediaIssue(mediaRef: unknown, assets: readonly
   if (!mediaRef && !assets.length && !claim) return null;
   if (typeof mediaRef !== "string" || !mediaRef) return "media_reference_missing";
   if (!claim) return "media_readiness_unknown";
-  return claim.mediaRef === mediaRef && equal([...assets].sort(comparePublicationText), claim.assetRefs)
+  // The draft seal retains its established order. Compare both sets using the
+  // database order without changing signed or persisted bytes.
+  return claim.mediaRef === mediaRef && equal([...assets].sort(comparePublicationText), [...claim.assetRefs].sort(comparePublicationText))
     ? null : "media_readiness_mismatch";
 }
 function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument["reference"], "digest" | "documentRef" | "revisionNo">

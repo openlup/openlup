@@ -2995,13 +2995,8 @@ it.each([
     if (op.op === "set_product_presentation") op.presentation = content.presentation;
     payload.publication.evidence.media = [{ skuCode, mediaRef, assetRefs, revisionDigest: "a".repeat(64) }];
     const command = await save(payload, data.draftId, 1);
-    if (assetRefs[0] === lower) {
-      await commit(command);
-    } else {
-      const stable = await snapshot();
-      expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
-      expect(await snapshot()).toEqual(stable);
-    }
+    const receipt = await commit(command);
+    expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", items: [{ facts: { assetRefs } }] });
     return;
   }
   content.offerMemberships = [{ skuCode, offerVersion: higher, admitted: false }];
