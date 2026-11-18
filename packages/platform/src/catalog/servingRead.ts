@@ -248,7 +248,9 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
         documentRevision: { id: documentRevision.id, digest: documentRevision.digest },
       }));
     },
-    listEditorSkus: selectable,
+    async listEditorSkus() {
+      return (await selectable()).filter(item => item.sku.sellability.subscription);
+    },
     invalidateProduct(productId) { projections.delete(productId); },
   };
 }

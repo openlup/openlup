@@ -68,6 +68,7 @@ function reader(change: string, observed?: { revision: number; title: string; un
   if (change === "count") source.netContent = count;
   source.status = "active";
   source.sellableStandalone = true;
+  source.sellableInSubscription = change !== "one-time only";
   source.memberships = [{ offerVersion: scope.offerVersion, admitted: true }];
   const row: { id: string; publication_id: string | null; revision: number; sku_count: number } = { id: state.product.id, publication_id: publicationId, revision: 1, sku_count: 1 };
   const head = { publicationId, revision: 1, documentDigest: state.documents[0]!.reference.digest };
@@ -79,7 +80,7 @@ function reader(change: string, observed?: { revision: number; title: string; un
   if (change === "missing document") state.documents.length = 0;
   if (change === "missing primary") state.product.primarySkuId = "20000000-0000-4000-8000-000000000004";
   if (change === "missing GTIN") source.identifiers.length = 0;
-  if (change === "unsellable") source.sellableStandalone = false;
+  if (change === "unsellable") { source.sellableStandalone = false; source.sellableInSubscription = false; }
   if (change === "withdrawn") source.status = "archived";
   const executor = {
     async query(sql: string) {
@@ -261,4 +262,11 @@ it.each([
 it("neutral_listing_does_not_require_ingredients MC5-N-003", async () => {
   const { items } = await reader("count").list({ cursor: null, limit: 100 });
   expect(items).toMatchObject([{ product: { title: "Synthetic article", type: scope.types[0] }, sku: { netContent: count } }]);
+});
+
+
+it("catalog_authoritative_page_and_projection MC5-D-022 editor excludes one-time-only selections", async () => {
+  const port = reader("one-time only");
+  expect(await port.listQuoteCatalogItems()).toMatchObject([{ sellability: { oneTime: true, subscription: false } }]);
+  expect(await port.listEditorSkus()).toEqual([]);
 });
