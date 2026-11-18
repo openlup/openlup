@@ -1,0 +1,29 @@
+# Catalogue transport witness census
+
+This census records offline owner results. The installed consumer supplies the independent observations and the executable trust boundary. All new examples use fictional data.
+
+| Rule and witness | Isolating input | Exact result |
+| --- | --- | --- |
+| RP2-D-001, catalogue_transport_matrix | Executable text in a .ts file or in an .mjs file, each with a sentinel write | 64, OPENLUP_E_CLI_INPUT, sentinel absent for each |
+| RP2-D-001 | Valid JSON with .mjs suffix, non-string with getters, missing file | 0, 1/conformance_subject_invalid with zero getters, 74/OPENLUP_E_CLI_FAILURE, respectively |
+| RP2-D-002, catalogue_transport_matrix | Same installed source in two clean paths, and reordered object keys | Byte-identical scratch JSON and SHA-256, scratch path outside each app |
+| RP2-D-002 | Drop or change a definition field, draft price or operation, profile field, or fixture in the projection, one at a time | Runtime/fixture parity assertion fails for each |
+| RP2-D-003, catalogue_transport_matrix | Unknown required check alone, then with a duplicate type | 2 at /requiredChecks/0, then 1 with definition_duplicate_identity |
+| RP2-D-003 | Out-of-order findings, mixed path/code/fixture, quoted replay path | Sorted tuple order, formatVersion 1, exact shell replay, one check counted, separate nonnegative timings |
+| RP2-D-004, catalogue_required_owner_matrix | Invalid namespace and repeated type/version across two packs | definition_key_invalid at /packs/0/pack/namespace, definition_duplicate_identity at /packs/1/pack/types/0/version |
+| RP2-D-004 | Exact count and mass, unknown unit, fractional count, cross dimension, inexact conversion, overflow | 0 for each exact input, otherwise quantity_unknown_unit, quantity_fractional_count, quantity_cross_dimension, quantity_not_exactly_representable, quantity_overflow at the supplied value |
+| RP2-D-005, catalogue_required_owner_matrix | Product sets variant-only attribute, or incoming SKU duplicates combination | attribute_scope_conflict at attribute pointer, duplicate_combination at incoming option pointer |
+| RP2-D-005 | Required attributes or combinations missing from one pack | 2/conformance_owner_unavailable at that /requiredChecks index |
+| RP2-D-005 | Zero or multiple reference observations, versus one dangling or private reference | attribute_reference_unresolved, 2 for missing/ambiguous and 1 for dangling/private |
+| RP2-D-006, catalogue_required_owner_matrix | Legal v3, v4 and v5 carriers with genuine content validation, and the same JSON without callback evidence | 0 via trusted transport, 2/conformance_owner_unavailable for content with inert input |
+| RP2-D-006 | Remove required publication operation field, content reference or required readiness content in each applicable dialect | 1 with owner schema/readiness code at the field, or 2 where a runtime dependency is needed |
+| RP2-D-006 | 17 dimensions, 1,001 choices, 10,001 SKUs and 1,048,577 canonical bytes, independently | Existing definition or draft admission refusal at dimensions, choices, SKUs or draft size respectively |
+| RP2-D-007, catalogue_required_owner_matrix | Unknown class, undeclared type profile ref, admitted but wrong fixture profile version, wrong policy binding | definition_unknown_tax_class, definition_unknown_profile_ref, profile_missing, policy_binding_missing at respective owner pointers |
+| RP2-D-007 | Cadence 121 or otherwise valid 120, and inconsistent demand/pool evidence | profile_cadence_exceeds_platform_bound, 0, and exact profile owner issue, respectively |
+| RP2-D-008, catalogue_refusal_observation_matrix | False capability without fixture, malformed declaration, fixture for undeclared or enabled capability, wrong code, nonzero effect | conformance_refusal_fixture_missing, conformance_refusal_fixture_invalid for each invalid declaration, conformance_refusal_fixture_mismatch for each mismatch |
+| RP2-D-008 | Invoke prepaid through actual profile owner, compare declaration and effects, and supply a forged matching legacy observation to a required check | prepaid_unsupported, zero effects, and required unavailable for the JSON-only observation |
+| RP2-D-009, catalogue_required_owner_matrix | Request taxonomy, tax application, or promotions independently | 2/conformance_owner_unavailable at /requiredChecks/0; each remains listed in boundary |
+| RP2-D-010, installed_guide_search_finds_each_recipe setup | Copy installed pack.ts, catalogue.ts and fixtures.ts; import the registration once and run erasable TS typecheck and installed command | Both exit 0; replay bytes identical; two-way generated refusal code and anchor check passes |
+| RP2-D-011, installed_guide_search_finds_each_recipe | Each query prefixed with catalogue: new vertical, add attribute, add unit, add axis, add tax class, add category or collection, promotion with existing grammar, subscription profile, upgrade a definition | Each returns the corresponding exact heading with valid span in the packed Core guide, within eight results |
+
+The JSON CLI and report compatibility are the baseline in `src/lifecycle/openlup.mjs:88-111`. The owner checks start from `src/catalog/productTypeIssues.ts:174-211`, `src/catalog/draftV3Schemas.ts:102-113`, `src/catalog/lifecycleV2.ts:54-69`, `src/catalog/successorPublication.ts:18-38` and `src/subscriptions/catalogProfileBinding.ts:114-178`. The baseline JSON validator, reference outcomes and declaration consistency remain usable. Trusted transport is explicit and required runtime evidence comes from an actual owner call. Lookup extends the installed consumer in `scripts/packages/platform-cold-consumer.ts:2002-2096`. Transport, offline proof and discovery have no donor equivalent. Prepaid refusal and cadence use the existing profiled runtime boundary.
