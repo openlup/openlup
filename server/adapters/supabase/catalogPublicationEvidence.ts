@@ -4,10 +4,11 @@ import { z } from "zod";
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const id = z.guid().refine(value => value === value.toLowerCase());
 const code = z.string().min(1).max(80).refine(value => value.trim() === value);
-const headSchema = z.object({ protocol: z.enum(["v1", "v2", "v3"]), event_id: id.nullable(),
+const priorHeadSchema = z.object({ event_id: id.nullable(),
   event_sequence: z.number().int().positive().nullable(), state_digest: digest.nullable(),
   state_canonical_text: z.string().min(2).max(16_777_216).nullable(),
-}).strict().refine(head => head.protocol === "v1"
+}).strict();
+const headSchema = priorHeadSchema.extend({ protocol: z.enum(["v1", "v2", "v3"]) }).refine(head => head.protocol === "v1"
   ? head.event_id === null && head.event_sequence === null && (head.state_digest === null) === (head.state_canonical_text === null)
   : head.event_id !== null && head.event_sequence !== null && head.state_canonical_text !== null);
 
@@ -34,10 +35,11 @@ const refusal = (reason: AuthorityFailure) => ({ outcome: "refused" as const, re
 const unavailable = () => refusal("store_unavailable");
 const invalid = () => refusal("response_invalid");
 const sortedUnique = (values: readonly string[]) => values.every((value, index) => index === 0 || values[index - 1]! < value);
+const oneHeadRow = (rows: unknown): unknown => Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
 
 type StateValidator = (text: string, protocol: "v1" | "v2" | "v3") => boolean | Promise<boolean>;
-async function verifiedHead(protocol: string, rows: unknown, validateState: StateValidator) {
-  const head = headSchema.safeParse(Array.isArray(rows) && rows.length === 1 ? rows[0] : null);
+async function verifiedHead(protocol: string, row: unknown, validateState: StateValidator) {
+  const head = headSchema.safeParse(row);
   if (!head.success || head.data.protocol !== protocol) return null;
   const { state_canonical_text: text, state_digest: expected, event_id: eventId, event_sequence: sequence } = head.data;
   if (text !== null) {
@@ -71,7 +73,9 @@ export function createManagedCatalogPublicationEvidence(input: {
       if (observed.error?.code === "PGRST202" && observed.error.message === missingMethod) {
         const prior = await input.client.rpc("catalog_publication_v2_current_state", {});
         if (prior.error !== null) return unavailable();
-        const head = await verifiedHead("v2", prior.data, input.validateState);
+        const row = priorHeadSchema.safeParse(oneHeadRow(prior.data));
+        if (!row.success) return invalid();
+        const head = await verifiedHead("v2", { ...row.data, protocol: "v2" }, input.validateState);
         return head ? { outcome: "prior_protocol" as const, head } : invalid();
       }
       if (observed.error !== null) return observed.error.code === "40001" || observed.error.message === "catalog_publication_v3_drift"
@@ -90,7 +94,7 @@ export function createManagedCatalogPublicationEvidence(input: {
 
       const response = await input.client.rpc("catalog_publication_v3_current_state", {});
       if (response.error !== null) return unavailable();
-      const head = await verifiedHead(page.protocol, response.data, input.validateState);
+      const head = await verifiedHead(page.protocol, oneHeadRow(response.data), input.validateState);
       if (!head) return invalid();
       if (head.headDigest !== page.headDigest) return refusal("authority_changed");
       if (page.protocol !== "v3" || head.headDigest === null) return { outcome: "prior_protocol" as const, head };

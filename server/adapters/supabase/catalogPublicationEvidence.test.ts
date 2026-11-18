@@ -5,7 +5,7 @@ import { createManagedCatalogPublicationEvidence } from "./catalogPublicationEvi
 const event = randomUUID(), product = randomUUID(), sku = randomUUID();
 const text = '{"products":[],"skus":[]}';
 const digest = createHash("sha256").update(text).digest("hex");
-const prior = { protocol: "v2", event_id: event, event_sequence: 1, state_digest: digest, state_canonical_text: text };
+const prior = { event_id: event, event_sequence: 1, state_digest: digest, state_canonical_text: text };
 const head = { ...prior, protocol: "v3" };
 const identity = { skuId: sku, skuCode: "EXAMPLE-1", productId: product, productSlug: "article",
   netWeightG: 100, sellableStandalone: true, sellableInSubscription: true };
@@ -24,6 +24,8 @@ it.each([
   ["LC8-D-002 current head corrupt seal", ok(page), ok([{ ...head, state_canonical_text: "{}" }]), "response_invalid"],
   ["LC8-D-017 head moves", ok({ ...page, headDigest: "a".repeat(64) }), ok([head]), "authority_changed"],
   ["LC8-D-028 ambiguous prior", missing, ok([prior, prior]), "response_invalid"],
+  ["LC8-D-028 unexpected prior wire discriminator", missing, ok([{ ...prior, protocol: "v2" }]), "response_invalid"],
+  ["LC8-D-028 prior response without an event", missing, ok([{ ...prior, event_id: null }]), "response_invalid"],
   ["LC8-D-028 no downgrade for permission", fault, ok([prior]), "store_unavailable"],
 ])("catalog_native_managed_contract_conformance %s", async (_rule, first, second, reason) => {
   const rpc = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
@@ -45,12 +47,15 @@ it.each([
   expect(await observe(query)).toMatchObject(outcome === "verified" ? { outcome, items } : { outcome, reason: "compatibility_identity_mismatch" });
 });
 
-it("catalog_native_managed_contract_conformance LC8-D-028 recognizes a sealed prior head without membership", async () => {
-  const rpc = vi.fn().mockResolvedValueOnce(missing).mockResolvedValueOnce(ok([prior]));
+it.each([
+  ["pre-migration transport", missing, prior, "catalog_publication_v2_current_state"],
+  ["current transport", ok({ ...page, protocol: "v2", items: [] }), { ...prior, protocol: "v2" }, "catalog_publication_v3_current_state"],
+] as const)("catalog_native_managed_contract_conformance LC8-D-028 recognizes a sealed prior head without membership on %s", async (_lane, first, row, rpcName) => {
+  const rpc = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(ok([row]));
   const expectedMembers = vi.fn();
   const observe = createManagedCatalogPublicationEvidence({ client: { rpc }, validateState: async () => true, expectedMembers });
   expect(await observe(query)).toMatchObject({ outcome: "prior_protocol", head: { protocol: "v2", headDigest: digest } });
-  expect(rpc).toHaveBeenLastCalledWith("catalog_publication_v2_current_state", {});
+  expect(rpc).toHaveBeenLastCalledWith(rpcName, {});
   expect(expectedMembers).not.toHaveBeenCalled();
 });
 
