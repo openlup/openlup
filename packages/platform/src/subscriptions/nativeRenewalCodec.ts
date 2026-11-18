@@ -40,6 +40,12 @@ function acceptance(value: unknown, parse: CatalogRenewalReferenceParser | undef
     || nativeRenewalCanonicalJson(lines) !== nativeRenewalCanonicalJson(envelope.lines)) throw new Error("subscription_catalog_acceptance_invalid");
   return { schemaVersion: 2, lines };
 }
+const catalogBindingsSchema = z.array(z.object({ skuId: z.uuid(), skuRevisionId: z.uuid() }).strict());
+function assertCatalogBindings(value: unknown, accepted: CatalogAcceptanceV2) {
+  const bindings = catalogBindingsSchema.safeParse(value ?? []);
+  if (!bindings.success || bindings.data.some(binding => !accepted.lines.some(line =>
+    line.skuId === binding.skuId && line.skuRevisionId === binding.skuRevisionId))) throw new Error("subscription_catalog_binding_mismatch");
+}
 function validate(snapshot: RenewalFrozenSnapshot, parse?: CatalogRenewalReferenceParser) {
   if (snapshot.frozenRevision === "native.purchase-renewal.v3") {
     const { catalogAcceptance, ...old } = snapshot as RenewalFrozenSnapshot & { catalogAcceptance: unknown };
@@ -158,6 +164,7 @@ function nativeRenewalCodec(parse?: CatalogRenewalReferenceParser): NativeRenewa
       const retained = nativeRetainedTerms(row);
       const captured = parse ? acceptance(row.catalog_acceptance, parse) : undefined;
       if (captured && !retained) throw new Error("subscription_catalog_retained_terms_required");
+      if (captured) assertCatalogBindings(row.catalog_bindings, captured);
       const snapshot: RenewalFrozenSnapshot = { ...(captured ? { catalogAcceptance: captured } : {}), subscriptionId: due.subscriptionId, scheduledAt: instant(due.scheduledAt),
         scheduledInstant: due.scheduledInstant, contractVersion: CONTRACT,
         clientId: due.clientId, frozenRevision: captured ? "native.purchase-renewal.v3" : retained ? "native.purchase-renewal.v2" : REVISION, frozenFingerprint: "", cycle: due.cycle,
