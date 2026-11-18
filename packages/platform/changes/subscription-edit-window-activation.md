@@ -5,9 +5,9 @@
   subscription; configuration changes and completed replay preserve existing rows.
 - Existing native activation/repair signatures and ACLs remain unchanged. New
   separately named invoker SQL functions avoid ambiguous defaulted overloads and
-  expose execution only to the service role. Reviewed legacy wrappers delegate
-  when the caller has the new execution capabilities; the incumbent fallback
-  preserves other legacy callers without widening privileges. Managed checkout activation remains
+  copy each installed predecessor's security mode, search path, owner and ACL,
+  including PUBLIC defaults, custom grants and grant options. Legacy wrappers
+  delegate with NULL. Managed checkout activation remains
   a separate unchanged boundary.
 
 Migration: Apply the complete packaged native chain including

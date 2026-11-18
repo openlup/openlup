@@ -5574,11 +5574,11 @@
         "createdFunctions": [
           {
             "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
-            "searchPath": "pg_catalog, pg_temp"
+            "searchPath": "public, pg_catalog"
           },
           {
             "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
-            "searchPath": "pg_catalog, pg_temp"
+            "searchPath": "public, pg_catalog"
           }
         ],
         "grantOnlyFunctions": [],
@@ -7843,27 +7843,27 @@
     },
     {
       "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
-      "sha256": "03fcf1b7a78750cdd56a1a35a93ec1367a4ece70c52fb9b91f274bc9799e6c0e",
+      "sha256": "3a2bdfe77c2f9c454ce4aa6b01ce04b8f58309cf7f1634f22738cf3ccdf74abf",
       "functions": [
         {
           "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
           "beforeSha256": "b5e7804607aa537887f3c62ff4bee84370d9c250417a9d476c07d4de07c773b4",
-          "afterSha256": "d5b06fdd78a5229a539b9ff4688453ec7466528bc0014600c8bdce1be31c2b07"
+          "afterSha256": "32b2672d7cdbf935b93923b193a6c1ee478c9cc64247705b8ddd20a098fe2aaf"
         },
         {
           "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
           "beforeSha256": "9495fd44c1c64d34706ec0a105d667c9a3db2d85b9433782460e1b71001876d0",
-          "afterSha256": "1a722b695e21356efea369d64370893faf15f5cb70d0ba5b8cefeefc9aa41a9f"
+          "afterSha256": "f80370544f4ab3dd87f4318b77e2d84ed0baf2b173970b97e7cfc5419d58f46f"
         },
         {
           "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
           "beforeSha256": null,
-          "afterSha256": "ccaa929f8fcca949b96efdbe9d7692af3a41a3f14441d954dc51cfc73e4ee126"
+          "afterSha256": "dd1c454637f632e816362d8c76c207b0bb98f1c50fd596c191c31c00df42705a"
         },
         {
           "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
           "beforeSha256": null,
-          "afterSha256": "20b6c14fc2a04b2a8c8583b3248d2ed76d6cacfa630bb5e75e4b41655e33765a"
+          "afterSha256": "549bd5701142449bb97e5ec517a10f2909d4fe44400abb140dc15b1615ab740b"
         }
       ]
     }

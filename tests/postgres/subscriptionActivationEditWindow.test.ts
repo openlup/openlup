@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { assertNativeStoreForward, readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { createHash, randomUUID } from "node:crypto";
+import { Pool } from "pg";
 import { expect, it } from "vitest";
+import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { api, executor, admin, runtime, facts, purchase, rpc, transaction, days, at } from "./subscriptionPublicRenewalFixture.js";
 
 const fingerprint = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -89,20 +91,43 @@ it("the existing edit fence reads the stored cutoff without changing the renewal
   expect(await row(p.orderId)).toEqual(stored);
 });
 
-it("keeps new invoker entry points service-only with pinned search paths", async () => {
-  const names = ["subscription_activation_commit_with_edit_window", "subscription_activate_from_captured_payment_with_edit_window"];
-  const functions = (await admin.query(`SELECT proname,prosecdef,proconfig,
-    has_function_privilege('service_role',p.oid,'EXECUTE') service,
-    has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated,
-    has_function_privilege('anon',p.oid,'EXECUTE') anon,
-    EXISTS(SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee=0) public
-    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='public' AND proname=ANY($1::text[]) ORDER BY proname`, [names])).rows;
-  expect(functions).toHaveLength(2);
-  for (const fn of functions) expect(fn).toMatchObject({ prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"],
-    service: true, authenticated: false, anon: false, public: false });
+const forwardPath = "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql";
+const activationFunctions = [
+  ["public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+    "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)"],
+  ["public.subscription_activate_from_captured_payment(text,uuid,text)",
+    "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)"],
+] as const;
+async function functionSecurity(db: typeof executor, signature: string) {
+  return (await db.query(`SELECT prosecdef,proconfig,proowner,
+    (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.grantor,a.grantee,a.privilege_type,a.is_grantable)
+      FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a) acl
+    FROM pg_proc p WHERE p.oid=$1::regprocedure`, [signature])).rows[0];
+}
+async function assertActivationSecurity(db: typeof executor) {
+  for (const [predecessor, successor] of activationFunctions) {
+    expect(await functionSecurity(db, successor), successor).toEqual(await functionSecurity(db, predecessor));
+  }
+}
+it("copies exact security attributes and normalized ACLs on the default qualified installation", async () => {
+  await assertActivationSecurity(admin);
 });
 
+it("copies PUBLIC default ACLs on the legacy inventory profile without service_role", async () => {
+  const container = await runPostgresContainer({ name: `k6-legacy-acl-${process.pid}`, password: "synthetic-conformance" });
+  const db = new Pool({ connectionString: container.connectionString });
+  try {
+    expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+    for (const unit of [manifest.baseline, ...manifest.forward]) await db.query(readFileSync(unit.file, "utf8"));
+    expect((await db.query("SELECT 1 FROM pg_roles WHERE rolname='service_role'")).rows).toEqual([]);
+    await assertActivationSecurity(db);
+    for (const [predecessor] of activationFunctions) {
+      expect((await db.query("SELECT proacl FROM pg_proc WHERE oid=$1::regprocedure", [predecessor])).rows[0].proacl).toBeNull();
+      expect((await db.query("SELECT EXISTS(SELECT 1 FROM pg_proc p,aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE') allowed", [predecessor])).rows[0].allowed).toBe(true);
+    }
+  } finally { await closePostgres(container, db); }
+}, postgresSetupTimeoutMs);
 
 it("admits the exact forward and approval pins through the existing native validator", () => {
   const path = "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql";
@@ -132,37 +157,40 @@ it("delegates both legacy signatures for the selected runtime before writes", as
   } finally { await admin.query(original); await admin.query(entryOriginal); }
 });
 
-it("preserves permitted legacy callers lacking either new execution capability", async () => {
-  const role = "k6_legacy_caller";
-  const helper = "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)";
-  const entry = "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)";
+it("copies pre-forward custom grants, grant options and ownership while removing new default grants", async () => {
+  const p = await purchase(), db = await admin.connect();
   const tables = ["commerce_orders", "commerce_settlement_intents", "subscription_activations", "subscriptions", "subscription_cycles", "subscription_events"];
-  const policies: string[] = [];
-  await admin.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS`);
   try {
-    await admin.query(`GRANT USAGE ON SCHEMA public TO ${role}; GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${role};
-      GRANT INSERT,UPDATE ON ${tables.map(table => `public.${table}`).join(",")} TO ${role};
-      GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO ${role};
-      REVOKE EXECUTE ON FUNCTION ${helper},${entry} FROM ${role}`);
-    for (const table of tables) {
-      await admin.query(`CREATE POLICY k6_legacy_probe ON public.${table} FOR ALL TO ${role} USING (true) WITH CHECK (true)`);
-      policies.push(table);
+    await db.query("BEGIN");
+    for (const role of ["k6 custom caller", "k6 custom owner", "k6 default only"]) {
+      await db.query(`CREATE ROLE "${role}" NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS`);
     }
-    for (const entryOnly of [false, true]) {
-      if (entryOnly) await admin.query(`GRANT EXECUTE ON FUNCTION ${entry} TO ${role}`);
-      const p = await purchase(), db = await admin.connect();
-      try {
-        await db.query("BEGIN"); await db.query(`SET LOCAL ROLE ${role}`);
-        expect((await db.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') helper,has_function_privilege(current_user,$2,'EXECUTE') entry", [helper, entry])).rows[0])
-          .toEqual({ helper: false, entry: entryOnly });
-        await db.query("SELECT public.subscription_activate_from_captured_payment($1,$2,$3)", [p.idempotencyKey, p.orderId, fingerprint(p.capturedReference)]);
-        await db.query("COMMIT");
-      } catch (error) { await db.query("ROLLBACK"); throw error; }
-      finally { db.release(); }
-      expect(await row(p.orderId)).toMatchObject({ edit_window_hours: 72 });
+    await db.query(`GRANT USAGE,CREATE ON SCHEMA public TO "k6 custom owner";
+      GRANT USAGE ON SCHEMA public TO "k6 custom caller";
+      GRANT SELECT ON ALL TABLES IN SCHEMA public TO "k6 custom caller";
+      GRANT INSERT,UPDATE ON ${tables.map(table => `public.${table}`).join(",")} TO "k6 custom caller";
+      GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO "k6 custom caller"`);
+    for (const table of tables) await db.query(`CREATE POLICY k6_custom_probe ON public.${table}
+      FOR ALL TO "k6 custom caller" USING (true) WITH CHECK (true)`);
+    // Reapply only this unissued forward, inside a rollback, after changing the
+    // installed predecessors. No full fixture reinstall or catalog pin bypass.
+    for (const [, successor] of activationFunctions) await db.query(`DROP FUNCTION ${successor}`);
+    await db.query(`REVOKE ALL ON FUNCTION ${activationFunctions[0][0]},${activationFunctions[1][0]} FROM PUBLIC;
+      ALTER FUNCTION ${activationFunctions[0][0]} OWNER TO "k6 custom owner";
+      GRANT EXECUTE ON FUNCTION ${activationFunctions[0][0]} TO "k6 custom caller" WITH GRANT OPTION;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "k6 default only"`);
+    const before = await Promise.all(activationFunctions.map(([signature]) => functionSecurity(db, signature)));
+    await db.query(readFileSync(forwardPath, "utf8"));
+    await assertActivationSecurity(db);
+    for (const [index, [predecessor, successor]] of activationFunctions.entries()) {
+      expect(await functionSecurity(db, predecessor)).toEqual(before[index]);
+      expect((await db.query("SELECT has_function_privilege('k6 default only',$1,'EXECUTE') allowed", [successor])).rows[0].allowed).toBe(false);
     }
-  } finally {
-    for (const table of policies) await admin.query(`DROP POLICY k6_legacy_probe ON public.${table}`);
-    await admin.query(`DROP OWNED BY ${role}; DROP ROLE ${role}`);
-  }
+    await db.query('SET LOCAL ROLE "k6 custom caller"');
+    const activated = (await db.query("SELECT public.subscription_activate_from_captured_payment($1,$2,$3) answer",
+      [p.idempotencyKey, p.orderId, fingerprint(p.capturedReference)])).rows[0].answer;
+    expect(activated).toMatchObject({ replayed: false });
+    expect((await db.query(`SELECT s.edit_window_hours FROM public.subscriptions s JOIN public.subscription_activations a
+      ON a.subscription_id=s.id WHERE a.order_id=$1`, [p.orderId])).rows[0]).toEqual({ edit_window_hours: 72 });
+  } finally { await db.query("ROLLBACK"); db.release(); }
 });

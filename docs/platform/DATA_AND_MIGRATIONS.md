@@ -49,14 +49,13 @@ fences are unchanged. Completed activation replay retains the stored value.
 A defaulted overload of the existing name makes PostgreSQL reject legacy calls
 as ambiguous even with typed arguments. The distinct names preserve existing
 function identities. Reviewed CREATE OR REPLACE wrappers retain the old headers,
-owner attributes and ACLs, and delegate with NULL when the caller can execute the
-new callees. The activation wrapper checks both new entry and helper privileges;
-the commit wrapper checks the helper. Other legacy callers retain the incumbent
-body as a compatibility fallback. This preserves PUBLIC/custom callers without
-widening execution on the new service-only functions. The existing repair path
-uses the same commit wrapper. New invoker functions revoke PUBLIC/browser
-execution and grant only service-role execution, following the native-store class.
-No incumbent grant is widened. The mirrored package SQL and three native manifest selections bind the
+owner attributes and ACLs, and delegate with NULL. Each new function uses its
+predecessor's invoker security mode and `public, pg_catalog` search path. At
+migration time it copies the installed predecessor's owner and execution ACL,
+including PUBLIC defaults, custom grants and grant options, after clearing new
+function default grants. The existing repair path uses the same commit wrapper.
+No caller gains or loses execution capabilities. The mirrored package SQL and
+three native manifest selections bind the
 same bytes; only current inventories are remeasured.
 
 The managed chain has no native `subscription_activate_from_captured_payment`
