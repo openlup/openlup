@@ -310,15 +310,26 @@ export interface NativeAcquisitionCheckoutOptions {
      */
     availability?: CommerceOfferAvailabilityPort;
 }
+/** @experimental */
+interface CheckoutQuoteHead {
+    productId: string;
+    head: {
+        publicationId: string;
+        revision: number;
+        documentDigest: string;
+    };
+}
 /** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
  * commit; host authorization and quote acceptance precede this boundary. */
 export declare function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions): {
     /** Reads offer membership and price evidence for a server-produced quote in one snapshot.
+     * Governed quotes supply the product heads observed by their trusted quote reader.
      * @experimental
      */
-    captureCatalogAdmission(quoteSnapshot: CreateQuoteResponse): Promise<object | null>;
+    captureCatalogAdmission(quoteSnapshot: CreateQuoteResponse, quoteTimeHeads?: readonly CheckoutQuoteHead[]): Promise<object | null>;
     createOrderDraft(request: NativeCheckoutDraftRequest, identity?: NativeCheckoutAdmissionIdentity): Promise<NativeCheckoutDraftResponse>;
 };
+export {};
 ```
 ## dist/http/deadline.d.ts
 

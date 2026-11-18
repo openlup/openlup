@@ -378,7 +378,7 @@ REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,
 CREATE FUNCTION public.catalog_admission_build_evidence(p_lines jsonb,p_mode text,p_binding jsonb,p_purpose text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; page jsonb; item jsonb; line jsonb;
- member jsonb; offer_version text; cursor_id uuid; head_digest text;
+ member jsonb; offer_version text; cursor_id uuid; head_digest text; quoted_heads jsonb;
  page_limit constant integer:=100; maximum_members integer;
  seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
@@ -492,8 +492,20 @@ BEGIN
    retained_prices:=retained_prices||jsonb_build_array(jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price)));
   END IF;
  END LOOP;
+ IF p_purpose='order' THEN
+  IF jsonb_typeof(p_binding->'quoteTimeHeads') IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
+  IF jsonb_array_length(p_binding->'quoteTimeHeads') NOT BETWEEN 1 AND 100
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_binding->'quoteTimeHeads') h
+    WHERE jsonb_typeof(h) IS DISTINCT FROM 'object' OR h-ARRAY['productId','head']<>'{}'::jsonb
+     OR NOT coalesce(pg_input_is_valid(h->>'productId','uuid'),false) OR jsonb_typeof(h->'head') IS DISTINCT FROM 'object')
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_binding->'quoteTimeHeads') h GROUP BY h->>'productId' HAVING count(*)>1) THEN
+   RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
+  SELECT jsonb_object_agg(h->>'productId',h->'head') INTO quoted_heads FROM jsonb_array_elements(p_binding->'quoteTimeHeads') h;
+  IF quoted_heads IS DISTINCT FROM heads THEN RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
+ END IF;
  RETURN jsonb_build_object('heads',(SELECT coalesce(jsonb_agg(jsonb_build_object('productId',key,'head',value) ORDER BY key),'[]') FROM jsonb_each(heads)),
-   'skuRevisions',selections,'priceContextVersions',prices,'retainedPriceContextVersions',retained_prices,'offerEvidence',p_binding-'quoteSnapshot'||jsonb_build_object('offerVersion',offer_version),'mode',p_mode,'purpose',p_purpose);
+   'skuRevisions',selections,'priceContextVersions',prices,'retainedPriceContextVersions',retained_prices,'offerEvidence',p_binding-ARRAY['quoteSnapshot','quoteTimeHeads']||jsonb_build_object('offerVersion',offer_version),'mode',p_mode,'purpose',p_purpose);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_build_evidence(jsonb,text,jsonb,text) FROM PUBLIC;
@@ -1693,6 +1705,11 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_renewal_terms_missing' USING ERRCODE='22023'; END IF;
   q:=public.subscription_quote_preview_take(p_actor_id,p_client_id,s.id,'update_package_template',
    p_payload->>'acceptedQuoteHash',version,p_key,p_now);
+  -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
+  PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
+  PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
+  v_catalog_acceptance:=public.catalog_admission_accept((q#>'{quote_snapshot,baseLines}')||(q#>'{quote_snapshot,addonLines}'),q#>'{quote_snapshot,catalogAdmission}','subscription',
+    jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,'lane','classic','optIn',false),'account');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'planDays',q#>'{request_payload,planDays}');
   PERFORM public.subscription_quote_assert_jsonb_equal(public.subscription_quote_variant_qty_request(p_payload->'base'),
    public.subscription_quote_variant_qty_request(q#>'{request_payload,base}'));
@@ -1711,11 +1728,6 @@ BEGIN
   IF p_payload ? 'compositionConstraint' THEN
    PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'compositionConstraint',constraint_value);
   END IF;
-  -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
-  PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
-  PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
-  v_catalog_acceptance:=public.catalog_admission_accept(core||addons,q#>'{quote_snapshot,catalogAdmission}','subscription',
-    jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,'lane','classic','optIn',false),'account');
   constraint_value:=NULLIF(constraint_value,'null'::jsonb);
   DELETE FROM public.subscription_lines WHERE subscription_id=s.id;
   DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
@@ -1835,6 +1847,12 @@ BEGIN
   PERFORM 1 FROM public.subscription_renewal_terms WHERE subscription_id=s.id AND currency_code=s.currency_code FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_renewal_terms_missing' USING ERRCODE='22023'; END IF;
   q:=public.subscription_quote_preview_take(p_actor_id,p_client_id,s.id,p_action,p_payload->>'acceptedQuoteHash',version,p_key,p_now);
+  -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
+  PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
+  PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
+  v_catalog_acceptance:=public.catalog_admission_accept(q#>'{quote_snapshot,lines}',q#>'{quote_snapshot,catalogAdmission}','subscription',
+    jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,
+     'lane',public.catalog_admission_edit_lane(p_action,s.configured_offer_version,false),'optIn',false),'account');
   PERFORM public.subscription_quote_assert_jsonb_equal((p_payload->'request')-ARRAY['expectedTemplateVersion','acceptedQuoteHash'],
    (q->'request_payload')-ARRAY['expectedTemplateVersion','acceptedQuoteHash']);
   IF jsonb_typeof(lines) IS DISTINCT FROM 'array' OR jsonb_array_length(lines)=0 THEN
@@ -1846,12 +1864,6 @@ BEGIN
     FROM jsonb_array_elements(q#>'{quote_snapshot,lines}') WITH ORDINALITY x(v,ord)));
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'cadenceDays',q#>'{quote_snapshot,cadenceDays}');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'compositionConstraint',q#>'{quote_snapshot,compositionConstraint}');
-  -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
-  PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
-  PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
-  v_catalog_acceptance:=public.catalog_admission_accept(lines,q#>'{quote_snapshot,catalogAdmission}','subscription',
-    jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,
-     'lane',public.catalog_admission_edit_lane(p_action,s.configured_offer_version,false),'optIn',false),'account');
   plan:=s.cadence_days; constraint_value:=s.composition_constraint;
   IF p_action='swap_base_line' THEN
    IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id AND variant_id=(p_payload#>>'{request,toVariantId}')::uuid) THEN
@@ -2026,6 +2038,11 @@ BEGIN
   PERFORM 1 FROM public.subscription_renewal_terms WHERE subscription_id=s.id AND currency_code=s.currency_code FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_renewal_terms_missing' USING ERRCODE='22023'; END IF;
   q:=public.subscription_quote_preview_take(p_actor_id,p_client_id,s.id,action,request->>'acceptedQuoteHash',version,p_key,p_now);
+  -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
+  PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
+  PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
+  v_catalog_acceptance:=public.catalog_admission_accept(q#>'{quote_snapshot,lines}',q#>'{quote_snapshot,catalogAdmission}','subscription',
+    jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN coalesce(opt_in,false) THEN 'sized.v1' ELSE s.configured_offer_version END,'lane','sized','optIn',coalesce(opt_in,false)),'account');
   PERFORM public.subscription_quote_assert_jsonb_equal(request-ARRAY['expectedTemplateVersion','acceptedQuoteHash'],
    (q->'request_payload')-ARRAY['expectedTemplateVersion','acceptedQuoteHash']);
   PERFORM public.subscription_quote_assert_jsonb_equal(
@@ -2037,11 +2054,6 @@ BEGIN
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'cadenceDays',q#>'{quote_snapshot,cadenceDays}');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'subjectFacts',q#>'{quote_snapshot,subjectFacts}');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'optInFacts',q#>'{quote_snapshot,optInFacts}');
-  -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
-  PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
-  PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
-  v_catalog_acceptance:=public.catalog_admission_accept(lines,q#>'{quote_snapshot,catalogAdmission}','subscription',
-    jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN coalesce(opt_in,false) THEN 'sized.v1' ELSE s.configured_offer_version END,'lane','sized','optIn',coalesce(opt_in,false)),'account');
   -- Governed lines already passed the common current or retained rule.
   FOR line IN SELECT v FROM jsonb_array_elements(lines) v WHERE NOT (v->>'isAddon')::boolean
    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_catalog_acceptance->'lines') accepted_ref

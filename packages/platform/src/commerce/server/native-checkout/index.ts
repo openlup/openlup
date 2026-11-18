@@ -4,7 +4,6 @@ import { selectAcquisitionTerms, assertAcquisitionTermsCapability, AcquisitionTe
   createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, type CreateQuoteResponse,
   type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
 import { createPostgresQuoteCustomerEligibility } from "../../../promotions/index.js";
-import type { CatalogAdmissionInput } from "../../../catalog/contracts/admission.js";
 import { commerceIdempotencyKeySchema } from "../../contractPrimitives.js";
 import type { CommerceOfferAvailabilityPort } from "../../contracts/availability.js";
 import { commerceOfferEvidenceSchema } from "../../offerEvidenceSchemas.js";
@@ -143,7 +142,19 @@ export interface NativeAcquisitionCheckoutOptions {
   availability?: CommerceOfferAvailabilityPort;
 }
 
-async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evidence: CatalogAdmissionInput,
+interface CheckoutStockSelection {
+  offerEvidence: { offerVersion: string };
+  mode: "one_time" | "subscription";
+  skuRevisions: readonly { reference: { skuId: string; skuCode: string }; quantity: number }[];
+}
+
+/** @experimental */
+interface CheckoutQuoteHead {
+  productId: string;
+  head: { publicationId: string; revision: number; documentDigest: string };
+}
+
+async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evidence: CheckoutStockSelection,
   availability: CommerceOfferAvailabilityPort | undefined) {
   const refusal = "catalog_admission_sized_stock_unavailable";
   const context = quote.context as Record<string, unknown> | undefined;
@@ -173,25 +184,27 @@ async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evi
 export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions) {
   return {
     /** Reads offer membership and price evidence for a server-produced quote in one snapshot.
+     * Governed quotes supply the product heads observed by their trusted quote reader.
      * @experimental
      */
-    async captureCatalogAdmission(quoteSnapshot: CreateQuoteResponse): Promise<object | null> {
+    async captureCatalogAdmission(quoteSnapshot: CreateQuoteResponse, quoteTimeHeads?: readonly CheckoutQuoteHead[]): Promise<object | null> {
       const snapshot = createQuoteResponseSchema.parse(quoteSnapshot);
       const db = await pool.connect();
+      let evidence: CheckoutStockSelection | null;
       try {
         await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
         const result = await db.query(
           "SELECT public.catalog_admission_build_evidence($1::jsonb,$2::text,$3::jsonb,'order') AS evidence",
-          [JSON.stringify(snapshot.quote.lines), snapshot.quote.context?.mode ?? "one_time", JSON.stringify({ quoteSnapshot: snapshot })],
+          [JSON.stringify(snapshot.quote.lines), snapshot.quote.context?.mode ?? "one_time", JSON.stringify({ quoteSnapshot: snapshot, quoteTimeHeads })],
         );
-        const evidence = (result.rows[0]?.evidence ?? null) as CatalogAdmissionInput | null;
-        if (evidence?.offerEvidence.offerVersion === "sized.v1") {
-          await assertSizedCheckoutStock(snapshot.quote, evidence, options.availability);
-        }
+        evidence = (result.rows[0]?.evidence ?? null) as CheckoutStockSelection | null;
         await db.query("COMMIT");
-        return evidence;
       } catch (error) { await db.query("ROLLBACK"); throw error; }
       finally { db.release(); }
+      if (evidence?.offerEvidence.offerVersion === "sized.v1") {
+        await assertSizedCheckoutStock(snapshot.quote, evidence, options.availability);
+      }
+      return evidence;
     },
     async createOrderDraft(request: NativeCheckoutDraftRequest, identity?: NativeCheckoutAdmissionIdentity) {
       const db = await pool.connect();

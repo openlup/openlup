@@ -18,7 +18,8 @@ wrapper alongside the original trusted quote. The existing edit previews record
 their own private evidence in the ledgers. Historical formats keep their
 existing reader and new acceptance uses the lifecycle-aware reference reader.
 Hosts admitting governed sized checkout supply their existing availability port
-and the accepted server quote's offer binding. Editors on older installed
+and the accepted server quote's offer binding. The trusted quote reader also
+supplies the product heads observed in its quote snapshot. Editors on older installed
 contexts can still read the paid-cycle count for phase selection.
 The publisher retains its nonblocking busy refusal.
 

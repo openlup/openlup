@@ -323,7 +323,8 @@ it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout 
     expect(await snapshot()).toEqual(before);
     return;
   }
-  const evidence = await port.captureCatalogAdmission(quote);
+  await expect(port.captureCatalogAdmission(quote)).rejects.toMatchObject({ message: "catalog_admission_quote_authority_required",code: "22023" });
+  const evidence = await port.captureCatalogAdmission(quote,f.admission.heads);
   expect(evidence).toMatchObject({ heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,priceContextVersions: f.admission.priceContextVersions,mode,purpose: "order" });
   const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence! });
   expect(accepted.orderDraft.quoteSnapshot.quote.lines[0]).not.toHaveProperty("catalogFacts");
@@ -333,7 +334,7 @@ it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout 
     .toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
 });
 
-it.each((["one_time","subscription"] as const).flatMap(mode =>
+it.for((["one_time","subscription"] as const).flatMap(mode =>
   (["ready","missing binding","missing stock","wrong identity","hidden","insufficient"] as const).map(stock => ({ mode,stock }))))(
   "LC6-D-101 and LC6-D-108 governed sized checkout checks $stock stock in $mode", async ({ mode,stock },context) => {
     const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
@@ -344,24 +345,48 @@ it.each((["one_time","subscription"] as const).flatMap(mode =>
       financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never,
       availability: { async getAvailability({ items }) {
         expect(items).toEqual([{ sku: f.code,productSlug: f.value.product.slug!,variantId: f.sku,requestedQuantity: 2,checkoutMode: mode }]);
+        const held = (await pool.query(`SELECT count(*)::integer AS count FROM pg_locks WHERE locktype='advisory'
+          AND mode='ShareLock' AND ((classid::bigint<<32)|objid::bigint)=hashtextextended('catalog-publication-global',0)`)).rows[0];
+        expect(held.count).toBe(0);
         if (stock === "missing stock") return [];
         return [{ sku: f.code,productSlug: f.value.product.slug!,variantId: stock === "wrong identity" ? randomUUID() : f.sku,
           visibleInConfigurator: stock !== "hidden",sellableNow: stock === "insufficient" ? 1 : 2,status: "available",reasonCode: "synthetic",source: "fixture" }];
       } },
     });
     if (stock === "ready") {
-      const evidence = await port.captureCatalogAdmission(snapshotQuote);
+      const evidence = await port.captureCatalogAdmission(snapshotQuote,f.admission.heads);
       expect(evidence).toMatchObject({ heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,mode,offerEvidence: { offerVersion: "sized.v1" } });
       expect(await port.createOrderDraft({ idempotencyKey: randomUUID(),quoteSnapshot: snapshotQuote },{ clientId: f.client,catalogAdmission: evidence }))
         .toMatchObject({ orderDraft: { replayed: false } });
     } else {
       const before = await snapshot();
-      await expect(port.captureCatalogAdmission(snapshotQuote)).rejects.toThrow(stock === "missing binding"
+      await expect(port.captureCatalogAdmission(snapshotQuote,f.admission.heads)).rejects.toThrow(stock === "missing binding"
         ? "catalog_admission_sized_offer_binding_required" : "catalog_admission_sized_stock_unavailable");
       expect(await snapshot()).toEqual(before);
     }
   },
 );
+
+it.for(["one_time","subscription"] as const)("LC6-D-118 checkout cannot replace its quote-time head: %s", async (mode,context) => {
+  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!installed) { context.skip("Membership page comes from the predecessor installation"); return; }
+  const f = await fixture(packs[0]), priorQuote = governedCheckoutQuote(f,mode), next = structuredClone(f.value);
+  const membership = { skuCode: f.code,offerVersion: "example:future",admitted: false };
+  next.product.sharedContent = { ...next.product.sharedContent,catalogAction: "revise",offerMemberships: [membership] };
+  next.publication.operations = [{ op: "set_offer_membership",...membership }];
+  const publishing = await pool.connect();
+  try {
+    const change = await candidate(publishing,next,f.draft,1,f.head), result = await change.authority.publish(change.publication,change.actor);
+    expect(result.outcome).toBe("committed");
+    if (!("receipt" in result)) throw new Error(JSON.stringify(result));
+    expect(result.receipt.head).toMatchObject({ revision: f.head.revision+1,documentDigest: f.head.documentDigest });
+  } finally { publishing.release(); }
+  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
+  const before = await snapshot();
+  await expect(port.captureCatalogAdmission(priorQuote,f.admission.heads)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
+  expect(await snapshot()).toEqual(before);
+});
 
 it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview evidence in %s", async lane => {
   const f = await fixture(packs[0]);
@@ -1800,6 +1825,20 @@ it.each([
     if (!result.ok) expect(result.error).toMatchObject({ message: headMoved,code: "40001" });
     await e.query("ROLLBACK"); expect(await snapshot()).toEqual(before);
   } finally { await stop.release(); await publishing; await e.query("ROLLBACK"); await w.query("ROLLBACK"); h.release(); w.release(); e.release(); }
+});
+
+it.each(["classic","exact","sized"] as const)("LC6-D-157 accepted head precedes equal-money repricing drift through %s", async lane => {
+  const f = await fixture(packs[0]), command = await edit(f,lane);
+  const next = await changedDocument(f), w = await pool.connect();
+  try { expect((await publishOn(w,next.publication)).outcome).toBe("committed"); } finally { w.release(); }
+  const payload = command.payload as Record<string, unknown>;
+  const repriced = payload[lane === "classic" ? "baseLines" : "lines"] as { quoteLine: Record<string, unknown> }[];
+  Object.assign(repriced[0].quoteLine,{ catalogFacts: governedCheckoutQuote(f,"subscription").quote.lines[0].catalogFacts });
+  const before = await snapshot(), db = await session();
+  try {
+    await expect(command.invoke(db)).rejects.toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect(await snapshot()).toEqual(before);
 });
 
 const authorityPaths = ["assertion", "port", "plain-one-time", "plain-subscription", "promoted-one-time", "promoted-subscription", ...lanes] as const;

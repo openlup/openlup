@@ -8214,7 +8214,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "e27ecf011e49baa51f61e6dafb746533be08ee254dcdddf59f77c3d469ea44c8",
+      "sha256": "c65c761c1f001ced09dec3d28a736d3617c72c5dc94b2e020b6c6e4eb38cc9e8",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8234,17 +8234,17 @@
         {
           "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "1b51c9acbab109f700ebf47bcc0e6feae1ab4b7b92dc73191d87eb74216e220b",
-          "afterSha256": "5ca0c38e8d36c51b1d04c82673197dee8102940f4f521b08df720279c32ca125"
+          "afterSha256": "ac66c41a889c2707729a9f81771ae3b94670c773b8fc4834a05bc220dce14329"
         },
         {
           "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "dec08b8b37dfcc2768473651a9f97c71b47e6a197e341c435d68c836f8b5dc47",
-          "afterSha256": "122f4b9d5a8cc5d10488365c1cfc9eae2cebbbfd113a6de7de7c435992c6a718"
+          "afterSha256": "ffc80fc372fed3a8445d4cba6075af1869a71491f9612b11387bb97adf88608a"
         },
         {
           "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "ab9b88623f7f2c742ed70cc06a3664952bba444148404fa645b00d6b1f904837",
-          "afterSha256": "cfe715978023be43107cb303e44078b363d81a663816304ff8ec78c5276996a5"
+          "afterSha256": "a3272a57d142cba84d0edfdb7a9f7192a5c01df048e0af48c1bd0c43adbb7609"
         },
         {
           "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
@@ -8294,7 +8294,7 @@
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "72a074ce106d0ab4d7e337beff545eca0d2d59322e05d46f32407c8587190721"
+          "afterSha256": "c8d351066315e416a5736434fb51f5e1a9c85921ba7e0860fa237e3c66aa4edd"
         },
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
