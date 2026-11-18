@@ -80,6 +80,8 @@ export interface CatalogPublicationRules {
   canonicalizeDocument(document: unknown): string;
   /** Reads identity using the installed document's schema. */
   identifyDocument(document: unknown): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number };
+  /** Optional installed category limit, applied to exactly converted integer grams. */
+  validateSkuAmounts?(sku: { code: string; netGrams: string }): boolean;
   deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
   classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
     beforeProduct: CatalogPublishedProduct; afterProduct: CatalogPublishedProduct;
@@ -126,14 +128,23 @@ export function assertCatalogPublicationMassInputs(payload: unknown, definition:
 /** Hard preparation guard, independent of dark/activation readiness.
  * @experimental
  */
-export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3): void {
+export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3,
+  binding?: { definition: CatalogProductTypeDefinition; rules: Pick<CatalogPublicationRules, "validateSkuAmounts"> }): void {
   need(authoredSlug.safeParse(payload.product.slug).success, "commerce_product_slug_unsupported");
   const codes = new Set(payload.skus.map(sku => sku.code));
   const content = payload.product.sharedContent;
   for (const intents of [content.publicationSkus, content.requestedModes, content.offerMemberships])
     need(intents.every(intent => codes.has(intent.skuCode)), "intent_sku_absent");
-  for (const sku of payload.skus) need(sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
-    && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)), "unit_trade_identifier_missing");
+  for (const sku of payload.skus) {
+    need(sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
+      && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)), "unit_trade_identifier_missing");
+    if (!binding || !sku.code || sku.netContent?.dimension !== "mass") continue;
+    if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, binding.definition);
+    if (binding.rules.validateSkuAmounts) {
+      const netGrams = catalogPublicationIntegralGrams(sku.netContent, binding.definition);
+      need(binding.rules.validateSkuAmounts({ code: sku.code, netGrams }) === true, "catalog_publication_authored_amounts_invalid");
+    }
+  }
 }
 /** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic.
  * @experimental
@@ -174,7 +185,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   // so zero, negative, fractional and overflow all have the same stable refusal.
   assertCatalogPublicationMassInputs(input.payload, input.definition);
   const payload = catalogDraftPayloadV3Schema.parse(input.payload);
-  assertCatalogPublicationPreparation(payload);
+  assertCatalogPublicationPreparation(payload, input);
   need(input.skus.length === 0 || input.product !== null, "catalog_publication_source_invalid");
   need(input.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
   const claim = catalogPublicationClaim(input.record), slug = payload.product.slug!;

@@ -4533,6 +4533,11 @@ export interface CatalogPublicationRules {
         productSlug: string;
         revisionNo: number;
     };
+    /** Optional installed category limit, applied to exactly converted integer grams. */
+    validateSkuAmounts?(sku: {
+        code: string;
+        netGrams: string;
+    }): boolean;
     deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
     classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
         beforeProduct: CatalogPublishedProduct;
@@ -4560,7 +4565,10 @@ export declare function assertCatalogPublicationMassInputs(payload: unknown, def
 /** Hard preparation guard, independent of dark/activation readiness.
  * @experimental
  */
-export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3): void;
+export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3, binding?: {
+    definition: CatalogProductTypeDefinition;
+    rules: Pick<CatalogPublicationRules, "validateSkuAmounts">;
+}): void;
 /** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic.
  * @experimental
  */

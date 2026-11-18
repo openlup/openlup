@@ -406,7 +406,9 @@ match the sealed document's string `name`. An explicit null presentation effect
 clears an existing presentation.
 Creation and explicit product activation still require a presentation. Hosts may
 validate each membership effect against the ordered SKU state, including repeats
-against a frozen roster.
+against a frozen roster. An installed SKU amount rule can impose a category-specific
+integer-gram ceiling. A supplied gross mass must cover exact net content even
+when the SKU is ineligible.
 Compensation reapplies explicit effects even when their retained values are
 unchanged. It preserves unaddressed facts; remaining projection drift rolls back
 the publication rather than silently refreshing those facts.

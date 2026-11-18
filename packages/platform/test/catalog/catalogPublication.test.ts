@@ -1003,3 +1003,29 @@ it.each([
   if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
   else expect(compileCatalogPublication(data).product.document).toEqual(current.reference);
 });
+
+it.each([
+  ["dark missing gross", false, "9999999", null, false, null],
+  ["dark below gross", false, "9999999", "9999998", false, "catalog_publication_gross_below_net"],
+  ["dark equal gross", false, "9999999", "9999999", false, null],
+  ["dark above gross", false, "9999999", "10000000", false, null],
+  ["dark equivalent kilograms", false, "9999999", "9999999", true, null],
+  ["dark over category ceiling", false, "10000000", "10000000", false, "catalog_publication_authored_amounts_invalid"],
+  ["enabled missing gross", true, "9999999", null, false, "catalog_publication_gross_mass_required"],
+  ["enabled below gross", true, "9999999", "9999998", false, "catalog_publication_gross_below_net"],
+  ["enabled equal gross", true, "9999999", "9999999", false, null],
+  ["enabled over category ceiling", true, "10000000", "10000000", false, "catalog_publication_authored_amounts_invalid"],
+] as const)("publication validates exact authored amounts for %s", (_name, enabled, net, gross, inKilograms, reason) => {
+  const data = enabled ? publicationWithSecondary() : input(), sku = data.payload.skus[0];
+  sku.netContent = { dimension: "mass", unit: inKilograms ? "openlup:kg" : "openlup:g", unscaled: net, scale: inKilograms ? 3 : 0 };
+  if (gross !== null) sku.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: gross, scale: 0 };
+  else delete sku.grossMass;
+  if (enabled) {
+    sku.options = { pack_size: { kind: "quantity", value: sku.netContent } };
+    Object.assign(data.skus[1], { netContent: sku.netContent, options: sku.options, grossMass: sku.grossMass ?? null });
+    data.payload.publication.operations = [{ op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false }];
+  }
+  data.rules = { ...data.rules, validateSkuAmounts: amounts => BigInt(amounts.netGrams) <= 9_999_999n };
+  if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
+  else expect(compileCatalogPublication(data).skus.find(value => value.id === sku.id)?.grossMass).toEqual(sku.grossMass ?? null);
+});
