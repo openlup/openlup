@@ -370,26 +370,38 @@ END;
 END;
 $$;
 
+-- Internal ATP aggregate only; no raw successor storage or identifiers are exposed.
+CREATE FUNCTION public.inventory_successor_reservation_quantity(
+ p_source_key text,p_sku text,p_as_of timestamptz,p_subscription_id uuid DEFAULT NULL,p_scheduled_at timestamptz DEFAULT NULL
+) RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+ SELECT COALESCE(pg_catalog.sum((line->>'quantity')::bigint),0)::bigint
+ FROM public.subscription_successor_reservations_v2 r
+ CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(r.lines) line
+ WHERE r.source_key=p_source_key AND line->>'sku'=p_sku
+  AND (r.status='committed' OR (r.status='held' AND r.expires_at>p_as_of))
+  AND ((p_subscription_id IS NULL AND p_scheduled_at IS NULL) OR
+   (p_subscription_id IS NOT NULL AND p_scheduled_at IS NOT NULL AND EXISTS(
+    SELECT 1 FROM public.subscription_successor_operations_v2 g
+    WHERE g.id=r.operation_id AND g.subscription_id=p_subscription_id AND g.scheduled_at=p_scheduled_at
+     AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles c WHERE c.id=g.cycle_id AND c.status IN ('paid','skipped','cancelled')))));
+$$;
+REVOKE ALL ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION public.inventory_available_to_promise(
  p_source_key text, p_sku text, p_as_of timestamptz, p_for_subscription_renewal boolean
 )
 RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
  WITH live_holds AS (
-  SELECT r.renewal_operation_id,NULL::uuid successor_operation_id,l.quantity
+  SELECT r.renewal_operation_id,l.quantity
   FROM public.fulfillment_inventory_reservations r
   JOIN public.fulfillment_inventory_reservation_lines l ON l.reservation_id=r.id
   WHERE r.source_key=p_source_key AND l.sku=p_sku
-   AND (r.status='committed' OR (r.status='held' AND r.expires_at>p_as_of))
-  UNION ALL
-  SELECT NULL::uuid,r.operation_id,(l->>'quantity')::integer FROM public.subscription_successor_reservations_v2 r
-  CROSS JOIN LATERAL jsonb_array_elements(r.lines) l
-  WHERE r.source_key=p_source_key AND l->>'sku'=p_sku
    AND (r.status='committed' OR (r.status='held' AND r.expires_at>p_as_of))
  ), components AS (
   SELECT COALESCE((SELECT stock.for_sale_quantity FROM public.fulfillment_stock_current stock
     WHERE stock.source_key=p_source_key AND stock.sku=p_sku
      AND stock.inventory_class='sellable' AND stock.stale_after>p_as_of),0)::bigint for_sale,
-   (SELECT COALESCE(sum(quantity),0) FROM live_holds)::bigint hard_holds,
+   ((SELECT COALESCE(sum(quantity),0) FROM live_holds)+public.inventory_successor_reservation_quantity(p_source_key,p_sku,p_as_of))::bigint hard_holds,
    (SELECT COALESCE(sum(GREATEST(0,due.quantity-credited.quantity)),0)::bigint
     FROM (
      SELECT s.id,s.next_cycle_at,sum(l.quantity) quantity
@@ -400,12 +412,11 @@ RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
       AND t.stock_source_key=p_source_key AND l.sku=p_sku
      GROUP BY s.id,s.next_cycle_at
     ) due CROSS JOIN LATERAL (
-     SELECT COALESCE(sum(h.quantity),0) quantity FROM live_holds h
-     LEFT JOIN public.subscription_renewal_operations op ON op.id=h.renewal_operation_id
-     LEFT JOIN public.subscription_successor_operations_v2 g ON g.id=h.successor_operation_id
-     WHERE coalesce(op.subscription_id,g.subscription_id)=due.id AND coalesce(op.scheduled_at,g.scheduled_at)=due.next_cycle_at
+     SELECT COALESCE(sum(h.quantity),0)+public.inventory_successor_reservation_quantity(p_source_key,p_sku,p_as_of,due.id,due.next_cycle_at) quantity FROM live_holds h
+     JOIN public.subscription_renewal_operations op ON op.id=h.renewal_operation_id
+     WHERE op.subscription_id=due.id AND op.scheduled_at=due.next_cycle_at
       AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles c
-       WHERE (c.renewal_operation_id=op.id OR c.id=g.cycle_id) AND c.status IN ('paid','skipped','cancelled'))
+       WHERE c.renewal_operation_id=op.id AND c.status IN ('paid','skipped','cancelled'))
     ) credited) soft_demand,
    (public.inventory_channel_exposure_quantity(p_source_key,p_sku)#>>'{}')::bigint exposure
  )
@@ -2513,3 +2524,7 @@ END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
  EXECUTE 'CREATE POLICY subscription_successor_wait_cases_v2_absorption_census ON public.subscription_successor_wait_cases_v2 FOR SELECT TO service_role USING (true);';
 END IF; END; $$;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) TO service_role;'; END IF; END; $$;

@@ -276,6 +276,11 @@ The native successor forward adds immutable pair provenance and four RLS-enabled
 owner-controlled storage tables. It preserves original schedule arbiters,
 composite shapes and legacy reader/replay results. Version 2 stores select
 successor generations explicitly; historical roots remain schedule lineage.
+ATP retains its invoker signature. An internal stable definer aggregate returns
+only a successor hold quantity, optionally restricted to the matching subscription
+and schedule for demand credit. Only the shipped `service_role` receives execute;
+raw successor reservation and operation storage stays private. Unknown or partial
+matching filters return no credit. Custom ATP grants require separate qualification.
 The synchronous paid-fact producer must be installed before successor payment
 use. Install opened-event dispatch and M04 bindings before the producer hooks;
 no backfill or runtime activation runs. The

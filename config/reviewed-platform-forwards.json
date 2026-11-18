@@ -5935,6 +5935,10 @@
           {
             "signature": "public.subscription_successor_proposal_decide_v2(uuid,uuid,text,text,text,timestamptz)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",
+            "searchPath": "pg_catalog"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8401,7 +8405,7 @@
     },
     {
       "path": "db/platform/migrations/20261123130000_catalog_successors.sql",
-      "sha256": "fdd5930d4dde05801241d916efceab6fdb785b8498b6cbf27dd5c77cc48e7416",
+      "sha256": "5475161fb7dd37e0575085d1789a99ac987b1bc818c4b33943135708b0e949b1",
       "functions": [
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",
@@ -8421,7 +8425,7 @@
         {
           "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
           "beforeSha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d",
-          "afterSha256": "0ccbc361002a39dbc926616267f2748332747906a102f2081f7bdda8701acd33"
+          "afterSha256": "63509e467273cf1c9185152ec2e03891f4c532dabe6cac1a171cdfed166d9438"
         },
         {
           "signature": "public.catalog_bound_obligations_v2(uuid)",
@@ -8557,6 +8561,11 @@
           "signature": "public.subscription_successor_proposal_decide_v2(uuid,uuid,text,text,text,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "9a370fb9d9f625bd7e31e91d42000255e9ffbaf5392bbf7c5fc433dce437b9f5"
+        },
+        {
+          "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "3c7343f356bfcac6aa2439e142b3cda06f8616b07b6a72926e5b5bc534795f56"
         }
       ]
     }
