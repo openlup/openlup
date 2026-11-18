@@ -87,6 +87,11 @@ backfill nor dependency provenance, runtime behavior or a rollback path.
 Perform [database migration](./database-migrations.md) and application checks
 separately before resuming service.
 
+The set-release preflight exercises this same transition before publication
+against retained digest-verified local candidate packs; a failure blocks the
+dispatch. Its receipt labels the target `candidate, local digest-verified`.
+Published provenance and post-publication qualification remain separate.
+
 The published-set qualification also exercises the neutral starter from the
 previous complete published set through the target release's public upgrade
 CLI. Managed snapshots come from each starter's ownership inventory. The check
