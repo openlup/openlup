@@ -149,7 +149,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       // Replayed registration compares the original immutable address before returning it.
       await destinations.registerOrder({ idempotencyKey: `${key}:destination`, orderId, address: shipping, now: new Date().toISOString() });
       const stock = createPostgresFulfillmentStockSyncPort(db, { sourceKey: source(context), readLocalInventoryStock: async () => [] });
-      for (const line of quote.lines) await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${line.sku}`, snapshot: {
+      if (!context.catalogueQuote) for (const line of quote.lines) await stock.recordProviderStockCurrent({ requestKey: `starter-stock:${line.sku}`, snapshot: {
         providerRef: context.config.purchase.stock.providerRef, collectedAt: context.config.purchase.stock.collectedAt, sourceRevision: null,
         revisionSource: 'collection', quantityKind: 'snapshot', skuRef: line.sku,
         totalQuantity: context.config.purchase.stock.quantities[line.sku]!, forSaleQuantity: context.config.purchase.stock.quantities[line.sku]!, reservedOrUnavailableQuantity: 0, syncRunId: context.config.purchase.stock.syncRunId,

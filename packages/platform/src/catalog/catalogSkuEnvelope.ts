@@ -28,6 +28,7 @@ const ENVELOPE_COLUMNS_SQL = `
     sku.product_id AS sku_product_id,
     sku.sku AS sku_code,
     sku.net_weight_g AS net_content_unscaled,
+    sku.net_content_dimension AS typed_net_content_dimension,
     sku.status AS sku_status,
     sku.sellable_standalone AS sellable_one_time,
     sku.sellable_in_subscription AS sellable_subscription,

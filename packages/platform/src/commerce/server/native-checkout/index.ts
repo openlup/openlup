@@ -15,7 +15,10 @@ export interface NativeCheckoutQuery {
 
 export interface NativeCheckoutDraftRequest {
   idempotencyKey: string;
-  quoteSnapshot: CreateQuoteResponse;
+  quoteSnapshot: CreateQuoteResponse & {
+    /** Trusted quote evidence, validated by the native admission guard. @experimental */
+    catalogAdmission?: object;
+  };
 }
 
 export interface NativeCheckoutDraftResponse {
@@ -32,9 +35,12 @@ const { createQuoteResponseSchema } = createCommerceQuoteSchemas({
     promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
   }).passthrough(),
 });
+const nativeQuoteSchema = createQuoteResponseSchema.extend({
+  catalogAdmission: z.custom<object>(value => value !== null && typeof value === "object" && !Array.isArray(value)).optional(),
+});
 const requestSchema = z.object({
   idempotencyKey: commerceIdempotencyKeySchema,
-  quoteSnapshot: createQuoteResponseSchema,
+  quoteSnapshot: nativeQuoteSchema,
 }).strict();
 const clientIdSchema = z.guid().nullable();
 const responseSchema = z.object({
@@ -44,7 +50,7 @@ const responseSchema = z.object({
     status: z.literal("draft"),
     paymentStatus: z.literal("not_started"),
     idempotencyKey: commerceIdempotencyKeySchema,
-    quoteSnapshot: createQuoteResponseSchema,
+    quoteSnapshot: nativeQuoteSchema,
     replayed: z.boolean(),
   }),
 });

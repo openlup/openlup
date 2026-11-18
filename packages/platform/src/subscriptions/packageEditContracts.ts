@@ -4,6 +4,12 @@ import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
 
+/** Captures trusted evidence for the normalized preview. The apply owner rechecks it transactionally. @experimental */
+export type SubscriptionEditCatalogueEvidence = (input: {
+  subscriptionId: string; lane: "classic" | "exact" | "sized"; cadenceDays: number; optIn?: boolean;
+  lines: readonly { variantId: string; qty: number; isAddon: boolean }[];
+}) => Promise<object>;
+
 /** Trusted host ports; neither identity nor price evidence comes from a browser. */
 export interface PackageEditSubscription {
   cadenceDays: number; templateVersion: number; compositionConstraint: Record<string, unknown> | null;
@@ -40,6 +46,8 @@ export interface PackageEditQuotePorts {
 }
 export interface PackageEditLimits { maximumPlanDays: number; maximumBaseLines: number; maximumAddonLines: number; maximumQuantity: number }
 export interface PackageEditorOptions extends PackageEditQuotePorts {
+  /** @experimental */
+  catalogueEvidence?: SubscriptionEditCatalogueEvidence;
   /** Required only for the exact portion lever. */
   portionModes?: SubscriptionPortionModes;
   /** One connection through commit/rollback; authorization precedes this factory. */

@@ -1,7 +1,7 @@
 import { createQuoteAcceptance } from '../quote-acceptance.ts';
 import { authenticatedRepairPage } from '../recovery-page.ts';
 import type { PageContext } from '../context.ts';
-import { validateCart, isRecord } from '../../shared/offer.ts';
+import { parseCart, validateCart, isRecord } from '../../shared/offer.ts';
 import { routes } from '../../shared/routes.ts';
 import { append, el, link, button } from '../dom.ts';
 import { actionForm, nativeActions } from '../forms.ts';
@@ -37,7 +37,7 @@ function buyerLinkControl(context: PageContext, orderRef: string): HTMLElement {
 }
 
 export function checkoutPage(context: PageContext): HTMLElement {
-  const result = validateCart(context.config, context.getCart());
+  const result = context.governedCatalogue ? parseCart(context.config.id, context.getCart()) : validateCart(context.config, context.getCart());
   const page = el('div', {}, el('h1', {}, context.t('checkout')),
     el('p', { class: 'notice' }, context.t('sandboxOnly')),
     el('p', {}, context.t('demoContact')));

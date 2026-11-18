@@ -2296,6 +2296,7 @@ export declare function createPostgresOperatorAuthority(lane: OperatorTransactio
 ## dist/account-support/postgresOrderHistory.d.ts
 
 ```ts
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { CustomerOrderHistoryReadStore } from "./orderHistory.js";
 import type { OperatorQueryExecutor } from "./postgresOperatorAuthority.js";
 import { type NativeAccountReadScope, type NativePaidActivationGapReadSource } from "./postgresAccountReadScope.js";
@@ -2303,8 +2304,17 @@ export interface NativeOrderHistoryOptions extends NativeAccountReadScope {
     /** The selected invoice owner supplies its complete summary; no empty success fallback. */
     readInvoiceSummaries: CustomerOrderHistoryReadStore["readInvoiceSummaries"];
 }
+/** Experimental current-format complement to the existing order line projection. @experimental */
+interface NativeOrderLineContentPort {
+    readRetainedLineContent(orderId: string): Promise<{
+        lineId: string;
+        skuId: string;
+        netContent: CatalogQuantity;
+    }[]>;
+}
 /** Native table shapes translated to the existing customer order projection contract. */
-export declare function createPostgresCustomerOrderHistoryReadStore(executor: OperatorQueryExecutor, options: NativeOrderHistoryOptions): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource;
+export declare function createPostgresCustomerOrderHistoryReadStore(executor: OperatorQueryExecutor, options: NativeOrderHistoryOptions): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource & NativeOrderLineContentPort;
+export {};
 ```
 ## dist/account-support/selfService.d.ts
 

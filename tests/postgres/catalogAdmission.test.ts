@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
-  createPostgresCatalogAdmission, observeCatalogSubscriptionCadenceBound, type CatalogPublicationRules } from "@openlup/platform/catalog";
+  buildCatalogAdmissionFromServing, createPostgresCatalogAdmission, observeCatalogSubscriptionCadenceBound,
+  type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
@@ -11,6 +12,11 @@ import { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, createCatalogSubscriptio
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
 import { createPostgresPackageEditor, createPostgresSizedEditor, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
+import { bindStarterCatalogue } from "../../examples/neutral-store/host/catalogue-binding.ts";
+import { createStarterCatalogueRegistry } from "../../examples/neutral-store/host/catalogue-registry.ts";
+import { starterCatalogue } from "../../examples/neutral-store/host/catalogue-selection.ts";
+import type { ApplicationBindings } from "../../examples/neutral-store/host/bindings.ts";
+import type { CreateQuoteResponse } from "@openlup/platform/pricing";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -158,6 +164,47 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
+
+it("catalogue_bound_g1_ports uses the installed serving roster and retains the SP1 profile in the admitted quote", async () => {
+  const f = await fixture("bound-starter", { profiled: true });
+  const original = starterCatalogue.select().configuration;
+  const configuration = { ...original, subscriptionOffers: { ...original.subscriptionOffers,
+    classic: { ...original.subscriptionOffers.classic, days: { kind: "set" as const, values: [28] } } } };
+  const registration = createStarterCatalogueRegistry([{ configuration, offerVersion: "classic",
+    draftType: f.reference.typeRef,
+    pack: { id: "example:admission", namespace: "example", version: 1, openlupRange: "0.44.x",
+      capabilities: { publish: false }, types: [definition, profiledDefinition], taxClasses: [],
+      subscriptionProfiles: [profileRef], subscriptionProfileDefinitions: [profile] },
+  }], configuration.id).select();
+  const transactions = { async run<T>(work: (db: PoolClient) => Promise<T>) {
+    const db = await pool.connect();
+    try { await db.query("BEGIN"); const output = await work(db); await db.query("COMMIT"); return output; }
+    catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+  } };
+  const actions: ApplicationBindings["actions"] = { "offer.validate": async (_payload, context) => {
+    if (!context.catalogueQuote) throw new Error("profiled quote lane unbound");
+    const roster = await context.catalogueQuote.serving.listQuoteCatalogItems();
+    const price = f.admission.priceContextVersions[0]!;
+    const quote = { quote: { lines: [{ sku: f.code, quantity: 2, catalogFacts: {
+      version: "catalog_facts_v1", skuId: f.sku, documentRevisionId: f.value.product.documentRevision!.id,
+      documentDigest: f.head.documentDigest, resolvedPriceEntryId: price.entryId,
+    } }] } } as CreateQuoteResponse;
+    const evidence = await context.catalogueQuote.buildAdmission(quote, roster, {
+      mode: "subscription", purpose: "order", cadenceDays: 28, offerEvidence: { offerVersion: "classic" },
+    });
+    await transactions.run(db => context.catalogueQuote!.admission.assertCurrent(db, evidence));
+    return { ok: true, value: evidence };
+  } };
+  const bound = bindStarterCatalogue({ db: pool, actions, authorizeHuman: async () => ({ ok: false }),
+    options: { registration, readEnabled: () => true, writerEnabled: () => false, publication: { transactions, rules,
+      readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false } } });
+  expect(await bound.catalogueStatus()).toMatchObject({ profiledAcquisition: true, capabilities: { publish: false } });
+  expect(await actions["offer.validate"]!({}, { config: configuration, commandKey: "catalogue-witness", actor: {
+    customerRef: null, operatorRef: null,
+  } })).toEqual({ ok: true, value: { ...f.admission, purpose: "order" } });
+});
+
 async function edit(f: Fixture, lane: Lane = "classic") {
   const key = randomUUID(), hash = digest(key), line = { variantId: f.sku,qty: 2,isAddon: false,
     quoteLine: { sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234) } };
@@ -1591,5 +1638,31 @@ it.each(["commerce_create_order_draft_with_outbox", "commerce_create_promoted_or
       await expect(rpc(db,routine,input.args)).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
     } finally { await db.query("ROLLBACK"); db.release(); }
     expect(await snapshot()).toEqual(before);
+  },
+);
+
+it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
+  "catalog_bound_effect_rechecks_shared_authority MC5-D-026 %s", async purpose => {
+    const f = await fixture("serving"), read = await pool.connect();
+    try {
+      const offerVersion = purpose === "sized" ? "sized.v1" : "classic";
+      const authority = publisher(read).serving({ types: [definition], offerVersion, maxItems: 5000 });
+      const { items } = await authority.detail(f.value.product.slug!);
+      const item = items.find(item => item.sku.id === f.sku);
+      expect(item).toMatchObject({ product: { id: f.product }, acceptedReference: f.reference });
+      const input = buildCatalogAdmissionFromServing({
+        mode: f.admission.mode, priceContextVersions: f.admission.priceContextVersions,
+        lines: [{ item: { productId: item!.product.id, acceptedReference: item!.acceptedReference }, quantity: 2 }],
+        purpose: purpose === "order" ? "order" : "account",
+        offerEvidence: purpose === "order" ? { offerVersion } : { offerVersion, subscriptionId: f.subscription, lane: purpose, ...(purpose === "sized" ? { optIn: true } : {}) },
+      });
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, input)).resolves.toBeUndefined();
+      const before = (await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows;
+      const stale = { ...input, heads: [{ productId: f.product, head: { ...f.head, revision: 1 } }] };
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, stale)).rejects.toMatchObject({
+        code: "40001", message: purpose === "order" ? "commerce_order_draft_catalog_head_moved" : "customer_self_service_stale_edit_catalog_head",
+      });
+      expect((await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual(before);
+    } finally { read.release(); }
   },
 );

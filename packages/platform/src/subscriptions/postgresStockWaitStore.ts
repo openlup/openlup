@@ -1,6 +1,6 @@
 import { canonicalUuid } from "./nativeRetryDriver.js";
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding, StockWaitStorePort } from "./contracts/stockWait.js";
-import type { RenewalSchedule } from "./contracts/renewal.js";
+import type { RenewalFrozenSnapshot, RenewalFrozenSnapshotV3, RenewalSchedule } from "./contracts/renewal.js";
 import { subscriptionCorrelationSql, subscriptionCorrelationJoin, subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 export interface NativeStockWaitBinding {
@@ -8,6 +8,8 @@ export interface NativeStockWaitBinding {
   withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   codec: NativeRenewalCodec;
   workerId: string;
+  /** Opt in to the typed retained display on stock-wait readback. @experimental */
+  retainedContent?: "v2";
 }
 export interface NativeStockWaitAdmission {
   waiting: boolean; caseId: string | null; response: Record<string, unknown>;
@@ -27,15 +29,18 @@ function array(value: unknown): unknown[] {
 /** Internal native projection shared with the checked notice observation.
  * @experimental
  */
-export async function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]> {
+export async function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown, snapshot?: RenewalFrozenSnapshot): Promise<StockWaitDeficit[]> {
   const rows = array(value).map(subscriptionRecord);
   if (rows.length === 0) return [];
   const catalog = (await db.query("SELECT id,sku,title FROM public.catalog_skus WHERE sku=ANY($1::text[])", [rows.map(r => String(r.sku))])).rows;
+  const accepted = snapshot?.frozenRevision === "native.purchase-renewal.v3" ? (snapshot as RenewalFrozenSnapshotV3).catalogAcceptance : null;
   return rows.map(r => {
     // Catalogue labels enrich the projection; native admission owns quantities.
     const item = catalog.find(item => item.sku === r.sku);
     if (!item) throw new Error("stock_wait_catalog_sku_missing");
-    return { skuId: String(item.id), sku: String(r.sku), displayName: String(item.title), size: null,
+    const netContent = accepted?.lines.find(line => line.skuId === item.id && line.skuCode === item.sku)?.netContent;
+    if (accepted && !netContent) throw new Error("stock_wait_catalog_acceptance_mismatch");
+    return { ...(netContent ? { netContent } : {}), skuId: String(item.id), sku: String(r.sku), displayName: String(item.title), size: null,
       required: Number(r.requiredUnits), reserved: Number(r.reservedUnits),
       available: Number(r.availableUnits), missing: Number(r.missingUnits) };
   });
@@ -70,7 +75,7 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       frozenSnapshot: snapshot, frozenFingerprint: String(r.fingerprint),
       binding: { caseId: canonicalCaseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
         paymentId: nullable(rows[0].payment_id), engineIdempotencyKey: String(rows[0].identity_key) },
-      deficits: await nativeStockWaitDeficits(db, r.deficits), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
+      deficits: await nativeStockWaitDeficits(db, r.deficits, options.retainedContent === "v2" ? snapshot : undefined), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
       openedAt: String(r.opened_at), checkedAt: nullable(r.last_checked_at), selectedAt: nullable(r.last_selected_at),
       securedAt: nullable(r.stock_secured_at), resumedAt: nullable(r.resumed_at), closedAt: nullable(r.closed_at),
       startedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:started`, resumedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:resumed`,
@@ -170,7 +175,8 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       return result.rows.map(row => codec.due(row));
     },
     async deficits(input: { snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; operationId: string; now: string }) {
-      return options.withTransaction(async db => nativeStockWaitDeficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now])));
+      return options.withTransaction(async db => nativeStockWaitDeficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now]),
+        options.retainedContent === "v2" ? input.snapshot : undefined));
     },
     async admit(input: { operationId: string; claimToken: string; snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; recovery?: StockWaitRecoveryBinding; now: string }): Promise<NativeStockWaitAdmission> {
       const request = { operationId: input.operationId, claimToken: input.claimToken, snapshot: codec.encode(input.snapshot),

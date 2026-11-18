@@ -49,14 +49,14 @@ function currentSku(overrides: Partial<SkuRow> = {}): SkuRow {
  * Fake Supabase client recording the upsert RPC args and serving the seeded
  * product/sku rows for the read queries.
  */
-function makeClient(seed: { products: ProductRow[]; skus: SkuRow[] }) {
+function makeClient(seed: { products: ProductRow[]; skus: SkuRow[] }, refusal?: { code: string; message: string }) {
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const client = {
     rpc(name: string, args: Record<string, unknown>) {
       rpcCalls.push({ name, args });
       return Promise.resolve({
         data: { slug: args.p_slug, productId: "prod-1", idempotent: false, dryRun: args.p_mode === "dry_run" },
-        error: null,
+        error: refusal ?? null,
       });
     },
     from(table: string) {
@@ -262,4 +262,16 @@ describe("supabaseAdminCatalogDataPort lifecycle RPCs (marshaling)", () => {
       }),
     ).rejects.toMatchObject({ sqlstate: "P0002" });
   });
+});
+
+it.each(["dry_run", "commit"] as const)("catalog_managed_legacy_mutations_stay_fenced LC8-D-022 LC8-D-029 %s omitted values", async mode => {
+  const state = currentProduct();
+  const fence = { code: "42501", message: "legacy_catalog_mutation_fenced" };
+  const { client, rpcCalls } = makeClient({ products: [state], skus: [currentSku()] }, fence);
+  const port = createSupabaseAdminCatalogDataPort(client);
+  await expect(port.updateDraft("operator", { mode, slug: state.slug, updates: {} })).rejects.toMatchObject({
+    message: fence.message, sqlstate: fence.code,
+  });
+  expect(rpcCalls).toHaveLength(1);
+  expect(rpcCalls[0]?.name).toBe("admin_upsert_catalog_draft");
 });

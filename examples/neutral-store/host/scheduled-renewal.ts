@@ -7,7 +7,8 @@ import { createLifecycleNoticeHost, createCareCapture } from './lifecycle-notice
 import pg from 'pg';
 import { createHash } from 'node:crypto';
 import { buildSchemaObjectProbe } from '@openlup/core/readiness';
-import { createNativeRenewalCodec, createPostgresRenewalSettlementPort, createPostgresSubscriptionAutoResume, createPostgresLifecycleMessages, createPostgresSubscriptionWinback } from '@openlup/platform/subscriptions';
+import { createNativeCatalogRenewalCodecV2, createPostgresRenewalSettlementPort, createPostgresSubscriptionAutoResume, createPostgresLifecycleMessages, createPostgresSubscriptionWinback } from '@openlup/platform/subscriptions';
+import { catalogAcceptedReferenceV2Schema } from '@openlup/platform/catalog';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
 import type { StoreConfig } from '../shared/config.ts';
 import { assertRenewalConfig, assertSubscriptionCare } from '../shared/renewal-config.ts';
@@ -40,7 +41,7 @@ export async function runScheduledRenewal(connectionString: string, config: Stor
       if (!rows.length) throw new Error('starter_renewal_schema_unavailable');
       return { version: createHash('sha256').update(JSON.stringify(rows)).digest('hex'), migration: String(rows.at(-1)!.catalog_path) };
     }
-    const catalogue = await installedHistory(), codec = createNativeRenewalCodec();
+    const catalogue = await installedHistory(), codec = createNativeCatalogRenewalCodecV2(reference => catalogAcceptedReferenceV2Schema.parse(reference));
     const sandbox = composeRenewalSandbox({ executor: pool, withTransaction, codec, config: config.renewal,
       now: () => new Date().toISOString(), failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
       recoveredTemplate: config.purchase.sandbox.recoveryTemplateSlug, recoveryPath: config.purchase.sandbox.recoveryUrlPath });

@@ -118,9 +118,13 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request,stockWait!==undefined);
         const priced = await quote(db, context, request, "preview", baseline), { subscriptionId: _id, ...raw } = request;
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
+        const catalogAdmission = await options.catalogueEvidence?.({ subscriptionId: request.subscriptionId, lane: "sized",
+          cadenceDays: priced.cadenceDays, optIn: isSizedOptIn(parsed), lines: priced.lines });
         const recorded=await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz) AS result",
           [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
+            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,
+              subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts,
+              ...(catalogAdmission ? { catalogAdmission } : {}) },
             { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
         const identity=stockWait?{previewId:z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id)}:{};
         return { ...preview,...identity, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,

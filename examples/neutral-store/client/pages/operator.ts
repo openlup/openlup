@@ -210,7 +210,7 @@ function catalogDraftActions(context: PageContext): HTMLElement {
         { name: 'expectedRevision', label: 'catalogDraftRevision', type: 'number', min: 0, value: '0' },
         { name: 'payload', label: 'catalogDraftPayload', type: 'textarea', maxLength: 20000,
           value: JSON.stringify({ schemaVersion: 1, product: { id: productId,
-            type: { key: 'starter:item', version: 1 }, dimensions: [], sharedContent: { title: 'Fictional item' } },
+            type: context.catalogueDraftType, dimensions: [], sharedContent: { title: 'Fictional item' } },
           skus: [] }, null, 2) },
       ], transform: values => ({ action: values.action, draftId: values.draftId,
         expectedRevision: values.expectedRevision,

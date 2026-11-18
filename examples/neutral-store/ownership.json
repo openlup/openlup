@@ -81,6 +81,9 @@
     "test/e4-oms.test.ts",
     "browser/e4.spec.ts",
     "host/bindings.ts",
+    "host/catalogue-binding.ts",
+    "host/catalogue-registry.ts",
+    "host/catalogue-selection.ts",
     "host/e-composition.ts",
     "host/healthcheck.ts",
     "host/native-composition.ts",
@@ -90,6 +93,11 @@
     "host/sessions.ts",
     "index.html",
     "installation/install.ts",
+    "installation/catalogue-upgrade.ts",
+    "installation/defaults/catalogue.ts.txt",
+    "installation/defaults/copy.ts.txt",
+    "test/catalogue-upgrade.test.ts",
+    "test/catalogue-registry.test.ts",
     "lifecycle",
     "lifecycle.mjs",
     "browser-groups.d.mts",
@@ -172,7 +180,9 @@
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md",
-    "README.md": "README.template.md"
+    "README.md": "README.template.md",
+    "installation/defaults/catalogue.ts.txt": "owned/catalogue.ts",
+    "installation/defaults/copy.ts.txt": "owned/copy.ts"
   },
   "generated": [
     ".git/",

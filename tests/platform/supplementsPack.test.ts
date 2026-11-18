@@ -13,7 +13,7 @@ import {
 import { applyAppUpgrade } from '@openlup/platform/lifecycle';
 import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
 import { createCatalogSubscriptionProfileBinding } from '@openlup/platform/subscriptions';
-import { catalogueConformance, catalogDraftRegistry, supplementsCatalogueRegistration } from '../../examples/neutral-store/owned/catalogue.ts';
+import { catalogueConformance, starterCatalogue } from '../../examples/neutral-store/owned/catalogue.ts';
 import { marketFixture } from '../../examples/catalog-packs/market-fictional/tax-table.ts';
 import { initialDrafts, initialPublications, proposedTaxonomy, successor, withdrawal } from '../../examples/catalog-packs/supplements/catalogue.ts';
 import { agreedTerms, fixtures, purchase, upgrade } from '../../examples/catalog-packs/supplements/fixtures.ts';
@@ -24,7 +24,8 @@ const root = fileURLToPath(new URL('../../examples/', import.meta.url));
 const packPaths = ['catalogue.ts', 'fixtures.ts', 'pack.ts', 'policy.ts'].map(name => `catalog-packs/supplements/${name}`);
 const ownedPaths = [...packPaths, 'market-packs/market-fictional/tax-table.ts'];
 const [capsule, powder] = initialDrafts;
-const definition = createCatalogProductTypeRegistry(supplementsCatalogueRegistration.pack.types).resolve(itemType)!;
+const registration = starterCatalogue.select('supplements-pack');
+const definition = registration.types.resolve(itemType)!;
 const formatAttribute = pack.types[0].attributes[0];
 
 it.each<[string, () => unknown]>([
@@ -62,12 +63,12 @@ it.each<[string, () => unknown]>([
   }],
   ['RP1-D-003a one registry entry', () => {
     expect(catalogueConformance.packs.map(({ pack }) => pack.id)).toEqual(['supplements']);
-    expect(catalogueConformance.packs[0]?.pack).toBe(supplementsCatalogueRegistration.pack);
-    expect(supplementsCatalogueRegistration).toMatchObject({
-      draftType: { key: 'supplements:item', version: 1 }, offerVersion: 'supplements:regular@1',
+    expect(catalogueConformance.packs[0]?.pack).toBe(registration.pack);
+    expect(registration).toMatchObject({
+      draftType: { key: 'supplements:item', version: 1 }, scope: { offerVersion: 'supplements:regular@1' },
     });
     expect(definition).toBeDefined();
-    expect(catalogDraftRegistry.resolve({ key: 'starter:item', version: 1 })).toBeDefined();
+    expect(starterCatalogue.select().types.resolve({ key: 'starter:item', version: 1 })).toBeDefined();
   }],
   ['RP1-D-004a canonical count', () => {
     expect(canonicalizeCatalogQuantity(capsule.netContent, units)).toEqual({ dimension: 'count', unit: 'openlup:piece', unscaled: '56', scale: 0 });

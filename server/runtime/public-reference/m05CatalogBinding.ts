@@ -1,5 +1,7 @@
 import { createCatalogContribution } from "@openlup/platform/composition";
-import { createCatalogDraftHandler, createPostgresCatalogDraftStore, createPostgresCatalogSkuEnvelopeReadPort, createPostgresBundleCatalogStore, type BundleStockPort, type CatalogProductTypeRegistry } from "@openlup/platform/catalog";
+import { createCatalogDraftHandler, createPostgresCatalogDraftStore, createPostgresCatalogSkuEnvelopeReadPort, createPostgresBundleCatalogStore, createPostgresCatalogAdoption, createPostgresCatalogPublication,
+  createCatalogRuntimeBinding, type BundleStockPort, type CatalogProductTypeRegistry,
+  type CatalogPublicationDependencies, type CatalogRuntimeObservation } from "@openlup/platform/catalog";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { readBearerToken, type AdminAuthBinding } from "@openlup/platform/identity";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
@@ -27,6 +29,15 @@ export function createM05CatalogBinding(input: {
   offer: (...args: never[]) => unknown;
   applyPromotions: (...args: never[]) => unknown;
   flags?: { read?: boolean; mutations?: boolean; activation?: boolean };
+  /** Explicit host composition. Schema installation and draft access confer no publication authority. */
+  governed?: {
+    publication: Omit<CatalogPublicationDependencies<HttpRequest>, "registry" | "authorizeHuman">;
+    adoptionTransaction?: Parameters<typeof createPostgresCatalogAdoption<HttpRequest>>[0]["transaction"];
+    writerEnabled: () => boolean;
+    observePublicationRead: () => Promise<CatalogRuntimeObservation>;
+    observePublish: () => Promise<CatalogRuntimeObservation>;
+    observeLifecycleWrite: () => Promise<CatalogRuntimeObservation>;
+  };
 }) {
   if (!input.executor || typeof input.executor.query !== "function") throw new Error("m05_catalog_store_required");
   if (!input.stock || typeof input.stock.getAvailability !== "function") throw new Error("m05_catalog_stock_required");
@@ -58,6 +69,20 @@ export function createM05CatalogBinding(input: {
     const actor = await authorize(req);
     return actor.ok ? { ok: true as const, userId: actor.principalId, role: actor.role, isMachineActor: actor.isMachineActor } : actor;
   };
+  const authorizeHuman: CatalogPublicationDependencies<HttpRequest>["authorizeHuman"] = async request => authFor(request)();
+  const selected = input.governed;
+  const authority = selected && createPostgresCatalogPublication({ ...selected.publication, registry: input.registry, authorizeHuman });
+  const adoption = selected?.adoptionTransaction && createPostgresCatalogAdoption({
+    transaction: selected.adoptionTransaction, authorizeHuman,
+  });
+  const governed = createCatalogRuntimeBinding({
+    existing: M05_CATALOG_CAPABILITIES,
+    ...(selected && authority ? { writerEnabled: selected.writerEnabled, ports: {
+      publicationRead: { port: { reads: authority.reads, preflight: adoption?.preflight, receipt: adoption?.receipt }, enabled: () => true, observe: selected.observePublicationRead },
+      publish: { port: { authorize: authority.authorize, publish: authority.publish, decision: authority.decision, adopt: adoption?.adopt }, enabled: () => true, observe: selected.observePublish },
+      lifecycleWrite: { port: { authorize: authority.authorize, publish: authority.publish, decision: authority.decision }, enabled: () => true, observe: selected.observeLifecycleWrite },
+    } } : {}),
+  });
   for (const [name, factory] of Object.entries(writeFactories)) handlers[`/api/bff/admin/commerce/bundles/${name}`] = (req, res) => factory({
     writePort: bundleWrite, authorizeAdmin: authFor(req), mutationsEnabled: input.flags?.mutations === true, activationEnabled: input.flags?.activation === true,
   })(req, res);
@@ -73,6 +98,7 @@ export function createM05CatalogBinding(input: {
   });
   return { catalog, draftStore, drafts, priceAuthority, bundleRead, bundleWrite, availabilityService, handlers,
     quote: input.quote, offer: input.offer, capabilities: M05_CATALOG_CAPABILITIES, unsupported: M05_UNSUPPORTED_CAPABILITIES,
+    governed, observeCapabilities: governed.capabilities,
     ...contribution, close: () => bundleWrite.close(),
   };
 }

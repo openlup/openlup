@@ -105,6 +105,7 @@ export function createPostgresCommerceQuoteCatalogReadPort(
       } catch (error) {
         if (error instanceof CommerceQuoteCatalogReadError) throw error;
         if (error instanceof CatalogSkuAuthorityError) {
+          if (error.code === "quantity_requires_v2") throw new CommerceQuoteCatalogReadError(error.code);
           throw new CommerceQuoteCatalogReadError(
             error.code === "catalog_sku_authority_primary_sku_invalid"
               || error.code === "catalog_sku_identifier_authority_absent"

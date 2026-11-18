@@ -1,3 +1,5 @@
+import type { CatalogAcceptedReferenceV2, CatalogQuantity } from "@openlup/core/catalog";
+
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
   skuId: string;
@@ -23,8 +25,10 @@ export interface CommerceQuoteCatalogReadPort {
 }
 
 export type CommerceQuoteCatalogReadRefusalCode =
+  | "quantity_requires_v2"
   | "catalog_read_not_configured"
   | "catalog_authority_unavailable"
+  | "catalog_authority_unsupported"
   | "catalog_authority_changed"
   | "catalog_revision_invalid"
   | "catalog_document_schema_invalid"
@@ -40,3 +44,16 @@ export class CommerceQuoteCatalogReadError extends Error {
   }
 }
 
+
+/** Exact catalogue facts for quote and effect admission. @experimental */
+export interface CommerceQuoteCatalogItemV2 extends Omit<CommerceQuoteCatalogItem, "netWeightG"> {
+  productId: string;
+  netContent: CatalogQuantity;
+  grossMass: CatalogQuantity | null;
+  acceptedReference: CatalogAcceptedReferenceV2;
+}
+
+/** @experimental */
+export interface CommerceQuoteCatalogReadPortV2 {
+  listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItemV2[]>;
+}

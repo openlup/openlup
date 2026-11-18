@@ -3,13 +3,14 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, createPostgresCatalogPublication, createCatalogDraftHandlerV5, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV5, installCatalogDefinitions,
+  canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, createPostgresCatalogPublication, createCatalogDraftHandlerV5, createPostgresCatalogDraftStoreV5, installCatalogDefinitions,
 } from '@openlup/platform/catalog';
 import { upgrade as extractedUpgrade } from '../../examples/neutral-store/owned/catalog-packs/supplements/fixtures.ts';
 import type { CatalogDecisionCommandV2, CatalogDraftPayloadV4, CatalogPublishCommand } from '@openlup/platform/catalog/contracts';
 import { createCatalogSubscriptionProfileBinding } from '@openlup/platform/subscriptions';
 import type { PgQueryExecutor } from '@openlup/platform/data';
-import { supplementsCatalogueRegistration } from '../../examples/neutral-store/owned/catalogue.ts';
+import { installStarterCatalogueDefinitions } from '../../examples/neutral-store/installation/install.ts';
+import { starterCatalogue } from '../../examples/neutral-store/owned/catalogue.ts';
 import { initialDrafts, initialPublications } from '../../examples/catalog-packs/supplements/catalogue.ts';
 import { upgrade } from '../../examples/catalog-packs/supplements/fixtures.ts';
 import { pack } from '../../examples/catalog-packs/supplements/pack.ts';
@@ -22,7 +23,7 @@ import {
 let container: PostgresContainer | undefined;
 let owner: Pool;
 const actorId = randomUUID();
-const registry = createCatalogProductTypeRegistry(supplementsCatalogueRegistration.pack.types);
+const registry = starterCatalogue.select('supplements-pack').types;
 const draftHandler = () => createCatalogDraftHandlerV5({
   store: createPostgresCatalogDraftStoreV5(owner), registry,
   authorizeOperator: async (verified: boolean) => verified ? { actorId } : null,
@@ -49,7 +50,7 @@ async function commerceCounts() {
 it.each([
   ['RP1-D-003b replay leaves catalogue dark', async () => {
     const expected = catalogPackManifest(pack).digest;
-    const first = await installCatalogDefinitions(owner, pack);
+    const first = await installStarterCatalogueDefinitions(owner, 'supplements-pack');
     expect(first.manifestDigest).toBe(expected);
     expect(await installCatalogDefinitions(owner, pack)).toEqual(first);
     expect(await commerceCounts()).toEqual({ products: 0, skus: 0, prices: 0, publications: 0 });

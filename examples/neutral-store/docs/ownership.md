@@ -74,8 +74,12 @@ The registry in `owned/catalogue.ts` lists the synthetic supplements pack.
 Its definition, drafts, policy and fixtures live in
 `owned/catalog-packs/supplements/`. The separate fictional market table in
 `owned/market-packs/market-fictional/` supplies zero-rate test data for ZZ/XTS.
-Copy the pack as a folder. Draft and price inputs require explicit operator
-actions. Copying the files grants no publication or serving authority.
+Copy the pack as a folder. Select `supplements-pack` with
+`--configuration supplements-pack --catalogue-publication on` and the
+restricted native runtime connection to use the publication reader. The
+default demonstration keeps its existing selection. Use the explicit
+`./lifecycle upgrade-catalogue` step to add the files to an existing starter.
+Draft and price inputs remain proposed fixture data.
 
 `owned/acquisition-addresses.ts` is owned demonstration data beside the catalogue
 seed. It contains fictional opaque registry tuples and localized choice labels.

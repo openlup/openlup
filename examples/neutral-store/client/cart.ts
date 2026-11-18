@@ -1,5 +1,5 @@
 import type { StoreConfig } from '../shared/config.ts';
-import { emptyCart, evaluateOffer, type Cart } from '../shared/offer.ts';
+import { emptyCart, evaluateOffer, parseCart, type Cart } from '../shared/offer.ts';
 
 export interface BrowserCart {
   get(): Cart;
@@ -8,7 +8,8 @@ export interface BrowserCart {
   close(): void;
 }
 
-export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUnavailable' | 'cartReset' | 'storageChanged') => void): BrowserCart {
+export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUnavailable' | 'cartReset' | 'storageChanged') => void,
+  governed = false): BrowserCart {
   const key = `neutral-store:cart:v1:${config.id}`;
   let current = emptyCart(config);
   let storage: Storage | null = null;
@@ -17,7 +18,7 @@ export function createBrowserCart(config: StoreConfig, notice: (kind: 'storageUn
   function read(raw: string | null): Cart {
     if (raw === null) return emptyCart(config);
     try {
-      const result = evaluateOffer(config, JSON.parse(raw));
+      const result = governed ? parseCart(config.id, JSON.parse(raw)) : evaluateOffer(config, JSON.parse(raw));
       if (result.ok) return result.cart;
       if (result.selection) return result.selection;
       // An empty saved cart is valid application state, although it cannot be checked out.

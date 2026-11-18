@@ -1174,3 +1174,22 @@ it("allowlists boolean dispatch facts at the durable sink and preserves absent e
   const facts = { ...base, error: { ...base.error, submissionAttempted: false, responseBodyRead: false } };
   expect(dispatchResult(dispatchResult(facts))).toEqual(facts);
 });
+
+it.each([
+  ["gross mass", { dimension: "mass", unit: "openlup:g", unscaled: "1205", scale: 1 }, "SKU-A", 120.5],
+  ["volume refused", { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 }, "SKU-A", null],
+  ["wrong product refused", { dimension: "mass", unit: "openlup:g", unscaled: "120", scale: 0 }, "SKU-B", null],
+] as const)("catalog_physical_destination_boundaries MC5-D-029 %s", async (_case, grossMass, declaredSku, weight) => {
+  const f = fixture(undefined, { typedProduct: {
+    resolvePushMetadata: async () => ({ sku: declaredSku, productGroup: "Article", ean: "5901234123457", title: "Example",
+      pack: { grossMass, lengthMm: 15, widthMm: 20, heightMm: 25 } }),
+  } });
+  const create = f.adapter.productSync.ensureProduct("SKU-A");
+  if (weight === null) {
+    await expect(create).rejects.toMatchObject({ phase: "sync" });
+    expect(f.fetchImpl).not.toHaveBeenCalled();
+  } else {
+    await expect(create).resolves.toEqual({ replayed: false });
+    expect(JSON.parse(String(f.fetchImpl.mock.calls[0]?.[1]?.body))).toMatchObject({ dimensions: { weight } });
+  }
+});

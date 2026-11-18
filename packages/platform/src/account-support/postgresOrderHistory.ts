@@ -1,3 +1,4 @@
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import { deriveOrderMoney } from "../commerce/index.js";
 import { toOrderMoneyHeader } from "./orderHistory.js";
 import type { CustomerOrderHistoryReadStore, CustomerOrderHistoryRow } from "./orderHistory.js";
@@ -9,10 +10,15 @@ export interface NativeOrderHistoryOptions extends NativeAccountReadScope {
   readInvoiceSummaries: CustomerOrderHistoryReadStore["readInvoiceSummaries"];
 }
 
+/** Experimental current-format complement to the existing order line projection. @experimental */
+interface NativeOrderLineContentPort {
+  readRetainedLineContent(orderId: string): Promise<{ lineId: string; skuId: string; netContent: CatalogQuantity }[]>;
+}
+
 /** Native table shapes translated to the existing customer order projection contract. */
 export function createPostgresCustomerOrderHistoryReadStore(
   executor: OperatorQueryExecutor, options: NativeOrderHistoryOptions,
-): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource {
+): CustomerOrderHistoryReadStore & NativePaidActivationGapReadSource & NativeOrderLineContentPort {
   const rows = accountRows(executor, options), clientId = options.clientId;
   const { readInvoiceSummaries } = options;
   const orderHeaders = async (predicate: string, values: unknown[], detail = false) => (await rows(`
@@ -38,6 +44,18 @@ export function createPostgresCustomerOrderHistoryReadStore(
       // The existing projector owns aggregate reconciliation and its diagnostic-only
       // read fallback. Derived per-line VAT rounding is not a snapshot refusal.
       return result.map(line);
+    },
+    async readRetainedLineContent(orderId) {
+      const result = await rows(`SELECT item.id, item.sku_id,
+        (SELECT accepted->'netContent'
+         FROM jsonb_array_elements(CASE WHEN to_jsonb(o)#>>'{catalog_acceptance,schemaVersion}' = '2'
+           THEN to_jsonb(o)#>'{catalog_acceptance,lines}' ELSE '[]'::jsonb END) accepted
+         WHERE accepted->>'skuId' = item.sku_id::text) AS net_content
+        FROM public.commerce_order_items item JOIN owned_orders o ON o.id=item.order_id
+        WHERE o.id=$3::uuid ORDER BY item.line_ordinal,item.id`, [orderId]);
+      return result.flatMap(row => row.net_content == null ? [] : [{
+        lineId: text(row.id), skuId: text(row.sku_id), netContent: row.net_content as CatalogQuantity,
+      }]);
     },
     async readPaymentStatuses(orderIds) {
       const result = await rows(`SELECT DISTINCT ON(intent.order_id) intent.order_id,intent.status

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
+import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions, createPostgresCatalogSkuEnvelopeReadPort,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
@@ -15,8 +15,11 @@ let db: Pool;
 let priceDb: Pool;
 const priceList = randomUUID(), anchorSku = randomUUID();
 const admin = randomUUID();
-const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
-  netContentUnits: ["openlup:g"], dimensions: [], axes: [], attributes: [{ key: "details", scope: "variant" as const,
+const definition = { key: "example:article", version: 1, units: [
+  { code: "openlup:g", dimension: "mass" as const, integral: false },
+  { code: "openlup:ml", dimension: "volume" as const, integral: false },
+  { code: "openlup:piece", dimension: "count" as const, integral: true },
+], netContentUnits: ["openlup:g", "openlup:ml", "openlup:piece"], dimensions: [], axes: [], attributes: [{ key: "details", scope: "variant" as const,
     valueType: { kind: "list" as const, item: { kind: "text" as const, maxLength: 1900 }, min: 0, max: 300 }, required: false,
     cardinality: { min: 0, max: 300 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
   validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
@@ -51,6 +54,7 @@ beforeAll(async () => {
     await db.query(readFileSync(unit.file, "utf8"));
   }
   await db.query(readFileSync("db/platform/migrations/20261122190000_catalog_publication.sql", "utf8"));
+  await db.query(readFileSync("db/platform/migrations/20261123230000_catalog_quantity_serving.sql", "utf8"));
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -525,16 +529,42 @@ it("separates the native price-only 64-character ceiling from dark structural re
   expect(staged).toBe(true); expect(await snapshot()).toEqual(before);
 });
 it.each([
-  ["net", "fractional", "15", 1], ["net", "zero", "0", 0], ["net", "negative", "-1", 0], ["net", "out_of_range", "2147483648", 0],
-  ["gross", "fractional", "15", 1], ["gross", "zero", "0", 0], ["gross", "negative", "-1", 0], ["gross", "out_of_range", "10000000000000000000000000000000000000000", 0],
-] as const)("catalog_publication_refuses_%s_%s_mass", async (kind, _case, unscaled, scale) => {
+  ["MC5-N-001 fractional net", "mass", "openlup:g", "15", 1],
+  ["MC5-N-001 oversized net", "mass", "openlup:g", "2147483648", 0],
+  ["MC5-N-003 count", "count", "openlup:piece", "56", 0],
+  ["MC5-N-003 volume", "volume", "openlup:ml", "50", 0],
+] as const)("catalog_v2_readback_matches_publication / legacy_reader_refuses_non_mass_quantity %s", async (_case, dimension, unit, unscaled, scale) => {
   const data = await draft(), payload = structuredClone(data.payload);
-  payload.skus[0][kind === "net" ? "netContent" : "grossMass"] = { dimension: "mass", unit: "openlup:g", unscaled, scale };
-  // Native drafts retain opaque quantity input; publication must refuse even
-  // when the input did not pass through the stricter TypeScript draft facade.
-  const command = await save(payload, data.draftId, 1), before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_integral_grams_required" });
-  expect(await snapshot()).toEqual(before);
+  const netContent = { dimension, unit, unscaled, scale };
+  payload.skus[0]!.netContent = netContent;
+  payload.skus[0]!.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "3000000000", scale: 0 };
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  const read = await authority.readbackV2(receipt.head);
+  expect(read).toMatchObject({ outcome: "page", items: [{ facts: { netContent } }] });
+  const rows = await db.query("SELECT net_weight_g, net_content_unscaled::text, net_content_scale FROM public.catalog_skus WHERE id=$1", [data.skuId]);
+  expect(rows.rows).toEqual([{ net_weight_g: null, net_content_unscaled: unscaled, net_content_scale: scale }]);
+  await expect(createPostgresCatalogSkuEnvelopeReadPort(db).getSkuEnvelopeById(data.skuId))
+    .rejects.toMatchObject({ code: "quantity_requires_v2" });
+  await expect(db.query("UPDATE public.catalog_skus SET net_weight_g=0 WHERE id=$1", [data.skuId]))
+    .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
+  await expect(db.query(`UPDATE public.catalog_skus SET net_content_dimension=NULL, net_content_unit=NULL,
+    net_content_unscaled=NULL, net_content_scale=NULL WHERE id=$1`, [data.skuId]))
+    .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
+});
+
+it("catalog_publish_typed_readiness_and_projection schema shape", async () => {
+  const constraints = await db.query(`SELECT conname,convalidated,contype FROM pg_constraint
+    WHERE conrelid='public.catalog_skus'::regclass AND conname IN
+      ('catalog_skus_net_content_check','catalog_skus_gross_mass_check')
+    ORDER BY conname`);
+  expect(constraints.rows).toEqual(["gross_mass", "net_content"].map(name => ({
+    conname: `catalog_skus_${name}_check`, convalidated: true, contype: "c",
+  })));
+  expect((await db.query("SELECT attnotnull FROM pg_attribute WHERE attrelid='public.catalog_skus'::regclass AND attname='net_weight_g'")).rows)
+    .toEqual([{ attnotnull: false }]);
+  expect((await db.query(`SELECT tgname,tgenabled FROM pg_trigger
+    WHERE tgrelid='public.catalog_skus'::regclass AND tgname='catalog_skus_legacy_net_grams_check'`)).rows)
+    .toEqual([{ tgname: "catalog_skus_legacy_net_grams_check", tgenabled: "O" }]);
 });
 it("catalog_publication_preserves_integer_grams_at_native_boundaries", async () => {
   const data = await draft(), payload = structuredClone(data.payload);
@@ -1587,3 +1617,26 @@ it("catalog_publication_parent_replay_never_reruns_prices",async()=>inPriceDatab
   expect(await target.publish(data.publication,actor)).toEqual({outcome:"replayed",receipt});expect(priceCalls).toBe(calls);expect(await snapshot()).toEqual(before);
   expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows).toEqual([{unit_price_minor:1500}]);
 }));
+
+it("catalog_authoritative_page_and_projection MC5-D-019 distinguishes qualified empty from hidden authority", async () => {
+  const role = "mc5_catalog_reader";
+  await db.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
+  const scoped = ["catalog_products", "catalog_skus", "catalog_publication_heads", "catalog_publications",
+    "catalog_sku_revisions", "catalog_product_document_revisions", "catalog_type_versions", "catalog_sku_identifiers"];
+  const base = dependencies();
+  const qualified = createPostgresCatalogPublication<null>({ ...base, transactions: {
+    run: work => base.transactions.run(async client => {
+      await client.query(`SET LOCAL ROLE ${role}`);
+      return work(client);
+    }),
+  } }).serving({ types: [definition], offerVersion: "example:offer" });
+  const read = () => qualified.detail("no-published-product-with-this-slug");
+  await expect(read()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+  for (const table of scoped) {
+    await db.query(`GRANT SELECT ON public.${table} TO ${role}`);
+    await db.query(`CREATE POLICY mc5_catalog_read ON public.${table} FOR SELECT TO ${role} USING (true)`);
+  }
+  await expect(read()).resolves.toMatchObject({ items: [], version: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+  await db.query(`CREATE POLICY mc5_catalog_read_restricted ON public.catalog_publications AS RESTRICTIVE FOR SELECT TO ${role} USING (false)`);
+  await expect(read()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+});

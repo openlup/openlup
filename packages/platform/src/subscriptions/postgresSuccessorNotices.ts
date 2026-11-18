@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { subscriptionRecord } from "./postgresRenewalStore.js";
 import { nativeStockWaitDeficits } from "./postgresStockWaitStore.js";
 import { createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
@@ -22,6 +22,10 @@ export const successorNoticeSources = Object.freeze([
  */
 export function createPostgresSuccessorNotices(options: {
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+  /** Decode frozen content for notices of the versioned renewal dialect. */
+  renewalCodec?: Pick<NativeRenewalCodec, "decode">;
+  /** Optional presentation eviction after verifying the persisted commit event. */
+  invalidateCatalogueProduct?(productId: string): void;
   /** Bind the catalogue owner's complete withdrawal-impact port. */
   impact: { report(skuId:string): Promise<
     { outcome:"complete"; obligations:readonly { family:string;sourceId:string;caseKind?:"legacy"|"successor" }[] }
@@ -63,7 +67,12 @@ export function createPostgresSuccessorNotices(options: {
         if(row.aggregate_type!=="subscription_stock_wait"||row.aggregate_id!==payload.caseId||current.id!==payload.caseId||current.client_id!==payload.clientId||current.subscription_id!==payload.subscriptionId)throw new Error("stock_wait_notice_case_mismatch");
         if(!started&&current.state!=="resumed")throw new Error("stock_wait_resume_milestone_missing");
         if(started&&(current.state!=="waiting"||current.waitingNoticeRelevant!==true))return {kind:"obsolete"} as const;
-        const deficits=(await nativeStockWaitDeficits(db,started?current.deficits:payload.deficits)).filter(value=>value.missing>0);
+        const wire=options.renewalCodec
+          ? (await db.query("SELECT cycle_snapshot FROM public.subscription_stock_wait_cases WHERE id=$1::uuid",[payload.caseId])).rows[0]?.cycle_snapshot
+          : null;
+        const snapshot=wire&&subscriptionRecord(wire).frozenRevision==="native.purchase-renewal.v3"
+          ? options.renewalCodec!.decode(subscriptionRecord(wire)):undefined;
+        const deficits=(await nativeStockWaitDeficits(db,started?current.deficits:payload.deficits,snapshot)).filter(value=>value.missing>0);
         if(started&&deficits.length===0)return {kind:"empty"} as const;
         return {kind:"ready",current,deficits} as const;
       });
@@ -105,6 +114,7 @@ export function createPostgresSuccessorNotices(options: {
         if(!Array.isArray(state.skus))throw new Error("catalog_obligation_evidence_unknown");
         return state.skus.map(value=>id.parse(subscriptionRecord(value).skuId));
       });
+      options.invalidateCatalogueProduct?.(row.aggregate_id);
       const cases=new Map<string,{ id:string;kind:"legacy"|"successor" }>();
       for(const sku of skus) {
         const impact=await options.impact.report(sku);

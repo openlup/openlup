@@ -77,17 +77,18 @@ export function parseCart(configuration: string, input: unknown):
 }
 
 /** Current owned admission runs only for fresh work, after structural identity/replay. */
-export function validateCart(config: StoreConfig, input: unknown, phase: 'checkout' | 'graduation' = 'checkout'): ReturnType<typeof parseCart> {
+export function validateCart(config: StoreConfig, input: unknown, phase: 'checkout' | 'graduation' = 'checkout',
+  catalogue?: readonly { sku: string; permittedPurchaseModes: readonly PurchaseMode[] }[]): ReturnType<typeof parseCart> {
   const parsed = parseCart(config.id,input);
   if (!parsed.ok) return parsed;
   const { cart } = parsed, issues: OfferIssue[] = [], plan = config.subscriptionOffers.classic;
   if (cart.mode === 'subscription' && cart.lines.length > plan.maximumBaseLines) return fail('cart_invalid');
   if (cart.mode === 'subscription' && !contains(phase === 'checkout' ? plan.checkoutDays ?? plan.days : plan.days,cart.cadenceDays!)) return fail('cadence_unavailable');
   for (const line of cart.lines) {
-    const product = config.offer.products.find(item => item.sku === line.sku);
+    const product = (catalogue ?? config.offer.products).find(item => item.sku === line.sku);
     if (!product) { issues.push({ code: 'unknown_sku',sku: line.sku }); continue; }
     if (!product.permittedPurchaseModes.includes(cart.mode)) issues.push({ code: 'purchase_mode_unavailable',sku: line.sku });
-    if (line.quantity > config.offer.maxUnits || cart.mode === 'subscription' && !admitsLine(plan,line.sku,cart.cadenceDays!,line.quantity)) {
+    if (line.quantity > config.offer.maxUnits || catalogue === undefined && cart.mode === 'subscription' && !admitsLine(plan,line.sku,cart.cadenceDays!,line.quantity)) {
       issues.push({ code: 'quantity_invalid',sku: line.sku });
     }
   }
