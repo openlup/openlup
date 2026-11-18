@@ -2735,6 +2735,7 @@ import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBind
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
+import type { SizedHostPorts } from "./sizedEditPorts.js";
 /** Internal source check shared by the existing preview owners. */
 export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
     caseId: string;
@@ -2783,6 +2784,10 @@ export declare function createPostgresSuccessorStore(options: {
     codec: NativeRenewalCodec;
     previews: SuccessorPreviewBinding;
     historicalBindings?: readonly HistoricalSuccessorProtocolBinding[];
+    /** The same host assertion used by the ordinary sized editor. Required for fresh sized acceptance.
+     * @experimental
+     */
+    assertCurrentSizedFacts?: SizedHostPorts["assertCurrentFacts"];
 }): {
     offer(actor: PackageEditActor, input: SuccessorOfferInput): Promise<Record<string, unknown>>;
     decide(actor: PackageEditActor, input: {
@@ -3322,7 +3327,7 @@ export declare function quoteSizedEdit(input: {
     subjectFacts: SizedSubjectFacts;
     optInFacts: Record<string, unknown> | null;
 }>;
-export declare function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: SizedEditContext, policy: SizedEditPolicy): void;
+export declare function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: Pick<SizedEditContext, "clientId" | "subscriptionId">, policy: Pick<SizedEditPolicy, "maximumExclusions">): void;
 export declare function sizedCandidateCompatibility(catalog: readonly SizedCatalogFact[], facts: SizedSubjectFacts): {
     selectable: boolean;
     variantId: string;

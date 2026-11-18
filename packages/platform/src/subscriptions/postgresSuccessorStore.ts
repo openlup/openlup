@@ -5,9 +5,24 @@ import { requireHistoricalProtocolBinding, type HistoricalSuccessorProtocolBindi
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
+import { isSizedOptIn, readSizedEditContext } from "./sizedEditContext.js";
+import type { SizedHostPorts } from "./sizedEditPorts.js";
+import { assertSizedSubjectFacts } from "./sizedEditQuote.js";
 
 const successorCommandKey = z.string().trim().min(8).max(180);
 const successorQuoteHash = z.string().trim().regex(/^[a-f0-9]{64}$/u);
+const subjectSnapshot = z.object({
+  subjectFacts: z.object({
+    subscriptionId: z.uuid(), clientId: z.uuid(), subjectRef: z.string().min(1),
+    exclusions: z.custom<string[]>(), snapshot: z.record(z.string(), z.unknown()),
+    catalogFacts: z.array(z.object({
+      variantId: z.string(), sku: z.string(), groupId: z.string(), isAddon: z.boolean(), sellable: z.boolean(),
+      physicalSize: z.number(), demandPerUnit: z.number(), documentRevisionId: z.string(), documentDigest: z.string(),
+      verified: z.boolean(), exclusions: z.array(z.string()).nullable(), sellableNow: z.number().nullable(),
+    })),
+  }),
+  optInFacts: z.record(z.string(), z.unknown()).nullable(),
+});
 
 function successorBusy(error:unknown,reason:"lc10_commerce_busy"|"lc10_root_operation_busy"="lc10_commerce_busy"):never {
   if((error as {code?:string}).code==="55P03")throw Object.assign(new Error(reason,{cause:error}),{code:"55P03"});throw error;
@@ -57,6 +72,10 @@ export function createPostgresSuccessorStore(options: {
   codec: NativeRenewalCodec;
   previews: SuccessorPreviewBinding;
   historicalBindings?: readonly HistoricalSuccessorProtocolBinding[];
+  /** The same host assertion used by the ordinary sized editor. Required for fresh sized acceptance.
+   * @experimental
+   */
+  assertCurrentSizedFacts?: SizedHostPorts["assertCurrentFacts"];
 }) {
   const id=z.uuid(),stamp=z.iso.datetime(),hash=z.string().regex(/^[a-f0-9]{64}$/u);
   const call=async(db:SubscriptionQueryExecutor,name:string,args:unknown[])=>subscriptionRecord((await db.query(`SELECT public.${name}(${args.map((_,index)=>`$${index+1}`).join(",")}) AS result`,args)).rows[0]?.result);
@@ -66,9 +85,61 @@ export function createPostgresSuccessorStore(options: {
     if(row?.allowed!==true) throw new Error("subscription_command_forbidden");
   }
   async function authorizeProposal(db:SubscriptionQueryExecutor,actor:PackageEditActor,proposalId:string) {
-    const row=(await db.query("SELECT subscription_id,client_id,preview FROM public.subscription_successor_proposals WHERE id=$1::uuid",[id.parse(proposalId)])).rows[0];
+    const row=(await db.query("SELECT subscription_id,client_id,preview,lane,source_binding FROM public.subscription_successor_proposals WHERE id=$1::uuid",[id.parse(proposalId)])).rows[0];
     if(!row||row.client_id!==actor.clientId||subscriptionRecord(row.preview).actor_id!==actor.actorId) throw new Error("subscription_command_forbidden");
     await authorize(db,actor,String(row.subscription_id));
+    return row;
+  }
+  async function assertSizedAcceptance(db: SubscriptionQueryExecutor, actor: PackageEditActor,
+    proposal: Awaited<ReturnType<typeof authorizeProposal>>, input: {
+      proposalId: string; commandKey: string; quoteHash: string | null; now: string; caseId?: string;
+    }) {
+    if (proposal.lane !== "sized" || input.quoteHash === null) return;
+    // Take the same prefix as the SQL primitives. Exact receipt replay never rereads host facts.
+    const { actorId, clientId } = actor;
+    const args = [actorId, input.commandKey];
+    const tryLock = async (sql: string, parameters: unknown[], message = "lc10_commerce_busy") => {
+      if ((await db.query(sql, parameters)).rows[0]?.allowed !== true) {
+        throw Object.assign(new Error(message), { code: "55P03" });
+      }
+    };
+    await tryLock("SELECT pg_try_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0)) AS allowed", args);
+    const receipt = await db.query("SELECT 1 FROM public.subscription_command_receipts WHERE actor_id=$1::uuid AND idempotency_key=$2::text", args);
+    if (receipt.rows.length > 0) return;
+    await tryLock(`SELECT pg_try_advisory_xact_lock(hashtextextended($1::uuid::text||':successor-edit:'||
+      encode(sha256(convert_to($1::uuid::text||':'||$2::text,'UTF8')),'hex'),0)) AS allowed`, args);
+    const source = subscriptionRecord(proposal.source_binding);
+    if (source.kind === "stock_wait") {
+      if (input.caseId && source.caseId !== input.caseId) return;
+      if ((await db.query("SELECT current_setting('transaction_isolation') AS isolation")).rows[0]?.isolation !== "read committed") {
+        throw Object.assign(new Error("inventory_admission_isolation_unsupported"), { code: "22023" });
+      }
+      await tryLock("SELECT pg_try_advisory_xact_lock(846832106,1) AS allowed", [], "inventory_admission_busy");
+    } else if (input.caseId) return;
+    const subscriptionId = String(proposal.subscription_id);
+    await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE NOWAIT",
+      [subscriptionId, clientId]).catch(error => successorBusy(error));
+    await db.query("SELECT id FROM public.clients WHERE id=$1::uuid FOR KEY SHARE NOWAIT", [clientId]).catch(error => successorBusy(error));
+    await authorize(db, actor, subscriptionId);
+    await db.query("SELECT id FROM public.subscription_successor_proposals WHERE id=$1::uuid FOR UPDATE NOWAIT",
+      [input.proposalId]).catch(error => successorBusy(error));
+    const quote = (await db.query(`SELECT q.request_payload, q.quote_snapshot, q.action
+      FROM public.subscription_successor_proposals p JOIN public.subscriptions s ON s.id=p.subscription_id
+      JOIN public.subscription_quote_previews q ON q.id=(p.preview->>'id')::uuid
+      WHERE p.id=$1::uuid AND p.state='offered' AND p.quote_hash=$2::text AND p.expires_at>$3::timestamptz
+        AND p.template_version=s.template_version AND q.status='previewed' AND to_jsonb(q)=p.preview
+      FOR UPDATE OF q NOWAIT`, [input.proposalId, input.quoteHash, input.now]).catch(error => successorBusy(error))).rows[0];
+    // The SQL primitive supplies its existing refusal for a stale or mismatched proposal.
+    if (!quote) return;
+    if (!options.assertCurrentSizedFacts) throw new Error("subscription_reprice_sized_subject_facts_unreadable");
+    const snapshot = subjectSnapshot.safeParse(quote.quote_snapshot);
+    if (!snapshot.success) throw new Error("subscription_reprice_sized_subject_facts_unreadable");
+    const { catalogFacts, ...facts } = snapshot.data.subjectFacts;
+    assertSizedSubjectFacts(facts, { clientId, subscriptionId }, { maximumExclusions: 20 });
+    const context = await readSizedEditContext(db, clientId, subscriptionId, isSizedOptIn({
+      action: String(quote.action), resizeLever: subscriptionRecord(quote.request_payload).resizeLever,
+    }));
+    await options.assertCurrentSizedFacts(db, context, facts, snapshot.data.optInFacts, catalogFacts);
   }
   return {
     offer(actor:PackageEditActor,input:SuccessorOfferInput) {
@@ -103,13 +174,21 @@ export function createPostgresSuccessorStore(options: {
       stamp.parse(input.now);
       const commandKey = successorCommandKey.parse(input.commandKey);
       const quoteHash = successorQuoteHash.nullable().parse(input.quoteHash);
-      return options.withTransaction(async db=>{ await authorizeProposal(db,actor,input.proposalId);return call(db,"subscription_successor_proposal_decide_v2",[input.proposalId,actor.clientId,input.decision,commandKey,quoteHash,input.now]); });
+      return options.withTransaction(async db => {
+        const proposal = await authorizeProposal(db, actor, input.proposalId);
+        if (input.decision === "accepted") await assertSizedAcceptance(db, actor, proposal, { ...input, commandKey, quoteHash });
+        return call(db, "subscription_successor_proposal_decide_v2", [input.proposalId, actor.clientId, input.decision, commandKey, quoteHash, input.now]);
+      });
     },
     resolve(actor:PackageEditActor,input:Omit<SuccessorResolutionRequest,"clientId">) {
       const commandKey = successorCommandKey.parse(input.commandKey);
       const acceptedQuoteHash = successorQuoteHash.parse(input.acceptedQuoteHash);
       stamp.parse(input.now);id.parse(input.caseId);
-      return options.withTransaction(async db=>{ await authorizeProposal(db,actor,input.proposalId);return call(db,"resolve_stock_wait_with_successor",[input.caseId,input.proposalId,acceptedQuoteHash,commandKey,actor.clientId,input.now]); });
+      return options.withTransaction(async db => {
+        const proposal = await authorizeProposal(db, actor, input.proposalId);
+        await assertSizedAcceptance(db, actor, proposal, { ...input, commandKey, quoteHash: acceptedQuoteHash });
+        return call(db, "resolve_stock_wait_with_successor", [input.caseId, input.proposalId, acceptedQuoteHash, commandKey, actor.clientId, input.now]);
+      });
     },
     async readCase(caseId:string,caseKind:SuccessorCaseKind) {
       return options.withTransaction(async db=>{

@@ -1506,6 +1506,11 @@ ordinary pricing, baseline, consent and ledger owners; only the cutoff refusal
 is lifted after authenticating the current frozen wait. Ordinary preview keeps
 its cutoff. A successful successor preview supplies the native preview ID for
 the existing server-owned admission and codec enrichment binding.
+For sized acceptance, supply the ordinary sized editor's `assertCurrentFacts`
+callback as `assertCurrentSizedFacts`. The successor store checks the retained
+subject and calls that host assertion on the apply connection before taking
+the catalogue fence. Native acceptance SQL is an owner-only trusted primitive
+that compares retained quote facts. Customer-facing roles use the host wrapper.
 Existing legacy operation and case readers remain unchanged; version 2
 case reads require an explicit kind. New execution identities never alias the
 root operation. `createPostgresSuccessorNotices` binds opened and publication
