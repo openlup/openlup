@@ -136,7 +136,9 @@ required settings when adding a configuration:
 | `orderControls.holdReasons` | Nonempty choices with unique native hold reason codes and labels for every configured locale |
 
 Invalid document, return or hold settings refuse with
-`starter_order_controls_configuration_invalid`. A control being absent from a
+`starter_order_controls_configuration_invalid`, except a missing or blank
+return or hold label for a configured locale, which refuses with
+`starter_locale_copy_missing`. A control being absent from a
 page does not make its configuration optional.
 
 In the current source candidate, set `market.locales` and `market.defaultLocale`
