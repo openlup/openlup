@@ -80,7 +80,7 @@ export function generateExactSetReleaseBom(root: string, application: string, ev
   const origin = JSON.parse(installed(".starter-origin.json").toString()), lockBytes = installed("package-lock.json"), lock = JSON.parse(lockBytes.toString());
   const starter = { mode: origin.mode, sourceRevision: origin.sourceRevision, contentSha256: hash(JSON.stringify(content)), lockfileSha256: hash(lockBytes) };
   if (origin.schemaVersion !== 2 || !["released", "reconstructed"].includes(starter.mode) || origin.setVersion !== setVersion || evidence.extraction?.setVersion !== setVersion || starter.sourceRevision !== tagCommit
-    || Object.entries(starter).some(([key, value]) => origin[key] !== value || evidence.extraction[key] !== value)) refuse("starter_identity_mismatch");
+    || (Object.keys(starter) as (keyof typeof starter)[]).some(key => origin[key] !== starter[key] || evidence.extraction[key] !== starter[key])) refuse("starter_identity_mismatch");
   for (const pkg of packages) if (lock.packages?.[`node_modules/${pkg.name}`]?.integrity !== pkg.integrity || lock.packages?.[`node_modules/${pkg.name}`]?.version !== setVersion) refuse(`locked_package_mismatch: ${pkg.name}`);
   const compositionFiles = [".dockerignore", ".npmrc", "Dockerfile", "compose.yaml", "installation/install.ts", "lifecycle.mjs", "package.json"];
   const files = compositionFiles.map(path => ({ path, sha256: hash(installed(path)) }));

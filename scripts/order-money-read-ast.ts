@@ -62,7 +62,7 @@ export function staticText(expression: ts.Expression, unit: SourceUnit, project:
     return imported?.expression ? staticText(imported.expression, imported.unit, project, seen) : null;
   }
   if (ts.isPropertyAccessExpression(expression)) {
-    const imported = ts.isIdentifier(expression.expression) && unit.imports.get(expression.expression.text);
+    const imported = ts.isIdentifier(expression.expression) ? unit.imports.get(expression.expression.text) : undefined;
     if (imported?.namespace) {
       const target = resolveModule(unit, imported.modulePath, project);
       const resolved = target && exportedExpression(target, expression.name.text);
@@ -104,8 +104,9 @@ export function functionReturn(unit: SourceUnit, localName: string | ts.Identifi
   const imported = resolveImportedSymbol(unit, name, project);
   if (!imported) return null;
   const targetName = imported.unit.exports.get(unit.imports.get(name)?.imported ?? "");
-  const targetBinding = targetName && imported.unit.bindings.get(targetName)
-    ?.find((binding) => binding.scope === imported.unit.source && binding.returned);
+  const targetBinding = targetName
+    ? imported.unit.bindings.get(targetName)?.find((binding) => binding.scope === imported.unit.source && binding.returned)
+    : undefined;
   return targetBinding?.returned ? { unit: imported.unit, expression: targetBinding.returned,
     parameters: targetBinding.parameterKeys } : null;
 }

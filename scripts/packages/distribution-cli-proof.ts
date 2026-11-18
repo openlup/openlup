@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 
 // Immutable published artifacts, independently read from the public registry.
@@ -184,6 +185,18 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkOwned(); });
 }
 
+// CLI refusal reports can omit the command-specific payload. The assertions
+// below still require the fields that each exercised command must produce.
+type CliReport = {
+  formatVersion: number;
+  exitCode: number;
+  state: string;
+  findings?: readonly Pick<AppVerificationFinding, "code" | "observed" | "cause" | "fix" | "recheck" | "evidence">[];
+  files?: readonly (AppUpgradePlan["files"][number] & { ownership: string })[];
+  ownership?: { unlisted: string };
+  applied?: readonly string[];
+};
+
 export function proveDistributionCliConsumer(consumer: string, pair?: UpgradePair): void | (() => void) {
   if (pair) return proveStarterPair(consumer, pair);
   const executable = join(consumer, "node_modules/.bin/openlup");
@@ -199,7 +212,7 @@ export function proveDistributionCliConsumer(consumer: string, pair?: UpgradePai
     return result.stdout;
   }
   function json(args: string[], expected: number) {
-    const report = JSON.parse(run([...args, "--json"], expected));
+    const report: CliReport = JSON.parse(run([...args, "--json"], expected));
     assert.equal(report.formatVersion, 1);
     assert.equal(report.exitCode, expected);
     return report;
@@ -210,7 +223,7 @@ export function proveDistributionCliConsumer(consumer: string, pair?: UpgradePai
     assert.equal(json(["verify", "--unexpected"], 64).state, "refused");
     assert.equal(json(["verify", "--app", ""], 64).state, "refused");
     assert.equal(json(["verify", "--app", "missing.mjs"], 74).state, "failed");
-    assert.equal(json(["verify", "--app", "missing.mjs"], 74).findings[0].observed, "The --app module could not be loaded; raw application errors are withheld.");
+    assert.equal(json(["verify", "--app", "missing.mjs"], 74).findings?.[0]?.observed, "The --app module could not be loaded; raw application errors are withheld.");
 
     writeFileSync(join(root, "state.json"), JSON.stringify({ binder: false, schema: "previous", schedule: false }));
     writeFileSync(join(root, "app.mjs"), `
@@ -232,24 +245,25 @@ export function createVerificationInput() {
     const filesBefore = readdirSync(root).sort();
     const report = json(["verify", "--app", "./app.mjs"], 1);
     assert.deepEqual(readdirSync(root).sort(), filesBefore, "diagnosis created a file");
+    assert(report.findings);
     assert.deepEqual(report.findings.map(item => item.code).sort(), ["OPENLUP_E_PORT_MISSING", "OPENLUP_E_SCHEDULE_UNBOUND", "OPENLUP_E_SCHEMA_BEHIND"]);
     for (const finding of report.findings) {
-      for (const field of ["observed", "cause", "fix", "recheck"]) assert.equal(typeof finding[field], "string");
+      for (const field of ["observed", "cause", "fix", "recheck"] as const) assert.equal(typeof finding[field], "string");
       assert.deepEqual(Object.keys(finding.evidence), ["declared", "bound", "checked", "unknown"]);
       assert.equal(finding.recheck, "openlup verify --app './app.mjs' --json");
     }
     const text = run(["verify", "--app", "./app.mjs"], 1);
     for (const finding of report.findings) assert(text.includes(finding.fix));
     // Repairs use the exact binding keys and migration identity named by the report.
-    assert(report.findings.find(item => item.code === "OPENLUP_E_PORT_MISSING").fix.includes('bindings.ports["@openlup/platform/commerce:orders"]'));
-    assert(report.findings.find(item => item.code === "OPENLUP_E_SCHEDULE_UNBOUND").fix.includes('bindings.triggers["@openlup/platform/commerce:order-expiry"]'));
-    assert(report.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND").fix.includes("app-migrations/current.sql"));
+    assert(report.findings.find(item => item.code === "OPENLUP_E_PORT_MISSING")?.fix.includes('bindings.ports["@openlup/platform/commerce:orders"]'));
+    assert(report.findings.find(item => item.code === "OPENLUP_E_SCHEDULE_UNBOUND")?.fix.includes('bindings.triggers["@openlup/platform/commerce:order-expiry"]'));
+    assert(report.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND")?.fix.includes("app-migrations/current.sql"));
     writeFileSync(join(root, "state.json"), JSON.stringify({ binder: true, schema: "current", schedule: true }));
     assert.equal(json(["verify", "--app", "./app.mjs"], 0).state, "ready");
     writeFileSync(join(root, "state.json"), JSON.stringify({ binder: true, schema: null, schedule: true }));
     const unknown = json(["verify", "--app", "./app.mjs"], 2);
     assert.equal(unknown.state, "unknown");
-    assert(unknown.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND").evidence.checked.includes("Unknown"));
+    assert(unknown.findings?.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND")?.evidence.checked.includes("Unknown"));
     writeFileSync(join(root, "bad-app.mjs"), 'throw Error("synthetic-private-detail");');
     assert(!run(["verify", "--app", "./bad-app.mjs", "--json"], 74).includes("synthetic-private-detail"));
     for (const [source, expectedObserved, expectedFix] of [
@@ -265,8 +279,8 @@ export function createVerificationInput() {
       assert.equal(parsed.formatVersion, 1);
       assert.equal(parsed.state, "failed");
       assert.equal(parsed.exitCode, 74);
-      assert.equal(parsed.findings[0].code, "OPENLUP_E_CLI_FAILURE");
-      assert.equal(parsed.findings[0].observed, expectedObserved);
+      assert.equal(parsed.findings?.[0]?.code, "OPENLUP_E_CLI_FAILURE");
+      assert.equal(parsed.findings?.[0]?.observed, expectedObserved);
       assert(parsed.findings[0].fix.includes(expectedFix));
       assert(!failure.includes("synthetic-private-detail"));
       const failureText = run(["verify", "--app", "./bad-app.mjs"], 74);
@@ -315,11 +329,11 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
     const original = before();
     const plan = json(["upgrade", "plan", ...options], 0);
     assert.deepEqual(before(), original);
-    assert.equal(plan.files.find(item => item.path === "theme.css").ownership, "locally-customizable");
-    assert.equal(plan.ownership.unlisted, "application-owned");
+    assert.equal(plan.files?.find(item => item.path === "theme.css")?.ownership, "locally-customizable");
+    assert.equal(plan.ownership?.unlisted, "application-owned");
     writeFileSync(join(app, "b.json"), "divergent");
     const divergent = before();
-    assert.equal(json(["upgrade", "apply", ...options], 1).applied.length, 0);
+    assert.equal(json(["upgrade", "apply", ...options], 1).applied?.length, 0);
     assert.deepEqual(before(), divergent, "a later sorted conflict must prevent the earlier write");
     writeFileSync(join(app, "b.json"), from.files["b.json"]);
     const preload = join(root, "interrupt.mjs");
@@ -388,15 +402,17 @@ export function createVerificationInput() {
       assert.equal(result.stderr, "");
       return result.stdout;
     };
-    const report = JSON.parse(run(1));
+    const report: CliReport = JSON.parse(run(1));
+    assert(report.findings);
     assert(report.findings.some(item => item.code === "OPENLUP_E_PORT_MISSING"));
     assert(report.findings.some(item => item.code === "OPENLUP_E_SCHEDULE_UNBOUND"));
     assert(report.findings.some(item => item.code === "OPENLUP_E_SCHEMA_BEHIND" && item.observed.includes('"previous"')));
     assert(report.findings.some(item => item.code === "OPENLUP_E_SCHEMA_BEHIND" && item.observed === "object_absent"));
     const text = run(1, false);
     for (const finding of report.findings) assert(text.includes(finding.fix));
-    const schemaFix = report.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND" && item.fix.startsWith("Apply ")).fix;
-    const migration = /^Apply ([a-zA-Z0-9_./-]+) /u.exec(schemaFix)?.[1];
+    const schemaFinding = report.findings.find(item => item.code === "OPENLUP_E_SCHEMA_BEHIND" && item.fix.startsWith("Apply "));
+    assert(schemaFinding);
+    const migration = /^Apply ([a-zA-Z0-9_./-]+) /u.exec(schemaFinding.fix)?.[1];
     assert.equal(migration, "distribution-diagnosis-postgres/migrations/current.sql");
     executeSql(readFileSync(join(consumer, migration!), "utf8"));
     writeFileSync(join(root, "state.json"), JSON.stringify({ repaired: true }));

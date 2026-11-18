@@ -348,6 +348,11 @@ settings steps, see
 
 ### Required and raw checks
 
+The root application and tooling use `strict` in `tsconfig.app.json` and
+`tsconfig.node.json`. The tooling project reads existing JavaScript imports with
+TypeScript inference and JSDoc. The separate `tsconfig.tests.json` project keeps
+its own integration-test compiler settings, including strict null checks.
+
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. CI and
 release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
