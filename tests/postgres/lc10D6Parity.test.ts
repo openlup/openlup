@@ -848,7 +848,7 @@ async function state() {
 
 it.each([
   {name:"lc10_rollback_after_release",boundary:"WHERE operation_id=prior_generation.id AND status IN ('held','expired');"},
-  {name:"lc10_rollback_after_template",boundary:"ELSE RAISE EXCEPTION 'successor_lane_unavailable' USING ERRCODE='55000'; END IF;"},
+  {name:"lc10_rollback_after_template",boundary:" -- The chosen lane must realize the exact checked basket on the same transaction.\n"},
   {name:"lc10_rollback_after_freeze",boundary:"snapshot,'claimed',gen_random_uuid(),'successor_resolution',p_now,p_now+interval '5 minutes',p_now,p_now) RETURNING * INTO g;"},
   {name:"lc10_rollback_after_receipt",boundary:"VALUES(p_actor_id,p_command_key,s.id,s.client_id,command_fingerprint,command,p_accepted_quote_hash,answer,'applied');"},
   {name:"lc10_rollback_after_outbox",boundary:"VALUES('subscription',s.id,'subscription.successor.accepted.v2','subscription-successor:'||proposal.id::text||':accepted:v2',answer);"},
@@ -1712,20 +1712,56 @@ it.each(["classic", "exact", "sized"] as const)("lc10_quote_prune_skips_unrelate
   }
 });
 
-it.each(["classic", "exact", "sized"] as const)("lc10_quote_payment_refusal_precedes_source_close_%s", async lane => {
+it.each((["payment", "retained_quote"] as const).flatMap(fact =>
+  (["classic", "exact", "sized"] as const).map(lane => [fact, lane] as const),
+))("lc10_quote_%s_refusal_precedes_source_close_%s", async (fact, lane) => {
   const f = await createSuccessorJourney(pool, { lane });
-  await db.query("DELETE FROM public.subscription_method_states WHERE subscription_id=$1", [f.subscription]);
+  let proposalId = f.proposalId, quoteHash = f.quoteHash;
+  if (fact === "payment") await db.query("DELETE FROM public.subscription_method_states WHERE subscription_id=$1", [f.subscription]);
+  else {
+    proposalId = randomUUID();
+    const applyPayload = { ...f.offer.applyPayload, [lane === "classic" ? "planDays" : "cadenceDays"]: 29 };
+    const { rows } = await db.query("SELECT public.subscription_successor_proposal_offer_v2($1,$2,$3,$4) AS result",
+      [f.subscription, f.client, { ...f.offer, proposalId, applyPayload }, f.at]);
+    quoteHash = rows[0].result.quote_hash;
+  }
   await db.query(`CREATE FUNCTION pg_temp.reject_test_source_close() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN RAISE EXCEPTION 'fixture_source_close_reached'; END; $$;
     CREATE TRIGGER fixture_source_close BEFORE UPDATE ON public.subscription_stock_wait_cases
     FOR EACH ROW WHEN (NEW.state='closed') EXECUTE FUNCTION pg_temp.reject_test_source_close()`);
   const invoke = () => db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6)",
-    [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, f.at]);
+    [f.caseId, proposalId, quoteHash, randomUUID(), f.client, f.at]);
   const before = await state();
   await db.query("SAVEPOINT payment_refusal");
-  await expect(invoke()).rejects.toMatchObject({ code: "22023", message: "subscription_command_payment_blocked" });
+  await expect(invoke()).rejects.toMatchObject({ code: "22023",
+    message: fact === "payment" ? "subscription_command_payment_blocked" : "subscription_edit_quote_drift" });
   await db.query("ROLLBACK TO SAVEPOINT payment_refusal");
   expect(await state()).toEqual(before);
+});
+
+it.each(["classic", "exact", "sized"] as const)("lc10_quote_source_close_precedes_agreement_effects_%s", async lane => {
+  const f = await createSuccessorJourney(pool, { lane, creator: "recover", recoveryStock: 100 });
+  const graph = (await db.query(`SELECT hold.status, op.lease_expires_at+interval '1 second' AS as_of
+    FROM public.subscription_renewal_operations op JOIN public.fulfillment_inventory_reservations hold
+      ON hold.renewal_operation_id=op.id WHERE op.id=$1`, [f.operationId])).rows[0];
+  expect(graph.status).toBe("held");
+  await db.query(`CREATE FUNCTION pg_temp.assert_test_source_released() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE target uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.subscription_id ELSE NEW.subscription_id END;
+    BEGIN
+      IF NOT EXISTS(SELECT 1 FROM public.subscription_stock_wait_cases wait
+        JOIN public.fulfillment_inventory_reservations hold ON hold.renewal_operation_id=wait.renewal_operation_id
+        WHERE wait.subscription_id=target AND wait.state='closed' AND wait.block_reason='superseded_by_successor' AND hold.status='released')
+      THEN RAISE EXCEPTION 'fixture_agreement_write_before_source_release'; END IF;
+      IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+      RETURN NEW;
+    END; $$;
+    CREATE TRIGGER fixture_agreement_effect_order BEFORE INSERT OR UPDATE OR DELETE ON public.subscription_lines
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.assert_test_source_released()`);
+  await expect(db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+    [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, graph.as_of]))
+    .resolves.toMatchObject({ rows: [{ result: { status: "applied", rootOperationId: f.operationId, proposalId: f.proposalId } }] });
+  expect((await db.query("SELECT next_cycle_at=$2::timestamptz AS same FROM public.subscriptions WHERE id=$1",
+    [f.subscription, f.anchor])).rows).toEqual([{ same: true }]);
 });
 
 it("lc10_quote_unrepresentable_lane_refuses_before_activation", async () => {

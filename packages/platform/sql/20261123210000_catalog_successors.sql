@@ -1561,16 +1561,21 @@ BEGIN
    AND EXISTS(SELECT 1 FROM jsonb_array_elements(prior_snapshot->'lines') l WHERE l->>'sku'=predecessor.sku)) THEN
   RAISE EXCEPTION 'stock_wait_successor_predecessor_not_withdrawn' USING ERRCODE='22023'; END IF;
  -- Effects start only after ownership, frozen identity, quote and current admission.
- IF proposal.lane='classic' THEN
-<<accepted_lane>>
-DECLARE
+ <<accepted_lane>>
+ DECLARE
   v_catalog_evidence jsonb; v_catalog_acceptance jsonb;
- s public.subscriptions%ROWTYPE; r public.subscription_command_receipts%ROWTYPE;
- command jsonb; fingerprint text; answer jsonb; q jsonb; event_id uuid; event_key text;
- core jsonb; addons jsonb; stored jsonb; line_pricing jsonb; constraint_value jsonb;
- plan integer; version integer; minimum_text text; minimum_units integer; line jsonb; ordinal integer:=0;
- core_matches boolean; addon_matches boolean; outcome text:='applied';
-BEGIN
+  s public.subscriptions%ROWTYPE; r public.subscription_command_receipts%ROWTYPE;
+  command jsonb; fingerprint text; answer jsonb; q jsonb; event_id uuid; event_key text;
+  core jsonb; addons jsonb; lines jsonb; line jsonb; line_pricing jsonb:='[]'::jsonb; constraint_value jsonb;
+  plan integer; version integer; minimum_text text; minimum_units integer; ordinal integer:=0;
+  core_matches boolean; addon_matches boolean; outcome text:='applied'; base_matches boolean; base_set boolean;
+  target_id uuid; new_line_id uuid; current_total bigint; desired_total bigint;
+  action text; request jsonb; opt_in boolean; intro jsonb; phase_config jsonb; paid integer;
+  current_core jsonb; desired_core jsonb; rewrites_addons boolean; expected_lines jsonb;
+ BEGIN
+ <<validate_lane>>
+ BEGIN
+ IF proposal.lane='classic' THEN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
   OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object'
@@ -1585,9 +1590,9 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id) THEN
    RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
   IF r.command_fingerprint<>fingerprint OR r.quote_hash IS DISTINCT FROM (p_payload#>>'{request,acceptedQuoteHash}') THEN
-   lane_result:=jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict'); EXIT accepted_lane; END IF;
-  IF r.status IN ('applied','noop') THEN lane_result:=r.result||jsonb_build_object('status','replayed','originalStatus',r.status); EXIT accepted_lane; END IF;
-  IF r.status='refused' THEN lane_result:=r.result; EXIT accepted_lane; END IF;
+   lane_result:=jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict'); EXIT validate_lane; END IF;
+  IF r.status IN ('applied','noop') THEN lane_result:=r.result||jsonb_build_object('status','replayed','originalStatus',r.status); EXIT validate_lane; END IF;
+  IF r.status='refused' THEN lane_result:=r.result; EXIT validate_lane; END IF;
   RAISE EXCEPTION 'subscription_command_idempotency_conflict' USING ERRCODE='22023';
  END IF;
  core:=p_payload->'baseLines'; addons:=COALESCE(p_payload->'addonLines','[]'::jsonb);
@@ -1681,57 +1686,8 @@ BEGIN
       INTO v_catalog_acceptance FROM jsonb_array_elements(v_catalog_evidence->'skuRevisions') l;
   END IF;
   constraint_value:=NULLIF(constraint_value,'null'::jsonb);
-  DELETE FROM public.subscription_lines WHERE subscription_id=s.id;
-  DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
-  line_pricing:='[]'::jsonb;
-  FOR line IN SELECT v||jsonb_build_object('isAddon',ord>jsonb_array_length(core))
-   FROM jsonb_array_elements(core||addons) WITH ORDINALITY x(v,ord) ORDER BY ord LOOP
-   ordinal:=ordinal+1;
-   INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
-   VALUES(s.id,(line->>'variantId')::uuid,(line->>'qty')::integer,ordinal-1,(line->>'isAddon')::boolean,
-    (line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,s.currency_code);
-   INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
-   SELECT s.id,ordinal,sku.sku,(line->>'qty')::integer,(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint
-    FROM public.catalog_skus sku WHERE sku.id=(line->>'variantId')::uuid;
-   line_pricing:=line_pricing||jsonb_build_array(jsonb_build_object('sku',line#>>'{quoteLine,sku}',
-    'quantity',(line->>'qty')::integer,'unitAmountMinor',(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,
-    'isAddon',(line->>'isAddon')::boolean,'quoteLine',line->'quoteLine'));
-  END LOOP;
-  UPDATE public.subscription_renewal_terms SET updated_at=p_now WHERE subscription_id=s.id;
-  UPDATE public.subscriptions SET cadence_days=plan,composition_constraint=constraint_value,
-   template_version=template_version+1,updated_at=p_now WHERE id=s.id RETURNING * INTO s;
-  event_key:='command:'||encode(sha256(convert_to(p_actor_id::text||':'||p_key,'UTF8')),'hex');
-  INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
-   VALUES(s.id,'subscription.customer_self_service.update_package_template',event_key,
-    jsonb_build_object('action','update_package_template','quotePreviewId',q->>'id','linePricing',line_pricing,
-     'payload',(p_payload->'request')-ARRAY['acceptedQuoteHash','expectedTemplateVersion'],
-     'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')),p_now)
-   RETURNING id INTO event_id;
-  PERFORM public.subscription_quote_preview_mark_accepted((q->>'id')::uuid,p_key,event_id,p_now);
  END IF;
-  IF v_catalog_acceptance IS NOT NULL THEN
-    UPDATE public.subscription_lines sl SET catalog_sku_revision_id=(ref->>'skuRevisionId')::uuid
-      FROM jsonb_array_elements(v_catalog_acceptance->'lines') ref WHERE sl.subscription_id=s.id AND sl.variant_id=(ref->>'skuId')::uuid;
-    UPDATE public.subscription_renewal_terms SET catalog_acceptance=v_catalog_acceptance WHERE subscription_id=s.id;
-    UPDATE public.subscription_events SET catalog_acceptance=v_catalog_acceptance WHERE id=event_id;
-  END IF;
- answer:=jsonb_build_object('status',outcome,'subscriptionId',s.id,'action','update_package_template','subscriptionStatus',s.status,
-  'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
- INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,quote_hash,result,status)
- VALUES(p_actor_id,p_key,s.id,p_client_id,fingerprint,command,p_payload#>>'{request,acceptedQuoteHash}',answer,outcome);
- lane_result:=answer; EXIT accepted_lane;
-END accepted_lane;
-ELSIF proposal.lane='exact' THEN
-<<accepted_lane>>
-DECLARE
-  v_catalog_evidence jsonb; v_catalog_acceptance jsonb;
- s public.subscriptions%ROWTYPE; r public.subscription_command_receipts%ROWTYPE;
- command jsonb; fingerprint text; answer jsonb; q jsonb; event_id uuid; event_key text;
- lines jsonb; line jsonb; line_pricing jsonb:='[]'::jsonb; constraint_value jsonb;
- version integer; plan integer; ordinal integer:=0; target_id uuid; new_line_id uuid;
- base_matches boolean; outcome text:='applied'; base_set boolean;
- current_total bigint; desired_total bigint;
-BEGIN
+ ELSIF proposal.lane='exact' THEN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
   OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object'
@@ -1748,9 +1704,9 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id) THEN
    RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
   IF r.command_fingerprint<>fingerprint OR r.quote_hash IS DISTINCT FROM (p_payload#>>'{request,acceptedQuoteHash}') THEN
-   lane_result:=jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict'); EXIT accepted_lane; END IF;
-  IF r.status IN ('applied','noop') THEN lane_result:=r.result||jsonb_build_object('status','replayed','originalStatus',r.status); EXIT accepted_lane; END IF;
-  IF r.status='refused' THEN lane_result:=r.result; EXIT accepted_lane; END IF;
+   lane_result:=jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict'); EXIT validate_lane; END IF;
+  IF r.status IN ('applied','noop') THEN lane_result:=r.result||jsonb_build_object('status','replayed','originalStatus',r.status); EXIT validate_lane; END IF;
+  IF r.status='refused' THEN lane_result:=r.result; EXIT validate_lane; END IF;
   RAISE EXCEPTION 'subscription_command_idempotency_conflict' USING ERRCODE='22023';
  END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;
@@ -1828,25 +1784,15 @@ BEGIN
   IF p_action='swap_base_line' THEN
    IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id AND variant_id=(p_payload#>>'{request,toVariantId}')::uuid) THEN
     RAISE EXCEPTION 'subscription_edit_conflict_duplicate_line' USING ERRCODE='22023'; END IF;
-   UPDATE public.subscription_lines SET variant_id=(p_payload#>>'{request,toVariantId}')::uuid,
-    catalog_sku_revision_id=(SELECT (ref->>'skuRevisionId')::uuid FROM jsonb_array_elements(v_catalog_acceptance->'lines') ref
-      WHERE ref->>'skuId'=p_payload#>>'{request,toVariantId}'),updated_at=p_now
-    WHERE subscription_id=s.id AND variant_id=(p_payload#>>'{request,fromVariantId}')::uuid;
-   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_not_found_line' USING ERRCODE='22023'; END IF;
-  ELSIF p_action='add_addon' THEN
-   INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
-   VALUES(s.id,(p_payload#>>'{request,variantId}')::uuid,GREATEST(1,COALESCE((p_payload#>>'{request,qty}')::integer,1)),
-    COALESCE((SELECT max(sort_order)+1 FROM public.subscription_lines WHERE subscription_id=s.id),1),true,0,s.currency_code)
-   RETURNING id INTO new_line_id;
-  ELSIF p_action='remove_addon' THEN
-   DELETE FROM public.subscription_lines WHERE subscription_id=s.id AND is_addon AND variant_id=(p_payload#>>'{request,variantId}')::uuid;
-   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_not_found_addon' USING ERRCODE='22023'; END IF;
-  ELSIF p_action='update_addon_quantity' THEN
-   IF (p_payload#>>'{request,qty}')::integer IS NULL OR (p_payload#>>'{request,qty}')::integer<=0 THEN
+   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines
+    WHERE subscription_id=s.id AND variant_id=(p_payload#>>'{request,fromVariantId}')::uuid) THEN
+    RAISE EXCEPTION 'subscription_edit_not_found_line' USING ERRCODE='22023'; END IF;
+  ELSIF p_action IN ('remove_addon','update_addon_quantity') THEN
+   IF p_action='update_addon_quantity' AND ((p_payload#>>'{request,qty}')::integer IS NULL OR (p_payload#>>'{request,qty}')::integer<=0) THEN
     RAISE EXCEPTION 'subscription_edit_invalid_addon_qty' USING ERRCODE='22023'; END IF;
-   UPDATE public.subscription_lines SET quantity=(p_payload#>>'{request,qty}')::integer,updated_at=p_now
-    WHERE subscription_id=s.id AND is_addon AND variant_id=(p_payload#>>'{request,variantId}')::uuid;
-   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_not_found_addon' USING ERRCODE='22023'; END IF;
+   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id AND is_addon
+    AND variant_id=(p_payload#>>'{request,variantId}')::uuid) THEN
+    RAISE EXCEPTION 'subscription_edit_not_found_addon' USING ERRCODE='22023'; END IF;
   ELSIF p_action='update_plan_length' THEN
    plan:=(p_payload#>>'{request,planDays}')::integer;
    IF plan IS NULL OR plan<=0 THEN RAISE EXCEPTION 'subscription_edit_invalid_plan_length' USING ERRCODE='22023'; END IF;
@@ -1870,60 +1816,8 @@ BEGIN
    constraint_value:=jsonb_set(jsonb_set(COALESCE(s.composition_constraint,'{}'::jsonb),'{mode}',p_payload#>'{compositionConstraint,mode}'),
     '{portionFactor}',p_payload#>'{compositionConstraint,portionFactor}');
   END IF;
-  IF base_set THEN DELETE FROM public.subscription_lines WHERE subscription_id=s.id AND NOT is_addon; END IF;
-  DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
-  FOR line IN SELECT v FROM jsonb_array_elements(lines) WITH ORDINALITY x(v,ord) ORDER BY ord LOOP
-   ordinal:=ordinal+1;
-   IF base_set AND NOT (line->>'isAddon')::boolean THEN
-    INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
-    VALUES(s.id,(line->>'variantId')::uuid,(line->>'qty')::integer,ordinal-1,false,
-     (line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,s.currency_code) RETURNING id INTO target_id;
-   ELSE
-    target_id:=COALESCE((line->>'lineId')::uuid,new_line_id);
-    UPDATE public.subscription_lines SET unit_price_minor=(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,
-     currency_code=s.currency_code,updated_at=p_now WHERE id=target_id AND subscription_id=s.id
-     AND variant_id=(line->>'variantId')::uuid AND quantity=(line->>'qty')::integer AND is_addon=(line->>'isAddon')::boolean;
-    IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_quote_drift' USING ERRCODE='22023'; END IF;
-   END IF;
-   INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
-   SELECT s.id,ordinal,sku.sku,(line->>'qty')::integer,(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint
-    FROM public.catalog_skus sku WHERE sku.id=(line->>'variantId')::uuid;
-   line_pricing:=line_pricing||jsonb_build_array(jsonb_build_object('sku',line#>>'{quoteLine,sku}',
-    'quantity',(line->>'qty')::integer,'unitAmountMinor',(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,
-    'isAddon',(line->>'isAddon')::boolean,'quoteLine',line->'quoteLine'));
-  END LOOP;
-  UPDATE public.subscription_renewal_terms SET updated_at=p_now WHERE subscription_id=s.id;
-  UPDATE public.subscriptions SET cadence_days=plan,composition_constraint=constraint_value,template_version=template_version+1,updated_at=p_now
-   WHERE id=s.id RETURNING * INTO s;
-  event_key:='command:'||encode(sha256(convert_to(p_actor_id::text||':'||p_key,'UTF8')),'hex');
-  INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
-   VALUES(s.id,'subscription.customer_self_service.'||p_action,event_key,jsonb_build_object('action',p_action,'quotePreviewId',q->>'id',
-    'linePricing',line_pricing,'payload',(p_payload->'request')-ARRAY['acceptedQuoteHash','expectedTemplateVersion'],
-    'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')),p_now)
-   RETURNING id INTO event_id;
-  PERFORM public.subscription_quote_preview_mark_accepted((q->>'id')::uuid,p_key,event_id,p_now);
  END IF;
-  IF v_catalog_acceptance IS NOT NULL THEN
-    UPDATE public.subscription_lines sl SET catalog_sku_revision_id=(ref->>'skuRevisionId')::uuid
-      FROM jsonb_array_elements(v_catalog_acceptance->'lines') ref WHERE sl.subscription_id=s.id AND sl.variant_id=(ref->>'skuId')::uuid;
-    UPDATE public.subscription_renewal_terms SET catalog_acceptance=v_catalog_acceptance WHERE subscription_id=s.id;
-    UPDATE public.subscription_events SET catalog_acceptance=v_catalog_acceptance WHERE id=event_id;
-  END IF;
- answer:=jsonb_build_object('status',outcome,'subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
-  'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
- INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,quote_hash,result,status)
- VALUES(p_actor_id,p_key,s.id,p_client_id,fingerprint,command,p_payload#>>'{request,acceptedQuoteHash}',answer,outcome);
- lane_result:=answer; EXIT accepted_lane;
-END accepted_lane;
-ELSIF proposal.lane='sized' THEN
-<<accepted_lane>>
-DECLARE v_catalog_evidence jsonb; v_catalog_acceptance jsonb;
- s public.subscriptions%ROWTYPE; r public.subscription_command_receipts%ROWTYPE;
- action text; request jsonb; command jsonb; fingerprint text; answer jsonb; q jsonb; lines jsonb; line jsonb;
- event_id uuid; event_key text; line_pricing jsonb:='[]'::jsonb; version integer; plan integer; ordinal integer:=0;
- constraint_value jsonb; opt_in boolean; intro jsonb; phase_config jsonb; paid integer;
- current_core jsonb; desired_core jsonb; outcome text:='applied'; rewrites_addons boolean;
-BEGIN
+ ELSIF proposal.lane='sized' THEN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
   OR jsonb_typeof(p_payload) IS DISTINCT FROM 'object' OR jsonb_typeof(p_payload->'request') IS DISTINCT FROM 'object' THEN
@@ -1939,9 +1833,9 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id) THEN
    RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
   IF r.command_fingerprint<>fingerprint OR r.quote_hash IS DISTINCT FROM request->>'acceptedQuoteHash' THEN
-   lane_result:=jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict'); EXIT accepted_lane; END IF;
-  IF r.status IN ('applied','noop') THEN lane_result:=r.result||jsonb_build_object('status','replayed','originalStatus',r.status); EXIT accepted_lane; END IF;
-  IF r.status='refused' THEN lane_result:=r.result; EXIT accepted_lane; END IF;
+   lane_result:=jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict'); EXIT validate_lane; END IF;
+  IF r.status IN ('applied','noop') THEN lane_result:=r.result||jsonb_build_object('status','replayed','originalStatus',r.status); EXIT validate_lane; END IF;
+  IF r.status='refused' THEN lane_result:=r.result; EXIT validate_lane; END IF;
   RAISE EXCEPTION 'subscription_command_idempotency_conflict' USING ERRCODE='22023';
  END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;
@@ -2034,16 +1928,150 @@ BEGIN
    FROM jsonb_array_elements(lines) v WHERE (v->>'isAddon')::boolean) IS DISTINCT FROM
    (SELECT COALESCE(jsonb_object_agg(variant_id,quantity),'{}'::jsonb) FROM public.subscription_lines WHERE subscription_id=s.id AND is_addon) THEN
    RAISE EXCEPTION 'subscription_edit_quote_drift' USING ERRCODE='22023'; END IF;
-  DELETE FROM public.subscription_lines WHERE subscription_id=s.id AND (NOT is_addon OR rewrites_addons);
-  DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
-  FOR line IN SELECT v FROM jsonb_array_elements(lines) WITH ORDINALITY x(v,ord) ORDER BY ord LOOP
-   ordinal:=ordinal+1;
+  FOR line IN SELECT v FROM jsonb_array_elements(lines) v LOOP
    IF line#>>'{quoteLine,unitPriceGross,currency}' IS DISTINCT FROM s.currency_code
     OR line#>>'{quoteLine,lineSubtotalGross,currency}' IS DISTINCT FROM s.currency_code
     OR line#>'{quoteLine,quantity}' IS DISTINCT FROM line->'qty'
     OR line#>'{quoteLine,lineSubtotalGross,amountMinor}' IS DISTINCT FROM to_jsonb((line->>'qty')::bigint*(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint)
     OR NOT EXISTS(SELECT 1 FROM public.catalog_skus WHERE id=(line->>'variantId')::uuid AND sku=line#>>'{quoteLine,sku}') THEN
     RAISE EXCEPTION 'subscription_edit_quote_drift' USING ERRCODE='22023'; END IF;
+  END LOOP;
+ END IF;
+ ELSE RAISE EXCEPTION 'successor_lane_unavailable' USING ERRCODE='55000'; END IF;
+ END validate_lane;
+ IF lane_result IS NOT NULL AND (lane_result->>'status' IS NULL OR lane_result->>'status' NOT IN ('applied','noop','replayed')) THEN
+  RAISE EXCEPTION 'successor_lane_refused' USING ERRCODE='22023'; END IF;
+ -- Compare the retained next basket before releasing the original obligation.
+ IF lane_result IS NULL AND outcome<>'noop' THEN
+  expected_lines:=CASE WHEN proposal.lane='classic' THEN core||addons ELSE lines END;
+  SELECT coalesce(jsonb_agg(jsonb_build_object('lineOrdinal',x.ord,'sku',sku.sku,
+    'quantity',(x.v->>'qty')::integer,'unitAmountMinor',(x.v#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint) ORDER BY x.ord),'[]'::jsonb)
+   INTO basket FROM jsonb_array_elements(expected_lines) WITH ORDINALITY x(v,ord)
+   JOIN public.catalog_skus sku ON sku.id=(x.v->>'variantId')::uuid;
+  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(expected_lines) x WHERE x->>'variantId'=proposal.successor_sku_id::text)
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(expected_lines) x WHERE x->>'variantId'=proposal.predecessor_sku_id::text) THEN
+   RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
+ ELSE
+  SELECT coalesce(jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,
+    'quantity',l.quantity,'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal),'[]'::jsonb) INTO basket
+   FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=p_subscription_id;
+ END IF;
+ snapshot:=proposal.request->'cycleSnapshot';
+ IF jsonb_typeof(snapshot) IS DISTINCT FROM 'object' OR snapshot->'lines' IS DISTINCT FROM basket
+  OR snapshot->>'contractVersion' IS DISTINCT FROM prior_snapshot->>'contractVersion'
+  OR snapshot->>'subscriptionId' IS DISTINCT FROM p_subscription_id::text OR (snapshot->>'scheduledAt')::timestamptz IS DISTINCT FROM root.scheduled_at
+  OR snapshot->'cycleNumber' IS DISTINCT FROM to_jsonb(root.cycle_number) OR snapshot->>'currency' IS DISTINCT FROM prior_snapshot->>'currency'
+  OR snapshot->>'stockSourceKey' IS DISTINCT FROM prior_snapshot->>'stockSourceKey' OR snapshot->>'settlementChannelKey' IS DISTINCT FROM prior_snapshot->>'settlementChannelKey'
+  OR snapshot->>'authorizationRef' IS DISTINCT FROM prior_snapshot->>'authorizationRef' OR snapshot->'payerAccountRef' IS DISTINCT FROM prior_snapshot->'payerAccountRef'
+  OR snapshot->'unattendedChargeAuthorizedAt' IS DISTINCT FROM prior_snapshot->'unattendedChargeAuthorizedAt'
+  OR snapshot->'cycle' IS DISTINCT FROM prior_snapshot->'cycle'
+  OR snapshot#>'{orderSnapshot,shippingAddressRef}' IS DISTINCT FROM prior_snapshot#>'{orderSnapshot,shippingAddressRef}'
+  OR snapshot->>'currency' IS DISTINCT FROM proposal.preview#>>'{quote_snapshot,editConsent,currency}'
+  OR snapshot#>'{templateSnapshot,lines}' IS DISTINCT FROM basket OR snapshot#>'{orderSnapshot,lines}' IS DISTINCT FROM basket
+  OR snapshot#>'{pricingSnapshot,totalAmountMinor}' IS DISTINCT FROM snapshot->'totalAmountMinor'
+  OR coalesce(snapshot->>'frozenFingerprint','') !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'subscription_renewal_snapshot_inconsistent' USING ERRCODE='22023'; END IF;
+ IF source_case_kind='legacy' THEN
+  UPDATE public.subscription_stock_wait_cases SET state='closed',closed_at=p_now,block_reason='superseded_by_successor' WHERE id=p_case_id;
+  IF root.state NOT IN ('succeeded','refused') THEN UPDATE public.subscription_renewal_operations SET state='refused',terminal_outcome='refused',terminal_reason='superseded_by_successor',terminal_at=p_now,updated_at=p_now WHERE id=root.id; END IF;
+ ELSE
+  UPDATE public.subscription_successor_wait_cases_v2 SET state='closed',closed_at=p_now,block_reason='superseded_by_successor',superseded_by_proposal_id=proposal.id WHERE id=p_case_id;
+  UPDATE public.subscription_successor_operations_v2 SET superseded_by_proposal_id=proposal.id,updated_at=p_now WHERE id=prior_generation.id;
+ END IF;
+ UPDATE public.fulfillment_inventory_reservations SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
+  WHERE renewal_operation_id=root.id AND status IN ('held','expired');
+ UPDATE public.subscription_successor_reservations_v2 SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
+  WHERE operation_id=prior_generation.id AND status IN ('held','expired');
+ IF lane_result IS NOT NULL THEN EXIT accepted_lane; END IF;
+ IF proposal.lane='classic' THEN
+ IF outcome<>'noop' THEN
+  DELETE FROM public.subscription_lines WHERE subscription_id=s.id;
+  DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
+  line_pricing:='[]'::jsonb;
+  FOR line IN SELECT v||jsonb_build_object('isAddon',ord>jsonb_array_length(core))
+   FROM jsonb_array_elements(core||addons) WITH ORDINALITY x(v,ord) ORDER BY ord LOOP
+   ordinal:=ordinal+1;
+   INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+   VALUES(s.id,(line->>'variantId')::uuid,(line->>'qty')::integer,ordinal-1,(line->>'isAddon')::boolean,
+    (line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,s.currency_code);
+   INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
+   SELECT s.id,ordinal,sku.sku,(line->>'qty')::integer,(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint
+    FROM public.catalog_skus sku WHERE sku.id=(line->>'variantId')::uuid;
+   line_pricing:=line_pricing||jsonb_build_array(jsonb_build_object('sku',line#>>'{quoteLine,sku}',
+    'quantity',(line->>'qty')::integer,'unitAmountMinor',(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,
+    'isAddon',(line->>'isAddon')::boolean,'quoteLine',line->'quoteLine'));
+  END LOOP;
+  UPDATE public.subscription_renewal_terms SET updated_at=p_now WHERE subscription_id=s.id;
+  UPDATE public.subscriptions SET cadence_days=plan,composition_constraint=constraint_value,
+   template_version=template_version+1,updated_at=p_now WHERE id=s.id RETURNING * INTO s;
+  event_key:='command:'||encode(sha256(convert_to(p_actor_id::text||':'||p_key,'UTF8')),'hex');
+  INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
+   VALUES(s.id,'subscription.customer_self_service.update_package_template',event_key,
+    jsonb_build_object('action','update_package_template','quotePreviewId',q->>'id','linePricing',line_pricing,
+     'payload',(p_payload->'request')-ARRAY['acceptedQuoteHash','expectedTemplateVersion'],
+     'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')),p_now)
+   RETURNING id INTO event_id;
+  PERFORM public.subscription_quote_preview_mark_accepted((q->>'id')::uuid,p_key,event_id,p_now);
+ END IF;
+ ELSIF proposal.lane='exact' THEN
+ IF outcome<>'noop' THEN
+  IF p_action='swap_base_line' THEN
+   UPDATE public.subscription_lines SET variant_id=(p_payload#>>'{request,toVariantId}')::uuid,
+    catalog_sku_revision_id=(SELECT (ref->>'skuRevisionId')::uuid FROM jsonb_array_elements(v_catalog_acceptance->'lines') ref
+      WHERE ref->>'skuId'=p_payload#>>'{request,toVariantId}'),updated_at=p_now
+    WHERE subscription_id=s.id AND variant_id=(p_payload#>>'{request,fromVariantId}')::uuid;
+   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_not_found_line' USING ERRCODE='22023'; END IF;
+  ELSIF p_action='add_addon' THEN
+   INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+   VALUES(s.id,(p_payload#>>'{request,variantId}')::uuid,GREATEST(1,COALESCE((p_payload#>>'{request,qty}')::integer,1)),
+    COALESCE((SELECT max(sort_order)+1 FROM public.subscription_lines WHERE subscription_id=s.id),1),true,0,s.currency_code)
+   RETURNING id INTO new_line_id;
+  ELSIF p_action='remove_addon' THEN
+   DELETE FROM public.subscription_lines WHERE subscription_id=s.id AND is_addon AND variant_id=(p_payload#>>'{request,variantId}')::uuid;
+   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_not_found_addon' USING ERRCODE='22023'; END IF;
+  ELSIF p_action='update_addon_quantity' THEN
+   UPDATE public.subscription_lines SET quantity=(p_payload#>>'{request,qty}')::integer,updated_at=p_now
+    WHERE subscription_id=s.id AND is_addon AND variant_id=(p_payload#>>'{request,variantId}')::uuid;
+   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_not_found_addon' USING ERRCODE='22023'; END IF;
+  END IF;
+  IF base_set THEN DELETE FROM public.subscription_lines WHERE subscription_id=s.id AND NOT is_addon; END IF;
+  DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
+  FOR line IN SELECT v FROM jsonb_array_elements(lines) WITH ORDINALITY x(v,ord) ORDER BY ord LOOP
+   ordinal:=ordinal+1;
+   IF base_set AND NOT (line->>'isAddon')::boolean THEN
+    INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+    VALUES(s.id,(line->>'variantId')::uuid,(line->>'qty')::integer,ordinal-1,false,
+     (line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,s.currency_code) RETURNING id INTO target_id;
+   ELSE
+    target_id:=COALESCE((line->>'lineId')::uuid,new_line_id);
+    UPDATE public.subscription_lines SET unit_price_minor=(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,
+     currency_code=s.currency_code,updated_at=p_now WHERE id=target_id AND subscription_id=s.id
+     AND variant_id=(line->>'variantId')::uuid AND quantity=(line->>'qty')::integer AND is_addon=(line->>'isAddon')::boolean;
+    IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_quote_drift' USING ERRCODE='22023'; END IF;
+   END IF;
+   INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
+   SELECT s.id,ordinal,sku.sku,(line->>'qty')::integer,(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint
+    FROM public.catalog_skus sku WHERE sku.id=(line->>'variantId')::uuid;
+   line_pricing:=line_pricing||jsonb_build_array(jsonb_build_object('sku',line#>>'{quoteLine,sku}',
+    'quantity',(line->>'qty')::integer,'unitAmountMinor',(line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint,
+    'isAddon',(line->>'isAddon')::boolean,'quoteLine',line->'quoteLine'));
+  END LOOP;
+  UPDATE public.subscription_renewal_terms SET updated_at=p_now WHERE subscription_id=s.id;
+  UPDATE public.subscriptions SET cadence_days=plan,composition_constraint=constraint_value,template_version=template_version+1,updated_at=p_now
+   WHERE id=s.id RETURNING * INTO s;
+  event_key:='command:'||encode(sha256(convert_to(p_actor_id::text||':'||p_key,'UTF8')),'hex');
+  INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
+   VALUES(s.id,'subscription.customer_self_service.'||p_action,event_key,jsonb_build_object('action',p_action,'quotePreviewId',q->>'id',
+    'linePricing',line_pricing,'payload',(p_payload->'request')-ARRAY['acceptedQuoteHash','expectedTemplateVersion'],
+    'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')),p_now)
+   RETURNING id INTO event_id;
+  PERFORM public.subscription_quote_preview_mark_accepted((q->>'id')::uuid,p_key,event_id,p_now);
+ END IF;
+ ELSIF proposal.lane='sized' THEN
+ IF outcome<>'noop' THEN
+  DELETE FROM public.subscription_lines WHERE subscription_id=s.id AND (NOT is_addon OR rewrites_addons);
+  DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
+  FOR line IN SELECT v FROM jsonb_array_elements(lines) WITH ORDINALITY x(v,ord) ORDER BY ord LOOP
+   ordinal:=ordinal+1;
    IF NOT (line->>'isAddon')::boolean OR rewrites_addons THEN
     INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
      VALUES(s.id,(line->>'variantId')::uuid,(line->>'qty')::integer,ordinal-1,(line->>'isAddon')::boolean,
@@ -2073,50 +2101,29 @@ BEGIN
     SELECT id,public.subscription_quote_preview_mark_accepted((q->>'id')::uuid,p_key,id,p_now) AS acceptance FROM inserted
    ) SELECT id INTO event_id FROM accepted;
  END IF;
+ END IF;
   IF v_catalog_acceptance IS NOT NULL THEN
     UPDATE public.subscription_lines sl SET catalog_sku_revision_id=(ref->>'skuRevisionId')::uuid
       FROM jsonb_array_elements(v_catalog_acceptance->'lines') ref WHERE sl.subscription_id=s.id AND sl.variant_id=(ref->>'skuId')::uuid;
     UPDATE public.subscription_renewal_terms SET catalog_acceptance=v_catalog_acceptance WHERE subscription_id=s.id;
     UPDATE public.subscription_events SET catalog_acceptance=v_catalog_acceptance WHERE id=event_id;
   END IF;
- answer:=jsonb_build_object('status',outcome,'subscriptionId',s.id,'action',action,'subscriptionStatus',s.status,
-  'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
+ answer:=jsonb_build_object('status',outcome,'subscriptionId',s.id,
+  'action',CASE WHEN proposal.lane='classic' THEN 'update_package_template' WHEN proposal.lane='exact' THEN p_action ELSE action END,
+  'subscriptionStatus',s.status,'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
  INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,quote_hash,result,status)
-  VALUES(p_actor_id,p_key,s.id,p_client_id,fingerprint,command,request->>'acceptedQuoteHash',answer,outcome);
- lane_result:=answer; EXIT accepted_lane;
-END accepted_lane;
-ELSE RAISE EXCEPTION 'successor_lane_unavailable' USING ERRCODE='55000'; END IF;
- IF lane_result->>'status' NOT IN ('applied','noop','replayed') OR lane_result->>'status' IS NULL THEN RAISE EXCEPTION 'successor_lane_refused' USING ERRCODE='22023'; END IF;
- SELECT coalesce(jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,'quantity',l.quantity,'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal),'[]'::jsonb) INTO basket
-  FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=s.id;
+ VALUES(p_actor_id,p_key,s.id,p_client_id,fingerprint,command,p_payload#>>'{request,acceptedQuoteHash}',answer,outcome);
+ lane_result:=answer;
+ END accepted_lane;
+ -- The chosen lane must realize the exact checked basket on the same transaction.
+ IF lane_result->>'status' NOT IN ('applied','noop','replayed') OR lane_result->>'status' IS NULL THEN
+  RAISE EXCEPTION 'successor_lane_refused' USING ERRCODE='22023'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=s.id AND l.variant_id=proposal.successor_sku_id)
-  OR EXISTS(SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=s.id AND l.variant_id=proposal.predecessor_sku_id) THEN RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
- snapshot:=proposal.request->'cycleSnapshot';
- IF jsonb_typeof(snapshot) IS DISTINCT FROM 'object' OR snapshot->'lines' IS DISTINCT FROM basket
-  OR snapshot->>'contractVersion' IS DISTINCT FROM prior_snapshot->>'contractVersion'
-  OR snapshot->>'subscriptionId' IS DISTINCT FROM s.id::text OR (snapshot->>'scheduledAt')::timestamptz IS DISTINCT FROM root.scheduled_at
-  OR snapshot->'cycleNumber' IS DISTINCT FROM to_jsonb(root.cycle_number) OR snapshot->>'currency' IS DISTINCT FROM prior_snapshot->>'currency'
-  OR snapshot->>'stockSourceKey' IS DISTINCT FROM prior_snapshot->>'stockSourceKey' OR snapshot->>'settlementChannelKey' IS DISTINCT FROM prior_snapshot->>'settlementChannelKey'
-  OR snapshot->>'authorizationRef' IS DISTINCT FROM prior_snapshot->>'authorizationRef' OR snapshot->'payerAccountRef' IS DISTINCT FROM prior_snapshot->'payerAccountRef'
-  OR snapshot->'unattendedChargeAuthorizedAt' IS DISTINCT FROM prior_snapshot->'unattendedChargeAuthorizedAt'
-  OR snapshot->'cycle' IS DISTINCT FROM prior_snapshot->'cycle'
-  OR snapshot#>'{orderSnapshot,shippingAddressRef}' IS DISTINCT FROM prior_snapshot#>'{orderSnapshot,shippingAddressRef}'
-  OR snapshot->>'currency' IS DISTINCT FROM q.quote_snapshot#>>'{editConsent,currency}'
-  OR snapshot#>'{templateSnapshot,lines}' IS DISTINCT FROM basket OR snapshot#>'{orderSnapshot,lines}' IS DISTINCT FROM basket
-  OR snapshot#>'{pricingSnapshot,totalAmountMinor}' IS DISTINCT FROM snapshot->'totalAmountMinor'
-  OR coalesce(snapshot->>'frozenFingerprint','') !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'subscription_renewal_snapshot_inconsistent' USING ERRCODE='22023'; END IF;
- -- Validate the accepted next basket before changing its unpaid source.
- IF source_case_kind='legacy' THEN
-  UPDATE public.subscription_stock_wait_cases SET state='closed',closed_at=p_now,block_reason='superseded_by_successor' WHERE id=p_case_id;
-  IF root.state NOT IN ('succeeded','refused') THEN UPDATE public.subscription_renewal_operations SET state='refused',terminal_outcome='refused',terminal_reason='superseded_by_successor',terminal_at=p_now,updated_at=p_now WHERE id=root.id; END IF;
- ELSE
-  UPDATE public.subscription_successor_wait_cases_v2 SET state='closed',closed_at=p_now,block_reason='superseded_by_successor',superseded_by_proposal_id=proposal.id WHERE id=p_case_id;
-  UPDATE public.subscription_successor_operations_v2 SET superseded_by_proposal_id=proposal.id,updated_at=p_now WHERE id=prior_generation.id;
- END IF;
- UPDATE public.fulfillment_inventory_reservations SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
-  WHERE renewal_operation_id=root.id AND status IN ('held','expired');
- UPDATE public.subscription_successor_reservations_v2 SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
-  WHERE operation_id=prior_generation.id AND status IN ('held','expired');
+  OR EXISTS(SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=s.id AND l.variant_id=proposal.predecessor_sku_id)
+  OR basket IS DISTINCT FROM (SELECT coalesce(jsonb_agg(jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,
+    'quantity',l.quantity,'unitAmountMinor',l.unit_amount_minor) ORDER BY l.line_ordinal),'[]'::jsonb)
+    FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=s.id) THEN
+  RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
  new_fingerprint:=snapshot->>'frozenFingerprint';
  INSERT INTO public.subscription_successor_operations_v2(id,root_operation_id,proposal_id,predecessor_generation_id,subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,due_snapshot,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at,created_at,updated_at)
  VALUES(generation,root.id,proposal.id,prior_generation.id,s.id,root.scheduled_at,root.cycle_number,root.identity_key||':successor:'||proposal.id::text,new_fingerprint,

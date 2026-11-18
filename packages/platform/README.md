@@ -1495,11 +1495,12 @@ schemas remain strict. `createPostgresCatalogWithdrawalImpact` calls the same
 unpaginated obligation query as archive, including successor generations and
 waits. Unknown or unavailable evidence never means no obligations.
 
-`createPostgresSuccessorStore` accepts server-owned LC9 preview enrichment and a
+`createPostgresSuccessorStore` accepts server-owned preview enrichment and a
 native renewal codec. Offers require explicit acceptance. Only the dedicated
 unpaid-wait command can supersede a frozen basket outside the ordinary edit
 window; it retains the original cycle anchor and refuses paid or provider-owned
-work.
+work. The resolver validates the retained quote and next basket before closing
+the source wait and releasing eligible holds, then applies the accepted edit.
 The native package and sized editors expose experimental
 `previewStockWaitSuccessor` methods for that exact unpaid source. They reuse the
 ordinary pricing, baseline, consent and ledger owners; only the cutoff refusal
