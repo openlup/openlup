@@ -71,21 +71,24 @@ BEGIN
    AND (d->>'quantity')::integer<=(SELECT coalesce(sum((b->>'qty')::integer),0)
     FROM jsonb_array_elements(baseline) b WHERE b->>'variantId'=d->>'skuId' AND b->'isAddon'=d->'isAddon');
  END IF;
- -- Native heads are per product. Resolve their trusted scope without treating
- -- malformed caller evidence as authority or expanding a non-array value.
- SELECT coalesce(array_agg(DISTINCT s.product_id ORDER BY s.product_id),'{}') INTO consulted
- FROM public.catalog_skus s JOIN jsonb_array_elements(CASE
-    WHEN jsonb_typeof(p_offer_evidence->'scopeSkuIds')='array' THEN p_offer_evidence->'scopeSkuIds'
-    WHEN jsonb_typeof(p_sku_revisions)='array' THEN
-      (SELECT jsonb_agg(v#>'{reference,skuId}') FROM jsonb_array_elements(p_sku_revisions) v)
-    ELSE '[]'::jsonb END) v
-   ON s.id=CASE WHEN pg_input_is_valid(v#>>'{}','uuid') THEN (v#>>'{}')::uuid END
- WHERE s.id<>ALL(retained_ids);
- IF cardinality(consulted)=0 AND cardinality(retained_ids)=0 AND jsonb_typeof(p_heads)='array' AND p_offer_evidence->'scopeSkuIds' IS NULL THEN
+ -- Accepting writers supply the scope resolved from their owned lines. A direct
+ -- assertion checks its named heads before a selection can widen their scope.
+ consulted:='{}';
+ IF p_offer_evidence->'scopeSkuIds' IS NULL AND jsonb_typeof(p_heads)='array' THEN
   SELECT coalesce(array_agg(DISTINCT p.id ORDER BY p.id),'{}') INTO consulted
    FROM public.catalog_products p JOIN jsonb_array_elements(p_heads) h
     ON p.id=CASE WHEN pg_input_is_valid(h->>'productId','uuid') THEN (h->>'productId')::uuid END
    WHERE p.publication_facts->'schemaVersion'='3'::jsonb;
+ END IF;
+ IF cardinality(consulted)=0 THEN
+  SELECT coalesce(array_agg(DISTINCT s.product_id ORDER BY s.product_id),'{}') INTO consulted
+  FROM public.catalog_skus s JOIN jsonb_array_elements(CASE
+     WHEN jsonb_typeof(p_offer_evidence->'scopeSkuIds')='array' THEN p_offer_evidence->'scopeSkuIds'
+     WHEN jsonb_typeof(p_sku_revisions)='array' THEN
+       (SELECT jsonb_agg(v#>'{reference,skuId}') FROM jsonb_array_elements(p_sku_revisions) v)
+     ELSE '[]'::jsonb END) v
+    ON s.id=CASE WHEN pg_input_is_valid(v#>>'{}','uuid') THEN (v#>>'{}')::uuid END
+  WHERE s.id<>ALL(retained_ids);
  END IF;
  FOREACH product_id IN ARRAY consulted LOOP
   PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-lineage:'||product_id::text,0));
@@ -108,6 +111,13 @@ BEGIN
    OR encode(sha256(convert_to(publication.canonical_state,'UTF8')),'hex') IS DISTINCT FROM publication.digest
    OR product.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
    OR product.publication_facts IS DISTINCT FROM manifest->'product'
+   OR product.slug IS DISTINCT FROM manifest#>>'{product,slug}'
+   OR product.name IS DISTINCT FROM manifest#>>'{product,name}'
+   OR product.status IS DISTINCT FROM manifest#>>'{product,status}'
+   OR product.primary_sku_id::text IS DISTINCT FROM manifest#>>'{product,primarySkuId}'
+   OR product.current_document_revision_id IS DISTINCT FROM publication.document_revision_id
+   OR publication.document_revision_id::text IS DISTINCT FROM manifest#>>'{product,document,id}'
+   OR document_digest IS DISTINCT FROM manifest#>>'{product,document,digest}'
    OR jsonb_typeof(manifest->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_propagation_head_unreadable' USING ERRCODE='55000'; END IF;
   IF (SELECT count(*) FROM public.catalog_skus sk WHERE sk.product_id=product.id)<>jsonb_array_length(manifest->'skus')
@@ -116,9 +126,25 @@ BEGIN
     LEFT JOIN public.catalog_sku_revisions r ON r.product_id=product.id AND r.id::text=member->>'revisionId'
       AND to_jsonb(r.revision)=member->'revision' AND r.digest=member->>'digest'
     LEFT JOIN public.catalog_skus sk ON sk.product_id=product.id AND sk.id=r.sku_id AND sk.id::text=member->>'skuId'
+    LEFT JOIN public.catalog_type_versions def ON (def.type_key,def.version)=(product.type_key,product.type_version)
     WHERE r.id IS NULL OR sk.id IS NULL OR sk.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
       OR encode(sha256(convert_to(r.full_facts,'UTF8')),'hex') IS DISTINCT FROM r.digest
-      OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb) THEN
+      OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb
+      OR sk.sku IS DISTINCT FROM sk.publication_facts->>'code'
+      OR sk.title IS DISTINCT FROM sk.publication_facts->>'title'
+      OR sk.status IS DISTINCT FROM sk.publication_facts->>'status'
+      OR to_jsonb(sk.min_order_qty) IS DISTINCT FROM sk.publication_facts->'minQuantity'
+      OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'
+      OR to_jsonb(sk.sellable_standalone) IS DISTINCT FROM sk.publication_facts->'sellableStandalone'
+      OR to_jsonb(sk.sellable_in_subscription) IS DISTINCT FROM sk.publication_facts->'sellableInSubscription'
+      OR jsonb_build_object('dimension',sk.net_content_dimension,'unscaled',sk.net_content_unscaled::text,
+        'scale',sk.net_content_scale,'unit',sk.net_content_unit) IS DISTINCT FROM sk.publication_facts->'netContent'
+      OR sk.net_weight_g::numeric IS DISTINCT FROM sk.net_content_unscaled/power(10::numeric,sk.net_content_scale)
+        * CASE sk.net_content_unit WHEN 'openlup:g' THEN 1 WHEN 'openlup:kg' THEN 1000 ELSE (
+         SELECT (u#>>'{factor,unscaled}')::numeric/power(10::numeric,(u#>>'{factor,scale}')::integer)
+         FROM jsonb_array_elements(def.definition->'units') u
+         WHERE u->>'code'=sk.net_content_unit AND u#>>'{factor,canonicalUnit}'='openlup:g'
+        ) END) THEN
    RAISE EXCEPTION 'catalog_propagation_head_unreadable' USING ERRCODE='55000'; END IF;
   actual_heads:=actual_heads||jsonb_build_object(product.id::text,jsonb_build_object('publicationId',publication.id,
    'revision',publication.revision,'documentDigest',document_digest));
@@ -175,10 +201,10 @@ BEGIN
  END IF;
  FOR selection IN SELECT value FROM jsonb_array_elements(p_sku_revisions) ORDER BY value#>>'{reference,skuId}' LOOP
   reference:=selection->'reference';
-  PERFORM public.catalog_accepted_reference_assert_v2(reference);
   SELECT * INTO sku FROM public.catalog_skus WHERE id=(reference->>'skuId')::uuid;
   SELECT * INTO product FROM public.catalog_products WHERE id=sku.product_id;
   IF sku.id IS NULL OR product.id IS NULL THEN RAISE EXCEPTION '%',refused USING ERRCODE='55000'; END IF;
+  PERFORM public.catalog_accepted_reference_assert_v2(reference);
   expected:=actual_heads->(product.id::text);
   SELECT p.* INTO publication FROM public.catalog_publications p WHERE p.id=(expected->>'publicationId')::uuid;
   fresh:=sku.id<>ALL(retained_ids);
@@ -413,13 +439,16 @@ BEGIN
  IF source_rows<>resolved_rows OR source_rows<>distinct_rows OR selected IS DISTINCT FROM (SELECT coalesce(jsonb_agg(l-'isAddon' ORDER BY ord),'[]')
    FROM jsonb_array_elements(governed) WITH ORDINALITY x(l,ord)) THEN
   RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
- IF p_purpose='order' AND (
-  p_binding#>'{quoteSnapshot,quote,context,mode}' IS DISTINCT FROM to_jsonb(p_mode)
-  OR (SELECT jsonb_agg(jsonb_build_array(l->'sku',l->'quantity') ORDER BY ord)
-      FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(l,ord))
-     IS DISTINCT FROM (SELECT jsonb_agg(jsonb_build_array(l->'sku',l->'quantity') ORDER BY ord)
-      FROM jsonb_array_elements(p_binding#>'{quoteSnapshot,quote,lines}') WITH ORDINALITY x(l,ord))) THEN
-  RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
+ IF p_purpose='order' THEN
+  IF jsonb_typeof(p_binding#>'{quoteSnapshot,quote,lines}') IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
+  IF p_binding#>'{quoteSnapshot,quote,context,mode}' IS DISTINCT FROM to_jsonb(p_mode)
+   OR (SELECT jsonb_agg(jsonb_build_array(l->'sku',l->'quantity') ORDER BY ord)
+       FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(l,ord))
+      IS DISTINCT FROM (SELECT jsonb_agg(jsonb_build_array(l->'sku',l->'quantity') ORDER BY ord)
+       FROM jsonb_array_elements(p_binding#>'{quoteSnapshot,quote,lines}') WITH ORDINALITY x(l,ord)) THEN
+   RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
+ END IF;
  IF p_purpose='account' AND EXISTS(
   SELECT 1 FROM jsonb_array_elements(p_lines) l
   CROSS JOIN LATERAL (SELECT coalesce(l#>>'{quoteLine,catalogFacts,resolvedPriceEntryId}',
@@ -548,10 +577,7 @@ BEGIN
     RAISE EXCEPTION 'commerce_order_draft_unknown_client' USING ERRCODE = '22023';
   END IF;
 
-  v_mode := COALESCE(p_order_draft_snapshot#>>'{context,mode}', 'one_time');
-  IF v_mode NOT IN ('one_time', 'subscription') THEN
-    RAISE EXCEPTION 'commerce_order_draft_invalid_mode' USING ERRCODE = '22023';
-  END IF;
+  v_mode := p_order_draft_snapshot#>>'{context,mode}';
   v_currency := p_order_draft_snapshot->>'currency';
   v_total := (p_order_draft_snapshot#>>'{totals,totalGross,amountMinor}')::bigint;
   v_fingerprint := md5(
@@ -573,7 +599,11 @@ BEGIN
 
   v_catalog_evidence:=p_quote_snapshot->'catalogAdmission';
   v_catalog_acceptance:=public.catalog_admission_accept(p_order_draft_snapshot->'lines',v_catalog_evidence,
-    coalesce(p_order_draft_snapshot#>>'{context,mode}','one_time'),jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
+    v_mode,jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
+  v_mode := COALESCE(v_mode, 'one_time');
+  IF v_mode NOT IN ('one_time', 'subscription') THEN
+    RAISE EXCEPTION 'commerce_order_draft_invalid_mode' USING ERRCODE = '22023';
+  END IF;
   v_public_quote:=p_quote_snapshot;
   IF v_catalog_acceptance IS NULL THEN
    v_catalog_evidence:=NULL;
@@ -797,7 +827,7 @@ BEGIN
 
   IF v_receipt.idempotency_key IS NULL THEN
     PERFORM public.catalog_admission_accept(p_order_draft_snapshot->'lines',p_quote_snapshot->'catalogAdmission',
-      coalesce(p_order_draft_snapshot#>>'{context,mode}','one_time'),jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
+      p_order_draft_snapshot#>>'{context,mode}',jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
   END IF;
   v_response := public.commerce_create_order_draft_with_outbox(
     p_idempotency_key, p_quote_snapshot, p_order_draft_snapshot, p_client_id

@@ -120,8 +120,9 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
     manifest.skus = [{ ...ref, revisionId: revision, revision: 2, digest: factsDigest }];
     const canonical = canonicalCatalogDraftJson(manifest), hash = digest(canonical);
     await db.query("INSERT INTO public.catalog_lifecycle_write_capabilities VALUES(pg_current_xact_id(),$1,$2)", [product,hash]);
-    await db.query("UPDATE public.catalog_products SET status='active',publication_facts=$2::jsonb WHERE id=$1", [product,manifest.product]);
-    await db.query("UPDATE public.catalog_skus SET status='active',sellable_standalone=true,sellable_in_subscription=true,publication_facts=$2::jsonb WHERE id=$1", [sku,facts]);
+    await db.query("UPDATE public.catalog_products SET status=$3,publication_facts=$2::jsonb WHERE id=$1", [product,manifest.product,manifest.product.status]);
+    await db.query("UPDATE public.catalog_skus SET status=$3,sellable_standalone=$4,sellable_in_subscription=$5,publication_facts=$2::jsonb WHERE id=$1",
+      [sku,facts,facts.status,facts.sellableStandalone,facts.sellableInSubscription]);
     await db.query("INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id) VALUES($1,$2,2,$3,$4,1,$5,$6,$7,$8,$6,$9)",
       [publication,product,old.id,draft,`standing:${publication}`,hash,old.document_revision_id,canonical,administrator]);
     await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,2,$4,$5,$6)", [revision,sku,product,publication,fullFacts,factsDigest]);
@@ -960,7 +961,7 @@ const boundaryRows: AdmissionRow[] = [
   { name: "quantity-positive",message: orderRefused,change: (_d,_f,i) => { Object.assign(i.skuRevisions[0],{ quantity: 0 }); } },
   { name: "unique-skus",message: orderRefused,change: (_d,_f,i) => { Object.assign(i,{ skuRevisions: [i.skuRevisions[0],i.skuRevisions[0]] }); } },
   { name: "unique-products",message: orderAnchor,change: (_d,_f,i) => { Object.assign(i,{ heads: [i.heads[0],i.heads[0]] }); } },
-  { name: "sku-present",message: "catalog_retained_revision_unavailable",change: (_d,_f,i) => { Object.assign(i.skuRevisions[0].reference,{ skuId: randomUUID() }); } },
+  { name: "sku-present",message: orderRefused,code: "55000",change: (_d,_f,i) => { Object.assign(i.skuRevisions[0].reference,{ skuId: randomUUID() }); } },
   { name: "product-present",message: null,change: () => {} },
   { name: "sku-v3",message: "catalog_propagation_head_unreadable",code: "55000",change: (d,f) => scopedFacts(d,f,"catalog_skus",{ schemaVersion: 2 }) },
   { name: "product-v3",message: "catalog_propagation_head_unreadable",code: "55000",standing: { product: { schemaVersion: 2 } },change: () => {} },
@@ -975,10 +976,10 @@ const boundaryRows: AdmissionRow[] = [
   { name: "revision-current",message: null,change: () => {} },
   { name: "sku-lifecycle",message: orderRefused,code: "55000",standing: { sku: { lifecycleState: "withdrawn" } },change: () => {} },
   { name: "product-lifecycle",message: orderRefused,code: "55000",standing: { product: { lifecycleState: "withdrawn" } },change: () => {} },
-  { name: "sku-active",message: orderRefused,code: "55000",change: async (d,f) => { await scopedFacts(d,f,"catalog_skus",{}); await d.query("UPDATE public.catalog_skus SET status='draft' WHERE id=$1", [f.sku]); } },
-  { name: "product-active",message: orderRefused,code: "55000",change: async (d,f) => { await scopedFacts(d,f,"catalog_products",{}); await d.query("UPDATE public.catalog_products SET status='draft' WHERE id=$1", [f.product]); } },
-  { name: "standalone",message: orderRefused,code: "55000",change: async (d,f,i) => { i.mode = "one_time"; await scopedFacts(d,f,"catalog_skus",{}); await d.query("UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1", [f.sku]); } },
-  { name: "subscription-sellable",message: orderRefused,code: "55000",change: async (d,f) => { await scopedFacts(d,f,"catalog_skus",{}); await d.query("UPDATE public.catalog_skus SET sellable_in_subscription=false WHERE id=$1", [f.sku]); } },
+  { name: "sku-active",message: orderRefused,code: "55000",standing: { sku: { status: "draft" } },change: () => {} },
+  { name: "product-active",message: orderRefused,code: "55000",standing: { product: { status: "draft" } },change: () => {} },
+  { name: "standalone",message: orderRefused,code: "55000",standing: { sku: { sellableStandalone: false } },change: (_d,_f,i) => { i.mode = "one_time"; } },
+  { name: "subscription-sellable",message: orderRefused,code: "55000",standing: { sku: { sellableInSubscription: false } },change: () => {} },
   { name: "offer-membership",message: orderRefused,code: "55000",change: (_d,_f,i) => { i.offerEvidence.offerVersion = "unadmitted"; } },
 ];
 it.each(boundaryRows)("admission A1 $name", admissionCase);
@@ -1561,6 +1562,8 @@ const authorityPaths = ["assertion", "port", "plain-one-time", "plain-subscripti
 const authorityCases = [
   { rule: "LC6-D-007 unreadable before malformed", change: "unreadable", code: "55000" },
   { rule: "LC6-D-008 sealed SKU drift", change: "sku-drift", code: "55000" },
+  { rule: "LC6-D-008 relational add-on drift", change: "projection-drift", code: "55000" },
+  { rule: "LC6-D-008 relational net-weight drift", change: "weight-drift", code: "55000" },
   { rule: "LC6-D-009 exact anchor keys", change: "extra-anchor-key", code: "22023" },
   { rule: "LC6-D-009 malformed digest", change: "invalid-digest", code: "22023" },
   { rule: "LC6-D-012 stale before malformed selection", change: "stale", code: "40001" },
@@ -1585,8 +1588,8 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
   const refused = account ? "customer_self_service_invalid_offer_membership" : orderRefused;
   const unreadable = "catalog_propagation_head_unreadable";
   let message = missing;
-  if (change === "unreadable" || change === "sku-drift") message = unreadable;
-  if (change === "unreadable" || change === "extra-anchor-key") Object.assign(input.heads[0].head,{ extra: true });
+  if (change === "unreadable" || change === "sku-drift" || change === "projection-drift" || change === "weight-drift") message = unreadable;
+  if (change === "unreadable" || change === "extra-anchor-key" || change === "projection-drift" || change === "weight-drift") Object.assign(input.heads[0].head,{ extra: true });
   if (change === "stale") {
     input.heads = structuredClone(input.heads);
     input.heads[0].head.revision = 99;
@@ -1604,6 +1607,14 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
   try {
     if (change === "unreadable") await db.query("DELETE FROM public.catalog_publication_heads WHERE product_id=$1", [f.product]);
     if (change === "sku-drift") await scopedFacts(db,f,"catalog_skus",{ title: "Unsealed title" });
+    if (change === "projection-drift") {
+      await scopedFacts(db,f,"catalog_skus",{});
+      await db.query("UPDATE public.catalog_skus SET is_addon=NOT is_addon WHERE id=$1", [f.sku]);
+    }
+    if (change === "weight-drift") {
+      await scopedFacts(db,f,"catalog_skus",{});
+      await db.query("UPDATE public.catalog_skus SET net_weight_g=net_weight_g+1 WHERE id=$1", [f.sku]);
+    }
     if (command) {
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
       await expect(command.invoke(db)).rejects.toMatchObject({ code,message });
@@ -1624,6 +1635,48 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
 }
 
 it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path }))))("$rule via $path", authorityCase);
+
+it.each(["assertion", "port"].flatMap(path => ["absent SKU", "foreign stale scope"].map(change => ({ path,change }))))(
+  "LC6-D-012 and LC6-D-019 $change via $path", async ({ path,change }) => {
+    const f = await fixture(packs[0]);
+    const input: CatalogAdmissionInput = { ...structuredClone(f.admission),purpose: "order" };
+    if (change === "absent SKU") input.skuRevisions[0].reference.skuId = randomUUID();
+    else {
+      const other = await fixture(packs[1]);
+      input.heads[0].head.revision += 1;
+      input.skuRevisions = [...input.skuRevisions,...other.admission.skuRevisions];
+    }
+    const db = await session();
+    try {
+      const result = path === "port" ? createPostgresCatalogAdmission().assertCurrent(db,input)
+        : rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,input.offerEvidence,
+          JSON.stringify(input.priceContextVersions),input.purpose]);
+      await expect(result).rejects.toMatchObject(change === "absent SKU"
+        ? { code: "55000",message: orderRefused } : { code: "40001",message: headMoved });
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  },
+);
+
+it.each([false,true].flatMap(promoted => ["one_time","subscription"].flatMap(mode =>
+  ["stale invalid mode","absent mode","null quote lines","object quote lines"].map(change => ({ promoted,mode,change })))))(
+  "LC6-D-012, LC6-D-018 and LC6-D-150 $change in $mode, promoted=$promoted", async ({ promoted,mode,change }) => {
+    const f = await fixture(packs[0]), p = purchaseInput(f);
+    p.quote.quote.context.mode = mode;
+    p.draft.context = { ...p.draft.context,mode };
+    p.quote.catalogAdmission.mode = mode as CatalogAdmissionInput["mode"];
+    if (change === "stale invalid mode") {
+      p.draft.context.mode = "invalid";
+      p.quote.catalogAdmission.heads[0].head.revision += 1;
+    } else if (change === "absent mode") delete p.draft.context.mode;
+    else Object.assign(p.quote.quote,{ lines: change === "null quote lines" ? null : {} });
+    const db = await session();
+    try {
+      await expect(rpc(db,promoted ? "commerce_create_promoted_order_draft_with_outbox" : "commerce_create_order_draft_with_outbox",p.args))
+        .rejects.toMatchObject(change === "stale invalid mode"
+          ? { code: "40001",message: headMoved } : { code: "22023",message: orderRefused });
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  },
+);
 
 it.each([
   { change: "sku-drift",predicate: "OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb",replacement: "" },

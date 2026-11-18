@@ -8197,17 +8197,17 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "0866664b90d21453a9aeb11474b4ec1ffec7f7634a73a8e7548291c44e365aaf",
+      "sha256": "7dca7a2627d1122b1f29a9d8cbbdd72927bd07064768ee06c80349e5cac01f88",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
           "beforeSha256": "687fdfb48ad2fa9400832407e0a12b5d59126df0ce06732e04e761ef6c450c8d",
-          "afterSha256": "81442e5f1249a4a7e23b4dede8b5c05eff51cf016c94b6dfbb4af43d8d3f77de"
+          "afterSha256": "291323b2ede36d54831b60fb88620e16f405801dcf9c125532d6f90b0eb56790"
         },
         {
           "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
           "beforeSha256": "08a2ac77e8c7c496a1dcfc745fdbe2f6b327c35914892a2dbf56939213a184ad",
-          "afterSha256": "e61a3cb025d22971ebbc53689ad316d10a951db982fb2d2d59b6f77b9b145366"
+          "afterSha256": "c76ac3ca10cfd317d84f51a28833ccea1668d3b529bca07238e8c80ece9ef9cd"
         },
         {
           "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
@@ -8267,7 +8267,7 @@
         {
           "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "9499687644f368300355dc59a14ecf0d1034c5965301aa5534e6e1670f28b366"
+          "afterSha256": "2766b013457d125d3ff92cf2473467c71e5077dc1b253374718820a111ab1765"
         },
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
@@ -8277,7 +8277,7 @@
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "9d51492718b83e56ac51d3e261dc64712b2e7ce1d127a4461a551311620bd0cc"
+          "afterSha256": "df1f02e1c76f12bfcff052b917c69f037caf950cea7a719e7efbddf5d5634d3b"
         },
         {
           "signature": "public.catalog_admission_frozen_order(uuid)",
