@@ -254,27 +254,44 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     checkReadinessResult(await deps.readiness(db, state, active.length > 0));
     if (activation) await checkGlobalReadiness(db);
   }
-  function governedReadiness(payload: CatalogDraftPayloadV4, skus: readonly CatalogPublishedSku[]) {
+  function governedReadiness(payload: CatalogDraftPayloadV4, skus: readonly CatalogPublishedSku[], before: readonly CatalogPublishedSku[]) {
     const operations = payload.publication.operations;
     const activatesParent = operations.some(op => op.op === "set_product_lifecycle" && op.state === "active");
     const restoresParent = operations.some(op => op.op === "restore_product");
-    const allChildren = activatesParent || restoresParent || operations.some(op => op.op === "move_document_pointer" || op.op === "create_product");
-    const affected = new Set<string>(), enabled = new Set<string>();
+    const movesDocument = operations.some(op => op.op === "move_document_pointer");
+    const allChildren = activatesParent || restoresParent || movesDocument || operations.some(op => op.op === "create_product");
+    const affected = new Set<string>(), admitted = new Set<string>();
+    const enabled = new Map<string, Pick<CatalogPublishedSku, "sellableStandalone" | "sellableInSubscription">>();
     for (const op of operations) {
       if (op.op === "create_sku" || op.op === "set_derived_sku_facts" || op.op === "set_offer_membership" && op.admitted) affected.add(op.skuCode);
-      if (op.op === "set_eligibility" && (op.sellableStandalone || op.sellableInSubscription)) enabled.add(op.skuCode);
+      if (op.op === "set_offer_membership" && op.admitted) admitted.add(op.skuCode);
+      if (op.op === "set_eligibility" && (op.sellableStandalone || op.sellableInSubscription)) {
+        const prior = enabled.get(op.skuCode);
+        enabled.set(op.skuCode, { sellableStandalone: op.sellableStandalone || prior?.sellableStandalone === true,
+          sellableInSubscription: op.sellableInSubscription || prior?.sellableInSubscription === true });
+      }
     }
-    const structural = skus.filter(sku => allChildren || affected.has(sku.code));
-    const commercial = skus.filter(sku => enabled.has(sku.code) || structural.includes(sku) && "lifecycleState" in sku && sku.lifecycleState === "active"
-      && (sku.sellableStandalone || sku.sellableInSubscription) && sku.memberships.some(row => row.admitted));
-    return { structural, commercial, activatesParent, restoresParent, enabling: enabled.size > 0 };
+    const authored = new Set(enabled.keys());
+    for (const sku of before) {
+      if (sku.status === "active" && (sku.sellableStandalone || sku.sellableInSubscription)
+        && (activatesParent || restoresParent || movesDocument || admitted.has(sku.code))) authored.add(sku.code);
+    }
+    const structurallyAffected = (sku: CatalogPublishedSku) => allChildren || affected.has(sku.code);
+    const structural = skus.filter(structurallyAffected);
+    const commercial = skus.filter(sku => enabled.has(sku.code) || structurallyAffected(sku) && "lifecycleState" in sku && sku.lifecycleState === "active"
+      && (sku.sellableStandalone || sku.sellableInSubscription) && sku.memberships.some(row => row.admitted)).map(sku => {
+      const intent = enabled.get(sku.code);
+      // Readiness sees commanded sale modes even when a later effect clears them.
+      return intent ? { ...sku, sellableStandalone: sku.sellableStandalone || intent.sellableStandalone,
+        sellableInSubscription: sku.sellableInSubscription || intent.sellableInSubscription } : sku;
+    });
+    return { structural, commercial, authored, activatesParent, restoresParent, enabling: enabled.size > 0 };
   }
   async function checkGovernedReadiness(db: PgQueryExecutor, product: CatalogPublishedProduct, skus: CatalogPublishedSku[], evidence: ReturnType<typeof governedReadiness>) {
     for (const sku of evidence.structural) await checkSkuReadiness(db, sku, false);
+    if (evidence.structural.length) checkReadinessResult(await deps.readiness(db, { product, skus: evidence.structural }, false));
     for (const sku of evidence.commercial) await checkSkuReadiness(db, sku, true);
-    if (evidence.structural.length || evidence.commercial.length) {
-      checkReadinessResult(await deps.readiness(db, { product, skus: evidence.commercial.length ? evidence.commercial : evidence.structural }, evidence.commercial.length > 0));
-    }
+    if (evidence.commercial.length) checkReadinessResult(await deps.readiness(db, { product, skus: evidence.commercial }, true));
     if (evidence.activatesParent || evidence.restoresParent && evidence.enabling) {
       const primary = skus.find(sku => sku.id === product.primarySkuId && sku.productId === product.id);
       require(primary && "lifecycleState" in primary && primary.lifecycleState === "active" && (primary.sellableStandalone || primary.sellableInSubscription),
@@ -369,8 +386,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
             && equal(claim.assetRefs, [...(sku.assetRefs ?? [])].sort()), "catalog_publication_media_evidence_mismatch");
         }
         const withdrawalOnly = prepared.payload.schemaVersion === 4 && catalogLifecycleWithdrawalOnly(prepared.payload);
-        const governedEvidence = prepared.payload.schemaVersion === 4 ? governedReadiness(prepared.payload, compiled.skus) : undefined;
-        const checkedSkus = governedEvidence?.commercial ?? compiled.skus.filter(sku => sku.sellableStandalone || sku.sellableInSubscription);
+        const governedEvidence = prepared.payload.schemaVersion === 4 ? governedReadiness(prepared.payload, compiled.skus, current.skus) : undefined;
+        const checkedSkus = governedEvidence ? compiled.skus.filter(sku => governedEvidence.authored.has(sku.code))
+          : compiled.skus.filter(sku => sku.sellableStandalone || sku.sellableInSubscription);
         for (const sku of checkedSkus) {
           const source = mediaSource(sku.code);
           require(source, "catalog_publication_operation_source_missing");
@@ -380,8 +398,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
             require(heads[0]?.revision === source!.revision && heads[0]?.status === "open", "catalog_publication_draft_advanced", "conflict");
           }
           if (governedEvidence) {
-            assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, prepared.definition);
-            require(sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
+            const authored = source!.payload.skus.find(row => row.code === sku.code);
+            require(authored && authored.id === sku.id && authored.productId === sku.productId && equal(authored.netContent, sku.netContent),
+              "catalog_publication_operation_source_missing");
+            assertCatalogPublicationGrossMass(sku.netContent, authored!.grossMass ?? null, prepared.definition);
           }
           const content = compiled.product.presentation ?? {};
           const hasMedia = sku.assetRefs.length > 0 || typeof content.mediaRef === "string";

@@ -400,7 +400,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
     catalogPublicationIntegralGrams(sku.netContent, input.definition, "net");
     if (sku.grossMass) catalogPublicationIntegralGrams(sku.grossMass, input.definition, "gross");
-    need(equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), sku.facts),
+    need(withdrawalOnly || equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), sku.facts),
       "catalog_publication_v3_compile_derived_facts_mismatch");
     if (sku.sellableStandalone || sku.sellableInSubscription) {
       need(sku.status !== "archived" && result.status !== "archived", "catalog_publication_v3_compile_sku_archived");
