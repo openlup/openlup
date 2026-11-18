@@ -82,6 +82,9 @@ const successorRecoveryResult = z.union([
     reserved: z.literal(true), operationId: rowId, reservationId: rowId }),
 ]);
 
+/** Internal schedule identity shared by successor reads and notices.
+ * @experimental
+ */
 export function successorScheduleKey(subscriptionId: string, scheduledAt: string) {
   const fraction = /[.](\d+)/u.exec(scheduledAt)?.[1] ?? "";
   return `${subscriptionId}:${Date.parse(scheduledAt)}:${fraction.padEnd(6, "0").slice(3, 6)}`;
@@ -129,7 +132,9 @@ export async function lockUnpaidSuccessorPreview(db:SubscriptionQueryExecutor,ac
   if(!operation||!(operation.state==="refused"&&["inventory_unavailable","reservation_expired"].includes(String(operation.terminal_reason))||operation.state==="reserved"&&row.state==="stock_secured"))throw new Error("stock_wait_successor_not_stock_only");
 }
 
-/** Record a validated unpaid preview on its owner connection after locking the subscription. */
+/** Record a validated unpaid preview on its owner connection after locking the subscription.
+ * @experimental
+ */
 export async function recordUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, input: {
   actor: PackageEditActor; subscriptionId: string; action: string; quoteHash: string; templateVersion: number;
   expiresAt: string; request: unknown; snapshot: unknown; totals: unknown; now: string;

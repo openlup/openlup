@@ -46,7 +46,8 @@ it.each([
   ["after_valid_unknown", [obligation, { ...obligation, family: "unexpected" }], false, 0],
   ["after_valid_duplicate", [obligation, obligation], false, 0],
   ["absent_case_kind_on_successor", [obligation], true, 0],
-] as const)("lc10_read_notice_impact_%s", async (_case, items, wrongKind, calls) => {
+  ["unowned_publication_member", [obligation], false, 0],
+] as const)("lc10_read_notice_impact_%s", async (scenario, items, wrongKind, calls) => {
   const publicationId = "81000000-0000-4000-8000-000000000004";
   const notice = vi.fn();
   const stored = createPostgresSuccessorNotices({
@@ -55,6 +56,7 @@ it.each([
       if (sql.includes("FROM public.catalog_publications")) {
         return { rows: [{ canonical_state: JSON.stringify({ skus: [{ skuId: readSku }] }) }] };
       }
+      if (sql.includes("FROM public.catalog_skus")) return { rows: scenario === "unowned_publication_member" ? [] : [{ id: readSku }] };
       if (sql.includes("subscription_successor_notice_v2")) {
         notice();
         return { rows: [{ result: { outcome: "handed_off" } }] };

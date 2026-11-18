@@ -2848,6 +2848,10 @@ declare const recoverySelection: z.ZodObject<{
     proposalId: z.ZodGUID;
     claimGeneration: z.ZodNumber;
 }, z.core.$loose>;
+/** Internal schedule identity shared by successor reads and notices.
+ * @experimental
+ */
+export declare function successorScheduleKey(subscriptionId: string, scheduledAt: string): string;
 /** Internal source check shared by the existing preview owners. */
 export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
     caseId: string;

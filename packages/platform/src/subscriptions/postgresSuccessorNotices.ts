@@ -166,7 +166,11 @@ export function createPostgresSuccessorNotices(options: {
         if(!publication)throw new Error("catalog_obligation_evidence_unknown");
         const state=subscriptionRecord(JSON.parse(String(publication.canonical_state)));
         if(!Array.isArray(state.skus))throw new Error("catalog_obligation_evidence_unknown");
-        return state.skus.map(value=>id.parse(subscriptionRecord(value).skuId));
+        const members=state.skus.map(value=>id.parse(subscriptionRecord(value).skuId));
+        if(!members.length)throw new Error("catalog_obligation_evidence_unknown");
+        const owned=await db.query("SELECT id FROM public.catalog_skus WHERE product_id=$1::uuid AND id=ANY($2::uuid[])",[row.aggregate_id,members]);
+        if(owned.rows.length!==members.length)throw new Error("catalog_obligation_evidence_unknown");
+        return members;
       });
       const cases=new Map<string,{ id:string;kind:"legacy"|"successor";implicitLegacy:boolean }>();
       for(const sku of skus) {

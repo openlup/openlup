@@ -1283,7 +1283,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_record_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE canonical text; expected text; body jsonb; pair jsonb; successor uuid; prior_successor uuid;
+DECLARE canonical text; expected text; body jsonb; pair jsonb; sku_ids jsonb; successor uuid; prior_successor uuid;
 BEGIN
  IF TG_TABLE_NAME = 'catalog_publications' THEN
   canonical := NEW.canonical_state; expected := NEW.digest;
@@ -1310,6 +1310,8 @@ BEGIN
     RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
    IF jsonb_array_length(body->'successors') NOT BETWEEN 1 AND 10000 THEN
     RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+   SELECT coalesce(jsonb_object_agg(sku->>'skuId',true),'{}'::jsonb) INTO sku_ids
+    FROM jsonb_array_elements(body->'skus') sku WHERE jsonb_typeof(sku->'skuId')='string';
    FOR pair IN SELECT value FROM jsonb_array_elements(body->'successors') LOOP
     IF jsonb_typeof(pair) IS DISTINCT FROM 'object' THEN
      RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
@@ -1317,7 +1319,7 @@ BEGIN
      OR coalesce(pair->>'successorSkuId','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
      OR coalesce(pair->>'successorOf','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
      OR pair->>'successorSkuId'=pair->>'successorOf'
-     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(body->'skus') sku WHERE sku->>'skuId'=pair->>'successorSkuId') THEN
+     OR NOT (sku_ids ? (pair->>'successorSkuId')) THEN
      RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
     successor:=(pair->>'successorSkuId')::uuid;
     IF prior_successor>=successor THEN RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
@@ -2524,22 +2526,22 @@ BEGIN
   SELECT 'legacy'::text kind,op.id,op.subscription_id,op.id root_id,op.scheduled_at,c.id case_id,
    CASE WHEN c.id IS NULL THEN op.updated_at ELSE c.last_selected_at END last_selected,
    coalesce(c.last_checked_at,op.created_at) last_checked,
-   c.id IS NOT NULL AND (s.status='cancelled' OR s.next_cycle_at IS DISTINCT FROM c.scheduled_at) stale,
-   s.status='active' AND s.next_cycle_at=op.scheduled_at AND op.scheduled_at<=p_now AND op.lease_expires_at<=p_now
+   c.id IS NOT NULL AND (sub.status='cancelled' OR sub.next_cycle_at IS DISTINCT FROM c.scheduled_at) stale,
+   sub.status='active' AND sub.next_cycle_at=op.scheduled_at AND op.scheduled_at<=p_now AND op.lease_expires_at<=p_now
      AND (op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired') OR op.state='reserved' AND c.state='stock_secured')
      AND public.subscription_stock_wait_frozen(op.subscription_id,op.scheduled_at) IS NOT NULL ready
-  FROM public.subscription_renewal_operations op JOIN public.subscriptions s ON s.id=op.subscription_id
+  FROM public.subscription_renewal_operations op JOIN public.subscriptions sub ON sub.id=op.subscription_id
   LEFT JOIN public.subscription_stock_wait_cases c ON c.renewal_operation_id=op.id
-  WHERE c.id IS NULL OR (c.state IN ('waiting','stock_secured') AND c.client_id=s.client_id AND c.scheduled_at=op.scheduled_at)
+  WHERE c.id IS NULL OR (c.state IN ('waiting','stock_secured') AND c.client_id=sub.client_id AND c.scheduled_at=op.scheduled_at)
   UNION ALL
   SELECT 'successor',op.id,op.subscription_id,op.root_operation_id,op.scheduled_at,c.id,c.last_selected_at,c.last_checked_at,
-   s.status='cancelled' OR s.next_cycle_at IS DISTINCT FROM c.scheduled_at,
-   s.status='active' AND s.next_cycle_at=op.scheduled_at AND op.scheduled_at<=p_now AND op.lease_expires_at<=p_now
+   sub.status='cancelled' OR sub.next_cycle_at IS DISTINCT FROM c.scheduled_at,
+   sub.status='active' AND sub.next_cycle_at=op.scheduled_at AND op.scheduled_at<=p_now AND op.lease_expires_at<=p_now
      AND (op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired') OR op.state='reserved' AND c.state='stock_secured')
      AND public.subscription_stock_wait_frozen_v2(op.id) IS NOT NULL
-  FROM public.subscription_successor_operations_v2 op JOIN public.subscriptions s ON s.id=op.subscription_id
+  FROM public.subscription_successor_operations_v2 op JOIN public.subscriptions sub ON sub.id=op.subscription_id
   JOIN public.subscription_successor_wait_cases_v2 c ON c.operation_id=op.id
-  WHERE c.state IN ('waiting','stock_secured') AND c.client_id=s.client_id AND c.scheduled_at=op.scheduled_at
+  WHERE c.state IN ('waiting','stock_secured') AND c.client_id=sub.client_id AND c.scheduled_at=op.scheduled_at
    AND op.superseded_by_proposal_id IS NULL
  ), chosen AS (
   SELECT candidates.*,row_number() OVER (ORDER BY last_selected NULLS FIRST,last_checked,coalesce(case_id,id)) ordinal
