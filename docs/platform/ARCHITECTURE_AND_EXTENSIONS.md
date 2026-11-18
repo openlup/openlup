@@ -3553,8 +3553,8 @@ no hosted-authentication or production qualification.
 A host explicitly supplies the catalogue authority and observes each selected
 port on its actual database and executor. Use
 `observePostgresCatalogPrivileges` for a scoped schema and grant check.
-Combine that check with the authority's live readiness before declaring a lane
-ready. A verified empty installation can be ready to read. An existing
+Supply `schemaCompatible` and `privilegeGranted` alongside the live scope
+state in each observation. A verified empty installation can be ready to read. An existing
 unadopted scope, an unsupported operation and a dependency outage remain
 distinct. Registering a product type or installing a migration grants no
 publication capability.

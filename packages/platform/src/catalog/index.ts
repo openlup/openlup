@@ -103,3 +103,4 @@ export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
 export { createPostgresCatalogAdoption, createPostgresCatalogAdoptionReader } from "./catalogAdoption.js";
 export type { CatalogAdoptionPreflight, CatalogAdoptionReceipt } from "./catalogAdoption.js";
 export { createCatalogRuntimeBinding, observePostgresCatalogPrivileges } from "./catalogRuntimeBinding.js";
+export type { CatalogRuntimeObservation } from "./catalogRuntimeBinding.js";

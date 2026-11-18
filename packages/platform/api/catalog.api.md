@@ -1439,6 +1439,12 @@ export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPack
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogCapabilityDescriptor } from "./publicationPorts.js";
 type Observed = "ready" | "unadopted" | "unsupported" | "dependency_unavailable";
+/** Live evidence for the selected executor and catalogue scope. @experimental */
+export interface CatalogRuntimeObservation {
+    schemaCompatible: boolean;
+    privilegeGranted: boolean;
+    state: Observed;
+}
 type Refusal = {
     outcome: Exclude<Observed, "ready">;
     reason: string;
@@ -1446,7 +1452,7 @@ type Refusal = {
 type PortLane<Port> = {
     port: Port;
     enabled: () => boolean;
-    observe: () => Promise<Observed>;
+    observe: () => Promise<CatalogRuntimeObservation>;
 };
 type LaneName = "publicationRead" | "publish" | "lifecycleWrite" | "shopper" | "settlement" | "account" | "editor" | "renewal" | "successor";
 /**
@@ -4519,6 +4525,7 @@ export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
 export { createPostgresCatalogAdoption, createPostgresCatalogAdoptionReader } from "./catalogAdoption.js";
 export type { CatalogAdoptionPreflight, CatalogAdoptionReceipt } from "./catalogAdoption.js";
 export { createCatalogRuntimeBinding, observePostgresCatalogPrivileges } from "./catalogRuntimeBinding.js";
+export type { CatalogRuntimeObservation } from "./catalogRuntimeBinding.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 

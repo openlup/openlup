@@ -1,7 +1,7 @@
 import { createCatalogContribution } from "@openlup/platform/composition";
 import { createCatalogDraftHandler, createPostgresCatalogDraftStore, createPostgresCatalogSkuEnvelopeReadPort, createPostgresBundleCatalogStore, createPostgresCatalogAdoption, createPostgresCatalogPublication,
   createCatalogRuntimeBinding, type BundleStockPort, type CatalogProductTypeRegistry,
-  type CatalogPublicationDependencies } from "@openlup/platform/catalog";
+  type CatalogPublicationDependencies, type CatalogRuntimeObservation } from "@openlup/platform/catalog";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { readBearerToken, type AdminAuthBinding } from "@openlup/platform/identity";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
@@ -34,9 +34,9 @@ export function createM05CatalogBinding(input: {
     publication: Omit<CatalogPublicationDependencies<HttpRequest>, "registry" | "authorizeHuman">;
     adoptionTransaction?: Parameters<typeof createPostgresCatalogAdoption<HttpRequest>>[0]["transaction"];
     writerEnabled: () => boolean;
-    observePublicationRead: () => Promise<"ready" | "unadopted" | "unsupported" | "dependency_unavailable">;
-    observePublish: () => Promise<"ready" | "unadopted" | "unsupported" | "dependency_unavailable">;
-    observeLifecycleWrite: () => Promise<"ready" | "unadopted" | "unsupported" | "dependency_unavailable">;
+    observePublicationRead: () => Promise<CatalogRuntimeObservation>;
+    observePublish: () => Promise<CatalogRuntimeObservation>;
+    observeLifecycleWrite: () => Promise<CatalogRuntimeObservation>;
   };
 }) {
   if (!input.executor || typeof input.executor.query !== "function") throw new Error("m05_catalog_store_required");

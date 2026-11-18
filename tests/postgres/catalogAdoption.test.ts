@@ -45,7 +45,8 @@ async function asActor<T>(work: (client: PoolClient) => Promise<T>, actor: strin
   try {
     await client.query("BEGIN");
     await client.query(`SET LOCAL ROLE ${role}`);
-    await client.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor ?? undefined, role: "authenticated" })]);
+    const claims = JSON.stringify({ sub: actor ?? undefined, role: "authenticated" }).replaceAll("'", "''");
+    await client.query(`SET LOCAL request.jwt.claims = '${claims}'`);
     const result = await work(client);
     await client.query("COMMIT");
     return result;

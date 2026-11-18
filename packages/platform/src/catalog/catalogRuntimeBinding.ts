@@ -2,11 +2,17 @@ import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogCapabilityDescriptor } from "./publicationPorts.js";
 
 type Observed = "ready" | "unadopted" | "unsupported" | "dependency_unavailable";
+/** Live evidence for the selected executor and catalogue scope. @experimental */
+export interface CatalogRuntimeObservation {
+  schemaCompatible: boolean;
+  privilegeGranted: boolean;
+  state: Observed;
+}
 type Refusal = { outcome: Exclude<Observed, "ready">; reason: string };
 type PortLane<Port> = {
   port: Port;
   enabled: () => boolean;
-  observe: () => Promise<Observed>;
+  observe: () => Promise<CatalogRuntimeObservation>;
 };
 type LaneName = "publicationRead" | "publish" | "lifecycleWrite" | "shopper" | "settlement" | "account" | "editor" | "renewal" | "successor";
 const availability = {
@@ -63,8 +69,10 @@ export function createCatalogRuntimeBinding<Ports extends Partial<Record<LaneNam
     try {
       if (selected.enabled() !== true) return "unsupported";
       if ((name === "publish" || name === "lifecycleWrite") && input.writerEnabled?.() !== true) return "unsupported";
-      const result = await selected.observe();
-      return result === "ready" || result === "unadopted" || result === "unsupported" ? result : "dependency_unavailable";
+      const observed = await selected.observe();
+      if (observed.state === "dependency_unavailable") return observed.state;
+      if (observed.schemaCompatible !== true || observed.privilegeGranted !== true) return "unsupported";
+      return observed.state === "ready" || observed.state === "unadopted" || observed.state === "unsupported" ? observed.state : "dependency_unavailable";
     } catch {
       return "dependency_unavailable";
     }
