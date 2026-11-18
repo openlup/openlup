@@ -82,6 +82,7 @@ export interface CheckoutRecoveryEmailInput<Locale extends string = string> {
   recoveryToken: string;
   mode: string;
   reminderHours: number;
+  stage?: "first" | "last";
   linkSource?: "buyer_hatch";
   outboxEventId: string;
   locale?: Locale;

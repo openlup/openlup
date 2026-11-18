@@ -33,6 +33,22 @@ export interface CommerceOfferAvailabilityPort {
     }): Promise<CommerceOfferAvailability[]>;
 }
 ```
+## dist/commerce/contracts/checkoutRecoveryReminders.d.ts
+
+```ts
+/** Installed native reminder stages are independent of elapsed hours. */
+export interface CheckoutRecoveryReminderSchedule {
+    revision: string;
+    abandonedCart: readonly {
+        stage: "first" | "gentle" | "last";
+        afterHours: number;
+    }[];
+    checkoutRecovery: readonly {
+        stage: "first" | "last";
+        afterHours: number;
+    }[];
+}
+```
 ## dist/commerce/contracts/fulfillmentRecovery.d.ts
 
 ```ts
@@ -78,6 +94,7 @@ export type * from "./orderMoney.js";
 export type { OmsPaymentStatus } from "./state.js";
 export type * from "./fulfillmentRecovery.js";
 export type * from "./omsTypes.js";
+export type { CheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminders.js";
 ```
 ## dist/commerce/contracts/intent.d.ts
 
@@ -1581,6 +1598,7 @@ export interface CommercePackageSizingPort<Input, Result> {
 export type CheckoutOfferResolution = {
     kind: "bound";
     offerVersion: string;
+    requireQuoteAcceptance?: boolean;
 } | {
     kind: "refused";
     reason: string;
@@ -1596,6 +1614,17 @@ export interface CheckoutOfferPolicyPort<Intent, Quote> {
         offerVersion: string;
         quote: Quote;
     }): Promise<Record<string, unknown>>;
+    /** Required when the bound result opts in. Verifies the scoped review over the authoritative offer. */
+    verifyQuoteAcceptance?(input: {
+        token: string;
+        intent: Intent;
+        offerVersion: string;
+        quote: Quote;
+        expectedTotal: {
+            amountMinor: number;
+            currency: string;
+        };
+    }): boolean;
 }
 /** Shared journey projection; pricing and host metadata types are supplied by composition. */
 export interface CheckoutJourney<Request, Policy> {

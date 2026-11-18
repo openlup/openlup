@@ -5591,6 +5591,30 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "K8-CHECKOUT-RECOVERY-REMINDER-SCHEDULE",
+        "path": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
+            "beforeSha256": "18b834697f1351a8ea5128b59fc37d86d8ac8c83d744b44492120f7198e30b8f",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)",
+            "beforeSha256": "97d2efac3169e9b63683ccae466927cd95ea3994d8d01bc4920cab4426f98302",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_recovery_reminder_schedule()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -7878,6 +7902,27 @@
           "signature": "public.inventory_renewal_protection_days()",
           "beforeSha256": null,
           "afterSha256": "4d1570aecc30219d65da01d175f2d87c95c1cc4caef9d803c0f9e20e803f74db"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802",
+      "functions": [
+        {
+          "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
+          "beforeSha256": "18b834697f1351a8ea5128b59fc37d86d8ac8c83d744b44492120f7198e30b8f",
+          "afterSha256": "399e8c2e92302249949e5ced215990ec1a993e6f7203857d5e1523eaa24671fc"
+        },
+        {
+          "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)",
+          "beforeSha256": "97d2efac3169e9b63683ccae466927cd95ea3994d8d01bc4920cab4426f98302",
+          "afterSha256": "3681c465358f7d630313ac731e2c4332147f4781944f9223d5bb4916192adbb6"
+        },
+        {
+          "signature": "public.commerce_checkout_recovery_reminder_schedule()",
+          "beforeSha256": null,
+          "afterSha256": "00d55d3287e673840aef40dbfdce17395b719ff72d6ea9bb9f1ef61a4233d22a"
         }
       ]
     }

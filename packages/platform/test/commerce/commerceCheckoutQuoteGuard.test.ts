@@ -4,6 +4,7 @@ import type { Provisioned } from "./checkoutTestFixtures.js";
 import type { Snapshot } from "./checkoutTestFixtures.js";
 import { resolveCheckoutQuoteGuard } from "./checkoutTestFixtures.js";
 import { CLIENT_ID, intent, quoteSnapshot } from "./checkoutTestFixtures.js";
+import { createPromotionQuoteAcceptance } from "../../src/promotions/index.js";
 
 const provisioned = {
   clientId: CLIENT_ID,
@@ -11,6 +12,60 @@ const provisioned = {
 } as Provisioned;
 
 describe("resolveCheckoutQuoteGuard", () => {
+  it("requires a review of the server-bound offer, refusing an ordinary token or same-price revision change", async () => {
+    const snapshot = quoteSnapshot();
+    snapshot.quote.context = { mode: "one_time", promoCodes: [] };
+    snapshot.quote.discounts = [{
+      promotionId: "fixture-code", appliesTo: "order_total", amountOffMinor: 20,
+      reasonCode: "promotion_code_v2", promotionEngineVersion: "promotion-engine.v2",
+    }];
+    const signerConfig = { projectRequest: (request: { promoCodes: string[]; offerVersion: string }) => request };
+    const ordinary = createPromotionQuoteAcceptance(signerConfig);
+    const review = createPromotionQuoteAcceptance({ ...signerConfig, purpose: "offer-review" });
+    const keyring = { current: "synthetic-fixture-acceptance-key-01" };
+    const now = new Date("2026-11-18T10:00:00Z");
+    const quote = snapshot.quote;
+    const plain = { quote, keyring, now, expectedTotal: quote.totalGross };
+    const request = { promoCodes: [], offerVersion: "offer.revision-a" };
+    const verifyPromotionAcceptance = vi.fn(({ token }: { token: string }) =>
+      ordinary.verifyPromotionQuoteAcceptance({ ...plain, request, token }));
+    const verifyQuoteAcceptance = ({ token, offerVersion }: { token: string; offerVersion: string }) =>
+      review.verifyPromotionQuoteAcceptance({ ...plain, request: { ...request, offerVersion }, token });
+    const args = {
+      quotePort: { createQuote: vi.fn().mockResolvedValue(snapshot) },
+      intent: { ...intent(), offerVersion: "offer.public-alias" },
+      provisioned,
+      checkoutKind: "one_time" as const,
+      expectedQuote: { totalGross: quote.totalGross },
+      recordQuoteStage: async <T>(operation: () => Promise<T>) => operation(),
+      offerPolicy: {
+        resolve: async () => ({ kind: "bound" as const, offerVersion: request.offerVersion, requireQuoteAcceptance: true }),
+        evidence: async () => ({ revision: "current" }),
+        verifyQuoteAcceptance,
+      },
+      verifyPromotionAcceptance,
+    };
+    const ordinaryToken = ordinary.issuePromotionQuoteAcceptance({ ...plain, request })!;
+    const oldToken = review.issuePromotionQuoteAcceptance({
+      ...plain, request: { ...request, offerVersion: "offer.revision-b" },
+    })!;
+    const matchingToken = review.issuePromotionQuoteAcceptance({ ...plain, request })!;
+    await expect(resolveCheckoutQuoteGuard(args)).resolves.toMatchObject({ kind: "price_changed" });
+    for (const token of [ordinaryToken, oldToken]) {
+      await expect(resolveCheckoutQuoteGuard({ ...args, promotionAcceptanceToken: token }))
+        .resolves.toMatchObject({ kind: "price_changed" });
+    }
+    await expect(resolveCheckoutQuoteGuard({
+      ...args, offerPolicy: { ...args.offerPolicy, verifyQuoteAcceptance: undefined },
+      promotionAcceptanceToken: matchingToken,
+    })).resolves.toMatchObject({ kind: "price_changed" });
+    await expect(resolveCheckoutQuoteGuard({ ...args, promotionAcceptanceToken: matchingToken }))
+      .resolves.toMatchObject({ kind: "accepted", requiresOfferReview: true, quoteSnapshot: { quote: { context: {
+        offerVersion: request.offerVersion, offerEvidence: { revision: "current" },
+      } } } });
+    expect(verifyPromotionAcceptance).not.toHaveBeenCalled();
+  });
+
   it("accepts checkout when no UI expectation is present", async () => {
     const snapshot = quoteSnapshot({ amountMinor: 25460, currency: "XTS" });
     const createQuote = vi.fn().mockResolvedValue(snapshot);

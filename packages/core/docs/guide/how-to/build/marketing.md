@@ -38,7 +38,7 @@ the acquisition routines.
 
 Bind a `BffResponder`, `authorize` and `resolveBinding` when constructing the
 direct handlers. Case list/count factories also require `isDirect`. Select only the routes you expose from the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/api/marketing-server.api.md).
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/marketing-server.api.md).
 
 The active-count handler and public survey submission do not call `authorize`.
 Apply your route admission policy before invoking them. Survey submission

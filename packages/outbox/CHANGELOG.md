@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [1.2.0]
+
+- Publishable on the npm `latest` dist-tag as `1.2.0`, from tag
+  `openlup-outbox-v1.2.0`.
+
 ## [1.1.0]
 
 - Publishable on the npm `latest` dist-tag as `1.1.0`, from tag

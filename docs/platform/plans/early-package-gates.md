@@ -360,8 +360,9 @@ is established. Do not edit the helper, bypass drift or use an alternate stamp.
 Release preflight/publisher continue cold packing and validating their own exact
 release candidate; premerge manifest identity is not npm registry provenance and
 does not establish equality to a separately repacked registry archive.
-The 19 October CI simplification supersedes raw `test-full`: four root shards
-feed required `test` with conservative tooling-input selection. pgTAP remains a raw diagnostic.
+The 19 October 2026 CI simplification replaced raw `test-full` with the
+required `test` aggregate. It now requires all eight root shards and the
+independent `pgtap` job. The root shards apply conservative tooling-input selection.
 
 ## Local implementation checkpoint
 

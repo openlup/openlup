@@ -94,7 +94,7 @@ its users or operators can observe.
    package's tests join the required test selection, so required CI runs them
    while the package is still unreleased. As with `packages/outbox`, extend the
    root Vitest configuration so `npm test` discovers the new package tests;
-   the six hosted shards feed the required `test` aggregate.
+   the eight hosted shards feed the required `test` aggregate.
 3. **Refactor in later pull requests.** Each refactoring pull request keeps the
    witness unchanged. A refactor changes nothing a consumer can observe:
    results, side effects, ordering, errors and fault modes, operational logs,
@@ -381,7 +381,7 @@ consumer imports both optional subpaths with ambient I/O disabled and no SDK.
 Focused loopback transport tests fence every socket except their disposable
 local listener; they never establish provider-account readiness.
 
-Required root `test` accepts only success from all six `test-full-shard` jobs;
+Required root `test` accepts only success from all eight `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
 The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
@@ -638,9 +638,9 @@ node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
 # test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.
 npm run test:scoped
-# Hosted test-full-shard runs six parallel independent installations, each with:
+# Hosted test-full-shard runs eight parallel independent installations, each with:
 # node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
-# npm test -- --shard=N/6 (N = 1, 2, 3, 4, 5, 6)
+# npm test -- --shard=N/8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
 # pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
 ```
@@ -929,7 +929,7 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-full-shard` jobs run `npm test -- --shard=N/6` in six independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-full-shard` jobs run `npm test -- --shard=N/8` in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
@@ -1502,6 +1502,13 @@ that required CI and the change's own review would miss.
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
    Before `prepare`, run `npm run preflight` and have it green, or explain each
    `WARN` in the task record. Full local verification is optional.
+
+   A PR that adds or changes a starter-owned file or its owned-file contract must
+   include the packaged starter migration in a Core fragment and matching steps
+   in `scripts/packages/distribution-cli-proof.ts`, with regression evidence in
+   its test. Describe pristine replacement, customized reconciliation, startup
+   refusals and any explicit installed-policy step. Release preparation consumes
+   the fragment into the next reader upgrade guide. Leave released sections intact.
 3. **Describe the task in the PR description.** Record the finite outcome, scope
    and exclusions, acceptance criteria, risk, actual delivery authority and
    evidence. Keep this record current through fixes and handoffs.

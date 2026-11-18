@@ -67,6 +67,7 @@ const payloadSubsetSchema = z
     recoveryToken: z.string().min(1),
     mode: z.string().optional(),
     reminderHours: z.number().int().positive().optional(),
+    stage: z.enum(["first", "last"]).optional(),
     operatorIssued: z.boolean().optional(),
     buyerRequested: z.boolean().optional(),
   })
@@ -145,6 +146,7 @@ export function createOutboxCheckoutRecoveryEmailHandler<Locale extends string>(
         recoveryToken: parsed.data.recoveryToken,
         mode: parsed.data.mode ?? "one_time",
         reminderHours: parsed.data.reminderHours ?? 1,
+        ...(parsed.data.stage === undefined ? {} : { stage: parsed.data.stage }),
         outboxEventId: row.id,
         // Marks the deep-link as the one the buyer mailed themselves off a stuck
         // payment step, so the landing page can tell that arrival apart from a

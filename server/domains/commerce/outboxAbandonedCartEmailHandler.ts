@@ -37,14 +37,17 @@ const HANDLER_TIMEOUT_MS = 10_000;
 const MARKETING_PURPOSE = "marketing_newsletter";
 
 // Frozen minimal parse: validate ONLY what this handler consumes. orderUuid is
-// load-bearing (recipient lookup); reminderHours degrades to 24 if absent so a
-// producer tweak never retro-DLQs an in-flight reminder.
+// load-bearing (recipient lookup). Legacy rows retain the event route tone;
+// new rows select an explicit stage. Unknown stages follow the parse refusal.
 const payloadSubsetSchema = z
   .object({
     orderUuid: z.guid(),
-    reminderHours: z.union([z.literal(1), z.literal(24), z.literal(72)]).optional(),
+    reminderHours: z.number().int().positive().optional(),
+    stage: z.enum(["first", "gentle", "last"]).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine(payload => payload.stage !== undefined || payload.reminderHours === undefined
+    || [1, 24, 72].includes(payload.reminderHours), { message: "legacy reminderHours must be 1, 24 or 72" });
 
 export function abandonedCartTemplateSlug(reminderHours: 1 | 24 | 72): string {
   if (reminderHours === 72) return "commerce-abandoned-cart-72h";
@@ -128,7 +131,8 @@ export function createOutboxAbandonedCartEmailHandler(deps: {
       const content = abandonedCartEmailContent(locale, {
         firstName: recipient.firstName,
         brandName: APP_EMAIL_BRAND.copyBrandNameCased ?? APP_EMAIL_BRAND.copyBrandName,
-        reminderHours: deps.reminderHours,
+        reminderHours: parsed.data.stage === undefined ? deps.reminderHours : (parsed.data.reminderHours ?? deps.reminderHours),
+        ...(parsed.data.stage === undefined ? {} : { stage: parsed.data.stage }),
         ctaUrl: emailRouteUrl(deps.baseUrl, "configurator", locale),
         unsubscribeUrl,
       }, APP_EMAIL_TEAM_SIGNOFF[locale]);

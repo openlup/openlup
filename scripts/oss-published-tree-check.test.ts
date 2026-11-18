@@ -459,7 +459,7 @@ describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/6"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -513,13 +513,13 @@ describe("complete public CI", () => {
       "docker rm --force install-proof-postgres",
     ]);
   });
-  it("partitions complete root discovery across exactly six independent runners and fails closed", () => {
+  it("partitions complete root discovery across exactly eight independent runners and fails closed", () => {
     const shard = workflowJob("test-full-shard");
-    expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/6)");
+    expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/8)");
     const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
     expect(shard).toContain(eventFence);
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
-    expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 6\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6]\n");
+    expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
     expect(shard).toContain("          fetch-depth: 0\n");
@@ -657,8 +657,8 @@ describe("complete public CI", () => {
       expect(full.error).toBeUndefined();
       expect(full.status).toBe(0);
       expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run"]);
-      for (const shard of [1, 2, 3, 4, 5, 6]) {
-        const args = ["run", `--shard=${shard}/6`];
+      for (const shard of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        const args = ["run", `--shard=${shard}/8`];
         const result = run(args, 29);
         expect(result.error).toBeUndefined();
         expect(result.status).toBe(29);
@@ -977,7 +977,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("scopes the test run to directories that still exist", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
     expect(workflow).toContain("run: npm test");
-    expect(workflow.match(/run: npm test[^\n]*/gu)).toEqual(["run: npm test -- --shard=${{ matrix.shard }}/6"]);
+    expect(workflow.match(/run: npm test[^\n]*/gu)).toEqual(["run: npm test -- --shard=${{ matrix.shard }}/8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);

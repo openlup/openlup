@@ -3,7 +3,8 @@
 Use the starter's ownership inventory to decide which application files you
 customize and which updates need review.
 
-For a 0.43.0 starter upgrade, follow the [required owned-file migration](../upgrade/v1-0-0.md#starter-applications-from-0430).
+For a starter upgrade, follow the per-release owned-file migration linked from
+[Upgrade application files](../upgrade/application-files.md).
 
 ## Read the inventory
 
@@ -115,7 +116,7 @@ links for that order and expires at the earlier of its own lifetime or the
 order's recovery deadline. Payment prevents further payment through a link;
 other links still obey their expiry and revocation. Payment-case links rotate separately, invalidating their predecessor.
 
-Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/docs/ownership.md#application-ownership)
+Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/docs/ownership.md#application-ownership)
 for token construction and exact continuation, recovery and operator-link deadlines.
 
 A pending order can continue sandbox payment and retry a decline. Expired orders,
@@ -155,7 +156,7 @@ Purchase and sign-in share the bounded `purchase.inputLimits.email` setting;
 overlong purchase email
 refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
-native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/docs/ownership.md#application-ownership)
+native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/docs/ownership.md#application-ownership)
 owns the exact limits. Browser field limits do not replace host validation.
 
 ## Paid-order messages and shipping
@@ -193,15 +194,17 @@ activation refuse recurring obligations, including for the matching owner.
 
 ## Account and operator authority
 
-`owned/acquisition-policy.ts` supplies account validation and checkout link and
-reminder timing. The host derives the actor from the accepted session and the
+`owned/acquisition-policy.ts` supplies account validation and checkout link
+timing; the installed `checkoutRecoveryReminders` schedule in
+`owned/store.config.ts` sets reminder hours and stages. The host derives the actor from the accepted session and the
 command key from the request. Caller-supplied identities and command keys in
 action bodies refuse. Account reads expose owned event metadata rather than
 private payloads. Profile writes and event appends have separate commits;
 correction requests retain their native append-only repeated-key behavior.
 
 The separate checkout-recovery mail entry selects only recovery and expiry
-handlers. A captured send's native receipt gates the final reminder; enqueueing
+handlers. When the schedule has a first stage, a captured send's native receipt gates the
+final reminder; enqueueing
 or skipping a send does not establish delivery. Paid messages and subscription
 notices use separate selections.
 
@@ -226,7 +229,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/README.md#commerce-contracts).
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/README.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request
@@ -274,7 +277,7 @@ Detected embedded browsers show send and send-again controls only after verified
 continuation exists. Detection changes display, not authority. The cookie-only
 handler derives identity from claims, uses the saved checkout recipient and
 deduplicates sends within the configured time bucket. The
-[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
+[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
 owns its duration. Confirmation survives panel
 remounts; failures offer retry. Delivery rechecks buyer authorization and captures
 the marked buyer link privately. Enqueue, capture and payment are separate facts.

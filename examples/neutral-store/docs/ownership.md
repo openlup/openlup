@@ -248,7 +248,8 @@ migration runner owns the database schema; no starter migration or grant is adde
 ## Account, checkout and parcel controls
 
 `owned/acquisition-policy.ts` owns account validation, fictional phone and checkout
-wave/link timing values. English and Polish copy stays in `owned/copy.ts`. The managed account
+link timing values; the installed `checkoutRecoveryReminders` schedule in
+`owned/store.config.ts` owns reminder hours and stages. English and Polish copy stays in `owned/copy.ts`. The managed account
 and operator pages bind native capabilities through `host/e4-composition.ts` and
 `host/native-composition.ts`. The host derives identity and command keys from the
 accepted session/request. Profile update and event append retain their separate
@@ -259,8 +260,9 @@ The account reads only owned event metadata, never private event payloads.
 using the native job lease, producer and scoped outbox authorization. It registers
 only checkout recovery and expiry handlers in that invocation. Paid receipts and
 subscription notices keep their separate selections. Captures are generated
-private state, never tracked configuration or served assets. A captured send's
-native profile receipt gates the final wave; an enqueue or skipped send does not.
+private state, never tracked configuration or served assets. When the schedule has a
+first wave, a captured send's native profile receipt gates the final wave; an
+enqueue or skipped send does not. A last-only schedule has no predecessor gate.
 
 Human admins require the documented owner-provisioned Commerce operator row for
 parcel operations, plus the separate communications roster for operator links.

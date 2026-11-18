@@ -19,15 +19,16 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 This CI-compiled example binds a store; the executor must commit each operation
-before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
+before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
 [AGENTS.md](AGENTS.md) explains application ownership and extension boundaries.
 Node 24 or newer is required. Declaration maps connect `dist/` declarations to
 shipped `src/`; JavaScript source maps are not shipped.
 
-The prepared `1.1.0` set supersedes published `1.0.0`, which failed exact-set
-qualification for starter upgrades. It documents the required owned-file
-migration and includes cadence widening with native forward 151. Qualification of
-1.1.0 is recorded after publication.
+The published `1.1.0` set is the first qualified stable npm set and image
+([qualification run](https://github.com/openlup/openlup/actions/runs/44263843134)).
+It includes the required owned-file migration, cadence widening and native
+forward 151. It supersedes `1.0.0`, which later passed qualification as an npm
+set without an image ([requalification run](https://github.com/openlup/openlup/actions/runs/44256496392)).
 
 ## Package Surface Maturity
 

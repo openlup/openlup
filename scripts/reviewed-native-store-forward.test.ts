@@ -1285,7 +1285,7 @@ it.each(["pull_request", "merge_group"])("routes prepared later SQL plus a catal
     git("init", "-q", "-b", "main"); const value = registry(), path = "db/platform/migrations/20271106100000_prepared.sql", text = "CREATE TABLE public.prepared (id uuid);";
     value.nativeStoreForwardClass = { sealed: false, slots: [emptySlot(path)] }; value.nativeStoreForwards = [{ path, sha256: sqlSha256(text), functions: [] }];
     put("config/reviewed-platform-forwards.json", encode(value)); put(PLATFORM_BASELINE_FILE, before); const base = commit(); git("update-ref", "refs/remotes/origin/main", base);
-    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Changed observer"); const head = commit();
+    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.shared.ts", "// Changed observer"); const head = commit();
     expect(isNativeStoreMigrationPath(path)).toBe(true);
     expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass.slots)).toBe(true);
     const candidate = await captureCommittedReviewCandidate(folder, base, head);
@@ -1304,7 +1304,7 @@ it("routes later paths conservatively while admitting an ordinary unregistered e
   nativeGitFixture(({ folder, put, commit }) => {
     const value = registry(), path = "db/platform/migrations/20271106100000_unregistered.sql", text = "CREATE TABLE public.unregistered (id uuid);";
     put("config/reviewed-platform-forwards.json", encode(value)); put(PLATFORM_BASELINE_FILE, before); const base = commit();
-    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Ordinary additive test change"); const head = commit();
+    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.shared.ts", "// Ordinary additive test change"); const head = commit();
     expect(isNativeStoreMigrationPath(path)).toBe(true); expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass!.slots)).toBe(false);
     expect(isNativeStoreMigrationPath("db/platform/migrations/20261101221999_earlier.sql")).toBe(false);
     expect(isNativeStoreMigrationPath("supabase/migrations/20271106100000_other.sql")).toBe(false);

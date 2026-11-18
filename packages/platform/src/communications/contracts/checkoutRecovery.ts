@@ -8,7 +8,9 @@ export type CheckoutRecoveryMode = "subscription_cycle" | "one_time";
 export interface CheckoutRecoveryEmailVars {
   firstName: string | null;
   brandName: string;
-  reminderHours: CheckoutRecoveryReminderHours;
+  reminderHours: number;
+  /** Explicit stage wins over the historical hour mapping. */
+  stage?: "first" | "last";
   mode: CheckoutRecoveryMode;
   /** Absolute signed deep-link to complete payment for this order. */
   recoveryUrl: string;
@@ -34,9 +36,9 @@ export function createCheckoutRecoveryContentFactory(input: {
     signoff: string,
   ): CheckoutRecoveryEmailContent {
     const copy = commerceEmailContent.checkoutRecovery[locale];
-    const isFinal = vars.reminderHours === 20;
-    // The optional selected-pack context note runs only on the first nudge (1h).
-    // The final reminder (20h) stays businesslike, so it never sits next to the
+    const isFinal = (vars.stage ?? (vars.reminderHours === 20 ? "last" : "first")) === "last";
+    // The optional selected-pack context note runs only on the first stage.
+    // The final stage stays businesslike, so it never sits next to the
     // "order will be canceled" note.
     const showCheer = !isFinal;
     const isSubscription = vars.mode === "subscription_cycle";

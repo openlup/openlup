@@ -18,7 +18,7 @@ they are ordinary public source files, not release assets. Keep the pair and
 source revision together. No author checkout, workspace install or package
 packing is needed.
 
-Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
+Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the download commands in `examples/neutral-store/README.md`, under “Start
 from an exact source archive”. Those commands download the exact source archive
 and both inputs at the commits above. In the download directory, after unpacking
@@ -83,7 +83,7 @@ node --experimental-strip-types host/server.ts
 ```
 
 This host does not compose the database-backed actions. Pass `--configuration`
-and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/server.ts)
+and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/server.ts)
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
@@ -172,6 +172,15 @@ functions and their EXECUTE requirement. It freezes on each subscription row,
 so changing configuration leaves existing subscriptions unchanged.
 See [activation and edit windows](../../concepts/subscriptions.md#freeze-the-edit-window-at-activation)
 for the required native migration and cutoff semantics.
+
+The source starter also owns `checkoutRecoveryReminders` in `owned/store.config.ts`:
+abandoned-cart stages default to `first` at 1h, `gentle` at 24h and `last` at 72h;
+checkout recovery defaults to `first` at 1h and `last` at 20h. The explicit
+installation step installs this schedule; startup reads it and refuses
+`starter_installed_policy_drift` on revision, stage or hour differences. After
+editing, deliberately reinstall before starting. See [reminder stages and
+hours](checkout-recovery.md#install-reminder-stages-and-hours) for the unreleased
+migration, runtime grant and independent checkout-window limits.
 
 In the current source candidate, keep one owned configuration entry per domain,
 such as `owned/renewal.config.ts` or `owned/quote.config.ts`, and compose it in
@@ -541,16 +550,16 @@ Unchanged copied bytes alone do not establish working behavior. See
 
 ## Protect local sessions and messages
 
-Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/sessions.ts)
+Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/sessions.ts)
 owns expiry and capacity; a full store refuses with
 `starter_session_capacity_exceeded`. Customer ownership and operator membership are rechecked against
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
 Read `identity.jsonl` through the application container's filesystem as its
-`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/native-composition.ts)
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/native-composition.ts)
 defines its private location.
-The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/native-composition.ts)
+The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/native-composition.ts)
 creates the file with owner-only permissions. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 
