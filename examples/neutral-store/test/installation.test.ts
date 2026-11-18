@@ -345,7 +345,7 @@ test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve na
     ]) {
       await writeFile(resolve(directory, 'shared/config.ts'), `
         export function assertConfig() { throw new Error(${JSON.stringify(code)}); }
-        export function parseHostArguments() { return { configuration: 'supplements', port: 4319, listen: '127.0.0.1', databaseUrl: 'postgresql://starter_runtime@database:5432/neutral_store' }; }
+        export function parseHostArguments() { return { configuration: undefined, port: 4319, listen: '127.0.0.1', databaseUrl: 'postgresql://starter_runtime@database:5432/neutral_store' }; }
       `);
       await writeFile(resolve(directory, 'host/server.ts'), `import { assertConfig } from '../shared/config.ts'; assertConfig();`);
       const up = await invoke(['up']);
