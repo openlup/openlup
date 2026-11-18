@@ -149,11 +149,24 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
-async function edit(f: Fixture, lane: Lane = "classic") {
+async function edit(f: Fixture, lane: Lane = "classic", deriveEvidence = false) {
   const key = randomUUID(), hash = digest(key), line = { variantId: f.sku,qty: 2,isAddon: false,
     quoteLine: { sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234) } };
   const core = [{ variantId: f.sku,qty: 2 }];
   if (lane === "legacy") {
+    if (deriveEvidence) {
+      const db = await session(), constraint = {};
+      try {
+        await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)",
+          [f.actor,JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+        const preview = await rpc(db,"customer_subscription_preview_bundle_as_actor",[f.subscription,key,JSON.stringify(core),"[]",constraint,28,1]);
+        const accepted = preview.preview.quoteHash as string;
+        await db.query("COMMIT");
+        const args: unknown[] = [f.subscription,key,accepted,JSON.stringify(core),"[]",constraint,28,1];
+        return { key,hash: accepted,action: "update_bundle",payload: {},args,
+          invoke: (connection: PoolClient) => rpc(connection,"customer_subscription_apply_bundle_as_actor",args) };
+      } finally { await db.query("ROLLBACK"); db.release(); }
+    }
     const constraint = {};
     const lines = [{ variantId: f.sku,quantity: 2,isAddon: false,sortOrder: 0,unitPriceMinor: 617,currency: "XXX",
       ...(f.admission ? { catalogAdmission: f.admission ?? null } : {}) }];
@@ -176,6 +189,19 @@ async function edit(f: Fixture, lane: Lane = "classic") {
   const cadenceDays = lane === "exact" ? 30 : 28;
   const evidence = lane === "classic" ? { baseLines: [line],addonLines: [],compositionConstraint: constraint,catalogAdmission: f.admission ?? null }
     : { lines: [line],cadenceDays,compositionConstraint: constraint,catalogAdmission: f.admission,subjectFacts: { revision: 1 },optInFacts: { revision: 1 } };
+  if (deriveEvidence) {
+    const price = f.admission.priceContextVersions[0];
+    Object.assign(line.quoteLine,{ catalogFacts: {
+      version: "catalog_facts_v1",skuId: f.sku,documentRevisionId: f.value.product.documentRevision!.id,
+      documentDigest: f.head.documentDigest,basePriceEntryId: price.entryId,resolvedPriceEntryId: price.entryId,
+      mode: "subscription",atTime: f.at,currency: "XXX",baseUnitAmountMinor: 617,resolvedUnitAmountMinor: 617,resolvedLineAmountMinor: 1234,
+    } });
+    delete (evidence as Partial<typeof evidence>).catalogAdmission;
+    if (lane === "exact" && "subjectFacts" in evidence) {
+      delete (evidence as Partial<typeof evidence>).subjectFacts;
+      delete (evidence as Partial<typeof evidence>).optInFacts;
+    }
+  }
   const totals = { currentRecurringPrice: money(617),newRecurringPrice: money(1234),delta: money(617) };
   await rpc(pool,"subscription_quote_preview_record",[f.actor,f.client,f.subscription,action,hash,1,
     (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at", [f.at])).rows[0].at,
@@ -219,6 +245,73 @@ async function hook(signature: string, boundary: string, insertion: string, muta
 const packageSignature = "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)";
 const takeSignature = "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)";
 const subscriptionBoundary = "SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;";
+it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout evidence uses the installed membership page in %s", async mode => {
+  const f = await fixture(packs[0]), key = randomUUID(), amount = money(1234), price = f.admission.priceContextVersions[0];
+  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
+  const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
+    lines: [{ sku: f.code,productSlug: f.value.product.slug!,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: amount,
+      tax: { included: true as const,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax",
+        netAmount: amount,vatAmount: money(0),grossAmount: amount },
+      catalogFacts: { version: "catalog_facts_v1" as const,skuId: f.sku,documentRevisionId: f.value.product.documentRevision!.id,
+        documentDigest: f.head.documentDigest,basePriceEntryId: price.entryId,resolvedPriceEntryId: price.entryId,
+        mode,atTime: f.at,currency: "XXX",baseUnitAmountMinor: 617,resolvedUnitAmountMinor: 617,resolvedLineAmountMinor: 1234 } }],
+    discounts: [],context: { mode,cadenceDays: 28,promoCodes: [],offerVersion: "classic" },
+    subtotalGross: amount,discountTotalGross: money(0),totalGross: amount,netTotal: amount,taxTotal: money(0) } };
+  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!installed) {
+    const before = await snapshot();
+    await expect(port.captureCatalogAdmission(quote)).rejects.toMatchObject({ message: "catalog_admission_membership_authority_unavailable",code: "55000" });
+    expect(await snapshot()).toEqual(before);
+    return;
+  }
+  const evidence = await port.captureCatalogAdmission(quote);
+  expect(evidence).toMatchObject({ heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,priceContextVersions: f.admission.priceContextVersions,mode,purpose: "order" });
+  const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence! });
+  expect(accepted.orderDraft.quoteSnapshot.quote.lines[0]).not.toHaveProperty("catalogFacts");
+  const publisher = await pool.connect(), next = await changedDocument(f);
+  try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
+  expect(await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client }))
+    .toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
+});
+
+it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview evidence in %s", async lane => {
+  const f = await fixture(packs[0]);
+  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!installed) {
+    const before = await snapshot();
+    await expect(edit(f,lane,true)).rejects.toMatchObject({ message: "catalog_admission_membership_authority_unavailable",code: "55000" });
+    expect(await snapshot()).toEqual(before);
+    return;
+  }
+  const command = await edit(f,lane,true), db = await session(), proof = { schemaVersion: 2,lines: [f.reference] };
+  const result = await pool.query(lane === "legacy"
+    ? "SELECT proposed_lines#>'{0,catalogAdmission}' AS evidence FROM public.subscription_edit_quotes WHERE subscription_id=$1"
+    : "SELECT quote_snapshot->'catalogAdmission' AS evidence FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription]);
+  expect(result.rows).toHaveLength(1);
+  expect(result.rows[0].evidence).toMatchObject({ mode: "subscription",heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,
+    priceContextVersions: f.admission.priceContextVersions,purpose: "account" });
+  try {
+    await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)",
+      [f.actor,JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    const accepted = await command.invoke(db);
+    expect(lane === "legacy" ? accepted.subscriptionAction.status : accepted.status).toBe("applied");
+    await db.query("COMMIT");
+    expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscription])).rows)
+      .toEqual([{ catalog_acceptance: proof }]);
+    const next = await changedDocument(f), publisher = await pool.connect();
+    try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
+    const before = await snapshot();
+    await db.query("BEGIN");
+    await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)",
+      [f.actor,JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    const replay = await command.invoke(db);
+    expect(lane === "legacy" ? replay.subscriptionAction.status : replay.status).toBe("replayed");
+    await db.query("COMMIT");
+    expect(await snapshot()).toEqual(before);
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
 it("F6 subscription precedes its owned preview, with the old-order cycle control", async () => {
   const f = await fixture(packs[0]), command = await edit(f), observer = await pool.connect(), t = await session(), e = await session();
   const gateT = await gate(observer), tPid = await pid(t), ePid = await pid(e), hPid = await pid(observer);
@@ -1601,35 +1694,6 @@ it.each(lanes)("LC6-D-063 and LC6-D-142 clearing the final governed line in %s",
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
-it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout evidence uses the installed membership page in %s", async mode => {
-  const f = await fixture(packs[0]), key = randomUUID(), amount = money(1234), price = f.admission.priceContextVersions[0];
-  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
-    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
-  const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
-    lines: [{ sku: f.code,productSlug: f.value.product.slug!,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: amount,
-      tax: { included: true as const,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax",
-        netAmount: amount,vatAmount: money(0),grossAmount: amount },
-      catalogFacts: { version: "catalog_facts_v1" as const,skuId: f.sku,documentRevisionId: f.value.product.documentRevision!.id,
-        documentDigest: f.head.documentDigest,basePriceEntryId: price.entryId,resolvedPriceEntryId: price.entryId,
-        mode,atTime: f.at,currency: "XXX",baseUnitAmountMinor: 617,resolvedUnitAmountMinor: 617,resolvedLineAmountMinor: 1234 } }],
-    discounts: [],context: { mode,cadenceDays: 28,promoCodes: [],offerVersion: "classic" },
-    subtotalGross: amount,discountTotalGross: money(0),totalGross: amount,netTotal: amount,taxTotal: money(0) } };
-  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
-  if (!installed) {
-    const before = await snapshot();
-    await expect(port.captureCatalogAdmission(quote)).rejects.toMatchObject({ message: "catalog_admission_membership_authority_unavailable",code: "55000" });
-    expect(await snapshot()).toEqual(before);
-    return;
-  }
-  const evidence = await port.captureCatalogAdmission(quote);
-  expect(evidence).toMatchObject({ heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,priceContextVersions: f.admission.priceContextVersions,mode,purpose: "order" });
-  const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence! });
-  expect(accepted.orderDraft.quoteSnapshot.quote.lines[0]).not.toHaveProperty("catalogFacts");
-  const publisher = await pool.connect(), next = await changedDocument(f);
-  try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
-  expect(await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client }))
-    .toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
-});
 
 it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].map(promoted => ({ mode,promoted }))))(
   "LC6-D-130 governed writing uses the qualified runtime in $mode, promoted=$promoted", async ({ mode,promoted }) => {
@@ -1655,7 +1719,7 @@ it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].map(
 );
 
 it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].flatMap(promoted =>
-  [false,true].map(control => ({ mode,promoted,control }))))(
+  [false,true].map(control => ({ mode,promoted,control })))))(
   "LC6-D-005 and LC6-D-148 guard before first-price classification in $mode, promoted=$promoted, control=$control",
   async ({ mode,promoted,control }) => {
     const f = await legacyFixture(), value = payload(randomUUID(),randomUUID(),packs[0]), sku = value.skus[0], code = sku.code!,
