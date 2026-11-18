@@ -306,8 +306,14 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       && affected.source(sku.sku)) activationCodes.add(sku.sku);
     const media = prepared.payload.publication.evidence.media ?? [], mediaCodes = new Set(media.map(claim => claim.skuCode));
     const authoredSkus = new Map(prepared.payload.skus.map(sku => [sku.code, sku]));
+    for (const claim of media) {
+      if (authoredSkus.has(claim.skuCode)) continue;
+      if (before.skus.some(sku => sku.code === claim.skuCode))
+        return publicationRefuse("catalog_publication_draft_advanced", "conflict");
+      return publicationRefuse("catalog_publication_media_evidence_mismatch");
+    }
     const currentSourceCodes = new Set([...activationCodes, ...mediaCodes]);
-    const fallbackCodes = [...currentSourceCodes].filter(code => !authoredSkus.has(code));
+    const fallbackCodes = [...activationCodes].filter(code => !authoredSkus.has(code));
     const publishedSources = before.head && fallbackCodes.length ? await tuple(db, `SELECT DISTINCT ON (sku.sku)
       sku.sku AS code,draft.draft_id,draft.revision,draft.command_key,draft.fingerprint
       FROM public.catalog_publications publication
@@ -377,8 +383,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           && head.revision === source.revision && head.status === "open"), "catalog_publication_draft_advanced", "conflict");
     }
     for (const claim of media) {
-      const source = selectedSources.get(claim.skuCode), sku = source?.payload.skus.find(sku => sku.code === claim.skuCode);
-      require(sku && claim.mediaRef === source!.payload.product.sharedContent.presentation.mediaRef
+      const sku = authoredSkus.get(claim.skuCode)!;
+      require(claim.mediaRef === prepared.payload.product.sharedContent.presentation.mediaRef
         && equal(claim.assetRefs, [...(sku.assetRefs ?? [])].sort(comparePublicationText)), "catalog_publication_media_evidence_mismatch");
     }
     return { retained, activationCodes, selectedSources };
@@ -524,10 +530,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           const authored = source!.payload.skus.find(value => value.code === sku.code)!;
           assertCatalogPublicationGrossMass(authored.netContent!, authored.grossMass ?? null, prepared.definition);
           const mediaRef = compiled.product.presentation?.mediaRef;
-          const hasMedia = sku.assetRefs.length > 0 || typeof mediaRef === "string";
-          if (!hasMedia) continue;
-          const claim = source!.payload.publication.evidence.media?.find(claim => claim.skuCode === sku.code);
-          require(claim && claim.mediaRef === mediaRef && equal(claim.assetRefs, [...sku.assetRefs].sort(comparePublicationText)), "catalog_publication_media_readiness_unproven");
+          const hasMedia = (authored.assetRefs?.length ?? 0) > 0 || typeof source!.payload.product.sharedContent.presentation.mediaRef === "string";
+          if (!hasMedia && sku.assetRefs.length === 0 && typeof mediaRef !== "string") continue;
+          const claim = prepared.payload.publication.evidence.media?.find(claim => claim.skuCode === sku.code);
+          require(claim && claim.mediaRef === mediaRef && equal(claim.assetRefs, [...(authored.assetRefs ?? [])].sort(comparePublicationText))
+            && equal(claim.assetRefs, [...sku.assetRefs].sort(comparePublicationText)), "catalog_publication_media_readiness_unproven");
           const verdict = await deps.verifyMedia(db, claim!);
           require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
           require(verdict, "catalog_publication_media_readiness_unproven");

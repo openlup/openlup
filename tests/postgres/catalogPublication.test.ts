@@ -2557,6 +2557,52 @@ it("cycle1 native unknown media SKU retains the named evidence refusal", async (
   expect(await snapshot()).toEqual(before);
 });
 
+it.each(["omitted retained SKU", "included SKU with old proof", "included SKU with fresh proof"] as const)(
+  "publication media evidence binds to the current authored SKU: %s", async mode => inPriceDatabase(async () => {
+    const data = await priceDraft(), payload = structuredClone(data.payload);
+    const current = data.publication.expectedHead!;
+    const sku = payload.skus[0], skuCode = sku.code!, mediaRef = "example:reviewed-media", assetRefs = ["panel"];
+    const freshDigest = createHash("sha256").update(canonicalCatalogDraftJson({ skuCode, mediaRef, assetRefs })).digest("hex");
+    const oldDigest = current.documentDigest;
+    sku.assetRefs = assetRefs;
+    payload.product.sharedContent.presentation = { mediaRef };
+    const presentation = { op: "set_product_presentation" as const, productSlug: payload.product.slug!, presentation: { mediaRef } };
+    payload.publication.operations = payload.publication.operations.map(op => op.op === "set_product_presentation" ? presentation : op);
+    if (mode === "omitted retained SKU") {
+      payload.skus = [];
+      delete payload.product.primarySkuId;
+      Object.assign(payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
+      payload.publication.operations = [presentation];
+    }
+    payload.publication.evidence.media = [{ skuCode, mediaRef, assetRefs, revisionDigest: mode === "included SKU with fresh proof" ? freshDigest : oldDigest }];
+    const command = await save(payload, data.draftId, 2, current);
+    const verified: string[] = [], fallback: unknown[] = [];
+    const target = realPriceAuthority(undefined, (sql, _db, _rows, values) => {
+      if (sql.includes("SELECT DISTINCT ON (sku.sku)")) fallback.push(values);
+    }, async (_db, proof) => {
+      verified.push(proof.revisionDigest);
+      return proof.revisionDigest === freshDigest;
+    });
+    const capability = (await target.authorize(null))!;
+    if (mode === "omitted retained SKU") {
+      expect(await target.decision(approvalCommand(command), capability)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+      expect(fallback).toEqual([]);
+      expect(verified).toEqual([]);
+      return;
+    }
+    await approve(command, target, capability);
+    const before = await snapshot(), result = await target.publish(command, capability);
+    expect(fallback).toEqual([]);
+    if (mode === "included SKU with old proof") {
+      expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_readiness_unproven" });
+      expect(verified).toEqual([oldDigest]);
+      expect(await snapshot()).toEqual(before);
+    } else {
+      expect(result).toMatchObject({ outcome: "committed", receipt: { changes: [{ sku: skuCode, state: "active" }] } });
+      expect(verified).toEqual([freshDigest]);
+    }
+  }));
+
 it.each(["reference", "assets"] as const)("cycle1 native activation binds verified media to the applied %s", async field => inPriceDatabase(async () => {
   const initialTarget = realPriceAuthority(), initialActor = (await initialTarget.authorize(null))!, data = await priceDraft(false), initial = structuredClone(data.payload), skuCode = initial.skus[0].code!;
   initial.skus[0].assetRefs = ["panel"]; initial.product.sharedContent.presentation = { mediaRef: "example:before" };
