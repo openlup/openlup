@@ -440,10 +440,16 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         VALUES($1,$2,$3,'draft',$4,$5,$6::text[],$7::jsonb,$8::jsonb)`, [product.id, product.slug, operation.name, product.type.key, product.type.version, product.axes, publicationJson(product.attributes), publicationJson(product)]);
       else if (operation.op === "register_document_revision") {
         const document = state.documents.find(document => document.reference.id === operation.revisionId)!;
-        const existing = await tuple(db, "SELECT * FROM public.catalog_product_document_revisions WHERE product_id=$1 AND (id=$2 OR revision_no=$3)", [product.id, operation.revisionId, operation.revisionNo]);
-        if (!existing.length) await db.query(`INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
-          VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9,$10)`, [operation.revisionId, product.id, operation.revisionNo, document.reference.schemaId,
-          document.reference.documentRef, operation.canonicalText, document.reference.sourceRef, publicationJson(document.provenance), document.reference.digest, operation.canonicalText]);
+        const values = [operation.revisionId, product.id, operation.revisionNo, document.reference.schemaId,
+          document.reference.documentRef, operation.canonicalText, document.reference.sourceRef, publicationJson(document.provenance), document.reference.digest];
+        await db.query(`INSERT INTO public.catalog_product_document_revisions
+          (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
+          VALUES($1,$2,$3,$4,$5,$6::text::jsonb,$7,$8::jsonb,$9,$6) ON CONFLICT DO NOTHING`, values);
+        // An independent insert can win either identity key. Compare the actual immutable row after that race.
+        const saved = await tuple(db, `SELECT id=$1 AND product_id=$2 AND revision_no=$3 AND schema_id=$4 AND document_ref=$5
+          AND canonical_text=$6 AND document_payload=$6::text::jsonb AND source_ref=$7 AND provenance=$8::jsonb AND digest=$9 AS matches
+          FROM public.catalog_product_document_revisions WHERE id=$1 OR (product_id=$2 AND revision_no=$3)`, values);
+        require(saved.length === 1 && saved[0]?.matches === true, "catalog_publication_v3_compile_document_conflict", "conflict");
       } else if (operation.op === "move_document_pointer") {
         const document = state.documents.find(document => document.reference.revisionNo === operation.documentRevisionNo)!;
         const current = await tuple(db, "SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [product.id]);

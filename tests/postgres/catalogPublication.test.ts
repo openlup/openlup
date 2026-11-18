@@ -2766,18 +2766,47 @@ it.each(["opaque", "numeric"] as const)("cycle1 native identifiers preserve non-
   expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { primarySkuId: primary.id } });
 });
 
-it("cycle1 native document registration reuses an exact prepared revision", async () => {
+it.each([
+  ["before compilation", "exact tuple"],
+  ["before compilation", "wrong provenance"],
+  ["after compilation snapshot", "exact tuple"],
+  ["after compilation snapshot", "wrong provenance"],
+] as const)("document registration checks the saved tuple %s: %s", async (phase, tuple) => {
   const data = await draft(), first = await commit(data.publication), payload = structuredClone(data.payload), content = { ...payload.product.sharedContent.document, revisionNo: 2 };
   const canonicalText = canonicalCatalogDraftJson(content), digest = createHash("sha256").update(canonicalText).digest("hex"), document = { ...payload.product.documentRevision!, id: randomUUID(), revisionNo: 2, digest };
   payload.product.sharedContent.catalogAction = "revise"; payload.product.sharedContent.document = content; payload.product.documentRevision = document;
   payload.publication.operations = [{ op: "register_document_revision", productSlug: payload.product.slug!, revisionId: document.id, revisionNo: 2, documentRef: document.documentRef, sourceRef: document.sourceRef, canonicalText, digest, provenance: { source: "current_draft" } }, { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
   const command = await save(payload, data.draftId, 1, first.head), record = (await db.query("SELECT public.catalog_draft_record($1,2) AS value", [data.draftId])).rows[0].value;
   const provenance = { draftId: record.draftId, draftRevision: record.revision, draftCommandKey: record.commandKey, draftFingerprint: record.fingerprint };
-  await db.query("INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text) VALUES($1,$2,2,$3,$4,$5::text::jsonb,$6,$7::jsonb,$8,$5)", [document.id, data.productId, document.schemaId, document.documentRef, canonicalText, document.sourceRef, canonicalCatalogDraftJson(provenance), digest]);
-  const receipt = await commit(command);
-  expect(receipt.head.documentDigest).toBe(digest);
-  expect((await db.query("SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1 AND revision_no=2", [data.productId])).rows).toEqual([{ id: document.id }]);
+  const insert = async () => {
+    const storedProvenance = tuple === "exact tuple" ? provenance : { ...provenance, draftCommandKey: "wrong" };
+    await db.query(`INSERT INTO public.catalog_product_document_revisions
+      (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
+      VALUES($1,$2,2,$3,$4,$5::text::jsonb,$6,$7::jsonb,$8,$5)`, [document.id, data.productId, document.schemaId,
+      document.documentRef, canonicalText, document.sourceRef, canonicalCatalogDraftJson(storedProvenance), digest]);
+    return snapshot();
+  };
+  await approve(command);
+  let stable = phase === "before compilation" ? await insert() : undefined;
+  let snapshots = 0;
+  const target = createPostgresCatalogPublication(dependencies(async sql => {
+    if (phase === "after compilation snapshot" && sql.includes("AS live_product") && ++snapshots === 2)
+      stable = await insert();
+  }));
+  const capability = (await target.authorize(null))!;
+  const result = await target.publish(command, capability);
+  expect(stable).toBeDefined();
+  if (tuple === "exact tuple") {
+    expect(result).toMatchObject({ outcome: "committed", receipt: { head: { documentDigest: digest } } });
+    expect((await db.query("SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1 AND revision_no=2", [data.productId])).rows)
+      .toEqual([{ id: document.id }]);
+  } else {
+    expect(result).toEqual({ outcome: phase === "before compilation" ? "validation_issue" : "conflict",
+      reason: "catalog_publication_v3_compile_document_conflict" });
+    expect(await snapshot()).toEqual(stable);
+  }
 });
+
 
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);
