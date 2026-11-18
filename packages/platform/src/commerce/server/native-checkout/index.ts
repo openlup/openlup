@@ -4,7 +4,10 @@ import { selectAcquisitionTerms, assertAcquisitionTermsCapability, AcquisitionTe
   createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, type CreateQuoteResponse,
   type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
 import { createPostgresQuoteCustomerEligibility } from "../../../promotions/index.js";
+import type { CatalogAdmissionInput } from "../../../catalog/contracts/admission.js";
 import { commerceIdempotencyKeySchema } from "../../contractPrimitives.js";
+import type { CommerceOfferAvailabilityPort } from "../../contracts/availability.js";
+import { commerceOfferEvidenceSchema } from "../../offerEvidenceSchemas.js";
 import type { OrderDraftSummary } from "../../contracts/order.js";
 import { CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPersistenceError } from "../../errors.js";
 import { CommerceOrderDraftPriceChangedError, CommerceOrderDraftUnsupportedMoneyError } from "../../orderDraftErrors.js";
@@ -134,6 +137,35 @@ export interface NativeAcquisitionCheckoutOptions {
   financialPolicy: AcquisitionFinancialPolicy<PromotionRow>;
   /** Host-owned semantic labels, in addition to the saved family IDs. */
   isAcquisitionDiscount(discount: CommerceQuoteDiscount): boolean;
+  /** The host's existing availability authority for governed sized quotes.
+   * @experimental
+   */
+  availability?: CommerceOfferAvailabilityPort;
+}
+
+async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evidence: CatalogAdmissionInput,
+  availability: CommerceOfferAvailabilityPort | undefined) {
+  const refusal = "catalog_admission_sized_stock_unavailable";
+  const context = quote.context as Record<string, unknown> | undefined;
+  if (context?.offerVersion !== "sized.v1" || !commerceOfferEvidenceSchema.safeParse(context.offerEvidence).success) {
+    throw new Error("catalog_admission_sized_offer_binding_required");
+  }
+  if (!availability) throw new Error(refusal);
+  const linesBySku = new Map(quote.lines.map(line => [line.sku, line]));
+  const items = evidence.skuRevisions.map(({ reference, quantity }) => {
+    const line = linesBySku.get(reference.skuCode);
+    if (!line || line.quantity !== quantity) throw new Error(refusal);
+    return { sku: line.sku, productSlug: line.productSlug, variantId: reference.skuId, requestedQuantity: quantity,
+      checkoutMode: evidence.mode };
+  });
+  const results = await availability.getAvailability({ items });
+  const stockByVariant = new Map(results.map(stock => [stock.variantId, stock]));
+  if (results.length !== items.length || stockByVariant.size !== items.length || items.some(item => {
+    const stock = stockByVariant.get(item.variantId);
+    return !stock || stock.sku !== item.sku || stock.productSlug !== item.productSlug || !stock.visibleInConfigurator
+      || (stock.status !== "available" && stock.status !== "low_stock")
+      || typeof stock.sellableNow !== "number" || !Number.isSafeInteger(stock.sellableNow) || stock.sellableNow < item.requestedQuantity;
+  })) throw new Error(refusal);
 }
 
 /** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
@@ -152,8 +184,12 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
           "SELECT public.catalog_admission_build_evidence($1::jsonb,$2::text,$3::jsonb,'order') AS evidence",
           [JSON.stringify(snapshot.quote.lines), snapshot.quote.context?.mode ?? "one_time", JSON.stringify({ quoteSnapshot: snapshot })],
         );
+        const evidence = (result.rows[0]?.evidence ?? null) as CatalogAdmissionInput | null;
+        if (evidence?.offerEvidence.offerVersion === "sized.v1") {
+          await assertSizedCheckoutStock(snapshot.quote, evidence, options.availability);
+        }
         await db.query("COMMIT");
-        return (result.rows[0]?.evidence ?? null) as object | null;
+        return evidence;
       } catch (error) { await db.query("ROLLBACK"); throw error; }
       finally { db.release(); }
     },

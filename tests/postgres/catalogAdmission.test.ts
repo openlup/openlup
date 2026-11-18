@@ -10,7 +10,7 @@ import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore, createPo
 import { createPostgresAcquisitionCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
-import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
+import { canonicalCatalogPriceSetupCommand, createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
 import { createPostgresPackageEditor, createPostgresSizedEditor, createPostgresPurchaseRenewalWriter, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -246,19 +246,76 @@ async function hook(signature: string, boundary: string, insertion: string, muta
 const packageSignature = "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)";
 const takeSignature = "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)";
 const subscriptionBoundary = "SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;";
-it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout evidence uses the installed membership page in %s", async mode => {
-  const f = await fixture(packs[0]), key = randomUUID(), amount = money(1234), price = f.admission.priceContextVersions[0];
-  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
-    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
-  const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
+it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].flatMap(promoted =>
+  [false,true].map(control => ({ mode,promoted,control })))))(
+  "LC6-D-070 and LC6-D-073 purchase fences an alternate base price in $mode, promoted=$promoted, control=$control",
+  async ({ mode,promoted,control }) => {
+    const f = await fixture(packs[0]), input = purchaseInput(f), alternate = randomUUID();
+    input.draft.context.mode = mode;
+    input.quote.catalogAdmission.mode = mode;
+    await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO NOTHING");
+    await rpc(pool,"commerce_capture_offer_policy_v2_legacy_baseline",[]);
+    await pool.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Alternate synthetic list','ZZ','XXX',$2::timestamptz-interval '1 day')", [alternate,f.at]);
+    const bytes = canonicalCatalogPriceSetupCommand({ schemaVersion: 1,commandKey: randomUUID(),variantId: f.sku,priceListId: alternate,
+      mode: "one_time",minQty: 1,amountKind: "gross",unitPriceMinor: 617,expected: { entryId: null,unitPriceMinor: null } });
+    const h = await pool.connect(), a = await runtime.connect(), b = await session();
+    const stop = await gate(h), ap = await pid(a), bp = await pid(b), hp = await pid(h);
+    const routine = promoted ? "commerce_create_promoted_order_draft_with_outbox" : "commerce_create_order_draft_with_outbox";
+    const widerScope = "UNION ALL\n   SELECT l.id,scope.sku_id FROM public.price_lists l CROSS JOIN unnest(scoped_skus) scope(sku_id)\n    WHERE p_purpose='order' AND l.currency=p_offer_evidence->>'currency'";
+    const boundary = "(SELECT (v->>'entryId')::uuid FROM jsonb_array_elements(prices) v) ORDER BY p.id FOR SHARE;";
+    let restore = async () => {};
+    try {
+      await b.query("SET LOCAL ROLE authenticated");
+      await b.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)",
+        [administrator,JSON.stringify({ sub: administrator,role: "authenticated" })]);
+      restore = await hook(admissionSignature,boundary,`IF pg_backend_pid()=${ap} THEN ${stop.sql} END IF;`,body => {
+        expect(body.split(widerScope)).toHaveLength(2);
+        return control ? body.replace(widerScope,"") : body;
+      });
+      const purchase = tracked(rpc(a,routine,input.args));
+      await blocker(h,ap,hp);
+      const pricing = tracked(rpc(b,"catalog_price_setup_apply",[bytes,digest(bytes)]));
+      if (control) {
+        const slipped = await pricing;
+        if (!slipped.ok) throw slipped.error;
+        expect(slipped.value).toMatchObject({ outcome: "committed" });
+        await b.query("COMMIT");
+        await stop.release();
+      } else {
+        await blocker(h,bp,ap);
+        await stop.release();
+        const written = await pricing;
+        if (!written.ok) throw written.error;
+        expect(written.value).toMatchObject({ outcome: "committed" });
+        await b.query("COMMIT");
+      }
+      expect(await purchase).toMatchObject({ ok: true,value: { orderDraft: { replayed: false } } });
+      expect((await h.query("SELECT unit_price_minor,mode FROM public.price_entries WHERE price_list_id=$1 AND variant_id=$2", [alternate,f.sku])).rows)
+        .toEqual([{ unit_price_minor: 617,mode: "one_time" }]);
+    } finally {
+      await stop.release(); await a.query("ROLLBACK"); await b.query("ROLLBACK");
+      await restore(); a.release(); b.release(); h.release();
+    }
+  },
+);
+
+
+function governedCheckoutQuote(f: Fixture, mode: "one_time" | "subscription", offerVersion = "classic", offerEvidence?: Record<string, unknown>) {
+  const amount = money(1234), price = f.admission.priceContextVersions[0];
+  return { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
     lines: [{ sku: f.code,productSlug: f.value.product.slug!,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: amount,
       tax: { included: true as const,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax",
         netAmount: amount,vatAmount: money(0),grossAmount: amount },
       catalogFacts: { version: "catalog_facts_v1" as const,skuId: f.sku,documentRevisionId: f.value.product.documentRevision!.id,
         documentDigest: f.head.documentDigest,basePriceEntryId: price.entryId,resolvedPriceEntryId: price.entryId,
         mode,atTime: f.at,currency: "XXX",baseUnitAmountMinor: 617,resolvedUnitAmountMinor: 617,resolvedLineAmountMinor: 1234 } }],
-    discounts: [],context: { mode,cadenceDays: 28,promoCodes: [],offerVersion: "classic" },
+    discounts: [],context: { mode,cadenceDays: 28,promoCodes: [],offerVersion,...(offerEvidence ? { offerEvidence } : {}) },
     subtotalGross: amount,discountTotalGross: money(0),totalGross: amount,netTotal: amount,taxTotal: money(0) } };
+}
+it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout evidence uses the installed membership page in %s", async mode => {
+  const f = await fixture(packs[0]), key = randomUUID(), quote = governedCheckoutQuote(f,mode);
+  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
   const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
   if (!installed) {
     const before = await snapshot();
@@ -275,6 +332,36 @@ it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout 
   expect(await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client }))
     .toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
 });
+
+it.each((["one_time","subscription"] as const).flatMap(mode =>
+  (["ready","missing binding","missing stock","wrong identity","hidden","insufficient"] as const).map(stock => ({ mode,stock }))))(
+  "LC6-D-101 and LC6-D-108 governed sized checkout checks $stock stock in $mode", async ({ mode,stock },context) => {
+    const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+    if (!installed) { context.skip("Membership page comes from the predecessor installation"); return; }
+    const f = await fixture(packs[0]);
+    const snapshotQuote = governedCheckoutQuote(f,mode,"sized.v1",stock === "missing binding" ? undefined : { basis: "synthetic" });
+    const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+      financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never,
+      availability: { async getAvailability({ items }) {
+        expect(items).toEqual([{ sku: f.code,productSlug: f.value.product.slug!,variantId: f.sku,requestedQuantity: 2,checkoutMode: mode }]);
+        if (stock === "missing stock") return [];
+        return [{ sku: f.code,productSlug: f.value.product.slug!,variantId: stock === "wrong identity" ? randomUUID() : f.sku,
+          visibleInConfigurator: stock !== "hidden",sellableNow: stock === "insufficient" ? 1 : 2,status: "available",reasonCode: "synthetic",source: "fixture" }];
+      } },
+    });
+    if (stock === "ready") {
+      const evidence = await port.captureCatalogAdmission(snapshotQuote);
+      expect(evidence).toMatchObject({ heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,mode,offerEvidence: { offerVersion: "sized.v1" } });
+      expect(await port.createOrderDraft({ idempotencyKey: randomUUID(),quoteSnapshot: snapshotQuote },{ clientId: f.client,catalogAdmission: evidence }))
+        .toMatchObject({ orderDraft: { replayed: false } });
+    } else {
+      const before = await snapshot();
+      await expect(port.captureCatalogAdmission(snapshotQuote)).rejects.toThrow(stock === "missing binding"
+        ? "catalog_admission_sized_offer_binding_required" : "catalog_admission_sized_stock_unavailable");
+      expect(await snapshot()).toEqual(before);
+    }
+  },
+);
 
 it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview evidence in %s", async lane => {
   const f = await fixture(packs[0]);
@@ -315,12 +402,14 @@ it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview ev
 
 const membershipReadBoundary = "page:=public.catalog_offer_memberships_page(offer_version,cursor_id,page_limit,p_mode,head_digest);";
 const membershipPages = [
-  { name: "complete selection across pages", pages: 4 },
-  { name: "roster beyond 500", pages: 5, predicate: "OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members" },
-  { name: "cursor with a short page", pages: 0, predicate: "jsonb_array_length(page->'items')<>page_limit\n    OR " },
+  { name: "complete selection across pages", pages: 4,lane: "classic",allowed: true },
+  { name: "sized selection past item 500", pages: 5,lane: "sized",allowed: true },
+  { name: "roster beyond 500", pages: 5,lane: "classic",allowed: false,predicate: "OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members" },
+  { name: "sized roster beyond 1000", pages: 10,lane: "sized",allowed: false,predicate: "OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members" },
+  { name: "cursor with a short page", pages: 0,lane: "classic",allowed: false,predicate: "jsonb_array_length(page->'items')<>page_limit\n    OR " },
 ] as const;
 describe.each(membershipPages)("LC6-D-091 and LC6-D-097 $name", row => {
-  const cases = [{ control: false }, ...(row.pages === 4 ? [] : [{ control: true }])];
+  const cases = [{ control: false }, ...("predicate" in row ? [{ control: true }] : [])];
   for (const { control } of cases) it(control ? "removal fails the precise witness" : "native preview", async context => {
     const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
     if (!installed) { context.skip("Membership page comes from the predecessor installation"); return; }
@@ -342,13 +431,13 @@ describe.each(membershipPages)("LC6-D-091 and LC6-D-097 $name", row => {
       return body.replace(row.predicate,"");
     });
     try {
-      if (row.pages === 4) {
-        await edit(f,"classic",true);
+      if (row.allowed) {
+        await edit(f,row.lane,true);
         const { evidence } = (await pool.query("SELECT quote_snapshot->'catalogAdmission' AS evidence FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription])).rows[0];
         expect(evidence.skuRevisions).toEqual(f.admission.skuRevisions);
       } else {
         const before = await snapshot();
-        const refuses = async () => expect(edit(f,"classic",true)).rejects.toMatchObject({ code: "55000",message: "catalog_admission_membership_authority_unavailable" });
+        const refuses = async () => expect(edit(f,row.lane,true)).rejects.toMatchObject({ code: "55000",message: "catalog_admission_membership_authority_unavailable" });
         if (control) await expect(refuses()).rejects.toMatchObject({ name: "AssertionError" });
         else { await refuses(); expect(await snapshot()).toEqual(before); }
       }
@@ -1672,9 +1761,16 @@ it("admission promoted promotion-head prelock", async () => {
   } finally { await stop.release(); await e.query("ROLLBACK"); await p.query("ROLLBACK"); await restore(); e.release(); p.release(); h.release(); }
 });
 
-it("admission binding promoted", async () => {
+it.each([
+  { name: "plain one-time after publication",mode: "one_time",promoted: false },
+  { name: "plain subscription after publication",mode: "subscription",promoted: false },
+  { name: "promoted one-time after publication",mode: "one_time",promoted: true },
+  { name: "promoted",mode: "subscription",promoted: true },
+] as const)("admission binding $name", async ({ mode,promoted }) => {
   const f = await fixture(packs[0]), next = await changedDocument(f), p = purchaseInput(f), h = await pool.connect(), w = await pool.connect(), e = await session(), stop = await gate(h);
   const ep = await pid(e), wp = await pid(w), hp = await pid(h); let finished = false, reached = false;
+  p.draft.context.mode = mode;
+  p.quote.catalogAdmission.mode = mode;
   p.quote.catalogAdmission.skuRevisions[0].quantity = 3;
   const publishing = tracked(publishOn(w,next.publication,async (sql,values) => {
     if (!reached && sql.includes("pg_advisory_xact_lock(hashtextextended($1,0))") && values[0]===`catalog-lineage:${f.product}`) {
@@ -1683,9 +1779,10 @@ it("admission binding promoted", async () => {
   }));
   try {
     await blocker(h,wp,hp);
-    const call = tracked(rpc(e,"commerce_create_promoted_order_draft_with_outbox",p.args).finally(() => { finished = true; }));
+    const routine = promoted ? "commerce_create_promoted_order_draft_with_outbox" : "commerce_create_order_draft_with_outbox";
+    const call = tracked(rpc(e,routine,p.args).finally(() => { finished = true; }));
     await expect.poll(async () => finished || (await h.query("SELECT $2::integer=ANY(pg_blocking_pids($1)) AS blocked", [ep,wp])).rows[0].blocked).toBe(true);
-    expect(finished,"promoted selection is checked after catalogue acquisition").toBe(false);
+    expect(finished,"selection is checked after catalogue acquisition").toBe(false);
     await stop.release(); const written = await publishing; if (!written.ok) throw written.error; expect(written.value.outcome).toBe("committed");
     const before = await snapshot(), result = await call; expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatchObject({ message: headMoved,code: "40001" });
@@ -1741,7 +1838,7 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
   const before = await snapshot(), db = await session();
   try {
     if (change === "unreadable") await db.query("DELETE FROM public.catalog_publication_heads WHERE product_id=$1", [f.product]);
-    if (change === "sku-drift") await scopedFacts(db,f,"catalog_skus",{ title: "Unsealed title" });
+    if (change === "sku-drift") await scopedFacts(db,f,"catalog_skus",{ memberships: [{ offerVersion: actualOffer,admitted: false }] });
     if (change === "projection-drift") {
       await scopedFacts(db,f,"catalog_skus",{});
       await db.query("UPDATE public.catalog_skus SET is_addon=NOT is_addon WHERE id=$1", [f.sku]);
@@ -1815,6 +1912,8 @@ it.each([false,true].flatMap(promoted => ["one_time","subscription"].flatMap(mod
 
 it.each([
   { change: "sku-drift",predicate: "OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb",replacement: "" },
+  { change: "projection-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
+  { change: "weight-drift",predicate: "OR sk.net_weight_g::numeric IS DISTINCT FROM",replacement: "OR false AND sk.net_weight_g::numeric IS DISTINCT FROM" },
   { change: "extra-anchor-key",predicate: "OR (h->'head')-ARRAY['publicationId','revision','documentDigest']<>'{}'::jsonb",replacement: "" },
   { change: "invalid-digest",predicate: "OR NOT coalesce(h#>>'{head,documentDigest}' ~ '^[0-9a-f]{64}$',false)",replacement: "" },
   { change: "duplicate-memberships",predicate: "AND m->'admitted'='true'::jsonb)<>1",replacement: "AND m->'admitted'='true'::jsonb)<1" },
@@ -1832,22 +1931,29 @@ it.each([
       expect(body.split(predicate)).toHaveLength(2);
       return body.replace(predicate,replacement);
     });
-    await expect(authorityCase({ ...row,path: "plain-subscription" })).rejects.toMatchObject({ name: "AssertionError" });
+    const paths = change === "projection-drift" || change === "weight-drift" ? authorityPaths : ["plain-subscription"] as const;
+    for (const path of paths) await expect(authorityCase({ ...row,path })).rejects.toMatchObject({ name: "AssertionError" });
   } finally { await restore(); }
 });
 
 async function acquisitionCase({ offerVersion,result }: {
-  offerVersion: "classic" | "sized.v1"; result: "bound" | "missing" | "mismatch" | "attachment mismatch" | "unpaid" | "abandoned" | "legacy opaque evidence";
+  offerVersion: "classic" | "sized.v1"; result: "bound" | "missing" | "mismatch" | "attachment mismatch" | "unpaid" | "abandoned" | "legacy opaque evidence" | "promoted split" | "qualified runtime";
 }) {
   const legacy = result === "legacy opaque evidence", f = await (legacy ? legacyFixture() : fixture(packs[0]));
   const key = randomUUID(), amount = money(1234), sizeConstraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
+  const promotionId = result === "promoted split" ? randomUUID() : null;
+  if (promotionId) await pool.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)",
+    [promotionId,{ id: promotionId,status: "active",redemption_limit_global: null,redemption_limit_per_customer: null }]);
+  const cut = promotionId ? 101 : 0, payable = money(amount.amountMinor - cut);
+  const actorDb = result === "qualified runtime" ? runtime : pool;
   const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
     lines: [{ sku: f.code,productSlug: f.value.product.slug!,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: amount,
       tax: { included: true as const,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax",
-        netAmount: amount,vatAmount: money(0),grossAmount: amount } }],discounts: [],
+        netAmount: amount,vatAmount: money(0),grossAmount: amount } }],
+    discounts: promotionId ? [{ promotionId,appliesTo: "order_total" as const,amountOffMinor: cut,reasonCode: "synthetic" }] : [],
     context: { mode: "subscription" as const,cadenceDays: 28,promoCodes: [],offerVersion,sizeConstraint },
-    subtotalGross: amount,discountTotalGross: money(0),totalGross: amount,netTotal: amount,taxTotal: money(0) } };
-  const port = createPostgresAcquisitionCheckoutPersistence(pool,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+    subtotalGross: amount,discountTotalGross: money(cut),totalGross: payable,netTotal: payable,taxTotal: money(0) } };
+  const port = createPostgresAcquisitionCheckoutPersistence(actorDb,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
     financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
   const beforeCount = (await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count;
   let order: string;
@@ -1866,6 +1972,11 @@ async function acquisitionCase({ offerVersion,result }: {
   const proof = legacy ? null : { schemaVersion: 2,lines: [f.reference] };
   expect((await pool.query("SELECT status,catalog_acceptance,metadata->'catalogAcquisition' AS frozen FROM public.commerce_orders WHERE id=$1", [order])).rows)
     .toEqual([{ status: "pending_payment",catalog_acceptance: proof,frozen: legacy ? null : { offerVersion,sizeConstraint,heads: f.admission.heads,selections: f.admission.skuRevisions,proof } }]);
+  if (promotionId) expect((await pool.query(`SELECT quantity,unit_amount_minor,catalog_unit_amount_minor FROM public.commerce_order_items
+    WHERE order_id=$1 ORDER BY line_ordinal`, [order])).rows).toEqual([
+    { quantity: 1,unit_amount_minor: "566",catalog_unit_amount_minor: "617" },
+    { quantity: 1,unit_amount_minor: "567",catalog_unit_amount_minor: "617" },
+  ]);
   expect((await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count).toBe(beforeCount);
   if (result === "abandoned") {
     await rpc(pool,"subscription_declare_provisional_activation",[`declare:${key}`,order,28,f.at]);
@@ -1878,10 +1989,10 @@ async function acquisitionCase({ offerVersion,result }: {
     expect((await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count).toBe(beforeCount);
     return;
   }
-  const intent = await rpc(pool,"commerce_open_settlement_intent",[`open:${key}`,order,"sandbox",1234,"XXX",{},f.at]);
+  const intent = await rpc(pool,"commerce_open_settlement_intent",[`open:${key}`,order,"sandbox",payable.amountMinor,"XXX",{},f.at]);
   await rpc(pool,"subscription_declare_provisional_activation",[`declare:${key}`,order,28,f.at]);
   const fingerprint = async () => (await pool.query("SELECT coalesce(external_ref,id::text) AS ref FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0].ref as string;
-  const activate = async () => rpc(pool,"subscription_activate_from_captured_payment",[`activate:${key}`,order,digest(await fingerprint())]);
+  const activate = async () => rpc(actorDb,"subscription_activate_from_captured_payment",[`activate:${key}`,order,digest(await fingerprint())]);
   if (result === "unpaid") {
     await expect(activate()).rejects.toMatchObject({ code: "22023",message: "subscription_activation_order_not_paid" });
     expect((await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count).toBe(beforeCount);
@@ -1889,7 +2000,7 @@ async function acquisitionCase({ offerVersion,result }: {
   }
   await captureSandboxPurchase(createPostgresSandboxPaymentSimulator(pool,{ dunningTemplateSlug: "failed",recoveryUrlPath: "/recover",recoveryTemplateSlug: "recovered" }),
     { settlementIntentId: intent.settlement.id,key,at: f.at });
-  const writer = createPostgresPurchaseRenewalWriter(pool);
+  const writer = createPostgresPurchaseRenewalWriter(actorDb);
   await writer.register(order,{ settlementChannelKey: "sandbox",authorizationRef: "synthetic",unattendedChargeAuthorizedAt: f.at,payerAccountRef: null,
     methodRef: "synthetic",methodEvidenceRef: "synthetic",stockSourceKey: "synthetic",templateId: "synthetic",cadenceDays: 28,currency: "XXX",
     lines: [{ lineOrdinal: 1,sku: f.code,quantity: result === "attachment mismatch" ? 3 : 2,unitAmountMinor: 617 }],shippingAmountMinor: 0,acquisitionRef: null });
@@ -1925,7 +2036,7 @@ async function acquisitionCase({ offerVersion,result }: {
   expect(await writer.complete(order)).toEqual({ subscriptionId: activated.subscriptionId,replayed: true });
 }
 
-it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned"] as const)
+it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned", "promoted split", "qualified runtime"] as const)
   .map(result => ({ offerVersion,result }))))("LC6-D-041 and LC6-D-146 $offerVersion $result through native acquisition", acquisitionCase);
 
 it.each([false,true])("CD-CAT-23 legacy opaque quote field during acquisition, control=%s", async control => {
@@ -1984,6 +2095,7 @@ it.each([
   { name: "LC6-D-032 ordered quote quantity",reason: orderRefused,code: "22023" },
   { name: "LC6-D-063 extra selection",reason: orderRefused,code: "22023" },
   { name: "LC6-D-072 alternate winning entry",reason: priceMoved,code: "40001" },
+  { name: "LC6-D-072 consulted quote entry differs from the carrier",reason: priceMoved,code: "40001" },
   { name: "LC6-D-074 duplicate entry",reason: "catalog_admission_price_context_required",code: "22023" },
   { name: "LC6-D-074 orphan entry",reason: "catalog_admission_price_context_required",code: "22023" },
 ].flatMap(row => ["one_time","subscription"].flatMap(mode => [false,true].map(promoted => ({ ...row,mode,promoted })))))("$name $mode promoted=$promoted", async ({ name,reason,code,mode,promoted }) => {
@@ -1996,15 +2108,25 @@ it.each([
   try {
     if (name.endsWith("duplicate source")) {
       p.draft.lines = [p.draft.lines[0],p.draft.lines[0]];
+      p.quote.quote.lines = [...p.draft.lines];
       p.draft.totals.subtotalGross = money(2468);
       p.draft.totals.totalGross = money(2468);
     }
     if (name.endsWith("quote quantity")) p.quote.quote.lines = [{ ...p.draft.lines[0],quantity: 3 }];
     if (extra) p.quote.catalogAdmission.skuRevisions = [...p.quote.catalogAdmission.skuRevisions,...extra.admission.skuRevisions];
-    if (name.endsWith("winning entry")) {
+    if (name.endsWith("winning entry") || name.endsWith("differs from the carrier")) {
       const selected = f.admission.priceContextVersions[0];
-      await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
-        VALUES($1,$2,$3,617,statement_timestamp()-interval '1 minute')`, [selected.priceListId,f.sku,mode]);
+      const newEntry = (await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+        VALUES($1,$2,$3,617,statement_timestamp()-interval '1 minute') RETURNING to_jsonb(price_entries) AS entry`, [selected.priceListId,f.sku,mode])).rows[0].entry;
+      if (name.endsWith("differs from the carrier")) {
+        p.quote.catalogAdmission.priceContextVersions = [{ ...selected,entryId: newEntry.id,entry: newEntry }];
+        p.quote.quote.lines = [{ ...p.draft.lines[0] }];
+        Object.assign(p.quote.quote.lines[0],{ catalogFacts: {
+          version: "catalog_facts_v1",skuId: f.sku,documentRevisionId: f.value.product.documentRevision!.id,
+          documentDigest: f.head.documentDigest,basePriceEntryId: selected.entryId,resolvedPriceEntryId: selected.entryId,
+          mode,atTime: f.at,currency: "XXX",baseUnitAmountMinor: 617,resolvedUnitAmountMinor: 617,resolvedLineAmountMinor: 1234,
+        } });
+      }
     }
     if (name.endsWith("duplicate entry")) {
       const entry = p.quote.catalogAdmission.priceContextVersions[0];
@@ -2074,6 +2196,48 @@ it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].map(
     expect(replay.orderDraft).toEqual({ ...accepted.orderDraft,replayed: true });
     expect((await pool.query("SELECT count(*)::integer AS count FROM public.commerce_order_draft_receipts WHERE order_id=$1", [orderId])).rows)
       .toEqual([{ count: 1 }]);
+  },
+);
+
+it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].map(control => ({ mode,control }))))(
+  "LC6-D-036 concurrent first governed plain purchase in $mode, control=$control", async ({ mode,control }) => {
+    const f = await fixture(packs[0]), input = purchaseInput(f);
+    input.draft.context.mode = mode;
+    input.quote.catalogAdmission.mode = mode;
+    const h = await pool.connect(), a = await runtime.connect(), b = await runtime.connect();
+    const stop = await gate(h), ap = await pid(a), bp = await pid(b), hp = await pid(h);
+    const routine = "commerce_create_order_draft_with_outbox";
+    const keyGuard = "PERFORM pg_advisory_xact_lock(hashtextextended(p_idempotency_key, 0));";
+    const boundary = "v_catalog_evidence:=p_quote_snapshot->'catalogAdmission';";
+    let restore = async () => {};
+    try {
+      restore = await hook(`public.${routine}(text,jsonb,jsonb,uuid)`,boundary,`IF pg_backend_pid()=${ap} THEN ${stop.sql} END IF;`,body => {
+        expect(body.split(keyGuard)).toHaveLength(2);
+        return control ? body.replace(keyGuard,"") : body;
+      });
+      const first = tracked(rpc(a,routine,input.args));
+      await blocker(h,ap,hp);
+      const second = tracked(rpc(b,routine,input.args));
+      if (control) {
+        const slipped = await second;
+        expect(slipped).toMatchObject({ ok: true,value: { orderDraft: { replayed: false } } });
+        await stop.release();
+        expect(await first).toMatchObject({ ok: false,error: { code: "23505" } });
+      } else {
+        await blocker(h,bp,ap);
+        await stop.release();
+        const accepted = await first, replay = await second;
+        if (!accepted.ok) throw accepted.error;
+        expect(replay).toEqual({ ok: true,value: { ...accepted.value,orderDraft: { ...accepted.value.orderDraft,replayed: true } } });
+      }
+      expect((await h.query(`SELECT count(*)::integer AS receipts,count(e.id)::integer AS events
+        FROM public.commerce_order_draft_receipts r JOIN public.outbox_events e ON e.aggregate_id=r.order_id
+        WHERE r.idempotency_key=$1 AND e.event_type='commerce.order_draft.created'`, [input.args[0]])).rows)
+        .toEqual([{ receipts: 1,events: 1 }]);
+    } finally {
+      await stop.release(); await a.query("ROLLBACK"); await b.query("ROLLBACK");
+      await restore(); a.release(); b.release(); h.release();
+    }
   },
 );
 

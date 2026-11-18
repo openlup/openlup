@@ -362,7 +362,7 @@ CREATE FUNCTION public.catalog_admission_build_evidence(p_lines jsonb,p_mode tex
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; page jsonb; item jsonb; line jsonb;
  member jsonb; offer_version text; cursor_id uuid; head_digest text;
- page_limit constant integer:=100; maximum_members constant integer:=500;
+ page_limit constant integer:=100; maximum_members integer;
  seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
  retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text;
@@ -394,6 +394,7 @@ BEGIN
     FROM jsonb_array_elements(baseline) a WHERE a->>'variantId'=l->>'skuId' AND a->'isAddon'=coalesce(l->'isAddon','false'::jsonb));
  END IF;
  offer_version:=CASE WHEN p_purpose='order' THEN public.catalog_price_setup_order_offer_version(p_binding->'quoteSnapshot') ELSE p_binding->>'offerVersion' END;
+ maximum_members:=CASE WHEN offer_version='sized.v1' THEN 1000 ELSE 500 END;
  IF cardinality(scope)>0 THEN
  IF to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NULL THEN
   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
@@ -524,13 +525,15 @@ BEGIN
        FROM jsonb_array_elements(p_binding#>'{quoteSnapshot,quote,lines}') WITH ORDINALITY x(l,ord)) THEN
    RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
  END IF;
- IF p_purpose='account' AND EXISTS(
-  SELECT 1 FROM jsonb_array_elements(p_lines) l
-  CROSS JOIN LATERAL (SELECT coalesce(l#>>'{quoteLine,catalogFacts,resolvedPriceEntryId}',
-    l#>>'{quoteLine,catalogFacts,basePriceEntryId}',l->>'priceEntryId') AS entry_id) consulted
+ IF EXISTS(
+  SELECT 1 FROM jsonb_array_elements(CASE WHEN p_purpose='order' THEN p_binding#>'{quoteSnapshot,quote,lines}' ELSE p_lines END) l
+  JOIN public.catalog_skus sku ON CASE WHEN p_purpose='order' THEN sku.sku=l->>'sku' ELSE sku.id=(l->>'variantId')::uuid END
+  CROSS JOIN LATERAL (SELECT coalesce(l#>'{quoteLine,catalogFacts}',l->'catalogFacts') AS facts) observed
+  CROSS JOIN LATERAL (SELECT coalesce(observed.facts->>'resolvedPriceEntryId',observed.facts->>'basePriceEntryId',l->>'priceEntryId') AS entry_id) consulted
   JOIN jsonb_array_elements(p_evidence->'priceContextVersions'||coalesce(p_evidence->'retainedPriceContextVersions','[]'::jsonb)) c
-    ON c->>'skuId'=(l->>'variantId')::uuid::text
-  WHERE consulted.entry_id IS NOT NULL AND c->>'entryId' IS DISTINCT FROM consulted.entry_id) THEN
+    ON c->>'skuId'=sku.id::text
+  WHERE consulted.entry_id IS NOT NULL AND (c->>'entryId' IS DISTINCT FROM consulted.entry_id
+    OR (observed.facts IS NOT NULL AND observed.facts->>'skuId' IS DISTINCT FROM sku.id::text))) THEN
   RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
  IF scope='[]'::jsonb THEN RETURN 'null'::jsonb; END IF;
  RETURN (SELECT jsonb_build_object('schemaVersion',2,'lines',jsonb_agg(l->'reference' ORDER BY l#>>'{reference,skuId}'))

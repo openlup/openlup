@@ -15,8 +15,9 @@ lifecycle and admission forwards. Capture evidence using the native checkout
 wrapper alongside the original trusted quote. The existing edit previews record
 their own private evidence in the ledgers. Historical formats keep their
 existing reader and new acceptance uses the lifecycle-aware reference reader.
-Editors on older installed contexts can still read the paid-cycle count for
-phase selection.
+Hosts admitting governed sized checkout supply their existing availability port
+and the accepted server quote's offer binding. Editors on older installed
+contexts can still read the paid-cycle count for phase selection.
 The publisher retains its nonblocking busy refusal.
 
 The order entrypoints keep their signatures and legacy results. A purchased

@@ -160,6 +160,33 @@ export declare function createRequestContextStore(options: RequestContextOptions
 import type { HttpRequest } from "../http/index.js";
 export declare function rewriteBffRouterRequestUrl(req: HttpRequest): void;
 ```
+## dist/commerce/contracts/availability.d.ts
+
+```ts
+export type CommerceOfferAvailabilityStatus = "available" | "low_stock" | "out_of_stock" | "unknown";
+export interface CommerceOfferAvailabilityRequestItem {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    requestedQuantity: number;
+    checkoutMode: "one_time" | "subscription";
+}
+export interface CommerceOfferAvailability {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    status: CommerceOfferAvailabilityStatus;
+    visibleInConfigurator: boolean;
+    sellableNow: number | null;
+    reasonCode: string;
+    source: string;
+}
+export interface CommerceOfferAvailabilityPort {
+    getAvailability(input: {
+        items: readonly CommerceOfferAvailabilityRequestItem[];
+    }): Promise<CommerceOfferAvailability[]>;
+}
+```
 ## dist/commerce/contracts/order.d.ts
 
 ```ts
@@ -238,6 +265,7 @@ export type OmsPaymentStatus<PaymentState extends string> = "not_started" | Paym
 ```ts
 import type { PromotionRow } from "@openlup/core/promo";
 import { COMMERCE_CONTRACT_VERSION, type CreateQuoteResponse, type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
+import type { CommerceOfferAvailabilityPort } from "../../contracts/availability.js";
 import type { OrderDraftSummary } from "../../contracts/order.js";
 export interface NativeCheckoutQuery {
     query(text: string, values?: unknown[]): Promise<{
@@ -277,6 +305,10 @@ export interface NativeAcquisitionCheckoutOptions {
     financialPolicy: AcquisitionFinancialPolicy<PromotionRow>;
     /** Host-owned semantic labels, in addition to the saved family IDs. */
     isAcquisitionDiscount(discount: CommerceQuoteDiscount): boolean;
+    /** The host's existing availability authority for governed sized quotes.
+     * @experimental
+     */
+    availability?: CommerceOfferAvailabilityPort;
 }
 /** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
  * commit; host authorization and quote acceptance precede this boundary. */
