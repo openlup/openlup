@@ -3012,6 +3012,7 @@ it.each([
   ["balance", "duplicate"],
   ["clock", "duplicate"],
   ["remaining", "duplicate"],
+  ["pointer", "duplicate"],
   ["product projection", "duplicate"],
   ["SKU projection", "duplicate"],
   ["history", "duplicate"],
@@ -3021,6 +3022,7 @@ it.each([
   ["recovery", "duplicate"],
   ["retained", "duplicate"],
   ["retained", "missing companion"],
+  ["retained", "wrong key"],
   ["price", "missing outcome"],
   ["price", "healthy"],
 ] as const)("publication validates the %s singleton boundary: %s", async (boundary, variation) => inPriceDatabase(async () => {
@@ -3031,6 +3033,7 @@ it.each([
   const predicates = {
     candidate: /^SELECT public.catalog_draft_record/u, balance: /^SELECT coalesce\(sum/u, clock: /^SELECT to_char\(clock_timestamp/u,
     remaining: /^SELECT count.*AS remaining FROM public.catalog_publication_pointer_capabilities/u,
+    pointer: /^SELECT current_document_revision_id FROM public.catalog_products/u,
     "product projection": /^SELECT p.publication_facts=/u, "SKU projection": /^SELECT s.publication_facts=/u,
     history: /^SELECT EXISTS\(SELECT 1 FROM public.catalog_products/u, facts: /^SELECT p.product_id,p.revision,p.canonical_state/u,
     "legacy readback": /^SELECT product_id FROM public.catalog_publications/u, recovery: /FROM public.catalog_operator_receipts WHERE kind='publish'/u,
@@ -3060,9 +3063,12 @@ it.each([
     if (boundary === "recovery") return target.receipt({ productId: data.productId, commandKey: data.publication.commandKey }, capability);
     if (boundary === "retained") {
       if (full?.outcome !== "page") throw new Error("Missing retained fixture");
-      return target.resolveRetained({ kind: "account", sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId,
+      const results = await Promise.all((["account", "order", "fulfilment"] as const).map(kind =>
+        target.resolveRetained({ kind, sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId,
         skuId: data.skuId, skuRevisionId: full.items[0].reference.revisionId, publicationId: first!.head.publicationId,
-        documentRevisionId: full.product.document!.id }, target.authorizeReadScope(null));
+        documentRevisionId: full.product.document!.id }, target.authorizeReadScope(null))));
+      expect(results.every(answer => canonicalCatalogDraftJson(answer) === canonicalCatalogDraftJson(results[0]))).toBe(true);
+      return results[0];
     }
     return target.publish(data.publication, capability);
   };

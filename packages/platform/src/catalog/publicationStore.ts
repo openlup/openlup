@@ -624,8 +624,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(saved.length === 1 && saved[0]?.matches === true, "catalog_publication_v3_compile_document_conflict", "conflict");
       } else if (operation.op === "move_document_pointer") {
         const document = state.documents.find(document => document.reference.revisionNo === operation.documentRevisionNo)!;
-        const current = await tuple(db, "SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [product.id]);
-        if (current[0]?.current_document_revision_id !== document.reference.id) await pointer(document.reference.id);
+        const current = observedRow(await tuple(db, "SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [product.id]));
+        require(current.current_document_revision_id === null || id.safeParse(current.current_document_revision_id).success, readInvalid, "dependency_unavailable");
+        if (current.current_document_revision_id !== document.reference.id) await pointer(document.reference.id);
         await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{document}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(document.reference)]);
       } else if (operation.op === "create_sku") {
         const sku = state.skus.find(sku => sku.id === operation.skuId)!;
@@ -936,7 +937,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(equal(accepted, input), "retained_source_mismatch", "unauthorized");
         const rows = await tuple(db, `SELECT p.revision,p.canonical_state,p.digest AS manifest_digest,d.digest,d.canonical_text,
           d.revision_no,d.schema_id,d.document_ref,d.source_ref,r.full_facts,r.digest AS sku_digest,r.revision AS sku_revision,d.id AS document_id,
-          p.previous_id,previous.revision AS previous_revision
+          p.previous_id,previous.revision AS previous_revision,p.id AS publication_id
           FROM public.catalog_publications p
           LEFT JOIN public.catalog_publications previous ON previous.product_id=p.product_id AND previous.id=p.previous_id
           LEFT JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
@@ -944,9 +945,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           WHERE p.id=$1 AND p.product_id=$2`, [input.publicationId, input.productId, input.skuRevisionId, input.skuId]);
         require(rows.length > 0, "retained_revision_unavailable", "unsupported");
         const row = observedRow(rows);
+        require(row.publication_id === input.publicationId, readInvalid, "dependency_unavailable");
         require(id.safeParse(row.document_id).success, readInvalid, "dependency_unavailable");
         require(row.document_id === input.documentRevisionId, "retained_revision_unavailable", "unsupported");
-        const head = { publicationId: input.publicationId, revision: row.revision as number, documentDigest: row.digest as string };
+        const head = { publicationId: row.publication_id as string, revision: row.revision as number, documentDigest: row.digest as string };
         const manifest = catalogPublicationManifestSchema.parse(JSON.parse(row.canonical_state as string));
         require(publicationJson(manifest) === row.canonical_state && publicationDigest(manifest) === row.manifest_digest
           && manifest.product.id === input.productId && equal(manifest.product.document, { id: input.documentRevisionId, productId: input.productId,
