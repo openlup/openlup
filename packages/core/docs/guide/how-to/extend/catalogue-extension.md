@@ -1,20 +1,17 @@
 # Catalogue extension recipes
 
-Development preview for matching `@openlup/*` versions on Node 24. PASS covers
-only the supplied offline checks and grants no activation authority.
+Use matching `@openlup/*` versions on Node 24. An offline PASS grants no activation authority.
 
 ## Check a registered pack
 
-From the installed application, run the starter’s `catalogue:check:source` script
-or the installed command it wraps.
+In the app, use `catalogue:check:source` or its installed command.
 
 ```sh
 npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts --json
 ```
 
-Export `catalogueConformance` as a `CatalogConformanceSource` using the runtime
-pack objects. The command trusts the module and runs its callbacks with the
-process’s permissions. Keep them deterministic, side-effect free and silent.
+Export the runtime packs as a `CatalogConformanceSource` named `catalogueConformance`.
+Projection runs their callbacks with the process’s permissions. Keep them deterministic, side-effect free and silent.
 
 `transport` records the canonical scratch file outside the app, its SHA-256,
 timings and one checker invocation. Use `transport.recheck` from a clean copy
@@ -25,30 +22,18 @@ the registry and source fixtures.
 npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json
 ```
 
-Try the [static sample](catalogue-pack-skeleton/catalogue.json). The JSON command
-and `runCatalogExtensionConformance(jsonText)` read data only. Non-strings give
-`conformance_subject_invalid`, malformed JSON throws `SyntaxError`, and
-executable fields refuse. Application content and host callbacks require trusted evidence.
+Try the [static sample](catalogue-pack-skeleton/catalogue.json).
+The JSON API refuses non-strings with `conformance_subject_invalid` and malformed
+JSON with `SyntaxError`. Content and host callbacks require trusted projection.
 
-Entries contain `pack` and optional `drafts`, `quantities`, `attributes`,
-`combinations`, `profileChecks`, `profilePolicies` and `refusals`. Require
-coverage per pack with `quantities`, `attribute-values`, `variant-combinations`,
-`draft-content`, `profiles` or `owner-refusals` in `requiredChecks`.
-`draft-content` requires a v3–v5 fixture and its actual validator. The installed
-schemas admit publication operations and price commands.
+Set `requiredChecks` per pack via the registration example below.
+`draft-content` requires a v3–v5 fixture and its actual validator.
 
-| Exit | Result |
-| --- | --- |
-| 0 | Supplied checks satisfied |
-| 1 | Owner or input violation |
-| 2 | Required evidence unavailable |
-| 64 | Invalid CLI invocation or malformed JSON |
-| 74 | File, loading, integrity or unexpected failure |
-
-Violations take precedence over unavailable evidence. JSON stdout contains one
-`formatVersion: 1` object. Findings sort by JSON pointer, code and fixture, and
-carry cause, fix, recipe, evidence and the exact recheck command. For the full
-code inventory, see [refusal codes](../../reference/refusal-codes.md).
+Exit 0 satisfies the check, 1 reports violations and 2 reports unavailable
+evidence. Invalid invocation or JSON gives 64. File, integrity and unexpected
+failure give 74. Violations take precedence over unavailable evidence.
+Findings in the version-1 JSON report sort by path, code and fixture.
+See [refusal codes](../../reference/refusal-codes.md).
 
 ## New vertical
 
@@ -62,23 +47,20 @@ code inventory, see [refusal codes](../../reference/refusal-codes.md).
    registrations composed.
 5. Typecheck with `--erasableSyntaxOnly` and run `catalogue:check:source`.
 
-Use explicit `.ts` paths and `import type`. Declare one named refusal per false
+Use explicit `.ts` paths and `import type`. Declare a refusal for each false
 capability. `owner-refusals` checks the prepaid owner’s code and absence of
-acceptance. Other owners return 2. Legacy JSON checks declaration consistency.
-Usual codes include `pack_type_namespace_mismatch` and
-`conformance_refusal_fixture_mismatch`.
+acceptance. Unavailable owners give 2. Usual codes include
+`pack_type_namespace_mismatch` and `conformance_refusal_fixture_mismatch`.
 
 ## Add attribute
 
-In `pack.ts`, declare the attribute on its type. The skeleton uses
-`{key: "lined", scope: "variant", valueType: {kind: "boolean"}}` with cardinality
-and filter flags. In `fixtures.ts`, use `{type, input, publicationRevision}` where
-`input` supplies `productAttributes` or `skus: [{id, attributes}]` as applicable.
-Attribute references use `{namespace, id, status}`. One resolved observation
-supports fixture validation. Missing or ambiguous evidence gives 2 and a unique
-dangling or private result gives 1, both with `attribute_reference_unresolved`.
-Run `catalogue:check:source`. Other usual codes include `attribute_scope_conflict`
-and `definition_facetable_not_filterable`. New value kinds require upstream work.
+In `pack.ts`, use `{key: "lined", scope: "variant", valueType: {kind: "boolean"}}`
+with cardinality and filter flags. In `fixtures.ts`, use `{type, input, publicationRevision}`.
+Reference observations use `{namespace, id, status}`. Missing or ambiguous evidence
+gives 2 and a unique dangling or private result gives 1 with
+`attribute_reference_unresolved`. Run `catalogue:check:source`.
+`attribute_scope_conflict` means move the value to its declared scope.
+New value kinds require upstream work.
 
 ## Add unit
 
@@ -100,11 +82,10 @@ Changed identity needs a new SKU. New option kinds need upstream work.
 
 ## Add tax class
 
-In `pack.ts`, add `taxClasses: [{key: "standard"}]` and `taxClass: "standard"`
-on the applicable type. Run `catalogue:check:source` to check the reference.
-A missing key reports `definition_unknown_tax_class`. Market rate application
-and coverage are unavailable. Requesting `"tax-coverage"` or `"tax-application"`
-in `owned/catalogue.ts` under `requiredChecks` gives 2.
+In `pack.ts`, add `taxClasses: [{key: "standard"}]` and match `taxClass` on
+the type. Run `catalogue:check:source`. A missing key reports
+`definition_unknown_tax_class`. Required `"tax-coverage"` or `"tax-application"`
+gives 2.
 
 ## Add category or collection
 
@@ -123,11 +104,9 @@ kinds require upstream work.
 ## Subscription profile
 
 In `pack.ts`, declare `subscriptionProfiles`, `subscriptionProfileDefinitions`
-and the matching type `subscriptionProfileRef`. The skeleton uses `fixed_units`.
-For daily demand, use `units_per_day` and the matching `profilePolicies` binding.
-For a pinned `host_policy`, supply the actual callback through trusted source.
-In `fixtures.ts`, add `profileChecks: [{cadenceDays, lines}]` with each
-line’s `id`, `type`, `quantity` and any applicable demand.
+and the type’s `subscriptionProfileRef`. Use `fixed_units` like the skeleton,
+or supply `profilePolicies` for `units_per_day` or `host_policy` through trusted
+source. Add `profileChecks: [{cadenceDays, lines}]` in `fixtures.ts`.
 Run `catalogue:check:source`. Usual codes are `profile_missing`,
 `policy_binding_missing` and `profile_cadence_exceeds_platform_bound`.
 Use the database bound separately for native quote or edit readiness.
