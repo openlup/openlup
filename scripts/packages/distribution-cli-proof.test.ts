@@ -53,6 +53,45 @@ it("asserts the real CLI's named conflict before writes and the incomplete file/
   expect(() => assertCompleteStarter(directory, from)).toThrow("incomplete_application_upgrade");
 });
 
+it("distinguishes the three verify --app stages with constant messages while withholding private details", () => {
+  const { directory, write } = fixture();
+  const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
+  const runCli = (args: string[], expected: number) => {
+    const result = spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+    expect(result.status).toBe(expected);
+    expect(result.stderr).toBe("");
+    return result.stdout;
+  };
+  expect(JSON.parse(runCli(["verify", "--json"], 2))).toMatchObject({
+    formatVersion: 1, command: "verify", state: "unknown", exitCode: 2,
+    findings: [{ code: "OPENLUP_E_APP_UNKNOWN" }],
+  });
+  expect(JSON.parse(runCli(["verify", "--app", "", "--json"], 64))).toMatchObject({
+    formatVersion: 1, state: "refused", exitCode: 64,
+    findings: [{ code: "OPENLUP_E_CLI_INPUT" }],
+  });
+  for (const [name, source, expectedObserved, expectedCause] of [
+    ["load-syntax.mjs", "export const = 1;", "The --app module could not be loaded; raw application errors are withheld.", "Importing the trusted --app module failed before createVerificationInput() could be checked."],
+    ["load-throw.mjs", 'throw new Error("synthetic-private-detail");', "The --app module could not be loaded; raw application errors are withheld.", "Importing the trusted --app module failed before createVerificationInput() could be checked."],
+    ["missing-export.mjs", 'export const createVerificationInput = "synthetic-private-detail";', "The loaded --app module does not export a createVerificationInput() function.", "The trusted --app module loaded, but createVerificationInput was absent or not a function."],
+    ["factory-throw.mjs", 'export function createVerificationInput() { throw new Error("synthetic-private-detail"); }', "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation."],
+    ["factory-reject.mjs", 'export async function createVerificationInput() { throw new TypeError("synthetic-private-detail"); }', "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation."],
+  ] as const) {
+    const appPath = join(directory, name);
+    write(name, source);
+    const jsonOut = runCli(["verify", "--app", appPath, "--json"], 74);
+    expect(jsonOut).not.toContain("synthetic-private-detail");
+    expect(JSON.parse(jsonOut)).toMatchObject({
+      formatVersion: 1, state: "failed", exitCode: 74,
+      findings: [{ code: "OPENLUP_E_CLI_FAILURE", observed: expectedObserved, cause: expectedCause }],
+    });
+    const textOut = runCli(["verify", "--app", appPath], 74);
+    expect(textOut).toContain(expectedObserved);
+    expect(textOut).toContain(expectedCause);
+    expect(textOut).not.toContain("synthetic-private-detail");
+  }
+});
+
 it("retains a failed pair receipt when published visibility refuses before execution", () => {
   const { directory, write } = fixture(), path = join(directory, "receipt.json");
   const tag = "openlup-core-v0.41.0", commit = "a".repeat(40), previous = env.OPENLUP_REGISTRY_READY;

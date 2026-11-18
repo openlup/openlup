@@ -16,6 +16,7 @@ Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid
 `;
 let json = process.argv.slice(2).includes("--json");
 let validatingInput = true;
+let appStage = 0;
 
 function emit(value, text) {
   process.stdout.write(json ? `${JSON.stringify({ formatVersion: 1, ...value })}\n` : `${text}\n`);
@@ -26,8 +27,8 @@ function renderFinding(finding) {
   return `${finding.code}${finding.package ? ` ${finding.package}${finding.module ? `/${finding.module}` : ""} ${finding.subject}` : ""}\nObserved: ${finding.observed}\nCause: ${finding.cause}\nFix: ${finding.fix}\nRecheck: ${finding.recheck}\nDeclared: ${finding.evidence.declared}\nBound: ${finding.evidence.bound}\nChecked: ${finding.evidence.checked}\nUnknown: ${finding.evidence.unknown.join(" ")}`;
 }
 
-function refuse(exitCode, code, observed, fix) {
-  const finding = { code, observed, cause: exitCode === 64 ? "Invalid command or input syntax." : "Snapshot admission, a filesystem operation or trusted application loading failed.", fix, recheck: "Rerun the same command after repair.", evidence: { declared: "Not established", bound: "Not established", checked: "The command could not complete", unknown: ["Remaining application and filesystem state"] } };
+function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invalid command or input syntax." : "Snapshot admission, a filesystem operation or trusted application loading failed.") {
+  const finding = { code, observed, cause, fix, recheck: "Rerun the same command after repair.", evidence: { declared: "Not established", bound: "Not established", checked: "The command could not complete", unknown: ["Remaining application and filesystem state"] } };
   emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
 }
 
@@ -76,9 +77,13 @@ try {
       const finding = { code: "OPENLUP_E_APP_UNKNOWN", observed: "No application observations were loaded.", cause: "The CLI does not discover or start application code implicitly.", fix: "Create an application-owned module exporting createVerificationInput(), returning your existing ReadinessInput (actual selected contributions, binding identities and read-only schema observer); pass its path with --app.", recheck: "openlup verify --app ./application-observations.mjs", evidence: { declared: "Unknown", bound: "Unknown", checked: "Nothing loaded", unknown: ["Application composition and schema"] } };
       emit({ command: "verify", state: "unknown", exitCode: 2, boundary, findings: [finding] }, `verify: unknown\n${boundary}\n${renderFinding(finding)}`);
     } else {
+      appStage = 1;
       const application = await import(pathToFileURL(resolve(values.app)).href);
+      appStage = 2;
       if (typeof application.createVerificationInput !== "function") throw new TypeError("missing_createVerificationInput");
+      appStage = 3;
       const input = await application.createVerificationInput();
+      appStage = 0;
       const report = await verifyApp(input);
       const appArgument = "'" + values.app.replaceAll("'", "'\"'\"'") + "'";
       const findings = report.findings.map(finding => ({ ...finding, recheck: `openlup verify --app ${appArgument}${json ? " --json" : ""}` }));
@@ -107,6 +112,14 @@ try {
   }
 } catch (error) {
   // Never print raw application errors, configured values, connection strings or file contents.
-  const invalid = validatingInput && (error instanceof SyntaxError || error instanceof TypeError || (typeof error?.code === "string" && error.code.startsWith("ERR_PARSE_ARGS")));
-  refuse(invalid ? 64 : 74, invalid ? "OPENLUP_E_CLI_INPUT" : "OPENLUP_E_CLI_FAILURE", "The operation could not complete; raw input and application errors are withheld.", "Check the command, readable JSON snapshots and schema ordinal, the catalogue JSON, or the trusted --app module and its documented export. After a partial upgrade, rerun the identical snapshots under exclusive access.");
+  if (appStage === 1) {
+    refuse(74, "OPENLUP_E_CLI_FAILURE", "The --app module could not be loaded; raw application errors are withheld.", "Check that the --app path exists, resolves its imports and evaluates without top-level errors.", "Importing the trusted --app module failed before createVerificationInput() could be checked.");
+  } else if (appStage === 2) {
+    refuse(74, "OPENLUP_E_CLI_FAILURE", "The loaded --app module does not export a createVerificationInput() function.", "Export a createVerificationInput() function returning ReadinessInput from the --app module.", "The trusted --app module loaded, but createVerificationInput was absent or not a function.");
+  } else if (appStage === 3) {
+    refuse(74, "OPENLUP_E_CLI_FAILURE", "createVerificationInput() failed while assembling observations; raw application errors are withheld.", "Ensure createVerificationInput() assembles read-only ReadinessInput observations and closes its own resources without throwing.", "Executing createVerificationInput() in the trusted --app module failed before readiness evaluation.");
+  } else {
+    const invalid = validatingInput && (error instanceof SyntaxError || error instanceof TypeError || (typeof error?.code === "string" && error.code.startsWith("ERR_PARSE_ARGS")));
+    refuse(invalid ? 64 : 74, invalid ? "OPENLUP_E_CLI_INPUT" : "OPENLUP_E_CLI_FAILURE", "The operation could not complete; raw input and application errors are withheld.", "Check the command, readable JSON snapshots and schema ordinal, the catalogue JSON, or the trusted --app module and its documented export. After a partial upgrade, rerun the identical snapshots under exclusive access.");
+  }
 }

@@ -1,0 +1,1 @@
+- Distinguish the three `openlup verify --app` CLI stages (module load, `createVerificationInput` export check and observation factory execution) with constant diagnostic messages while withholding application error details.
