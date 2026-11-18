@@ -448,17 +448,6 @@ it("cycle1 a document does not permit activation before primary assignment", () 
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_compile_product_incomplete");
 });
 
-it.each(["missing modes", "subscription not requested", "subscription omitted"])("cycle1 eligibility binds %s", kind => {
-  const data = retainedPublicationInput();
-  data.skus[0].grossMass = data.skus[0].netContent; data.skus[0].logisticsRef = "example:logistics";
-  data.skus[0].memberships = [{ offerVersion: "example:offer", admitted: true }];
-  data.payload.product.sharedContent.requestedModes = kind === "missing modes" ? [] : [{ skuCode: "ARTICLE", modes: kind === "subscription omitted" ? ["subscription"] : [] }];
-  data.payload.product.sharedContent.presentation = { label: "Changed" };
-  data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "ARTICLE", sellableStandalone: false, sellableInSubscription: kind === "subscription not requested" },
-    { op: "set_product_presentation", productSlug: "article", presentation: data.payload.product.sharedContent.presentation }];
-  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_eligibility_source_mismatch");
-});
-
 function publicationWithSecondary() {
   const data = retainedPublicationInput(), second = structuredClone(data.skus[0]);
   second.id = "20000000-0000-4000-8000-000000000002"; second.code = "SECOND";
@@ -863,4 +852,62 @@ it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the 
   expect(first.nextCursor).toBe(nextCursor);
   expect(await target.readbackV2(head, first.nextCursor)).toEqual({ ...expected, items: items.slice(4), nextCursor: null });
   expect(fetched).toEqual([stored.slice(0, 4).map(row => row.id), [stored[4].id]]);
+});
+
+it.each([
+  ["padded unit operation", "5901234123457", "05901234123457", "unit", "unit", "example", "new", null],
+  ["short unit operation", "05901234123457", "5901234123457", "unit", "unit", "example", "new", null],
+  ["padded case operation", "4006381333931", "04006381333931", "case", "case", "example", "new", null],
+  ["different issuer", "5901234123457", "05901234123457", "unit", "unit", "other", "new", "catalog_publication_identifier_source_mismatch"],
+  ["different pack", "4006381333931", "04006381333931", "unit", "case", "example", "new", "catalog_publication_identifier_source_mismatch"],
+  ["different GTIN", "5901234123457", "04006381333931", "unit", "unit", "example", "new", "catalog_publication_identifier_source_mismatch"],
+  ["retained SKU", "5901234123457", "05901234123457", "unit", "unit", "example", "retained", "identifier precedes or lacks SKU creation"],
+] as const)("publication binds GTIN source by canonical digits: %s", (_case, sourceValue, value, sourcePack, packagingLevel, issuer, lifecycle, reason) => {
+  const data = lifecycle === "retained" ? retainedPublicationInput() : input();
+  const operation = { op: "create_identifier" as const, skuCode: "ARTICLE", scheme: "gs1:gtin", issuer, value, packagingLevel,
+    quantity: packagingLevel === "unit" ? 1 : 2, isPrimary: packagingLevel === "unit", label: null, sourceRef: null };
+  const identifiers = data.payload.skus[0].identifiers!;
+  const source = { scheme: "gs1:gtin", issuer: "example", value: sourceValue, packagingLevel: sourcePack, quantity: sourcePack === "unit" ? 1 : 2 };
+  if (packagingLevel === "case") {
+    identifiers.push(source);
+    data.payload.publication.operations.push(operation);
+  } else {
+    identifiers[0] = source;
+    data.payload.publication.operations = lifecycle === "retained" ? [operation]
+      : data.payload.publication.operations.map(effect => effect.op === "create_identifier" ? operation : effect);
+  }
+  if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
+  else expect(compileCatalogPublication(data).skus[0].identifiers).toContainEqual(expect.objectContaining({ value, packagingLevel, issuer }));
+  expect(source.value).toBe(sourceValue);
+});
+
+it.each([
+  ["absent release", "release", "authored", null, false, false, true],
+  ["absent compensation with retained source", "compensation", "retained", null, false, false, true],
+  ["explicit empty", "release", "authored", [], false, false, true],
+  ["one mode", "release", "authored", ["one_time"], true, false, true],
+  ["both modes", "compensation", "authored", ["one_time", "subscription"], true, true, true],
+  ["unclaimed enable", "release", "authored", null, true, false, false],
+  ["unclaimed subscription", "release", "authored", [], false, true, false],
+  ["extra flag", "compensation", "retained", ["one_time"], true, true, false],
+  ["withdrawal contradicts intent", "release", "authored", ["subscription"], false, false, false],
+] as const)("publication matches eligibility against the authored modes: %s", (_case, kind, source, modes, standalone, subscription, accepted) => {
+  const data = retainedPublicationInput(), sku = data.skus[0];
+  sku.grossMass = sku.netContent;
+  sku.logisticsRef = "example:logistics";
+  sku.memberships = [{ offerVersion: "example:offer", admitted: true }];
+  sku.sellableStandalone = !standalone;
+  data.payload.product.sharedContent.requestedModes = modes === null ? [] : [{ skuCode: sku.code, modes: [...modes] }];
+  if (source === "retained") {
+    data.retainedSources = [structuredClone(data.record)];
+    data.record = { ...data.record, revision: 2 };
+    data.payload.skus = [];
+    delete data.payload.product.primarySkuId;
+    data.payload.product.sharedContent.publicationSkus = [];
+    data.payload.product.sharedContent.requestedModes = [];
+  }
+  data.payload.publication.kind = kind;
+  data.payload.publication.operations = [{ op: "set_eligibility", skuCode: sku.code, sellableStandalone: standalone, sellableInSubscription: subscription }];
+  if (accepted) expect(compileCatalogPublication(data).skus[0]).toMatchObject({ sellableStandalone: standalone, sellableInSubscription: subscription });
+  else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_eligibility_source_mismatch");
 });

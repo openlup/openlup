@@ -240,7 +240,8 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       const sku = knownSku(operation.skuCode), source = sourceSku(operation.skuCode);
       need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
       need(source.sku.identifiers?.some(identifier => identifier.scheme === operation.scheme && identifier.issuer === operation.issuer
-        && identifier.value === operation.value && identifier.packagingLevel === operation.packagingLevel && (identifier.quantity ?? 1) === operation.quantity), "catalog_publication_identifier_source_mismatch");
+        && (identifier.scheme === "gs1:gtin" ? isValidGtin(identifier.value) && identifier.value.padStart(14, "0") === operation.value.padStart(14, "0") : identifier.value === operation.value)
+        && identifier.packagingLevel === operation.packagingLevel && (identifier.quantity ?? 1) === operation.quantity), "catalog_publication_identifier_source_mismatch");
       const { op: _op, skuCode: _code, ...identifier } = operation;
       if (identifier.scheme === "gs1:gtin") {
         need(isValidGtin(identifier.value) && !gtins.has(identifier.value.padStart(14, "0")), "catalog_publication_v3_compile_identifier_conflict");
@@ -259,8 +260,8 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       knownProduct().status = operation.status;
     } else if (operation.op === "set_eligibility") {
       const sku = knownSku(operation.skuCode), source = sourceSku(sku.code);
-      const modes = source.payload.product.sharedContent.requestedModes.find(value => value.skuCode === sku.code)?.modes;
-      need(modes && operation.sellableStandalone === modes.includes("one_time") && operation.sellableInSubscription === modes.includes("subscription"), "catalog_publication_eligibility_source_mismatch");
+      const modes = source.payload.product.sharedContent.requestedModes.find(value => value.skuCode === sku.code)?.modes ?? [];
+      need(operation.sellableStandalone === modes.includes("one_time") && operation.sellableInSubscription === modes.includes("subscription"), "catalog_publication_eligibility_source_mismatch");
       const on = operation.sellableStandalone || operation.sellableInSubscription;
       need(!on || sku.status !== "archived" && !input.skus.some(value => value.id === sku.id && value.status === "archived"), "catalog_publication_v3_compile_sku_archived");
       activation ||= on;
