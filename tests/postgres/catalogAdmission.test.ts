@@ -1594,8 +1594,9 @@ it.each([
   } finally { await restore(); }
 });
 
-it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned"] as const)
-  .map(result => ({ offerVersion,result }))))("LC6-D-041 and LC6-D-146 $offerVersion $result through native acquisition", async ({ offerVersion,result }) => {
+async function acquisitionCase({ offerVersion,result }: {
+  offerVersion: "classic" | "sized.v1"; result: "bound" | "missing" | "mismatch" | "attachment mismatch" | "unpaid" | "abandoned";
+}) {
   const f = await fixture(packs[0]), key = randomUUID(), amount = money(1234), sizeConstraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
   const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
     lines: [{ sku: f.code,productSlug: f.value.product.slug!,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: amount,
@@ -1649,6 +1650,50 @@ it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "m
   expect((await pool.query("SELECT s.configured_offer_version,s.composition_constraint,t.catalog_acceptance FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1", [activated.subscriptionId])).rows)
     .toEqual([{ configured_offer_version: offerVersion,composition_constraint: offerVersion === "classic" ? null : sizeConstraint,catalog_acceptance: proof }]);
   expect(await writer.complete(order)).toEqual({ subscriptionId: activated.subscriptionId,replayed: true });
+}
+
+it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned"] as const)
+  .map(result => ({ offerVersion,result }))))("LC6-D-041 and LC6-D-146 $offerVersion $result through native acquisition", acquisitionCase);
+
+it.each([
+  {
+    rule: "LC6-D-039 immutable draft acceptance",
+    signature: "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+    text: "v_catalog_acceptance IS NOT NULL AND v_mode='subscription' THEN",
+    replace: "false THEN",
+    result: "bound",
+  },
+  {
+    rule: "LC6-D-041 bind at captured-payment activation",
+    signature: "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+    text: "PERFORM public.catalog_admission_bind_purchase(v_subscription_id,p_activation.order_id);",
+    replace: "",
+    result: "bound",
+    refusal: "subscription_activation_catalog_acceptance_mismatch",
+  },
+  {
+    rule: "LC6-D-146 retained proof at attachment",
+    signature: "public.subscription_complete_renewal_attachment(uuid)",
+    text: "v_facts->>'payerAccountRef',frozen->'proof');",
+    replace: "v_facts->>'payerAccountRef',NULL);",
+    result: "bound",
+  },
+  {
+    rule: "LC6-D-146 exact draft line agreement at attachment",
+    signature: "public.subscription_complete_renewal_attachment(uuid)",
+    text: "frozen->'orderLines' IS DISTINCT FROM (SELECT jsonb_agg(l ORDER BY (l->>'lineOrdinal')::integer) FROM jsonb_array_elements(v_facts->'lines') l)",
+    replace: "false",
+    result: "attachment mismatch",
+  },
+] as const)("$rule reversion fails the acquisition witness", async ({ signature,text,replace,result,...row }) => {
+  const restore = await hook(signature,"BEGIN","",body => {
+    expect(body.split(text)).toHaveLength(2);
+    return body.replace(text,replace);
+  });
+  try {
+    const expected = "refusal" in row ? { code: "22023",message: row.refusal } : { name: "AssertionError" };
+    await expect(acquisitionCase({ offerVersion: "sized.v1",result })).rejects.toMatchObject(expected);
+  } finally { await restore(); }
 });
 
 it.each([
