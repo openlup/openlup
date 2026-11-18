@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
 import { admit, digest, coverageState, protectedCoveragePath, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
+import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -522,6 +523,83 @@ describe('real Git coverage histories', () => {
     const f = await fixture(); const session = await f.review(); const summary = receiptSummary(session, 12, Date.now());
     const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
     expect(parseReceipt(body)).toEqual(summary); expect(summary.sessionDigest).toBe(digest(session));
+  });
+});
+
+describe('preparing after the protected path list changes', () => {
+  const rulesMismatch = /recorded policy or base rules differ.*prepare --new to archive this session and obtain a fresh full review/u;
+
+  async function driftedRules() {
+    const addedControl = 'fixture-guard.ts';
+    const f = await fixture();
+    expect(protectedCoveragePath(addedControl)).toBe(false);
+    await f.write(addedControl, 'export const guard = true;\n'); f.commit();
+    await f.review();
+    await rm(join(f.cwd, addedControl));
+    await f.write('tests/demo.test.ts', 'repair fixture\n'); f.commit();
+    await f.cli('prepare', f.request);
+    const edge = (await f.state()).candidate.coverage;
+    expect(edge.kind).toBe('repair');
+    await f.report({ ordinary: true, delta: edge.delta });
+    await expect(f.cli('verify')).resolves.toBe(0);
+
+    const includes = NATIVE_CATALOG_CONTROLS.includes.bind(NATIVE_CATALOG_CONTROLS);
+    vi.spyOn(NATIVE_CATALOG_CONTROLS, 'includes').mockImplementation(path => path === addedControl || includes(path));
+    const directory = join(f.scratch, 'agent-review');
+    return { ...f, directory, path: join(directory, 'session.json') };
+  }
+
+  it('reports historical rules drift and keeps the session on plain prepare', async () => {
+    const f = await driftedRules();
+    const original = await readFile(f.path, 'utf8');
+    const session = await f.state();
+    expect(await captureReviewRules(f.cwd, session.candidate)).toEqual(session.candidate.rules);
+    await expect(validateEconomySession(f.cwd, session)).rejects.toThrow(rulesMismatch);
+    await expect(f.cli('verify')).rejects.toThrow(rulesMismatch);
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    expect(await readdir(f.directory)).toEqual(['session.json']);
+    expect(await readFile(f.path, 'utf8')).toBe(original);
+  });
+
+  it('archives the original bytes and starts a full review from the intent with --new', async () => {
+    const f = await driftedRules();
+    const original = await readFile(f.path, 'utf8');
+    const existing = 'session.archived-existing.json';
+    await writeFile(join(f.directory, existing), 'earlier archive\n');
+    const logArchive = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(f.cli('prepare', '--new', f.request)).resolves.toBe(0);
+
+    const files = await readdir(f.directory);
+    const archive = files.find(name => /^session\.archived-\d.+\.json$/u.test(name))!;
+    expect(files.sort()).toEqual([archive, existing, 'session.json'].sort());
+    expect(await readFile(join(f.directory, archive), 'utf8')).toBe(original);
+    expect(await readFile(join(f.directory, existing), 'utf8')).toBe('earlier archive\n');
+    expect(logArchive).toHaveBeenCalledExactlyOnceWith(`Archived native review session to ${join(f.directory, archive)}`);
+    const next = await f.state();
+    expect(next.history.map(event => event.type)).toEqual(['rules', 'prepare']);
+    expect(next.candidate).not.toHaveProperty('coverage');
+    expect(next).toMatchObject(JSON.parse(await readFile(f.request, 'utf8')));
+    await expect(validateEconomySession(f.cwd, next)).resolves.toBeUndefined();
+    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS reports required');
+  });
+
+  it.each([
+    ['report', 'report differs from its historical candidate'],
+    ['edge', 'recorded coverage proof differs'],
+  ])('preserves the active session when drift accompanies a tampered %s', async (kind, error) => {
+    const f = await driftedRules();
+    const state = await f.state();
+    if (kind === 'report') {
+      state.history.findLast(event => event.type === 'report').report.tree = 'a'.repeat(40);
+    } else {
+      state.candidate.coverage.delta = 'a'.repeat(64);
+      state.history.findLast(event => event.type === 'prepare').candidate.coverage.delta = 'a'.repeat(64);
+    }
+    const tampered = JSON.stringify(state);
+    await writeFile(f.path, tampered);
+    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(error);
+    expect(await readdir(f.directory)).toEqual(['session.json']);
+    expect(await readFile(f.path, 'utf8')).toBe(tampered);
   });
 });
 

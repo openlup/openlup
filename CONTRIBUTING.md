@@ -1670,7 +1670,11 @@ rebuild the session in a clone holding only main and the branch: keep the events
 before the refused preparation, repeat each later `prepare` at its recorded head and
 record the same reports, each delta report naming its new delta.
 State stays in `.context/scratch/agent-review/session.json`;
-unchanged preparation preserves evidence and history. `verify` refuses dirty,
+unchanged preparation preserves evidence and history. If a protected-path list
+change causes `verify` to report that recorded policy or base rules differ, run
+`node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json`.
+This archives the old session beside `session.json` and starts a fresh full review
+with no prior reports or inherited coverage. `verify` refuses dirty,
 mismatched, partial or missing evidence and unclosed blockers. On the CI-only
 route no reviewer report is needed. Source admission checks the live head, tree
 and floor using trusted main's tooling.
