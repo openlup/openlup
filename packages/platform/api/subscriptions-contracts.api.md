@@ -436,6 +436,7 @@ export type { LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEdi
 ## dist/subscriptions/contracts/messages.d.ts
 
 ```ts
+import type { StockWaitDeficit } from "./stockWait.js";
 export type SubscriptionLifecycleFact = {
     factId: string;
     idempotencyKey: string;
@@ -459,6 +460,10 @@ export type SubscriptionLifecycleFact = {
 } | {
     kind: "stock_wait_started" | "stock_wait_resumed";
     frozenFingerprint: string;
+    /** Checked native observation used by rendering.
+     * @experimental
+     */
+    deficits?: readonly StockWaitDeficit[];
 } | {
     kind: "winback_eligible";
     cancelledAt: string;

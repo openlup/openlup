@@ -545,6 +545,7 @@ export {};
 ## dist/subscriptions/contracts/messages.d.ts
 
 ```ts
+import type { StockWaitDeficit } from "./stockWait.js";
 export type SubscriptionLifecycleFact = {
     factId: string;
     idempotencyKey: string;
@@ -568,6 +569,10 @@ export type SubscriptionLifecycleFact = {
 } | {
     kind: "stock_wait_started" | "stock_wait_resumed";
     frozenFingerprint: string;
+    /** Checked native observation used by rendering.
+     * @experimental
+     */
+    deficits?: readonly StockWaitDeficit[];
 } | {
     kind: "winback_eligible";
     cancelledAt: string;
@@ -2626,6 +2631,10 @@ export interface NativeStockWaitAdmission {
     caseId: string | null;
     response: Record<string, unknown>;
 }
+/** Internal native projection shared with the checked notice observation.
+ * @experimental
+ */
+export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]>;
 /** Each multi-statement mutation uses the host transaction. Payment execution is
  * deliberately outside this store. SQL owns stock locks and subtransactions. */
 export declare function createPostgresStockWaitStore(options: NativeStockWaitBinding): {
@@ -2684,7 +2693,7 @@ import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
  */
-export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2"];
+export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2", "subscription_stock_wait.started", "subscription_stock_wait.resumed"];
 /** Source claims must be committed before invocation. Commerce commits its handoff
  * before M04 enqueue; a crash between enqueue and source acknowledgement replays
  * the same message key. Construction registers no worker or capability.
@@ -2706,6 +2715,9 @@ export declare function createPostgresSuccessorNotices(options: {
             reason: string;
         }>;
     };
+    /** Native M04 receipts share this store. For stock-wait facts the host freezes
+     * rendered copy with subscription_stock_wait_bind_notice(caseId,factId,message)
+     * before enqueue and reuses the returned message on every attempt. */
     delivery: SubscriptionLifecycleMessagePort;
     recipient(clientId: string): Promise<{
         recipientRef: string;

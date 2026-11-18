@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { subscriptionRecord } from "./postgresRenewalStore.js";
+import { nativeStockWaitDeficits } from "./postgresStockWaitStore.js";
 import { createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
 import type { SubscriptionLifecycleMessagePort, SubscriptionLifecycleFact } from "./contracts/messages.js";
 
@@ -11,6 +12,7 @@ import type { SubscriptionLifecycleMessagePort, SubscriptionLifecycleFact } from
 export const successorNoticeSources = Object.freeze([
   "catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2",
   "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2",
+  "subscription_stock_wait.started", "subscription_stock_wait.resumed",
 ] as const);
 
 /** Source claims must be committed before invocation. Commerce commits its handoff
@@ -24,6 +26,9 @@ export function createPostgresSuccessorNotices(options: {
   impact: { report(skuId:string): Promise<
     { outcome:"complete"; obligations:readonly { family:string;sourceId:string;caseKind?:"legacy"|"successor" }[] }
     | { outcome:"unknown"|"unavailable";reason:string }> };
+  /** Native M04 receipts share this store. For stock-wait facts the host freezes
+   * rendered copy with subscription_stock_wait_bind_notice(caseId,factId,message)
+   * before enqueue and reuses the returned message on every attempt. */
   delivery: SubscriptionLifecycleMessagePort;
   recipient(clientId: string): Promise<{ recipientRef: string; locale: string } | null>;
 }) {
@@ -31,7 +36,7 @@ export function createPostgresSuccessorNotices(options: {
   async function persisted(db:SubscriptionQueryExecutor,row:OutboxEventRow) {
     const saved=(await db.query(`SELECT payload=$3::jsonb AS matching FROM public.outbox_events
       WHERE id=$1::uuid AND event_type=$2 AND aggregate_type=$4 AND aggregate_id=$5::uuid AND idempotency_key=$6`,
-    [id.parse(row.id),row.event_type,row.payload,row.aggregate_type,id.parse(row.aggregate_id),row.idempotency_key])).rows[0];
+    [z.guid().parse(row.id),row.event_type,row.payload,row.aggregate_type,z.guid().parse(row.aggregate_id),row.idempotency_key])).rows[0];
     if(saved?.matching!==true)throw new Error("subscription_lifecycle_source_binding_changed");
   }
   async function notice(db:SubscriptionQueryExecutor,caseId:string,caseKind:"legacy"|"successor",publicationId:string|null) {
@@ -41,6 +46,40 @@ export function createPostgresSuccessorNotices(options: {
     return record;
   }
   async function complete(row:OutboxEventRow):Promise<OutboxHandlerOutcome> {
+    if(row.event_type==="subscription_stock_wait.started"||row.event_type==="subscription_stock_wait.resumed") {
+      const parsed=z.object({caseId:z.guid(),clientId:z.guid(),subscriptionId:z.guid(),deficits:z.array(z.object({
+        sku:z.string().min(1),requiredUnits:z.number(),reservedUnits:z.number(),availableUnits:z.number(),missingUnits:z.number().nonnegative(),
+      }).passthrough()).default([])}).passthrough().safeParse(row.payload);
+      if(!parsed.success)return {kind:"discard",reason:"stock_wait_notice_contract_invalid"};
+      const payload=parsed.data,started=row.event_type==="subscription_stock_wait.started";
+      const checked=await options.withTransaction(async db=>{
+        await persisted(db,row);
+        const receipt=(await db.query("SELECT state FROM public.transactional_delivery_read_receipt($1::text)",[row.idempotency_key])).rows[0];
+        if(receipt?.state==="accepted")return {kind:"accepted"} as const;
+        const value=(await db.query("SELECT public.subscription_stock_wait_read_v2($1::uuid,'legacy') AS result",[payload.caseId])).rows[0]?.result;
+        if(value==null)throw new Error("stock_wait_notice_case_mismatch");
+        const envelope=subscriptionRecord(value);
+        const current=subscriptionRecord(envelope.case);
+        if(row.aggregate_type!=="subscription_stock_wait"||row.aggregate_id!==payload.caseId||current.id!==payload.caseId||current.client_id!==payload.clientId||current.subscription_id!==payload.subscriptionId)throw new Error("stock_wait_notice_case_mismatch");
+        if(!started&&current.state!=="resumed")throw new Error("stock_wait_resume_milestone_missing");
+        if(started&&(current.state!=="waiting"||current.waitingNoticeRelevant!==true))return {kind:"obsolete"} as const;
+        const deficits=(await nativeStockWaitDeficits(db,started?current.deficits:payload.deficits)).filter(value=>value.missing>0);
+        if(started&&deficits.length===0)return {kind:"empty"} as const;
+        return {kind:"ready",current,deficits} as const;
+      });
+      if(checked.kind==="accepted")return {kind:"processed",detail:{dedupe:"email_already_sent"}};
+      if(checked.kind==="obsolete")return {kind:"processed",detail:{skipped:"stock_wait_notice_obsolete"}};
+      if(checked.kind==="empty")return {kind:"discard",reason:"stock_wait_notice_missing_deficits"};
+      const recipient=await options.recipient(payload.clientId);
+      if(!recipient)return {kind:"retry",reason:"stock_wait_notice_recipient_unresolved"};
+      const current=checked.current;
+      const fact:SubscriptionLifecycleFact={factId:row.id,idempotencyKey:row.idempotency_key,subscriptionId:payload.subscriptionId,clientId:payload.clientId,
+        cycleId:current.cycle_id==null?null:z.guid().parse(current.cycle_id),caseId:payload.caseId,orderId:current.order_id==null?null:z.guid().parse(current.order_id),
+        occurredAt:row.created_at,firstRecordedAt:row.created_at,kind:started?"stock_wait_started":"stock_wait_resumed",
+        frozenFingerprint:z.string().regex(/^[a-f0-9]{64}$/u).parse(current.fingerprint),deficits:checked.deficits};
+      await delivery.deliver({fact,messageKey:row.idempotency_key,...recipient,recoveryUrlPath:null});
+      return {kind:"processed"};
+    }
     if(row.event_type==="subscription_stock_wait.opened.v1"||row.event_type==="subscription_stock_wait.opened.v2") {
       const kind=row.event_type.endsWith(".v1")?"legacy":"successor";
       if(kind==="successor"&&(row.payload.schemaVersion!==2||row.payload.caseKind!==kind))throw new Error("stock_wait_binding_changed");

@@ -1511,6 +1511,12 @@ case reads require an explicit kind. New execution identities never alias the
 root operation. `createPostgresSuccessorNotices` binds opened and publication
 facts to the same notice writer and the existing M04 descriptor port. Recipient
 failures retry, and durable message keys survive source-event and worker replay.
+The same factory handles native started/resumed notices. It checks accepted M04
+receipts before live dependencies, validates the authoritative case binding and
+milestone, and carries the checked deficit observation in the descriptor. The
+host freezes rendered copy through `subscription_stock_wait_bind_notice` before
+M04 enqueue and reuses the returned message on retry; native M04 receipts share
+the source store.
 These factories register no workers or capabilities. Follow the
 [migration instructions](changes/lc10.md) before composing a host runtime.
 
