@@ -70,6 +70,13 @@ roster writer or installer roster seed exists. Drafts and bundle activation do
 not replace the owned storefront offer configuration. The managed real-database
 browser recipe is `browser/native-operator.proof.ts`.
 
+The registry in `owned/catalogue.ts` lists the synthetic supplements pack.
+Its definition, drafts, policy and fixtures live in
+`owned/catalog-packs/supplements/`. The separate fictional market table in
+`owned/market-packs/market-fictional/` supplies zero-rate test data for ZZ/XTS.
+Copy the pack as a folder. Draft and price inputs require explicit operator
+actions. Copying the files grants no publication or serving authority.
+
 `owned/acquisition-addresses.ts` is owned demonstration data beside the catalogue
 seed. It contains fictional opaque registry tuples and localized choice labels.
 The acquisition foundation migration header, lines 16-17, permits an adopter to load its own

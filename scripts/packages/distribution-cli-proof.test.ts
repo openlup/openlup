@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
-import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, stageStarterSupplementPack, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -63,4 +63,37 @@ it("retains a failed pair receipt when published visibility refuses before execu
     expect(receipt.result).toBe("FAIL"); expect(receipt.upgrade.result).toBe("FAIL");
     expect(receipt.upgrade.endedAt).toBe(receipt.endedAt);
   } finally { if (previous === undefined) delete env.OPENLUP_REGISTRY_READY; else env.OPENLUP_REGISTRY_READY = previous; }
+});
+
+it("supplements_pack_artifact_matrix RP1-D-010b stages only first-use owned files and preserves a later edit", async () => {
+  const app = fixture(), candidate = fixture();
+  const paths = [
+    "owned/catalog-packs/supplements/pack.ts", "owned/catalog-packs/supplements/catalogue.ts",
+    "owned/catalog-packs/supplements/fixtures.ts", "owned/catalog-packs/supplements/policy.ts",
+    "owned/market-packs/market-fictional/tax-table.ts",
+  ];
+  const registry = "owned/catalogue.ts";
+  for (const { directory, write } of [app, candidate]) {
+    const ownership = JSON.parse(readFileSync(join(directory, "ownership.json"), "utf8"));
+    ownership.owned.push(registry, ...(directory === candidate.directory ? paths : []));
+    write("ownership.json", ownership);
+    write(registry, directory === candidate.directory ? "candidate registry" : "pristine old registry");
+  }
+  for (const path of paths) candidate.write(path, path);
+  const from = starterUpgradeSnapshot(app.directory, "1.2.0"), to = starterUpgradeSnapshot(candidate.directory, "1.3.0");
+  stageStarterSupplementPack(app.directory, candidate.directory, from, to);
+  expect(paths.map(path => from.files[path])).toEqual(paths.map(() => undefined));
+  expect(paths.map(path => to.files[path])).toEqual(paths);
+  expect(readFileSync(join(app.directory, registry), "utf8")).toBe("candidate registry");
+
+  // A later transition already owns these filenames and keeps their edited bytes.
+  const ownership = readFileSync(join(candidate.directory, "ownership.json"), "utf8");
+  app.write("ownership.json", ownership);
+  app.write(registry, "custom registry");
+  app.write(paths[0]!, "edited pack");
+  const next = starterUpgradeSnapshot(candidate.directory, "1.4.0");
+  stageStarterSupplementPack(app.directory, candidate.directory, from, next);
+  expect(paths.every(path => !Object.hasOwn(next.files, path))).toBe(true);
+  expect(readFileSync(join(app.directory, paths[0]!), "utf8")).toBe("edited pack");
+  expect(readFileSync(join(app.directory, registry), "utf8")).toBe("custom registry");
 });

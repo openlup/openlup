@@ -44,7 +44,7 @@ agreement rows against the composed installation with installed packages.
 | | RP1-D-006e | Same quantities at 27 days | `cadence_not_allowed` |
 | | RP1-D-006f | 55 capsule pieces and original powder | `line_coverage_mismatch` |
 | | RP1-D-008a | Add v2 with explicitly mapped `label_language` | Both version digests resolve; v1 bytes and accepted terms unchanged |
-| | RP1-D-008b | Omit only the new required field from v2 | `attribute_required_missing` at `/product/label_language` |
+| | RP1-D-008b | Omit only the new required field from v2 | `attribute_required_missing` at `/productAttributes/label_language` |
 | | RP1-D-008c | Repeat v2 mapping from the extracted source | Identical authored data and digests |
 | | RP1-D-007c | Two-line purchase, renewal and explicit successor comparison | 7,000 / 7,000 / 7,280 XTS minor, 0 shipping and tax, 28 days |
 
@@ -53,7 +53,8 @@ agreement rows against the composed installation with installed packages.
 - Effective instant and first cycle anchor 2026-11-19T12:00:00.000Z.
   Next anchors 2026-12-17T12:00:00.000Z and 2027-01-14T12:00:00.000Z.
 - XTS exponent 2, active subscription gross prices at minimum quantity 1,
-  one unit per line. In order: G1-CAPS-56 2,800, G1-POWDER-140 4,200,
+  one unit per line, with the existing price owner using zero discount and a
+  ten-minor-unit rounding quantum. In order: G1-CAPS-56 2,800, G1-POWDER-140 4,200,
   G1-CAPS-NEXT-56 3,080. Zero discounts, delivery and tax in the fixture.
   Existing starter defaults are in `examples/neutral-store/owned/store.config.ts:46-52,96-99`.
 - UUIDs `00000000-0000-4000-8000-0000000001NN` use suffixes 10–13,
@@ -68,10 +69,20 @@ agreement rows against the composed installation with installed packages.
 
 RP1-D-001, D-002 and D-011 preserve the deployed identity/cardinality checks,
 the separation of document facts from offer facts, and the verified human
-decision/publish boundaries. The adaptations use the existing publication
+decision/publish boundaries. See the corresponding authority checks in
+`packages/platform/src/catalog/commerceQuoteCatalogRead.ts:64-93,140-154`,
+`packages/platform/src/catalog/draftV3Schemas.ts:25-38`, and
+`packages/platform/src/catalog/publicationStore.ts:139-150,248-285`. The adaptations use the existing publication
 read, shared-content and operator contracts, respectively. RP1-D-003 through
 D-008 and D-010 are synthetic application data, registration and extraction
 proof. The existing quantity, attribute, profile, price and upgrade owners
 validate these fixtures. C06 selects a synthetic age attestation and an executed
 prepaid refusal. C07 selects the reference directory as the authored source,
 copy parity and a typed v3–v5 recipe with retained v1 type definitions.
+The recipe first saves v3 drafts, then supplies v4 revisions for publication.
+That preserves the lifecycle authority required by withdrawal without
+reinterpreting the stored v3 drafts. The authored price command uses the
+existing gross base writer; the synthetic subscription price is derived
+with the existing zero-discount policy. Source references are
+`supplements/catalogue.ts:70-141`, `supplements/fixtures.ts:8-49` and
+`supplements/policy.ts:14-63`.

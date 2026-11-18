@@ -78,6 +78,28 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
+/** Apply the packaged migration for a pristine predecessor extraction. */
+export function stageStarterSupplementPack(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
+  const paths = [
+    "owned/catalog-packs/supplements/pack.ts", "owned/catalog-packs/supplements/catalogue.ts",
+    "owned/catalog-packs/supplements/fixtures.ts", "owned/catalog-packs/supplements/policy.ts",
+    "owned/market-packs/market-fictional/tax-table.ts",
+  ];
+  const registry = "owned/catalogue.ts";
+  const inventory = (directory: string): readonly string[] => JSON.parse(readFileSync(join(directory, "ownership.json"), "utf8")).owned;
+  const previous = inventory(app), candidate = inventory(target);
+  if (!candidate.includes(paths[0]!) || previous.includes(paths[0]!)) return;
+  assert(candidate.includes(registry) && previous.includes(registry), "starter_catalogue_registry_ownership_missing");
+  const additions = paths.map(path => {
+    assert(candidate.includes(path) && !previous.includes(path)
+      && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path), "starter_supplements_ownership_mismatch");
+    return [path, readFileSync(join(target, path), "utf8")] as const;
+  });
+  const registration = readFileSync(join(target, registry));
+  writeFileSync(join(app, registry), registration);
+  Object.assign(to.files, Object.fromEntries(additions));
+}
+
 export function assertUpgradeConflict(report: { state: string; applied: string[]; conflicts: { path: string; reason: string }[] }, path: string): void {
   assert.equal(report.state, "refused"); assert.deepEqual(report.applied, []);
   assert.deepEqual(report.conflicts, [{ path, reason: "current bytes match neither predecessor nor candidate" }]);
@@ -100,6 +122,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  phase("migrate-supplements-pack", () => stageStarterSupplementPack(app, pair.to, from, to));
   phase("customize-owned", () => {
     const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
     for (const [path, before, after] of [

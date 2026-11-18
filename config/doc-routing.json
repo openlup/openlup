@@ -1350,6 +1350,17 @@
       "anchor": "#released-starter-inputs"
     },
     {
+      "id": "catalogue-reference-packs",
+      "when": "Synthetic catalogue reference pack and fictional market fixture",
+      "paths": [
+        "examples/catalog-packs/**",
+        "tests/platform/supplementsPack.test.ts",
+        "tests/postgres/supplementsPack.test.ts"
+      ],
+      "doc": "packages/core/docs/guide/how-to/build/customize-the-starter.md",
+      "anchor": "#read-the-supplements-reference-pack"
+    },
+    {
       "id": "starter-application",
       "when": "Independent starter application, owned customization and local sandbox composition",
       "paths": [

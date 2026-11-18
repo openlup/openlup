@@ -2146,6 +2146,30 @@
       "class": "public-output"
     },
     {
+      "path": "examples/catalog-packs/market-fictional/tax-table.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements-witness-census.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/catalogue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/catalog-packs/supplements/policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/.dockerignore",
       "class": "public-output"
     },
@@ -2538,6 +2562,22 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/catalog-packs/supplements/catalogue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/catalog-packs/supplements/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/catalog-packs/supplements/pack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/catalog-packs/supplements/policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/catalogue.json",
       "class": "public-output"
     },
@@ -2559,6 +2599,10 @@
     },
     {
       "path": "examples/neutral-store/owned/fragments.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/market-packs/market-fictional/tax-table.ts",
       "class": "public-output"
     },
     {
@@ -29814,6 +29858,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/supplementsPack.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/watchdogExecution.test.ts",
       "class": "public-output"
     },
@@ -30951,6 +30999,10 @@
     },
     {
       "path": "tests/postgres/subscriptionWinback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/supplementsPack.test.ts",
       "class": "public-output"
     },
     {
