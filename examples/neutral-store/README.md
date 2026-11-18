@@ -665,7 +665,8 @@ a delivery claim.
 `host/paid-mail.ts` composes the native job lease, first/final wave producer,
 canonical expiry and initial-checkout sweeps, reconciliation and the existing
 outbox handlers. Private messages reuse the atomic local capture protocol.
-Only confirmed capture in the selected profile qualifies the final wave.
+When the schedule has a first wave, only its confirmed capture in the selected
+profile qualifies the final wave; a last-only schedule has no predecessor gate.
 Checkout expiry links inspect the source and recovery lineage. Live pending-order
 links support original-order sandbox continuation payment. Dedicated token pay,
 exact cookie-authorized inline retry and the embedded-browser buyer-link control

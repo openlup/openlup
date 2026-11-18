@@ -194,15 +194,17 @@ activation refuse recurring obligations, including for the matching owner.
 
 ## Account and operator authority
 
-`owned/acquisition-policy.ts` supplies account validation and checkout link and
-reminder timing. The host derives the actor from the accepted session and the
+`owned/acquisition-policy.ts` supplies account validation and checkout link
+timing; the installed `checkoutRecoveryReminders` schedule in
+`owned/store.config.ts` sets reminder hours and stages. The host derives the actor from the accepted session and the
 command key from the request. Caller-supplied identities and command keys in
 action bodies refuse. Account reads expose owned event metadata rather than
 private payloads. Profile writes and event appends have separate commits;
 correction requests retain their native append-only repeated-key behavior.
 
 The separate checkout-recovery mail entry selects only recovery and expiry
-handlers. A captured send's native receipt gates the final reminder; enqueueing
+handlers. When the schedule has a first stage, a captured send's native receipt gates the
+final reminder; enqueueing
 or skipping a send does not establish delivery. Paid messages and subscription
 notices use separate selections.
 

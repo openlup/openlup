@@ -341,3 +341,10 @@ describe("transactionalEmailRenderers", () => {
     expect(out.html.split("Adopter parcel note")).toHaveLength(2);
   });
 });
+
+it.each(['en', 'pl'] as const)('passes the custom final stage through the transactional renderer in %s', locale => {
+  const input = { to: 'fixture@example.invalid', firstName: null, orderId: '11111111-2222-4333-8444-555555555555', recoveryToken: 'rcv_fixture',
+    outboxEventId: '11111111-2222-4333-8444-555555555555', mode: 'one_time', locale, reminderHours: 20, signal };
+  const old = renderCheckoutRecovery(input, 'https://example.invalid');
+  expect(renderCheckoutRecovery({ ...input, reminderHours: 48, stage: 'last' }, 'https://example.invalid')).toEqual(old);
+});

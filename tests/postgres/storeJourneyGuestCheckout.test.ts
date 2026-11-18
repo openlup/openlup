@@ -30,6 +30,7 @@ const subscriptionOffer = { days, defaultDays: 28, minimumBaseUnits: 6, checkout
   bySku: Object.fromEntries(["JOURNEY-GUEST", "JOURNEY-GUEST-L"].map(sku => [sku,
     [{ days, quantities: { kind: "range" as const, min: 1, max: 99, step: 1 } }]])) };
 const config: StoreConfig = {
+  checkoutRecoveryReminders: { revision: "fixture-1", abandonedCart: [{ stage: "last", afterHours: 72 }], checkoutRecovery: [{ stage: "last", afterHours: 20 }] },
   inventory: { renewalProtection: { revision: "fixture-1", renewalProtectionDays: 14 } },
   subscriptionCreation: { editWindowHours: 72 },
   subscriptionOffers: { classic: subscriptionOffer, sized: subscriptionOffer },

@@ -13,6 +13,7 @@ import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
 import type { StoreConfig } from '../shared/config.ts';
+import { readCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
 import { readRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
 import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
@@ -65,6 +66,15 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     if (installed.revision !== expected.revision || installed.renewalProtectionDays !== expected.renewalProtectionDays) {
       throw new Error('starter_installed_policy_drift');
     }
+    const reminders = await readCheckoutRecoveryReminderSchedule(pool);
+    const expectedReminders = config.checkoutRecoveryReminders;
+    if (reminders.revision !== expectedReminders.revision
+      || ['abandonedCart', 'checkoutRecovery'].some(key => {
+        const field = key as 'abandonedCart' | 'checkoutRecovery';
+        return reminders[field].length !== expectedReminders[field].length
+          || reminders[field].some((wave, i) => wave.stage !== expectedReminders[field][i]?.stage
+            || wave.afterHours !== expectedReminders[field][i]?.afterHours);
+      })) throw new Error('starter_installed_policy_drift');
     if (!(await pool.query("SELECT to_regprocedure('public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamp with time zone)') IS NOT NULL AS ready")).rows[0]?.ready)
       throw new Error('starter_billing_installation_required');
   } catch (error) { await pool.end(); throw error; }
