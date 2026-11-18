@@ -378,10 +378,10 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of order) {
         const rows = source.get(table)!;
         const b = packet.compatible.tables.find(value => value.table === table);
-        // Classic subscriptions, their events and accepted-reference carriers use
+        // Governed SKU projections and accepted-reference carriers use
         // the locked owner path after exact trigger and schema inspection;
         // the generic row importer continues to refuse INSERT triggers.
-        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events", "subscription_renewal_terms", "subscription_renewal_operations"].includes(table)) {
+        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events", "subscription_renewal_terms", "subscription_renewal_operations", "catalog_skus"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
           await restoreCompatiblePostgresRows({ catalogueId: manifest.objectInventorySha256, packet: bounded,
@@ -637,6 +637,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // These guards verify retained canonical bytes and identity without rewriting them.
     catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
+    catalog_skus: ["catalog_skus_legacy_net_grams_check"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],

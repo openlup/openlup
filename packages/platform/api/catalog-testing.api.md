@@ -1382,7 +1382,7 @@ export interface CatalogPriceContext {
     atTime: string;
 }
 /** Refusal vocabulary shared by managed and portable catalog readers. */
-export type CatalogSkuAuthorityRefusal = "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
+export type CatalogSkuAuthorityRefusal = "quantity_requires_v2" | "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
 export declare class CatalogSkuAuthorityError extends Error {
     readonly code: CatalogSkuAuthorityRefusal;
     constructor(code: CatalogSkuAuthorityRefusal);

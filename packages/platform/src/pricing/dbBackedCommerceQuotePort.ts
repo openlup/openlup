@@ -19,7 +19,7 @@ export interface QuotePromotionResult {
   codeRejectionDetails: CommerceCodeRejectionDetail[];
 }
 
-export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext> {
+export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">, LineContext extends object, Context extends CommerceQuoteContext> {
   quoteCatalogReadPort: { listQuoteCatalogItems(): Promise<Item[]> };
   isStrictD1Quote: boolean;
   commercePriceAuthorityPort?: CommercePriceAuthorityPort;
@@ -48,7 +48,7 @@ export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteReques
 
 const STRICT_D1_COMMERCE_CHANNEL = "D2C";
 export function createDbBackedCommerceQuotePort<
-  Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem,
+  Request extends CreateQuoteRequest, Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">,
   LineContext extends object, Context extends CommerceQuoteContext,
 >(deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>) {
   const {

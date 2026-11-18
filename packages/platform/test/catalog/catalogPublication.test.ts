@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
-import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, compileCatalogPublication, publicationJson,
-  catalogPublicationIntegralGrams } from "../../src/catalog/publicationValidation.js";
+import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, compileCatalogPublication, publicationJson } from "../../src/catalog/publicationValidation.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 
 import { input, definition, rules } from "./fixtures/publicationInput.js";
@@ -79,18 +78,15 @@ it("retains canonical draft limits while allowing publication facts above one Mi
   expect(() => publicationJson(data, 1_048_576)).toThrow("catalog_publication_envelope_too_large");
 });
 it.each([
-  ["net", "fractional", "15", 1], ["net", "zero", "0", 0], ["net", "negative", "-1", 0], ["net", "out_of_range", "2147483648", 0],
-  ["gross", "fractional", "15", 1], ["gross", "zero", "0", 0], ["gross", "negative", "-1", 0], ["gross", "out_of_range", "10000000000000000000000000000000000000000", 0],
-] as const)("catalog_publication_refuses_%s_%s_mass", (kind, _case, unscaled, scale) => {
-  const quantity = { dimension: "mass" as const, unit: "openlup:g", unscaled, scale };
-  expect(() => catalogPublicationIntegralGrams(quantity, definition, kind)).toThrow("catalog_publication_integral_grams_required");
-  const data = input(); data.payload.skus[0][kind === "net" ? "netContent" : "grossMass"] = quantity;
-  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_integral_grams_required");
-});
-it("catalog_publication_preserves_integer_grams_at_native_boundaries", () => {
-  for (const [kind, value] of [["net", "1"], ["net", "2147483647"], ["gross", "9999999999999999999999999999999999999999"]] as const)
-    expect(catalogPublicationIntegralGrams({ dimension: "mass", unit: "openlup:g", unscaled: value, scale: 0 }, definition, kind)).toBe(value);
-  expect(catalogPublicationIntegralGrams({ dimension: "mass", unit: "openlup:kg", unscaled: "1", scale: 3 }, definition, "net")).toBe("1");
+  ["MC5-D-043 fractional gross", { dimension: "mass", unit: "openlup:g", unscaled: "1005", scale: 1 }, true],
+  ["MC5-D-043 short gross", { dimension: "mass", unit: "openlup:g", unscaled: "9999", scale: 2 }, false],
+  ["MC5-D-043 non-mass gross", { dimension: "count", unit: "openlup:piece", unscaled: "100", scale: 0 }, false],
+] as const)("catalog_publish_typed_readiness_and_projection %s", (_name, grossMass, ready) => {
+  const data = input();
+  data.payload.skus[0]!.grossMass = grossMass;
+  if (ready) expect(compileCatalogPublication(data).skus[0]?.grossMass).toEqual(grossMass);
+  else expect(() => compileCatalogPublication(data)).toThrow(grossMass.dimension === "mass"
+    ? "catalog_publication_gross_below_net" : "catalog_publication_gross_mass_invalid");
 });
 
 it("classifies published physical identity with both immutable document contexts", () => {
@@ -112,4 +108,15 @@ it("classifies published physical identity with both immutable document contexts
     return "material";
   } };
   expect(() => compileCatalogPublication(data)).toThrow("sku_identity_change_requires_new_sku"); expect(classified).toBe(true);
+});
+
+it.each([
+  ["net zero", "netContent", "0"],
+  ["net negative", "netContent", "-1"],
+  ["gross zero", "grossMass", "0"],
+  ["gross negative", "grossMass", "-1"],
+] as const)("catalog_publish_typed_readiness_and_projection malformed mass %s", (_name, field, unscaled) => {
+  const data = input();
+  data.payload.skus[0]![field] = { dimension: "mass", unit: "openlup:g", scale: 0, unscaled };
+  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_integral_grams_required");
 });

@@ -78,7 +78,7 @@ async function start(): Promise<void> {
     const route = resolveRoute(location.pathname);
     const locale = route.locale;
     const context: PageContext = {
-      config, locale, route, query: new URLSearchParams(location.search), fragments,
+      config, catalogueDraftType: response.catalogueDraftType, locale, route, query: new URLSearchParams(location.search), fragments,
       t: key => copy[locale][key],
       money: amount => new Intl.NumberFormat(locale, {
         style: 'currency', currency: config.market.currency,

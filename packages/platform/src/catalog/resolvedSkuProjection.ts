@@ -17,7 +17,7 @@ const moneyMinorSchema = z.number().int().nonnegative();
  */
 export const RESOLVED_SKU_PROJECTION_VERSION = "catalog.resolved-sku.v1";
 
-export const resolvedSkuProjectionSchema = z.object({
+const resolvedSkuProjectionShape = z.object({
   contractVersion: z.literal(RESOLVED_SKU_PROJECTION_VERSION),
   envelope: neutralSkuEnvelopeV1Schema,
   priceContext: z.object({
@@ -38,7 +38,9 @@ export const resolvedSkuProjectionSchema = z.object({
       amountMinor: moneyMinorSchema,
     }).strict().nullable(),
   }).strict(),
-}).strict().superRefine((projection, context) => {
+}).strict();
+
+export const resolvedSkuProjectionSchema = resolvedSkuProjectionShape.superRefine((projection, context) => {
   try {
     assertPrimaryUnitGtinAuthority(projection.envelope.identifiers);
   } catch (error) {
@@ -73,4 +75,25 @@ export function buildResolvedSkuProjection(input: ResolvedSkuProjectionInput): R
     contractVersion: RESOLVED_SKU_PROJECTION_VERSION,
     ...input,
   });
+}
+
+/** Resolved sale-unit prices paired with exact publication facts. @experimental */
+export interface ResolvedSkuProjectionV2 {
+  contractVersion: "catalog.resolved-sku.v2";
+  envelope: import("./servingRead.js").NeutralSkuEnvelopeV2;
+  priceContext: ResolvedSkuProjection["priceContext"];
+  pricing: ResolvedSkuProjection["pricing"];
+}
+
+/** Compose already-verified publication facts with the caller's price authority. @experimental */
+export function buildResolvedSkuProjectionV2(input: Omit<ResolvedSkuProjectionV2, "contractVersion">): ResolvedSkuProjectionV2 {
+  assertPrimaryUnitGtinAuthority(input.envelope.identifiers);
+  const { envelope, priceContext, pricing } = input;
+  // The V1 pricing validator has no quantity policy. Validate the common price
+  // context and enforce the same subscription price relationship for V2.
+  const parsed = resolvedSkuProjectionShape.pick({ priceContext: true, pricing: true }).parse({ priceContext, pricing });
+  if (envelope.sku.sellability.subscription !== (parsed.pricing.subscription !== null)) {
+    throw new Error("catalog_resolved_subscription_price_invalid");
+  }
+  return { contractVersion: "catalog.resolved-sku.v2", envelope, ...parsed };
 }

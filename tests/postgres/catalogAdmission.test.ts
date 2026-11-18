@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
-  createPostgresCatalogAdmission, observeCatalogSubscriptionCadenceBound, type CatalogPublicationRules } from "@openlup/platform/catalog";
+  buildCatalogAdmissionFromServing, createPostgresCatalogAdmission, observeCatalogSubscriptionCadenceBound,
+  type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
@@ -1591,5 +1592,31 @@ it.each(["commerce_create_order_draft_with_outbox", "commerce_create_promoted_or
       await expect(rpc(db,routine,input.args)).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
     } finally { await db.query("ROLLBACK"); db.release(); }
     expect(await snapshot()).toEqual(before);
+  },
+);
+
+it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
+  "catalog_bound_effect_rechecks_shared_authority MC5-D-026 %s", async purpose => {
+    const f = await fixture("serving"), read = await pool.connect();
+    try {
+      const offerVersion = purpose === "sized" ? "sized.v1" : "classic";
+      const authority = publisher(read).serving({ types: [definition], offerVersion, maxItems: 5000 });
+      const { items } = await authority.detail(f.value.product.slug!);
+      const item = items.find(item => item.sku.id === f.sku);
+      expect(item).toMatchObject({ product: { id: f.product }, acceptedReference: f.reference });
+      const input = buildCatalogAdmissionFromServing({
+        mode: f.admission.mode, priceContextVersions: f.admission.priceContextVersions,
+        lines: [{ item: { productId: item!.product.id, acceptedReference: item!.acceptedReference }, quantity: 2 }],
+        purpose: purpose === "order" ? "order" : "account",
+        offerEvidence: purpose === "order" ? { offerVersion } : { offerVersion, subscriptionId: f.subscription, lane: purpose, ...(purpose === "sized" ? { optIn: true } : {}) },
+      });
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, input)).resolves.toBeUndefined();
+      const before = (await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows;
+      const stale = { ...input, heads: [{ productId: f.product, head: { ...f.head, revision: 1 } }] };
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, stale)).rejects.toMatchObject({
+        code: "40001", message: purpose === "order" ? "commerce_order_draft_catalog_head_moved" : "customer_self_service_stale_edit_catalog_head",
+      });
+      expect((await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual(before);
+    } finally { read.release(); }
   },
 );

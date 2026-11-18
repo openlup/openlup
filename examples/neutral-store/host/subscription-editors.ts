@@ -71,7 +71,7 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
       }
       catch (error) { await db.query('ROLLBACK'); throw error; }
     };
-    const ports = editorQuotePorts(db,config), values = config.subscriptionEditing;
+    const ports = editorQuotePorts(db,config,context.catalogueRegistration), values = config.subscriptionEditing;
     const classic = createPostgresPackageEditor({ ...ports,withTransaction: transaction(true),now,
       limits: { maximumPlanDays: Math.max(...choices(config.subscriptionOffers.classic.days)),maximumBaseLines: values.maximumBaseLines,
         maximumAddonLines: values.maximumAddonLines,maximumQuantity: values.maximumQuantity } });

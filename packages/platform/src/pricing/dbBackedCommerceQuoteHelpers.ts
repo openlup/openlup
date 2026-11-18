@@ -22,7 +22,7 @@ export interface SkuIndexEntry<Item = CommerceQuoteCatalogItem> {
   item: Item;
 }
 
-export async function buildSkuIndex<Item extends CommerceQuoteCatalogItem>(
+export async function buildSkuIndex<Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">>(
   quoteCatalogReadPort: { listQuoteCatalogItems(): Promise<Item[]> },
 ): Promise<Map<string, SkuIndexEntry<Item>>> {
   const items = await quoteCatalogReadPort.listQuoteCatalogItems();

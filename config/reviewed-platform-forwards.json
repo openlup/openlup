@@ -5979,6 +5979,29 @@
         ]
       },
       {
+        "row": "catalogue-mc5",
+        "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_check_legacy_net_grams()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;"
+        ],
+        "createdTriggers": [
+          {
+            "name": "catalog_skus_legacy_net_grams_check",
+            "table": "public.catalog_skus",
+            "sha256": "6cd25c33e096c50e0e6db00cac827b5f5b8c000c47979700a34f3baf53f146db"
+          }
+        ]
+      },
+      {
         "row": "catalogue-sp1",
         "path": "db/platform/migrations/20261124000000_subscription_profiles.sql",
         "replacedFunctions": [
@@ -8611,6 +8634,17 @@
           "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "3c7343f356bfcac6aa2439e142b3cda06f8616b07b6a72926e5b5bc534795f56"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
+      "sha256": "80f8917fc009cb7552fe88a718f15f79670c2da9d99a44dcc99ac33ac0ece523",
+      "functions": [
+        {
+          "signature": "public.catalog_check_legacy_net_grams()",
+          "beforeSha256": null,
+          "afterSha256": "b88561d2bd35ccc992984b6b23a80239b8a3efcb0d44ca7a4940143476fbacc9"
         }
       ]
     },
