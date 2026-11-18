@@ -5458,6 +5458,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/testing/conformanceProfiles.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/testing/contracts.ts",
       "class": "public-output"
     },
@@ -9707,6 +9711,10 @@
     },
     {
       "path": "packages/platform/test/catalog/fixtures/categoryMembership.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/conformance-transport-witness-census.md",
       "class": "public-output"
     },
     {
@@ -31267,7 +31275,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-9e02b27ca2e171d50f113a29b41438c593a4c78100c64c6adb384de32311340c"
+      "digest": "sha256-19a706bcfc8e24988ef7c519de1857a5efcd449aca7b2ac26570b8f93125c4fd"
     },
     {
       "path": "package.json",

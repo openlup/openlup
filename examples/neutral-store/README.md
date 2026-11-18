@@ -416,6 +416,13 @@ key come only from the accepted host context. `owned/catalogue.ts` owns the
 fictional authoring type. The support port is constructed per request for that
 operator and closed in `finally`, including failed reads; it has no operator cache.
 
+After registering pack fixtures in `owned/catalogue.ts`, run
+`npm run typecheck -- --erasableSyntaxOnly` and
+`npm --silent run catalogue:check:source`. The source command explicitly trusts
+that module and records the offline check and scratch subject hash. See
+`node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md`
+for the copyable pack and registration example.
+
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application's storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
 
 ## Acquisition and unbound operator actions

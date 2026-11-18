@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test",
     "test:browser": "playwright test",
-    "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json"
+    "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json",
+    "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json"
   },
   "dependencies": {
     "@openlup/core": "file:artifacts/openlup-core.tgz",

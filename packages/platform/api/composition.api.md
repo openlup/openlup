@@ -231,7 +231,7 @@ export declare function createCheckoutRecoveryWaveJob(options: {
     enqueued_20h: number;
     ok: boolean;
     skipped?: undefined;
-    reason?: undefined;
+    readonly reason?: undefined;
 }>;
 /** Method/bearer guard precedes the job's flag and every persistence operation. */
 export declare function createCheckoutRecoveryWaveHttpEntry(job: ReturnType<typeof createCheckoutRecoveryWaveJob>, host: {
@@ -249,7 +249,7 @@ export declare function createCheckoutRecoveryWaveHttpEntry(job: ReturnType<type
         enqueued_20h: number;
         ok: boolean;
         skipped?: undefined;
-        reason?: undefined;
+        readonly reason?: undefined;
     };
 }>;
 ```

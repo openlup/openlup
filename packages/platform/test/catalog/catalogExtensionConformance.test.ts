@@ -6,11 +6,12 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
-import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
+import { projectCatalogExtensionConformance, runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
 import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError } from "../../src/catalog/index.js";
 import type { CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
 import type { CatalogPackInput, CatalogProductTypeRef, AttributeDefinition, CatalogAttributeInput, CatalogAttributeReferenceResolution } from "../../src/catalog/index.js";
+import { input as publicationFixture } from "./fixtures/publicationInput.js";
 
 function pack(): CatalogPackInput {
   return { id: "stationery", namespace: "stationery", version: 1, openlupRange: "^0.44.0", capabilities: {}, taxClasses: [{ key: "standard" }], types: [{
@@ -21,6 +22,203 @@ function pack(): CatalogPackInput {
 const checkSubject = (value: unknown) => runCatalogExtensionConformance(JSON.stringify(value));
 function check(value: CatalogPackInput) { return checkSubject({ packs: [{ pack: value }] }); }
 const draft = () => ({ schemaVersion: 1 as const, product: { id: "00000000-0000-4000-8000-000000000001", type: { key: "stationery:item", version: 1 }, dimensions: [] }, skus: [] });
+
+const profileRef = { key: "example:delivery", version: 1 };
+const samplePack = {
+  id: "example", namespace: "example", version: 1, openlupRange: "^0.44.0",
+  capabilities: { prepaid: false }, taxClasses: [],
+  subscriptionProfiles: [profileRef],
+  subscriptionProfileDefinitions: [{
+    ...profileRef, allowedCadenceDays: [28, 120], quantities: { minBaseUnits: 1, maxBaseUnits: 4, maxUnitsPerLine: 4, maxBaseLines: 2 },
+    addons: { allowedTypeRefs: [], maxLines: 0, maxUnits: 0 }, swapGroupKeys: [],
+    consumption: { kind: "fixed_units" }, prepaid: "unsupported",
+  }],
+  types: [{ ...publicationFixture().definition, subscriptionProfileRef: profileRef,
+    validateContent(content: unknown) {
+      if (content && typeof content === "object" && "document" in content && content.document
+        && typeof content.document === "object" && "derived" in content.document && typeof content.document.derived === "number") return [];
+      return [{ code: "value_required", path: "document.derived" }];
+    },
+  }],
+} satisfies CatalogPackInput;
+
+function transportEntry() {
+  const { payload } = publicationFixture();
+  const type = payload.product.type, id = payload.skus[0].id;
+  return {
+    pack: samplePack,
+    drafts: [3, 4, 5].map(schemaVersion => ({ ...structuredClone(payload), schemaVersion })),
+    attributes: [{ type, input: { skus: [{ id }] }, publicationRevision: "1" }],
+    combinations: [{ type, input: { axes: [], typed: true, retained: [], incoming: [] } }],
+    profileChecks: [{ cadenceDays: 120, lines: [{ id, type, quantity: 1 }] }],
+    refusals: [{ name: "prepaid", capability: "prepaid", expectedCode: "prepaid_unsupported", observedCode: "prepaid_unsupported", zeroEffects: true }],
+  };
+}
+
+it("catalogue_transport_matrix RP2-D-002 canonicalizes object key order and binds exact bytes", async () => {
+  const { drafts: _drafts, ...entry } = transportEntry();
+  const source = { packs: [entry], requiredChecks: ["profiles"] };
+  const reordered = { requiredChecks: source.requiredChecks, packs: [{ ...entry, pack: {
+    ...entry.pack, types: [{ ...entry.pack.types[0], labels: { en: "Notebook", fr: "Carnet" } }],
+  } }] };
+  const reverseLabels = { ...reordered, packs: [{ ...reordered.packs[0], pack: {
+    ...reordered.packs[0].pack, types: [{ ...reordered.packs[0].pack.types[0], labels: { fr: "Carnet", en: "Notebook" } }],
+  } }] };
+  const projected = projectCatalogExtensionConformance(reordered);
+  expect(projectCatalogExtensionConformance(reverseLabels).subject).toBe(projected.subject);
+  await expect(projected.check(projected.subject + " ")).rejects.toThrow("Projected subject bytes differ");
+});
+
+describe("catalogue_required_owner_matrix", () => {
+  it.each([
+    ["exact count", "count", "stationery:each", "1", 0, undefined, undefined],
+    ["exact mass", "mass", "stationery:gram", "9", 0, "stationery:triplet", undefined],
+    ["unknown unit", "count", "stationery:missing", "1", 0, undefined, "quantity_unknown_unit"],
+    ["fractional count", "count", "stationery:each", "1", 1, undefined, "quantity_fractional_count"],
+    ["cross dimension", "count", "stationery:each", "1", 0, "stationery:gram", "quantity_cross_dimension"],
+    ["inexact conversion", "mass", "stationery:gram", "1", 0, "stationery:triplet", "quantity_not_exactly_representable"],
+    ["overflow", "count", "stationery:each", "1".repeat(41), 0, undefined, "quantity_overflow"],
+  ] as const)("RP2-D-004 %s", async (_name, dimension, unit, unscaled, scale, targetUnit, code) => {
+    const input = pack(), type = { key: input.types[0].key, version: 1 };
+    input.types[0].units = [...input.types[0].units,
+      { code: "stationery:gram", dimension: "mass", integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } },
+      { code: "stationery:triplet", dimension: "mass", integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "3", scale: 0 } },
+    ];
+    const result = await checkSubject({ packs: [{ pack: input, quantities: [{ type, value: { dimension, unit, unscaled, scale }, targetUnit }] }] });
+    expect(result.exitCode).toBe(code ? 1 : 0);
+    expect(result.findings.map(finding => [finding.code, finding.path])).toEqual(code ? [[code, "/packs/0/quantities/0/value"]] : []);
+  });
+
+  it("RP2-D-004 duplicate crosses pack boundary and violations precede unavailable", async () => {
+    const input = pack();
+    const result = await checkSubject({ packs: [{ pack: input }, { pack: { ...input, id: "second" } }], requiredChecks: ["taxonomy"] });
+    expect(result.exitCode).toBe(1);
+    expect(result.findings).toMatchObject([
+      { code: "definition_duplicate_identity", path: "/packs/1/pack/types/0/key" },
+      { code: "conformance_owner_unavailable", path: "/requiredChecks/0" },
+    ]);
+  });
+
+  it.each([
+    ["attribute-values", "attributes"], ["variant-combinations", "combinations"],
+  ] as const)("RP2-D-005 %s must cover each pack", async (check, field) => {
+    const { drafts: _drafts, ...entry } = transportEntry();
+    entry[field] = [];
+    const result = await checkSubject({ packs: [entry], requiredChecks: [check] });
+    expect(result).toMatchObject({ exitCode: 2, findings: [{ code: "conformance_owner_unavailable", path: "/requiredChecks/0" }] });
+  });
+
+  it.each([3, 4, 5] as const)("RP2-D-006 v%s validates the actual content on the exact transported input", async version => {
+    const input = transportEntry(), selected = input.drafts[version - 3];
+    const validateContent = vi.fn(samplePack.types[0].validateContent);
+    const actual = { ...input, drafts: [selected], pack: { ...input.pack, types: [{ ...samplePack.types[0], validateContent }] } };
+    const source = { packs: [actual], requiredChecks: ["draft-content"] };
+    const projection = projectCatalogExtensionConformance(source);
+    expect(await projection.check(projection.subject)).toMatchObject({ exitCode: 0, findings: [] });
+    expect(validateContent).toHaveBeenCalledExactlyOnceWith(selected.product.sharedContent);
+    await expect(projection.check(projection.subject + " ")).rejects.toThrow("Projected subject bytes differ");
+    expect(await runCatalogExtensionConformance(projection.subject)).toMatchObject({ exitCode: 2, findings: [
+      { code: "conformance_owner_unavailable", path: "/packs/0/drafts/0/product/sharedContent" },
+    ] });
+    selected.product.sharedContent = { ...selected.product.sharedContent, document: {} };
+    const invalid = projectCatalogExtensionConformance(source);
+    expect(await invalid.check(invalid.subject)).toMatchObject({ exitCode: 1, findings: [
+      { code: "value_required", path: "/packs/0/drafts/0/product/sharedContent/document/derived" },
+    ] });
+  });
+
+  it.each([3, 4, 5] as const)("RP2-D-006 v%s rejects missing or out-of-bounds applicable facts", async version => {
+    const entry = transportEntry(), base = entry.drafts[version - 3];
+    const { documentRevision: _revision, ...noReference } = base.product;
+    const cases = [
+      ["reference", { ...base, product: noReference }, 2, "conformance_owner_unavailable", "/product/documentRevision"],
+      ["operation", { ...base, publication: { ...base.publication, operations: [] } }, 2, "conformance_owner_unavailable", "/publication/operations"],
+      ["operation field", { ...base, publication: { ...base.publication, operations: [{ op: "create_product" }] } }, 1, "draft_input_invalid", "/publication/operations/0/productId"],
+      ["SKU ceiling", { ...base, skus: Array(10001).fill(base.skus[0]) }, 1, "draft_input_invalid", "/skus"],
+      ["canonical bytes", { ...base, product: { ...base.product, sharedContent: { ...base.product.sharedContent,
+        document: { title: "x".repeat(1_048_576) } } } }, 1, "draft_input_invalid", ""],
+    ] as const;
+    for (const [name, fixture, exitCode, code, path] of cases) {
+      const projected = projectCatalogExtensionConformance({ packs: [{ ...entry, drafts: [fixture] }], requiredChecks: ["draft-content"] });
+      const result = await projected.check(projected.subject);
+      expect(result.exitCode, name).toBe(exitCode);
+      expect(result.findings, name).toContainEqual(expect.objectContaining({ code, path: "/packs/0/drafts/0" + path }));
+    }
+  });
+
+  it.each(["taxonomy", "tax-application", "promotions"] as const)("RP2-D-009 %s is unavailable", async owner => {
+    const result = await checkSubject({ packs: [{ pack: pack() }], requiredChecks: [owner] });
+    expect(result).toMatchObject({ exitCode: 2, findings: [{ code: "conformance_owner_unavailable", path: "/requiredChecks/0" }] });
+  });
+
+  it.each([
+    { name: "bound 120", cadence: 120, definitions: true, consumption: { kind: "fixed_units" } },
+    { name: "bound 121", cadence: 121, definitions: true, consumption: { kind: "fixed_units" },
+      code: "profile_cadence_exceeds_platform_bound", path: "/pack/subscriptionProfileDefinitions/0/allowedCadenceDays/0" },
+    { name: "exact declaration missing", cadence: 120, definitions: false, consumption: { kind: "fixed_units" },
+      code: "profile_missing", path: "/pack/subscriptionProfiles/0" },
+    { name: "pinned policy missing", cadence: 120, definitions: true, consumption: { kind: "host_policy",
+      policyRef: { key: "stationery:policy", version: 1, digest: "a".repeat(64) }, demandScope: { kind: "per_line" } },
+      code: "policy_binding_missing", path: "/pack/subscriptionProfiles/0" },
+  ] as const)("RP2-D-007 $name", async ({ cadence, definitions, consumption, ...wanted }) => {
+    const { drafts: _drafts, ...entry } = transportEntry();
+    const subject = { ...entry, pack: { ...entry.pack, subscriptionProfileDefinitions: definitions
+      ? [{ ...samplePack.subscriptionProfileDefinitions[0], allowedCadenceDays: [cadence], consumption }] : [] } };
+    const result = await checkSubject({ packs: [subject], requiredChecks: ["profiles"] });
+    if ("code" in wanted) {
+      expect(result.exitCode).toBe(1);
+      expect(result.findings).toContainEqual(expect.objectContaining({ code: wanted.code, path: "/packs/0" + wanted.path }));
+    } else expect(result).toMatchObject({ exitCode: 0, findings: [] });
+  });
+
+  it("RP2-D-007 pooled exact coverage uses the installed demand owner and its arithmetic limit", async () => {
+    const { drafts: _drafts, ...entry } = transportEntry();
+    const ref = { key: "stationery:coverage", version: 1, digest: "b".repeat(64) };
+    const input = { ...entry, pack: { ...entry.pack, subscriptionProfileDefinitions: [{ ...entry.pack.subscriptionProfileDefinitions[0],
+      consumption: { kind: "units_per_day", demandUnit: "openlup:piece", policyRef: ref, demandScope: { kind: "pooled", poolKey: "stationery:pool" } } }] },
+      profilePolicies: [{ kind: "units_per_day", ref, coverage: "exact" }],
+      profileChecks: [{ cadenceDays: 120, lines: ["first", "second"].map(id => ({ ...entry.profileChecks[0].lines[0], id,
+        demand: { contentPerUnit: { dimension: "count", unit: "openlup:piece", unscaled: "60", scale: 0 },
+          perDay: { dimension: "count", unit: "openlup:piece", unscaled: "1", scale: 0 } },
+      })) }] };
+    const check = () => checkSubject({ packs: [input], requiredChecks: ["profiles"] });
+    expect((await check()).exitCode).toBe(0);
+    input.profileChecks[0].lines[1].demand.contentPerUnit.unscaled = "9007199254740991";
+    expect(await check()).toMatchObject({ exitCode: 1, findings: [
+      { code: "demand_arithmetic_unsafe", path: "/packs/0/profileChecks/0/lines/1/demand" },
+    ] });
+  });
+
+  it("RP2-D-007 a pinned host policy runs only with trusted evidence", async () => {
+    const { drafts: _drafts, ...entry } = transportEntry();
+    const ref = { key: "stationery:policy", version: 1, digest: "a".repeat(64) };
+    const validate = vi.fn(() => undefined);
+    const source = projectCatalogExtensionConformance({ packs: [{ ...entry, pack: { ...entry.pack,
+      subscriptionProfileDefinitions: [{ ...entry.pack.subscriptionProfileDefinitions[0],
+        consumption: { kind: "host_policy", policyRef: ref, demandScope: { kind: "per_line" } } }] },
+      profilePolicies: [{ kind: "host_policy", ref, validate }],
+    }], requiredChecks: ["profiles"] });
+    expect(await runCatalogExtensionConformance(source.subject)).toMatchObject({ exitCode: 2 });
+    expect(validate).not.toHaveBeenCalled();
+    expect(await source.check(source.subject)).toMatchObject({ exitCode: 0 });
+    expect(validate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("catalogue_refusal_observation_matrix", () => {
+  it.each([
+    { name: "owner observed", capability: "prepaid", code: "prepaid_unsupported", expectedExit: 0 },
+    { name: "forged matching code", capability: "prepaid", code: "forged", expectedExit: 1, finding: "conformance_refusal_fixture_mismatch" },
+    { name: "unavailable owner", capability: "taxonomy", code: "forged", expectedExit: 2, finding: "conformance_owner_unavailable" },
+  ])("RP2-D-008 $name", async ({ capability, code, expectedExit, finding }) => {
+    const { drafts: _drafts, ...entry } = transportEntry();
+    const subject = { packs: [{ ...entry, pack: { ...entry.pack, capabilities: { [capability]: false } },
+      refusals: [{ name: "fixture", capability, expectedCode: code, observedCode: code, zeroEffects: true }] }], requiredChecks: ["owner-refusals"] };
+    const report = await checkSubject(subject);
+    expect(report.exitCode).toBe(expectedExit);
+    if (finding) expect(report.findings).toMatchObject([{ code: finding, path: "/packs/0/refusals/0", fixture: "fixture" }]);
+  });
+});
 
 describe("offline catalogue conformance", () => {
   it("conformance_reuses_row_validators", async () => {

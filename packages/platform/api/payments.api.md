@@ -1908,10 +1908,10 @@ export declare function createPostgresPaymentMethodSetup(db: PaymentProviderExec
         kind: "unsupported";
     } | {
         readonly kind: "disabled";
-        reason?: undefined;
+        readonly reason?: undefined;
     } | {
         readonly kind: "invalid";
-        reason?: undefined;
+        readonly reason?: undefined;
     } | {
         readonly kind: "forbidden";
         readonly reason: "subscription_not_owned_or_missing";
@@ -2209,7 +2209,7 @@ export declare function createPostgresRecordedSubscriptionMethodReader(db: Payme
         readonly healthState: string;
         readonly consentSnapshot: unknown;
         readonly expiresAt: unknown;
-        reason?: undefined;
+        readonly reason?: undefined;
     }>;
 };
 ```

@@ -1379,11 +1379,11 @@ it("admits the operator challenge forward and refuses executable or privilege ad
 
 it("admits only the closed non-executable catalogue documentation skeleton", () => {
   const base = "packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/";
-  for (const file of ["catalogue.json"]) {
+  for (const file of ["catalogue.json", "pack.ts", "catalogue.ts", "fixtures.ts"]) {
     expect(validateGuidePage(base + file, "sample\n", "100644")).toBe("sample\n");
     expect(() => validateGuidePage(base + file, "sample", "100755")).toThrow();
     expect(() => validateGuidePage(base + file, "<<<<<<< conflict", "100644")).toThrow();
   }
-  for (const file of ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts", "../pack.ts"]) expect(() => validateGuidePage(base + file, "sample", "100644")).toThrow();
+  for (const file of ["registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts", "../pack.ts"]) expect(() => validateGuidePage(base + file, "sample", "100644")).toThrow();
   expect(() => validateGuidePage("packages/core/docs/guide/other.ts", "sample", "100644")).toThrow();
 });

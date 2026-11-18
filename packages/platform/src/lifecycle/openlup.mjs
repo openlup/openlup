@@ -1,21 +1,29 @@
 #!/usr/bin/env node
 // Tool-only Node entry; importing platform engine entries never starts this CLI.
 import { promises as fs } from "node:fs";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
+openlup catalogue project --trusted-packs ./owned/catalogue.ts [--json]
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
-Catalogue reads JSON text only; the supplied file is never imported. Reference and refusal records are fixture evidence. Application content validation is unavailable offline. PASS grants no install, migration, publication or activation authority.
+Catalogue check reads JSON text only. Catalogue project explicitly trusts a module exporting catalogueConformance, writes an external scratch subject, then checks it once with the registered content validators. It runs application code without a sandbox. PASS grants no install, migration, publication or activation authority.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 operation or application loading failure. JSON uses formatVersion=1, one object on stdout.
 `;
 let json = process.argv.slice(2).includes("--json");
 let validatingInput = true;
+let transport;
+
+const shellCommand = args => "npx --no -- openlup " + args.map(value => /^[A-Za-z0-9_./=-]+$/u.test(value)
+  ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
+const invocation = () => shellCommand(process.argv.slice(2));
 
 function emit(value, text) {
   process.stdout.write(json ? `${JSON.stringify({ formatVersion: 1, ...value })}\n` : `${text}\n`);
@@ -28,7 +36,15 @@ function renderFinding(finding) {
 
 function refuse(exitCode, code, observed, fix) {
   const finding = { code, observed, cause: exitCode === 64 ? "Invalid command or input syntax." : "Snapshot admission, a filesystem operation or trusted application loading failed.", fix, recheck: "Rerun the same command after repair.", evidence: { declared: "Not established", bound: "Not established", checked: "The command could not complete", unknown: ["Remaining application and filesystem state"] } };
-  emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
+  if (transport) finding.recheck = transport.recheck;
+  emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding], ...(transport ? { transport } : {}) }, `${renderFinding(finding)}\n${help}`);
+}
+
+function emitCatalogue(report) {
+  const findings = report.findings.map(finding => ({ ...finding, recheck: invocation() }));
+  const evidence = transport ? `\nScratch SHA-256: ${transport.subjectHash}\nChecker invocations: ${transport.checkerInvocations}\nProjection ms: ${transport.projectionMilliseconds}\nCheck ms: ${transport.checkMilliseconds}\nReplay: ${transport.recheck}\nStatic replay: ${transport.replay}` : "";
+  emit({ command: "catalogue check", ...report, findings, ...(transport ? { transport } : {}) },
+    `catalogue check: ${report.state}\n${report.boundary}${evidence}\n${findings.map(renderFinding).join("\n")}`.trimEnd());
 }
 
 try {
@@ -36,11 +52,14 @@ try {
     options: {
       json: { type: "boolean" }, help: { type: "boolean" },
       root: { type: "string" }, from: { type: "string" }, to: { type: "string" },
-      "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" },
+      "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" }, "trusted-packs": { type: "string" },
     }, strict: true, allowPositionals: true,
   });
   json = values.json === true;
-  if (values.help) {
+  const projecting = positionals.length === 2 && positionals[0] === "catalogue" && positionals[1] === "project";
+  if (values["trusted-packs"] !== undefined && !projecting && !values.help) {
+    refuse(64, "OPENLUP_E_CLI_INPUT", "Trusted pack paths are exclusive to catalogue project.", "Use the documented projection command.");
+  } else if (values.help) {
     emit({ command: "help", state: "complete", exitCode: 0, help }, help.trimEnd());
   } else if (positionals[0] === "upgrade" && ["plan", "apply"].includes(positionals[1]) && positionals.length === 2 && values.app === undefined && values.packs === undefined && values.root && values.from && values.to && /^(0|[1-9][0-9]*)$/u.test(values["schema-version"] ?? "") && Number.isSafeInteger(Number(values["schema-version"]))) {
     const command = `upgrade ${positionals[1]}`;
@@ -99,9 +118,30 @@ try {
       if (error instanceof SyntaxError && error[Symbol.for("openlup.catalogue.json.parse")] === true) validatingInput = true;
       throw error;
     }
-    const recheck = "npx --no -- openlup " + process.argv.slice(2).map(value => /^[A-Za-z0-9_./=-]+$/u.test(value) ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
-    report.findings = report.findings.map(finding => ({ ...finding, recheck }));
-    emit({ command: "catalogue check", ...report }, `catalogue check: ${report.state}\n${report.boundary}\n${report.findings.map(renderFinding).join("\n")}`.trimEnd());
+    emitCatalogue(report);
+  } else if (projecting && values["trusted-packs"] && ![values.packs, values.app, values.root, values.from, values.to, values["schema-version"]]
+    .some(value => value !== undefined)) {
+    validatingInput = false;
+    const root = await fs.realpath(process.cwd());
+    const scratch = await fs.realpath(tmpdir());
+    const inside = relative(root, scratch);
+    if (inside === "" || (!isAbsolute(inside) && inside !== ".." && !inside.startsWith(`..${sep}`))) throw new TypeError("Scratch must be outside the application");
+    const started = performance.now();
+    // eslint-disable-next-line no-restricted-syntax -- explicit trusted tooling surface; the JSON command never imports this source
+    const { projectCatalogExtensionConformance } = await import("@openlup/platform/catalog/testing");
+    const { catalogueConformance } = await import(pathToFileURL(resolve(values["trusted-packs"])).href);
+    const projection = projectCatalogExtensionConformance(catalogueConformance);
+    const subjectPath = join(await fs.mkdtemp(join(scratch, "openlup-catalogue-")), "subject.json");
+    await fs.writeFile(subjectPath, projection.subject, { mode: 0o600, flag: "wx" });
+    const text = await fs.readFile(subjectPath, "utf8");
+    transport = { subjectPath, subjectHash: createHash("sha256").update(text).digest("hex"), checkerInvocations: 1,
+      projectionMilliseconds: performance.now() - started, recheck: invocation(),
+      replay: shellCommand(["catalogue", "check", "--packs", subjectPath, ...(json ? ["--json"] : [])]) };
+    const checking = performance.now();
+    let report;
+    try { report = await projection.check(text); }
+    finally { transport.checkMilliseconds = performance.now() - checking; }
+    emitCatalogue(report);
   } else {
     refuse(64, "OPENLUP_E_CLI_INPUT", "Command or required options do not match the public syntax.", "Use openlup --help and explicit input paths.");
   }

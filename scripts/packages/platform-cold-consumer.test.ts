@@ -542,7 +542,11 @@ function pristinePackedA1Fixture() {
   return packedA1Consumer;
 }
 it("guide_skeleton_pack_passes_checker", () => {
-  proveCatalogConformanceConsumer(pristinePackedA1Fixture());
+  const consumer = pristinePackedA1Fixture();
+  for (const dep of ["@types/node", "undici-types"]) {
+    cpSync(join(root, "node_modules", dep), join(consumer, "node_modules", dep), { recursive: true });
+  }
+  proveCatalogConformanceConsumer(consumer, join(root, "node_modules/typescript/bin/tsc"));
 });
 it.each([
   ["missing", "CATALOG_MIGRATIONS.pop();"],

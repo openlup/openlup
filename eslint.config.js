@@ -172,8 +172,8 @@ export const PLATFORM_MODULE_GRAPH = {
   // Bundle factories bind host schemas/admin kit; native reads use the data executor type, writes its transaction lane.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
-  "catalog/testing": { values: ["catalog"], types: ["catalog/contracts"] },
   catalog: { contracts: true, values: ["pricing", "data"], types: ["bff", "http"] },
+  "catalog/testing": { values: ["catalog", "subscriptions"], types: ["catalog/contracts"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },
@@ -373,4 +373,12 @@ export default tseslint.config(
     })),
   ...workspacePackages.filter(({ name }) => name === "@openlup/platform").flatMap((pkg) =>
     Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) => platformModuleRules(pkg, module))),
+  {
+    // These copied guide files run in the adopter's app with its installed packages.
+    files: ["packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/{catalogue,fixtures,pack}.ts"],
+    rules: boundaryRules([packageExports, {
+      message: "Catalogue guide samples use the installed catalogue entries and local TypeScript sample files.",
+      regexes: ["^(?!(?:@openlup/platform/catalog(?:/testing)?|node:crypto|\\./(?:pack|fixtures)\\.ts)$)"],
+    }]),
+  },
 );

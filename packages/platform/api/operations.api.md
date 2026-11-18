@@ -682,8 +682,8 @@ export declare const platformControlPlaneMutationSchema: z.ZodUnion<readonly [z.
     idempotencyKey: z.ZodString;
     health: z.ZodEnum<{
         failed: "failed";
-        degraded: "degraded";
         healthy: "healthy";
+        degraded: "degraded";
     }>;
     firingCount: z.ZodNumber;
     maxSeverity: z.ZodNullable<z.ZodEnum<{

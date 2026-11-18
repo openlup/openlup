@@ -1,4 +1,5 @@
 import { carriesPrivateOperationalCoordinate } from "../oss-public-coordinate-detector.ts";
+import { isCatalogueSkeleton } from "../oss-publication-policy.ts";
 import { posix } from "node:path";
 import { exportTargets, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 
@@ -54,7 +55,7 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
     const declarationMap = /^dist\/.+\.d\.ts\.map$/u.test(path);
     if (path.endsWith(".map") && !declarationMap) { finding(path, "sourcemap", "only declaration maps to shipped source may ship"); continue; }
     // Closed documentation sample, copied and checked by the installed consumer; tracked-byte admission still applies.
-    const catalogueSample = entry.name === "@openlup/core" && /^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/catalogue\.json$/u.test(path);
+    const catalogueSample = entry.name === "@openlup/core" && isCatalogueSkeleton(`${entry.directory}/${path}`);
     if (!catalogueSample && (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path))) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
     const derived = DERIVED.exec(path);
     if (derived) {

@@ -3177,10 +3177,14 @@ Catalogue checks share this executable through the explicit `catalogue check
 ordinary catalog cannot import testing. The installed
 [catalogue guide](../../packages/core/docs/guide/how-to/extend/catalogue-extension.md)
 owns the subject, refusal fixtures, exit codes and pending owners. This branch
-reads JSON text without importing user code and has no database, installation,
-seed or publication path. Attribute/projection and combination owners receive only
-parsed fixture data; content validation is unavailable. Reference/refusal records
-and derived retained identities are fixture evidence, never runtime qualification. An offline PASS grants no activation authority.
+reads JSON text without importing user code. The separate `catalogue project
+--trusted-packs` branch explicitly loads a trusted TypeScript registry, projects
+canonical JSON to scratch outside the application and invokes the checker once.
+Only that invocation can use the registered callbacks, bound to the exact
+scratch bytes. The report records their SHA-256, timings and replay commands.
+Draft, attribute, combination and subscription profile checks reuse the installed
+owners. The offline checker has no database, installation, seed or publication
+path. PASS grants no activation authority.
 
 The tool-only Node executable
 [`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside

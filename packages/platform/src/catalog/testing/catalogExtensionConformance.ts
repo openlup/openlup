@@ -6,9 +6,16 @@ import {
   catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
-import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
+import { canonicalCatalogPublicationJson } from "../contracts/draft.js";
+import { catalogDraftPayloadV2Schema } from "../draftV2Schemas.js";
+import { validateCatalogDraftV2 } from "../draftV2Validation.js";
+import { catalogDraftPayloadV3Schema } from "../draftV3Schemas.js";
+import { catalogDraftPayloadV4Schema, catalogLifecycleValidationPayload } from "../lifecycleV2.js";
+import { catalogDraftPayloadV5Schema, catalogSuccessorValidationPayload } from "../successorPublication.js";
+import { catalogConformanceProfileOwners } from "./conformanceProfiles.js";
+import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSource, CatalogConformanceSubject } from "./contracts.js";
 
-const boundary = "Offline JSON definitions, exact quantities, supplied v1 drafts, attribute validation/projection preparation and V2 combination fixtures only. Reference evidence and retained options are fixture observations; PASS does not validate persisted identity bytes or history. Application content validation, category graphs, tax intervals, cadence, promotion grammar and publication require unavailable owner evidence. Installed versions, database references, installed cadence, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied.";
+const boundary = "Offline definitions, exact quantities, draft admission, attribute projection, V2 combinations and package-supported subscription profiles. Reference evidence and retained options are fixture observations. Taxonomy, tax application and promotions are unavailable. Installation, database references, installed cadence, persisted identity/history, price execution, publication and legal rate correctness require separate evidence. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied.";
 const command = "npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json";
 const pointer = (parts: readonly PropertyKey[]): string => parts.map(part => `/${String(part).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -31,6 +38,50 @@ const OWNER_INPUT_CODES = new Set([
  * @experimental
  */
 export async function runCatalogExtensionConformance(jsonText: string): Promise<CatalogConformanceReport> {
+  return checkSubject(jsonText);
+}
+
+/** Project explicitly trusted application source. Callback authority is local to the returned
+ * check and bound to the exact subject bytes. The JSON-only API never executes source.
+ * @experimental
+ */
+export function projectCatalogExtensionConformance(source: CatalogConformanceSource): {
+  subject: string; check: (jsonText: string) => Promise<CatalogConformanceReport>;
+} {
+  const owners = source.packs.map(({ pack, profilePolicies }) => ({
+    validators: pack.types.map(({ validateContent }) => {
+      if (typeof validateContent !== "function") throw new TypeError("Missing trusted content validator");
+      return validateContent;
+    }),
+    policies: profilePolicies?.map(policy => policy.kind === "host_policy" ? policy.validate : undefined) ?? [],
+  }));
+  const subject = canonicalCatalogPublicationJson({
+    ...source,
+    packs: source.packs.map(({ pack, profilePolicies, ...entry }) => ({ ...entry, pack: { ...pack,
+      types: pack.types.map(({ validateContent: _validateContent, ...type }) => type),
+    }, ...(profilePolicies ? { profilePolicies: profilePolicies.map(policy => {
+      if (policy.kind !== "host_policy") return policy;
+      const { validate, ...fields } = policy;
+      if (typeof validate !== "function") throw new TypeError("Missing trusted subscription policy validator");
+      return fields;
+    }) } : {}),
+    })),
+  });
+  return {
+    subject,
+    async check(jsonText) {
+      if (subject !== jsonText) throw new TypeError("Projected subject bytes differ");
+      return checkSubject(jsonText, owners);
+    },
+  };
+}
+
+type TrustedOwners = {
+  validators: readonly CatalogPackInput["types"][number]["validateContent"][];
+  policies: Parameters<typeof catalogConformanceProfileOwners>[3];
+};
+
+async function checkSubject(jsonText: string, owners?: readonly TrustedOwners[]): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
   function add(code: string, path: string, fixture = "", requiredEvidence = false): void {
@@ -65,7 +116,10 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
   }
   function finish(): CatalogConformanceReport {
     findings.sort((a, b) => compare(a.path, b.path) || compare(a.code, b.code) || compare(a.fixture, b.fixture));
-    return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0, boundary, findings };
+    const content = owners ? "Trusted projection executes registered validators on the checked bytes."
+      : "Application content validation requires the trusted projection command.";
+    return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0,
+      boundary: `${boundary} ${content}`, findings };
   }
   if (typeof jsonText !== "string") { add("conformance_subject_invalid", ""); return finish(); }
   let parsed: unknown;
@@ -82,25 +136,31 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
   }
   const subject = parsed as unknown as CatalogConformanceSubject;
   if (typeof subject.recheck === "string") recheck = subject.recheck;
-  let attributesAvailable = true, combinationsAvailable = true;
+  const coverage = new Map(["attribute-values", "variant-combinations", "quantities", "draft-content", "profiles", "owner-refusals"].map(check => [check, true]));
+  const requireCheck = (check: string) => subject.requiredChecks?.includes(check) === true;
+  const cover = (check: string, present: boolean) => { if (!present) coverage.set(check, false); };
   const allTypes: unknown[] = [], typePaths: string[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
-    if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
-      || [entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(value => value !== undefined && !Array.isArray(value))) {
-      add("conformance_subject_invalid", at); attributesAvailable = combinationsAvailable = false; continue;
+    if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals", "profileChecks", "profilePolicies"])
+      || [entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals, entry.profileChecks, entry.profilePolicies]
+        .some(value => value !== undefined && !Array.isArray(value))) {
+      add("conformance_subject_invalid", at);
+      for (const key of coverage.keys()) cover(key, false);
+      continue;
     }
     const { drafts, quantities, attributes, combinations, refusals } = entry;
-    attributesAvailable &&= !!attributes?.length;
-    combinationsAvailable &&= !!combinations?.length;
-    // Only this internal callback enters owner definitions. JSON never supplies executable code.
+    cover("attribute-values", !!attributes?.length);
+    cover("variant-combinations", !!combinations?.length);
+    cover("quantities", !!quantities?.length);
+    // JSON never supplies executable code or evidence that a validator ran.
     let executableField = false;
     const pack = object(entry.pack) && Array.isArray(entry.pack.types) ? { ...entry.pack, types: entry.pack.types.map((type, i) => {
       if (!object(type)) return type;
       if (Object.hasOwn(type, "validateContent")) {
         add("definition_unknown_field", `${at}/pack/types/${i}/validateContent`); executableField = true;
       }
-      return { ...type, validateContent: () => [{ code: "conformance_owner_unavailable", path: "" }] };
+      return { ...type, validateContent: owners?.[index]?.validators[i] ?? (() => [{ code: "conformance_owner_unavailable", path: "" }]) };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     if (executableField) continue;
     const issues = await owner(`${at}/pack`, () => catalogPackIssues(pack));
@@ -110,14 +170,39 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
     pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
     const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(pack.types));
     if (!registry) continue;
+    let currentDraftSeen = false;
     for (const [i, draft] of (drafts ?? []).entries()) {
-      const path = `${at}/drafts/${i}`, admitted = await owner(`${at}/drafts/${i}`, () => catalogDraftPayloadSchema.safeParse(draft));
+      const path = `${at}/drafts/${i}`;
+      const version = object(draft) ? draft.schemaVersion : undefined;
+      const schema = version === 5 ? catalogDraftPayloadV5Schema : version === 4 ? catalogDraftPayloadV4Schema
+        : version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
+      const admitted = await owner(path, () => schema.safeParse(draft));
       if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
-      const validation = await owner(path, () => validateCatalogDraft(admitted.data, registry));
+      const payload = admitted.data;
+      currentDraftSeen ||= payload.schemaVersion >= 3;
+      if (requireCheck("draft-content") && "publication" in payload) {
+        if (!payload.publication.operations.length) add("conformance_owner_unavailable", `${path}/publication/operations`, "", true);
+        if (!payload.product.documentRevision && payload.publication.operations.some(operation => operation.op === "register_document_revision")) {
+          add("conformance_owner_unavailable", `${path}/product/documentRevision`, "", true);
+        }
+      }
+      const validation = await owner(path, () => payload.schemaVersion === 1 ? validateCatalogDraft(payload, registry)
+        : validateCatalogDraftV2(payload.schemaVersion === 2 ? payload : catalogLifecycleValidationPayload(
+          payload.schemaVersion === 5 ? catalogSuccessorValidationPayload(payload) : payload), registry));
       if (!validation) continue;
-      if (!validation.valid) validation.issues.forEach(issue => add(issue.code, `${path}${pointer(issue.path.split("."))}`, "", issue.code === "conformance_owner_unavailable"));
+      const draftIssues = !validation.valid ? validation.issues
+        : requireCheck("draft-content") && payload.schemaVersion >= 3 ? validation.readiness.publication.issues : [];
+      for (const issue of draftIssues) {
+        const suffix = issue.path.startsWith("/") ? issue.path : pointer(issue.path.split("."));
+        add(issue.code, path + suffix, "", issue.code === "conformance_owner_unavailable" || issue.code === "attribute_reference_unresolved");
+      }
     }
+    cover("draft-content", currentDraftSeen);
+    const profiles = catalogConformanceProfileOwners(pack, entry.profilePolicies ?? [],
+      (code, path, unavailable) => add(code, at + path, "", unavailable), owners?.[index]?.policies);
+    if (requireCheck("profiles") || entry.profileChecks?.length || entry.profilePolicies?.length) profiles.check(entry.profileChecks ?? []);
+    cover("profiles", !!entry.profileChecks?.length);
     for (const [i, fixture] of (quantities ?? []).entries()) {
       const path = `${at}/quantities/${i}`;
       if (!closed(fixture, ["type", "value", "targetUnit"])) { add("conformance_subject_invalid", path); continue; }
@@ -213,13 +298,21 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
         || typeof fixture.capability !== "string" || !Object.hasOwn(pack.capabilities, fixture.capability) || pack.capabilities[fixture.capability] !== false) {
         add("conformance_refusal_fixture_invalid", path); continue;
       }
-      if (fixture.observedCode !== fixture.expectedCode || !fixture.zeroEffects) add("conformance_refusal_fixture_mismatch", path, fixture.name);
+      if (fixture.observedCode !== fixture.expectedCode || !fixture.zeroEffects) {
+        add("conformance_refusal_fixture_mismatch", path, fixture.name); continue;
+      }
+      if (requireCheck("owner-refusals")) {
+        const observed = profiles.observeRefusal(fixture.capability);
+        if (!observed) add("conformance_owner_unavailable", path, fixture.name, true);
+        else if (observed.code !== fixture.expectedCode || !observed.zeroEffects) add("conformance_refusal_fixture_mismatch", path, fixture.name);
+      }
     }
     for (const [capability, supported] of Object.entries(pack.capabilities)) if (!supported && !witnessed.has(capability))
       add("conformance_refusal_fixture_missing", `${at}/pack/capabilities${pointer([capability])}`);
+    cover("owner-refusals", !!refusals?.length);
   }
   for (const [index, check] of (subject.requiredChecks ?? []).entries())
-    if (!(check === "attribute-values" ? attributesAvailable : check === "variant-combinations" ? combinationsAvailable : false))
+    if (coverage.get(check) !== true)
       add("conformance_owner_unavailable", `/requiredChecks/${index}`, "", true);
   const typeIssues = await owner("/packs", () => catalogProductTypeIssues(allTypes));
   typeIssues?.filter(issue => issue.code === "definition_duplicate_identity").forEach(issue => {

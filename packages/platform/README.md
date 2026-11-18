@@ -1290,9 +1290,13 @@ Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
 See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
 for the explicit subject, copied skeleton, supported offline checks and pending
 owners. The entry accepts JSON text and returns a Promise; the CLI reads text
-without importing user code. Attribute and combination fixtures reuse their
-owners. Content validation is unavailable offline. Refusal records check
-observations, and retained options do not prove stored identities. Quantity
+without importing user code. The separate `catalogue project --trusted-packs`
+command loads a specified application module, writes canonical JSON outside the
+app, and checks those bytes once with the registered validators. Its report
+includes the scratch hash, timings and replay commands. Attribute, combination
+and subscription profile fixtures reuse their owners. Request `owner-refusals`
+to compare declared results with the installed prepaid refusal. Retained options
+remain fixture evidence. Quantity
 fixtures admit closed primitive fields before handoff. Only allowlisted owner
 input errors become exit-1 findings at the input path. Other exceptions propagate
 unchanged: the direct promise rejects and the CLI returns 74 without raw errors.

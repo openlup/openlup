@@ -687,12 +687,12 @@ export interface CatalogCandidateComparison {
 ## dist/catalog/contracts/catalogConformance.d.ts
 
 ```ts
-import type { CatalogQuantityCode } from "@openlup/core/catalog";
+import type { CatalogQuantityCode, CatalogSubscriptionProfileIssue } from "@openlup/core/catalog";
 import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
-export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_profile_invalid" | "profile_cadence_exceeds_platform_bound" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_profile_invalid" | "profile_cadence_exceeds_platform_bound" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode | CatalogSubscriptionProfileIssue["code"];
 /** @experimental */
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
@@ -2079,11 +2079,19 @@ export interface CatalogCombinationChangeV2 {
 ## dist/catalog/testing/catalogExtensionConformance.d.ts
 
 ```ts
-import type { CatalogConformanceReport } from "./contracts.js";
+import type { CatalogConformanceReport, CatalogConformanceSource } from "./contracts.js";
 /** Parse JSON text without a reviver; non-string arguments are refused without inspection. Syntax errors reject.
  * @experimental
  */
 export declare function runCatalogExtensionConformance(jsonText: string): Promise<CatalogConformanceReport>;
+/** Project explicitly trusted application source. Callback authority is local to the returned
+ * check and bound to the exact subject bytes. The JSON-only API never executes source.
+ * @experimental
+ */
+export declare function projectCatalogExtensionConformance(source: CatalogConformanceSource): {
+    subject: string;
+    check: (jsonText: string) => Promise<CatalogConformanceReport>;
+};
 ```
 ## dist/catalog/testing/contracts.d.ts
 
@@ -2091,7 +2099,8 @@ export declare function runCatalogExtensionConformance(jsonText: string): Promis
 import type { CatalogAttributeInput } from "../attributeValidation.js";
 import type { CatalogAttributeReferenceResolution } from "../attributeReferencePort.js";
 import type { CatalogPackInput, CatalogProductTypeRef, CatalogQuantity, CatalogCombinationChangeV2 } from "../contracts/index.js";
-/** Recorded observations, checked for consistency; no refusal code is executed.
+import type { CatalogSubscriptionPolicyBinding } from "../../subscriptions/index.js";
+/** Recorded observations; require owner-refusals to compare with an independent owner result.
  * @experimental
  */
 export interface CatalogRefusalFixture {
@@ -2101,7 +2110,7 @@ export interface CatalogRefusalFixture {
     observedCode: string;
     zeroEffects: boolean;
 }
-/** JSON fixture data only. Application content validators are unavailable offline.
+/** Inert JSON fixture data. Trusted projection binds executable evidence separately.
  * @experimental
  */
 export interface CatalogConformanceSubject {
@@ -2135,14 +2144,43 @@ export interface CatalogConformanceSubject {
             };
         }[];
         refusals?: readonly CatalogRefusalFixture[];
+        /** Offline selections; profile identities and digests are resolved from the pack. */
+        profileChecks?: readonly {
+            cadenceDays: number;
+            lines: readonly {
+                id: string;
+                type: CatalogProductTypeRef;
+                quantity: number;
+                addon?: boolean;
+                demand?: {
+                    contentPerUnit: CatalogQuantity;
+                    perDay: CatalogQuantity;
+                };
+            }[];
+        }[];
+        /** Declarative policy bindings that the offline owner can execute from JSON. */
+        profilePolicies?: readonly (Extract<CatalogSubscriptionPolicyBinding, {
+            kind: "units_per_day";
+        }> | Omit<Extract<CatalogSubscriptionPolicyBinding, {
+            kind: "host_policy";
+        }>, "validate">)[];
     }[];
     /** Requests whose owner has not landed refuse with required evidence unavailable. */
     requiredChecks?: readonly string[];
     recheck?: string;
 }
+/** The trusted registry uses the runtime pack, including its actual content validator.
+ * @experimental
+ */
+export interface CatalogConformanceSource extends Omit<CatalogConformanceSubject, "packs"> {
+    packs: readonly (Omit<CatalogConformanceSubject["packs"][number], "pack" | "profilePolicies"> & {
+        pack: CatalogPackInput;
+        profilePolicies?: readonly CatalogSubscriptionPolicyBinding[];
+    })[];
+}
 /** @experimental */
 export interface CatalogConformanceFinding {
-    /** Exact shared owner code; application content validation stays unavailable. */
+    /** Exact shared owner code. */
     code: string;
     severity: "error" | "warning";
     path: string;
@@ -2171,6 +2209,3556 @@ export interface CatalogConformanceReport {
 
 ```ts
 /** @experimental Opt-in offline checks; JSON text only; no caller callbacks. */
-export { runCatalogExtensionConformance } from "./catalogExtensionConformance.js";
-export type { CatalogConformanceSubject, CatalogRefusalFixture, CatalogConformanceFinding, CatalogConformanceReport } from "./contracts.js";
+export { runCatalogExtensionConformance, projectCatalogExtensionConformance } from "./catalogExtensionConformance.js";
+export type { CatalogConformanceSubject, CatalogConformanceSource, CatalogRefusalFixture, CatalogConformanceFinding, CatalogConformanceReport } from "./contracts.js";
+```
+## dist/subscriptions/agreedPlanQuote.d.ts
+
+```ts
+import type { SizedAgreedLine, SizedQuoteLine, SizedQuoteRequest, SizedRecurringQuote } from "./contracts/sizedEdit.js";
+/** Validation never replaces the retained object: every agreed byte survives. */
+export declare function assertAgreedQuoteLine(value: unknown): asserts value is SizedQuoteLine & Record<string, unknown>;
+export declare function splitBySubscriptionAgreement(request: SizedQuoteRequest, agreed: readonly Pick<SizedAgreedLine, "sku" | "qty" | "isAddon" | "quoteLine">[]): {
+    unchanged: {
+        index: number;
+        quoteLine: SizedQuoteLine;
+    }[];
+    changed: {
+        index: number;
+        line: SizedQuoteRequest["lines"][number];
+    }[];
+};
+export declare function agreedSubscriptionTotal(lines: readonly Pick<SizedAgreedLine, "sku" | "qty" | "quoteLine">[]): {
+    amountMinor: number;
+    currency: string;
+};
+export declare function mergeSubscriptionAgreedQuote(input: {
+    request: SizedQuoteRequest;
+    currency: string;
+    unchanged: ReturnType<typeof splitBySubscriptionAgreement>["unchanged"];
+    changedQuote: SizedRecurringQuote | null;
+}): SizedRecurringQuote;
+```
+## dist/subscriptions/automaticRenewal.d.ts
+
+```ts
+import type { RenewalDue, RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentRail, RenewalPreparedSettlement, RenewalReadback, RenewalReservationResult, RenewalSettlementPort, RenewalStorePort } from "./contracts/renewal.js";
+import type { RenewalFailureHandoffPort } from "./contracts/dunning.js";
+export type AutomaticRenewalRunStatus = "succeeded" | "refused" | "deferred" | "awaiting_provider" | "error" | "lease_active" | "terminal_replay";
+export interface AutomaticRenewalRunResult {
+    subscriptionId: string;
+    identityKey: string;
+    operationId: string;
+    status: AutomaticRenewalRunStatus;
+    replayed: boolean;
+    reason: string | null;
+    caseRef?: string;
+}
+export interface AutomaticRenewalPolicy {
+    executionInput(due: RenewalDue, operation: RenewalReadback, prepared: Pick<RenewalPreparedSettlement, "orderId" | "settlementIntentId">): RenewalExecutionRequest;
+    validateInput(input: RenewalExecutionRequest): void;
+    classifyFailure(reason: string): string;
+    identityKey(due: RenewalDue): string;
+}
+export interface AutomaticRenewalRunDeps {
+    store: RenewalStorePort;
+    inventory: {
+        expireReservations(input: {
+            now: string;
+            limit?: number;
+        }): Promise<number>;
+        reserve(input: {
+            operationId: string;
+            claimToken: string;
+            now: string;
+        }): Promise<RenewalReservationResult>;
+    };
+    settlement: RenewalSettlementPort;
+    paymentRails: {
+        resolve(channelKey: string): RenewalPaymentRail | null;
+    };
+    failureHandoff: RenewalFailureHandoffPort;
+    policy: AutomaticRenewalPolicy;
+    workerId: string;
+    now?: () => string;
+}
+export declare function runAutomaticSubscriptionRenewals(deps: AutomaticRenewalRunDeps, limit?: number): Promise<AutomaticRenewalRunResult[]>;
+export declare function runOneAutomaticSubscriptionRenewal(deps: AutomaticRenewalRunDeps, due: RenewalDue, occurredAt?: string): Promise<AutomaticRenewalRunResult>;
+/** No implicit +1: ambiguous history must be resolved by the host before opening a repair case. */
+export declare function correlatedLogicalCycle(snapshot: RenewalFrozenSnapshot): number;
+```
+## dist/subscriptions/automaticRenewalExecution.d.ts
+
+```ts
+import type { RenewalDue, RenewalPaymentRail, RenewalReadback, RenewalSettlementPort, RenewalStorePort } from "./contracts/renewal.js";
+import type { AutomaticRenewalPolicy, AutomaticRenewalRunDeps, AutomaticRenewalRunResult, AutomaticRenewalRunStatus } from "./automaticRenewal.js";
+export declare function automaticRenewalResult(operation: RenewalReadback, status: AutomaticRenewalRunStatus, reason: string | null): AutomaticRenewalRunResult;
+export declare function recoverPreparedExternalAttempt(input: {
+    operation: RenewalReadback;
+    rail: RenewalPaymentRail;
+    settlement: RenewalSettlementPort;
+    occurredAt: string;
+}): Promise<string | null>;
+export declare function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>, policy: Pick<AutomaticRenewalPolicy, "identityKey">): Promise<AutomaticRenewalRunResult[]>;
+export declare function refuseRenewalBeforePayment(input: {
+    store: RenewalStorePort;
+    operation: RenewalReadback;
+    reason: string;
+    occurredAt: string;
+}): Promise<AutomaticRenewalRunResult>;
+export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation: RenewalReadback, prepared: {
+    cycleId: string;
+    orderId: string;
+    settlementIntentId: string;
+}, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
+```
+## dist/subscriptions/catalogProfileBinding.d.ts
+
+```ts
+import { type CatalogAcceptanceV2, type CatalogAcceptedReferenceV2, type CatalogQuantity, type CatalogSubscriptionCoverage, type CatalogSubscriptionLineDemand, type CatalogSubscriptionPolicyRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+/** Server selection. The installed profile digest and exact publication reference bind the policy input.
+ * @experimental
+ */
+export interface CatalogProfileLine {
+    readonly id: string;
+    readonly typeRef: CatalogSubscriptionProfileRef;
+    readonly quantity: number;
+    readonly addon: boolean;
+    readonly sellable: boolean;
+    readonly allowedCadenceDays?: readonly number[];
+    readonly profileRef?: CatalogSubscriptionProfileRef;
+    readonly profileDigest?: string;
+    readonly swapGroupKey?: string;
+    readonly capacity?: CatalogQuantity;
+    readonly demand?: CatalogSubscriptionLineDemand;
+    readonly publication?: {
+        readonly reference: CatalogAcceptedReferenceV2;
+        readonly productId: string;
+        readonly documentRevisionId: string;
+    };
+}
+/** @experimental */
+export interface CatalogSubscriptionProfileSelection {
+    readonly cadenceDays: number;
+    readonly lineItems: readonly CatalogProfileLine[];
+    readonly storeCadenceDays?: readonly number[];
+    readonly commandCadenceDays?: readonly number[];
+    readonly installedCadenceBound?: number;
+    readonly prepaid?: boolean;
+    readonly swap?: {
+        readonly from: CatalogProfileLine;
+        readonly to: string;
+    };
+}
+/** A pinned callback is consulted only for the selected policy version.
+ * @experimental
+ */
+export type CatalogSubscriptionPolicyBinding = {
+    readonly ref: CatalogSubscriptionPolicyRef;
+    readonly kind: "units_per_day";
+    readonly coverage: "exact" | "allow_shortfall" | "allow_surplus";
+} | {
+    readonly ref: CatalogSubscriptionPolicyRef;
+    readonly kind: "host_policy";
+    readonly validate: (input: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileIssue | undefined;
+};
+/** Attachment for the exact accepted line roster, beside the strict renewal terms.
+ * @experimental
+ */
+export interface CatalogAttachmentEvidenceV1 {
+    readonly schemaVersion: 1;
+    readonly productId: string;
+    readonly variantId: string;
+    readonly publicationHead: CatalogAcceptedReferenceV2["publicationHead"];
+    readonly documentRevisionId: string;
+    readonly documentDigest: string;
+    readonly profileRef: CatalogSubscriptionProfileRef;
+    readonly profileDigest: string;
+    readonly policyRef?: CatalogSubscriptionPolicyRef;
+    readonly swapGroupKey?: string;
+    readonly demandUnit?: string;
+    readonly demandPerSellableUnit?: CatalogQuantity;
+    readonly demandPerDay?: CatalogQuantity;
+    readonly demandScope?: "per_line" | "pooled";
+    readonly poolKey?: string;
+}
+/** @experimental */
+export type CatalogSubscriptionProfileDecision = {
+    readonly kind: "legacy";
+} | {
+    readonly kind: "refused";
+    readonly issue: CatalogSubscriptionProfileIssue;
+} | {
+    readonly kind: "profiled";
+    readonly allowedDays: readonly number[];
+    readonly coverage: readonly CatalogSubscriptionCoverage[];
+    readonly proposalDays?: number;
+    readonly attachments: readonly CatalogAttachmentEvidenceV1[];
+};
+/** The same owner resolves definitions, prepares accepted evidence and narrows existing lane eligibility.
+ * @experimental
+ */
+export declare function createCatalogSubscriptionProfileBinding(input: {
+    readonly profiles: readonly CatalogSubscriptionProfileV1[];
+    readonly policies?: readonly CatalogSubscriptionPolicyBinding[];
+}): {
+    resolve: (ref: CatalogSubscriptionProfileRef) => {
+        profile: CatalogSubscriptionProfileV1;
+        digest: string;
+        bound: boolean;
+    } | undefined;
+    check: (selection: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileDecision;
+    bindAcceptance: (selection: CatalogSubscriptionProfileSelection) => Exclude<CatalogSubscriptionProfileDecision, {
+        kind: "profiled";
+    }> | (Extract<CatalogSubscriptionProfileDecision, {
+        kind: "profiled";
+    }> & {
+        acceptance: CatalogAcceptanceV2;
+    });
+};
+```
+## dist/subscriptions/classicPackageQuote.d.ts
+
+```ts
+import type { PackageEditQuote, PackageEditQuotePorts, PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+type Quote = Awaited<ReturnType<PackageEditQuotePorts["quotePort"]["createServerAuthoritativeQuote"]>>["quote"];
+/** Content identity deliberately excludes observation time and all presentation facts. */
+export declare function hashPackageEditQuote(quote: Quote): string;
+/** The entire desired set is quoted verbatim. Cadence changes never resize quantities. */
+export declare function createClassicPackageRepricer(deps: PackageEditQuotePorts & {
+    readPort: PackageEditReadPort;
+}): {
+    quote(input: Pick<PackageEditRequest, "subscriptionId" | "planDays" | "base" | "addons">): Promise<PackageEditQuote>;
+};
+export {};
+```
+## dist/subscriptions/commandExamples.d.ts
+
+```ts
+import type { SubscriptionCommandContext, SubscriptionCommandPort } from "./contracts/commands.js";
+/** Neutral examples. The host authenticates and authorizes actor/client ownership first. */
+export declare function createSubscriptionCommandExamples(commands: SubscriptionCommandPort): {
+    customerSkip(context: SubscriptionCommandContext): Promise<import("./contracts/commands.js").SubscriptionCommandReceipt | import("./contracts/commands.js").SubscriptionCommandRefusal | import("./contracts/commands.js").SubscriptionUnsupported>;
+    operatorSlide(context: SubscriptionCommandContext, newNextCycleAt: string): Promise<import("./contracts/commands.js").SubscriptionCommandReceipt | import("./contracts/commands.js").SubscriptionCommandRefusal | import("./contracts/commands.js").SubscriptionUnsupported>;
+};
+```
+## dist/subscriptions/contracts/commands.d.ts
+
+```ts
+export interface SubscriptionCommandContext {
+    actor: {
+        kind: "customer" | "operator";
+        actorId: string;
+        clientId: string;
+    };
+    subscriptionId: string;
+    idempotencyKey: string;
+    now: string;
+}
+/** Trusted host policy; never part of a browser command payload. */
+export interface SubscriptionLifecycleTerms {
+    pauseDays: number;
+    pauseMonths: number;
+    slideMinDays: number;
+    slideMaxDays: number;
+    orderNowDelayMinutes: number;
+    reactivateDelayDays: number;
+}
+export interface SubscriptionCancelSurvey {
+    reasonCode?: string;
+    comment?: string | null;
+    acceptedSaveOfferId?: string | null;
+}
+export interface SubscriptionSaveOffer {
+    offerId: string;
+    kind: "pause" | "skip" | "reschedule" | "plan_length" | "recipe_mix" | "support_callback";
+    accepted: boolean;
+    externalOfferRef?: string | null;
+}
+export type SubscriptionCommand = SubscriptionCommandContext & ({
+    action: "pause";
+    pausePreset: string;
+    reason: string | null;
+    survey: SubscriptionCancelSurvey | string | null;
+    saveOffer: SubscriptionSaveOffer | string | null;
+} | {
+    action: "resume" | "skip";
+    reason: string | null;
+    confirmedChargeTiming: boolean;
+} | {
+    action: "cancel";
+    reason: string | null;
+    confirmedChargeTiming: boolean;
+    survey?: SubscriptionCancelSurvey | string | null;
+    saveOffer?: SubscriptionSaveOffer | string | null;
+} | {
+    action: "order_now" | "reactivate";
+    confirmedChargeTiming: true;
+} | {
+    action: "slide";
+    reason?: string | null;
+    newNextCycleAt: string;
+    confirmedChargeTiming: boolean;
+} | {
+    action: "edit_future_terms";
+    shippingAddressId: string;
+    planDays: number;
+    cadenceDays: number;
+    expectedTemplateVersion: number;
+    /** Empty string means no quote (semantic no-op). */
+    acceptedQuoteHash: string;
+    confirmedChargeTiming: boolean;
+    coreLines: readonly SubscriptionBundleLine[];
+    addonLines: readonly SubscriptionBundleLine[];
+    compositionConstraint: string;
+});
+export interface SubscriptionBundleLine {
+    sku: string;
+    quantity: number;
+}
+export interface SubscriptionCommandReceipt {
+    actorId: string;
+    idempotencyKey: string;
+    commandFingerprint: string;
+    outcome: "applied" | "replayed" | "noop";
+    subscriptionId: string;
+    originalState: string;
+    nextCycleAt: string | null;
+    revision: string;
+    eventId: string | null;
+}
+export interface SubscriptionCommandRefusal {
+    outcome: "refused";
+    /** Stable machine code; never provider, PostgreSQL diagnostic or customer text.
+     * Unrecognized native or host diagnostics map to subscription_command_invalid_input. */
+    reason: "multi_cycle_prepaid_unsupported" | "subscription_command_addon_not_found" | "subscription_command_bundle_total_mismatch" | "subscription_command_charge_timing_not_confirmed" | "subscription_command_idempotency_conflict" | "subscription_command_invalid_composition_constraint" | "subscription_command_invalid_input" | "subscription_command_not_active" | "subscription_command_operation_busy" | "subscription_command_pause_forbidden" | "subscription_command_payment_blocked" | "subscription_command_preview_unsupported" | "subscription_command_renewal_terms_missing" | "subscription_command_unsupported_action" | "subscription_edit_catalog_unavailable" | "subscription_edit_invalid_lines" | "subscription_edit_invalid_request" | "subscription_edit_quote_expired" | "subscription_edit_quote_required" | "subscription_edit_stale_template" | "subscription_edit_window_closed" | "subscription_lifecycle_invalid_transition" | "subscription_lifecycle_invalid_skip" | "subscription_lifecycle_invalid_slide" | "subscription_lifecycle_payment_blocked";
+}
+export type SubscriptionUnsupportedCode = "multi_cycle_prepaid_unsupported" | "native_generic_bundle_commands_unsupported" | "native_command_bound_receipts_unsupported" | "native_prepared_attempt_store_unsupported";
+export interface SubscriptionUnsupported {
+    supported: false;
+    refusalCode: SubscriptionUnsupportedCode;
+}
+/** Readiness must be selected explicitly; a port declaration does not install a store. */
+export interface SubscriptionCapabilities {
+    graph: "managed" | "native";
+    multiCyclePrepaid: {
+        supported: false;
+        refusalCode: "multi_cycle_prepaid_unsupported";
+    };
+    genericBundleCommands: {
+        supported: true;
+    } | {
+        supported: false;
+        refusalCode: "native_generic_bundle_commands_unsupported";
+    };
+    commandBoundReceipts: {
+        supported: true;
+    } | {
+        supported: false;
+        refusalCode: "native_command_bound_receipts_unsupported";
+    };
+    preparedAttemptStore: {
+        supported: true;
+    } | {
+        supported: false;
+        refusalCode: "native_prepared_attempt_store_unsupported";
+    };
+    retryRecovery: "unavailable" | "selected";
+    stockRecovery: "unavailable" | "selected";
+    deliveryAdmission: "required";
+    executorCount: 1;
+    defaultEnabled: false;
+}
+export interface SubscriptionCommandPort {
+    readonly capabilities: SubscriptionCapabilities;
+    /** Future term writes, actor/command receipt and events must commit atomically. */
+    apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
+}
+export interface SubscriptionActivationPort {
+    activate(input: {
+        idempotencyKey: string;
+        orderId: string;
+        paymentIntentId: string;
+        paidEvidenceRef: string;
+        paidAt: string;
+        paymentMethodRef: string;
+        paymentMethodKind: string;
+        checkoutKind: string;
+    }): Promise<{
+        outcome: "noop" | "blocked";
+        reason: string;
+    } | {
+        outcome: "active";
+        subscriptionId: string;
+        orderId: string;
+        paymentIntentId: string;
+        nextCycleAt: string;
+        cadenceDays: number;
+        replayed: boolean;
+    }>;
+}
+```
+## dist/subscriptions/contracts/dunning.d.ts
+
+```ts
+export interface DunningCaseOpenInput {
+    idempotencyKey: string;
+    subscriptionId: string;
+    cycleId: string | null;
+    clientId: string;
+    retryAttempt: number;
+    nextRetryAt: string | null;
+    failureClass: string | null;
+    failureReason: string | null;
+    occurredAt: string;
+    amountMinor: number | null;
+    currency: string | null;
+    templateSlug: string;
+    recoveryUrlPath: string | null;
+}
+export interface DunningCaseOpened {
+    caseId: string;
+    caseStatus: string;
+    replayed: boolean;
+    notificationId: string | null;
+}
+export interface DunningCaseAdvanced {
+    caseId: string;
+    caseStatus: string;
+    notificationId: string | null;
+    retryAttempt: number | null;
+    paused: false;
+    pauseWindowId: null;
+    terminal: boolean;
+}
+export type DunningRefusalCode = "case_not_open" | "recoverable_order_unavailable";
+export interface DunningCaseLifecyclePort {
+    openCase(input: DunningCaseOpenInput): Promise<DunningCaseOpened>;
+    recordFailedAttempt(input: {
+        caseId: string;
+        occurredAt: string;
+        failureClass: string | null;
+        failureReason: string | null;
+        retryAttempt: number;
+        nextRetryAt: string | null;
+        templateSlug: string;
+        recoveryUrlPath: string | null;
+    }): Promise<DunningCaseAdvanced>;
+    recordRecovery(input: {
+        caseId: string;
+        recoveredAt: string;
+        templateSlug: string;
+    }): Promise<{
+        outcome: "recovered";
+        caseId: string;
+        caseStatus: string;
+        replayed: boolean;
+        notificationId: string | null;
+    } | {
+        outcome: "refused";
+        caseId: string;
+        caseStatus: string;
+        refusalCode: DunningRefusalCode;
+    }>;
+    issueRecoveryLink(input: {
+        caseId: string;
+        tokenHash: string;
+        expiresAt: string;
+    }): Promise<{
+        outcome: "issued";
+        orderId: string;
+    } | {
+        outcome: "refused";
+        refusalCode: DunningRefusalCode;
+    }>;
+}
+export interface RenewalRetryState {
+    rowPresent: boolean;
+    retryAttempt: number | null;
+    nextRetryAt: string | null;
+}
+export interface RenewalRetryObligation {
+    operationId: string;
+    subscriptionId: string;
+    cycleId: string;
+    orderId: string;
+    settlementIntentId: string;
+    logicalCycleNumber: number;
+    nativeRenewalCounter: number;
+    retryAttempt: number;
+    externalAttemptSequence: number;
+    nextRetryAt: string | null;
+    failureClass: string | null;
+    failureReason: string | null;
+    occurredAt: string;
+    identityKey: string;
+    requestFingerprint: string;
+    disposition: "retry_scheduled" | "payment_failed" | "paid";
+}
+export interface RenewalRecoveryAuthorization {
+    tokenId: string;
+    tokenHash: string;
+    caseId: string;
+    clientId: string;
+    authUserId: string | null;
+    subscriptionId: string;
+    cycleId: string;
+    orderId: string;
+    payerAccountRef: string | null;
+    purpose: "repair_payment" | "resume_subscription";
+    retryAttempt: number;
+    paymentMethodRef: string;
+    paymentMethodKind: string;
+    expiresAt: string;
+    usedAt: string | null;
+    revokedAt: string | null;
+    requestedAt: string;
+}
+export interface RenewalFailureHandoffPort {
+    handoffFailure(input: {
+        idempotencyKey: string;
+        subscriptionId: string;
+        clientId: string;
+        cycleId: string;
+        orderId: string;
+        paymentIntentId: string;
+        retryAttempt: number;
+        failureClass: string;
+        failureReason: string;
+        nextRetryAt: string | null;
+        occurredAt: string;
+        amountMinor: number | null;
+        currency: string | null;
+    }): Promise<{
+        caseId: string | null;
+        replayed: boolean;
+    }>;
+}
+```
+## dist/subscriptions/contracts/editConsent.d.ts
+
+```ts
+/** Per-line agreement disclosure. Missing sides are absent prices, including for zero-priced lines.
+ * @experimental
+ */
+export interface SubscriptionEditDisclosureLine {
+    kind: "retained" | "added" | "removed";
+    variantId: string;
+    sku: string;
+    isAddon: boolean;
+    agreedQuantity: number | null;
+    newQuantity: number | null;
+    agreedUnitMinor: number | null;
+    newUnitMinor: number | null;
+    deltaMinor: number | null;
+    subtotalDeltaMinor: number;
+    reason: "unchanged" | "price_changed" | "quantity_changed" | "added" | "removed";
+}
+/** Versioned disclosure bound to the original lane quote and complete current agreement.
+ * @experimental
+ */
+export interface SubscriptionEditConsent {
+    version: 1;
+    currency: string;
+    baselineFingerprint: string;
+    innerQuoteHash: string;
+    lines: readonly SubscriptionEditDisclosureLine[];
+    agreedTotalMinor: number;
+    newTotalMinor: number;
+    subtotalDeltaMinor: number;
+}
+/** Legacy desired-set inputs; money and identity are supplied on the server.
+ * @experimental
+ */
+export interface LegacyEditConsentRequest {
+    subscriptionId: string;
+    coreLines: {
+        variantId: string;
+        qty: number;
+    }[];
+    addonLines?: {
+        variantId: string;
+        qty: number;
+    }[];
+    compositionConstraint?: Record<string, unknown>;
+    cadenceDays?: number;
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+```
+## dist/subscriptions/contracts/exactEdit.d.ts
+
+```ts
+import type { PackageEditApplyResult, PackageEditLine, PackageEditPreview, PackageEditQuoteLine, PackageEditRequest } from "./packageEdit.js";
+export type ExactSubscriptionEditAction = "swap_base_line" | "add_addon" | "remove_addon" | "update_addon_quantity" | "update_plan_length" | "update_base_mix" | "update_portion";
+interface Acceptance {
+    subscriptionId: string;
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+/** Exact levers retain their individual semantics; quantities are not a combined package edit. */
+export type ExactSubscriptionEditRequest = Acceptance & ({
+    action: "swap_base_line";
+    fromVariantId: string;
+    toVariantId: string;
+} | {
+    action: "add_addon";
+    variantId: string;
+    qty: number;
+} | {
+    action: "update_addon_quantity";
+    variantId: string;
+    qty: number;
+} | {
+    action: "remove_addon";
+    variantId: string;
+} | {
+    action: "update_plan_length";
+    planDays: number;
+} | {
+    action: "update_base_mix";
+    base: PackageEditLine[];
+} | {
+    action: "update_portion";
+    portionMode: string;
+});
+export type SubscriptionEditRequest = PackageEditRequest | ExactSubscriptionEditRequest;
+export type ExactSubscriptionEditPreview = PackageEditPreview<ExactSubscriptionEditAction>;
+export type ExactSubscriptionEditApplyResult = PackageEditApplyResult<ExactSubscriptionEditAction>;
+export interface ExactSubscriptionEditPricedLine extends PackageEditLine {
+    lineId: string | null;
+    isAddon: boolean;
+    sortOrder: number;
+    quoteLine: PackageEditQuoteLine;
+}
+/** Server evidence, never accepted from customer input. New base sets have null line IDs. */
+export interface ExactSubscriptionEditQuote {
+    quoteHash: string;
+    expectedTemplateVersion: number;
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown> | null;
+    lines: ExactSubscriptionEditPricedLine[];
+    portionModes?: SubscriptionPortionModes;
+}
+/** Both factors and mode identifiers belong to the application configuration. */
+export interface SubscriptionPortionModes {
+    full: {
+        mode: string;
+        factor: number;
+    };
+    reduced: {
+        mode: string;
+        factor: number;
+    };
+}
+export {};
+```
+## dist/subscriptions/contracts/messages.d.ts
+
+```ts
+import type { StockWaitDeficit } from "./stockWait.js";
+export type SubscriptionLifecycleFact = {
+    factId: string;
+    idempotencyKey: string;
+    subscriptionId: string;
+    clientId: string;
+    cycleId: string | null;
+    caseId: string | null;
+    orderId: string | null;
+    occurredAt: string;
+    firstRecordedAt: string;
+} & ({
+    kind: "payment_failed" | "payment_expired";
+    retryAttempt: number;
+    nextRetryAt: string | null;
+    failureClass: string | null;
+    amountMinor: number | null;
+    currency: string | null;
+} | {
+    kind: "payment_recovered";
+    paymentEvidenceRef: string;
+} | {
+    kind: "stock_wait_started" | "stock_wait_resumed";
+    frozenFingerprint: string;
+    /** Checked native observation used by rendering.
+     * @experimental
+     */
+    deficits?: readonly StockWaitDeficit[];
+} | {
+    kind: "winback_eligible";
+    cancelledAt: string;
+    paymentMethodRef: string;
+}
+/** @experimental */
+ | {
+    kind: "predecessor_withdrawn";
+    frozenFingerprint: string;
+    withdrawalPublicationId: string;
+    predecessors: {
+        skuId: string;
+        skuCode: string;
+    }[];
+}
+/** @experimental */
+ | {
+    kind: "successor_offered";
+    proposalId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    quoteHash: string;
+    expiresAt: string;
+});
+/** M04 receives a descriptor; host owns copy, recipient, consent and transport. */
+export interface SubscriptionLifecycleMessageDescriptor {
+    fact: SubscriptionLifecycleFact;
+    messageKey: string;
+    templateSlug: string;
+    recipientRef: string;
+    locale: string;
+    recoveryUrlPath: string | null;
+}
+export interface SubscriptionLifecycleMessagePort {
+    enqueue(descriptor: SubscriptionLifecycleMessageDescriptor): Promise<{
+        notificationId: string;
+        replayed: boolean;
+    }>;
+}
+```
+## dist/subscriptions/contracts/packageEdit.d.ts
+
+```ts
+import type { SubscriptionEditConsent } from "./editConsent.js";
+/** Data-only classic package quote and command envelopes. Identity and execution stay in the server entry. */
+export interface PackageEditMoney {
+    amountMinor: number;
+    currency: string;
+}
+export interface PackageEditLine {
+    variantId: string;
+    qty: number;
+}
+export interface PackageEditQuoteLine {
+    sku: string;
+    quantity: number;
+    unitPriceGross: PackageEditMoney;
+    lineSubtotalGross: PackageEditMoney;
+    pricingComponents?: unknown[];
+}
+export interface PackageEditPricedLine extends PackageEditLine {
+    quoteLine: PackageEditQuoteLine;
+}
+export interface PackageEditRequest {
+    subscriptionId: string;
+    planDays: number;
+    base: PackageEditLine[];
+    addons?: PackageEditLine[];
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+}
+export interface PackageEditQuote {
+    currentRecurringPrice: PackageEditMoney;
+    newRecurringPrice: PackageEditMoney;
+    delta: PackageEditMoney;
+    quoteHash: string;
+    baseLines: PackageEditPricedLine[];
+    addonLines: PackageEditPricedLine[];
+    cadenceDays: number;
+    expectedTemplateVersion: number;
+    compositionConstraint: Record<string, unknown> | null;
+}
+export type PackageEditBlockedReason = "not_active" | "payment_blocked" | "cycle_locked" | "missing_payment_method" | "edit_window_closed";
+export interface PackageEditPreview<Action extends string = "update_package_template"> {
+    /** @experimental */
+    editConsent?: SubscriptionEditConsent;
+    preview: {
+        subscriptionId: string;
+        action: Action;
+        canApply: boolean;
+        blockedReason: PackageEditBlockedReason | null;
+        nextCycleAt: string | null;
+        editCutoffAt: string | null;
+        templateVersion: number;
+    };
+    lockedCycle: {
+        locked: boolean;
+        status: "blocked_preflight" | "dunning" | null;
+    };
+    futureTemplate: {
+        templateVersion: number;
+        effectiveCycleAt: string | null;
+        priceAgreementPolicy: "lock_until_edit";
+    };
+    quoteHash?: string;
+    quoteExpiresAt?: string;
+    currentTotal?: PackageEditMoney;
+    newTotal?: PackageEditMoney;
+    delta?: PackageEditMoney;
+    packageEdit?: Pick<PackageEditQuote, "currentRecurringPrice" | "newRecurringPrice" | "delta" | "quoteHash"> & {
+        effectiveCycleAt: string | null;
+        priceAgreementPolicy: "lock_until_edit";
+    };
+}
+export interface PackageEditApplyResult<Action extends string = "update_package_template"> {
+    status: "applied" | "replayed" | "noop";
+    subscriptionId: string;
+    action: Action;
+    subscriptionStatus: string;
+    nextCycleAt: string | null;
+    templateVersion: number;
+    eventId: string | null;
+    originalStatus?: "applied" | "noop";
+}
+/** Resulting terms for adopter-owned, effect-free admission. Throw to refuse before pricing or writes. */
+export interface SubscriptionEditTerms {
+    subscriptionId: string;
+    nominalPlanDays: number;
+    cadenceDays: number;
+    base: readonly {
+        variantId: string;
+        sku: string;
+        qty: number;
+    }[];
+    addons: readonly {
+        variantId: string;
+        sku: string;
+        qty: number;
+    }[];
+}
+export type SubscriptionTermsAdmission = (terms: SubscriptionEditTerms) => void | Promise<void>;
+```
+## dist/subscriptions/contracts/renewal.d.ts
+
+```ts
+import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
+import type { PaymentAttemptStatus, PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProviderCapabilityDescriptor, ProviderAttemptIdentity } from "@openlup/core/payment";
+/** Structural hosted-cycle contracts; native vocabulary is bound by the caller. */
+export type SubscriptionRenewalOutcome = "charged" | "requires_action" | "failed" | "skipped";
+export interface HostedRenewalDue {
+    subscriptionId: string;
+    nextCycleAt: string;
+    providerKind: string;
+    providerMethodRef: string | null;
+}
+export interface SubscriptionRenewalChargeResult {
+    subscriptionId: string;
+    outcome: SubscriptionRenewalOutcome;
+    cycleId: string | null;
+    cycleNumber: number | null;
+    orderId: string | null;
+    paymentIntentId: string | null;
+    attemptStatus: PaymentAttemptStatus | null;
+    replayed: boolean;
+    dunningCaseId?: string | null;
+    retryAttempt?: number | null;
+    applyReplayed?: boolean;
+    dunningPropagationFailed?: boolean;
+    reason?: string;
+    admissionDeferralReference?: string;
+}
+export interface SubscriptionCycleSnapshotResult {
+    cycleNumber: number;
+    retryAttempt: number;
+    providerAttemptSequence: number;
+    templateSnapshot: Record<string, unknown>;
+    pricingSnapshot: Record<string, unknown>;
+    orderSnapshot: Record<string, unknown>;
+}
+export interface SubscriptionCycleOrderInput {
+    idempotencyKey: string;
+    subscriptionId: string;
+    cycleNumber: number;
+    scheduledAt: string;
+    templateSnapshot: Record<string, unknown>;
+    pricingSnapshot: Record<string, unknown>;
+    orderSnapshot: Record<string, unknown>;
+}
+export interface SubscriptionCycleOrderResult {
+    cycleId: string;
+    orderRef: string;
+    orderUuid: string;
+    paymentRef: string;
+    replayed: boolean;
+}
+export interface SubscriptionReservationPreflightResult {
+    ok: boolean;
+    reason: string | null;
+    itemsChecked: number;
+    reacquired: number;
+}
+export interface SubscriptionRenewalPersistencePort<M extends string | null | undefined = string | null | undefined> {
+    buildCycleSnapshots(input: {
+        subscriptionId: string;
+        scheduledAt: string;
+    }): Promise<SubscriptionCycleSnapshotResult>;
+    createCycleOrder(input: SubscriptionCycleOrderInput): Promise<SubscriptionCycleOrderResult>;
+    preflightReservation(input: {
+        orderId: string;
+        now: string;
+    }): Promise<SubscriptionReservationPreflightResult>;
+    readMandateRecurringModel(providerKind: string, providerMethodRef: string | null): Promise<M>;
+    noteRowOutcome(input: {
+        subscriptionId: string;
+        scheduledAt: string;
+        errorKey: string | null;
+    }): Promise<void>;
+}
+export type FailurePropagationKind = "off_session_requires_action" | "provider_declined" | "preflight_block";
+export interface FailurePropagationContext {
+    kind: FailurePropagationKind;
+    executionIdempotencyKey: string;
+    providerIdempotencyKey: string;
+    providerRequestFingerprint: string;
+    paymentIntentId: string;
+    cycleId: string;
+    subscriptionId: string;
+    orderUuid: string;
+    providerKind: string;
+    failureReason: string;
+    failureClassification?: {
+        failureClass: string;
+        decidedBy: string;
+    } | null;
+    occurredAt: string;
+    attemptAlreadyPrepared?: boolean;
+}
+export interface CycleRetryState {
+    retryAttempt: number | null;
+    nextRetryAt: string | null;
+    rowPresent: boolean;
+}
+export type DunningCaseOpenOutcome = {
+    status: "opened";
+    caseId: string | null;
+} | {
+    status: "rejected";
+    reason: string;
+    code?: string;
+} | {
+    status: "unavailable";
+    reason: string;
+};
+export interface CycleChargeFailurePropagationPort {
+    recordBlockedPreflightAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        providerKind: string;
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+        failureReason: string;
+    }): Promise<void>;
+    readDurableAttemptInstant(input: {
+        paymentIntentId: string;
+        attemptIdempotencyKey: string;
+    }): Promise<string | null>;
+    applyFailedResult(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        occurredAt: string;
+        failureReason: string;
+        failureClassification: {
+            failureClass: string;
+            decidedBy: string;
+        };
+    }): Promise<{
+        replayed: boolean;
+        paymentAttemptId?: string | null;
+    }>;
+    readCycleRetryState(cycleId: string): Promise<CycleRetryState>;
+    openDunningCase(input: {
+        failedPaymentAttemptId: string | null;
+        idempotencyKey: string;
+        cycleId: string;
+        subscriptionId: string;
+        orderUuid: string;
+        paymentIntentId: string;
+        retryAttempt: number;
+        nextRetryAt: string | null;
+        failureReason: string;
+        occurredAt: string;
+        failureClass: string;
+    }): Promise<DunningCaseOpenOutcome>;
+}
+export interface FailurePropagationResult {
+    dunningCaseId: string | null;
+    retryAttempt: number | null;
+    applyReplayed: boolean;
+    dunningPropagationFailed: boolean;
+}
+export type RenewalPrepareInput<P extends string> = Parameters<RenewalPreparedAttemptPersistencePort<P, string>["prepareProviderAttempt"]>[0];
+export type RenewalAttemptResult<N extends string> = Awaited<ReturnType<RenewalPreparedAttemptPersistencePort<string, N>["finalizeProviderAttempt"]>>;
+export interface RenewalIntentResult {
+    paymentIntentId: string;
+    replayed: boolean;
+}
+export interface RenewalPaymentPort<CI, IR extends RenewalIntentResult, P extends string, N extends string> extends RenewalPreparedAttemptPersistencePort<P, N> {
+    createIntent(input: CI): Promise<IR>;
+}
+export interface RenewalExecutionPort<I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult> {
+    execute(input: I): Promise<R>;
+}
+export interface RenewalDeliveryAdmission {
+    allowed: boolean;
+    state: string;
+    reason: string;
+}
+export type RenewalAllowedAdmission = RenewalDeliveryAdmission & {
+    allowed: true;
+};
+export interface RenewalDeliveryClient {
+    admitDeliveryAlignment(input: {
+        subscriptionId: string;
+        scheduledAt: string;
+        asOf: string;
+    }): Promise<RenewalDeliveryAdmission>;
+}
+export interface RenewalFailureDeps {
+    chargeFailurePropagation: CycleChargeFailurePropagationPort;
+    now?: () => string;
+}
+export interface RenewalPreflightDeps<CI, IR extends RenewalIntentResult, M extends string | null | undefined> extends RenewalFailureDeps {
+    persistence: SubscriptionRenewalPersistencePort<M>;
+    paymentPort: {
+        createIntent(input: CI): Promise<IR>;
+    };
+}
+export interface RenewalCycleDeps<CI, IR extends RenewalIntentResult, P extends string, N extends string, I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult, M extends string | null | undefined> extends RenewalPreflightDeps<CI, IR, M> {
+    paymentPort: RenewalPaymentPort<CI, IR, P, N>;
+    executionPort: RenewalExecutionPort<I, R>;
+    deliveryAlignment: RenewalDeliveryClient;
+    capability: PaymentProviderCapabilityDescriptor;
+    deliveryAlignmentAdmission?: RenewalAllowedAdmission;
+}
+/** Local references, never a snapshot of the original due/ports or their getters. */
+export interface RenewalExecutionContext<IR extends RenewalIntentResult, M extends string | null | undefined, F extends string> {
+    snapshots: SubscriptionCycleSnapshotResult;
+    cycleOrder: SubscriptionCycleOrderResult;
+    intent: IR;
+    totalGrossMinor: number;
+    executionIdempotencyKey: string;
+    attemptIdentity: ProviderAttemptIdentity;
+    providerFlow: F;
+    paymentMethodRecurringModel: M | undefined;
+}
+export interface RenewalOutcomeContext {
+    executionIdempotencyKey: string;
+    attemptIdentity: ProviderAttemptIdentity;
+    intent: RenewalIntentResult;
+    cycleOrder: Pick<SubscriptionCycleOrderResult, "cycleId" | "orderUuid" | "replayed">;
+    snapshots: Pick<SubscriptionCycleSnapshotResult, "cycleNumber">;
+    finalizedAttempt: {
+        status: PaymentAttemptStatus;
+    };
+}
+export interface RenewalReplayContext {
+    cycleId: string;
+    cycleNumber: number;
+    orderId: string;
+    paymentIntentId: string;
+    executionIdempotencyKey: string;
+    providerIdempotencyKey: string;
+    providerRequestFingerprint: string;
+    providerKind: string;
+}
+/** Durable preparation facts; provider admission belongs to the caller. */
+export interface RenewalPreparedAttemptPrepareInput<P extends string = string> {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    provider: P;
+    providerIdempotencyKey: string;
+    providerRequestFingerprint: string;
+    providerFlow: string;
+    paymentMethodRef?: string | null;
+    requestPayload: Record<string, unknown>;
+}
+export interface RenewalPreparedAttemptPersistenceResult<N extends string = string> {
+    paymentAttemptId: string;
+    status: PaymentAttemptStatus;
+    replayed: boolean;
+    providerAttemptId: string | null;
+    providerSessionId: string | null;
+    nextActionKind: N | null;
+}
+export interface RenewalPreparedAttemptFinalizeInput<N extends string = string> extends Pick<PaymentExecutionBaseResult, "providerAttemptId" | "providerSessionId" | "attemptStatus" | "requestPayload" | "responsePayload"> {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    paymentAttemptId: string;
+    providerIdempotencyKey: string;
+    providerRequestFingerprint: string;
+    nextActionKind: N | null;
+}
+/** Only persistence capabilities needed by interactive attempt ordering. */
+export interface RenewalPreparedAttemptPersistencePort<P extends string = string, N extends string = string> {
+    prepareProviderAttempt(input: RenewalPreparedAttemptPrepareInput<P>): Promise<RenewalPreparedAttemptPersistenceResult<N>>;
+    finalizeProviderAttempt(input: RenewalPreparedAttemptFinalizeInput<N>): Promise<RenewalPreparedAttemptPersistenceResult<N>>;
+}
+/** Original text is an identity input; instant is for comparisons only. */
+export interface RenewalSchedule {
+    subscriptionId: string;
+    scheduledAt: string;
+    scheduledInstant: number;
+}
+export interface RenewalIdentity {
+    cycleIdempotencyKey: string;
+    executionIdempotencyKey: string;
+    externalIdempotencyKey: string;
+    requestFingerprint: string;
+}
+export type RenewalAdmission = {
+    allowed: true;
+    state: string;
+    reason: string;
+} | {
+    allowed: false;
+    state: string;
+    reason: string;
+    deferred: true;
+    caseRef?: string;
+} | {
+    allowed: false;
+    state: string;
+    reason: string;
+    deferred: false;
+};
+export interface RenewalLine {
+    lineOrdinal: number;
+    sku: string;
+    quantity: number;
+    unitAmountMinor: number;
+}
+/** Logical numbering is evidence-bound, never a universal nativeCounter + 1. */
+export type RenewalCycleCorrelation = {
+    status: "correlated";
+    logicalCycleNumber: number;
+    nativeRenewalCounter: number | null;
+    activationCycleId: string | null;
+    evidenceRef: string;
+} | {
+    status: "ambiguous";
+    logicalCycleNumber: null;
+    nativeRenewalCounter: number | null;
+    activationCycleId: string | null;
+    reason: string;
+};
+export interface RenewalTemplateSnapshot {
+    templateId: string;
+    version: number;
+    cadenceDays: number;
+    lines: readonly RenewalLine[];
+}
+/** Immutable acquisition facts, supplied by trusted checkout composition. */
+export interface RenewalShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface RenewalLinePricing {
+    sku: string;
+    quantity: number;
+    unitAmountMinor: number;
+    isAddon: boolean;
+    quoteLine: Record<string, unknown>;
+}
+export interface RenewalStarterMarker {
+    schemaVersion: "1";
+    starterIntervalDays: number;
+    basisTemplateVersion: number;
+    delivery2: {
+        discountBps: number;
+        discountMinor: number;
+        basisSubtotalMinor: number;
+    };
+    graduation: {
+        cadenceDays: number;
+        sizeConstraint?: Record<string, unknown>;
+        lines: readonly {
+            sku: string;
+            qty: number;
+            sortOrder: number;
+            isAddon: boolean;
+            quoteLine: Record<string, unknown>;
+        }[];
+    };
+}
+export interface RenewalRetainedTerms {
+    version: "native.renewal-terms.v1";
+    shippingTerms?: RenewalShippingTerms;
+    starterPack?: RenewalStarterMarker;
+    minimumPayableMinor?: number;
+    normalCadenceDays?: readonly number[];
+    linePricing?: readonly RenewalLinePricing[];
+}
+export interface RenewalPricingSnapshot {
+    currency: string;
+    totalAmountMinor: number;
+    shippingAmountMinor: number;
+    agreementPolicy: "lock_until_edit";
+    proration: "none";
+    productSubtotalAmountMinor?: number;
+    discountAmountMinor?: number;
+    shippingTerms?: RenewalShippingTerms;
+    linePricing?: readonly RenewalLinePricing[];
+    acquisition?: {
+        reasonCode: "starter_pack_delivery_2";
+        discountMinor: number;
+        basisTemplateVersion: number;
+    };
+}
+/** Kept for already-frozen operations and legacy purchases without delivery terms. */
+export interface RenewalRetainedShippingMarker {
+    kind: "retained_shipping";
+    shippingAmountMinor: number;
+    terms: RenewalShippingTerms | null;
+}
+/** Explicit zero-shipping limit; this is not a quote issued by a quote authority. */
+export interface RenewalZeroShippingMarker {
+    kind: "zero_shipping";
+    shippingAmountMinor: 0;
+}
+export interface RenewalOrderSnapshot {
+    shippingAddressRef: string | null;
+    shippingQuoteRef: string | RenewalZeroShippingMarker | RenewalRetainedShippingMarker | null;
+    acquisitionRef: string | null;
+    lines: readonly RenewalLine[];
+}
+export interface RenewalFrozenSnapshot extends RenewalSchedule {
+    contractVersion: "platform.subscription.renewal.v1";
+    clientId: string;
+    frozenRevision: string;
+    frozenFingerprint: string;
+    cycle: RenewalCycleCorrelation;
+    retryAttempt: number;
+    externalAttemptSequence: number;
+    templateSnapshot: RenewalTemplateSnapshot;
+    pricingSnapshot: RenewalPricingSnapshot;
+    orderSnapshot: RenewalOrderSnapshot;
+    stockSourceKey: string;
+    settlementChannelKey: string;
+    authorizationRef: string;
+    payerAccountRef: string | null;
+    unattendedChargeAuthorizedAt: string;
+}
+export interface RenewalDue extends RenewalSchedule {
+    clientId: string;
+    cadenceDays: number;
+    cycle: RenewalCycleCorrelation;
+    currency: string;
+    stockSourceKey: string;
+    settlementChannelKey: string;
+    authorizationRef: string;
+    payerAccountRef: string | null;
+    unattendedChargeAuthorizedAt: string;
+    deliveryAdmission: "allowed" | "blocked";
+    deliveryBlockReason: string | null;
+}
+export type RenewalOperationState = "claimed" | "reserved" | "attempt_prepared" | "succeeded" | "refused";
+export interface RenewalReadback extends RenewalSchedule {
+    contractVersion: "platform.subscription.renewal.v1";
+    acquired: boolean;
+    replayed: boolean;
+    reason: string;
+    operationId: string;
+    identityKey: string;
+    operationFingerprint: string;
+    cycle: RenewalCycleCorrelation;
+    state: RenewalOperationState;
+    claimToken: string;
+    claimGeneration: number;
+    leaseExpiresAt: string;
+    cycleSnapshot: RenewalFrozenSnapshot;
+    externalAttemptRef: string | null;
+    externalAttemptAcknowledgedAt: string | null;
+    terminalOutcome: "succeeded" | "refused" | null;
+    terminalReason: string | null;
+    terminalAt: string | null;
+    reservationId: string | null;
+    cycleId: string | null;
+    orderId: string | null;
+    settlementIntentId: string | null;
+}
+/** M07 verified truth. Nullable money is not positive matching evidence. */
+export interface RenewalPaymentEvidence {
+    status: "succeeded" | "failed" | "pending" | "unknown";
+    disposition: "observed" | "ambiguous" | "late_positive";
+    operationId: string;
+    eventKey: string;
+    requestFingerprint: string;
+    verifiedEvidenceRef: string;
+    externalAttemptRef: string | null;
+    occurredAt: string | null;
+    observedAt: string;
+    firstRecordedAt: string;
+    amountMinor: number | null;
+    currency: string | null;
+    reason: string | null;
+}
+/** Payment execution is outside all SQL transactions. */
+export type RenewalTransactionUnits = {
+    graph: "native";
+    prepare: "cycle_order_items_settlement_reservation_attempt";
+    outcome: "settlement_outcome_schedule_counter_reservation";
+    recovery: "settlement_cycle_receipt_case_counter";
+} | {
+    graph: "managed";
+    prepare: "create_cycle_order_then_prepare_attempt";
+    failure: "record_attempt_then_apply_result_then_open_case";
+    recovery: "authorize_method_then_schedule";
+};
+export interface RenewalReservationResult {
+    reserved: boolean;
+    replayed: boolean;
+    reservationId: string | null;
+    status: "held" | "committed" | "consumed" | "released" | "expired" | "refused";
+    reason: string | null;
+}
+export interface RenewalPreparedSettlement {
+    contractVersion: "platform.subscription.renewal.v1";
+    replayed: boolean;
+    operationId: string;
+    operationFingerprint: string;
+    cycleId: string;
+    orderId: string;
+    settlementIntentId: string;
+    state: "attempt_prepared";
+}
+export interface RenewalStorePort {
+    readonly transactions: RenewalTransactionUnits;
+    listDue(limit: number, asOf: string): Promise<RenewalDue[]>;
+    buildCycleSnapshots(input: RenewalSchedule): Promise<RenewalFrozenSnapshot>;
+    readMandateEvidence(input: RenewalSchedule): Promise<{
+        authorized: boolean;
+        authorizationRef: string;
+        authorizedAt: string | null;
+    }>;
+    admitDeliveryAlignment(input: RenewalSchedule & {
+        occurredAt: string;
+    }): Promise<RenewalAdmission>;
+    claimDue(input: {
+        snapshot: RenewalFrozenSnapshot;
+        workerId: string;
+        leaseSeconds?: number;
+        now: string;
+    }): Promise<RenewalReadback>;
+    readRenewal(identityKey: string): Promise<RenewalReadback | null>;
+    refuseBeforePayment(input: {
+        operationId: string;
+        claimToken: string;
+        reason: string;
+        occurredAt: string;
+    }): Promise<RenewalReadback>;
+}
+export interface RenewalSettlementPort {
+    prepareRenewal(input: {
+        operationId: string;
+        claimToken: string;
+        now: string;
+    }): Promise<RenewalPreparedSettlement>;
+    acknowledgeExternalAttempt(input: {
+        operationId: string;
+        operationFingerprint: string;
+        externalAttemptRef: string;
+        acknowledgedAt: string;
+    }): Promise<RenewalReadback>;
+    recordTerminalOutcome(input: {
+        operationId: string;
+        eventKey: string;
+        operationFingerprint: string;
+        outcome: "succeeded" | "refused";
+        externalRef?: string | null;
+        reason?: string | null;
+        occurredAt: string;
+    }): Promise<RenewalReadback>;
+}
+export interface RenewalExecutionRequest extends RenewalIdentity {
+    paymentIntentId: string;
+    amountMinor: number;
+    currency: string;
+    mode: string;
+    orderRef: string;
+    orderId: string;
+    flow: string;
+    customerRef: string | null;
+    paymentMethodRef: string;
+    recurringModel: string | null;
+    clientId: string;
+    payer: {
+        email: string | null;
+        name: string | null;
+    } | null;
+}
+export interface RenewalPaymentRail {
+    execute(input: RenewalExecutionRequest): Promise<{
+        status: "succeeded" | "failed" | "requires_action" | "pending" | "unknown";
+        externalAttemptRef: string | null;
+        failure?: {
+            reason: string;
+            failureClass: string;
+        };
+    }>;
+    findExternalAttempt(input: {
+        settlementIntentId: string;
+    }): Promise<string | null>;
+    readOutcome(input: {
+        externalAttemptRef: string;
+        settlementIntentId: string;
+        orderId: string;
+        subscriptionId: string;
+        amountMinor: number;
+        currency: string;
+    }): Promise<RenewalPaymentEvidence>;
+}
+export type RenewalResult = {
+    outcome: "deferred";
+    subscriptionId: string;
+    scheduledAt: string;
+    reason: string;
+    caseRef?: string;
+} | {
+    outcome: "charged" | "requires_action" | "failed" | "skipped";
+    subscriptionId: string;
+    cycleId: string | null;
+    cycleNumber: number | null;
+    orderId: string | null;
+    paymentIntentId: string | null;
+    attemptStatus: string | null;
+    replayed: boolean;
+    dunningCaseId?: string | null;
+    retryAttempt?: number | null;
+    applyReplayed?: boolean;
+    dunningPropagationFailed?: boolean;
+    reason?: string;
+};
+/** New acceptances retain the complete identity; the v1 carrier remains unchanged.
+ * @experimental
+ */
+export interface RenewalRetainedTermsV2 extends Omit<RenewalRetainedTerms, "version"> {
+    version: "native.renewal-terms.v2";
+    catalogAcceptance: CatalogAcceptanceV2;
+}
+/** @experimental */
+export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
+    frozenRevision: "native.purchase-renewal.v3";
+    catalogAcceptance: CatalogAcceptanceV2;
+}
+```
+## dist/subscriptions/contracts/sizedEdit.d.ts
+
+```ts
+import type { PackageEditApplyResult, PackageEditLine, PackageEditMoney, PackageEditPreview, PackageEditQuoteLine } from "./packageEdit.js";
+/** Full retained quote data crosses the host port; subscription validation owns no tax policy. */
+export interface SizedQuoteLine extends PackageEditQuoteLine {
+    productSlug: string;
+    tax: {
+        included: true;
+        country: string;
+        category: string;
+        vatRateBps: number;
+        legalBasis: string;
+        netAmount: PackageEditMoney;
+        vatAmount: PackageEditMoney;
+        grossAmount: PackageEditMoney;
+    };
+}
+export interface SizedRecurringQuote {
+    currency: string;
+    taxIncluded: true;
+    lines: SizedQuoteLine[];
+    discounts: unknown[];
+    pricingComponents?: unknown[];
+    context?: {
+        mode: "subscription" | "one_time";
+        cadenceDays?: number | null;
+        promoCodes: string[];
+    };
+    subtotalGross: PackageEditMoney;
+    discountTotalGross: PackageEditMoney;
+    totalGross: PackageEditMoney;
+    netTotal: PackageEditMoney;
+    taxTotal: PackageEditMoney;
+    shippingGross?: PackageEditMoney;
+    shippingDiscountGross?: PackageEditMoney;
+}
+export interface SizedQuoteRequest {
+    mode: "subscription";
+    cadenceDays?: number | null;
+    promoCodes: string[];
+    lines: {
+        sku: string;
+        quantity: number;
+        modeAtLine?: "subscription";
+        isAddon?: boolean;
+    }[];
+}
+/** The sized parcel lever; the runtime value is exported by the server entry. */
+export type SizedParcelLeverKind = "subscription.sized.parcel";
+export type SizedEditAction = "resize_bundle" | "update_bundle" | "update_base_mix" | "update_plan_length" | "update_portion" | "add_addon" | "remove_addon" | "update_addon_quantity";
+type Acceptance = {
+    subscriptionId: string;
+    expectedTemplateVersion?: number;
+    acceptedQuoteHash?: string;
+};
+export type SizedEditRequest = Acceptance & ({
+    action: "resize_bundle";
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown>;
+    resizeLever: {
+        kind: SizedParcelLeverKind;
+        value: {
+            coreLines: PackageEditLine[];
+            optInToSized?: true;
+        };
+    } | {
+        kind: "portionMode";
+        value: {
+            portionMode: string;
+            planDays: number;
+        };
+    };
+} | {
+    action: "update_bundle";
+    coreLines: PackageEditLine[];
+    addonLines?: PackageEditLine[];
+    cadenceDays?: number;
+    compositionConstraint: Record<string, unknown>;
+} | {
+    action: "update_base_mix";
+    base: PackageEditLine[];
+} | {
+    action: "update_plan_length";
+    planDays: number;
+} | {
+    action: "update_portion";
+    portionMode: string;
+} | {
+    action: "add_addon" | "update_addon_quantity";
+    variantId: string;
+    qty: number;
+} | {
+    action: "remove_addon";
+    variantId: string;
+});
+export type SizedEditPhase = "none" | "fixed" | "graduation_pending";
+export interface SizedAgreedLine {
+    lineId: string | null;
+    variantId: string;
+    sku: string;
+    groupId: string;
+    qty: number;
+    isAddon: boolean;
+    quoteLine: SizedQuoteLine;
+}
+export interface SizedEditContext {
+    subscriptionId: string;
+    clientId: string;
+    binding: "classic" | "sized.v1";
+    templateVersion: number;
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown> | null;
+    nextCycleAt: string | null;
+    paidCycleCount: number;
+    marker: {
+        basisTemplateVersion: number;
+        graduation: {
+            cadenceDays: number;
+            sizeConstraint?: Record<string, unknown>;
+            lines: unknown[];
+        };
+    } | null;
+    lines: SizedAgreedLine[];
+    graduationLines: SizedAgreedLine[];
+}
+export interface SizedEditPolicy {
+    minimumCoreUnits: number;
+    maximumCoreLines: number;
+    maximumAddonLines: number;
+    maximumQuantity: number;
+    allowedCadences: readonly number[];
+    maximumExclusions: number;
+    maximumCatalogExclusions: number;
+    fixedThroughCycle: number;
+    graduationCycle: number;
+    portionModes: {
+        full: {
+            mode: string;
+            factor: number;
+        };
+        reduced: {
+            mode: string;
+            factor: number;
+        };
+    };
+}
+export type SizedPricedLine = SizedAgreedLine;
+export interface SizedEditQuote {
+    lines: SizedPricedLine[];
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown>;
+    expectedTemplateVersion: number;
+    quoteHash: string;
+    quote: SizedRecurringQuote;
+    currentRecurringPrice: PackageEditMoney;
+    newRecurringPrice: PackageEditMoney;
+    delta: PackageEditMoney;
+    changedLines: number;
+    unchangedLines: number;
+}
+export type SizedEditPreview = PackageEditPreview<SizedEditAction>;
+export type SizedEditApplyResult = PackageEditApplyResult<SizedEditAction>;
+export {};
+```
+## dist/subscriptions/contracts/stockWait.d.ts
+
+```ts
+import type { RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule } from "./renewal.js";
+export interface StockWaitRecoveryBinding {
+    caseId: string | null;
+    cycleId: string | null;
+    orderId: string | null;
+    paymentId: string | null;
+    engineIdempotencyKey: string | null;
+}
+export interface StockWaitDeficit {
+    skuId: string;
+    sku: string;
+    displayName: string;
+    size: string | null;
+    required: number;
+    /** This operation's own reserved units. */
+    reserved: number;
+    /** Free ATP, excluding this operation's own reservation. */
+    available: number;
+    /** Required units minus both reserved and available units. */
+    missing: number;
+}
+export interface StockWaitCase extends RenewalSchedule {
+    caseId: string;
+    clientId: string;
+    state: "waiting" | "stock_secured" | "resumed" | "closed";
+    frozenSnapshot: RenewalFrozenSnapshot;
+    frozenFingerprint: string;
+    binding: StockWaitRecoveryBinding;
+    deficits: readonly StockWaitDeficit[];
+    fulfillmentRef: string | null;
+    blockReason: string | null;
+    openedAt: string;
+    checkedAt: string | null;
+    selectedAt: string | null;
+    securedAt: string | null;
+    resumedAt: string | null;
+    closedAt: string | null;
+    startedNoticeKey: string;
+    resumedNoticeKey: string;
+    noticeEligible: boolean;
+}
+/** Discovery can precede the durable waiting case; never invent a case ID. */
+export interface StockWaitFrozenCase extends RenewalSchedule {
+    operationId: string;
+    case: StockWaitCase | null;
+    frozenSnapshot: RenewalFrozenSnapshot;
+    frozenFingerprint: string;
+    binding: StockWaitRecoveryBinding;
+}
+/** All-line reserve/reacquire and the wait transition share a DB transaction.
+ * A shortage rolls back the subtransaction, retaining previous commitments;
+ * record the wait outside that failed subtransaction. Technical failure is unknown.
+ */
+export interface StockWaitStorePort {
+    listCandidates(input: {
+        limit: number;
+        asOf: string;
+    }): Promise<StockWaitFrozenCase[]>;
+    readFrozenCase(input: StockWaitRecoveryBinding): Promise<StockWaitCase | null>;
+    reserveAndTransition(input: {
+        caseId: string;
+        frozenFingerprint: string;
+        now: string;
+    }): Promise<StockWaitCase>;
+    /** Only elapsed, unprepared, unacknowledged, stock-only refusals may reset.
+     * Requires unchanged schedule/fingerprint and no payment artifacts or outcomes.
+     * Rotate fencing generation atomically with reacquisition. Never reset ambiguity.
+     */
+    recoverRefusedSchedule(input: {
+        operationId: string;
+        caseId: string;
+        claimGeneration: number;
+        frozenFingerprint: string;
+        scheduledAt: string;
+        now: string;
+    }): Promise<{
+        outcome: "recovered";
+        operation: RenewalReadback;
+        replayed: boolean;
+    } | {
+        outcome: "refused";
+        reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
+    }>;
+}
+```
+## dist/subscriptions/contracts/successors.d.ts
+
+```ts
+import type { SubscriptionEditConsent } from "./editConsent.js";
+/** @experimental */
+export type SuccessorCaseKind = "legacy" | "successor";
+/** Terminal decisions never apply themselves during renewal.
+ * @experimental
+ */
+export type SuccessorProposalState = "offered" | "accepted" | "declined" | "expired";
+/** @experimental */
+export interface SuccessorResolutionRequest {
+    caseId: string;
+    proposalId: string;
+    acceptedQuoteHash: string;
+    commandKey: string;
+    clientId: string;
+    now: string;
+}
+/** @experimental */
+export interface SuccessorProposal {
+    id: string;
+    subscriptionId: string;
+    clientId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    publicationId: string;
+    state: SuccessorProposalState;
+    quoteHash: string;
+    expiresAt: string;
+    editConsent: SubscriptionEditConsent;
+}
+```
+## dist/subscriptions/editConsentLegacyBridge.d.ts
+
+```ts
+import type { PackageEditActor } from "./packageEditContracts.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+/** One authenticated native connection owns both quote ledgers and the original legacy transaction.
+ * RPC-only composition cannot provide this boundary.
+ * @experimental
+ */
+export declare function createPostgresLegacyEditConsentBridge(options: {
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    now(): string;
+}): {
+    preview(actor: PackageEditActor, key: string, input: LegacyEditConsentRequest): Promise<Record<string, unknown>>;
+    apply(actor: PackageEditActor, key: string, input: LegacyEditConsentRequest): Promise<Record<string, unknown>>;
+};
+```
+## dist/subscriptions/exactEditQuote.d.ts
+
+```ts
+import type { ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionPortionModes } from "./contracts/exactEdit.js";
+import type { PackageEditQuotePorts, PackageEditReadPort } from "./packageEditContracts.js";
+/** Recurring-only quotes; individual line edits preserve the current order and identity. */
+export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePorts & {
+    readPort: PackageEditReadPort;
+    portionModes?: SubscriptionPortionModes;
+}): {
+    quote(input: ExactSubscriptionEditRequest): Promise<ExactSubscriptionEditQuote | null>;
+};
+```
+## dist/subscriptions/index.d.ts
+
+```ts
+export { renewalIdentity } from "./renewalIdentity.js";
+export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
+export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
+export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
+export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome } from "./renewalCycleRefusalMechanism.js";
+export type { RenewalPreflightPolicy, RenewalReplayPolicy, RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
+export { propagateRenewalFailure } from "./renewalCycleFailureMechanism.js";
+export type { RenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
+export { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, correlatedLogicalCycle } from "./automaticRenewal.js";
+export type { AutomaticRenewalRunStatus, AutomaticRenewalRunResult, AutomaticRenewalRunDeps, AutomaticRenewalPolicy } from "./automaticRenewal.js";
+export { createPostgresRenewalStore } from "./postgresRenewalStore.js";
+export type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export { createNativeRenewalCodec } from "./nativeRenewalCodec.js";
+export { createPostgresPurchaseRenewalWriter, activateNativePurchaseWithRenewal } from "./nativePurchaseRenewal.js";
+export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePurchaseRenewal.js";
+export { createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "./sandboxRenewalRail.js";
+export type { SandboxRenewalScenario } from "./sandboxRenewalRail.js";
+export { createNativeSubscriptionBinding } from "./nativeSubscriptionBinding.js";
+export { createPostgresProviderRenewalBinding } from "./postgresProviderRenewalBinding.js";
+export type { PostgresProviderRenewalBinding, ProviderRenewalPaymentPorts, ProviderRenewalResultInput } from "./postgresProviderRenewalBinding.js";
+export { createNativeRetryDriver } from "./nativeRetryDriver.js";
+export type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+export { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
+export { withNativeDeliveryAlignmentRenewalAdmission } from "./postgresDeliveryAlignmentStore.js";
+export { createPostgresRenewalSettlementPort } from "./postgresRenewalSettlement.js";
+export { createPostgresRetryStore } from "./postgresRetryStore.js";
+export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
+export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
+export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
+export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
+export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
+export { createPostgresStockWaitStore } from "./postgresStockWaitStore.js";
+export type { NativeStockWaitBinding, NativeStockWaitAdmission } from "./postgresStockWaitStore.js";
+/** Managed SQL is exposed for service-role hosts; no StockWaitStorePort
+ * TypeScript adapter is composed for this graph. A NewPurchaseStockReadPort
+ * adapter is available in ../inventory for managed service-role hosts.
+ * SQL behavior is proved by the managed pgTAP/real-PostgreSQL witnesses.
+ */
+export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
+    readonly graph: "managed";
+    readonly stockRecovery: "unavailable";
+    readonly stockWaitSurface: "sql";
+    readonly stockAvailabilitySurface: "sql";
+    readonly defaultEnabled: false;
+}>;
+export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
+export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
+export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
+export { createSubscriptionCommandExamples } from "./commandExamples.js";
+export { createSubscriptionServices } from "./services.js";
+export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
+export type { NativeWinbackOptions } from "./postgresWinback.js";
+export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
+export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
+export { createPostgresPackageEditor } from "./packageEditor.js";
+export { createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError } from "./sizedEditor.js";
+export { createSizedParcelProjection } from "./sizedParcelProjection.js";
+export type { SizedParcelProjectionPorts } from "./sizedParcelProjection.js";
+export { createSizedEditContextScope, readSizedEditContext, sizedEditPhase, isSizedOptIn, normalizeSizedEdit } from "./sizedEditContext.js";
+export { createSizedCompositionRules } from "./sizedComposition.js";
+export { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "./sizedEditQuote.js";
+export { splitBySubscriptionAgreement, agreedSubscriptionTotal, mergeSubscriptionAgreedQuote } from "./agreedPlanQuote.js";
+export type { SizedEditorOptions, SizedHostPorts, SizedSubjectFacts, SizedCatalogFact } from "./sizedEditPorts.js";
+export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
+export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
+export { mapPackageEditError } from "./packageEditErrors.js";
+export type { PackageEditErrorMapping } from "./packageEditErrors.js";
+export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditSubscription, PackageEditCurrentLine, PackageEditConstraintMapper, PackageEditReadPort, PackageEditQuotePorts, PackageEditLimits, PackageEditorOptions, PackageEditActor, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEditContracts.js";
+export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./contracts/exactEdit.js";
+export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
+export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
+export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
+export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./contracts/renewal.js";
+export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
+export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
+export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
+export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
+export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+export { createPostgresSuccessorStore } from "./postgresSuccessorStore.js";
+export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuccessorStore.js";
+export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
+export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
+export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
+export { createCatalogSubscriptionProfileBinding } from "./catalogProfileBinding.js";
+export type { CatalogProfileLine, CatalogSubscriptionProfileSelection, CatalogSubscriptionPolicyBinding, CatalogAttachmentEvidenceV1, CatalogSubscriptionProfileDecision } from "./catalogProfileBinding.js";
+export { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, validateCatalogSubscriptionProfile } from "@openlup/core/catalog";
+```
+## dist/subscriptions/lifecycleMessages.d.ts
+
+```ts
+import type { SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
+export declare function subscriptionLifecycleTemplate(eventType: string, retryAttempt?: number | null): string | null;
+/** M04 owns delivery, consent, rendering and durable replay. M10 never synthesizes a pause. */
+export declare function createSubscriptionLifecycleMessages(delivery: SubscriptionLifecycleMessagePort): {
+    deliver(input: Omit<SubscriptionLifecycleMessageDescriptor, "templateSlug">): Promise<{
+        notificationId: string;
+        replayed: boolean;
+    }>;
+};
+```
+## dist/subscriptions/nativePurchaseRenewal.d.ts
+
+```ts
+import type { RenewalLine, RenewalRetainedTerms } from "./contracts/renewal.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Server-owned purchase facts. Sandbox authorization is never a real mandate. */
+export interface NativeRenewalPurchaseFacts {
+    settlementChannelKey: string;
+    authorizationRef: string;
+    unattendedChargeAuthorizedAt: string;
+    payerAccountRef: string | null;
+    methodRef: string;
+    methodEvidenceRef: string;
+    stockSourceKey: string;
+    templateId: string;
+    cadenceDays: number;
+    currency: string;
+    lines: readonly RenewalLine[];
+    /** Legacy fixed amount; a retained threshold is evaluated after product discounts. */
+    shippingAmountMinor: number;
+    renewalTerms?: RenewalRetainedTerms;
+    acquisitionRef: string | null;
+}
+export type SandboxMethodHealth = "healthy" | "method_missing" | "mandate_not_chargeable_unattended" | "pending_activation";
+/** No driver or connection lifecycle is selected. Register before activation;
+ * completion failure leaves the activation's durable duty open for another worker. */
+export declare function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryExecutor): {
+    register(orderId: string, facts: NativeRenewalPurchaseFacts): Promise<Record<string, unknown>>;
+    complete(orderId: string): Promise<Record<string, unknown>>;
+    pending(limit?: number): Promise<Record<string, unknown>[]>;
+    transitionMethod(input: {
+        subscriptionId: string;
+        eventKey: string;
+        expectedState: SandboxMethodHealth;
+        healthState: SandboxMethodHealth;
+        methodRef: string;
+        evidenceRef: string;
+    }): Promise<Record<string, unknown>>;
+    readMethod(subscriptionId: string): Promise<Record<string, unknown> | null>;
+};
+/** Requires independently committed queries, never an enclosing transaction.
+ * The host declares first; saved purchase facts survive activation ACK loss. */
+export declare function activateNativePurchaseWithRenewal(executor: SubscriptionQueryExecutor, input: {
+    orderId: string;
+    idempotencyKey: string;
+    capturedReference: string;
+    facts: NativeRenewalPurchaseFacts;
+}): Promise<{
+    activation: Record<string, unknown>;
+    renewalAttachment: "pending";
+} | {
+    activation: Record<string, unknown>;
+    renewalAttachment: "complete";
+}>;
+```
+## dist/subscriptions/nativeRenewalCodec.d.ts
+
+```ts
+import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
+import { type NativeRenewalCodec } from "./postgresRenewalStore.js";
+/** @experimental */
+export type CatalogRenewalReferenceParser = (value: unknown) => CatalogAcceptedReferenceV2;
+/** Existing v1/v2 dialect and bytes are unchanged. */
+export declare function createNativeRenewalCodec(): NativeRenewalCodec;
+/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed.
+ * @experimental
+ */
+export declare function createNativeCatalogRenewalCodecV2(parseReference: CatalogRenewalReferenceParser): NativeRenewalCodec;
+```
+## dist/subscriptions/nativeRetryDriver.d.ts
+
+```ts
+import type { CycleRetryCadence } from "@openlup/core/subscription";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { NativeRetryFailure, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
+import type { RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalPaymentEvidence, RenewalPaymentRail } from "./contracts/renewal.js";
+export interface NativeRetryDriverOptions {
+    /** Trusted timing only; cannot alter terminating failure classes. */
+    retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    decode(snapshot: Record<string, unknown>): RenewalFrozenSnapshot;
+    /** Trusted host correlation and frozen mandate, not mutable future terms. */
+    readFrozenMandate(snapshot: RenewalFrozenSnapshot): Promise<{
+        authorized: boolean;
+        authorizationRef: string;
+        paymentMethodRef: string;
+    }>;
+    retryInput(snapshot: RenewalFrozenSnapshot, row: NativeRetryRow): RenewalExecutionRequest;
+    validateInput(input: RenewalExecutionRequest): void;
+    payments: {
+        execute: RenewalPaymentRail["execute"];
+        /** Read the payment owner's exact prepared attempt; never settle through purchase ingress. */
+        readOutcome(preparation: NativeRetryPreparation, snapshot: RenewalFrozenSnapshot): Promise<RenewalPaymentEvidence & {
+            sourceEvidence?: {
+                sourceKind: "accepted_event" | "reconciliation_read";
+                sourceReference: string;
+                observedStatus: string;
+                observedAt: string;
+                payloadFingerprint: string;
+                attemptRef: string;
+            };
+        }>;
+    };
+    failureTemplate: string;
+    recoveredTemplate: string;
+    recoveryPath: string | null;
+    classifyFailure(reason: string): string;
+}
+/** Internal value matcher; not re-exported by a package entry. */
+export declare function canonicalUuid(value: unknown): string | null;
+export declare function createNativeRetryDriver(options: NativeRetryDriverOptions): {
+    run: (now: string, limit: number) => Promise<{
+        operationId: string;
+        status: string;
+    }[]>;
+    propagateFailure: (operationId: string, key: string, input: NativeRetryFailure) => Promise<{
+        obligation: NativeRetryRow;
+        replayed: boolean;
+        caseAdvanced: boolean;
+    }>;
+};
+```
+## dist/subscriptions/nativeSubscriptionBinding.d.ts
+
+```ts
+import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { AutomaticRenewalRunDeps, AutomaticRenewalRunResult } from "./automaticRenewal.js";
+import type { RenewalSettlementPort } from "./contracts/renewal.js";
+import type { SubscriptionCapabilities } from "./contracts/commands.js";
+import type { ReadinessReport, RequiredSchema } from "@openlup/core/readiness";
+import { type NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+/** Explicit native selection under a host-owned population lease; construction mounts nothing. */
+export declare function createNativeSubscriptionBinding(input: {
+    enabled?: boolean;
+    batchLimit?: number;
+    population: string;
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Shared durable host lease, also used by any incumbent writer for this population. */
+    withRunLease<T>(population: string, work: () => Promise<T>): Promise<T | null>;
+    codec: NativeRenewalCodec;
+    settlement(db: SubscriptionQueryExecutor): RenewalSettlementPort;
+    inventory: AutomaticRenewalRunDeps["inventory"];
+    paymentRails: AutomaticRenewalRunDeps["paymentRails"];
+    /** Explicit provider lifecycle selection; the default sandbox binding stays separate. */
+    providerLifecycle?: {
+        failureHandoff: AutomaticRenewalRunDeps["failureHandoff"];
+        settlement: RenewalSettlementPort;
+    };
+    policy: AutomaticRenewalRunDeps["policy"];
+    retry: Pick<NativeRetryDriverOptions, "readFrozenMandate" | "retryInput" | "payments" | "recoveredTemplate" | "retryCadence">;
+    failureTemplate: string;
+    recoveryPath: string | null;
+    workerId: string;
+    now(): string;
+    catalogue: {
+        version: string;
+        migration: string;
+    };
+    readiness(schema: RequiredSchema): Promise<ReadinessReport>;
+}): {
+    services: {
+        capabilities: SubscriptionCapabilities;
+        readiness: () => Promise<{
+            kind: "ready";
+        } | {
+            kind: "refused";
+            code: string;
+        } | {
+            readonly kind: "refused";
+            readonly code: "disabled";
+        }>;
+        run(): Promise<{
+            kind: "refused";
+            code: string;
+        } | {
+            retries: {
+                operationId: string;
+                status: string;
+            }[];
+            renewals: AutomaticRenewalRunResult[];
+        } | {
+            readonly kind: "refused";
+            readonly code: "disabled";
+        } | null>;
+    };
+    schema: RequiredSchema;
+    /** Called only after the host's actual paid-realization admission, never on stock arrival alone. */
+    realizationAdmitted(orderId: string): Promise<{
+        kind: "refused";
+        code: string;
+    } | import("./contracts/stockWait.js").StockWaitCase | {
+        readonly kind: "refused";
+        readonly code: "disabled";
+    } | null>;
+};
+```
+## dist/subscriptions/nativeSubscriptionSchema.d.ts
+
+```ts
+import type { RequiredSchema } from "@openlup/core/readiness";
+/** The host supplies the complete installed catalogue identity, never a guessed tail. */
+export declare function nativeSubscriptionSchema(catalogue: {
+    version: string;
+    migration: string;
+}): RequiredSchema;
+```
+## dist/subscriptions/packageEditContracts.d.ts
+
+```ts
+import type { PackageEditMoney, PackageEditQuoteLine, SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
+export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
+import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
+/** Trusted host ports; neither identity nor price evidence comes from a browser. */
+export interface PackageEditSubscription {
+    cadenceDays: number;
+    templateVersion: number;
+    compositionConstraint: Record<string, unknown> | null;
+}
+export interface PackageEditCurrentLine {
+    lineId: string;
+    variantId: string;
+    quantity: number;
+    sortOrder: number;
+    isAddon: boolean;
+    frozenLineSubtotalGross?: PackageEditMoney;
+}
+/** Adapters translate the persisted carrier. Native classic edits persist the constraint the
+ * host quoted for the accepted plan; the host recognizes its own plan-length kind. */
+export interface PackageEditConstraintMapper {
+    toCore(stored: Record<string, unknown> | null): CompositionConstraint;
+    fromCore(constraint: CompositionConstraint): Record<string, unknown> | null;
+    nominalPlanDays(stored: Record<string, unknown> | null): number | null;
+}
+export interface PackageEditReadPort {
+    readSubscription(subscriptionId: string): Promise<PackageEditSubscription>;
+    readLines(subscriptionId: string): Promise<PackageEditCurrentLine[]>;
+    readMinimumBaseUnits(): Promise<number>;
+}
+/** Compose the existing quote engine with Q1/Q2 authority, no promotion or settings ports,
+ * zero automatic/code promotions, and use its server-authoritative method. */
+export interface PackageEditQuotePorts {
+    /** Adopter admission of the complete normalized result, including unchanged lines.
+     * Must have no effects. Throw subscription_reprice_terms_not_admitted to refuse. */
+    admitSubscriptionTerms?: SubscriptionTermsAdmission;
+    quoteCatalogReadPort: {
+        listQuoteCatalogItems(): Promise<{
+            variantId: string;
+            skuCode: string;
+            sellability: {
+                subscription: boolean;
+            };
+        }[]>;
+    };
+    quotePort: {
+        createServerAuthoritativeQuote(request: {
+            mode: "subscription";
+            cadenceDays: number;
+            compositionConstraint: Record<string, unknown> | null;
+            promoCodes: string[];
+            lines: {
+                sku: string;
+                quantity: number;
+                modeAtLine: "subscription";
+                isAddon: boolean;
+            }[];
+        }): Promise<{
+            quote: {
+                totalGross: PackageEditMoney;
+                subtotalGross: PackageEditMoney;
+                discountTotalGross: PackageEditMoney;
+                lines: PackageEditQuoteLine[];
+            };
+        }>;
+    };
+    compositionRulesPort: CompositionRulesPort;
+    constraintMapper: PackageEditConstraintMapper;
+}
+export interface PackageEditLimits {
+    maximumPlanDays: number;
+    maximumBaseLines: number;
+    maximumAddonLines: number;
+    maximumQuantity: number;
+}
+export interface PackageEditorOptions extends PackageEditQuotePorts {
+    /** Required only for the exact portion lever. */
+    portionModes?: SubscriptionPortionModes;
+    /** One connection through commit/rollback; authorization precedes this factory. */
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    limits: PackageEditLimits;
+    now(): string;
+}
+export interface PackageEditActor {
+    actorId: string;
+    clientId: string;
+}
+```
+## dist/subscriptions/packageEditErrors.d.ts
+
+```ts
+export interface PackageEditErrorMapping {
+    status: 400 | 409 | 503;
+    code: "BAD_REQUEST" | "CONFLICT" | "UPSTREAM_UNAVAILABLE";
+    message: string;
+    reason?: string;
+}
+/** Raw preview-ledger errors use the generic upstream path; apply admits durable domain tokens. */
+export declare function mapPackageEditError(error: unknown, phase: "preview" | "apply", action?: string): PackageEditErrorMapping;
+```
+## dist/subscriptions/packageEditor.d.ts
+
+```ts
+import type { SuccessorCaseKind } from "./contracts/successors.js";
+import type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
+import type { PackageEditActor, PackageEditApplyResult, PackageEditPreview, PackageEditRequest, PackageEditorOptions } from "./packageEditContracts.js";
+type EditAction = "update_package_template" | ExactSubscriptionEditAction;
+/** Host authentication supplies actor/client; only the desired set and acceptance are customer input.
+ * SQL owns the final locked guard, one-use ledger acceptance and future-template transaction. */
+export declare function createPostgresPackageEditor(options: PackageEditorOptions): {
+    preview: {
+        (actor: PackageEditActor, input: PackageEditRequest): Promise<PackageEditPreview>;
+        (actor: PackageEditActor, input: ExactSubscriptionEditRequest): Promise<PackageEditPreview<ExactSubscriptionEditAction>>;
+        (actor: PackageEditActor, input: SubscriptionEditRequest): Promise<PackageEditPreview<EditAction>>;
+    };
+    apply: {
+        (actor: PackageEditActor, key: string, input: PackageEditRequest): Promise<PackageEditApplyResult>;
+        (actor: PackageEditActor, key: string, input: ExactSubscriptionEditRequest): Promise<PackageEditApplyResult<ExactSubscriptionEditAction>>;
+        (actor: PackageEditActor, key: string, input: SubscriptionEditRequest): Promise<PackageEditApplyResult<EditAction>>;
+    };
+    /** @experimental */
+    previewStockWaitSuccessor(actor: PackageEditActor, input: SubscriptionEditRequest, source: {
+        caseId: string;
+        caseKind: SuccessorCaseKind;
+    }): Promise<PackageEditPreview<EditAction> & {
+        previewId?: string;
+    }>;
+};
+export {};
+```
+## dist/subscriptions/packageEditRead.d.ts
+
+```ts
+import type { PackageEditReadPort } from "./packageEditContracts.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** The same settings key, column and strict integer domain are used by the definer apply. */
+export declare function createPostgresPackageEditReadPort(db: SubscriptionQueryExecutor): PackageEditReadPort;
+```
+## dist/subscriptions/postgresAutoResume.d.ts
+
+```ts
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Trusted scheduled job. The host owns scheduling, enablement and run-ledger binding. */
+export declare function createPostgresSubscriptionAutoResume(executor: SubscriptionQueryExecutor): {
+    run(limit?: number, now?: string): Promise<{
+        ok: boolean;
+        scanned: number;
+        resumed: number;
+        skippedRows: number;
+        failed: number;
+    }>;
+};
+```
+## dist/subscriptions/postgresCommandStore.d.ts
+
+```ts
+import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeSubscriptionCommand {
+    actorId: string;
+    clientId: string;
+    idempotencyKey: string;
+    subscriptionId: string;
+    action: string;
+    payload: Record<string, unknown>;
+    now: string;
+}
+export interface NativeSubscriptionCommandBinding {
+    /** Server-owned timing policy, separate from customer fields. Omit for compatibility timings. */
+    lifecycleTerms?: SubscriptionLifecycleTerms;
+    /** Optional adopter taxonomy; the package validates shape without owning reason values. */
+    retentionReasonCodes?: readonly string[];
+    /** The callback must use one connection and commit/rollback the complete unit. */
+    withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Validate address ownership and refuse address mutation; resolve SKUs and
+     * composition policy using trusted host evidence. No current-cycle write. */
+    futureTerms(command: Extract<SubscriptionCommand, {
+        action: "edit_future_terms";
+    }>): Promise<{
+        coreLines: readonly {
+            variantId: string;
+            qty: number;
+        }[];
+        addonLines: readonly {
+            variantId: string;
+            qty: number;
+        }[];
+        compositionConstraint: Record<string, unknown>;
+    } | SubscriptionCommandRefusal>;
+}
+/** N2 owns normalization, locking, quote acceptance, receipts and all writes.
+ * Preview is a separate persisted transaction; apply never executes payment. */
+export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">): {
+    preview(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+    apply(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+};
+/** Trusted customer/operator authorization precedes this adapter. The native
+ * result's subscriptionStatus is the state recorded by the original execution,
+ * including on replay; it is not a fresh read of mutable subscription state. */
+export declare function createPostgresSubscriptionCommands(binding: NativeSubscriptionCommandBinding): SubscriptionCommandPort & {
+    preview(command: Extract<SubscriptionCommand, {
+        action: "edit_future_terms";
+    }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
+};
+```
+## dist/subscriptions/postgresDeliveryAlignmentStore.d.ts
+
+```ts
+import type { RenewalStorePort } from "./contracts/renewal.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Native new-cycle admission; prepared attempts and existing cycles keep their
+ * original obligation. The host owns mode selection and actual arrival facts. */
+export declare function withNativeDeliveryAlignmentRenewalAdmission(store: RenewalStorePort, db: SubscriptionQueryExecutor, now?: () => string): RenewalStorePort;
+```
+## dist/subscriptions/postgresLifecycleMessages.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeLifecycleNotice {
+    id: string;
+    messageKey: string;
+    source: "dunning" | "event" | "reminder";
+    subscriptionId: string;
+    clientId: string;
+    kind: string;
+    templateSlug: string;
+    payload: Record<string, unknown>;
+    recoveryUrlPath: string | null;
+}
+type NoticeCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+    accessGrantReference?: string;
+};
+type NoticeReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+    retryable?: boolean;
+};
+export interface NativeLifecycleMessagesOptions {
+    /** Neutral safety defaults: 60-second lease, 6 attempts, 900-second backoff. Starter hosts supply explicit configured values. */
+    dispatch?: {
+        leaseSeconds?: number;
+        maxAttempts?: number;
+        transientBackoffSeconds?: number;
+    };
+    /** Neutral safety default: 172800-second recency. Starter hosts supply an explicit configured window. */
+    recovered?: {
+        windowSeconds?: number;
+    };
+    /** Trusted host timing/cap values. Seconds are explicit; day identities remain UTC. */
+    notices?: {
+        renewalMinSeconds?: number;
+        renewalMaxSeconds?: number;
+        ordinaryFreshnessSeconds?: number;
+        starterFreshnessSeconds?: number;
+        pauseWindowSeconds?: number;
+        atRiskMinDays?: number;
+        atRiskMaxDays?: number;
+        atRiskMaxDaysPerCause?: number;
+        operatorLeaseSeconds?: number;
+        operatorMaxAttempts?: number;
+        operatorHorizonSeconds?: number;
+        operatorTransientBackoffSeconds?: number;
+    };
+    /** One exclusive, autocommit connection per callback; never a transaction or shared session. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Host composes the transactional delivery engine and durable receipt reader. */
+    delivery: {
+        send(command: NoticeCommand): Promise<NoticeReceipt>;
+        readReceipt(key: string): Promise<NoticeReceipt | null>;
+    };
+    /** Trusted host rendering/locale/access-link binding. Never accepts browser-supplied recipient facts. */
+    bind(notice: NativeLifecycleNotice, recipient: {
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+    /** Explicit operator fields only: no customer payload, recovery path or claim token. */
+    bindOperator?(notice: {
+        notificationId: string;
+        caseId: string;
+        templateSlug: string;
+    }, recipient: {
+        email: string;
+    }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+}
+/** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.
+ * Session advisory locks serialize this binding's sends without a transaction across transport.
+ * A transport must preserve command idempotency on ambiguous acceptance; no live-provider claim. */
+export declare function createPostgresLifecycleMessages(options: NativeLifecycleMessagesOptions): {
+    run(limit?: number): Promise<{
+        sent: number;
+        replayed: number;
+        requeued: number;
+        failed: number;
+        skipped: number;
+        busy: number;
+        stale: number;
+    }>;
+};
+export {};
+```
+## dist/subscriptions/postgresProviderRenewalBinding.d.ts
+
+```ts
+import type { PaymentFailureClass } from "@openlup/core/payment";
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { RenewalPaymentRail, RenewalSettlementPort } from "./contracts/renewal.js";
+import type { RenewalFailureHandoffPort } from "./contracts/dunning.js";
+import type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
+/** The subscription owner consumes only these injected payment facts. */
+export interface ProviderRenewalResultInput {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    paymentEventId: string | null;
+    resultStatus: "succeeded" | "failed" | "expired" | "refunded" | "partially_refunded" | "disputed";
+    occurredAt: string;
+    failureReason: string | null;
+    failureClass?: PaymentFailureClass | null;
+    failureClassDecidedBy?: string | null;
+}
+type ProviderRenewalWebhookIngest = (input: ProviderRenewalWebhook & {
+    provider: string;
+    occurredAt: string;
+    eventType: "payment.succeeded" | "payment.failed" | "payment.refunded" | "payment.requires_action" | "payment.disputed" | "setup.succeeded" | "setup.failed" | "setup.requires_action";
+}) => Promise<{
+    paymentEventId: string;
+    paymentIntentId: string | null;
+    paymentAttemptId: string | null;
+}>;
+type ProviderRenewalWebhookControl = {
+    ingestPaymentEvent?: ProviderRenewalWebhookIngest;
+    applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{
+        replayed: boolean;
+    }>;
+};
+type ProviderRenewalWebhook = {
+    providerEventId: string;
+    providerPaymentId: string;
+    rawPayload: Record<string, unknown>;
+};
+type ProviderRenewalAttempt = {
+    orderId: string;
+    settlementStatus: string;
+    amountMinor: number;
+    currency: string;
+    requestPayload: Record<string, unknown>;
+    responsePayload: Record<string, unknown>;
+    paymentAttempt: {
+        id: string;
+        paymentId: string;
+        provider: string;
+        status: string;
+        providerAttemptId: string | null;
+        idempotencyKey?: string;
+    };
+};
+export interface ProviderRenewalPaymentPorts {
+    provider: string;
+    mode: "live" | "test";
+    control: {
+        createIntent(input: {
+            idempotencyKey: string;
+            targetKind: "subscription_cycle";
+            orderId: string;
+            subscriptionId: string;
+            subscriptionCycleId: string;
+            amountMinor: number;
+            currency: string;
+            metadata: Record<string, unknown>;
+            channelKey: string;
+            at: string;
+        }): Promise<{
+            id: string;
+        }>;
+        applyPaymentResult(input: ProviderRenewalResultInput): Promise<{
+            replayed: boolean;
+        }>;
+    };
+    controlFor(executor: SubscriptionQueryExecutor): ProviderRenewalPaymentPorts["control"];
+    readAttempt(intentId: string, attemptId?: string | null): Promise<ProviderRenewalAttempt | null>;
+    execute(input: {
+        attemptRef: string;
+        intentRef: string;
+        fingerprint: string;
+        providerIdempotencyKey: string;
+        money: {
+            amountMinor: number;
+            currency: string;
+        };
+        mode: "live" | "test";
+        purpose: "renewal-unattended";
+        orderRef: string;
+        clientId: string;
+        customerRef?: string;
+        storedMethod: {
+            reference: string;
+            mandate: {
+                recurringModel: string | null;
+            };
+        };
+    }): Promise<{
+        attempt: {
+            paymentAttemptId: string;
+        };
+        execution: {
+            outcome: {
+                kind: "attempt";
+                status: string;
+            } | {
+                kind: "decline";
+                refusal: {
+                    code: PaymentFailureClass;
+                };
+            };
+            dispatch: {
+                kind: "dispatched";
+                providerPaymentRef: string;
+            } | {
+                kind: "unknown" | "notDispatched";
+            };
+            persistence?: {
+                declineReason?: string;
+            };
+        };
+    }>;
+    adapter: {
+        readbackPort: {
+            readPayment(input: {
+                identity: {
+                    provider: string;
+                    intentRef: string;
+                    attemptRef: string;
+                    providerPaymentRef: string;
+                };
+                expectedMoney: {
+                    amountMinor: number;
+                    currency: string;
+                };
+                purpose: "recovery";
+            }): Promise<{
+                kind: "succeeded" | "failed" | "pending";
+                observedMoney: {
+                    amountMinor: number;
+                    currency: string;
+                };
+                providerOccurredAt: string | null;
+            } | {
+                kind: "unknown" | "unsupported" | "absent";
+            }>;
+        };
+    };
+    reconciliation: {
+        recordEvidence(input: {
+            idempotencyKey: string;
+            provider: string;
+            providerPaymentId: string | null;
+            paymentIntentId: string;
+            paymentAttemptId: string;
+            localStatus: string;
+            providerStatus: string;
+            correctionStatus: "observed";
+            checkedAt: string;
+            payload: Record<string, unknown>;
+        }): Promise<{
+            reconciliationId?: string;
+        }>;
+        applyTerminalResult(input: {
+            idempotencyKey: string;
+            expectedOrderId: string;
+            expectedPaymentIntentId: string;
+            expectedPaymentAttemptId: string;
+            expectedPaymentId: string;
+            provider: string;
+            providerPaymentId: string;
+            localStatus: string;
+            providerStatus: string;
+            resultStatus: "succeeded" | "failed";
+            occurredAt: string;
+            failureReason: string | null;
+            checkedAt: string;
+            payload: Record<string, unknown>;
+        }): Promise<unknown>;
+    };
+}
+export interface PostgresProviderRenewalBinding {
+    rail: RenewalPaymentRail;
+    paymentRails: {
+        resolve(channelKey: string): RenewalPaymentRail | null;
+    };
+    lifecycle: {
+        failureHandoff: RenewalFailureHandoffPort;
+        settlement: RenewalSettlementPort;
+    };
+    retryPayments: NativeRetryDriverOptions["payments"];
+    composeWebhook<C extends ProviderRenewalWebhookControl>(event: ProviderRenewalWebhook, control: C): Omit<C, "applyPaymentResult"> & {
+        applyPaymentResult: NonNullable<ProviderRenewalWebhookControl["applyPaymentResult"]>;
+    };
+}
+/** Provider selection and existing native lifecycle owners, never another scheduler. */
+export declare function createPostgresProviderRenewalBinding(input: {
+    enabled?: boolean;
+    channelKey: string;
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    paymentRail: ProviderRenewalPaymentPorts;
+    codec: NativeRenewalCodec;
+    settlement(db: SubscriptionQueryExecutor): RenewalSettlementPort;
+    truth: {
+        dunningTemplateSlug: string;
+        recoveryUrlPath: string;
+        recoveryTemplateSlug: string;
+    };
+    /** Exact local-intent lookup; zero matches never proves provider absence. */
+    search(input: {
+        localIntentId: string;
+        limit: 2;
+    }): Promise<readonly string[]>;
+    now(): string;
+}): PostgresProviderRenewalBinding;
+export {};
+```
+## dist/subscriptions/postgresRenewalSettlement.d.ts
+
+```ts
+import type { RenewalSettlementPort } from "./contracts/renewal.js";
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Direct settlement persistence; terminal truth must arrive from an external acknowledgement. */
+export declare function createPostgresRenewalSettlementPort(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalSettlementPort;
+/** Existing retained-money projection, shared by explicit generation preparation. */
+export declare function applyNativeRenewalMoney(db: SubscriptionQueryExecutor, snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot, orderId: unknown): Promise<void>;
+```
+## dist/subscriptions/postgresRenewalStore.d.ts
+
+```ts
+import type { RenewalDue, RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule, RenewalStorePort } from "./contracts/renewal.js";
+/** Transaction-bound executors may be supplied; no driver, environment or account is selected here. */
+export interface SubscriptionQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Custom dialects remain injectable; createNativeRenewalCodec supplies the purchase lineage dialect. */
+export interface NativeRenewalCodec {
+    due(row: Record<string, unknown>): RenewalDue;
+    freeze(row: Record<string, unknown>, schedule: RenewalSchedule): RenewalFrozenSnapshot;
+    encode(snapshot: RenewalFrozenSnapshot): Record<string, unknown>;
+    decode(snapshot: Record<string, unknown>): RenewalFrozenSnapshot;
+    readback(row: Record<string, unknown>): RenewalReadback;
+    identity(snapshot: RenewalFrozenSnapshot): string;
+    fingerprint(snapshot: RenewalFrozenSnapshot): string;
+    /** Native destination authority binds the final frozen document under the claim lock. */
+    withDestination?(snapshot: RenewalFrozenSnapshot, destinationId: string): RenewalFrozenSnapshot;
+}
+export declare const subscriptionCorrelationSql = "o.subscription_cycle_id AS activation_cycle_id,\n ac.status='paid' AS activation_cycle_paid,\n (SELECT count(*)::integer FROM public.subscription_cycles pc\n  WHERE pc.subscription_id=s.id AND pc.status='paid' AND pc.scheduled_at<s.next_cycle_at) AS paid_cycle_count";
+export declare const subscriptionCorrelationJoin = "LEFT JOIN public.subscription_activations a ON a.subscription_id=s.id\n LEFT JOIN public.commerce_orders o ON o.id=a.order_id\n LEFT JOIN public.subscription_cycles ac ON ac.id=o.subscription_cycle_id";
+export declare function subscriptionRecord(value: unknown): Record<string, unknown>;
+/** Native claim/prepare remain their original SQL transaction units. G23 is composed by the host. */
+export declare function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalStorePort;
+```
+## dist/subscriptions/postgresRetryStore.d.ts
+
+```ts
+import { type CycleRetryCadence } from "@openlup/core/subscription";
+import type { RenewalRetryObligation } from "./contracts/dunning.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** N1 accepts only verified M07 evidence; the host supplies logical-cycle correlation explicitly. */
+export interface NativeRetryFailure {
+    attemptSequence: number;
+    logicalCycleNumber: number;
+    occurredAt: string;
+    failureClass: string;
+    reason: string;
+    externalRef: string | null;
+    evidenceKey: string;
+    firstRecordedAt: string;
+}
+export interface NativeRetryRequest {
+    paymentIntentId: string;
+    orderRef: string;
+    amountMinor: number;
+    currency: string;
+    idempotencyKey: string;
+    providerIdempotencyKey: string;
+    providerRequestFingerprint: string;
+    paymentMethodRef: string;
+}
+export interface NativeRetryPositive {
+    prepareKey?: string;
+    evidenceKey: string;
+    occurredAt: string;
+    firstRecordedAt: string;
+    externalRef: string;
+    amountMinor: number;
+    currency: string;
+    template: string;
+}
+export interface NativeRetryPreparation {
+    execute: boolean;
+    replayed: boolean;
+    obligationId: string;
+    attemptSequence: number;
+    cycleId: string;
+    orderId: string;
+    settlementIntentId: string;
+    identityKey: string;
+    operationFingerprint: string;
+    snapshot: Record<string, unknown>;
+    request: NativeRetryRequest;
+}
+export interface NativeRetryRow extends RenewalRetryObligation {
+    caseId: string | null;
+    state: "waiting" | "prepared" | "recovered";
+}
+/** No payment execution is implemented here. A replayed prepare always returns execute=false. */
+export declare function createPostgresRetryStore(executor: SubscriptionQueryExecutor, cadence?: Pick<CycleRetryCadence, "backoffHours">): {
+    read(operationId: string): Promise<NativeRetryRow | null>;
+    candidates(limit: number, now: string): Promise<NativeRetryRow[]>;
+    applyFailure(operationId: string, key: string, input: NativeRetryFailure): Promise<NativeRetryRow>;
+    /** Read the immutable rung receipt against the current case. An interrupted
+     * apply still needs propagation; an already advanced case must not be rewritten. */
+    failureProgress(operationId: string, key: string): Promise<{
+        replayed: boolean;
+        caseAdvanced: boolean;
+    }>;
+    openCase(operationId: string, template: string, recoveryPath: string | null): Promise<Record<string, unknown>>;
+    authorizeRecovery(operationId: string, tokenId: string, methodRef: string, methodEvidenceRef: string, now: string): Promise<Record<string, unknown>>;
+    scheduleRecovery(operationId: string, key: string, authorizationId: string, now: string): Promise<Record<string, unknown>>;
+    prepare(operationId: string, key: string, input: NativeRetryRequest, now: string): Promise<NativeRetryPreparation>;
+    recordRecovery(operationId: string, key: string, input: NativeRetryPositive): Promise<NativeRetryRow>;
+    noteRowOutcome(operationId: string, key: string, input: Record<string, unknown>): Promise<Record<string, unknown>>;
+};
+export interface NativeRetryLifecycleBinding {
+    /** Trusted retry offsets; failure-class termination remains unchanged. */
+    retryCadence?: Pick<CycleRetryCadence, "backoffHours">;
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** M07's existing transaction-bound native port; never a provider execution port. */
+    settlement(executor: SubscriptionQueryExecutor): import("./contracts/renewal.js").RenewalSettlementPort;
+    correlate(snapshot: Record<string, unknown>, nativeRenewalCounter: number): import("./contracts/renewal.js").RenewalCycleCorrelation;
+    failureTemplate: string;
+    recoveryPath: string | null;
+}
+/** Initial handoff opens only the existing donor-keyed case. Terminal outcome and
+ * N1 bookkeeping then commit together, so a crash cannot strand that schedule.
+ * Subsequent retry attempts use applyFailure/openCase separately, as before. */
+export declare function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycleBinding): {
+    failureHandoff: import("./contracts/dunning.js").RenewalFailureHandoffPort;
+    settlement: import("./contracts/renewal.js").RenewalSettlementPort;
+};
+```
+## dist/subscriptions/postgresStockWaitStore.d.ts
+
+```ts
+import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding } from "./contracts/stockWait.js";
+import type { RenewalSchedule } from "./contracts/renewal.js";
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeStockWaitBinding {
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    codec: NativeRenewalCodec;
+    workerId: string;
+}
+export interface NativeStockWaitAdmission {
+    waiting: boolean;
+    caseId: string | null;
+    response: Record<string, unknown>;
+}
+/** Internal native projection shared with the checked notice observation.
+ * @experimental
+ */
+export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]>;
+/** Each multi-statement mutation uses the host transaction. Payment execution is
+ * deliberately outside this store. SQL owns stock locks and subtransactions. */
+export declare function createPostgresStockWaitStore(options: NativeStockWaitBinding): {
+    readFrozen(input: RenewalSchedule): Promise<StockWaitFrozenCase | null>;
+    listNormalDue(input: {
+        limit: number;
+        asOf: string;
+    }): Promise<import("./contracts/renewal.js").RenewalDue[]>;
+    deficits(input: {
+        snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot;
+        operationId: string;
+        now: string;
+    }): Promise<StockWaitDeficit[]>;
+    admit(input: {
+        operationId: string;
+        claimToken: string;
+        snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot;
+        recovery?: StockWaitRecoveryBinding;
+        now: string;
+    }): Promise<NativeStockWaitAdmission>;
+    enqueue(caseId: string, kind: "started" | "resumed"): Promise<void>;
+    markResumed(orderId: string): Promise<StockWaitCase | null>;
+    listCandidates(input: {
+        limit: number;
+        asOf: string;
+    }): Promise<StockWaitFrozenCase[]>;
+    readFrozenCase(input: StockWaitRecoveryBinding): Promise<StockWaitCase | null>;
+    reserveAndTransition(input: {
+        caseId: string;
+        frozenFingerprint: string;
+        now: string;
+    }): Promise<StockWaitCase>;
+    recoverRefusedSchedule(input: {
+        operationId: string;
+        caseId: string;
+        claimGeneration: number;
+        frozenFingerprint: string;
+        scheduledAt: string;
+        now: string;
+    }): Promise<{
+        outcome: "recovered";
+        operation: import("./contracts/renewal.js").RenewalReadback;
+        replayed: boolean;
+    } | {
+        outcome: "refused";
+        reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
+    }>;
+};
+```
+## dist/subscriptions/postgresSuccessorNotices.d.ts
+
+```ts
+import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
+/** Inert source registrations. A host binds these to its existing outbox worker.
+ * @experimental
+ */
+export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2", "subscription_stock_wait.started", "subscription_stock_wait.resumed"];
+/** Source claims must be committed before invocation. Commerce commits its handoff
+ * before M04 enqueue; a crash between enqueue and source acknowledgement replays
+ * the same message key. Construction registers no worker or capability.
+ * @experimental
+ */
+export declare function createPostgresSuccessorNotices(options: {
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Bind the catalogue owner's complete withdrawal-impact port. */
+    impact: {
+        report(skuId: string): Promise<{
+            outcome: "complete";
+            obligations: readonly {
+                family: string;
+                sourceId: string;
+                caseKind?: "legacy" | "successor";
+            }[];
+        } | {
+            outcome: "unknown" | "unavailable";
+            reason: string;
+        }>;
+    };
+    /** Native M04 receipts share this store. For stock-wait facts the host freezes
+     * rendered copy with subscription_stock_wait_bind_notice(caseId,factId,message)
+     * before enqueue and reuses the returned message on every attempt. */
+    delivery: SubscriptionLifecycleMessagePort;
+    recipient(clientId: string): Promise<{
+        recipientRef: string;
+        locale: string;
+    } | null>;
+}): {
+    handle(row: OutboxEventRow): Promise<OutboxHandlerOutcome>;
+};
+```
+## dist/subscriptions/postgresSuccessorStore.d.ts
+
+```ts
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
+import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
+import type { PackageEditActor } from "./packageEditContracts.js";
+import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
+/** Internal source check shared by the existing preview owners. */
+export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
+    caseId: string;
+    caseKind: SuccessorCaseKind;
+}): Promise<void>;
+/** Server-owned enrichment of a recorded native preview. The store preholds the
+ * subscription, client, preview and source parents. Enrichment may update only
+ * that preview; it takes no catalogue fence or other commerce lock.
+ * @experimental
+ */
+export interface SuccessorPreviewBinding {
+    prepare(db: SubscriptionQueryExecutor, input: {
+        previewId: string;
+        subscriptionId: string;
+        actor: PackageEditActor;
+    }): Promise<{
+        applyPayload: Record<string, unknown>;
+        cycleSnapshot: RenewalFrozenSnapshot | null;
+    }>;
+}
+/** @experimental */
+export interface SuccessorOfferInput {
+    proposalId: string;
+    subscriptionId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    publicationId: string;
+    previewId: string;
+    lane: "classic" | "exact" | "sized" | "legacy";
+    action: string;
+    sourceBinding: {
+        kind: "ordinary_edit";
+    } | {
+        kind: "stock_wait";
+        caseKind: SuccessorCaseKind;
+        caseId: string;
+    };
+    historicalBinding?: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">;
+    now: string;
+}
+/** Explicit native stores only. Construction mounts no consumer, payment rail or capability.
+ * @experimental
+ */
+export declare function createPostgresSuccessorStore(options: {
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    codec: NativeRenewalCodec;
+    previews: SuccessorPreviewBinding;
+    historicalBindings?: readonly HistoricalSuccessorProtocolBinding[];
+}): {
+    offer(actor: PackageEditActor, input: SuccessorOfferInput): Promise<Record<string, unknown>>;
+    decide(actor: PackageEditActor, input: {
+        proposalId: string;
+        decision: "accepted" | "declined" | "expired";
+        commandKey: string;
+        quoteHash: string | null;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    resolve(actor: PackageEditActor, input: Omit<SuccessorResolutionRequest, "clientId">): Promise<Record<string, unknown>>;
+    readCase(caseId: string, caseKind: SuccessorCaseKind): Promise<Record<string, unknown> | null>;
+    listDue(limit: number, now: string): Promise<unknown>;
+    listCandidates(limit: number, now: string): Promise<unknown>;
+    claim(input: {
+        identityKey: string;
+        fingerprint: string;
+        snapshot: Record<string, unknown>;
+        workerId: string;
+        leaseSeconds?: number;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    reserve(input: {
+        operationId: string;
+        claimToken: string;
+        holdSeconds?: number;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    recover(input: {
+        operationId: string;
+        fingerprint: string;
+        workerId: string;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    prepare(input: {
+        operationId: string;
+        claimToken: string;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    settle(input: {
+        operationId: string;
+        eventKey: string;
+        evidence: {
+            operationFingerprint: string;
+            outcome: "succeeded" | "refused";
+            externalRef: string;
+            reason?: string;
+        };
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    markResumed(orderId: string): Promise<Record<string, unknown> | null>;
+};
+```
+## dist/subscriptions/postgresWinback.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+type WinbackCommand = {
+    idempotencyKey: string;
+    recipientReference: string;
+    templateReference: string;
+};
+type WinbackReceipt = {
+    state: "accepted" | "failed";
+    deliveryReference: string | null;
+    attemptCount: number;
+};
+export interface NativeWinbackOptions {
+    /** An exclusive autocommit session, never a transaction spanning transport. */
+    withSession<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** The existing durable delivery rail owns ambiguous acceptance and retries. */
+    delivery: {
+        readReceipt(key: string): Promise<WinbackReceipt | null>;
+        send(command: WinbackCommand): Promise<WinbackReceipt>;
+    };
+    /** Trusted host binds neutral content and the localized account landing. */
+    bind(input: {
+        subscriptionId: string;
+        clientId: string;
+        email: string;
+        firstName: string | null;
+        country: string | null;
+    }): Promise<Omit<WinbackCommand, "idempotencyKey">>;
+}
+/** Explicit winback-only selection; no dispatcher alias or other retention planner. */
+export declare function createPostgresSubscriptionWinback(options: NativeWinbackOptions): {
+    run(limit?: number): Promise<{
+        plan: unknown;
+        scanned: number;
+        sent: number;
+        deduped: number;
+        refused: number;
+        failed: number;
+        busy: number;
+    }>;
+};
+export {};
+```
+## dist/subscriptions/renewalCycleFailureMechanism.d.ts
+
+```ts
+import type { CycleChargeFailurePropagationPort, FailurePropagationContext, FailurePropagationResult } from "./contracts/renewal.js";
+export interface RenewalFailurePolicy {
+    resolveClassification(supplied: FailurePropagationContext["failureClassification"], reason: string): {
+        failureClass: string;
+        decidedBy: string;
+    };
+    recordKey(key: string): string;
+    applyKey(key: string): string;
+    dunningKey(key: string, attempt: number): string;
+    preparedSuffix: string;
+    blockedSuffix: string;
+    dunningFailureKey: string;
+    logBelowRetry(fields: {
+        cycleId: string;
+        retryAttempt: number;
+    }): void;
+    logRejected(fields: {
+        cycleId: string;
+        subscriptionId: string;
+        retryAttempt: number;
+        rowOutcomeKey: string;
+        code?: string;
+        reason: string;
+    }): void;
+    logUnavailable(fields: {
+        cycleId: string;
+        subscriptionId: string;
+        retryAttempt: number;
+        rowOutcomeKey: string;
+        reason: string;
+    }): void;
+}
+/** Complete durable refusal ladder; unexpected port throws remain raw. */
+export declare function propagateRenewalFailure(port: CycleChargeFailurePropagationPort, ctx: FailurePropagationContext, policy: RenewalFailurePolicy): Promise<FailurePropagationResult>;
+```
+## dist/subscriptions/renewalCycleMechanism.d.ts
+
+```ts
+import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProviderCapabilityDescriptor, ProviderAttemptIdentity } from "@openlup/core/payment";
+import type { RenewalPreparedAttemptPersistencePort } from "./contracts/renewal.js";
+import type { HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderResult, RenewalIntentResult, RenewalCycleDeps, RenewalExecutionContext, RenewalPrepareInput, RenewalAttemptResult, RenewalDeliveryClient, RenewalAllowedAdmission } from "./contracts/renewal.js";
+import { type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
+export interface RenewalCyclePolicy<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, P extends string, I extends PaymentExecutionBaseInput, M extends string | null | undefined, F extends string> {
+    validateProvider(due: D): string | null;
+    readTotal(snapshot: Record<string, unknown>): number | null;
+    failed(due: D, cycleId: string | null, cycleNumber: number | null, orderId: string | null, intentId: string | null, reason: string): SubscriptionRenewalChargeResult;
+    cycleKey(due: D): string;
+    executionKey(key: string, retry: number, sequence: number): string;
+    intentInput(due: D, key: string, snapshots: SubscriptionCycleSnapshotResult, order: SubscriptionCycleOrderResult, total: number): CI;
+    identity(due: D, key: string, intent: IR, order: SubscriptionCycleOrderResult, total: number): ProviderAttemptIdentity;
+    providerFlow(flow: string): F;
+    prepareInput(due: D, context: RenewalExecutionContext<IR, M, F>): RenewalPrepareInput<P>;
+    executionInput(due: D, context: RenewalExecutionContext<IR, M, F>, deps: {
+        capability: PaymentProviderCapabilityDescriptor;
+    }): I;
+    isNotChargeable(error: unknown): boolean;
+    skippedNotChargeable(due: D, context: {
+        cycleId: string;
+        cycleNumber: number;
+        orderId: string;
+        paymentIntentId: string;
+    }): SubscriptionRenewalChargeResult;
+    finalizeKey(key: string): string;
+    executionIndeterminate(): Error;
+    defaultNow(): string;
+    mandateBlockReason: string;
+    invalidTotalsReason: string;
+    reservationBlockReason: string;
+    preflight: RenewalPreflightPolicy<D, CI, IR>;
+    replay: RenewalReplayPolicy;
+    outcome: RenewalOutcomePolicy;
+}
+/** One hosted cycle: admission and stock precede one prepare/execute/finalize. */
+export declare function executeRenewalCycle<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, P extends string, N extends string, I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult & {
+    nextActionKind: N | null;
+}, M extends string | null | undefined, F extends string>(deps: RenewalCycleDeps<CI, IR, P, N, I, R, M>, due: D, policy: RenewalCyclePolicy<D, CI, IR, P, I, M, F>): Promise<SubscriptionRenewalChargeResult>;
+export declare function prepareRenewalAttempt<P extends string, N extends string>(paymentPort: RenewalPreparedAttemptPersistencePort<P, N>, input: RenewalPrepareInput<P>, isNotChargeable: (error: unknown) => boolean): Promise<RenewalAttemptResult<N> | null>;
+export declare function checkRenewalDeliveryAdmission(client: RenewalDeliveryClient, due: Pick<HostedRenewalDue, "subscriptionId" | "nextCycleAt">, asOf: string): Promise<{
+    admitted: RenewalAllowedAdmission;
+    blocked: null;
+} | {
+    admitted: null;
+    blocked: SubscriptionRenewalChargeResult;
+}>;
+```
+## dist/subscriptions/renewalCycleRefusalMechanism.d.ts
+
+```ts
+import type { PaymentAttemptStatus, PaymentExecutionProviderDecline, ProviderAttemptIdentity } from "@openlup/core/payment";
+import type { HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderResult, RenewalIntentResult, RenewalPreflightDeps, RenewalFailureDeps, RenewalOutcomeContext, RenewalReplayContext, FailurePropagationResult } from "./contracts/renewal.js";
+import { type RenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
+export interface RenewalPreflightPolicy<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult> {
+    isOperatorOnly(reason: string): boolean;
+    logOperatorBlock(fields: {
+        subscriptionId: string;
+        providerKind: string;
+        reason: string;
+    }): void;
+    readTotal(snapshot: Record<string, unknown>): number | null;
+    cycleKey(due: D): string;
+    executionKey(cycleKey: string, retry: number, sequence: number): string;
+    intentInput(due: D, key: string, snapshots: SubscriptionCycleSnapshotResult, order: SubscriptionCycleOrderResult, total: number, reason: string): CI;
+    identity(due: D, key: string, intent: IR, order: SubscriptionCycleOrderResult, total: number): ProviderAttemptIdentity;
+    normalizedProvider(provider: string): string;
+    failed(due: D, cycleId: string | null, cycleNumber: number | null, orderId: string | null, intentId: string | null, reason: string, propagation?: FailurePropagationResult): SubscriptionRenewalChargeResult;
+    invalidTotalsReason: string;
+    defaultNow(): string;
+    failure: RenewalFailurePolicy;
+}
+export interface RenewalOutcomePolicy {
+    declineReason(decline: PaymentExecutionProviderDecline): string;
+    classifyDecline(decline: PaymentExecutionProviderDecline): {
+        failureClass: string;
+        decidedBy: string;
+    };
+    scaReason: string;
+    defaultNow(): string;
+    failure: RenewalFailurePolicy;
+}
+export interface RenewalReplayPolicy extends Pick<RenewalOutcomePolicy, "scaReason" | "defaultNow" | "failure"> {
+    unacknowledgedReason(status: PaymentAttemptStatus): string;
+}
+/** Alternate preflight owns its full order/intent/failure chain, without reservation or dispatch. */
+export declare function recordRenewalPreflightBlock<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, M extends string | null | undefined>(deps: RenewalPreflightDeps<CI, IR, M>, due: D, reason: string, policy: RenewalPreflightPolicy<D, CI, IR>): Promise<SubscriptionRenewalChargeResult>;
+export declare function declinedRenewalOutcome<D extends HostedRenewalDue>(deps: RenewalFailureDeps, due: D, context: RenewalOutcomeContext & {
+    decline: PaymentExecutionProviderDecline;
+}, policy: RenewalOutcomePolicy): Promise<SubscriptionRenewalChargeResult>;
+export declare function requiresActionRenewalOutcome<D extends HostedRenewalDue>(deps: RenewalFailureDeps, due: D, context: RenewalOutcomeContext, policy: RenewalOutcomePolicy): Promise<SubscriptionRenewalChargeResult>;
+export declare function replayRenewalAttempt<D extends HostedRenewalDue>(deps: RenewalFailureDeps, due: D, ctx: RenewalReplayContext, status: PaymentAttemptStatus, policy: RenewalReplayPolicy): Promise<SubscriptionRenewalChargeResult>;
+```
+## dist/subscriptions/renewalIdentity.d.ts
+
+```ts
+import type { RenewalIdentity, RenewalSchedule } from "./contracts/renewal.js";
+/** The host's existing dialect owns every byte; no normalization or new prefix. */
+export declare function renewalIdentity(schedule: RenewalSchedule, keys: (schedule: RenewalSchedule) => RenewalIdentity): RenewalIdentity;
+```
+## dist/subscriptions/sandboxRenewalRail.d.ts
+
+```ts
+import type { RenewalPaymentRail } from "./contracts/renewal.js";
+import type { AutomaticRenewalPolicy } from "./automaticRenewal.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export type SandboxRenewalScenario = "succeeded" | "declined" | "ambiguous";
+/** No provider, key, network or real mandate. The existing native operation is
+ * the dispatch fence; the existing outcome ledger stores sandbox observations. */
+export declare function createPostgresSandboxRenewalRail(executor: SubscriptionQueryExecutor, options: {
+    scenario: SandboxRenewalScenario;
+    now?: () => string;
+}): RenewalPaymentRail & {
+    observe(input: {
+        operationId: string;
+        fingerprint: string;
+        externalAttemptRef: string;
+        outcome: "succeeded" | "refused";
+        occurredAt: string;
+    }): Promise<void>;
+};
+/** Host supplies current method identity from readMethod; all original money,
+ * identities and authorization remain the frozen operation's own facts. */
+export declare function createSandboxRenewalPolicy(methodRef: string): AutomaticRenewalPolicy;
+```
+## dist/subscriptions/services.d.ts
+
+```ts
+import type { SubscriptionCapabilities } from "./contracts/commands.js";
+/** One host executor for a selected population. Construction never starts work. */
+export declare function createSubscriptionServices<Result>(input: {
+    enabled?: boolean;
+    capabilities: SubscriptionCapabilities;
+    readiness(): Promise<{
+        kind: "ready";
+    } | {
+        kind: "refused";
+        code: string;
+    }>;
+    run(): Promise<Result>;
+}): {
+    capabilities: SubscriptionCapabilities;
+    readiness: () => Promise<{
+        kind: "ready";
+    } | {
+        kind: "refused";
+        code: string;
+    } | {
+        readonly kind: "refused";
+        readonly code: "disabled";
+    }>;
+    run(): Promise<Result | {
+        kind: "refused";
+        code: string;
+    } | {
+        readonly kind: "refused";
+        readonly code: "disabled";
+    }>;
+};
+export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
+    readonly graph: "native";
+    readonly multiCyclePrepaid: Readonly<{
+        supported: false;
+        refusalCode: "multi_cycle_prepaid_unsupported";
+    }>;
+    readonly genericBundleCommands: Readonly<{
+        supported: true;
+    }>;
+    readonly commandBoundReceipts: Readonly<{
+        supported: true;
+    }>;
+    readonly preparedAttemptStore: Readonly<{
+        supported: false;
+        refusalCode: "native_prepared_attempt_store_unsupported";
+    }>;
+    readonly retryRecovery: "selected";
+    readonly stockRecovery: "unavailable";
+    readonly deliveryAdmission: "required";
+    readonly executorCount: 1;
+    readonly defaultEnabled: false;
+}>;
+```
+## dist/subscriptions/sizedComposition.d.ts
+
+```ts
+import type { CompositionRulesPort } from "@openlup/core/bundle";
+import { type SizedAgreedLine, type SizedEditPolicy } from "./contracts/sizedEdit.js";
+import type { SizedCatalogFact, SizedHostPorts } from "./sizedEditPorts.js";
+export declare function assertSizedPolicy(policy: SizedEditPolicy): void;
+export declare function createSizedCompositionRules(input: {
+    policy: SizedEditPolicy;
+    catalog: readonly SizedCatalogFact[];
+    baseline: SizedAgreedLine[];
+    exclusions: readonly string[];
+    dailyNeed: number;
+    cadenceDays: number;
+    useFrozenBaseline?: boolean;
+    proposePortion: SizedHostPorts["proposePortion"];
+}): CompositionRulesPort;
+```
+## dist/subscriptions/sizedEditContext.d.ts
+
+```ts
+import type { SizedEditContext, SizedEditPolicy, SizedEditPhase, SizedEditRequest } from "./contracts/sizedEdit.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export declare function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn?: boolean): Promise<SizedEditContext>;
+/** Construct once per authenticated request; do not share across preview/apply. */
+export declare function createSizedEditContextScope(read: (id: string, optIn: boolean) => Promise<SizedEditContext>): (id: string, optIn?: boolean) => Promise<SizedEditContext>;
+export declare function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount">, policy: SizedEditPolicy): SizedEditPhase;
+export declare function isSizedOptIn(request: {
+    action: string;
+    resizeLever?: unknown;
+}): boolean;
+export declare function sameSizedPinnedConstraint(asked: Record<string, unknown>, stored: Record<string, unknown>): boolean;
+export declare function normalizeSizedEdit(request: SizedEditRequest, context: SizedEditContext, policy: SizedEditPolicy): SizedEditRequest;
+```
+## dist/subscriptions/sizedEditor.d.ts
+
+```ts
+import type { SuccessorCaseKind } from "./contracts/successors.js";
+import type { PackageEditActor } from "./packageEditContracts.js";
+import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
+import type { SizedEditorOptions } from "./sizedEditPorts.js";
+/** The host composes this alongside its existing classic binding. One callback owns one connection through commit. */
+export declare function createPostgresSizedEditor(options: SizedEditorOptions): {
+    candidates(actor: PackageEditActor, id: string, optIn?: boolean): Promise<{
+        context: SizedEditContext;
+        catalog: {
+            selectable: boolean;
+            variantId: string;
+            sku: string;
+            groupId: string;
+            isAddon: boolean;
+            sellable: boolean;
+            physicalSize: number;
+            demandPerUnit: number;
+            documentRevisionId: string;
+            documentDigest: string;
+            verified: boolean;
+            exclusions: readonly string[] | null;
+            sellableNow: number | null;
+        }[];
+    }>;
+    preview(actor: PackageEditActor, input: SizedEditRequest): Promise<SizedEditPreview>;
+    /** @experimental */
+    previewStockWaitSuccessor(actor: PackageEditActor, input: SizedEditRequest, source: {
+        caseId: string;
+        caseKind: SuccessorCaseKind;
+    }): Promise<SizedEditPreview & {
+        previewId?: string;
+    }>;
+    apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult>;
+};
+/** Binding dispatch does not read sized context for lifecycle or ordinary classic operations. */
+export declare function createOfferDispatchedSubscriptionEditor(input: {
+    readBinding(actor: PackageEditActor, id: string): Promise<"classic" | "sized.v1" | null>;
+    classic: {
+        preview(actor: PackageEditActor, request: never): Promise<unknown>;
+        apply(actor: PackageEditActor, key: string, request: never): Promise<unknown>;
+    };
+    sized: ReturnType<typeof createPostgresSizedEditor>;
+}): {
+    preview(actor: PackageEditActor, request: {
+        subscriptionId: string;
+        action?: string;
+    }): Promise<unknown>;
+    apply(actor: PackageEditActor, key: string, request: {
+        subscriptionId: string;
+        action?: string;
+    }): Promise<unknown>;
+};
+export declare function mapSizedEditError(error: unknown, phase: "preview" | "apply", action?: string): import("./packageEditErrors.js").PackageEditErrorMapping;
+```
+## dist/subscriptions/sizedEditPorts.d.ts
+
+```ts
+import type { SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
+import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedQuoteRequest, SizedRecurringQuote } from "./contracts/sizedEdit.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Host verifies its current documents and translates physical, demand and exclusion facts.
+ * Retained withdrawn identities must be resolved exactly, independently of discovery. */
+export interface SizedCatalogFact {
+    variantId: string;
+    sku: string;
+    groupId: string;
+    isAddon: boolean;
+    sellable: boolean;
+    physicalSize: number;
+    demandPerUnit: number;
+    documentRevisionId: string;
+    documentDigest: string;
+    verified: boolean;
+    exclusions: readonly string[] | null;
+    sellableNow: number | null;
+}
+export interface SizedSubjectFacts {
+    subscriptionId: string;
+    clientId: string;
+    subjectRef: string;
+    exclusions: string[];
+    snapshot: Record<string, unknown>;
+}
+export interface SizedHostPorts {
+    /** Effect-free adopter admission, before even a wholly frozen quote. */
+    admitSubscriptionTerms?: SubscriptionTermsAdmission;
+    /** Candidate discovery is advisory; preview/apply reread authenticated owned facts. Precedence is host-owned. */
+    readFacts(db: SubscriptionQueryExecutor, context: SizedEditContext, point: "candidate" | "preview" | "apply"): Promise<SizedSubjectFacts>;
+    /** Only opt-in derives fresh need. Ordinary edits use the stored dailyNeed carrier. */
+    resolveOptInNeed(db: SubscriptionQueryExecutor, context: SizedEditContext): Promise<{
+        dailyNeed: number;
+        snapshot: Record<string, unknown>;
+    }>;
+    readCatalog(db: SubscriptionQueryExecutor, context: SizedEditContext): Promise<SizedCatalogFact[]>;
+    /** On this transaction connection, lock and reread owned subject rows and the optional opt-in
+     * need, and reread every selected catalogue fact (including stock). Compare with the supplied
+     * evidence; a mismatch throws subscription_edit_invalid_subject_snapshot. Subject locks hold
+     * through commit. Catalogue rows are reread, not locked: a restricted runtime may only read
+     * them. The editor holds the subscription before this callback; governed native SQL
+     * acceptance owns the subsequent catalogue fence and existing-row prelocks.
+     * Catalogue evidence is ordered by canonical variant UUID, with sorted exclusion keys. */
+    assertCurrentFacts(db: SubscriptionQueryExecutor, context: SizedEditContext, expected: SizedSubjectFacts, optInNeed: Record<string, unknown> | null, catalogFacts: readonly SizedCatalogFact[]): Promise<void>;
+    proposePortion(input: {
+        dailyNeed: number;
+        cadenceDays: number;
+        factor: number;
+        current: SizedAgreedLine[];
+        catalog: readonly SizedCatalogFact[];
+    }): Promise<{
+        variantId: string;
+        qty: number;
+    }[]>;
+    quotePort: {
+        createServerAuthoritativeQuote(request: SizedQuoteRequest & {
+            compositionConstraint: Record<string, unknown>;
+        }): Promise<{
+            quote: SizedRecurringQuote;
+        }>;
+    };
+}
+export interface SizedEditorOptions extends SizedHostPorts {
+    policy: SizedEditPolicy;
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    now(): string;
+}
+```
+## dist/subscriptions/sizedEditQuote.d.ts
+
+```ts
+import { type SizedAgreedLine, type SizedEditContext, type SizedEditPolicy, type SizedEditRequest } from "./contracts/sizedEdit.js";
+import type { SizedCatalogFact, SizedHostPorts, SizedSubjectFacts } from "./sizedEditPorts.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export declare function selectSizedAgreements(context: SizedEditContext, policy: SizedEditPolicy): SizedAgreedLine[];
+export declare function quoteSizedEdit(input: {
+    db: SubscriptionQueryExecutor;
+    context: SizedEditContext;
+    request: SizedEditRequest;
+    policy: SizedEditPolicy;
+    host: SizedHostPorts;
+    point: "preview" | "apply";
+}): Promise<{
+    lines: {
+        quoteLine: SizedAgreedLine["quoteLine"];
+        lineId: string | null;
+        variantId: string;
+        sku: string;
+        groupId: string;
+        qty: number;
+        isAddon: boolean;
+    }[];
+    catalogFacts: {
+        variantId: string;
+        exclusions: string[] | null;
+        sku: string;
+        groupId: string;
+        isAddon: boolean;
+        sellable: boolean;
+        physicalSize: number;
+        demandPerUnit: number;
+        documentRevisionId: string;
+        documentDigest: string;
+        verified: boolean;
+        sellableNow: number | null;
+    }[];
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown>;
+    expectedTemplateVersion: number;
+    quoteHash: string;
+    quote: import("./contracts/sizedEdit.js").SizedRecurringQuote;
+    currentRecurringPrice: {
+        amountMinor: number;
+        currency: string;
+    };
+    newRecurringPrice: import("./packageEditContracts.js").PackageEditMoney;
+    delta: {
+        amountMinor: number;
+        currency: string;
+    };
+    changedLines: number;
+    unchangedLines: number;
+    subjectFacts: SizedSubjectFacts;
+    optInFacts: Record<string, unknown> | null;
+}>;
+export declare function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: SizedEditContext, policy: SizedEditPolicy): void;
+export declare function sizedCandidateCompatibility(catalog: readonly SizedCatalogFact[], facts: SizedSubjectFacts): {
+    selectable: boolean;
+    variantId: string;
+    sku: string;
+    groupId: string;
+    isAddon: boolean;
+    sellable: boolean;
+    physicalSize: number;
+    demandPerUnit: number;
+    documentRevisionId: string;
+    documentDigest: string;
+    verified: boolean;
+    exclusions: readonly string[] | null;
+    sellableNow: number | null;
+}[];
+```
+## dist/subscriptions/sizedParcelLever.d.ts
+
+```ts
+import type { SizedParcelLeverKind } from "./contracts/sizedEdit.js";
+/** Runtime value of the sized parcel lever; the browser contracts entry stays type-only. */
+export declare const SIZED_PARCEL_LEVER_KIND: SizedParcelLeverKind;
+```
+## dist/subscriptions/sizedParcelProjection.d.ts
+
+```ts
+/** Host reads immutable order/cycle rows and localizes the returned facts through
+ * the existing paid-email note hook. Quantity is never a physical packing promise. */
+export interface SizedParcelProjectionPorts {
+    read(orderId: string): Promise<{
+        subscriptionId: string | null;
+        cycleId: string | null;
+        binding: string | null;
+        cycle: {
+            id: string;
+            subscriptionId: string;
+            number: number;
+            cadenceDays: number;
+        } | null;
+        lines: {
+            sku: string;
+            quantity: number;
+            retainedId: string | null;
+            capturedId?: string;
+            physicalSize?: number;
+        }[];
+    } | null>;
+    readExactPhysicalSize(retainedId: string): Promise<{
+        id: string;
+        sku: string;
+        physicalSize: number;
+    } | null>;
+    allowedCadences: readonly number[];
+}
+export declare function createSizedParcelProjection(ports: SizedParcelProjectionPorts): (orderId: string, signal: AbortSignal) => Promise<{
+    quantity: number;
+    sizes: {
+        physicalSize: number;
+        quantity: number;
+    }[];
+    cadenceDays: number | null;
+} | null>;
+```
+## dist/subscriptions/subscriptionSizing.d.ts
+
+```ts
+import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
+/** Host facts already expressed in a common demand unit. Capacity includes host policy. */
+export interface SubscriptionSizingUnit {
+    variantId: string;
+    demandPerUnit: number;
+    maximumQuantity: number;
+}
+export interface SubscriptionSizingPolicy {
+    portionModes: SubscriptionPortionModes;
+    readDailyNeed(constraint: CompositionConstraint): number;
+    isPlanLengthConstraint(constraint: CompositionConstraint): boolean;
+    readUnitFacts(variantIds: string[]): Promise<SubscriptionSizingUnit[]>;
+    quantityPolicy(input: {
+        units: SubscriptionSizingUnit[];
+        dailyNeed: number;
+        planDays: number;
+    }): Promise<{
+        totalUnits: number;
+        maxExceeded: boolean;
+        selectedCapacityConstrained?: boolean;
+    }>;
+}
+/** Preserve every selection, round proportions deterministically, then transfer units
+ * toward demand coverage. A failed allocation is unservable, never a partial selection. */
+export declare function apportionSubscriptionUnits(input: {
+    totalUnits: number;
+    targetDemand: number;
+    current: readonly {
+        variantId: string;
+        qty: number;
+    }[];
+    units: readonly SubscriptionSizingUnit[];
+}): {
+    variantId: string;
+    qty: number;
+}[];
+/** Application demand and quantity policy stay behind the existing core composition seam. */
+export declare function createSubscriptionSizingRules(policy: SubscriptionSizingPolicy): CompositionRulesPort;
+```
+## dist/subscriptions/successorProtocolBindings.d.ts
+
+```ts
+/** An installed historical binding supplies authority; current metadata cannot replace it.
+ * @experimental
+ */
+export interface HistoricalSuccessorProtocolBinding {
+    sourceIdentity: string;
+    candidateKind: string;
+    baseProtocol: string;
+    eventKind: string;
+    authorityRef: string;
+}
+export declare class Lc10ProtocolBindingError extends Error {
+    readonly code = "lc10_protocol_binding_unavailable";
+    constructor();
+}
+export declare function requireHistoricalProtocolBinding(input: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">, installedBindings: readonly HistoricalSuccessorProtocolBinding[]): HistoricalSuccessorProtocolBinding;
 ```

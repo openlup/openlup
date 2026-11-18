@@ -1,8 +1,9 @@
 import type { CatalogAttributeInput } from "../attributeValidation.js";
 import type { CatalogAttributeReferenceResolution } from "../attributeReferencePort.js";
 import type { CatalogPackInput, CatalogProductTypeRef, CatalogQuantity, CatalogCombinationChangeV2 } from "../contracts/index.js";
+import type { CatalogSubscriptionPolicyBinding } from "../../subscriptions/index.js";
 
-/** Recorded observations, checked for consistency; no refusal code is executed.
+/** Recorded observations; require owner-refusals to compare with an independent owner result.
  * @experimental
  */
 export interface CatalogRefusalFixture {
@@ -12,7 +13,7 @@ export interface CatalogRefusalFixture {
   observedCode: string;
   zeroEffects: boolean;
 }
-/** JSON fixture data only. Application content validators are unavailable offline.
+/** Inert JSON fixture data. Trusted projection binds executable evidence separately.
  * @experimental
  */
 export interface CatalogConformanceSubject {
@@ -29,14 +30,32 @@ export interface CatalogConformanceSubject {
       incoming: readonly CatalogCombinationChangeV2[];
     } }[];
     refusals?: readonly CatalogRefusalFixture[];
+    /** Offline selections; profile identities and digests are resolved from the pack. */
+    profileChecks?: readonly {
+      cadenceDays: number;
+      lines: readonly { id: string; type: CatalogProductTypeRef; quantity: number; addon?: boolean;
+        demand?: { contentPerUnit: CatalogQuantity; perDay: CatalogQuantity } }[];
+    }[];
+    /** Declarative policy bindings that the offline owner can execute from JSON. */
+    profilePolicies?: readonly (Extract<CatalogSubscriptionPolicyBinding, { kind: "units_per_day" }>
+      | Omit<Extract<CatalogSubscriptionPolicyBinding, { kind: "host_policy" }>, "validate">)[];
   }[];
   /** Requests whose owner has not landed refuse with required evidence unavailable. */
   requiredChecks?: readonly string[];
   recheck?: string;
 }
+/** The trusted registry uses the runtime pack, including its actual content validator.
+ * @experimental
+ */
+export interface CatalogConformanceSource extends Omit<CatalogConformanceSubject, "packs"> {
+  packs: readonly (Omit<CatalogConformanceSubject["packs"][number], "pack" | "profilePolicies"> & {
+    pack: CatalogPackInput;
+    profilePolicies?: readonly CatalogSubscriptionPolicyBinding[];
+  })[];
+}
 /** @experimental */
 export interface CatalogConformanceFinding {
-  /** Exact shared owner code; application content validation stays unavailable. */
+  /** Exact shared owner code. */
   code: string;
   severity: "error" | "warning";
   path: string;

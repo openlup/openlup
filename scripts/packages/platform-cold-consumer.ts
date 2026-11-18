@@ -1999,18 +1999,22 @@ process.exit(0);
   }
 }
 
-/** Packed JSON checker, copied static skeleton and recipe links; no database or repository imports. */
-export function proveCatalogConformanceConsumer(consumer: string): void {
+/** Packed checker, copied skeleton, owner results and installed guide lookup. */
+export function proveCatalogConformanceConsumer(consumer: string, compiler: string): void {
   console.log(consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { dirname, join, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { runCatalogExtensionConformance } from "@openlup/platform/catalog/testing";
 import { CATALOG_CONFORMANCE_RULES, validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, CatalogCombinationError } from "@openlup/platform/catalog";
+import { createCatalogSubscriptionProfileBinding } from "@openlup/platform/subscriptions";
 const guideRoot = join(process.cwd(), "node_modules/@openlup/core/docs/guide");
 const owned = join(process.cwd(), "catalogue-skeleton");
-cpSync(join(guideRoot, "how-to/extend/catalogue-pack-skeleton"), owned, { recursive: true });
+const skeleton = join(guideRoot, "how-to/extend/catalogue-pack-skeleton");
+cpSync(skeleton, owned, { recursive: true });
 const bin = join(process.cwd(), "node_modules/@openlup/platform/src/lifecycle/openlup.mjs");
 const invoke = args => {
  const result = spawnSync(process.execPath, [bin, ...args, "--json"], { encoding: "utf8" });
@@ -2025,6 +2029,64 @@ const write = (name, value) => { const path = join(owned, name); writeFileSync(p
 const cases = [
  { name: "guide_skeleton_pack_passes_checker", async run() {
    assert.equal((await runCatalogExtensionConformance(text)).exitCode, 0); assert.equal(invoke(command).exitCode, 0);
+   const tsc = spawnSync(process.execPath, [process.argv[2], "--noEmit", "--strict", "--erasableSyntaxOnly",
+     "--verbatimModuleSyntax", "--allowImportingTsExtensions", "--skipLibCheck", "--module", "nodenext",
+     "--target", "es2023", "--types", "node", join(owned,"catalogue.ts")], {encoding:"utf8"});
+   assert.equal(tsc.status, 0, tsc.stdout + tsc.stderr);
+ } },
+ { name: "catalogue_transport_matrix", async run() {
+   const second = join(process.cwd(), "another 'copy'");
+   cpSync(skeleton, second, { recursive: true });
+   const baseline = readdirSync(process.cwd(), {recursive:true}).map(String).sort();
+   const reports = [owned, second].map(path => invoke(["catalogue", "project", "--trusted-packs", join(path,"catalogue.ts")]));
+   const bytes = reports.map(({transport}) => readFileSync(transport.subjectPath, "utf8"));
+   for (const {exitCode, transport: proof} of reports) {
+     assert.equal(exitCode, 0); assert.equal(proof.checkerInvocations, 1);
+     assert.equal(proof.subjectHash, createHash("sha256").update(bytes[0]).digest("hex"));
+     assert(proof.projectionMilliseconds >= 0 && proof.checkMilliseconds >= 0);
+     assert(!realpathSync(proof.subjectPath).startsWith(realpathSync(process.cwd()) + sep));
+     assert(proof.recheck.includes("catalogue project")); assert(proof.replay.includes("catalogue check"));
+   }
+   const shell = spawnSync("/bin/sh", ["-c", reports[1].transport.recheck.replace("npx --no -- openlup", 'node "'+bin+'"')],
+     {encoding:"utf8",env:{PATH:dirname(process.execPath)}});
+   const replay = JSON.parse(shell.stdout);
+   assert.equal(shell.status, 0); assert.equal(replay.transport.subjectHash, reports[0].transport.subjectHash);
+   assert.equal(bytes[0], bytes[1]);
+   assert.deepEqual(readdirSync(process.cwd(), {recursive:true}).map(String).sort(), baseline);
+   const { pack } = await import(pathToFileURL(join(owned,"pack.ts")).href);
+   const { fixtures } = await import(pathToFileURL(join(owned,"fixtures.ts")).href);
+   const { catalogDraftRegistry, catalogueConformance } = await import(pathToFileURL(join(owned,"catalogue.ts")).href);
+   const runtimeTypes = fixtures.drafts.slice(0,1).map(draft => {
+     const {validateContent, ...type} = catalogDraftRegistry.resolve(draft.product.type);
+     assert.deepEqual(validateContent(draft.product.sharedContent), []);
+     return type;
+   });
+   const parity = data => {
+     assert.deepEqual(data.packs, [{pack:{...pack,types:runtimeTypes},...fixtures}]);
+     assert.deepEqual(data.requiredChecks, catalogueConformance.requiredChecks);
+   };
+   parity(JSON.parse(bytes[0]));
+   for (const mutate of [
+     entry => { entry.pack.types[0].validatorRef = "changed"; },
+     entry => { entry.drafts[0].skus[0].priceOperations[0].unitPriceMinor++; },
+     entry => { entry.drafts[0].publication.operations.pop(); },
+     entry => { entry.pack.subscriptionProfileDefinitions[0].allowedCadenceDays.pop(); },
+     entry => { entry.combinations.pop(); },
+   ]) {
+     const changed = JSON.parse(bytes[0]); mutate(changed.packs[0]);
+     assert.throws(() => parity(changed), {code:"ERR_ASSERTION"});
+   }
+   const staticReport = invoke(["catalogue", "check", "--packs", reports[0].transport.subjectPath]);
+   assert.equal(staticReport.exitCode,2); assert(staticReport.findings.every(finding => finding.code === "conformance_owner_unavailable"));
+   const binding = createCatalogSubscriptionProfileBinding({profiles:pack.subscriptionProfileDefinitions});
+   const declared = fixtures.refusals[0], profileRef = pack.types[0].subscriptionProfileRef;
+   const line = fixtures.profileChecks[0].lines[0];
+   const decision = binding.bindAcceptance({cadenceDays:120,prepaid:true,lineItems:[{
+     id:line.id,typeRef:line.type,quantity:line.quantity,sellable:true,addon:false,profileRef,profileDigest:binding.resolve(profileRef).digest,
+   }]});
+   assert.deepEqual(decision,{kind:"refused",issue:{code:declared.expectedCode,path:"/prepaid"}});
+   assert.equal("acceptance" in decision,false);
+   for (const report of [...reports,replay]) rmSync(dirname(report.transport.subjectPath), {recursive:true});
  } },
  { name: "catalogue_check_cli_reports_stable_codes_and_exit", async run() {
    assert.equal(invoke([...command, "--app", "unused"]).exitCode, 64);
@@ -2037,10 +2099,14 @@ const cases = [
    assert.equal(invalid.exitCode, 1); assert(invalid.findings.some(f => f.code === "definition_duplicate_identity")); assert.deepEqual(invalid, invoke(invalidArgs));
    for (const finding of invalid.findings) { assert(finding.path.startsWith("/packs/")); assert(finding.fix); assert(finding.recipe); assert.equal(finding.recheck, "npx --no -- openlup " + [...invalidArgs, "--json"].join(" ")); }
    const source = 'import {writeFileSync} from "node:fs"; writeFileSync("catalogue-effect", "effect"); export default {packs:[]}; // SENSITIVE_LOAD_DETAIL';
-   writeFileSync(join(owned,"executable.mjs"), source);
    await assert.rejects(runCatalogExtensionConformance(source), SyntaxError);
-   const failure = invoke(["catalogue", "check", "--packs", join(owned,"executable.mjs")]);
-   assert.equal(failure.exitCode, 64); assert(!JSON.stringify(failure).includes("SENSITIVE_LOAD_DETAIL")); assert(!existsSync("catalogue-effect"));
+   for (const suffix of ["mjs","ts"]) {
+     const executable = join(owned,"executable."+suffix); writeFileSync(executable,source);
+     const failure = invoke(["catalogue","check","--packs",executable]);
+     assert.equal(failure.exitCode,64); assert.equal(failure.findings[0].code,"OPENLUP_E_CLI_INPUT");
+     assert(!JSON.stringify(failure).includes("SENSITIVE_LOAD_DETAIL")); assert(!existsSync("catalogue-effect"));
+   }
+   assert.equal(invoke(write("inert.mjs",subject)).exitCode, 0);
    assert.equal(invoke(["catalogue", "check", "--packs", "./absent.json"]).exitCode, 74);
    assert.equal(invoke(["catalogue", "check"]).exitCode, 64);
    let reads = 0; const inspect = () => { reads++; throw Error("inspection"); };
@@ -2088,6 +2154,23 @@ const cases = [
      const [code, rest] = fragment.split("\`](../"); assert.equal(CATALOG_CONFORMANCE_RULES[code]?.recipe, rest.split(")")[0]);
    }
  } },
+ { name: "installed_guide_search_finds_each_recipe", run() {
+   const guide = join(guideRoot, "how-to/extend/catalogue-extension.md");
+   const lines = readFileSync(guide, "utf8").split("\\n");
+   const coreRoot = join(process.cwd(), "node_modules/@openlup/core");
+   const context = join(coreRoot, JSON.parse(readFileSync(join(coreRoot,"package.json"),"utf8")).bin["openlup-context"]);
+   for (const title of ["New vertical","Add attribute","Add unit","Add axis","Add tax class","Add category or collection",
+     "Promotion with existing grammar","Subscription profile","Upgrade a definition"]) {
+     const result = spawnSync(process.execPath, [context,"search","catalogue "+title.toLowerCase(),"--json"], {encoding:"utf8"});
+     assert.equal(result.status,0,result.stderr);
+     const {hits} = JSON.parse(result.stdout);
+     assert(hits.length <= 8);
+     const hit = hits.find(row => row.packageName === "@openlup/core" && row.title === title && row.file === guide);
+     assert(hit,title);
+     assert.equal(lines[hit.start-1],"## "+title);
+     assert(hit.end >= hit.start && hit.end <= lines.length);
+   }
+ } },
 ];
 for (const test of cases) { await test.run(); console.log(test.name + ": PASS"); }
 const three = [1,2,3].map(index => {
@@ -2098,7 +2181,7 @@ const three = [1,2,3].map(index => {
 const start = performance.now(); const report = await runCatalogExtensionConformance(JSON.stringify({packs:three}));
 // Synthetic fixture timing only, not full reference-pack completion or a timing gate.
 console.log("synthetic three-pack warm check ms=" + (performance.now()-start).toFixed(3)); assert.equal(report.exitCode, 0);
-`).trim());
+`, [compiler]).trim());
 }
 
 /** SDK-absent catalog operations and inert structural contribution, reused by the selected P7 case. */
@@ -2520,7 +2603,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveLifecycleConsumer(consumer);
     proveDistributionCliConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
-    proveCatalogConformanceConsumer(consumer);
+    proveCatalogConformanceConsumer(consumer, compiler);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);
