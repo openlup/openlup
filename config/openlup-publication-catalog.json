@@ -2742,6 +2742,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/checkout-recovery-stage.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/checkout-recovery.test.ts",
       "class": "public-output"
     },

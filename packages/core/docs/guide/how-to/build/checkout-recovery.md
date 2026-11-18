@@ -83,8 +83,10 @@ you change the offsets; use the content contract in the
 `@openlup/platform/communications/contracts`.
 
 Wrap automatic-wave mail with `withCheckoutRecoverySendEvidence(emailPort,
-recovery)` from `@openlup/platform/communications`. The final wave requires a
-confirmed first-wave acceptance receipt for the same delivery profile. A
+recovery)` from `@openlup/platform/communications`. When the schedule has a
+first wave, the final wave requires a confirmed first-wave acceptance receipt for
+the same delivery profile; an installed schedule with only a `last` stage has no
+predecessor gate. A
 processed outbox event alone is insufficient. A captured transport's receipt
 proves acceptance by that transport only; never reuse its profile to claim
 network delivery. The receipt fingerprint binds event, recipient reference,
