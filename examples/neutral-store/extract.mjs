@@ -3,6 +3,7 @@ import { resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readCurrentPackManifest } from '../../scripts/packages/pack-manifest-input.ts';
 
 const releasedExtractionSchemaVersion = 2;
 /** Run this file from an exact downloaded source archive, not from an installed package. */
@@ -15,7 +16,7 @@ for (let i = 0; i < extra.length; i += 2) {
   options.set(flag, value);
 }
 const mode = options.get('--mode');
-if (!directory || (extra.length && !['released', 'reconstructed'].includes(mode))) throw new Error('starter_extract_requires_empty_directory');
+if (!directory || (extra.length && !['released', 'reconstructed', 'candidate'].includes(mode))) throw new Error('starter_extract_requires_empty_directory');
 const source = options.has('--source') ? resolve(options.get('--source')) : dirname(fileURLToPath(import.meta.url));
 const target = resolve(directory);
 if (target === source) throw new Error('starter_extract_independent_directory_required');
@@ -57,6 +58,7 @@ if (mode) {
     expected.set(pkg.name, null);
   }
   if (!expected.size) refuse('source_package_set_empty');
+  const packs = mode === 'candidate' && readCurrentPackManifest(tree, options.get('--manifest'), revision);
   const manifest = await json(resolve(options.get('--manifest')));
   if (manifest.schemaVersion !== 2 || manifest.commit !== revision || !Array.isArray(manifest.packages)) refuse('manifest_identity_mismatch');
   const seen = new Set();
@@ -97,11 +99,12 @@ if (mode) {
     const path = `node_modules/${name}`, pkg = lock.packages[path];
     if (!pkg) refuse('lock_package_missing', name);
     if (pkg.version !== version || pkg.integrity !== integrity) refuse('lock_package_mismatch', name);
-    if (pkg.resolved !== `https://registry.npmjs.org/${name}/-/${name.slice(9)}-${version}.tgz`) refuse('lock_non_registry', name);
+    if (pkg.resolved !== (packs ? `file:${packs.get(name).path}` : `https://registry.npmjs.org/${name}/-/${name.slice(9)}-${version}.tgz`)) refuse('lock_non_registry', name);
     allowed.add(path);
   }
   for (const [path, pkg] of Object.entries(lock.packages)) {
     if (!path) continue;
+    if (packs && allowed.has(path) && !pkg.link) continue;
     let url, decoded;
     try { url = new URL(pkg.resolved); decoded = decodeURIComponent(pkg.resolved); } catch { refuse('lock_non_registry', path); }
     if (pkg.link || url.origin !== 'https://registry.npmjs.org' || url.username || url.password || url.search || url.hash) refuse('lock_non_registry', path);
@@ -110,6 +113,7 @@ if (mode) {
       .some(value => typeof value === 'string' && /@openlup\/|%40openlup/i.test(value))) refuse('lock_package_extra', path);
   }
   identity = { schemaVersion: releasedExtractionSchemaVersion, mode, setVersion: version, sourceRevision: revision, sourceRevisionVerification: verification,
+    ...(packs ? { verificationSource: 'candidate, local digest-verified' } : {}),
     ...(mode === 'reconstructed' ? { reason: options.get('--reason') } : {}), lockfileSha256: hash(lockBytes) };
 }
 for (const path of files) {
