@@ -992,7 +992,7 @@ it.each(["empty logistics", "scalar option", "noncanonical sibling"] as const)(
   const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
   expect.soft(await authority.readbackV3(head,cursor)).toEqual(refusal);
   acceptsRetainedRead = true;
-  const scope = authority.authorizeReadScope(undefined);
+  const scope = authority.authorizeReadScope(null);
   expect.soft(await authority.resolveRetained({ kind: "order", sourceId: randomUUID(), lineId: randomUUID(), productId: f.product,
     skuId: good.skuId, skuRevisionId: good.revisionId, publicationId: output, documentRevisionId: stored.document_revision_id },scope)).toEqual(refusal);
   const tuple = { ...standing.accepted, publicationHead: head, skuId: good.skuId, skuCode: goodFacts.code, skuRevisionId: good.revisionId, optionDigest: goodFacts.optionDigest };
@@ -1111,7 +1111,7 @@ it.each((["parent", "activation", "restore", "eligibility", "parent restore"] as
   const other = path === "activation" || path === "restore" || clearsLater;
   const f = await seed({ other, gross: true });
   const standing = await standingActive(f, clearsLater && path === "parent", true, path === "restore" || clearsLater && path !== "activation");
-  let head = standing.head, draftRevision = 1;
+  let head: CatalogHeadRef = standing.head, draftRevision = 1;
   const code = other ? "OTHER" : f.code, payload = withdrawal(f);
   if (path === "restore") {
     payload.publication.operations = [{ op: "set_sku_lifecycle", skuCode: code, expectedState: "active", state: "withdrawn" }];
@@ -1127,16 +1127,15 @@ it.each((["parent", "activation", "restore", "eligibility", "parent restore"] as
   const enablement = authoredEnablement(payload, code);
   if (defect === "no membership") payload.product.sharedContent.offerMemberships = [];
   if (defect === "missing authored gross") delete payload.skus.find(sku => sku.code === code)!.grossMass;
-  payload.publication.operations = [
-    ...enablement.filter(op => defect !== "no membership" || op.op !== "set_offer_membership"),
-    ...(path === "parent" ? [{ op: "set_product_lifecycle", productSlug: "article", expectedState: "active", state: "active", children: [] } as const]
-      : path === "activation" ? [{ op: "set_sku_lifecycle", skuCode: code, expectedState: "draft", state: "active" } as const]
-        : path === "restore" ? [{ op: "restore_sku", skuCode: code, expectedState: "withdrawn" } as const]
-          : path === "parent restore" ? [
-            { op: "restore_product", productSlug: "article", expectedState: "withdrawn" },
-            { op: "restore_sku", skuCode: code, expectedState: "withdrawn" },
-          ] as const : []),
-  ];
+  const lifecycle: CatalogDraftPayloadV4["publication"]["operations"] = path === "parent"
+    ? [{ op: "set_product_lifecycle", productSlug: "article", expectedState: "active", state: "active", children: [] }]
+    : path === "activation" ? [{ op: "set_sku_lifecycle", skuCode: code, expectedState: "draft", state: "active" }]
+      : path === "restore" ? [{ op: "restore_sku", skuCode: code, expectedState: "withdrawn" }]
+        : path === "parent restore" ? [
+          { op: "restore_product", productSlug: "article", expectedState: "withdrawn" },
+          { op: "restore_sku", skuCode: code, expectedState: "withdrawn" },
+        ] : [];
+  payload.publication.operations = [...enablement.filter(op => defect !== "no membership" || op.op !== "set_offer_membership"), ...lifecycle];
   if (clearsLater) {
     // A lifecycle effect can clear the flags without contradicting authored eligibility.
     payload.publication.operations.push({ op: "set_sku_lifecycle", skuCode: code, expectedState: "active", state: "withdrawn" });
@@ -1164,7 +1163,7 @@ it.each((["parent", "activation", "restore", "eligibility", "parent restore"] as
 
 it.each(["activation", "restore"] as const)("LC5-PRE-L1A-5 structural readiness sees the dark sibling during parent %s", async mode => {
   const f = await seed({ other: true, gross: true }), standing = await standingActive(f), payload = withdrawal(f);
-  let head = standing.head, revision = 1;
+  let head: CatalogHeadRef = standing.head, revision = 1;
   if (mode === "restore") {
     const op = payload.publication.operations[0]!;
     if (op.op !== "set_product_lifecycle") throw new Error("Missing parent withdrawal");
