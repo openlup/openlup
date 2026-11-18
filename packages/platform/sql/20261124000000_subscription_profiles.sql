@@ -86,8 +86,11 @@ BEGIN
     FROM jsonb_array_elements(NEW.metadata#>'{quoteSnapshot,catalogAdmission,skuRevisions}') s) THEN
     RAISE EXCEPTION 'profile_attachment_invalid' USING ERRCODE='22023'; END IF;
    PERFORM public.catalog_subscription_profile_assert_acceptance(proof,NULL,'payment');
-  ELSIF proof IS NOT NULL AND NEW.metadata#>>'{quoteSnapshot,quote,context,mode}'='subscription' THEN
+  ELSIF proof IS NOT NULL AND NEW.metadata#>>'{orderDraftSnapshot,context,mode}'='subscription' THEN
    PERFORM public.catalog_subscription_profile_assert_acceptance(proof,NULL,'order');
+   IF jsonb_path_exists(proof,'$.lines[*].subscriptionProfile')
+    AND NEW.metadata#>>'{quoteSnapshot,quote,context,mode}' IS DISTINCT FROM 'subscription' THEN
+    RAISE EXCEPTION 'profile_attachment_invalid' USING ERRCODE='22023'; END IF;
   END IF;
  ELSIF proof IS NOT NULL THEN
   -- Fresh actor-only legacy edits cannot supply server profile admission.

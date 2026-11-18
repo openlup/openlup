@@ -1574,3 +1574,22 @@ it("profile_attachment_continuity_matrix SP1-D-023 one-time purchase keeps its u
   const draft = await rpc(pool,"commerce_create_order_draft_with_outbox",input.args);
   expect(draft.orderDraft.status).toBe("draft");
 });
+
+it.each(["commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox"])(
+  "profile_attachment_continuity_matrix SP1-D-023 takes the purchase mode from the order draft in %s",
+  async routine => {
+    const f = await fixture("profile", { profiled: true }), input = purchaseInput(f);
+    // The order writer takes the purchase mode from the draft, which stays subscription.
+    input.quote.quote.context = { ...input.quote.quote.context, mode: "one_time" };
+    const line = input.quote.catalogAdmission.skuRevisions[0]!.reference;
+    const before = await snapshot(), db = await session();
+    try {
+      await db.query("SAVEPOINT wrong_quote_mode");
+      await expect(rpc(db,routine,input.args)).rejects.toMatchObject({ code: "22023", message: "profile_attachment_invalid" });
+      await db.query("ROLLBACK TO wrong_quote_mode");
+      delete line.subscriptionProfile;
+      await expect(rpc(db,routine,input.args)).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
+    } finally { await db.query("ROLLBACK"); db.release(); }
+    expect(await snapshot()).toEqual(before);
+  },
+);

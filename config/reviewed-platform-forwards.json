@@ -8616,7 +8616,7 @@
     },
     {
       "path": "db/platform/migrations/20261124000000_subscription_profiles.sql",
-      "sha256": "41ce455ae576505d2f48b37beefdf38612aa79a9d6ef89c65fd6f7d6cb039f90",
+      "sha256": "141b3bfafd5939957cd9cc53f4fcb553280dd29a684fc5cdbf641b4f095770ac",
       "functions": [
         {
           "signature": "public.catalog_accepted_reference_assert_v2(jsonb)",
@@ -8641,7 +8641,7 @@
         {
           "signature": "public.catalog_subscription_profile_acceptance_guard()",
           "beforeSha256": null,
-          "afterSha256": "5c181ae344c628aae2f77e1d1f2083f28b1c3084f114d1c233bcf450a3389493"
+          "afterSha256": "83b1a4de8bc1ec87b9935cc9c7f84b87b63d51a6af30ccb2fd1abfc9cf1669fc"
         }
       ]
     }

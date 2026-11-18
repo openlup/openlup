@@ -40,6 +40,7 @@ Run each vector with valid preceding facts. An existing lane refusal takes prece
 The durable-continuity cases exercise the V2 reference in the existing order,
 edit event and renewal facts. They isolate a missing frozen draft binding at
 settlement, an incorrect profile digest at edit acceptance, and a missing member
-of the retained profile roster at renewal claim. The native merged-stack
+of the retained profile roster at renewal claim. Both order writers also refuse a
+subscription draft paired with a one-time quote. The native merged-stack
 cadence witness requires the lead's upstream integration. The starter advertises
 profiled lanes only after LC8 composes the shared guard and evidence producer.
