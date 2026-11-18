@@ -16,9 +16,11 @@ import { join as joinPath } from 'node:path';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
+/** @param {string} cwd @param {...string} args */
 export async function git(cwd, ...args) {
   return (await execute('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.fsmonitor=false', '-c', 'merge.renames=false', '-c', 'merge.directoryRenames=false', '-c', 'merge.conflictStyle=merge', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } })).stdout;
 }
+/** @param {string} cwd @param {string} base @param {string} head @param {typeof git} [runGit] */
 export async function captureCommittedReviewCandidate(cwd, base, head, runGit = git) {
   demand(SHA.test(base) && SHA.test(head), 'base and head must be full commit digests');
   const tree = (await runGit(cwd, 'rev-parse', '--verify', `${head}^{tree}`)).trim();

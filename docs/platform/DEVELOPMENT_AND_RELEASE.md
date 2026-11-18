@@ -323,6 +323,8 @@ determines the publishable set. Source snapshots are separate. The sequence is:
    creates the annotated tag `openlup-<package>-v<version>` and draft, validates
    the same draft ID and publishes the immutable release. Verify each completed
    release's exact note bytes, identity and GitHub attestation.
+   The release job tries attestation verification up to three times, ten seconds
+   apart, and fails if all three attempts fail.
 5. The App event starts package packing and independent release/tag checks.
    The same `packages:check --cold` route prepares the selected package's exact
    internal prerequisites from the inventory on a fresh runner; the checked

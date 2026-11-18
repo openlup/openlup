@@ -71,14 +71,8 @@ export const sellableBundlesKey = ["admin-bundles", "sellable"] as const;
  * as `null`, which must not read as "never priced" — that misreading is exactly
  * how a bundle priced outside the settlement currency would be re-anchored to it.
  *
- * `resolvedCurrency` is declared here as optional AND nullable although the
- * contract says `z.string().nullable()`, because `tsconfig.app.json` sets
- * `strict: false`: with `strictNullChecks` off the app's inferred type for that
- * field collapses to plain `string`, so a signature naming `string | null` is
- * rejected at the call site while the value is `null` at runtime. The widened
- * parameter is the honest one — this function runs under both that config and
- * the `strictNullChecks: true` one the specs use — and the `??` below is doing
- * real work the app's type checker cannot see.
+ * The parameter accepts an omitted or null resolution so both use the stored
+ * row's currency when present.
  */
 export function storedBundleCurrency(
   bundle:

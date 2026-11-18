@@ -348,6 +348,11 @@ settings steps, see
 
 ### Required and raw checks
 
+The root application and tooling use `strict` in `tsconfig.app.json` and
+`tsconfig.node.json`. The tooling project reads existing JavaScript imports with
+TypeScript inference and JSDoc. The separate `tsconfig.tests.json` project keeps
+its own integration-test compiler settings, including strict null checks.
+
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 `packageManager` field of `package.json`), and the committed npm lockfile. CI and
 release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
@@ -1740,6 +1745,9 @@ Optional references from prior work:
 - Check typed public declarations with the compiler, alongside runtime tests.
 - Exercise cleanup through actual subprocess interruption and resource absence.
 - Keep canonical contract owners and link related guidance rather than copying it.
+- State every exclusion and definition the lead already knows in the review criteria,
+  including which released history stays byte-identical, how measurements are defined,
+  and which artifacts are required. Omissions have caused avoidable failed reviews.
 
 ## Developer Certificate of Origin
 

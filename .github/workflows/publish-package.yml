@@ -317,7 +317,12 @@ jobs:
       - name: Verify GitHub's release attestation of the published tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release verify "openlup-$PACKAGE-v$VERSION" --repo "$GITHUB_REPOSITORY"
+        run: |
+          for attempt in 1 2 3; do
+            if gh release verify "openlup-$PACKAGE-v$VERSION" --repo "$GITHUB_REPOSITORY"; then exit 0; fi
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 10
+          done
       - name: Recovery requires the maintainer
         if: failure()
         run: |
