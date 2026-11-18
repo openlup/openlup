@@ -239,6 +239,12 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   assertCatalogPublicationPreparation(payload, input);
   need(input.skus.length === 0 || input.product !== null, "catalog_publication_source_invalid");
   need(input.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
+  const retainedIds = new Set<string>(), retainedCodes = new Set<string>();
+  for (const sku of input.skus) {
+    need(!retainedIds.has(sku.id) && !retainedCodes.has(sku.code) && catalogPublishedSkuSchema.safeParse(sku).success,
+      "catalog_publication_sku_revision_invalid");
+    retainedIds.add(sku.id); retainedCodes.add(sku.code);
+  }
   const claim = catalogPublicationClaim(input.record), slug = payload.product.slug!;
   let product = input.product === null ? null : structuredClone(input.product);
   function materialState(product: CatalogPublishedProduct | null, rows: readonly CatalogPublishedSku[]) {
@@ -248,8 +254,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   }
   const original = publicationJson(materialState(product, input.skus));
   const affected = catalogPublicationAffected(payload);
-  // Preserve first-match semantics while indexing retained facts once.
-  const originalById = new Map([...input.skus].reverse().map(sku => [sku.id, sku] as const));
+  const originalById = new Map(input.skus.map(sku => [sku.id, sku] as const));
   const skus = new Map(input.skus.map(sku => [sku.code, structuredClone(sku)]));
   const documents = input.documents.map(document => structuredClone(document));
   const sources = [input.record, ...input.retainedSources];

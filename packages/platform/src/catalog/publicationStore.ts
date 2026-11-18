@@ -25,7 +25,7 @@ const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publicati
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 && !/[\u0000\uD800-\uDFFF]/u.test(value));
+const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 && !value.includes("\0") && !/[\uD800-\uDFFF]/u.test(value));
 const referenceSchema = z.string().refine(value => parseCatalogCandidateReference(value) !== null);
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
 const commandSchema = z.object({ schemaVersion: z.literal(2).optional(), commandKey: key, productId: id,
@@ -54,7 +54,7 @@ function failure(error: unknown): CatalogPublicationFailure {
   if (code === "42501") return { outcome: "unauthorized", reason: "publisher_not_authorized" };
   return { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
 }
-interface StoredPublication { id: string; product_id: string; revision: number; document_revision_id: string; canonical_state: string; digest: string; committed_at: string }
+interface StoredPublication { id: string; product_id: string; revision: number; previous_id: string | null; previous_revision: number | null; document_revision_id: string; canonical_state: string; digest: string; committed_at: string }
 interface RetainedState { head: CatalogHeadRef | null; publication: StoredPublication | null; product: CatalogPublishedProduct | null;
   skus: CatalogPublishedSku[]; references: CatalogSkuRevisionRef[]; documents: CatalogPublicationDocument[];
   liveSkus: { sku: string; status: string; sellable_standalone: boolean; sellable_in_subscription: boolean }[] }
@@ -78,12 +78,39 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(rows.length === 1 && rows[0]!.allowed === true, "publisher_not_authorized", "unauthorized");
     return actorId!;
   }
+  function verifyPredecessor(revisionNo: unknown, previousId: unknown, previousRevision: unknown) {
+    require(revision.safeParse(revisionNo).success && (revisionNo === 1 ? previousId === null && previousRevision === null
+      : id.safeParse(previousId).success && previousRevision === Number(revisionNo) - 1), readInvalid, "dependency_unavailable");
+  }
+  async function retainedSkuIndex(db: PgQueryExecutor, productId: string, at: number, references: readonly CatalogSkuRevisionRef[]) {
+    const rows = await tuple(db, `SELECT id,sku_id,revision,digest,octet_length(full_facts) AS bytes,sku_code,
+      EXISTS(SELECT 1 FROM public.catalog_publications issued WHERE issued.product_id=r.product_id AND issued.id=r.publication_id AND issued.revision<=$3) AS visible,
+      EXISTS(SELECT 1 FROM public.catalog_sku_revisions changed JOIN public.catalog_publications issued
+        ON issued.product_id=changed.product_id AND issued.id=changed.publication_id
+        WHERE changed.product_id=r.product_id AND changed.sku_id=r.sku_id AND changed.revision>r.revision AND issued.revision<=$3) AS superseded
+      FROM public.catalog_sku_revisions r WHERE product_id=$1::uuid AND id=ANY($2::uuid[])`, [productId, references.map(ref => ref.revisionId), at]);
+    const byId = new Map(rows.map(row => [row.id, row])), codes = new Set<string>();
+    require(rows.length === references.length && byId.size === rows.length, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
+    for (const reference of references) {
+      const row = byId.get(reference.revisionId);
+      if (!row || row.sku_id !== reference.skuId || row.revision !== reference.revision || row.digest !== reference.digest
+        || typeof row.bytes !== "number" || row.bytes < 2 || row.bytes > CATALOG_PUBLICATION_LIMITS.skuBytes
+        || typeof row.sku_code !== "string" || !row.sku_code || codes.has(row.sku_code)
+        || row.visible !== true || row.superseded !== false)
+        return publicationRefuse("catalog_publication_sku_revision_invalid", "dependency_unavailable");
+      codes.add(row.sku_code);
+    }
+    return byId;
+  }
   async function load(db: PgQueryExecutor, productId: string, historical?: CatalogHeadRef, allowDrift = false, documentRevisions: readonly number[] = [], expected?: { command: CatalogHeadRef | null; candidate: CatalogHeadRef | null }): Promise<RetainedState> {
     // One statement binds the head, full immutable roster/documents and current projections to the same snapshot.
     const rows = await tuple(db, `SELECT (SELECT to_jsonb(h) FROM public.catalog_publication_heads h WHERE h.product_id=$1::uuid) AS head,
       (SELECT to_jsonb(p) FROM public.catalog_products p WHERE p.id=$1::uuid) AS live_product,
       coalesce((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM public.catalog_skus s WHERE s.product_id=$1::uuid),'[]'::jsonb) AS live_skus,
-      (SELECT to_jsonb(p) FROM public.catalog_publications p WHERE p.product_id=$1::uuid AND p.id=coalesce($2::uuid,(SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid))) AS publication,
+      (SELECT to_jsonb(p) || jsonb_build_object('previous_revision', previous.revision) FROM public.catalog_publications p
+        LEFT JOIN public.catalog_publications previous ON previous.product_id=p.product_id AND previous.id=p.previous_id
+        WHERE p.product_id=$1::uuid AND p.id=coalesce($2::uuid,(SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid))) AS publication,
+      (SELECT max(revision) FROM public.catalog_publications p WHERE p.product_id=$1::uuid) AS latest_revision,
       coalesce((SELECT jsonb_agg(to_jsonb(r)) FROM public.catalog_sku_revisions r WHERE r.product_id=$1::uuid AND r.id IN (
         SELECT (entry->>'revisionId')::uuid FROM public.catalog_publications p, jsonb_array_elements(p.canonical_state::jsonb->'skus') entry
         WHERE p.id=coalesce($2::uuid,(SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid)))),'[]'::jsonb) AS revisions,
@@ -98,6 +125,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     canonicalText: typeof document.canonical_text === "string" ? document.canonical_text : "", provenance: document.provenance }) as CatalogPublicationDocument);
     const checkHead = (head: CatalogHeadRef | null) => { if (expected) require(equal(expected.command, expected.candidate) && equal(head, expected.command), "head_conflict", "conflict"); };
     if (!publication) {
+      require(historical || row.latest_revision === null && row.head === null, readInvalid, "dependency_unavailable");
       checkHead(null);
       require(!historical && row.live_product === null, "catalog_publication_lineage_unknown", "unsupported");
       return { head: null, publication: null, product: null, skus: [], references: [], documents, liveSkus: [] };
@@ -111,17 +139,25 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(createHash("sha256").update(document!.canonicalText).digest("hex") === document!.reference.digest,
       "catalog_publication_document_invalid", "dependency_unavailable");
     const head = { publicationId: publication.id, revision: publication.revision, documentDigest: document!.reference.digest };
+    verifyPredecessor(publication.revision, publication.previous_id, publication.previous_revision);
+    if (!historical) {
+      const pointer = row.head as Record<string, unknown> | null;
+      require(pointer?.product_id === productId && pointer.publication_id === publication.id
+        && pointer.revision === publication.revision && row.latest_revision === publication.revision, readInvalid, "dependency_unavailable");
+    }
     require(!historical || equal(head, historical), "head_conflict", "conflict");
     checkHead(head);
-    const revisions = row.revisions as Record<string, unknown>[], seen = new Set<string>();
+    const roster = await retainedSkuIndex(db, productId, publication.revision, manifest.skus);
+    const revisions = row.revisions as Record<string, unknown>[], byId = new Map(revisions.map(stored => [stored.id, stored]));
+    require(byId.size === revisions.length && revisions.length === manifest.skus.length, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
     const skus = manifest.skus.map(reference => {
-      const stored = revisions.find(stored => stored.id === reference.revisionId && stored.sku_id === reference.skuId && stored.revision === reference.revision);
-      require(stored && stored.digest === reference.digest && typeof stored.full_facts === "string" && !seen.has(reference.skuId), "catalog_publication_sku_revision_invalid", "dependency_unavailable");
-      seen.add(reference.skuId);
+      const stored = byId.get(reference.revisionId);
+      require(stored && stored.sku_id === reference.skuId && stored.revision === reference.revision && stored.digest === reference.digest
+        && typeof stored.full_facts === "string", "catalog_publication_sku_revision_invalid", "dependency_unavailable");
       const parsed = catalogPublishedSkuSchema.parse(JSON.parse(stored!.full_facts as string));
       require(publicationJson(parsed, CATALOG_PUBLICATION_LIMITS.skuBytes) === stored!.full_facts
-        && publicationDigest(parsed, CATALOG_PUBLICATION_LIMITS.skuBytes) === reference.digest && parsed.id === reference.skuId && parsed.productId === productId,
-      "catalog_publication_sku_revision_invalid", "dependency_unavailable");
+        && publicationDigest(parsed, CATALOG_PUBLICATION_LIMITS.skuBytes) === reference.digest && parsed.id === reference.skuId && parsed.productId === productId
+        && parsed.code === roster.get(reference.revisionId)?.sku_code, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
       return parsed;
     });
     if (!historical && !allowDrift) {
@@ -135,7 +171,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     }
     if (!historical && !allowDrift) {
       try { await assertProjection(db, { product: manifest.product, skus }); }
-      catch (error) { if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") publicationRefuse("catalog_publication_live_drift", "conflict"); throw error; }
+      catch (error) {
+        if (error instanceof CatalogPublicationError && error.code === "catalog_publication_post_state_mismatch")
+          publicationRefuse("catalog_publication_live_drift", "conflict");
+        throw error;
+      }
     }
     return { head, publication, product: manifest.product, skus, references: manifest.skus, documents, liveSkus: row.live_skus as RetainedState["liveSkus"] };
   }
@@ -187,6 +227,15 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       && result.actorId === row.actor_id && result.head.publicationId === row.publication_id, "catalog_publication_receipt_invalid", "dependency_unavailable");
     const publications = await tuple(db, `SELECT p.revision,p.digest,d.digest AS document_digest,p.previous_id,previous.revision AS previous_revision,previous_document.digest AS previous_document_digest,
       p.command_key,p.actor_id,(SELECT count(*)::integer FROM public.catalog_operator_receipts WHERE publication_id=p.id) AS receipt_count,
+      (SELECT coalesce(jsonb_agg(jsonb_build_object(
+          'productId',p.product_id,'variantId',r.sku_id,'sku',r.sku_code,
+          'state',CASE WHEN r.full_facts::jsonb->>'status'='archived' THEN 'withdrawn' ELSE r.full_facts::jsonb->>'status' END,
+          'variantRevision',r.revision,'publicationHead',jsonb_build_object('publicationId',p.id,'revision',p.revision,'documentDigest',d.digest),
+          'draftRef',jsonb_build_object('draftId',p.draft_id,'revision',p.draft_revision)) ORDER BY entry->>'skuId' COLLATE "C"),'[]'::jsonb)
+        FROM (SELECT value AS entry FROM jsonb_array_elements(p.canonical_state::jsonb->'skus')
+          EXCEPT SELECT value FROM jsonb_array_elements(previous.canonical_state::jsonb->'skus')) changed
+        LEFT JOIN public.catalog_sku_revisions r ON r.id=(entry->>'revisionId')::uuid AND r.publication_id=p.id AND r.product_id=p.product_id
+          AND r.sku_id=(entry->>'skuId')::uuid AND r.revision=(entry->>'revision')::integer AND r.digest=entry->>'digest') AS recorded_changes,
       to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at
       FROM public.catalog_publications p JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
       LEFT JOIN public.catalog_publications previous ON previous.id=p.previous_id AND previous.product_id=p.product_id
@@ -195,8 +244,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(publications.length === 1 && result.head.revision === publications[0]!.revision && result.head.documentDigest === publications[0]!.document_digest
       && result.publicationDigest === publications[0]!.digest && result.committedAt === publications[0]!.committed_at
       && result.commandKey === publications[0]!.command_key && result.actorId === publications[0]!.actor_id && publications[0]!.receipt_count === 1
+      && equal(result.changes, publications[0]!.recorded_changes)
       && equal(result.previousHead, publications[0]!.previous_id === null ? null : { publicationId: publications[0]!.previous_id, revision: publications[0]!.previous_revision, documentDigest: publications[0]!.previous_document_digest }),
     "catalog_publication_receipt_invalid", "dependency_unavailable");
+    verifyPredecessor(result.head.revision, publications[0]!.previous_id, publications[0]!.previous_revision);
     publicationJson({ outcome: "found", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
     return result;
   }
@@ -212,6 +263,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     }
     const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [parsed.draftId, parsed.draftRevision]);
     const raw = observedRow(rows).record;
+    require(raw !== null, "candidate_invalid");
     const header = z.object({ payload: z.object({ product: z.object({ type: catalogProductTypeRefSchema }) }) }).safeParse(raw);
     if (header.success) {
       const definition = deps.registry.resolve(header.data.payload.product.type);
@@ -443,8 +495,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           prepared.record.draftId, prepared.record.revision, command.candidateRef, command.candidateDigest, compiled.product.document!.id, canonicalState, publicationDigestValue, actorId, committedAt, command.commandKey]);
         for (const reference of references) if (!current.references.some(prior => prior.revisionId === reference.revisionId)) {
           const sku = compiled.skus.find(sku => sku.id === reference.skuId)!;
-          await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,$4,$5,$6,$7)",
-            [reference.revisionId, reference.skuId, command.productId, reference.revision, publicationId, publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes), reference.digest]);
+          await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest,sku_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+            [reference.revisionId, reference.skuId, command.productId, reference.revision, publicationId, publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes), reference.digest, sku.code]);
         }
         const result: CatalogPublicationReceiptV2 = { schemaVersion: 2, productId: command.productId, commandKey: command.commandKey, fingerprint, actorId,
           previousHead: current.head, head, publicationDigest: publicationDigestValue, committedAt,
@@ -580,7 +632,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(Number.isInteger(row.sku_count) && (row.valid === null || typeof row.valid === "boolean"), readInvalid, "dependency_unavailable");
     require(row.valid === true && row.sku_count === state.skus.length, "catalog_publication_post_state_mismatch");
     const definition = deps.registry.resolve(state.product.type);
-    require(definition, "catalog_definition_drift");
+    require(definition, "catalog_definition_drift", "dependency_unavailable");
     for (const sku of state.skus) {
       const identity = canonicalizeCatalogCombinationV2({ definition: definition!, axes: state.product.axes, options: sku.options });
       const rows = await tuple(db, `SELECT s.publication_facts=$2::jsonb AND s.sku=$3 AND s.product_id=$4::uuid AND s.title=$5 AND s.status=$6
@@ -732,7 +784,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       return await deps.transactions.run(async db => {
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         const rows = await tuple(db, `SELECT p.product_id,p.revision,p.canonical_state,p.digest,d.id AS document_id,d.digest AS document_digest,
-          d.revision_no,d.schema_id,d.document_ref,d.source_ref,d.canonical_text,p.id AS publication_id FROM public.catalog_publications p
+          d.revision_no,d.schema_id,d.document_ref,d.source_ref,d.canonical_text,p.id AS publication_id,p.previous_id,previous.revision AS previous_revision
+          FROM public.catalog_publications p
+          LEFT JOIN public.catalog_publications previous ON previous.product_id=p.product_id AND previous.id=p.previous_id
           LEFT JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id WHERE p.id=$1::uuid`, [head.publicationId]);
         require(rows.length > 0, "catalog_publication_absent", "unsupported");
         const row = observedRow(rows);
@@ -748,16 +802,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const productId = manifest.product.id, pointer = decodeCursor(cursor, productId, "facts"), offset = pointer?.before ?? 0;
         require(!pointer || pointer.highWater === head.revision, "catalog_publication_cursor_invalid");
         require(offset <= manifest.skus.length, "catalog_publication_cursor_invalid");
+        verifyPredecessor(row.revision, row.previous_id, row.previous_revision);
         const wanted = manifest.skus.slice(offset, offset + 100);
-        const lengths = await tuple(db, `SELECT id,sku_id,revision,digest,octet_length(full_facts) AS bytes FROM public.catalog_sku_revisions
-          WHERE product_id=$1::uuid AND id=ANY($2::uuid[])`, [productId, wanted.map(reference => reference.revisionId)]);
-        require(lengths.length === wanted.length, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
+        const indexed = await retainedSkuIndex(db, productId, head.revision, manifest.skus);
         const selected: CatalogSkuRevisionRef[] = []; let itemBytes = 0;
         for (const reference of wanted) {
-          const stored = lengths.find(stored => stored.id === reference.revisionId);
-          require(stored && stored.sku_id === reference.skuId && stored.revision === reference.revision && stored.digest === reference.digest
-            && typeof stored.bytes === "number" && stored.bytes > 0 && stored.bytes <= CATALOG_PUBLICATION_LIMITS.skuBytes,
-          "catalog_publication_sku_revision_invalid", "dependency_unavailable");
+          const stored = indexed.get(reference.revisionId)!;
           const count = selected.length + 1;
           const nextCursor = offset + count < manifest.skus.length
             ? encodeCursor({ kind: "facts", productId, highWater: head.revision, before: offset + count }) : null;
@@ -777,7 +827,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           const stored = facts.find(stored => stored.id === reference.revisionId);
           const value = catalogPublishedSkuSchema.parse(JSON.parse(stored!.full_facts as string));
           require(value.id === reference.skuId && value.productId === productId && publicationJson(value, CATALOG_PUBLICATION_LIMITS.skuBytes) === stored!.full_facts
-            && publicationDigest(value, CATALOG_PUBLICATION_LIMITS.skuBytes) === reference.digest, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
+            && publicationDigest(value, CATALOG_PUBLICATION_LIMITS.skuBytes) === reference.digest && value.code === indexed.get(reference.revisionId)?.sku_code,
+          "catalog_publication_sku_revision_invalid", "dependency_unavailable");
           return { reference, facts: value };
         });
         const next = offset + items.length;
@@ -799,8 +850,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(accepted !== null, "retained_revision_unavailable", "unsupported");
         require(equal(accepted, input), "retained_source_mismatch", "unauthorized");
         const rows = await tuple(db, `SELECT p.revision,p.canonical_state,p.digest AS manifest_digest,d.digest,d.canonical_text,
-          d.revision_no,d.schema_id,d.document_ref,d.source_ref,r.full_facts,r.digest AS sku_digest,r.revision AS sku_revision,d.id AS document_id
+          d.revision_no,d.schema_id,d.document_ref,d.source_ref,r.full_facts,r.digest AS sku_digest,r.revision AS sku_revision,d.id AS document_id,
+          p.previous_id,previous.revision AS previous_revision
           FROM public.catalog_publications p
+          LEFT JOIN public.catalog_publications previous ON previous.product_id=p.product_id AND previous.id=p.previous_id
           LEFT JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
           LEFT JOIN public.catalog_sku_revisions r ON r.id=$3 AND r.sku_id=$4 AND r.product_id=p.product_id
           WHERE p.id=$1 AND p.product_id=$2`, [input.publicationId, input.productId, input.skuRevisionId, input.skuId]);
@@ -817,8 +870,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         "catalog_publication_manifest_invalid", "dependency_unavailable");
         const reference = manifest.skus.find(reference => reference.skuId === input.skuId && reference.revisionId === input.skuRevisionId);
         require(reference, "retained_revision_unavailable", "unsupported");
+        verifyPredecessor(row.revision, row.previous_id, row.previous_revision);
+        const indexed = await retainedSkuIndex(db, input.productId, row.revision as number, manifest.skus);
         require(reference!.digest === row.sku_digest && reference!.revision === row.sku_revision && typeof row.full_facts === "string", readInvalid, "dependency_unavailable");
         const sku = catalogPublishedSkuSchema.parse(JSON.parse(row.full_facts as string));
+        require(sku.code === indexed.get(input.skuRevisionId)?.sku_code, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
         require(sku.id === input.skuId && sku.productId === input.productId && publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes) === row.full_facts
           && publicationDigest(sku, CATALOG_PUBLICATION_LIMITS.skuBytes) === reference!.digest, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
         const result = { outcome: "found" as const, head, product: manifest.product, reference: reference!, sku };

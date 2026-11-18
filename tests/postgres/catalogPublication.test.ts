@@ -823,14 +823,17 @@ it.each([
     await client.query("ROLLBACK TO SAVEPOINT global_gtin");
     const freshProduct = randomUUID();
     await client.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Constraint parent')", [freshProduct, `constraint-${freshProduct}`]);
-    const revision = (await client.query("SELECT max(revision)+1 AS next FROM public.catalog_publications WHERE product_id=$1", [records.get("catalog_publications")!.product_id])).rows[0].next;
+    const previous = (await client.query("SELECT id,revision FROM public.catalog_publications WHERE product_id=$1 ORDER BY revision DESC LIMIT 1",
+      [records.get("catalog_publications")!.product_id])).rows[0];
+    const revision = previous.revision + 1;
+    const publicationKey = { previous_id: previous.id, command_key: `constraint:${randomUUID()}` };
     const foreignCases: [string, Record<string, unknown>][] = [
       ["catalog_products", { id: randomUUID(), slug: `foreign-${randomUUID()}`, primary_sku_id: null, current_document_revision_id: null, type_key: "example:absent", type_version: 1 }],
       ["catalog_skus", { id: randomUUID(), sku: `FOREIGN-${randomUUID()}`, product_id: randomUUID() }],
       ["catalog_product_document_revisions", { id: randomUUID(), product_id: randomUUID() }],
-      ["catalog_publications", { id: randomUUID(), revision, candidate_ref: `v1:${randomUUID()}@1/unpublished`, draft_id: randomUUID() }],
-      ["catalog_publications", { id: randomUUID(), revision, candidate_ref: `v1:${randomUUID()}@1/unpublished`, previous_id: foreignPublished.head.publicationId }],
-      ["catalog_publications", { id: randomUUID(), revision, candidate_ref: `v1:${randomUUID()}@1/unpublished`, document_revision_id: foreignPublished.data.payload.product.documentRevision!.id }],
+      ["catalog_publications", { ...publicationKey, id: randomUUID(), revision, candidate_ref: `v1:${randomUUID()}@1/unpublished`, draft_id: randomUUID() }],
+      ["catalog_publications", { ...publicationKey, id: randomUUID(), revision, candidate_ref: `v1:${randomUUID()}@1/unpublished`, previous_id: foreignPublished.head.publicationId }],
+      ["catalog_publications", { ...publicationKey, id: randomUUID(), revision, candidate_ref: `v1:${randomUUID()}@1/unpublished`, document_revision_id: foreignPublished.data.payload.product.documentRevision!.id }],
       ["catalog_sku_revisions", { id: randomUUID(), revision: 2, publication_id: randomUUID() }],
       ["catalog_sku_revisions", { id: randomUUID(), revision: 2, publication_id: foreignPublished.head.publicationId }],
       ["catalog_publication_heads", { product_id: freshProduct }],
@@ -2521,30 +2524,12 @@ it.each(["reference", "assets"] as const)("cycle1 native activation binds verifi
 
 it.each([2_147_483_646, 2_147_483_647])("cycle1 native publication revision boundary from %i", async revision => {
   const data = await draft(), first = await commit(data.publication), publicationId = randomUUID();
-  // Seed an admitted native edge directly; do not manufacture billions of events.
-  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at,command_key)
+  // Each value fits the integer domain, but neither can skip its predecessor.
+  const insert = db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at,command_key)
     SELECT $1,product_id,$2,id,draft_id,draft_revision,$3,candidate_digest,document_revision_id,canonical_state,digest,actor_id,clock_timestamp(),$3
     FROM public.catalog_publications WHERE id=$4`, [publicationId, revision, `fixture:revision:${publicationId}`, first.head.publicationId]);
-  await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [data.productId, publicationId, revision]);
-  const head = { ...first.head, publicationId, revision };
-  expect(await authority.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
-  const command = await revise(data, head); await approve(command); const before = await snapshot();
-  const result = await authority.publish(command, actor);
-  if (revision === 2_147_483_646) {
-    expect(result).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2_147_483_647 } } });
-    expect((await db.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows).toEqual([{ revision: 2_147_483_647 }]);
-  } else {
-    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_revision_limit" });
-    expect(await snapshot()).toEqual(before);
-  }
-});
-
-it("cycle1 native unknown activation SKU keeps its early source refusal", async () => {
-  const data = await draft(), payload = structuredClone(data.payload);
-  payload.publication.operations = [{ op: "set_eligibility", skuCode: "MISSING", sellableStandalone: true, sellableInSubscription: false }];
-  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_operation_source_missing" });
-  expect(await snapshot()).toEqual(before);
+  await expect(insert).rejects.toMatchObject({ code: "23514", message: "catalog_publication_lineage_invalid" });
+  expect(await authority.reads.current(data.productId)).toMatchObject({ outcome: "found", head: first.head });
 });
 
 it.each(["direct media", "resumed activation", "resumed media"] as const)("cycle1 native media cannot borrow an unmaterialized SKU from a retained product draft: %s", async mode => {
@@ -3037,7 +3022,7 @@ it.each([
   const stable = await snapshot(), result = await target.publish(command, capability);
   if (expected === "committed") {
     expect(result).toMatchObject({ outcome: "committed" });
-    if (result.outcome !== "committed") throw new Error("Missing publication receipt");
+    if (result.outcome !== "committed" || !("head" in result.receipt)) throw new Error("Missing publication receipt");
     expect(await target.readbackV2(result.receipt.head)).toMatchObject({ outcome: "page", product: {
       name: "Synthetic article", presentation: mode === "clear on revision" ? null : content.presentation,
     } });
@@ -3242,7 +3227,7 @@ it.each(["zero revision", "max revision", "zero draft revision", "max absent dra
   const row: Record<string, unknown> = await nativePublicationSqlRow();
   let rejection: Record<string, string> | null = null;
   if (mode === "zero revision") { row.revision = 0; rejection = { code: "23514", constraint: "catalog_publications_revision_check" }; }
-  if (mode === "max revision") row.revision = 2_147_483_647;
+  if (mode === "max revision") { row.revision = 2_147_483_647; rejection = { code: "23514", message: "catalog_publication_lineage_invalid" }; }
   if (mode === "zero draft revision") { row.draft_revision = 0; rejection = { code: "23514", constraint: "catalog_publications_draft_revision_check" }; }
   if (mode === "max absent draft revision") { row.draft_revision = 2_147_483_647; rejection = { code: "23503" }; }
   if (mode === "short candidate digest" || mode === "nonhex candidate digest") { row.candidate_digest = (mode === "short candidate digest" ? "a".repeat(63) : "g".repeat(64)); rejection = { code: "23514", constraint: "catalog_publications_candidate_digest_check" }; }
@@ -3288,8 +3273,8 @@ it.each(["zero", "maximum", "foreign publication"] as const)("cycle1 native head
     await client.query("BEGIN");
     if (mode === "maximum") {
       row.revision = 2_147_483_647;
-      await client.query("INSERT INTO public.catalog_publications SELECT (jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb)).*", [JSON.stringify(row)]);
-      expect((await client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=2147483647 WHERE product_id=$1", [row.product_id, row.id])).rowCount).toBe(1);
+      await expect(client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=2147483647 WHERE product_id=$1",
+        [row.product_id, row.id])).rejects.toMatchObject({ code: "23503" });
     } else await expect(client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [row.product_id, mode === "foreign publication" ? paged.head.publicationId : foreignPublished.head.publicationId, mode === "zero" ? 0 : paged.head.revision]))
       .rejects.toMatchObject(mode === "zero" ? { code: "23514", constraint: "catalog_publication_heads_revision_check" } : { code: "23503" });
   } finally { await client.query("ROLLBACK"); client.release(); }
@@ -3540,6 +3525,111 @@ it.each(["legacy GTIN first", "row locker first", "publisher first with collidin
     } finally {
       await competing.query("ROLLBACK");
       competing.release();
+    }
+  });
+
+it.each(["stale head", "future SKU revision", "duplicate code outside page", "wrong observation status", "duplicate observation"] as const)(
+  "publication retained reads distinguish an internally consistent but false state: %s", async mode => {
+    const data = await draft(), first = await commit(data.publication);
+    const payload = structuredClone(data.payload);
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.publication.kind = "compensation";
+    payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+    const second = await commit(mode === "stale head" ? await save(payload, data.draftId, 1, first.head) : await incrementalSku(data, first.head, 1));
+    const page = await authority.readbackV2(second.head);
+    if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const stored = async (publicationId: string) => JSON.parse((await client.query(
+        "SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [publicationId])).rows[0].canonical_state);
+      const writeState = async (publicationId: string, state: unknown) => {
+        const canonical = canonicalCatalogDraftJson(state);
+        await client.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+        await client.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+          [publicationId, canonical, createHash("sha256").update(canonical).digest("hex")]);
+      };
+      let bound = page.items[0];
+      if (mode === "stale head") {
+        await client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1",
+          [data.productId, first.head.publicationId, first.head.revision]);
+      } else if (mode === "future SKU revision") {
+        const older = await stored(first.head.publicationId), newer = await stored(second.head.publicationId);
+        bound = page.items.find(item => item.facts.id !== data.skuId)!;
+        await writeState(first.head.publicationId, { ...older, skus: newer.skus });
+      } else if (mode === "duplicate code outside page") {
+        const [outside, inside] = page.items;
+        bound = inside;
+        const full = canonicalCatalogDraftJson({ ...outside.facts, code: inside.facts.code });
+        const digest = createHash("sha256").update(full).digest("hex");
+        await client.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+        const row = (await client.query("SELECT to_jsonb(r) AS value FROM public.catalog_sku_revisions r WHERE id=$1",
+          [outside.reference.revisionId])).rows[0].value;
+        await client.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3 WHERE id=$1",
+          [outside.reference.revisionId, full, digest]);
+        if ("sku_code" in row) await client.query("UPDATE public.catalog_sku_revisions SET sku_code=$2 WHERE id=$1",
+          [outside.reference.revisionId, inside.facts.code]);
+        const state = await stored(second.head.publicationId);
+        state.skus[0].digest = digest;
+        await writeState(second.head.publicationId, state);
+      } else {
+        const receipt = { ...first, changes: mode === "wrong observation status" ? [{ ...first.changes[0], state: "active" }]
+          : [...first.changes, first.changes[0]] };
+        await client.query("ALTER TABLE public.catalog_operator_receipts DISABLE TRIGGER catalog_operator_receipts_immutable");
+        await client.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE publication_id=$1",
+          [first.head.publicationId, canonicalCatalogDraftJson(receipt)]);
+      }
+      const target = createPostgresCatalogPublication({ ...dependencies(), acceptedSource: async (_db, _context, binding) => binding,
+        transactions: { run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION") ? Promise.resolve({ rows: [] }) : client.query(sql, values) }) },
+      });
+      const legacy = { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
+      if (mode === "stale head") {
+        expect(await target.reads.current(data.productId)).toEqual(legacy);
+      } else if (mode === "future SKU revision" || mode === "duplicate code outside page") {
+        const head = mode === "future SKU revision" ? first.head : second.head;
+        const cursor = mode === "future SKU revision" ? null : Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts",
+          productId: data.productId, highWater: head.revision, before: 1 })).toString("base64url");
+        const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
+        expect(await target.readbackV2(head, cursor)).toEqual(refusal);
+        expect(await target.reads.readback(head)).toEqual(legacy);
+        const binding = { kind: "account", sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId, skuId: bound.facts.id,
+          skuRevisionId: bound.reference.revisionId, publicationId: head.publicationId, documentRevisionId: page.product.document!.id } as const;
+        expect(await target.resolveRetained(binding, target.authorizeReadScope(null))).toEqual(refusal);
+      } else {
+        const capability = (await target.authorize(null))!;
+        const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" };
+        expect(await target.receipt({ productId: data.productId, commandKey: first.commandKey }, capability)).toEqual(refusal);
+        expect(await target.publish(data.publication, capability)).toEqual(refusal);
+        expect(await target.reads.history(data.productId, null)).toEqual(legacy);
+      }
+    } finally { await client.query("ROLLBACK"); client.release(); }
+  });
+
+it.each(["missing draft", "draft executor outage", "missing definition", "actual projection drift"] as const)(
+  "publication distinguishes absence, unavailable evidence and live drift: %s", async mode => {
+    const data = await draft();
+    if (mode === "missing draft" || mode === "draft executor outage") {
+      const target = createPostgresCatalogPublication(dependencies(sql => {
+        if (mode === "draft executor outage" && sql.startsWith("SELECT public.catalog_draft_record")) throw new Error("Fixture executor unavailable");
+      }));
+      const command = { ...data.publication, candidateRef: `v1:${randomUUID()}@1/unpublished` };
+      const capability = (await target.authorize(null))!;
+      expect(await target.publish(command, capability)).toEqual(mode === "missing draft"
+        ? { outcome: "validation_issue", reason: "candidate_invalid" }
+        : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+      return;
+    }
+    const published = await commit(data.publication);
+    await expect(authority.reads.current(data.productId)).resolves.toMatchObject({ outcome: "found", head: published.head });
+    const name = (await db.query("SELECT name FROM public.catalog_products WHERE id=$1", [data.productId])).rows[0].name;
+    const target = mode === "missing definition" ? createPostgresCatalogPublication({ ...dependencies(), registry: createCatalogProductTypeRegistry([]) }) : authority;
+    if (mode === "actual projection drift") await db.query("UPDATE public.catalog_products SET name='Changed live name' WHERE id=$1", [data.productId]);
+    try {
+      expect(await target.reads.current(data.productId)).toEqual(mode === "missing definition"
+        ? { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" }
+        : { outcome: "conflict", reason: "head_conflict" });
+    } finally {
+      if (mode === "actual projection drift") await db.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, name]);
     }
   });
 

@@ -501,7 +501,7 @@ it("cycle1 retained fact scalar and roster boundaries", () => {
     const product = structuredClone(compiled.product); change(product);
     expect(catalogPublishedProductSchema.safeParse(product).success).toBe(accepts);
   }
-  for (const [field, maximum] of [["code",160],["title",500],["logisticsRef",240]] as const)
+  for (const [field, maximum] of [["code",160],["title",500],["logisticsRef",500]] as const)
     for (const length of [0,1,maximum-1,maximum,maximum+1]) skuPatch(sku => { sku[field] = "a".repeat(length); }, length>=1 && length<=maximum);
   for (const value of [0,1,2,2_147_483_646,2_147_483_647,2_147_483_648,1.5]) {
     const accepts = Number.isInteger(value) && value>=1 && value<=2_147_483_647;
@@ -606,7 +606,7 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
         return { rows: [{ revision: result.head.revision, digest: result.publicationDigest, document_digest: documentDigest,
           previous_id: result.previousHead?.publicationId ?? null, previous_revision: result.previousHead?.revision ?? null,
           previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt,
-          command_key: result.commandKey, actor_id: result.actorId, receipt_count: 1 }] };
+          command_key: result.commandKey, actor_id: result.actorId, receipt_count: 1, recorded_changes: result.changes }] };
       }
       throw new Error("Unexpected history query");
     } }) },

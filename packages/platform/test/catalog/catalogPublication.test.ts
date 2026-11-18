@@ -463,6 +463,20 @@ function publicationWithSecondary() {
   data.payload.publication.operations = [];
   return data;
 }
+it.each(["duplicate code", "duplicate ID", "invalid facts", "authentic roster"] as const)(
+  "publication compiler validates the complete retained roster: %s", mode => {
+    const data = publicationWithSecondary(), [first, second] = data.skus;
+    data.payload.publication.kind = "compensation";
+    data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
+    data.payload.skus = [];
+    Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
+    if (mode === "duplicate code") { second.code = first.code; data.skus = [second, first]; }
+    if (mode === "duplicate ID") second.id = first.id;
+    if (mode === "invalid facts") Reflect.deleteProperty(second, "source");
+    if (mode === "authentic roster") expect(compileCatalogPublication(data).skus.map(sku => sku.code)).toEqual([first.code, second.code]);
+    else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_sku_revision_invalid");
+  });
+
 it.each(["current", "before"])("cycle1 eligibility refuses archived state at the %s boundary", kind => {
   const data = publicationWithSecondary(), second = data.skus[1];
   second.status = kind === "before" ? "archived" : "active";
@@ -654,15 +668,14 @@ describe.each([50_000, 50_001])("cycle1 default capacity boundary at %i SKUs", c
   });
 });
 
-it("cycle1 retained identity lookup preserves the first matching input fact", () => {
+it("retained identity lookup refuses a duplicate before classifying changes", () => {
   const data = publicationWithSecondary(); data.skus[1].id = data.skus[0].id; data.payload.skus[0].id = data.skus[0].id;
   data.payload.publication.kind = "compensation";
   data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
   let classified = false;
-  data.rules = { ...rules, classifySkuChange: (before, after) => {
-    classified = true; expect(before).toBe(data.skus[0]); expect(after.code).toBe("SECOND"); return "compatible";
-  } };
-  expect(compileCatalogPublication(data).changed).toBe(false); expect(classified).toBe(true);
+  data.rules = { ...rules, classifySkuChange: () => { classified = true; return "compatible"; } };
+  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_sku_revision_invalid");
+  expect(classified).toBe(false);
 });
 
 it.each(["missing", "archived"])("cycle1 final primary refuses a %s retained SKU", kind => {
@@ -827,7 +840,7 @@ it.each(["continuation", "terminal"] as const)("returns a full-fact page at the 
   const canonicalState = publicationJson({ schemaVersion: 2, product, skus: items.map(({ reference }) => reference) });
   const stored = items.map(({ reference, facts }) => {
     const text = publicationJson(facts);
-    return { id: reference.revisionId, sku_id: reference.skuId, revision: reference.revision, digest: reference.digest, bytes: Buffer.byteLength(text), full_facts: text };
+    return { id: reference.revisionId, sku_id: reference.skuId, revision: reference.revision, digest: reference.digest, bytes: Buffer.byteLength(text), full_facts: text, sku_code: facts.code, visible: true, superseded: false };
   });
   const ref = document.reference;
   const fetched: unknown[] = [];
@@ -836,7 +849,8 @@ it.each(["continuation", "terminal"] as const)("returns a full-fact page at the 
     transactions: { run: work => work({ async query(sql, params) {
       if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
       if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) return { rows: [{ product_id: product.id, publication_id: head.publicationId,
-        revision: head.revision, canonical_state: canonicalState, digest: digest(canonicalState), document_id: ref.id, document_digest: ref.digest,
+        revision: head.revision, previous_id: "50000000-0000-4000-8000-000000000002", previous_revision: 1,
+        canonical_state: canonicalState, digest: digest(canonicalState), document_id: ref.id, document_digest: ref.digest,
         revision_no: ref.revisionNo, schema_id: ref.schemaId, document_ref: ref.documentRef, source_ref: ref.sourceRef, canonical_text: document.canonicalText }] };
       const ids = params?.[1] as string[];
       if (sql.startsWith("SELECT id,sku_id,revision,digest,octet_length")) return { rows: stored.filter(row => ids.includes(row.id)) };
@@ -891,7 +905,7 @@ it.each([
 
 it.each([
   ["absent release", "release", "authored", null, false, false, true],
-  ["absent compensation with retained source", "compensation", "retained", null, false, false, true],
+  ["absent compensation with retained source", "compensation", "retained", null, false, false, false],
   ["explicit empty", "release", "authored", [], false, false, true],
   ["one mode", "release", "authored", ["one_time"], true, false, true],
   ["both modes", "compensation", "authored", ["one_time", "subscription"], true, true, true],
@@ -918,7 +932,8 @@ it.each([
   data.payload.publication.kind = kind;
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: sku.code, sellableStandalone: standalone, sellableInSubscription: subscription }];
   if (accepted) expect(compileCatalogPublication(data).skus[0]).toMatchObject({ sellableStandalone: standalone, sellableInSubscription: subscription });
-  else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_eligibility_source_mismatch");
+  else expect(() => compileCatalogPublication(data)).toThrow(source === "retained" ? "catalog_publication_operation_source_missing"
+    : "catalog_publication_eligibility_source_mismatch");
 });
 
 it.each([
@@ -959,7 +974,7 @@ it.each([
   ["wrong document id", "catalog_publication_v3_document_invalid"],
   ["wrong document schema", "catalog_publication_v3_document_invalid"],
   ["wrong document revision", "catalog_publication_v3_document_invalid"],
-  ["unused bad document", "catalog_publication_v3_document_invalid"],
+  ["unused bad document", "catalog_publication_v3_document_digest_mismatch"],
   ["old prefix with equal derived facts", "catalog_publication_v3_compile_document_stale"],
   ["bare older move", "catalog_publication_v3_document_reference_stale"],
   ["matched older registration", null],

@@ -30,6 +30,9 @@ A decision reason may be null. A supplied reason preserves whitespace, requires
 text beyond ASCII spaces, and accepts up to 1,000 UTF-8 bytes. History,
 replay and recovery verify the kinded receipt against its immutable publication
 or decision. A ledger row with an inconsistent or missing companion fails closed.
+Reads verify the publication predecessor and the immutable SKU roster, including
+items outside the requested page. Receipt changes must match the SKU versions
+issued by that publication.
 
 Migration: install the native forward and upgrade readers before composing the
 new version 2 publication API. Existing publication ports retain their version 1

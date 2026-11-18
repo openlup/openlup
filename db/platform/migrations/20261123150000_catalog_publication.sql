@@ -47,6 +47,7 @@ CREATE TABLE public.catalog_publication_heads (
 CREATE TABLE public.catalog_sku_revisions (
  id uuid PRIMARY KEY,
  sku_id uuid NOT NULL REFERENCES public.catalog_skus(id),
+ sku_code text NOT NULL CHECK (length(sku_code) BETWEEN 1 AND 160),
  product_id uuid NOT NULL,
  revision integer NOT NULL CHECK (revision BETWEEN 1 AND 2147483647),
  publication_id uuid NOT NULL,
@@ -182,12 +183,18 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
  END IF;
  IF TG_TABLE_NAME = 'catalog_publications' THEN
+  IF (NEW.revision = 1 AND NEW.previous_id IS NOT NULL) OR (NEW.revision > 1 AND
+   (NEW.previous_id IS NULL OR NEW.previous_id=NEW.id OR EXISTS(SELECT 1 FROM public.catalog_publications p
+    WHERE p.product_id=NEW.product_id AND p.id=NEW.previous_id AND p.revision<>NEW.revision-1))) THEN
+   RAISE EXCEPTION 'catalog_publication_lineage_invalid' USING ERRCODE='23514';
+  END IF;
   IF body->'schemaVersion' IS DISTINCT FROM '2'::jsonb OR body->'product'->>'id' IS DISTINCT FROM NEW.product_id::text
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
   END IF;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
-  IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text THEN
+  IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text
+   OR body->>'code' IS DISTINCT FROM NEW.sku_code THEN
    RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
   END IF;
  END IF;
