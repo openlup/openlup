@@ -28,6 +28,8 @@ export async function installCatalogDefinitions(installExecutor: PgQueryExecutor
     [pack.id, pack.version, JSON.stringify(payload)],
   );
   const receipt = rows[0]?.receipt as CatalogDefinitionInstallReceipt | undefined;
-  if (rows.length !== 1 || receipt?.manifestDigest !== manifest.digest) throw new Error("invalid_catalog_install_receipt");
+  if (rows.length !== 1 || receipt?.manifestDigest !== manifest.digest
+    || (manifest.subscriptionProfileDefinitions && canonicalCatalogDraftJson(receipt.subscriptionProfileDefinitions ?? null)
+      !== canonicalCatalogDraftJson(manifest.subscriptionProfileDefinitions))) throw new Error("invalid_catalog_install_receipt");
   return receipt;
 }

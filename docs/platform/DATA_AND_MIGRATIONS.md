@@ -428,6 +428,13 @@ stage. After migration, an explicit migration-owner call to
 `backfillCatalogNetContent(installExecutor, {batchSize})` drains bounded,
 ascending-ID batches. Only positive legacy grams with absent content convert;
 zero stays unknown, existing quantities and gross mass are never overwritten.
+The later native quantity-serving forward makes `net_weight_g` nullable for
+governed SKU writes. Its write-time compatibility trigger uses the immutable
+bound type's exact unit factor for nonstandard mass units. The existing
+positive-gram backfill and unadopted legacy rows retain their previous behavior.
+Captures keep the existing column and restore position, including SQL NULL
+for a valid typed quantity with no exact signed integer gram projection.
+
 No install hook runs automatically, and runtime has no backfill EXECUTE. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for the driver
 and the [catalogue lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order).
@@ -2139,6 +2146,25 @@ checks installation rollback. Its observer plants include claim, sequence,
 trigger, CHECK and identity-row changes. Sequence allocation during a later
 command may leave gaps; installation rollback removes a newly created sequence.
 Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
+
+### Catalogue subscription profile installation
+
+The native profile forward retains canonical declarations in
+`catalog_definition_installs.receipt` under the existing definition lock. Two
+installations can reference identical declaration bytes for the same version.
+A changed declaration needs a new profile version. Packs with no full profile
+declaration keep their existing receipt shape.
+
+The profile-aware assertion uses the established commerce lock order and
+authoritative current and retained publication references. An enrolled selection
+requires transactional policy evidence before an order or an edit can write.
+The same optional profile identity travels in each existing V2 reference. The
+native hooks compare the frozen draft at settlement and the retained profile
+roster before a new renewal freeze. They run inside the commerce transaction
+and preserve the existing lock order. Use the existing wide legacy native
+cadence forward for installed edit capacity. The read-only profile assertion
+is available to the service role. A custom qualified runtime needs equivalent
+execute authority wherever it runs the governed transaction hooks.
 
 ### Closed native store forwards
 

@@ -379,10 +379,10 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of order) {
         const rows = source.get(table)!;
         const b = packet.compatible.tables.find(value => value.table === table);
-        // Classic subscriptions, their events and accepted-reference carriers use
+        // Governed SKU projections and accepted-reference carriers use
         // the locked owner path after exact trigger and schema inspection;
         // the generic row importer continues to refuse INSERT triggers.
-        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events", "subscription_renewal_terms", "subscription_renewal_operations"].includes(table)) {
+        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events", "subscription_renewal_terms", "subscription_renewal_operations", "catalog_skus"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
           await restoreCompatiblePostgresRows({ catalogueId: manifest.objectInventorySha256, packet: bounded,
@@ -639,11 +639,12 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
     catalog_legacy_obligation_bindings: ["catalog_legacy_obligation_bindings_guard"],
+    catalog_skus: ["catalog_skus_legacy_net_grams_check"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
-    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
+    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit", "commerce_orders_subscription_profile_acceptance"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
@@ -652,7 +653,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
     commerce_offer_policy_rollout_baselines: ["commerce_offer_policy_baseline_insert_guard"],
-    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit"],
+    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit", "subscription_events_profile_acceptance"],
     commerce_order_operations: ["communication_refund_subject"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
     subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],

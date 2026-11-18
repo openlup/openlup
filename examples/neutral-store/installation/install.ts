@@ -1,3 +1,5 @@
+import { installCatalogDefinitions } from '@openlup/platform/catalog';
+import { starterCatalogue } from '../host/catalogue-selection.ts';
 import { seedQuoteAuthority } from './quote-seed.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
@@ -55,12 +57,22 @@ export type InstallationBootstrap = (config: StoreConfig) => Promise<Demonstrati
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
 export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap): Promise<void> {
   const installation = await bootstrap(config);
-  try { await applyDemoSeed(config, installation); }
+  try { await applyRegisteredDemoSeed(config, installation); }
   finally { await installation.close(); }
 }
 
+export function installStarterCatalogueDefinitions(connection: InstallConnection, configurationId: string) {
+  const { pack } = starterCatalogue.select(configurationId);
+  if (!pack) throw new Error('starter_catalogue_upgrade_required');
+  return installCatalogDefinitions(connection, pack);
+}
+
+export function applyRegisteredDemoSeed(config: StoreConfig, installation: DemonstrationInstallation): Promise<void> {
+  return applyDemoSeed(config, installation, { installDefinitions: true });
+}
+
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
-export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation): Promise<void> {
+export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation, options?: { installDefinitions: true }): Promise<void> {
   const { connection, installRole, runtimeRole } = installation;
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
   const seed = buildDemoSeed(config);
@@ -78,6 +90,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       throw new Error('starter_seed_install_role_required');
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
+    if (options?.installDefinitions && starterCatalogue.select(config.id).pack) await installStarterCatalogueDefinitions(connection, config.id);
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (id) DO UPDATE SET slug=EXCLUDED.slug, status=EXCLUDED.status,

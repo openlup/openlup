@@ -1,3 +1,5 @@
+import { canonicalizeCatalogQuantity, type CatalogQuantity } from "@openlup/core/catalog";
+
 // Pure builder for the OmniPack product-registration request (catalog load). Mirrors the
 // outbound-order payload convention (pure module in server/_lib, wired through the client).
 // The exact OmniPack request key names live behind the constants below so finalizing them
@@ -64,4 +66,24 @@ export function buildOmnipackProductPayload(input: OmnipackProductInput): Record
       height: requirePositive(input.pack.heightMm, "invalid_pack_height"),
     },
   };
+}
+
+/** Explicit packaged gross mass for the existing product-registration lane. @experimental */
+export interface TypedProductPayloadInput extends Omit<OmnipackProductInput, "pack"> {
+  pack: (Omit<OmnipackProductPack, "weightGrams"> & { grossMass: CatalogQuantity | null }) | null;
+}
+
+export function buildTypedProductPayload(input: TypedProductPayloadInput): Record<string, unknown> {
+  let weightGrams = Number.NaN;
+  const gross = input.pack?.grossMass;
+  if (gross?.dimension === "mass") {
+    try {
+      const grams = canonicalizeCatalogQuantity(gross);
+      weightGrams = Number(grams.unscaled) / 10 ** grams.scale;
+    } catch { /* The existing payload boundary reports the invalid weight. */ }
+  }
+  return buildOmnipackProductPayload({
+    ...input,
+    pack: input.pack && gross ? { ...input.pack, weightGrams } : null,
+  });
 }

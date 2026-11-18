@@ -1,14 +1,14 @@
 import type { SubscriptionTermsAdmission } from '@openlup/platform/subscriptions/contracts';
 import { admitsTerms } from '../shared/subscription-offer.ts';
-import { createPostgresCommerceQuoteCatalogReadPort } from '@openlup/platform/catalog';
 import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort,
   type CommercePriceAuthorityReadPort, type CreateQuoteRequest, type CommerceQuoteCatalogItem } from '@openlup/platform/pricing';
 import { createPostgresStockAvailability } from '@openlup/platform/inventory';
 import type { CompositionRulesPort } from '@openlup/core/bundle';
 import type { SizedCatalogFact, SizedHostPorts, SubscriptionQueryExecutor, PackageEditConstraintMapper } from '@openlup/platform/subscriptions';
 import type { StoreConfig } from '../shared/config.ts';
+import type { StarterCatalogueSelection } from './catalogue-selection.ts';
 import { isRecord } from '../shared/offer.ts';
-import { documentDigest, editorProducts, demoIdentifier, productDocument, verifyProductDocument } from './editor-catalogue.ts';
+import { documentDigest, editorProducts, demoIdentifier, productDocument, starterQuoteCatalogue } from './editor-catalogue.ts';
 
 const instant = (value: unknown) => value instanceof Date ? value.toISOString() : String(value);
 /** Exact effective-list selection and amount policy stay in the public pricing authority. */
@@ -33,8 +33,8 @@ function priceReads(db: SubscriptionQueryExecutor): CommercePriceAuthorityReadPo
     },
   };
 }
-export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig) {
-  const quoteCatalogReadPort = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (value,envelope) => verifyProductDocument(value,envelope,config.quote.document.schemaId) });
+export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig, selected?: StarterCatalogueSelection) {
+  const { registration, legacy: quoteCatalogReadPort } = starterQuoteCatalogue(db, config, selected);
   const taxProfile = { included: true as const,country: config.market.country,category: config.purchase.tax.category,
     vatRateBps: config.purchase.tax.vatRateBps,legalBasis: config.purchase.tax.legalBasis };
   const quotePort = createDbBackedCommerceQuotePort<CreateQuoteRequest,CommerceQuoteCatalogItem,Record<string, never>,{ mode: 'one_time' | 'subscription'; promoCodes: string[]; cadenceDays: number | null }>({
@@ -62,7 +62,7 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
       return { coreLines,constraint: { ...constraint,data: { ...constraint.data,value: lever.value } } };
     },
   };
-  return { quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort,admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') };
+  return { catalogueRegistration: registration,quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort,admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') };
 }
 
 /** A seeded synthetic profile is shared by this demonstration's owned customer subjects.

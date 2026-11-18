@@ -70,6 +70,10 @@ successful sandbox purchase through the installed binding. The purchase test
 must fail while that binding is absent. Do not skip it or change its expected
 result to `host_binding_required`.
 
+The database recipe accepts `--project <configuration-id>` to start only a
+registered configuration on its disposable host. The browser config accepts
+the wrapper's unique loopback entries for registered configurations.
+
 Run the browser recipe separately with each configuration selected. Record
 which candidate artifacts, configuration and database were actually used.
 Extend the engine journey with subscription activation, renewal and recovery

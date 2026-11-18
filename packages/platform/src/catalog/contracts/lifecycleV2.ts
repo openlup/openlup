@@ -35,7 +35,13 @@ export type CatalogLifecycleStoredCommand = CatalogDraftPublicationStoredCommand
 /** @experimental */
 export interface CatalogLifecycleStoredRecord extends CatalogDraftSummary { payload: CatalogLifecycleStoredPayload }
 /** @experimental */
-export interface CatalogPublishedProductV3 extends CatalogPublishedProduct { schemaVersion: 3; lifecycleState: CatalogLifecycleStateV2; definitionDigest: string }
+export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
+  schemaVersion: 3; lifecycleState: CatalogLifecycleStateV2; definitionDigest: string;
+  /** Installed and resolved together with the immutable type version. @experimental */
+  subscriptionProfileRef?: import("@openlup/core/catalog").CatalogSubscriptionProfileRef;
+  /** @experimental */
+  subscriptionProfileDigest?: string;
+}
 /** @experimental */
 export interface CatalogPublishedSkuV3 extends CatalogPublishedSku { schemaVersion: 3; lifecycleState: CatalogLifecycleStateV2; optionDigest: string }
 /** @experimental */

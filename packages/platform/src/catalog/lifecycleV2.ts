@@ -74,7 +74,8 @@ export const catalogLifecycleStoredRecordSchema: z.ZodType<CatalogLifecycleStore
 /** @experimental */
 export const catalogAcceptedReferenceV2Schema: z.ZodType<CatalogAcceptedReferenceV2> = z.object({ schemaVersion: z.literal(2), skuId: id, skuCode: code, skuRevisionId: id,
   publicationHead: z.object({ publicationId: id, revision, documentDigest: digest }).strict(), typeRef: catalogProductTypeRefSchema, definitionDigest: digest, optionDigest: digest,
-  netContent: catalogQuantitySchema, demandPolicyRef: ref.optional() }).strict();
+  netContent: catalogQuantitySchema, demandPolicyRef: ref.optional(),
+  subscriptionProfile: catalogProductTypeRefSchema.extend({ digest }).optional() }).strict();
 /** @experimental */
 export function catalogAuthoritativeLifecycleV2(value: CatalogProductState | CatalogSkuState): CatalogLifecycleStateV2 {
   if (!("schemaVersion" in value) || value.schemaVersion !== 3) return publicationRefuse("catalog_lifecycle_authority_unavailable", "unsupported");

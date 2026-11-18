@@ -15,3 +15,6 @@ export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEdit
 export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
 
 export type { LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
+
+export type { CatalogSubscriptionProfileV1, CatalogSubscriptionProfileRef, CatalogSubscriptionPolicyRef,
+  CatalogSubscriptionDemandScope, CatalogSubscriptionProfileIssue, CatalogSubscriptionLineDemand, CatalogSubscriptionCoverage } from "@openlup/core/catalog";

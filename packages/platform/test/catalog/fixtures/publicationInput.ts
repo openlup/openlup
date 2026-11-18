@@ -7,8 +7,9 @@ import type { CatalogPublicationCompileInput, CatalogPublicationRules } from "..
 const productId = "10000000-0000-4000-8000-000000000001", skuId = "20000000-0000-4000-8000-000000000001";
 const draftId = "30000000-0000-4000-8000-000000000001", documentId = "40000000-0000-4000-8000-000000000001";
 export const registry = createCatalogProductTypeRegistry([{ key: "example:article", version: 1,
-  units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
-  netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] }]);
+  units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false },
+    { code: "openlup:ml", dimension: "volume", integral: false }, { code: "openlup:piece", dimension: "count", integral: true }],
+  netContentUnits: ["openlup:g", "openlup:ml", "openlup:piece"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] }]);
 export const definition = registry.resolve({ key: "example:article", version: 1 })!;
 export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }),
   validateProduct: () => [], classifySkuChange: () => "compatible" };

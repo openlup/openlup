@@ -195,13 +195,23 @@ Check availability: `npx --no -- openlup catalogue check --packs ./owned/catalog
 
 ## Subscription profile
 
-Edit metadata in `catalogue.json`: `subscriptionProfiles: [{key:
-"stationery:repeat", version: 1}]`, with the same `subscriptionProfileRef` on a
-type. Reference checking is available. Cadence bounds, demand pools, unit
-compatibility, overflow and runtime composition await the profile owner; request
-`requiredChecks: ["profiles"]` for those checks. Never infer a database cadence
-bound. New closed grammar kinds require upstream work. Usual codes:
-`definition_profile_ref_invalid`, `definition_unknown_profile_ref`.
+Declare a key and version in `subscriptionProfiles` and use the same
+`subscriptionProfileRef` on the product type. Put the full, versioned
+declaration in `subscriptionProfileDefinitions`. The experiment includes
+`validateCatalogSubscriptionProfile` in `@openlup/core/catalog`
+and a server-side policy binding in `@openlup/platform/subscriptions`.
+
+Use `fixed_units` for independently chosen quantities, `units_per_day` for
+declared canonical content and daily demand, or `host_policy` to bind an existing
+adopter policy. Set `demandScope` to `per_line` when each product must cover the
+interval independently. An exact policy can accept 56 pieces at 2/day and 140 g
+at 5 g/day on the same 28-day cadence. Working examples can check declaration
+shape offline and use the native edit-bound probe against the candidate database.
+For a live quote or edit, compose `bindAcceptance` with verified facts and
+the observed installed edit bound. The existing accepted catalogue reference
+carries the profile key, version and digest through payment and renewal.
+Activate each lane only after its host bindings are installed and verified. Typical declaration codes include `definition_profile_invalid`,
+`definition_unknown_profile_ref` and `profile_cadence_exceeds_platform_bound`.
 Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
 
 ## Upgrade a definition

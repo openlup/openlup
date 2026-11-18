@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { env as processEnvironment } from "node:process";
 import { Pool } from "pg";
+import { projectManagedCatalogContent, type ManagedCatalogContentRow } from "@openlup/platform/catalog";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { captureManagedSourceGraph, managedIdentityEvidence, mapManagedRetainedBusiness }
   from "../../server/adapters/postgres/connectedManagedRetained.js";
@@ -1199,5 +1200,49 @@ it("catalog_transfer_initializes_only_absent_publication_fields", async () => {
   } finally {
     await managed.owner.query("ALTER TABLE public.catalog_products DROP COLUMN publication_facts");
     await managed.owner.query("ALTER TABLE public.catalog_skus DROP COLUMN publication_facts");
+  }
+});
+
+it.each([
+  { name: "legacy", dimension: null, amount: null, projected: null, gross: null, expected: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 } },
+  { name: "whole mass", dimension: "mass", amount: "100", projected: 100, gross: "101.5", expected: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 } },
+  { name: "fractional mass", dimension: "mass", amount: "99.50", projected: null, gross: "101", expected: { dimension: "mass", unit: "openlup:g", unscaled: "995", scale: 1 } },
+  { name: "volume", dimension: "volume", amount: "50", projected: null, gross: "125", expected: { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 } },
+  { name: "count", dimension: "count", amount: "56", projected: null, gross: "125", expected: { dimension: "count", unit: "openlup:piece", unscaled: "56", scale: 0 } },
+  { name: "fabricated grams", dimension: "volume", amount: "50", projected: 100, gross: "125", expected: null },
+  { name: "fractional count", dimension: "count", amount: "1.5", projected: null, gross: "125", expected: null },
+  { name: "wrong legacy mass", dimension: "mass", amount: "99", projected: 99, gross: "125", expected: null },
+] as const)("MC5 managed exact quantities preserve current authority and legacy shape: $name", async ({ dimension, amount, projected, gross, expected }) => {
+  const db = await managed.owner.connect();
+  const documentId = randomUUID(), documentDigest = "a".repeat(64);
+  try {
+    await db.query("BEGIN");
+    await db.query("SET LOCAL ROLE postgres");
+    const capabilities = "SELECT has_table_privilege('authenticated','public.catalog_skus','SELECT') AS reader, row_security_active('public.catalog_skus') AS filtered";
+    const prior = await db.query(capabilities);
+    await db.query(readFileSync("supabase/migrations/20261123230000_catalog_quantity_serving.sql", "utf8"));
+    expect((await db.query(capabilities)).rows).toEqual(prior.rows);
+    await db.query(`INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,source_ref,document_payload,digest,provenance)
+      VALUES($1,$2,1,'example:v1','example:document','example:source','{}',$3,'{}')`, [documentId, productId, documentDigest]);
+    await db.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [productId, documentId]);
+    const write = db.query(`UPDATE public.catalog_skus SET net_content_dimension=$2, net_content_canonical_amount=$3,
+      net_content_legacy_grams=$4, gross_mass_canonical_grams=$5 WHERE id=$1`, [skuId, dimension, amount, projected, gross]);
+    if (!expected) {
+      await expect(write).rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_exact_content_shape" });
+      return;
+    }
+    await write;
+    const row = (await db.query<ManagedCatalogContentRow>(`SELECT p.id AS "productId", s.product_id AS "skuProductId",
+      p.current_document_revision_id AS "currentDocumentRevisionId", jsonb_build_object('id',d.id,'productId',d.product_id,'digest',d.digest) AS document,
+      s.net_weight_g AS "legacyNetWeightG", net_content_dimension AS dimension, net_content_canonical_amount::text AS "canonicalAmount",
+      gross_mass_canonical_grams::text AS "grossGrams", net_content_legacy_grams AS "projectedGrams"
+      FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id
+      JOIN public.catalog_product_document_revisions d ON d.id=p.current_document_revision_id AND d.product_id=p.id WHERE s.id=$1`, [skuId])).rows[0]!;
+    expect(row.legacyNetWeightG).toBe(100);
+    expect(projectManagedCatalogContent(row)).toMatchObject({ netContent: expected, documentRevision: { id: documentId, digest: documentDigest } });
+    expect(() => projectManagedCatalogContent({ ...row, currentDocumentRevisionId: randomUUID() })).toThrow("catalog_authority_changed");
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
   }
 });

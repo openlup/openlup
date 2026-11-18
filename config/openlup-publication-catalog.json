@@ -1482,6 +1482,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124000000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261124010000_catalog_adoption.sql",
       "class": "public-output"
     },
@@ -2394,6 +2402,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-registry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/catalogue-selection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/checkout-attempts.ts",
       "class": "public-output"
     },
@@ -2511,6 +2527,10 @@
     },
     {
       "path": "examples/neutral-store/index.html",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/installation/catalogue-upgrade.ts",
       "class": "public-output"
     },
     {
@@ -2715,6 +2735,14 @@
     },
     {
       "path": "examples/neutral-store/test/browser-groups.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-registry.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/catalogue-upgrade.test.ts",
       "class": "public-output"
     },
     {
@@ -3299,6 +3327,10 @@
     },
     {
       "path": "packages/core/src/catalog/quantities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/catalog/subscriptionProfile.ts",
       "class": "public-output"
     },
     {
@@ -4818,6 +4850,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123230000_catalog_quantity_serving.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124000000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261124010000_catalog_adoption.sql",
       "class": "public-output"
     },
@@ -5386,11 +5426,27 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/installedSubscriptionProfiles.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/lifecycleV2.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/managedCatalogContent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/mediaSourcePack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/observeProfileCadenceBound.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/physicalQuantity.ts",
       "class": "public-output"
     },
     {
@@ -5443,6 +5499,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/servingRead.ts",
       "class": "public-output"
     },
     {
@@ -8038,6 +8098,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/seo/productLdV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/seo/serializeJsonLd.ts",
       "class": "public-output"
     },
@@ -9194,6 +9258,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/catalogProfileBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/classicPackageQuote.ts",
       "class": "public-output"
     },
@@ -9375,6 +9443,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresWinback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/profileDemand.ts",
       "class": "public-output"
     },
     {
@@ -9694,6 +9766,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/catalogServing.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/fixtures/adoption-witness-census.md",
       "class": "public-output"
     },
@@ -9711,6 +9787,10 @@
     },
     {
       "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/serving-witness-census.md",
       "class": "public-output"
     },
     {
@@ -11718,6 +11798,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/catalogProfiles.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/classicPackageQuote.test.ts",
       "class": "public-output"
     },
@@ -11763,6 +11847,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/profile-witness-census.md",
       "class": "public-output"
     },
     {
@@ -28643,6 +28731,10 @@
     },
     {
       "path": "supabase/migrations/20261030122000_channel_purchased_source.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261123230000_catalog_quantity_serving.sql",
       "class": "public-output"
     },
     {

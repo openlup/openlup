@@ -10,6 +10,10 @@ const ANCHORS = `SELECT pe.unit_price_minor FROM public.price_entries pe
         AND exact.valid_from <= $3::timestamptz AND (exact.valid_to IS NULL OR exact.valid_to > $3::timestamptz))))`;
 const FACTS = `s.status AS sku_status, s.sellable_standalone, s.sellable_in_subscription,
   s.net_weight_g, pr.status AS product_status,
+  CASE WHEN s.net_content_dimension IS NOT NULL THEN jsonb_build_object(
+    'dimension', s.net_content_dimension, 'unit', s.net_content_unit,
+    'unscaled', s.net_content_unscaled::text, 'scale', s.net_content_scale
+  ) END AS typed_content, definition.definition->'units' AS declared_units,
   (pr.primary_sku_id IS NOT NULL AND revision.id IS NOT NULL) AS document_ready,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('issuer', identifier.issuer, 'normalizedValue', identifier.normalized_value,
     'kind', identifier.identifier_kind, 'packKind', identifier.pack_kind, 'packQuantity', identifier.quantity, 'isPrimary', identifier.is_primary))
@@ -24,6 +28,8 @@ export const COMPONENT_SQL = `
   FROM public.catalog_bundle_components c
   JOIN public.catalog_skus s ON s.id = c.catalog_sku_id
   JOIN public.catalog_products pr ON pr.id = s.product_id
+  LEFT JOIN public.catalog_type_versions definition
+    ON definition.type_key = pr.type_key AND definition.version = pr.type_version
   LEFT JOIN public.catalog_product_document_revisions revision ON revision.id = pr.current_document_revision_id AND revision.product_id = pr.id
   WHERE c.bundle_id = $1::uuid ORDER BY c.sort_order, s.sku`;
 export const FEED_COMPONENT_SQL = `
@@ -35,6 +41,8 @@ export const FEED_COMPONENT_SQL = `
   JOIN public.catalog_bundle_components c ON c.bundle_id = selected.bundle_id
   JOIN public.catalog_skus s ON s.id = c.catalog_sku_id
   JOIN public.catalog_products pr ON pr.id = s.product_id
+  LEFT JOIN public.catalog_type_versions definition
+    ON definition.type_key = pr.type_key AND definition.version = pr.type_version
   LEFT JOIN public.catalog_product_document_revisions revision ON revision.id = pr.current_document_revision_id AND revision.product_id = pr.id
   ORDER BY c.bundle_id, c.sort_order, s.sku`;
 export const PRICE_SQL = `

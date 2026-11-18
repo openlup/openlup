@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
-  createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
+  buildCatalogAdmissionFromServing, createPostgresCatalogAdmission, observeCatalogSubscriptionCadenceBound,
+  type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
-import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore, createPostgresStockWaitStore } from "@openlup/platform/subscriptions";
+import { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, createCatalogSubscriptionProfileBinding, createNativeCatalogRenewalCodecV2, createPostgresRenewalStore, createPostgresStockWaitStore } from "@openlup/platform/subscriptions";
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
 import { createPostgresPackageEditor, createPostgresSizedEditor, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
@@ -18,7 +19,16 @@ const digest = (value: string) => createHash("sha256").update(value).digest("hex
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
-const registry = createCatalogProductTypeRegistry([definition]);
+const profile = {
+  key: "example:recurring", version: 1, allowedCadenceDays: [28],
+  quantities: { minBaseUnits: 1, maxBaseUnits: 3, maxBaseLines: 1, maxUnitsPerLine: 3 },
+  swapGroupKeys: [], addons: { allowedTypeRefs: [], maxLines: 0, maxUnits: 0 },
+  consumption: { kind: "fixed_units" }, prepaid: "unsupported",
+} as const;
+const profileRef = { key: profile.key, version: profile.version };
+const profiledDefinition = { ...definition, version: 2, subscriptionProfileRef: profileRef };
+const profiles = createCatalogSubscriptionProfileBinding({ profiles: [profile] });
+const registry = createCatalogProductTypeRegistry([definition, profiledDefinition]);
 const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson,
   deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }), validateProduct: () => [], classifySkuChange: () => "compatible" };
 let container: PostgresContainer | undefined, pool: Pool;
@@ -34,7 +44,8 @@ beforeAll(async () => {
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
   await installCatalogDefinitions(pool, { id: "example:admission", namespace: "example", version: 1, openlupRange: "0.44.x",
-    capabilities: { publish: false }, types: [definition], taxClasses: [] });
+    capabilities: { publish: false }, types: [definition, profiledDefinition], taxClasses: [],
+    subscriptionProfiles: [profileRef], subscriptionProfileDefinitions: [profile] });
   await pool.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'admission@example.invalid')", [administrator]);
   await pool.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [administrator]);
   await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1')");
@@ -44,7 +55,7 @@ const rpc = async (db: Pool | PoolClient, name: string, args: unknown[]) =>
   (await db.query(`SELECT public.${name}(${args.map((_, index) => `$${index + 1}`).join(",")}) AS result`, args)).rows[0].result;
 
 function publisher(connection: PoolClient, afterQuery?: (sql: string, values: unknown[]) => Promise<void>) {
-  return createPostgresCatalogPublication({ registry, rules,
+  return createPostgresCatalogPublication({ registry, rules, subscriptionProfiles: profiles,
     authorizeHuman: async () => ({ ok: true, userId: administrator, role: "admin", isMachineActor: false }),
     readiness: async () => ({ ready: true, reasons: [] }), globalReadiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => true,
     transactions: { async run(work) {
@@ -85,16 +96,17 @@ async function candidate(db: PoolClient, value: CatalogDraftPayloadV4, draft: st
   expect((await rpc(db, "catalog_draft_apply", [text,digest(text),"operator:synthetic"])).outcome).toBe("committed");
   const candidateRef = `v1:${draft}@${revision + 1}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
   const candidateDigest = digest('["catalog-candidate",1,' + canonicalCatalogDraftJson(value) + ','
-    + canonicalCatalogDraftJson([{ ...value.product.type, definitionDigest: catalogDefinitionDigest(definition) }]) + ',' + canonicalCatalogDraftJson(head) + ']');
+    + canonicalCatalogDraftJson([{ ...value.product.type, definitionDigest: catalogDefinitionDigest(registry.resolve(value.product.type)!) }]) + ',' + canonicalCatalogDraftJson(head) + ']');
   const authority = publisher(db), actor = (await authority.authorize(null))!;
   const publication: CatalogPublishCommand = { productId: value.product.id, commandKey: `publish:${revision}`, candidateRef, candidateDigest, expectedHead: head, changes: [] };
   expect(await authority.decision({ schemaVersion: 2, action: "approve", productId: value.product.id,
     commandKey: `approve:${revision}`, candidateRef, candidateDigest, reason: "Exact synthetic candidate" }, actor)).toMatchObject({ outcome: "committed" });
   return { authority, actor, publication };
 }
-async function fixture(pack: string, standing: { product?: Record<string, unknown>; sku?: Record<string, unknown> } = {}) {
+async function fixture(pack: string, standing: { product?: Record<string, unknown>; sku?: Record<string, unknown>; profiled?: boolean } = {}) {
   const product = randomUUID(), sku = randomUUID(), draft = randomUUID(), client = randomUUID(), subscription = randomUUID(), actor = randomUUID();
   const value = payload(product,sku,pack), db = await pool.connect();
+  if (standing.profiled) value.product.type = { key: profiledDefinition.key, version: profiledDefinition.version };
   try {
     const initial = await candidate(db,value,draft,0,null), published = await initial.authority.publish(initial.publication,initial.actor);
     if (!("receipt" in published)) throw new Error(JSON.stringify(published));
@@ -118,8 +130,16 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
     await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=2 WHERE product_id=$1", [product,publication]);
     await db.query("DELETE FROM public.catalog_lifecycle_write_capabilities WHERE product_id=$1", [product]);
     const head: CatalogHeadRef = { ...published.receipt.head, publicationId: publication, revision: 2 };
-    const reference: CatalogAcceptedReferenceV2 = { schemaVersion: 2, skuId: sku, skuCode: facts.code, skuRevisionId: revision,
+    let reference: CatalogAcceptedReferenceV2 = { schemaVersion: 2, skuId: sku, skuCode: facts.code, skuRevisionId: revision,
       publicationHead: head, typeRef: manifest.product.type, definitionDigest: manifest.product.definitionDigest, optionDigest: facts.optionDigest, netContent: facts.netContent };
+    if (standing.profiled) {
+      const bound = profiles.bindAcceptance({ cadenceDays: 28, installedCadenceBound: 90, lineItems: [{
+        id: sku, typeRef: reference.typeRef, quantity: 2, addon: false, sellable: true, profileRef,
+        profileDigest: manifest.product.subscriptionProfileDigest, publication: { reference, productId: product, documentRevisionId: old.document_revision_id },
+      }] });
+      if (bound.kind !== "profiled") throw new Error(JSON.stringify(bound));
+      reference = bound.acceptance.lines[0]!;
+    }
     await db.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)", [client,`${client}@example.invalid`,actor]);
     const priceList = randomUUID(), entry = randomUUID();
     await db.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp()-interval '1 day')", [priceList]);
@@ -1416,3 +1436,187 @@ it("admission binding promoted", async () => {
     await e.query("ROLLBACK"); expect(await snapshot()).toEqual(before);
   } finally { await stop.release(); await publishing; await e.query("ROLLBACK"); await w.query("ROLLBACK"); h.release(); w.release(); e.release(); }
 });
+
+it.each(["order", "promoted-order", ...lanes] as const)(
+  "profile_attachment_continuity_matrix SP1-D-023 direct %s refuses without verified binding",
+  async lane => {
+    const f = await fixture("profile", { product: { subscriptionProfileRef: { key: "example:recurring", version: 1 } } });
+    const command = lane === "order" || lane === "promoted-order" ? null : await edit(f, lane);
+    const db = await session();
+    const before = await snapshot();
+    try {
+      if (command && lane === "legacy") {
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor, role: "authenticated" })]);
+      }
+      const write = command ? command.invoke(db) : rpc(db,
+        lane === "order" ? "commerce_create_order_draft_with_outbox" : "commerce_create_promoted_order_draft_with_outbox", purchaseInput(f).args);
+      await expect(write).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
+    } finally {
+      await db.query("ROLLBACK"); db.release();
+    }
+    expect(await snapshot()).toEqual(before);
+  },
+);
+
+
+it("cadence_bound_parity_matrix observes the installed constraint and both effective routines", async () => {
+  const observed = await observeCatalogSubscriptionCadenceBound(pool);
+  expect(observed).not.toBeNull();
+  const sql = await pool.query(`SELECT pg_get_expr(conbin,conrelid) AS expression FROM pg_constraint
+    WHERE conrelid='public.subscription_edit_quotes'::regclass AND conname='subscription_edit_quotes_cadence_check'`);
+  expect(sql.rows[0].expression).toContain(`proposed_cadence_days <= ${observed}`);
+});
+
+// The lead integrates the independent legacy expansion with the final stack.
+const nativeCadenceForwardInstalled = (JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")).forward as { file: string }[])
+  .some(unit => unit.file.endsWith("_subscription_cadence_bound.sql"));
+it.skipIf(!nativeCadenceForwardInstalled)("cadence_bound_sql_matches_exported_constant on the merged stack", async () => {
+  const installed = await observeCatalogSubscriptionCadenceBound(pool);
+  expect(installed).toBe(3660);
+  expect(Math.min(installed!, CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS)).toBe(120);
+  const f = await fixture("cadence"), db = await session();
+  try {
+    await db.query("SELECT set_config('request.jwt.claim.sub',$1,true)", [f.actor]);
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor, role: "authenticated" })]);
+    for (const days of [90,91,120,121]) {
+      const legacy = await rpc(db,"customer_subscription_preview_bundle_as_actor",
+        [f.subscription,randomUUID(),JSON.stringify([{ variantId:f.sku,qty:2 }]),"[]",{},days,1]);
+      expect(legacy.preview.canApply).toBe(true);
+      const command = await rpc(db,"subscription_command_preview",
+        [f.actor,f.client,randomUUID(),f.subscription,"update_plan_length",{ planDays:days,expectedTemplateVersion:1 },f.at]);
+      expect(command).toMatchObject({ canApply:true });
+    }
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("profile_attachment_continuity_matrix SP1-D-022 keeps immutable installed profile versions", async () => {
+  const profile = {
+    key: "example:retained", version: 1, allowedCadenceDays: [28],
+    quantities: { minBaseUnits: 1, maxBaseUnits: 1, maxBaseLines: 1, maxUnitsPerLine: 1 },
+    swapGroupKeys: [], addons: { allowedTypeRefs: [], maxLines: 0, maxUnits: 0 },
+    consumption: { kind: "fixed_units" }, prepaid: "unsupported",
+  } as const;
+  const pack = { id: "example:profile", namespace: "example", openlupRange: "1.x", capabilities: {}, types: [], taxClasses: [] };
+  const install = (version: number, input: { readonly key: string; readonly version: number; readonly allowedCadenceDays: readonly number[] }) =>
+    installCatalogDefinitions(pool, { ...pack, version, subscriptionProfiles: [{ key: input.key, version: input.version }],
+      subscriptionProfileDefinitions: [{ ...profile, ...input }] });
+  const first = await install(1, profile);
+  expect(first.subscriptionProfileDefinitions).toEqual([profile]);
+  expect(await install(1, profile)).toEqual(first);
+  await expect(install(2, { ...profile, allowedCadenceDays: [30] })).rejects.toMatchObject({
+    code: "23505", message: "catalog_profile_install_refuses_redefinition",
+  });
+  expect(await install(2, { ...profile, version: 2, allowedCadenceDays: [30] })).toMatchObject({
+    subscriptionProfileDefinitions: [{ key: profile.key, version: 2, allowedCadenceDays: [30] }],
+  });
+  expect(await install(1, profile)).toEqual(first);
+});
+
+it("profile_attachment_continuity_matrix SP1-D-023 payment compares the frozen draft proof", async () => {
+  const f = await fixture("profile", { profiled: true });
+  const input = purchaseInput(f);
+  const draft = await rpc(pool, "commerce_create_order_draft_with_outbox", input.args);
+  const orderId = (draft.orderDraft.orderId as string).replace("order_", "");
+  const intent = await createPostgresProviderPaymentControlPort(pool, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover",
+    recoveryTemplateSlug: "recovered" }).createIntent({ idempotencyKey: `intent:${orderId}`, targetKind: "one_time_order",
+    orderId, amountMinor: 1234, currency: "XXX", metadata: {}, channelKey: "example_rail", at: f.at });
+  const settle = (db: Pool | PoolClient) => rpc(db,"commerce_record_settlement",[`settle:${orderId}`,intent.id,"succeeded",`event:${orderId}`,{},f.at]);
+  const before = await snapshot(), db = await session();
+  try {
+    await db.query(`UPDATE public.commerce_orders SET metadata=metadata#-'{quoteSnapshot,catalogAdmission,skuRevisions,0,reference,subscriptionProfile}' WHERE id=$1`, [orderId]);
+    await expect(settle(db)).rejects.toMatchObject({ code: "22023", message: "profile_attachment_invalid" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect(await snapshot()).toEqual(before);
+  await settle(pool);
+  expect((await pool.query("SELECT status,catalog_acceptance FROM public.commerce_orders WHERE id=$1", [orderId])).rows)
+    .toEqual([{ status: "paid", catalog_acceptance: { schemaVersion: 2, lines: [f.reference] } }]);
+});
+
+it("profile_attachment_continuity_matrix SP1-D-023 edit compares the pinned profile digest", async () => {
+  const f = await fixture("profile", { profiled: true }), command = await edit(f);
+  const before = await snapshot(), db = await session();
+  try {
+    await db.query(`UPDATE public.subscription_quote_previews
+      SET quote_snapshot=jsonb_set(quote_snapshot,'{catalogAdmission,skuRevisions,0,reference,subscriptionProfile,digest}',to_jsonb(repeat('f',64)))
+      WHERE subscription_id=$1`, [f.subscription]);
+    await expect(command.invoke(db)).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect(await snapshot()).toEqual(before);
+  const clean = await pool.connect();
+  try { expect(await command.invoke(clean)).toMatchObject({ status: "applied" }); } finally { clean.release(); }
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscription])).rows)
+    .toEqual([{ catalog_acceptance: { schemaVersion: 2, lines: [f.reference] } }]);
+});
+
+it("profile_attachment_continuity_matrix SP1-D-023 renewal compares the complete retained proof", async () => {
+  const f = await fixture("profile", { profiled: true }), renew = await renewal(f,"claim");
+  const encoded = renew.encoded;
+  const { subscriptionProfile: _omitted, ...unprofiled } = f.reference;
+  const before = await snapshot(), db = await session();
+  try {
+    await expect(rpc(db,"subscription_claim_due_renewal",[
+      renew.codec.identity(renew.codec.decode(encoded)), encoded.frozenFingerprint,
+      { ...encoded, catalogAcceptance: { schemaVersion: 2, lines: [unprofiled] } },
+      "profile-witness",300,renew.now,
+    ])).rejects.toMatchObject({ code: "22023", message: "profile_attachment_invalid" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect(await snapshot()).toEqual(before);
+  const clean = await pool.connect();
+  try { await renew.invoke(clean); } finally { clean.release(); }
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_renewal_operations WHERE subscription_id=$1", [f.subscription])).rows)
+    .toEqual([{ catalog_acceptance: { schemaVersion: 2, lines: [f.reference] } }]);
+});
+
+it("profile_attachment_continuity_matrix SP1-D-023 one-time purchase keeps its unprofiled reference", async () => {
+  const f = await fixture("profile", { profiled: true }), input = purchaseInput(f);
+  input.quote.quote.context.mode = "one_time";
+  input.quote.catalogAdmission.mode = "one_time";
+  delete input.quote.catalogAdmission.skuRevisions[0]!.reference.subscriptionProfile;
+  const draft = await rpc(pool,"commerce_create_order_draft_with_outbox",input.args);
+  expect(draft.orderDraft.status).toBe("draft");
+});
+
+it.each(["commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox"])(
+  "profile_attachment_continuity_matrix SP1-D-023 takes the purchase mode from the order draft in %s",
+  async routine => {
+    const f = await fixture("profile", { profiled: true }), input = purchaseInput(f);
+    // The order writer takes the purchase mode from the draft, which stays subscription.
+    input.quote.quote.context = { ...input.quote.quote.context, mode: "one_time" };
+    const line = input.quote.catalogAdmission.skuRevisions[0]!.reference;
+    const before = await snapshot(), db = await session();
+    try {
+      await db.query("SAVEPOINT wrong_quote_mode");
+      await expect(rpc(db,routine,input.args)).rejects.toMatchObject({ code: "22023", message: "profile_attachment_invalid" });
+      await db.query("ROLLBACK TO wrong_quote_mode");
+      delete line.subscriptionProfile;
+      await expect(rpc(db,routine,input.args)).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
+    } finally { await db.query("ROLLBACK"); db.release(); }
+    expect(await snapshot()).toEqual(before);
+  },
+);
+
+it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
+  "catalog_bound_effect_rechecks_shared_authority MC5-D-026 %s", async purpose => {
+    const f = await fixture("serving"), read = await pool.connect();
+    try {
+      const offerVersion = purpose === "sized" ? "sized.v1" : "classic";
+      const authority = publisher(read).serving({ types: [definition], offerVersion, maxItems: 5000 });
+      const { items } = await authority.detail(f.value.product.slug!);
+      const item = items.find(item => item.sku.id === f.sku);
+      expect(item).toMatchObject({ product: { id: f.product }, acceptedReference: f.reference });
+      const input = buildCatalogAdmissionFromServing({
+        mode: f.admission.mode, priceContextVersions: f.admission.priceContextVersions,
+        lines: [{ item: { productId: item!.product.id, acceptedReference: item!.acceptedReference }, quantity: 2 }],
+        purpose: purpose === "order" ? "order" : "account",
+        offerEvidence: purpose === "order" ? { offerVersion } : { offerVersion, subscriptionId: f.subscription, lane: purpose, ...(purpose === "sized" ? { optIn: true } : {}) },
+      });
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, input)).resolves.toBeUndefined();
+      const before = (await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows;
+      const stale = { ...input, heads: [{ productId: f.product, head: { ...f.head, revision: 1 } }] };
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, stale)).rejects.toMatchObject({
+        code: "40001", message: purpose === "order" ? "commerce_order_draft_catalog_head_moved" : "customer_self_service_stale_edit_catalog_head",
+      });
+      expect((await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual(before);
+    } finally { read.release(); }
+  },
+);

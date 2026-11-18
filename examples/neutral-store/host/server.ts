@@ -6,13 +6,16 @@ import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
-import { selectConfiguration } from '../owned/store.config.ts';
+import { starterCatalogue } from './catalogue-selection.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
+import type { NeutralSkuEnvelopeV2 } from '@openlup/platform/catalog';
+import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const options = parseHostArguments(process.argv.slice(2));
-const config = selectConfiguration(options.configuration);
+const registration = { ...starterCatalogue.select(options.configuration) };
+const config = registration.configuration;
 assertConfig(config);
 const configuredPort = options.port;
 // Listening on the container bridge is an explicit argument; Compose publishes loopback only.
@@ -48,8 +51,29 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
   const origin = admission.origin;
   const url = new URL(request.url ?? '/', origin);
   if (url.origin !== origin) { sendJson(response, 400, { ok: false, code: 'starter_request_invalid' }); return; }
+  if (request.method === 'GET' && (url.pathname === '/api/catalogue' || url.pathname.startsWith('/api/catalogue/'))) {
+    if (!bindings.catalogue) { sendJson(response, 404, { ok: false, code: 'starter_route_unknown' }); return; }
+    const slug = url.pathname === '/api/catalogue' ? null : url.pathname.slice('/api/catalogue/'.length);
+    if (slug !== null && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug)) {
+      sendJson(response, 404, { ok: false, code: 'starter_route_unknown' });
+      return;
+    }
+    const page = slug === null
+      ? await bindings.catalogue.list({ cursor: url.searchParams.get('cursor'), limit: 100 })
+      : await bindings.catalogue.detail(slug).catch((error: unknown) => {
+        if (error instanceof CommerceQuoteCatalogReadError && error.code === 'catalog_authority_unsupported') return null;
+        throw error;
+      });
+    if (page === null || (slug !== null && page.items.length === 0)) {
+      sendJson(response, 404, { ok: false, code: 'starter_route_unknown' });
+      return;
+    }
+    sendJson(response, 200, { version: page.version, items: page.items.map(publicCatalogueItem),
+      ...('nextCursor' in page ? { nextCursor: page.nextCursor } : {}) });
+    return;
+  }
   if (url.pathname === '/api/config' && request.method === 'GET') {
-    sendJson(response, 200, { config, artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
+    sendJson(response, 200, { config, catalogueDraftType: { key: registration.draftType.key, version: registration.draftType.version }, artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
     return;
   }
   if (url.pathname.startsWith('/api/actions/')) {
@@ -71,7 +95,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
       return;
     }
     const actor = await bindings.authenticate(request);
-    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config, ...(request.headers.cookie ? { requestCookie: request.headers.cookie } : {}),
+    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config, catalogueRegistration: registration, ...(request.headers.cookie ? { requestCookie: request.headers.cookie } : {}),
       setCookie: cookie => response.setHeader('Set-Cookie', cookie),
       accept: async () => { sendJson(response, 200, { ok: true, value: { accepted: true } }); } });
     if (!response.writableEnded) sendJson(response, result.ok ? 200 : result.status ?? 409, result);
@@ -98,6 +122,12 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
   } catch {
     sendJson(response, 404, { ok: false, code: 'starter_asset_unavailable' });
   }
+}
+
+function publicCatalogueItem(item: NeutralSkuEnvelopeV2) {
+  const { id, code, netContent, grossMass, title, options, attributes, sellability } = item.sku;
+  return { product: item.product, sku: { id, code, netContent, grossMass, title, options, attributes, sellability },
+    publication: item.acceptedReference.publicationHead };
 }
 
 async function body(request: IncomingMessage): Promise<unknown> {

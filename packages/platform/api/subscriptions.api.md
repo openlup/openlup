@@ -106,6 +106,111 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
     settlementIntentId: string;
 }, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
 ```
+## dist/subscriptions/catalogProfileBinding.d.ts
+
+```ts
+import { type CatalogAcceptanceV2, type CatalogAcceptedReferenceV2, type CatalogQuantity, type CatalogSubscriptionCoverage, type CatalogSubscriptionLineDemand, type CatalogSubscriptionPolicyRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+/** Server selection. The installed profile digest and exact publication reference bind the policy input.
+ * @experimental
+ */
+export interface CatalogProfileLine {
+    readonly id: string;
+    readonly typeRef: CatalogSubscriptionProfileRef;
+    readonly quantity: number;
+    readonly addon: boolean;
+    readonly sellable: boolean;
+    readonly allowedCadenceDays?: readonly number[];
+    readonly profileRef?: CatalogSubscriptionProfileRef;
+    readonly profileDigest?: string;
+    readonly swapGroupKey?: string;
+    readonly capacity?: CatalogQuantity;
+    readonly demand?: CatalogSubscriptionLineDemand;
+    readonly publication?: {
+        readonly reference: CatalogAcceptedReferenceV2;
+        readonly productId: string;
+        readonly documentRevisionId: string;
+    };
+}
+/** @experimental */
+export interface CatalogSubscriptionProfileSelection {
+    readonly cadenceDays: number;
+    readonly lineItems: readonly CatalogProfileLine[];
+    readonly storeCadenceDays?: readonly number[];
+    readonly commandCadenceDays?: readonly number[];
+    readonly installedCadenceBound?: number;
+    readonly prepaid?: boolean;
+    readonly swap?: {
+        readonly from: CatalogProfileLine;
+        readonly to: string;
+    };
+}
+/** A pinned callback is consulted only for the selected policy version.
+ * @experimental
+ */
+export type CatalogSubscriptionPolicyBinding = {
+    readonly ref: CatalogSubscriptionPolicyRef;
+    readonly kind: "units_per_day";
+    readonly coverage: "exact" | "allow_shortfall" | "allow_surplus";
+} | {
+    readonly ref: CatalogSubscriptionPolicyRef;
+    readonly kind: "host_policy";
+    readonly validate: (input: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileIssue | undefined;
+};
+/** Attachment for the exact accepted line roster, beside the strict renewal terms.
+ * @experimental
+ */
+export interface CatalogAttachmentEvidenceV1 {
+    readonly schemaVersion: 1;
+    readonly productId: string;
+    readonly variantId: string;
+    readonly publicationHead: CatalogAcceptedReferenceV2["publicationHead"];
+    readonly documentRevisionId: string;
+    readonly documentDigest: string;
+    readonly profileRef: CatalogSubscriptionProfileRef;
+    readonly profileDigest: string;
+    readonly policyRef?: CatalogSubscriptionPolicyRef;
+    readonly swapGroupKey?: string;
+    readonly demandUnit?: string;
+    readonly demandPerSellableUnit?: CatalogQuantity;
+    readonly demandPerDay?: CatalogQuantity;
+    readonly demandScope?: "per_line" | "pooled";
+    readonly poolKey?: string;
+}
+/** @experimental */
+export type CatalogSubscriptionProfileDecision = {
+    readonly kind: "legacy";
+} | {
+    readonly kind: "refused";
+    readonly issue: CatalogSubscriptionProfileIssue;
+} | {
+    readonly kind: "profiled";
+    readonly allowedDays: readonly number[];
+    readonly coverage: readonly CatalogSubscriptionCoverage[];
+    readonly proposalDays?: number;
+    readonly attachments: readonly CatalogAttachmentEvidenceV1[];
+};
+/** The same owner resolves definitions, prepares accepted evidence and narrows existing lane eligibility.
+ * @experimental
+ */
+export declare function createCatalogSubscriptionProfileBinding(input: {
+    readonly profiles: readonly CatalogSubscriptionProfileV1[];
+    readonly policies?: readonly CatalogSubscriptionPolicyBinding[];
+}): {
+    resolve: (ref: CatalogSubscriptionProfileRef) => {
+        profile: CatalogSubscriptionProfileV1;
+        digest: string;
+        bound: boolean;
+    } | undefined;
+    check: (selection: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileDecision;
+    bindAcceptance: (selection: CatalogSubscriptionProfileSelection) => Exclude<CatalogSubscriptionProfileDecision, {
+        kind: "profiled";
+    }> | (Extract<CatalogSubscriptionProfileDecision, {
+        kind: "profiled";
+    }> & {
+        acceptance: CatalogAcceptanceV2;
+    });
+};
+```
 ## dist/subscriptions/classicPackageQuote.d.ts
 
 ```ts
@@ -1498,6 +1603,7 @@ export {};
 ## dist/subscriptions/contracts/stockWait.d.ts
 
 ```ts
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule } from "./renewal.js";
 export interface StockWaitRecoveryBinding {
     caseId: string | null;
@@ -1511,6 +1617,8 @@ export interface StockWaitDeficit {
     sku: string;
     displayName: string;
     size: string | null;
+    /** Exact frozen content captured with the agreement. @experimental */
+    netContent?: CatalogQuantity;
     required: number;
     /** This operation's own reserved units. */
     reserved: number;
@@ -1735,6 +1843,9 @@ export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuc
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
+export { createCatalogSubscriptionProfileBinding } from "./catalogProfileBinding.js";
+export type { CatalogProfileLine, CatalogSubscriptionProfileSelection, CatalogSubscriptionPolicyBinding, CatalogAttachmentEvidenceV1, CatalogSubscriptionProfileDecision } from "./catalogProfileBinding.js";
+export { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, validateCatalogSubscriptionProfile } from "@openlup/core/catalog";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -2618,13 +2729,15 @@ export declare function createPostgresRetryLifecycleBinding(options: NativeRetry
 
 ```ts
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding } from "./contracts/stockWait.js";
-import type { RenewalSchedule } from "./contracts/renewal.js";
+import type { RenewalFrozenSnapshot, RenewalSchedule } from "./contracts/renewal.js";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeStockWaitBinding {
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     codec: NativeRenewalCodec;
     workerId: string;
+    /** Opt in to the typed retained display on stock-wait readback. @experimental */
+    retainedContent?: "v2";
 }
 export interface NativeStockWaitAdmission {
     waiting: boolean;
@@ -2634,7 +2747,7 @@ export interface NativeStockWaitAdmission {
 /** Internal native projection shared with the checked notice observation.
  * @experimental
  */
-export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]>;
+export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown, snapshot?: RenewalFrozenSnapshot): Promise<StockWaitDeficit[]>;
 /** Each multi-statement mutation uses the host transaction. Payment execution is
  * deliberately outside this store. SQL owns stock locks and subtransactions. */
 export declare function createPostgresStockWaitStore(options: NativeStockWaitBinding): {
@@ -2688,7 +2801,7 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
 
 ```ts
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
@@ -2701,6 +2814,10 @@ export declare const successorNoticeSources: readonly ["catalog.publication.comm
  */
 export declare function createPostgresSuccessorNotices(options: {
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Decode frozen content for notices of the versioned renewal dialect. */
+    renewalCodec?: Pick<NativeRenewalCodec, "decode">;
+    /** Optional presentation eviction after verifying the persisted commit event. */
+    invalidateCatalogueProduct?(productId: string): void;
     /** Bind the catalogue owner's complete withdrawal-impact port. */
     impact: {
         report(skuId: string): Promise<{

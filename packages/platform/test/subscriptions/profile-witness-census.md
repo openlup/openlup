@@ -1,0 +1,46 @@
+# Subscription profile witness census
+
+Run each vector with valid preceding facts. An existing lane refusal takes precedence over an additional profile predicate. The five matrix names identify the test owners. A host characterization exercises an existing policy at its owner.
+
+| Rule | Witness | Isolating input | Expected result |
+| --- | --- | --- | --- |
+| SP1-D-001 | profile_dispatch_matrix | Omit both the offer and minimum. Supply only a minimum in a second case. | Legacy, zero policy reads. Standalone minimum is refused. |
+| SP1-D-002 | profile_dispatch_matrix | Explicit unknown ref, hidden offer, readable enabled offer, failed exposure read. | Refuse unknown, refuse hidden, continue, propagate failure, respectively. |
+| SP1-D-003 | profile_dispatch_matrix | Host-specific delivery exclusion and invalid demand together. | Host delivery refusal precedes its demand refusal. |
+| SP1-D-004 | profile_dispatch_matrix | Change override, recommendation presence, snapshot presence, either snapshot value, version, unit basis, exact total or an extra field independently. | Host demand mismatch before catalogue reads. |
+| SP1-D-005 | profile_admission_matrix | Repeat cursor, change final head, duplicate SKU, cross-wire document, exceed response bound or fail transport. | Existing authority refusal. No partial result. |
+| SP1-D-006 | profile_admission_matrix | Independently change mode, identity, slug, eligibility, duplicate, quantity 0 or 100, exclusion, stock record, stock identity, visibility, state, null availability or insufficient ATP. | Existing seller or stock refusal. A profile never admits an ineligible line. |
+| SP1-D-007 | profile_admission_matrix | Below host minimum, missing requested minimum, missing declared minimum, or otherwise valid basket off the default parcel multiple. | Host minimum refusal for the first three. Last vector passes minimum. |
+| SP1-D-008 | profile_admission_matrix | Change chosen day, missing day, mismatch with introductory terms, or invalid day and invalid minimum together. | Host cadence refusal for the first three. Minimum wins when both fail. |
+| SP1-D-009 | profile_attachment_continuity_matrix | Invalid explicit binding in precheck and acceptance. Retry with valid facts. | Refuse invalid with zero evidence. Valid shared decision uses the same accepted line roster. |
+| SP1-D-010 | profile_attachment_continuity_matrix | Omitted selected column, null selected value, unknown variant, direct rewrite, exact opt-in, or definition installation. | Existing configured-version error, legacy, unknown, immutable refusal, one opt-in transition, or zero agreement effects. |
+| SP1-D-011 | profile_demand_matrix | Change demand, days, portion factor, capacity, quantity, or intermediate safety independently. | Host arithmetic refuses the offending input. Neutral exact evaluation refuses unsafe quantities. |
+| SP1-D-012 | profile_demand_matrix | Unordered five units over two interchangeable lines. Also try impossible split, wrong split count, exhausted scan, and unplaceable minimum. | Host split is 3 and 2 in canonical order with existing split and floor behavior. |
+| SP1-D-013 | profile_demand_matrix | Duplicate day, missing day, differing demand, allowed longest default, all floor fallbacks, or all overweight. | Host returns null for first three, chooses 28, 28, and 14 for the valid default cases. |
+| SP1-D-014 | profile_admission_matrix | Duplicate IDs, duplicate codes, absent stock, invalid exclusions, or 65 exclusions in sized facts. | Existing constructor or on-use refusal. |
+| SP1-D-015 | profile_admission_matrix | Invalid role, invalid quantity, duplicate identity, unreadable exclusions plus null stock, null stock plus exclusion, unchanged unavailable, increased unavailable, and below minimum. | Structural refusal, exclusions-unreadable first, stock first, unchanged permitted, increase refused, then minimum refusal. |
+| SP1-D-016 | profile_demand_matrix | Invalid pin and day, correct pin and invalid day, absent portion pair, half factor alone, unsupported lever. | Pin refusal, cadence refusal, full mode, pin refusal, null. |
+| SP1-D-017 | profile_demand_matrix | Exact parcel stale total, frozen baseline, inherited exclusion, no reduction. | Lever mismatch, recorded baseline, exclusion conflict, no-reduction refusal. Valid edit preserves cycle anchor. |
+| SP1-D-018 | profile_demand_matrix | Invalid line qty, duplicate identity, foreign identity, unservable resize, no reduction, unsupported lever. | Existing classic composition refusal for each bad case. Unsupported lever returns null. |
+| SP1-D-019 | profile_admission_matrix | Omitted add-ons, empty add-ons, wrong core plus wrong total, changed fixed-pool total, requested below minimum before favorable resize. | Retain, remove, composition first, total refusal, minimum refusal. |
+| SP1-D-020 | profile_admission_matrix | Swap source qty 2, swap duplicate target, omit source. | Preserve 2, existing duplicate-line refusal, existing missing-line refusal. |
+| SP1-D-021 | profile_attachment_continuity_matrix | Remove both price sources, retain only one, change price or currency, or mismatch SKU, quantity or identity. | One consistent source suffices. Missing or contradictory sources refuse. |
+| SP1-D-022 | profile_attachment_continuity_matrix | Unknown ref, changed bytes at the same version, higher version, and absent ref. | `profile_missing`, immutable version conflict, retained v1 remains readable, legacy. |
+| SP1-D-023 | profile_attachment_continuity_matrix | Missing policy, wrong build, missing line evidence, duplicate line evidence, and accepted quote through payment and renewal. | `policy_binding_missing` for invalid policy identity, exact unique roster required, accepted identities survive. LC8 owns the starter binding. |
+| SP1-D-024 | profile_admission_matrix | Exclude the day in each of profile/store/SKU/command, empty intersection, low/high base total, excess line qty, excess base line count, wrong add-on type, excess add-on lines or units, valid fixed units. | `cadence_not_allowed`, `profile_base_units_out_of_range`, `profile_line_quantity_invalid`, `profile_base_line_limit_exceeded`, `profile_addon_type_not_allowed`, `profile_addon_line_limit_exceeded`, `profile_addon_unit_limit_exceeded`, or unchanged fixed units. |
+| SP1-D-025 | profile_demand_matrix | 56 count at 2/day plus 140 g at 5 g/day, wrong dose, mismatch one pool unit, fractional coverage, overflow, and 60 at 2/day. | Independently 28 days, `line_coverage_mismatch`, `demand_unit_mismatch`, exact policy refusal, `demand_arithmetic_unsafe`, and proposal 30 only when allowed. |
+| SP1-D-026 | cadence_bound_parity_matrix | 90, 91, 120, 121 in profile definition, purchase, classic/sized preview/apply, legacy bundle and add-on preview. Vary stored vs requested days and installed vs package bound. | Qualified bound admits 90/91/120. Profile 121 gives `profile_cadence_exceeds_platform_bound`. Earlier installation rejects profiles above 90. Merged native observation must report 3,660 and the profile boundary remains 120. The managed intake applies that same profile ceiling and keeps its fixed-cadence eligibility. |
+| SP1-D-027 | profile_admission_matrix | Prepaid; swap across groups; swap across capacities; same-capacity eligible swap at qty 2. | `prepaid_unsupported`, `profile_swap_group_mismatch`, `profile_swap_capacity_mismatch`, or exact qty 2. |
+| SP1-D-028 | profile_attachment_continuity_matrix | Move authoritative head before acceptance, change binding alone, replay exact accepted command, and renew retained revision after current head moves. | Existing earlier fence refusal, profile refusal, one durable effect on replay, retained exact evidence. |
+| SP1-D-029 | profile_attachment_continuity_matrix | Existing consistent prices then mixed tax rates or adjustments in an edit. | Unchanged consistent totals, existing unreadable-agreement or edit-adjustment refusal. |
+| SP1-D-030 | profile_admission_matrix | Omit target, select non-add-on for removal/quantity, append new add-on, submit invalid quantity on strict wire. | Existing target behavior, append after existing ordinal, strict quantity refusal. |
+| SP1-D-031 | profile_attachment_continuity_matrix | Unknown SKU ID, shortened quote, or ordered base plus add-on. | Existing unknown-variant and line-count refusals. Evidence only for the complete ordered roster. |
+
+
+The durable-continuity cases exercise the V2 reference in the existing order,
+edit event and renewal facts. They isolate a missing frozen draft binding at
+settlement, an incorrect profile digest at edit acceptance, and a missing member
+of the retained profile roster at renewal claim. Both order writers also refuse a
+subscription draft paired with a one-time quote. The native merged-stack
+cadence witness requires the lead's upstream integration. The starter advertises
+profiled lanes only after LC8 composes the shared guard and evidence producer.

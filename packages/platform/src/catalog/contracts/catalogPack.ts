@@ -1,3 +1,4 @@
+import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogDraftPayload } from "./draft.js";
 import type { CatalogDraftPayloadV2 } from "./draftV2.js";
 import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
@@ -9,6 +10,8 @@ export interface CatalogPackInput {
   types: readonly CatalogProductTypeInput[];
   taxClasses: readonly { key: string; labels?: Readonly<Record<string, string>> }[];
   subscriptionProfiles?: readonly { key: string; version: number }[];
+  /** Full definitions of the explicitly selected profile versions. @experimental */
+  subscriptionProfileDefinitions?: readonly CatalogSubscriptionProfileV1[];
 }
 type Profile<P extends CatalogPackInput> = P extends { subscriptionProfiles: readonly (infer R)[] } ? R : never;
 type ProfileKeys<P extends CatalogPackInput> = Profile<P> extends infer R ? R extends { key: infer K extends string } ? K : never : never;
