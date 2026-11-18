@@ -3610,16 +3610,17 @@ it("returns absence when publication recovery finds an approval under the same s
   expect(await authority.readPort(actor).receipt(scope)).toEqual({ outcome: "absent" });
 });
 
-it.each(["legacy GTIN first", "row locker first", "publisher first with colliding GTIN", "publisher first with distinct identifier", "publisher first with colliding SKU"] as const)(
+it.each(["legacy GTIN first", "row locker first", "publisher first with colliding GTIN", "publisher first with distinct identifier",
+  "publisher first with colliding SKU", "publisher first with attribute projection"] as const)(
   "publication serializes with independent native catalogue writers: %s", async mode => {
     const data = await draft();
-    const existing = mode === "row locker first" ? await commit(data.publication) : null;
+    const existing = mode === "row locker first" || mode.endsWith("attribute projection") ? await commit(data.publication) : null;
     const command = existing ? await revise(data, existing.head) : data.publication;
     await approve(command);
     const competing = await db.connect();
     const gtin = data.payload.skus[0].identifiers![0].value;
     const otherSku = foreignPublished.data.skuId;
-    const table = mode.endsWith("SKU") ? "catalog_skus" : "catalog_sku_identifiers";
+    const table = mode.endsWith("SKU") ? "catalog_skus" : mode.endsWith("attribute projection") ? "catalog_attribute_projection" : "catalog_sku_identifiers";
     const writeIdentifier = (kind: "gtin" | "other") => competing.query(`INSERT INTO public.catalog_sku_identifiers
       (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity) VALUES($1,$2,$3,$4,'unit',1)`,
     [otherSku, `legacy:${randomUUID()}`, kind, kind === "gtin" ? gtin : randomUUID()]);
@@ -3636,6 +3637,9 @@ it.each(["legacy GTIN first", "row locker first", "publisher first with collidin
         await competing.query(`LOCK TABLE public.${table} IN ROW EXCLUSIVE MODE NOWAIT`);
         guarded = false;
         if (mode.endsWith("distinct identifier")) await writeIdentifier("other");
+        if (mode.endsWith("attribute projection")) await competing.query(`INSERT INTO public.catalog_attribute_projection(
+          sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
+          VALUES($1,$2,'independent_attribute',1,0,'text','phantom')`, [data.skuId, existing!.head.revision + 1]);
       } catch (error) {
         expect(error).toMatchObject({ code: "55P03" });
         guarded = true;
@@ -3661,6 +3665,7 @@ it.each(["legacy GTIN first", "row locker first", "publisher first with collidin
       }
       expect(await result).toMatchObject({ outcome: "committed" });
       expect(guarded).toBe(true);
+      if (mode.endsWith("attribute projection")) return;
       if (mode.endsWith("distinct identifier")) expect((await writeIdentifier("other")).rowCount).toBe(1);
       else await expect(mode.endsWith("SKU") ? writeLegacySku() : writeIdentifier("gtin")).rejects.toMatchObject({ code: "23505" });
     } finally {

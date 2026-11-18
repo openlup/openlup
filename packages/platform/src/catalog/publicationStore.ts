@@ -402,7 +402,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`catalog-lineage:${productId}`]);
     // Legacy catalogue writes do not take the publication advisory guard. These
     // relation locks stop their writes while allowing foreign-key readers.
-    await db.query(`LOCK TABLE public.catalog_products,public.catalog_skus,public.catalog_sku_identifiers,public.catalog_product_document_revisions
+    await db.query(`LOCK TABLE public.catalog_products,public.catalog_skus,public.catalog_sku_identifiers,public.catalog_product_document_revisions,public.catalog_attribute_projection
       IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
     await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid FOR NO KEY UPDATE NOWAIT", [productId]);
     await db.query("SELECT id FROM public.catalog_products WHERE id=$1::uuid ORDER BY id FOR NO KEY UPDATE NOWAIT", [productId]);
