@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CatalogQuantity } from "@openlup/core/catalog";
+import { defineCatalogPack } from "../../src/catalog/contracts/catalogPack.js";
 import { catalogPackIssues } from "../../src/catalog/productTypeIssues.js";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { createCatalogSubscriptionProfileBinding, type CatalogProfileLine } from "../../src/subscriptions/catalogProfileBinding.js";
@@ -109,6 +110,17 @@ describe("profile_attachment_continuity_matrix", () => {
     expect(binding.check({ ...selection, lineItems })).toMatchObject({ kind: "refused", issue: { code } });
   });
 
+  it("SP1-D-022 full profile declarations compose alongside reference-only type metadata", () => {
+    const authored = defineCatalogPack({
+      id: "store:pack", namespace: "store", version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [],
+      subscriptionProfiles: [{ key: "store:recurring", version: 1 }], subscriptionProfileDefinitions: [definition],
+      types: [{ key: "store:item", version: 1, dimensions: [], units: [{ code: "openlup:piece", dimension: "count", integral: true }],
+        netContentUnits: ["openlup:piece"], subscriptionProfileRef: { key: "store:recurring", version: 1 }, validateContent: () => [] }],
+    });
+    expect(catalogPackIssues(authored)).toEqual([]);
+    expect(catalogPackManifest(authored).subscriptionProfileDefinitions).toEqual([definition]);
+  });
+
   it("SP1-D-022 legacy_subscription_without_profile_is_unchanged", () => {
     expect(binding.check({ cadenceDays: 500, lineItems: [{ ...base, profileRef: undefined, quantity: 0 }] })).toEqual({ kind: "legacy" });
   });
@@ -150,6 +162,7 @@ describe("profile_demand_matrix", () => {
     ], "line_coverage_mismatch"],
     ["SP1-D-025 profile_refuses_incompatible_demand_units", [{ ...first, demand: { ...first.demand!, perDay: mass("2") } }], "demand_unit_mismatch"],
     ["SP1-D-025 isolated coverage mismatch", [first, { ...second, demand: { ...second.demand!, perDay: mass("4") } }], "line_coverage_mismatch"],
+    ["SP1-D-011 malformed decimal scale", [{ ...first, demand: { ...first.demand!, perDay: { ...count("2"), scale: -1 } } }], "demand_arithmetic_unsafe"],
     ["SP1-D-011 single input overflow", [{ ...first, demand: { ...first.demand!, contentPerUnit: count("9007199254740992") } }], "demand_arithmetic_unsafe"],
     ["SP1-D-011 multiplication overflow", [{ ...first, quantity: 2, demand: { ...first.demand!, contentPerUnit: count("9007199254740991") } }], "demand_arithmetic_unsafe"],
     ["SP1-D-025 fractional duration", [{ ...first, demand: { ...first.demand!, contentPerUnit: count("57") } }], "line_coverage_mismatch"],

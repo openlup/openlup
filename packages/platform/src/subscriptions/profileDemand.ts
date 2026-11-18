@@ -15,8 +15,7 @@ const maximum = max * scaleFactor;
 
 function units(value: CatalogQuantity): bigint | undefined {
   if (!/^[1-9][0-9]{0,27}$/u.test(value.unscaled) || !Number.isInteger(value.scale) || value.scale < 0 || value.scale > scale) return;
-  const amount = BigInt(value.unscaled) * 10n ** BigInt(scale - value.scale);
-  if (amount <= maximum) return amount;
+  return BigInt(value.unscaled) * 10n ** BigInt(scale - value.scale);
 }
 
 export function evaluateProfileDemand(lines: readonly DemandLine[], cadenceDays: number, allowedDays: readonly number[]): { coverage: CatalogSubscriptionCoverage[]; proposalDays?: number } | { issue: CatalogSubscriptionProfileIssue } {
