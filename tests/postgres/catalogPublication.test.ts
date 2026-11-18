@@ -1289,7 +1289,10 @@ function realPriceAuthority(connection?: import("pg").PoolClient, afterQuery?: P
       }
       return { ready: reasons.length === 0, reasons: [...new Set(reasons)] };
     },
-    globalReadiness: async executor => (await executor.query("SELECT public.commerce_offer_policy_v2_readiness() AS result")).rows[0]!.result as {ready:boolean; reasons:string[]},
+    globalReadiness: async executor => {
+      const { ready, reasons } = (await executor.query("SELECT public.commerce_offer_policy_v2_readiness() AS result")).rows[0]!.result as { ready: boolean; reasons: string[] };
+      return { ready, reasons };
+    },
   });
 }
 async function priceDraft(active = true, slug?: string) {
@@ -1306,6 +1309,81 @@ async function priceDraft(active = true, slug?: string) {
   }
   return {...data,payload,publication:await save(payload,data.draftId,1)};
 }
+const invalidReadiness = { outcome: "dependency_unavailable", reason: "catalog_publication_readiness_invalid" };
+const affirmative = { ready: true, reasons: [] };
+const red = { ready: false, reasons: ["installed_business_block"] };
+it.each([
+  ["actor", true, "committed"],
+  ["actor", false, "unauthorized"],
+  ["actor", "false", "unauthorized"],
+  ["structural", affirmative, "committed"],
+  ["structural", red, "catalog_publication_v3_structural_readiness_failed"],
+  ["structural", { ready: true, reasons: [], extra: true }, invalidReadiness.reason],
+  ["structural", { ready: true, reasons: red.reasons }, invalidReadiness.reason],
+  ["structural", { ready: false, reasons: [] }, invalidReadiness.reason],
+  ["structural", { ready: false, reasons: ["duplicate", "duplicate"] }, invalidReadiness.reason],
+  ["structural", null, invalidReadiness.reason],
+  ["native", [], "committed"],
+  ["native", red.reasons, "catalog_publication_v3_structural_readiness_failed"],
+  ["native", { reasons: [] }, invalidReadiness.reason],
+  ["native", ["private error detail"], invalidReadiness.reason],
+  ["price", affirmative, "committed"],
+  ["price", red, "catalog_publication_v3_activation_readiness_failed"],
+  ["price", { ready: "true", reasons: [] }, invalidReadiness.reason],
+  ["global", affirmative, "committed"],
+  ["global", red, "catalog_publication_v3_activation_readiness_failed"],
+  ["global", { ...affirmative, malformed: true }, invalidReadiness.reason],
+  ["global", new Error("unavailable"), "publication_authority_unavailable"],
+  ["media", true, "committed"],
+  ["media", false, "catalog_publication_media_readiness_unproven"],
+  ["media", "false", invalidReadiness.reason],
+  ["media", null, invalidReadiness.reason],
+])("publication requires a truthful %s verdict for %j", async (phase, input, expected) => inPriceDatabase(async () => {
+  const active = phase === "price" || phase === "global" || phase === "media";
+  const data = active ? await priceDraft() : await draft();
+  const payload = data.payload;
+  let command = data.publication;
+  if (phase === "media") {
+    const sku = payload.skus[0]!;
+    const mediaRef = "example:reviewed-media", assetRefs = ["panel"];
+    sku.assetRefs = assetRefs;
+    payload.product.sharedContent.presentation.mediaRef = mediaRef;
+    const presentation = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
+    if (presentation.op === "set_product_presentation") presentation.presentation = payload.product.sharedContent.presentation;
+    payload.publication.evidence.media = [{ skuCode: sku.code!, mediaRef, assetRefs, revisionDigest: "a".repeat(64) }];
+    command = await save(payload, data.draftId, 2);
+  }
+  await approve(command);
+  const before = await snapshot();
+  const deps = dependencies((sql, _executor, rows) => {
+    if (phase === "native" && sql.startsWith("SELECT public.catalog_publication_sku_reasons")) rows[0]!.reasons = input;
+  });
+  if (phase === "actor") deps.authorizeHuman = async () => ({
+    ok: input as true, role: "admin", isMachineActor: false, userId: admin,
+  });
+  deps.readiness = async (_executor, _state, price) => phase === (price ? "price" : "structural")
+    ? input as typeof affirmative : affirmative;
+  deps.globalReadiness = async () => {
+    if (input instanceof Error) throw input;
+    return phase === "global" ? input as typeof affirmative : affirmative;
+  };
+  deps.verifyMedia = async () => input as boolean;
+  const target = createPostgresCatalogPublication(deps);
+  const capability = await target.authorize(null);
+  if (expected === "unauthorized") {
+    expect(capability).toBeNull();
+  } else {
+    const result = await target.publish(command, capability!);
+    if (expected === "committed") {
+      expect(result).toMatchObject({ outcome: "committed" });
+      return;
+    }
+    if (expected === invalidReadiness.reason) expect(result).toEqual(invalidReadiness);
+    else expect(result).toEqual({ outcome: expected === "publication_authority_unavailable" ? "dependency_unavailable" : "validation_issue", reason: expected });
+  }
+  expect(await snapshot()).toEqual(before);
+}));
+
 async function priceInputMatrix(group: "context"|"global") {
   const target = realPriceAuthority(), capability = (await target.authorize(null))!;
   const data = await priceDraft(); await approve(data.publication,target,capability);
