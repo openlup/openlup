@@ -43,8 +43,8 @@ Plans and task records are plain Markdown under `plans/`. There is no plan templ
 - [Payment adapter testing kit package set preparation](../../packages/platform/CHANGELOG-HISTORY.md#0410) — coherent 0.41.0 notes; published to npm.
 - [Native payments package set preparation](../../packages/platform/CHANGELOG-HISTORY.md#0420) — coherent 0.42.0 notes; published to npm.
 - [Native fulfillment and provider profiles package set preparation](../../packages/platform/CHANGELOG.md#0430) — coherent 0.43.0 notes; published to npm.
-- [First stable package set preparation](../../packages/platform/CHANGELOG.md#100) — published 1.0.0; failed exact-set starter-upgrade qualification; superseded by 1.1.0.
-- [Starter migration package set preparation](../../packages/core/CHANGELOG.md#110) — coherent 1.1.0 notes; qualification is recorded after publication.
+- [First stable package set preparation](../../packages/platform/CHANGELOG.md#100) — published 1.0.0; [requalified as an npm set without an image](DISTRIBUTION_EVIDENCE.md); superseded by 1.1.0.
+- [Starter migration package set preparation](../../packages/core/CHANGELOG.md#110) — published 1.1.0; [first qualified stable npm set and image](DISTRIBUTION_EVIDENCE.md).
 
 - [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
 
