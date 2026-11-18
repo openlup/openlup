@@ -45,6 +45,6 @@ test('recovery copy is typed and changeable in each demo configuration', () => {
     config.recovery.states.authorized_retry.en = 'Changed pending retry copy';
     assertConfig(config);
     config.recovery.message.subject.en = '';
-    assert.throws(() => assertConfig(config), /starter_recovery_configuration_invalid/);
+    assert.throws(() => assertConfig(config), /starter_locale_copy_missing: recovery.message.subject \(en\)/);
   }
 });

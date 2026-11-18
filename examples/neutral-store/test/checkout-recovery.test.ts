@@ -33,9 +33,9 @@ test('recovery message values are typed configuration in both configurations and
       assert.equal(new URL(message.completionUrl).searchParams.get('token'), 'private-value');
     }
     Reflect.deleteProperty(config.purchase.recoveryMessage, 'expiryLabel');
-    assert.throws(() => assertConfig(config), /starter_recovery_message_invalid/);
+    assert.throws(() => assertConfig(config), /starter_locale_copy_missing: purchase.recoveryMessage.expiryLabel \(en\)/);
     config.purchase.recoveryMessage.expiryLabel = { en: '', pl: 'Do' };
-    assert.throws(() => assertConfig(config), /starter_recovery_message_invalid/);
+    assert.throws(() => assertConfig(config), /starter_locale_copy_missing: purchase.recoveryMessage.expiryLabel \(en\)/);
   }
 });
 

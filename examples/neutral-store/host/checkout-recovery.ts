@@ -1,3 +1,4 @@
+import type { Locale } from '../shared/locales.ts';
 import { createPrivateCapture } from './private-capture.ts';
 import type { PostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
 import type { ActionContext } from './bindings.ts';
@@ -14,7 +15,7 @@ export interface CheckoutRecoveryMessage {
 }
 export interface PurchaseRecovery {
   tokens: PostgresCheckoutRecoveryTokenPort;
-  deliver(input: { email: string; rawToken: string; orderRef: string; expiresAt: string; context: ActionContext; locale: 'en' | 'pl' }): Promise<void>;
+  deliver(input: { email: string; rawToken: string; orderRef: string; expiresAt: string; context: ActionContext; locale: Locale }): Promise<void>;
 }
 
 /** Private delivery artifact, separate from authentication challenges and logs. */

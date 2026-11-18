@@ -1,4 +1,4 @@
-import type { Locale, Localized } from './config.ts';
+import { assertLocalized, configuredLocales, type Locale, type Localized } from './locales.ts';
 
 export type RecoveryState = 'login_required' | 'unavailable' | 'method_unavailable'
   | 'awaiting_confirmation' | 'authorized_retry' | 'recovered' | 'exhausted' | 'support';
@@ -23,15 +23,12 @@ export const demoRecoveryConfiguration: RecoveryConfiguration = {
     expiryLabel: { en: 'Link expires', pl: 'Link wygasa' },
   },
 };
-export function assertRecoveryConfiguration(config: RecoveryConfiguration | undefined): void {
+export function assertRecoveryConfiguration(config: RecoveryConfiguration | undefined, locales: readonly Locale[] = configuredLocales): void {
   if (config === undefined) return;
   if (!config?.states || !config.message) throw new Error('starter_recovery_configuration_invalid');
-  for (const section of [config.states, config.message]) {
-    for (const key of Object.keys(section)) {
-      const item = (section as Record<string, Localized>)[key];
-      if (!item || (['en', 'pl'] as Locale[]).some(locale => typeof item[locale] !== 'string' || !item[locale].trim())) {
-        throw new Error('starter_recovery_configuration_invalid');
-      }
+  for (const section of ['states', 'message'] as const) {
+    for (const key of Object.keys(demoRecoveryConfiguration[section])) {
+      assertLocalized((config[section] as Record<string, Localized>)[key], locales, `recovery.${section}.${key}`);
     }
   }
   if (Object.keys(config.states).sort().join() !== Object.keys(demoRecoveryConfiguration.states).sort().join()

@@ -291,7 +291,7 @@ for (const [args, code] of [
 
 test('fictional market formats validate without a named deployment market', () => {
   const config = structuredClone(Object.values(configurations)[0]!);
-  config.market = { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] };
+  config.market = { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'], defaultLocale: 'en' };
   for (const product of config.offer.products) product.unitPrice.currency = 'XTS';
   assertConfig(config);
   for (const market of [{ ...config.market, currency: 'bad' }, { ...config.market, country: 'bad' },

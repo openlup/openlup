@@ -1,3 +1,4 @@
+import { isConfiguredLocale } from '../shared/locales.ts';
 import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { createOperatorRecovery, createPostgresOperatorAuthority } from '@openlup/platform/account-support';
@@ -19,8 +20,8 @@ export function composeOperatorRecovery(pool: Pool): ApplicationBindings['action
       if (!actor || !context.actor.requestOrigin) return refused();
       if (Object.keys(payload).some(key => !['locale', 'customerRef', 'caseRef'].includes(key))
         || !isUuid(payload.customerRef) || !isUuid(payload.caseRef)
-        || !['en', 'pl'].includes(String(payload.locale))) return refused();
-      const language = payload.locale as 'en' | 'pl';
+        || !isConfiguredLocale(payload.locale, context.config.market)) return refused();
+      const language = payload.locale;
       const customerId = payload.customerRef.toLowerCase(), caseId = payload.caseRef.toLowerCase();
       const commandKey = 'starter-operator-recovery:' + createHash('sha256')
         .update(JSON.stringify([actor.toLowerCase(), context.commandKey])).digest('hex');

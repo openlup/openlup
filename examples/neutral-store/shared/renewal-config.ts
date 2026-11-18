@@ -1,6 +1,7 @@
 import type { SubscriptionCommandAdmission, SubscriptionLifecycleTerms } from '@openlup/platform/subscriptions/contracts';
 import type { NativeLifecycleMessagesOptions } from '@openlup/platform/subscriptions';
 import { assertChoice, type Choice } from './policy.ts';
+import { assertLocaleCopy, supportedLocales, configuredLocales, type Locale, type LocaleCopy } from './locales.ts';
 
 export interface RenewalNoticeText {
   paid: { subject: string; order: string; item: string; quantity: string; subtotal: string; discount: string; total: string };
@@ -21,12 +22,10 @@ export interface RenewalConfig {
   leaseSeconds: number;
   sandbox: { initial: 'succeeded' | 'declined' | 'ambiguous'; retry: 'succeeded' | 'declined' | 'ambiguous' };
   recovery: { activeGraceSeconds: number; exhaustedTtlSeconds: number };
-  notices: { locale: 'en' | 'pl'; countryLocales?: Record<string, 'en' | 'pl'>; copy: Record<'en' | 'pl', RenewalNoticeText> };
+  notices: { locale: Locale; countryLocales?: Record<string, Locale>; copy: LocaleCopy<RenewalNoticeText> };
 }
 
-export function assertRenewalConfig(config: RenewalConfig): void {
-  const copyKeys: (keyof RenewalNoticeText)[] = ['payment_failed', 'payment_expired', 'payment_recovery', 'payment_recovered',
-    'lifecycle', 'active', 'amount', 'retry', 'charge', 'repair', 'expires', 'unknown', 'address', 'addressApplied', 'addressNextParcel', 'status', 'minorUnits', 'cause', 'needsConfirmation', 'cannotRecur', 'methodDead', 'methodDataInvalid', 'methodMissing'];
+export function assertRenewalConfig(config: RenewalConfig, locales: readonly Locale[] = configuredLocales): void {
   if (!config || !Array.isArray(config.retryBackoffHours) || config.retryBackoffHours.some(value => !Number.isInteger(value) || value < 0 || value > 2147483647) || typeof config.enabled !== 'boolean' || typeof config.population !== 'string'
     || !/^[a-zA-Z0-9:-]{1,100}$/.test(config.population)
     || [config.cadenceSeconds, config.leaseSeconds, config.recovery?.activeGraceSeconds,
@@ -35,17 +34,15 @@ export function assertRenewalConfig(config: RenewalConfig): void {
     || !Number.isSafeInteger(config.batchLimit) || config.batchLimit < 1 || config.batchLimit > 100
     || !['succeeded', 'declined', 'ambiguous'].includes(config.sandbox?.initial)
     || !['succeeded', 'declined', 'ambiguous'].includes(config.sandbox?.retry)
-    || !['en', 'pl'].includes(config.notices?.locale)
-    || Object.entries(config.notices.countryLocales ?? {}).some(([country, locale]) => !/^[A-Z]{2}$/.test(country) || !['en', 'pl'].includes(locale))
-    || !config.notices?.copy?.en || !config.notices?.copy?.pl
-    || Object.values(config.notices.copy).some(copy => !copy.paid
-      || ['subject', 'order', 'item', 'quantity', 'subtotal', 'discount', 'total'].some(key => {
-        const value = copy.paid[key as keyof RenewalNoticeText['paid']];
-        return typeof value !== 'string' || !value.trim();
-      }))
-    || Object.values(config.notices.copy).some(copy => copyKeys.some(key => typeof copy[key] !== 'string' || !copy[key].trim()))) {
+    || !supportedLocales.includes(config.notices?.locale)
+    || Object.entries(config.notices.countryLocales ?? {}).some(([country, locale]) => !/^[A-Z]{2}$/.test(country) || !supportedLocales.includes(locale))) {
     throw new Error('starter_renewal_configuration_invalid');
   }
+  const copyKeys: (keyof RenewalNoticeText)[] = ['payment_failed', 'payment_expired', 'payment_recovery', 'payment_recovered',
+    'lifecycle', 'active', 'amount', 'retry', 'charge', 'repair', 'expires', 'unknown', 'address', 'addressApplied', 'addressNextParcel',
+    'status', 'minorUnits', 'cause', 'needsConfirmation', 'cannotRecur', 'methodDead', 'methodDataInvalid', 'methodMissing'];
+  const paidKeys: (keyof RenewalNoticeText['paid'])[] = ['subject', 'order', 'item', 'quantity', 'subtotal', 'discount', 'total'];
+  assertLocaleCopy(config.notices.copy, locales, 'renewal.notices.copy', [...copyKeys, ...paidKeys.map(key => `paid.${key}`)]);
   if (config.retryBackoffHours.length !== 3) throw new Error('starter_database_retry_budget');
   assertSubscriptionCare(config.subscriptionCare);
 }

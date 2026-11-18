@@ -1,13 +1,15 @@
+import type { LocaleCopy } from '../shared/locales.ts';
+
+const quoteEnglish = { loading: 'Refreshing the purchase price…', unavailable: 'A current purchase price is unavailable.',
+    second: 'Second delivery', refresh: 'Review the refreshed terms and accept them before placing the order.' };
 export const quoteCopy = {
-  en: { loading: 'Refreshing the purchase price…', unavailable: 'A current purchase price is unavailable.',
-    second: 'Second delivery', refresh: 'Review the refreshed terms and accept them before placing the order.' },
+  en: quoteEnglish,
   pl: { loading: 'Odświeżanie ceny zakupu…', unavailable: 'Aktualna cena zakupu jest niedostępna.',
     second: 'Druga dostawa', refresh: 'Sprawdź odświeżone warunki i zaakceptuj je przed złożeniem zamówienia.' },
-};
+} satisfies LocaleCopy<Record<keyof typeof quoteEnglish, string>>;
 
 /** Exact display allowlist. Never interpolate server messages or error details. */
-export const quoteRefusalCopy = {
-  en: {
+const refusalEnglish = {
     host_binding_required: 'Subscription prices need the installed demonstration host. Run ./lifecycle up, then refresh.',
     purchase_mode_unavailable: 'This product is unavailable for the selected purchase mode. Choose another mode or product.',
     cadence_unavailable: 'This delivery interval is unavailable. Choose an interval offered by this store.',
@@ -23,7 +25,9 @@ export const quoteRefusalCopy = {
     subscription_price_policy_invalid: 'The subscription price policy is invalid. Correct the stored policy revision, then refresh.',
     subscription_price_policy_digest_mismatch: 'The subscription price policy failed its integrity check. Repair the stored revision and digest, then refresh.',
     starter_quote_refresh_required: 'The purchase terms need refreshing. Refresh the price and review the terms before ordering.',
-  },
+};
+export const quoteRefusalCopy = {
+  en: refusalEnglish,
   pl: {
     host_binding_required: 'Ceny subskrypcji wymagają zainstalowanego hosta demonstracyjnego. Uruchom ./lifecycle up i odśwież stronę.',
     purchase_mode_unavailable: 'Ten produkt jest niedostępny w wybranym trybie zakupu. Wybierz inny tryb lub produkt.',
@@ -41,7 +45,7 @@ export const quoteRefusalCopy = {
     subscription_price_policy_digest_mismatch: 'Kontrola integralności polityki cen subskrypcji nie powiodła się. Napraw zapisaną wersję i skrót, a następnie odśwież stronę.',
     starter_quote_refresh_required: 'Warunki zakupu wymagają odświeżenia. Odśwież cenę i sprawdź warunki przed zamówieniem.',
   },
-};
+} satisfies LocaleCopy<Record<keyof typeof refusalEnglish, string>>;
 
 export function isQuoteRefusalCode(code: unknown): code is keyof typeof quoteRefusalCopy.en {
   return typeof code === 'string' && Object.hasOwn(quoteRefusalCopy.en, code);

@@ -38,7 +38,7 @@ const config: StoreConfig = {
   theme: { ink: "#111111", paper: "#ffffff", accent: "#222222", accentInk: "#ffffff", border: "#333333" },
   copy: { heroTitle: words, heroBody: words, offerTitle: words, offerBody: words },
   media: { hero: "/media/synthetic.svg", heroAlt: words },
-  market: { country: "ZZ", currency: "XXX", timezone: "UTC", locales: ["en", "pl"] },
+  market: { country: "ZZ", currency: "XXX", timezone: "UTC", locales: ["en", "pl"], defaultLocale: "en" },
   offer: { layout: "cards", minUnits: 1, maxUnits: 10, shippingMinor: 0, freeShippingFromMinor: 0,
     subscriptionDiscountBps: 0, subscriptionRoundingQuantumMinor: 1,
     cadenceDays: [28], defaultCadenceDays: 28, products: [{ sku: "JOURNEY-GUEST", slug: "item", title: "Synthetic item",

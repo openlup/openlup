@@ -25,7 +25,8 @@
     "owned/quote.config.ts",
     "owned/quote-copy.ts",
     "owned/quote-shipping.ts",
-    "owned/renewal-policy.ts"
+    "owned/renewal-policy.ts",
+    "owned/market.config.ts"
   ],
   "managed": [
     "host/account-renewal.ts",
@@ -165,7 +166,10 @@
     "shared/policy.ts",
     "test/policy.test.ts",
     "shared/subscription-offer.ts",
-    "test/subscription-offer.test.ts"
+    "test/subscription-offer.test.ts",
+    "shared/locales.ts",
+    "shared/locale-copy.ts",
+    "test/locales.test.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md",

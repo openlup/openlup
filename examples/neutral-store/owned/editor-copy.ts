@@ -1,4 +1,4 @@
-import type { Locale } from '../shared/config.ts';
+import type { Locale, LocaleCopy } from '../shared/locales.ts';
 
 const en = {
   parcelItems: 'Items: {count} · {sizes}',
@@ -81,7 +81,7 @@ const pl: Record<EditorCopyKey,string> = {
   needUnavailable: 'Nie można odczytać zapisanych faktów demonstracyjnych. Formularz zapotrzebowania nie jest dostępny.',
   configuredLimit: 'Zmiana wielkości według zapotrzebowania przy zmianie okresu lub proporcji nie jest skonfigurowana w tej demonstracji.',
 };
-export const editorCopy = { en,pl };
+export const editorCopy = { en,pl } satisfies LocaleCopy<Record<EditorCopyKey, string>>;
 export function editorText(locale: Locale,key: EditorCopyKey,values: Record<string,string | number> = {}): string {
   let result: string = editorCopy[locale][key];
   for (const [name,value] of Object.entries(values)) result = result.replaceAll(`{${name}}`,String(value));
