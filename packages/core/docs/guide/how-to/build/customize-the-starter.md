@@ -173,6 +173,15 @@ so changing configuration leaves existing subscriptions unchanged.
 See [activation and edit windows](../../concepts/subscriptions.md#freeze-the-edit-window-at-activation)
 for the required native migration and cutoff semantics.
 
+The source starter also owns `checkoutRecoveryReminders` in `owned/store.config.ts`:
+abandoned-cart stages default to `first` at 1h, `gentle` at 24h and `last` at 72h;
+checkout recovery defaults to `first` at 1h and `last` at 20h. The explicit
+installation step installs this schedule; startup reads it and refuses
+`starter_installed_policy_drift` on revision, stage or hour differences. After
+editing, deliberately reinstall before starting. See [reminder stages and
+hours](checkout-recovery.md#install-reminder-stages-and-hours) for the unreleased
+migration, runtime grant and independent checkout-window limits.
+
 In the current source candidate, keep one owned configuration entry per domain,
 such as `owned/renewal.config.ts` or `owned/quote.config.ts`, and compose it in
 `owned/store.config.ts`. Browser and host read that same input. Managed policy

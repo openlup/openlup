@@ -90,7 +90,8 @@ export function renderCheckoutRecovery(
       firstName: input.firstName,
       brandName: emailCopyBrandName(presentation),
       contextName: input.petName ?? null,
-      reminderHours: input.reminderHours === 20 ? 20 : 1,
+      reminderHours: input.reminderHours,
+      ...(input.stage === undefined ? {} : { stage: input.stage }),
       mode:
         input.mode === "subscription_cycle" ? "subscription_cycle" : "one_time",
       // `src=hatch` rides only on the buyer's own escape-hatch link, so the

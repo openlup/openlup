@@ -165,6 +165,7 @@
     "browser/dev-loop.proof.ts",
     "shared/policy.ts",
     "test/policy.test.ts",
+    "test/checkout-recovery-stage.test.ts",
     "shared/subscription-offer.ts",
     "test/subscription-offer.test.ts",
     "shared/locales.ts",
