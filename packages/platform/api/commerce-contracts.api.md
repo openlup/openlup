@@ -33,6 +33,22 @@ export interface CommerceOfferAvailabilityPort {
     }): Promise<CommerceOfferAvailability[]>;
 }
 ```
+## dist/commerce/contracts/checkoutRecoveryReminders.d.ts
+
+```ts
+/** Installed native reminder stages are independent of elapsed hours. */
+export interface CheckoutRecoveryReminderSchedule {
+    revision: string;
+    abandonedCart: readonly {
+        stage: "first" | "gentle" | "last";
+        afterHours: number;
+    }[];
+    checkoutRecovery: readonly {
+        stage: "first" | "last";
+        afterHours: number;
+    }[];
+}
+```
 ## dist/commerce/contracts/fulfillmentRecovery.d.ts
 
 ```ts
@@ -78,6 +94,7 @@ export type * from "./orderMoney.js";
 export type { OmsPaymentStatus } from "./state.js";
 export type * from "./fulfillmentRecovery.js";
 export type * from "./omsTypes.js";
+export type { CheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminders.js";
 ```
 ## dist/commerce/contracts/intent.d.ts
 

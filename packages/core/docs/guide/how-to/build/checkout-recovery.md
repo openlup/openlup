@@ -120,6 +120,58 @@ Expiry notices omit the token and token insertion when the order-based
 `subscriptionActivationAbandoned` in your expired-mail lifecycle reader only for
 the durable sweep marker together with compensated activation.
 
+## Install reminder stages and hours
+
+The unreleased native reminder-schedule forward adds
+`installCheckoutRecoveryReminderSchedule` and `readCheckoutRecoveryReminderSchedule`
+in `@openlup/platform/commerce/server`, with the
+`CheckoutRecoveryReminderSchedule` type in `@openlup/platform/commerce/contracts`.
+Apply the matching complete catalogue before using them. Installation is an
+explicit operation on your write-capable installation connection; runtime reads
+never install. The `checkout_recovery_reminders` commerce setting contains a
+nonblank `revision` and two nonempty arrays: `abandonedCart` admits `first`,
+`gentle`, `last`; `checkoutRecovery` admits `first`, `last`. Each entry has exactly
+`stage` and `afterHours`. Hours are strictly increasing positive integers up to
+2147483647; stages cannot repeat and the final entry must be `last`. Extra or
+missing keys, malformed JSON and invalid values refuse with
+`checkout_recovery_reminder_schedule_invalid` before enqueue writes.
+
+Absence keeps abandoned-cart hours 1/24/72 and checkout-recovery hours 1/20,
+with revision `default`. New payloads carry `stage` alongside `reminderHours`.
+Renderers use the explicit stage; old payloads without it retain their previous
+hour mapping and rendered bytes. Unknown stages refuse through the handler's
+existing payload-error policy.
+
+Custom hours retain `abandoned_<hours>h:<order-id>` and
+`checkout_recovery:<hours>h:<order-id>` dedup keys. Default keys are unchanged.
+Abandoned-cart event types remain the existing stage routes ending in
+`1h`/`24h`/`72h`; their names do not describe custom timing. Nonfinal abandoned
+waves occupy the window before the next configured wave; the final wave requires
+the preceding configured stage's processed event when one exists. Checkout final
+waves require confirmed acceptance of the first configured wave when one exists.
+A schedule containing only `last` has no predecessor requirement. Enqueue result
+counter names remain the legacy names, counted by stage.
+
+An installed schedule determines eligibility offsets and takes precedence over
+`firstOffsetSeconds` and `finalOffsetSeconds`; those legacy overrides remain
+active only with an absent setting. The existing request-policy validator still
+checks its legacy offsets, including defaults; keep them inside `checkoutSeconds`
+even when the installed schedule supplies timing. `checkoutSeconds`, payment/consent gates,
+expiry and token lifetimes retain their independent limits. For example, a
+48-hour final checkout reminder requires a checkout window longer than 48 hours.
+Changing a schedule never rewrites pending events or tokens; changing an hour
+creates a different dedup identity, so coordinate schedule changes with in-flight
+reminders.
+
+For a separate native runtime role, keep its existing producer and relation
+privileges and add `GRANT EXECUTE ON FUNCTION
+public.commerce_checkout_recovery_reminder_schedule() TO runtime_role;` during
+installation. Qualified service-role bindings receive this grant. The restricted
+SECURITY DEFINER validator uses `search_path = pg_catalog, pg_temp`; enqueue
+callers need no settings SELECT. The TypeScript read helper needs SELECT on
+`commerce_settings` to return the revision and schedule. Missing EXECUTE fails
+with SQLSTATE `42501`, including when the key is absent.
+
 ## Give an operator a payment link
 
 Bind `createAdminCheckoutPaymentLinkHandler` to `authorizeAdmin`, `respond`,

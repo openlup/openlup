@@ -1474,6 +1474,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4830,6 +4834,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5658,6 +5666,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/contracts/checkoutRecoveryReminders.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/contracts/fulfillmentRecovery.ts",
       "class": "public-output"
     },
@@ -5966,6 +5978,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryReminderSchedule.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryToken.ts",
       "class": "public-output"
     },
@@ -6135,6 +6151,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/installedPolicy.ts",
       "class": "public-output"
     },
     {
@@ -9687,6 +9707,10 @@
     },
     {
       "path": "packages/platform/test/commerce/checkoutRecoveryPay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRecoveryReminderSchedule.test.ts",
       "class": "public-output"
     },
     {
@@ -18855,6 +18879,10 @@
     },
     {
       "path": "server/domains/commerce/outboxAbandonedCartEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/outboxAbandonedCartReminderStage.test.ts",
       "class": "public-output"
     },
     {
@@ -29839,6 +29867,10 @@
     },
     {
       "path": "tests/postgres/checkoutRecoveryRecreation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryReminderSchedule.test.ts",
       "class": "public-output"
     },
     {

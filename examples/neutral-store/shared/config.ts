@@ -1,3 +1,4 @@
+import type { CheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/contracts';
 import type { RenewalStockProtectionPolicy } from '@openlup/platform/inventory/contracts';
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
@@ -33,6 +34,7 @@ export interface Product extends SellableCatalogItem {
 export interface StoreConfig {
   id: string;
   inventory: { renewalProtection: RenewalStockProtectionPolicy };
+  checkoutRecoveryReminders: CheckoutRecoveryReminderSchedule;
   subscriptionCreation: { editWindowHours: number };
   subscriptionEditing: SubscriptionEditorConfig;
   subscriptionOffers: SubscriptionOffers;
@@ -115,6 +117,24 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  const schedule = config.checkoutRecoveryReminders;
+  const scheduleCode = 'checkout_recovery_reminder_schedule_invalid';
+  if (!schedule || Object.keys(schedule).sort().join(',') !== 'abandonedCart,checkoutRecovery,revision'
+    || typeof schedule.revision !== 'string' || !schedule.revision.trim()) throw new Error(scheduleCode);
+  for (const key of ['abandonedCart', 'checkoutRecovery'] as const) {
+    const waves = schedule[key];
+    if (!Array.isArray(waves) || !waves.length) throw new Error(scheduleCode);
+    let previous = 0;
+    const seen = new Set<string>();
+    for (const wave of waves) {
+      if (!wave || Object.keys(wave).sort().join(',') !== 'afterHours,stage'
+        || !['first', 'last', ...(key === 'abandonedCart' ? ['gentle'] : [])].includes(wave.stage)
+        || seen.has(wave.stage) || !Number.isInteger(wave.afterHours)
+        || wave.afterHours <= previous || wave.afterHours > 2147483647) throw new Error(scheduleCode);
+      previous = wave.afterHours; seen.add(wave.stage);
+    }
+    if (waves.at(-1)?.stage !== 'last') throw new Error(scheduleCode);
+  }
   const protection = config.inventory?.renewalProtection;
   if (!protection || Object.keys(protection).sort().join(',') !== 'renewalProtectionDays,revision'
     || typeof protection.revision !== 'string' || !protection.revision.trim()
