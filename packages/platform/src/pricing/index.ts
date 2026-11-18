@@ -25,6 +25,7 @@ export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStr
 export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
 export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
 export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
+export type { OneTimeOfferPricing } from "./oneTimeOfferPricing.js";
 export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";
 export type { QuoteSnapshotExpectMessages } from "./commerceQuoteSnapshotExpect.js";
 export { createDbBackedCommerceQuoteSnapshotVerifier } from "./dbBackedCommerceQuoteSnapshotVerifier.js";

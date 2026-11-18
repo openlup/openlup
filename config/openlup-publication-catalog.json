@@ -8798,6 +8798,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/oneTimeOfferPricing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/offerPolicyReadiness.ts",
       "class": "public-output"
     },
