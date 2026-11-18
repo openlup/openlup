@@ -191,7 +191,8 @@ type CliReport = {
   formatVersion: number;
   exitCode: number;
   state: string;
-  findings?: readonly Pick<AppVerificationFinding, "code" | "observed" | "cause" | "fix" | "recheck" | "evidence">[];
+  // The wire includes CLI-originated failures as well as readiness findings.
+  findings?: readonly (Pick<AppVerificationFinding, "observed" | "cause" | "fix" | "recheck" | "evidence"> & { code: string })[];
   files?: readonly (AppUpgradePlan["files"][number] & { ownership: string })[];
   ownership?: { unlisted: string };
   applied?: readonly string[];
@@ -275,13 +276,15 @@ export function createVerificationInput() {
     ] as const) {
       writeFileSync(join(root, "bad-app.mjs"), source);
       const failure = run(["verify", "--app", "./bad-app.mjs", "--json"], 74);
-      const parsed = JSON.parse(failure);
+      const parsed: CliReport = JSON.parse(failure);
       assert.equal(parsed.formatVersion, 1);
       assert.equal(parsed.state, "failed");
       assert.equal(parsed.exitCode, 74);
-      assert.equal(parsed.findings?.[0]?.code, "OPENLUP_E_CLI_FAILURE");
-      assert.equal(parsed.findings?.[0]?.observed, expectedObserved);
-      assert(parsed.findings[0].fix.includes(expectedFix));
+      const finding = parsed.findings?.[0];
+      assert(finding);
+      assert.equal(finding.code, "OPENLUP_E_CLI_FAILURE");
+      assert.equal(finding.observed, expectedObserved);
+      assert(finding.fix.includes(expectedFix));
       assert(!failure.includes("synthetic-private-detail"));
       const failureText = run(["verify", "--app", "./bad-app.mjs"], 74);
       assert(failureText.includes(expectedObserved));

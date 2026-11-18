@@ -82,11 +82,8 @@ export default function CatalogPage({ reference }: { reference?: {
       </header>
 
       {/*
-        The panel takes a `string`, reads on mount, and has no token guard of its
-        own; the packs queries below gate on `enabled`. `tsconfig.app.json` sets
-        `strict: false`, so passing `string | undefined` here type-checks and
-        would send `Bearer undefined` on a tokenless render. Withholding the
-        panel is the same discipline the packs reads already follow.
+        The panel reads on mount and requires a token. Wait for the token before
+        rendering it, as the packs queries below do with `enabled`.
       */}
       {accessToken !== undefined && <CatalogDocumentPanel accessToken={accessToken} t={t} />}
 
