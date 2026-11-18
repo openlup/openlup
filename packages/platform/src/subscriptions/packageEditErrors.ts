@@ -10,8 +10,9 @@ export function mapPackageEditError(error: unknown, phase: "preview" | "apply", 
       ? "subscription_quote_not_accepted" : action === "update_plan_length" ? "plan_length_unavailable" : "subscription_edit_reprice_failed", reason: message };
   }
   const durable = /(subscription_(?:edit|command|lifecycle)_(?:quote_|stale_|window_|below_|payment_|forbidden|not_found|conflict_|base_total_mismatch|invalid_|unsupported_|idempotency_|renewal_terms_missing)[a-z_]*)/u.exec(message);
-  if (phase === "apply" && durable) {
-    return { status: 409, code: "CONFLICT", message: "Customer subscription action is not allowed", reason: durable[1] };
+  const admission = /\b(customer_self_service_(?:invalid_catalog_anchor|stale_edit_catalog_head|invalid_offer_membership)|catalog_admission_price_context_moved)\b/u.exec(message);
+  if (phase === "apply" && (durable || admission)) {
+    return { status: 409, code: "CONFLICT", message: "Customer subscription action is not allowed", reason: (durable ?? admission)?.[1] };
   }
   return { status: 503, code: "UPSTREAM_UNAVAILABLE", message: phase === "preview" ? "Customer subscription preview failed" : "Customer subscription action failed" };
 }

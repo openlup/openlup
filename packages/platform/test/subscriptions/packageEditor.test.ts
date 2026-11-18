@@ -1,6 +1,7 @@
 import type { ExactSubscriptionEditRequest } from "../../src/subscriptions/contracts/exactEdit.js";
 import { expect, it, vi } from "vitest";
 import { createPostgresPackageEditor } from "../../src/subscriptions/packageEditor.js";
+import { mapSizedEditError } from "../../src/subscriptions/sizedEditor.js";
 import { mapPackageEditError } from "../../src/subscriptions/packageEditErrors.js";
 import type { PackageEditorOptions, PackageEditRequest } from "../../src/subscriptions/packageEditContracts.js";
 
@@ -167,4 +168,24 @@ it("rechecks admission on apply after a successful preview even when the quote w
   expect(f.calls.filter(call => call.sql.includes("subscription_quote_preview_record("))).toHaveLength(1);
   expect(f.calls.some(call => call.sql.includes("subscription_package_edit_apply("))).toBe(false);
   expect(mapPackageEditError(new Error("subscription_reprice_terms_not_admitted"), "preview")).toMatchObject({ status: 400, reason: "subscription_reprice_terms_not_admitted" });
+});
+
+const admissionRefusals = [
+  { rule: "LC6-D-128 missing anchor", reason: "customer_self_service_invalid_catalog_anchor", code: "22023", conflict: true },
+  { rule: "LC6-D-157 stale head", reason: "customer_self_service_stale_edit_catalog_head", code: "40001", conflict: true },
+  { rule: "LC6-D-128 membership", reason: "customer_self_service_invalid_offer_membership", code: "55000", conflict: true },
+  { rule: "LC6-D-157 exact price context moved", reason: "catalog_admission_price_context_moved", code: "40001", conflict: true },
+  { rule: "LC6-D-157 authority unavailable", reason: "catalog_propagation_head_unreadable", code: "55000", conflict: false },
+];
+it.each(admissionRefusals.flatMap(row => [
+  { ...row, lane: "legacy", map: mapPackageEditError, action: "update_bundle" },
+  { ...row, lane: "classic", map: mapPackageEditError, action: "update_package_template" },
+  { ...row, lane: "exact", map: mapPackageEditError, action: "swap_base_line" },
+  { ...row, lane: "addon", map: mapSizedEditError, action: "update_addon_quantity" },
+  { ...row, lane: "sized", map: mapSizedEditError, action: "update_base_mix" },
+  { ...row, lane: "opt-in", map: mapSizedEditError, action: "resize_bundle" },
+]))("$rule through the $lane action mapper", ({ map,action,reason,code,conflict }) => {
+  expect(map({ message: reason,code }, "apply", action)).toEqual(conflict
+    ? { status: 409, code: "CONFLICT", message: "Customer subscription action is not allowed", reason }
+    : { status: 503, code: "UPSTREAM_UNAVAILABLE", message: "Customer subscription action failed" });
 });
