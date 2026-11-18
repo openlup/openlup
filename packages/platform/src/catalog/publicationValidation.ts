@@ -11,7 +11,7 @@ import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, parseCatalogQuanti
 import type { CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts, CatalogDraftPublicationOperationV3 } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3 } from "./contracts/draftV3.js";
-import type { CatalogPublishedIdentifier, CatalogPublicationManifestV2 } from "./contracts/publication.js";
+import type { CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./contracts/publication.js";
 import type { CatalogProductState, CatalogSkuState, CatalogLifecycleStoredRecord as CatalogDraftPublicationStoredRecord, CatalogDraftPayloadV4 } from "./contracts/lifecycleV2.js";
 import { catalogDraftPayloadV4Schema, catalogAuthoritativeLifecycleV2, catalogLifecycleProjectionV2, catalogLifecycleTransitionV2, resolveCatalogLifecycleProvenance } from "./lifecycleV2.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
@@ -41,7 +41,7 @@ const identifierSchema = z.object({ scheme: ref, issuer: ref, value: z.string().
   .refine(value => value.packagingLevel === "unit" ? value.quantity === 1 : value.quantity >= 2)
   .refine(value => !value.isPrimary || value.scheme === "gs1:gtin" && value.packagingLevel === "unit")
   .refine(value => value.scheme !== "gs1:gtin" || isValidGtin(value.value));
-export const catalogPublishedSkuSchema: z.ZodType<CatalogSkuState> = z.object({
+export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.object({
   id, productId: id, code, title: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
   netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
@@ -51,13 +51,13 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogSkuState> = z.object({
   if (!sku.memberships.every((row, index) => index === 0 || sku.memberships[index - 1]!.offerVersion < row.offerVersion)
     || sku.identifiers.filter(row => row.isPrimary).length > 1)
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
-}) as z.ZodType<CatalogSkuState>;
-export const catalogPublishedProductSchema: z.ZodType<CatalogProductState> = z.object({
+}) as z.ZodType<CatalogPublishedSku>;
+export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
   id, slug: z.string().min(1), name: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
   document: catalogDocumentRevisionRefSchema.nullable(), presentation: facts.nullable(), source: claimSchema,
   content: catalogDraftSharedContentV3Schema,
-}).strict() as z.ZodType<CatalogProductState>;
+}).strict() as z.ZodType<CatalogPublishedProduct>;
 export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2> = z.object({
   schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
   skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()),
@@ -82,7 +82,8 @@ export const catalogSkuStateSchema: z.ZodType<CatalogSkuState> = z.union([catalo
 export const catalogPublicationStateSchema = z.union([catalogPublicationManifestSchema, z.object({ schemaVersion: z.literal(3), product: governedSchema(catalogPublishedProductSchema, "definitionDigest"), skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()) }).strict().refine(value => value.skus.every((sku, index) => index === 0 || value.skus[index - 1]!.skuId < sku.skuId) && value.skus.some(sku => sku.skuId === value.product.primarySkuId))]);
 export interface CatalogPublicationDocument {
   reference: z.infer<typeof catalogDocumentRevisionRefSchema>; canonicalText: string;
-  provenance: { draftId: string; draftRevision: number; draftCommandKey: string; draftFingerprint: string };
+  provenance: { draftId: string; draftRevision: number; draftCommandKey: string; draftFingerprint: string }
+    | { sourceKind: "adopted_existing"; sourceDigest: string };
 }
 export interface CatalogPublicationRules {
   /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
@@ -372,6 +373,10 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     const key = Buffer.from(identity.combinationDigest).toString("hex");
     if ("schemaVersion" in sku) need(sku.optionDigest === key, "sku_identity_change_requires_new_sku");
     if (sku.status === "active") { need(!identities.has(key), "duplicate_combination"); identities.add(key); }
+    if (sku.source === null) {
+      need(draft, "catalog_publication_operation_source_missing");
+      Object.assign(sku, { source: claim });
+    }
     publicationJson(catalogSkuStateSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
   }
   need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");

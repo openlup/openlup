@@ -5977,6 +5977,69 @@
             "sha256": "0c0477be22a27a5fbdc779b61fa7ae73fe77c079f2f7ab4a05037c022cf87363"
           }
         ]
+      },
+      {
+        "row": "catalogue-lc8",
+        "path": "db/platform/migrations/20261124010000_catalog_adoption.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_bound_obligations_v2(uuid)",
+            "beforeSha256": "d67f2acd3cd0a7576e879de183dc89251a4d89b71650dbf5dd66047dbebfd09d",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_publication_record_admit()",
+            "beforeSha256": "2764aa7897beee773d83bb09d6d1019a8a508d3e33b72413179affa44a7dac2a",
+            "searchPath": "pg_catalog, public"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_legacy_obligation_binding_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_collect_bound_obligations_v2(uuid)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_adoption_observe(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_adoption_assert_initial(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_adoption_preflight(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_adoption_receipt(uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_adoption_read(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_adopt_existing(uuid,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_publications\n ADD COLUMN source_kind text NOT NULL DEFAULT 'draft',\n ALTER COLUMN draft_id DROP NOT NULL,\n ALTER COLUMN draft_revision DROP NOT NULL,\n ADD CONSTRAINT catalog_publications_source_kind_check CHECK (\n  (source_kind='draft' AND draft_id IS NOT NULL AND draft_revision IS NOT NULL)\n  OR (source_kind='adopted_existing' AND revision=1 AND previous_id IS NULL AND draft_id IS NULL AND draft_revision IS NULL)\n ) NOT VALID;",
+          "ALTER TABLE public.catalog_publications VALIDATE CONSTRAINT catalog_publications_source_kind_check;"
+        ],
+        "createdTriggers": [
+          {
+            "name": "catalog_legacy_obligation_bindings_guard",
+            "table": "public.catalog_legacy_obligation_bindings",
+            "sha256": "be1e8abecb626e690104ff34aad7ed0401849dec2733612cf3ec5c9d23ebd464"
+          }
+        ]
       }
     ]
   },
@@ -8566,6 +8629,62 @@
           "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "3c7343f356bfcac6aa2439e142b3cda06f8616b07b6a72926e5b5bc534795f56"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124010000_catalog_adoption.sql",
+      "sha256": "dee2ac9aae1602bef55d7b153b8add7f51f154777c6ef8659ec10b78f213597a",
+      "functions": [
+        {
+          "signature": "public.catalog_bound_obligations_v2(uuid)",
+          "beforeSha256": "d67f2acd3cd0a7576e879de183dc89251a4d89b71650dbf5dd66047dbebfd09d",
+          "afterSha256": "64cdf284df6c566ae74c422aeb09fc68183af2ca8a5de893d0c9932a02e846de"
+        },
+        {
+          "signature": "public.catalog_publication_record_admit()",
+          "beforeSha256": "2764aa7897beee773d83bb09d6d1019a8a508d3e33b72413179affa44a7dac2a",
+          "afterSha256": "bded5a0d356196c3069fdf4f84fbd8c0250c29f6d701944dd820c759c448323c"
+        },
+        {
+          "signature": "public.catalog_legacy_obligation_binding_guard()",
+          "beforeSha256": null,
+          "afterSha256": "f31ba5bb77b3715fb1ff3876857819eca165cc0290dc2c327a3d5d7cfdff3757"
+        },
+        {
+          "signature": "public.catalog_collect_bound_obligations_v2(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "732b5cc5b1b0dc0ee3e804912ef29d00f612cec031fa1065cd2b7f643c15f044"
+        },
+        {
+          "signature": "public.catalog_adoption_observe(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "f15882757d583f84631b097c1a2cd6b1411aea5e281f5c6875b9435d5c94b3ab"
+        },
+        {
+          "signature": "public.catalog_adoption_assert_initial(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "8db506d02e14a6c949ab417f9093b5a0e5e71ccc06040e010bd3fda084878763"
+        },
+        {
+          "signature": "public.catalog_adoption_preflight(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "5102dea37d38a87f2e90b1a5ea9205b71d2da17d5e87e37606e744b1121d58d3"
+        },
+        {
+          "signature": "public.catalog_adoption_receipt(uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "8bf35e5db80aa1a66126f2582ab3ce48ad95e1bf102ac892308150f3ec9f96b4"
+        },
+        {
+          "signature": "public.catalog_adoption_read(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "d199a5545a433342eb5f661ab07b52e7d0ab8d3fc7ee51885130b6b305bbc8ab"
+        },
+        {
+          "signature": "public.catalog_adopt_existing(uuid,text,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "349e19e29eac968bb64cfccb6aabad40a21c064033f3cfd9c1270b14b77f78dc"
         }
       ]
     }

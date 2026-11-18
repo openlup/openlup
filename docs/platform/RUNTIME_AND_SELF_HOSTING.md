@@ -860,8 +860,12 @@ semantics nor permission grants.
 
 All read, mutation and activation flags default to disabled. Returning a handler
 table does not register it: the shipped BFF caller table, browser pages, site
-manifest, prerender and subscription profile remain unchanged. Publication reads,
-publish, lifecycle writes and native acquisition acceptance remain unsupported.
+manifest, prerender and subscription profile remain unchanged. Optional catalogue
+composition supplies the publisher, transaction and distinct live observations
+for publication reads, publication and lifecycle writes. Programmatic callers
+read `observeCapabilities()` from that binding. The host writer switch controls
+the two writer lanes. Native acquisition acceptance requires its own bound
+effect authority.
 The consumer proof uses the existing quote/offer and authorized draft readback
 surfaces. The mounted admin/feed readback proof feeds the merged availability
 builder (`createNewPurchaseStockAvailabilityPort`) from an injected port-boundary

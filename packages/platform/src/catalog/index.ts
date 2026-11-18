@@ -99,3 +99,7 @@ export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSucces
 export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
 export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
+
+export { createPostgresCatalogAdoption, createPostgresCatalogAdoptionReader } from "./catalogAdoption.js";
+export type { CatalogAdoptionPreflight, CatalogAdoptionReceipt } from "./catalogAdoption.js";
+export { createCatalogRuntimeBinding, observePostgresCatalogPrivileges } from "./catalogRuntimeBinding.js";

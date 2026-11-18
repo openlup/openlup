@@ -1482,6 +1482,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124010000_catalog_adoption.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4814,6 +4818,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124010000_catalog_adoption.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5122,6 +5130,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/adoptedPublication.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/attributeProjection.ts",
       "class": "public-output"
     },
@@ -5190,6 +5202,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogAdoption.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5207,6 +5223,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogPackManifest.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogRuntimeBinding.ts",
       "class": "public-output"
     },
     {
@@ -9667,6 +9687,14 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogPublicationGrammar.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogRuntimeBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/adoption-witness-census.md",
       "class": "public-output"
     },
     {
@@ -14803,6 +14831,14 @@
     },
     {
       "path": "server/adapters/supabase/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/catalogPublicationEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/catalogPublicationEvidence.ts",
       "class": "public-output"
     },
     {
@@ -29831,6 +29867,10 @@
     },
     {
       "path": "tests/postgres/catalogAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogAdoption.test.ts",
       "class": "public-output"
     },
     {

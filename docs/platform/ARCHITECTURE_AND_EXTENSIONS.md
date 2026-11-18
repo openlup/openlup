@@ -3547,3 +3547,26 @@ input; the witness reads it from the application directory. A complete portable
 catalogue and restricted
 runtime login are explicit prerequisites; the local session and witness establish
 no hosted-authentication or production qualification.
+
+### Qualify catalogue capabilities on the selected host
+
+A host explicitly supplies the catalogue authority and observes each selected
+port on its actual database and executor. Use
+`observePostgresCatalogPrivileges` for a scoped schema and grant check.
+Combine that check with the authority's live readiness before declaring a lane
+ready. A verified empty installation can be ready to read. An existing
+unadopted scope, an unsupported operation and a dependency outage remain
+distinct. Registering a product type or installing a migration grants no
+publication capability.
+
+Use `createCatalogRuntimeBinding` to invoke the selected ports. Read,
+publication, lifecycle, shopper, settlement, editor, account, renewal and
+successor lanes have independent observations. An explicit host writer switch
+controls publication and lifecycle commands. Disable it while keeping qualified
+retained reads and servicing available. The operator publisher and adoption
+command require the existing verified human lane. A host that uses managed
+publication continues to read its existing authority and keeps its legacy
+mutation fences.
+
+See the [native adoption runbook](DATA_AND_MIGRATIONS.md#adopt-an-existing-native-catalogue)
+for the order of schema installation, readers and operator grants.

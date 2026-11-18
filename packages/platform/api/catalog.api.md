@@ -1172,6 +1172,178 @@ export declare function createCatalogCandidateService(deps: CatalogCandidateDeps
     compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
 };
 ```
+## dist/catalog/catalogAdoption.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogPublicationDependencies } from "./publicationPortsV2.js";
+import type { CatalogPublicationFailure } from "./contracts/publication.js";
+import { z } from "./validation.js";
+declare const preflightInput: z.ZodObject<{
+    productId: z.ZodGUID;
+    documentText: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+declare const command: z.ZodObject<{
+    productId: z.ZodGUID;
+    documentText: z.ZodOptional<z.ZodString>;
+    sourceDigest: z.ZodString;
+    commandKey: z.ZodString;
+}, z.core.$strict>;
+declare const scope: z.ZodObject<{
+    productId: z.ZodGUID;
+    commandKey: z.ZodString;
+}, z.core.$strict>;
+declare const preflightSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    productId: z.ZodGUID;
+    actorId: z.ZodGUID;
+    sourceDigest: z.ZodString;
+    evidence: z.ZodObject<{
+        product: z.ZodRecord<z.ZodString, z.ZodJSONSchema>;
+        definitionDigest: z.ZodString;
+        document: z.ZodRecord<z.ZodString, z.ZodJSONSchema>;
+        skus: z.ZodArray<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>;
+        prices: z.ZodArray<z.ZodJSONSchema>;
+        obligations: z.ZodArray<z.ZodJSONSchema>;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+declare const receiptSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    kind: z.ZodLiteral<"adoption">;
+    sourceKind: z.ZodLiteral<"adopted_existing">;
+    productId: z.ZodGUID;
+    commandKey: z.ZodString;
+    actorId: z.ZodGUID;
+    fingerprint: z.ZodString;
+    sourceDigest: z.ZodString;
+    publicationDigest: z.ZodString;
+    previousHead: z.ZodNull;
+    head: z.ZodObject<{
+        publicationId: z.ZodGUID;
+        revision: z.ZodLiteral<1>;
+        documentDigest: z.ZodString;
+    }, z.core.$strict>;
+    committedAt: z.ZodString;
+    skuCount: z.ZodNumber;
+    legacyBindingCount: z.ZodNumber;
+}, z.core.$strict>;
+/** Observation to review before approving its digest. Contains restricted operator evidence. @experimental */
+export type CatalogAdoptionPreflight = z.infer<typeof preflightSchema>;
+/** Immutable receipt for a first publication from an existing installation. @experimental */
+export type CatalogAdoptionReceipt = z.infer<typeof receiptSchema>;
+/**
+ * Explicit operator binding. The transaction must use a restricted session
+ * derived from the same verified human context on one connection.
+ * @experimental
+ */
+export declare function createPostgresCatalogAdoption<Context>(deps: {
+    authorizeHuman: CatalogPublicationDependencies<Context>["authorizeHuman"];
+    transaction<T>(context: Context, work: (db: PgQueryExecutor) => Promise<T>): Promise<T>;
+}): {
+    preflight(input: z.input<typeof preflightInput>, context: Context): Promise<CatalogPublicationFailure | {
+        outcome: "verified";
+        preflight: {
+            schemaVersion: 1;
+            productId: string;
+            actorId: string;
+            sourceDigest: string;
+            evidence: {
+                product: Record<string, z.core.util.JSONType>;
+                definitionDigest: string;
+                document: Record<string, z.core.util.JSONType>;
+                skus: Record<string, z.core.util.JSONType>[];
+                prices: z.core.util.JSONType[];
+                obligations: z.core.util.JSONType[];
+            };
+        };
+    }>;
+    adopt(input: z.input<typeof command>, context: Context): Promise<CatalogPublicationFailure | {
+        outcome: "replayed" | "committed";
+        receipt: {
+            schemaVersion: 1;
+            kind: "adoption";
+            sourceKind: "adopted_existing";
+            productId: string;
+            commandKey: string;
+            actorId: string;
+            fingerprint: string;
+            sourceDigest: string;
+            publicationDigest: string;
+            previousHead: null;
+            head: {
+                publicationId: string;
+                revision: 1;
+                documentDigest: string;
+            };
+            committedAt: string;
+            skuCount: number;
+            legacyBindingCount: number;
+        };
+    }>;
+    receipt(input: z.input<typeof scope>, context: Context): Promise<CatalogPublicationFailure | {
+        outcome: "absent";
+        receipt?: undefined;
+    } | {
+        outcome: "found";
+        receipt: {
+            schemaVersion: 1;
+            kind: "adoption";
+            sourceKind: "adopted_existing";
+            productId: string;
+            commandKey: string;
+            actorId: string;
+            fingerprint: string;
+            sourceDigest: string;
+            publicationDigest: string;
+            previousHead: null;
+            head: {
+                publicationId: string;
+                revision: 1;
+                documentDigest: string;
+            };
+            committedAt: string;
+            skuCount: number;
+            legacyBindingCount: number;
+        };
+    }>;
+};
+/**
+ * Read the immutable first revision from a restricted read executor. The host
+ * authorizes retained SKU access before choosing a scope.
+ * @experimental
+ */
+export declare function createPostgresCatalogAdoptionReader(executor: PgQueryExecutor): (input: {
+    productId: string;
+    skuId?: string;
+}) => Promise<CatalogPublicationFailure | {
+    outcome: "absent";
+    readback?: undefined;
+} | {
+    outcome: "found";
+    readback: {
+        schemaVersion: 1;
+        kind: "adopted_existing";
+        productId: string;
+        head: {
+            publicationId: string;
+            revision: 1;
+            documentDigest: string;
+        };
+        sourceDigest: string;
+        publicationDigest: string;
+        current: boolean;
+        canonicalState: string;
+        skuFacts: string | null;
+        skuReference: {
+            skuId: string;
+            revisionId: string;
+            revision: 1;
+            digest: string;
+        } | null;
+    };
+}>;
+export {};
+```
 ## dist/catalog/catalogConformance.d.ts
 
 ```ts
@@ -1260,6 +1432,62 @@ export interface CatalogPackManifest {
  * @experimental
  */
 export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPackManifest;
+```
+## dist/catalog/catalogRuntimeBinding.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogCapabilityDescriptor } from "./publicationPorts.js";
+type Observed = "ready" | "unadopted" | "unsupported" | "dependency_unavailable";
+type Refusal = {
+    outcome: Exclude<Observed, "ready">;
+    reason: string;
+};
+type PortLane<Port> = {
+    port: Port;
+    enabled: () => boolean;
+    observe: () => Promise<Observed>;
+};
+type LaneName = "publicationRead" | "publish" | "lifecycleWrite" | "shopper" | "settlement" | "account" | "editor" | "renewal" | "successor";
+/**
+ * Check grants and visibility as the actual executor login. A relation whose
+ * reads are filtered by row-level security cannot establish a complete scope.
+ * @experimental
+ */
+export declare function observePostgresCatalogPrivileges(executor: PgQueryExecutor, requirements: {
+    relations?: readonly string[];
+    functions?: readonly string[];
+    columns?: readonly {
+        relation: string;
+        column: string;
+    }[];
+}): Promise<boolean>;
+/**
+ * Compose selected installed ports and their live observations. An omitted
+ * lane is unsupported. Disabling authoring leaves independently bound lanes
+ * available, including retained reads and renewal.
+ * @experimental
+ */
+export declare function createCatalogRuntimeBinding<Ports extends Partial<Record<LaneName, unknown>>>(input?: {
+    ports?: {
+        [Lane in keyof Ports]?: PortLane<Ports[Lane]>;
+    };
+    writerEnabled?: () => boolean;
+    existing?: Pick<CatalogCapabilityDescriptor, "read" | "draft">;
+}): {
+    observe: (name: LaneName) => Promise<Observed>;
+    use: <Key extends keyof Ports & LaneName, Value>(name: Key, run: (port: Ports[Key]) => Promise<Value>) => Promise<Refusal | {
+        outcome: "ready";
+        value: Awaited<Value>;
+    }>;
+    /** One scope-bound, sticky observation per quote evaluation batch. */
+    quoteBatch<Value>(read: (port: Ports["shopper"]) => Promise<Value>): () => Promise<Refusal | {
+        outcome: "ready";
+        value: Value;
+    }>;
+    capabilities(): Promise<CatalogCapabilityDescriptor>;
+};
+export {};
 ```
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
@@ -2797,9 +3025,13 @@ export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
     optionDigest: string;
 }
 /** @experimental */
-export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3;
+export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3 | (Omit<CatalogPublishedProductV3, "source"> & {
+    source: null;
+});
 /** @experimental */
-export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3;
+export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3 | (Omit<CatalogPublishedSkuV3, "source"> & {
+    source: null;
+});
 /** Shared pure reference; subscriptions own its accepted binding. */
 export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/core/catalog";
 /** @experimental */
@@ -4284,6 +4516,9 @@ export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSucces
 export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
 export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
+export { createPostgresCatalogAdoption, createPostgresCatalogAdoptionReader } from "./catalogAdoption.js";
+export type { CatalogAdoptionPreflight, CatalogAdoptionReceipt } from "./catalogAdoption.js";
+export { createCatalogRuntimeBinding, observePostgresCatalogPrivileges } from "./catalogRuntimeBinding.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4764,7 +4999,7 @@ import type { VerifiedCatalogPublisher, CatalogPublicationPort, CatalogPublicati
 import type { CatalogPublicationDependencies, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
 import type { CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./contracts/publication.js";
 import type { CatalogHeadRef, CatalogPublishCommand } from "./contracts/lifecycle.js";
-import type { CatalogProductState as CatalogPublishedProduct, CatalogSkuState as CatalogPublishedSku, CatalogFullPublicationV3 } from "./contracts/lifecycleV2.js";
+import type { CatalogSkuState as CatalogPublishedSku, CatalogFullPublicationV3 } from "./contracts/lifecycleV2.js";
 /** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters. */
 export declare function createPostgresCatalogPublication<Context>(deps: CatalogPublicationDependencies<Context>): {
     authorize: (context: Context) => Promise<VerifiedCatalogPublisher | null>;
@@ -4807,7 +5042,7 @@ export declare function createPostgresCatalogPublication<Context>(deps: CatalogP
             revision: number;
             documentDigest: string;
         };
-        product: import("./contracts/publication.js").CatalogPublishedProduct | (CatalogPublishedProduct & {
+        product: import("./contracts/publication.js").CatalogPublishedProduct | (import("./contracts/publication.js").CatalogPublishedProduct & {
             schemaVersion: 3;
             lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
         } & Record<"definitionDigest", string>);
@@ -4824,7 +5059,7 @@ import { catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
 import type { CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3 } from "./contracts/draftV3.js";
-import type { CatalogPublicationManifestV2 } from "./contracts/publication.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./contracts/publication.js";
 import type { CatalogProductState, CatalogSkuState, CatalogLifecycleStoredRecord as CatalogDraftPublicationStoredRecord, CatalogDraftPayloadV4 } from "./contracts/lifecycleV2.js";
 export declare class CatalogPublicationError extends Error {
     readonly code: string;
@@ -4834,8 +5069,8 @@ export declare class CatalogPublicationError extends Error {
 export declare const publicationRefuse: (code: string, outcome?: CatalogPublicationError["outcome"]) => never;
 export declare const publicationJson: (input: unknown, maxBytes?: number) => string;
 export declare const publicationDigest: (input: unknown, maxBytes?: number) => string;
-export declare const catalogPublishedSkuSchema: z.ZodType<CatalogSkuState>;
-export declare const catalogPublishedProductSchema: z.ZodType<CatalogProductState>;
+export declare const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku>;
+export declare const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct>;
 export declare const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2>;
 /** @experimental */
 export declare const catalogProductStateSchema: z.ZodType<CatalogProductState>;
@@ -4844,10 +5079,10 @@ export declare const catalogSkuStateSchema: z.ZodType<CatalogSkuState>;
 /** @experimental */
 export declare const catalogPublicationStateSchema: z.ZodUnion<readonly [z.ZodType<CatalogPublicationManifestV2, unknown, z.core.$ZodTypeInternals<CatalogPublicationManifestV2, unknown>>, z.ZodObject<{
     schemaVersion: z.ZodLiteral<3>;
-    product: z.ZodType<CatalogProductState & {
+    product: z.ZodType<CatalogPublishedProduct & {
         schemaVersion: 3;
         lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
-    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogProductState & {
+    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogPublishedProduct & {
         schemaVersion: 3;
         lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
     } & Record<"definitionDigest", string>, unknown>>;
@@ -4866,6 +5101,9 @@ export interface CatalogPublicationDocument {
         draftRevision: number;
         draftCommandKey: string;
         draftFingerprint: string;
+    } | {
+        sourceKind: "adopted_existing";
+        sourceDigest: string;
     };
 }
 export interface CatalogPublicationRules {
@@ -4912,10 +5150,10 @@ export declare function compileCatalogPublication(input: CatalogPublicationCompi
  */
 export declare const catalogSuccessorPublicationStateSchema: z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodType<CatalogPublicationManifestV2, unknown, z.core.$ZodTypeInternals<CatalogPublicationManifestV2, unknown>>, z.ZodObject<{
     schemaVersion: z.ZodLiteral<3>;
-    product: z.ZodType<CatalogProductState & {
+    product: z.ZodType<CatalogPublishedProduct & {
         schemaVersion: 3;
         lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
-    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogProductState & {
+    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogPublishedProduct & {
         schemaVersion: 3;
         lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
     } & Record<"definitionDigest", string>, unknown>>;
@@ -4927,10 +5165,10 @@ export declare const catalogSuccessorPublicationStateSchema: z.ZodUnion<readonly
     }, z.core.$strict>>;
 }, z.core.$strict>]>, z.ZodObject<{
     schemaVersion: z.ZodLiteral<4>;
-    product: z.ZodType<CatalogProductState & {
+    product: z.ZodType<CatalogPublishedProduct & {
         schemaVersion: 3;
         lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
-    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogProductState & {
+    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogPublishedProduct & {
         schemaVersion: 3;
         lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
     } & Record<"definitionDigest", string>, unknown>>;
@@ -5349,6 +5587,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261123210000_catalog_successors.sql";
     readonly position: 155;
     readonly sha256: "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87";
+    readonly url: URL;
+}, {
+    readonly id: "20261124010000_catalog_adoption";
+    readonly catalogPath: "db/platform/migrations/20261124010000_catalog_adoption.sql";
+    readonly position: 156;
+    readonly sha256: "dee2ac9aae1602bef55d7b153b8add7f51f154777c6ef8659ec10b78f213597a";
     readonly url: URL;
 }];
 ```

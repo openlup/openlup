@@ -1588,9 +1588,13 @@ export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
     optionDigest: string;
 }
 /** @experimental */
-export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3;
+export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3 | (Omit<CatalogPublishedProductV3, "source"> & {
+    source: null;
+});
 /** @experimental */
-export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3;
+export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3 | (Omit<CatalogPublishedSkuV3, "source"> & {
+    source: null;
+});
 /** Shared pure reference; subscriptions own its accepted binding. */
 export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/core/catalog";
 /** @experimental */

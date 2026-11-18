@@ -2,7 +2,7 @@ import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions } from "@openlup/platform/catalog";
+import { createPostgresCatalogAdoption, createPostgresCatalogAdoptionReader, createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -256,4 +256,56 @@ it("transfers governed lifecycle facts and nullable same-SKU accepted bindings w
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await restore(target.owner,captured)).toMatchObject({ replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
+});
+
+it("catalog_upgrade_replays_existing_draft_receipts LC8-N-005 restores adoption, obligations and exact draft recovery", async () => {
+  const held = lifecycleSource, history = lifecycleHistory;
+  const product = randomUUID(), sku = randomUUID(), document = randomUUID(), customer = randomUUID(), subscription = randomUUID();
+  const documentText = '{"title":"Installed article"}';
+  const documentDigest = createHash("sha256").update(documentText).digest("hex");
+  await held.owner.query("INSERT INTO public.catalog_products(id,slug,name,type_key,type_version) VALUES($1,$2,'Installed article',$3,1)",
+    [product, `installed-${product}`, publicationDefinition.key]);
+  await held.owner.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,sellable_standalone,net_weight_g,net_content_dimension,
+    net_content_unit,net_content_unscaled,net_content_scale) VALUES($1,$2,$3,'Installed variant',false,100,'mass','openlup:g',100,0)`,
+    [sku, product, `ADOPTED-${sku}`]);
+  await held.owner.query(`INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,document_payload,
+    source_ref,provenance,digest) VALUES($1,$2,1,'example:transfer','reference:document',$3::jsonb,'reference:source','{}',$4)`,
+    [document, product, documentText, documentDigest]);
+  await setFixtureCatalogDocument(held.owner, product, document);
+  await held.owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [product, sku]);
+  await held.owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [customer, `${customer}@example.invalid`]);
+  await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')",
+    [subscription, customer]);
+  await held.owner.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code)
+    VALUES($1,$2,3,0,617,'XXX')`, [subscription, sku]);
+  const adoption = (owner: Pool) => createPostgresCatalogAdoption({
+    authorizeHuman: async () => ({ ok: true, userId: publicationAdmin, role: "admin", isMachineActor: false }),
+    async transaction(_context, work) {
+      const client = await owner.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: publicationAdmin, role: "authenticated" })]);
+        const result = await work(client);
+        await client.query("COMMIT");
+        return result;
+      } catch (error) { await client.query("ROLLBACK"); throw error; }
+      finally { client.release(); }
+    },
+  });
+  const sourceAdoption = adoption(held.owner);
+  const observed = await sourceAdoption.preflight({ productId: product, documentText }, null);
+  if (observed.outcome !== "verified") throw new Error(JSON.stringify(observed));
+  const request = { productId: product, commandKey: "adopt", sourceDigest: observed.preflight.sourceDigest, documentText };
+  const committed = await sourceAdoption.adopt(request, null);
+  if (!("receipt" in committed)) throw new Error(JSON.stringify(committed));
+  expect(committed.receipt.legacyBindingCount).toBe(1);
+  const captured = await captureStoreJourney(held.owner, "adoption-source");
+  expect(await restore(target.owner, captured)).toMatchObject({ replayed: false });
+  expect(await journeyCensus(target.owner)).toEqual(await journeyCensus(held.owner));
+  const restoredAdoption = adoption(target.owner), reader = createPostgresCatalogAdoptionReader(target.owner);
+  expect(await restoredAdoption.receipt({ productId: product, commandKey: "adopt" }, null)).toEqual({ outcome: "found", receipt: committed.receipt });
+  expect(await reader({ productId: product, skuId: sku })).toMatchObject({ outcome: "found", readback: { head: committed.receipt.head } });
+  const authority = publicationAuthority(target.owner), actor = (await authority.authorize(undefined))!;
+  expect(await authority.receipt({ productId: history.productId, commandKey: "publish:2" }, actor)).toEqual({ outcome: "found", receipt: history.receipt });
+  expect(await restore(target.owner, captured)).toMatchObject({ replayed: true });
 });

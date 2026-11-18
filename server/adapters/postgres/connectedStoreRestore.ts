@@ -242,6 +242,7 @@ const order = [
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
   "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
+  "catalog_legacy_obligation_bindings",
   "catalog_sku_successors",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
@@ -637,6 +638,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // These guards verify retained canonical bytes and identity without rewriting them.
     catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
+    catalog_legacy_obligation_bindings: ["catalog_legacy_obligation_bindings_guard"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
