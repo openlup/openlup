@@ -20,11 +20,20 @@ describe("quote foundation reference bindings", () => {
   it("preserves error identity and browser/server evidence and money refusals", () => {
     expect(localError).toBe(CommerceQuoteError);
     expect(localCatalogError).toBe(CommerceQuoteCatalogReadError);
+    const offerFacts = {
+      version: "catalog_facts_v3", mode: "one_time", offerPriceReference: "offer-a",
+      skuId: "00000000-0000-4000-8000-000000000001",
+      documentRevisionId: "00000000-0000-4000-8000-000000000002", documentDigest: "c".repeat(64),
+      basePriceEntryId: "retail-a", atTime: "2040-01-01T00:00:00Z", currency: CURRENCY,
+      resolvedUnitAmountMinor: 50, resolvedLineAmountMinor: 100, baseUnitAmountMinor: 60,
+    };
+    expect(catalogFactsProvenanceSchema.safeParse(offerFacts).success).toBe(true);
+    expect(catalogFactsProvenanceSchema.safeParse({ ...offerFacts, offerPriceReference: "" }).success).toBe(false);
     for (const [browser, server, values] of [
       [commerceMoneySchema, createCommerceQuotePrimitives(commerceCurrencySchema).commerceMoneySchema,
         [{ amountMinor: 1, currency: CURRENCY }, { amountMinor: 1, currency: "EUR" }, { amountMinor: -1, currency: CURRENCY }]],
       [quoteDiscountSchema, packageDiscount, [{ promotionId: "offer", appliesTo: "shipping", amountOffMinor: 1, reasonCode: "offer" }, { promotionEngineVersion: "promotion-engine.v2" }]],
-      [catalogFactsProvenanceSchema, packageFacts, [{ version: "catalog_facts_v2", mode: "one_time" }]],
+      [catalogFactsProvenanceSchema, packageFacts, [{ version: "catalog_facts_v2", mode: "one_time" }, offerFacts, { ...offerFacts, offerPriceReference: "" }]],
       [quoteCodeRejectionDetailSchema, packageDetail, [{ code: "CODE", reason: "minimum_not_met", minimumReferenceMinor: 12 }, { code: "CODE", reason: "minimum_not_met", minimumReferenceMinor: -1 }]],
     ] as const) for (const value of values) expect(outcome(browser, value)).toEqual(outcome(server, value));
   });

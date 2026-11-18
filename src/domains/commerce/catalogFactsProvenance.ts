@@ -1,8 +1,8 @@
 // Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 
-import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
-export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
 export type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 const catalogFactsFields = {
   skuId: z.string().uuid(),
@@ -42,14 +42,20 @@ const catalogFactsV2ProvenanceSchema = z
   })
   .strict();
 
-/**
- * Server-only evidence for a strict quote line. V1 remains readable for
- * historical and explicitly pre-cutover legacy subscription observations; v2
- * records the policy which derived a current subscription amount.
- */
+const catalogFactsV3ProvenanceSchema = z
+  .object({
+    version: z.literal(CATALOG_FACTS_OFFER_PROVENANCE_VERSION),
+    offerPriceReference: z.string().trim().min(1).max(120),
+    mode: z.literal("one_time"),
+    ...catalogFactsFields,
+  })
+  .strict();
+
+/** Server-only evidence for strict catalog, subscription policy and one-time offer prices. */
 export const catalogFactsProvenanceSchema = z.union([
   catalogFactsV1ProvenanceSchema,
   catalogFactsV2ProvenanceSchema,
+  catalogFactsV3ProvenanceSchema,
 ]);
 
 

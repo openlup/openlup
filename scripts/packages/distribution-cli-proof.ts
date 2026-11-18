@@ -78,8 +78,23 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
-/** The packaged 1.0 migration, before the proof adds its owned customizations. */
+/** Apply documented demo migrations before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
+  if (from.version === "1.1.0" && to.version === "1.2.0") {
+    // These verified demo files model the changes the adopter makes before applying managed files.
+    const paths = [
+      "owned/acquisition-policy.ts", "owned/copy.ts", "owned/demo-seed.ts", "owned/editor-copy.ts",
+      "owned/market.config.ts", "owned/quote-copy.ts", "owned/renewal-copy.ts", "owned/renewal.config.ts",
+      "owned/store.config.ts",
+    ];
+    const { owned } = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
+    for (const path of paths) {
+      assert(owned.includes(path) && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path), "migration_owned_snapshot_overlap");
+    }
+    const updates = paths.map(path => [join(app, path), readFileSync(join(target, path))] as const);
+    for (const [path, bytes] of updates) writeFileSync(path, bytes);
+    return;
+  }
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
   if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;

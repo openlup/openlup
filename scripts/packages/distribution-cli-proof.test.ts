@@ -103,6 +103,29 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(to.files).toEqual(from.files);
 });
 
+it("prepares the 1.2 starter demo's owned locale and renewal contracts outside the managed snapshot", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const changed = [
+    "owned/acquisition-policy.ts", "owned/copy.ts", "owned/demo-seed.ts", "owned/editor-copy.ts",
+    "owned/quote-copy.ts", "owned/renewal-copy.ts", "owned/renewal.config.ts", "owned/store.config.ts",
+  ];
+  const added = "owned/market.config.ts";
+  const ownership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
+  candidate("ownership.json", { ...ownership, owned: [...ownership.owned, ...changed, added] });
+  for (const path of changed) write(path, "previous demo bytes");
+  for (const path of [...changed, added]) candidate(path, `candidate ${path}`);
+  const from = starterUpgradeSnapshot(app, "1.1.0"), to = starterUpgradeSnapshot(target, "1.2.0");
+  const managedCandidate = { ...to.files };
+  expect(() => migrateStarterOwned(app, target, from, { ...to, files: { ...to.files, [added]: "managed overlap" } }))
+    .toThrow("migration_owned_snapshot_overlap");
+  expect(existsSync(join(app, added))).toBe(false);
+  expect(readFileSync(join(app, changed[0]), "utf8")).toBe("previous demo bytes");
+  migrateStarterOwned(app, target, from, to);
+  for (const path of [...changed, added]) expect(readFileSync(join(app, path), "utf8")).toBe(`candidate ${path}`);
+  expect(readFileSync(join(app, "owned.ts"), "utf8")).toBe("local bytes");
+  expect(to.files).toEqual(managedCandidate);
+});
+
 it.each([false, true])("runs retained unpublished candidates and detects a newly required owned file: %s", missing => {
   const { directory, write } = fixture(), source = join(directory, "source"), packs = join(directory, "packs"), version = "999999.0.0";
   const run = (command: string, args: string[], cwd = source) => execFileSync(command, args, { cwd, encoding: "utf8", stdio: "pipe" });
