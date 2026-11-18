@@ -156,6 +156,11 @@ BEGIN
     OR NOT coalesce(s->>'quantity' ~ '^[1-9][0-9]*$' AND pg_input_is_valid(s->>'quantity','integer'),false))
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_sku_revisions) s GROUP BY (s#>>'{reference,skuId}')::uuid HAVING count(*)>1) THEN
   RAISE EXCEPTION '%',refused USING ERRCODE='22023'; END IF;
+ IF jsonb_typeof(p_offer_evidence->'scopeSkuIds')='array' AND
+  (SELECT array_agg((requested_line#>>'{reference,skuId}')::uuid ORDER BY (requested_line#>>'{reference,skuId}')::uuid)
+   FROM jsonb_array_elements(p_sku_revisions) requested_line) IS DISTINCT FROM
+  (SELECT array_agg(id::uuid ORDER BY id::uuid) FROM jsonb_array_elements_text(p_offer_evidence->'scopeSkuIds') id) THEN
+  RAISE EXCEPTION '%',refused USING ERRCODE='22023'; END IF;
  IF jsonb_typeof(p_offer_evidence) IS DISTINCT FROM 'object'
   OR jsonb_typeof(p_offer_evidence->'offerVersion') IS DISTINCT FROM 'string' OR nullif(p_offer_evidence->>'offerVersion','') IS NULL
   OR jsonb_typeof(p_price_context_versions) IS DISTINCT FROM 'array' THEN
@@ -1893,8 +1898,8 @@ BEGIN
     jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN coalesce(opt_in,false) THEN 'sized.v1' ELSE s.configured_offer_version END,'lane','sized','optIn',coalesce(opt_in,false)),'account');
   -- Governed lines already passed the common current or retained rule.
   FOR line IN SELECT v FROM jsonb_array_elements(lines) v WHERE NOT (v->>'isAddon')::boolean
-   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_catalog_acceptance->'lines') r
-    WHERE r->>'skuId'=(v->>'variantId')::uuid::text) LOOP
+   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_catalog_acceptance->'lines') accepted_ref
+    WHERE accepted_ref->>'skuId'=(v->>'variantId')::uuid::text) LOOP
    IF COALESCE(opt_in,false) OR (line->>'qty')::integer>COALESCE((current_core->>(line->>'variantId'))::integer,0) THEN
     PERFORM 1 FROM public.catalog_skus WHERE id=(line->>'variantId')::uuid AND status='active' AND sellable_in_subscription FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_invalid_sku_admission' USING ERRCODE='22023'; END IF;
