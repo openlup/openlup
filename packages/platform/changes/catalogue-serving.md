@@ -15,10 +15,14 @@ The native writer stores exact net content and independent gross mass. Existing
 positive gram quantities still read through V1. A valid typed quantity without
 an exact positive signed integer gram projection requires V2. The existing
 migration-owner backfill converts only known positive grams. It preserves
-unknown legacy zero values. The write-time compatibility check runs with the writer's existing visibility
-of the bound definition.
+unknown legacy zero values. The write-time compatibility check applies to
+the governed projection of a published SKU. Legacy editor cache records keep
+their existing shape. Qualified native restore runs the same check before
+verifying exact retained row contents.
 Existing drafts, publication history, order lines and agreed prices retain
-their original representation.
+their original representation. Native stock-wait hosts opt into typed
+readback with `retainedContent: "v2"`, or supply the renewal codec when
+composing typed notices.
 
 Managed divergence design: add the nullable quantity columns with an exact
 gram compatibility check and allow the managed product-type-specific columns

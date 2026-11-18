@@ -547,14 +547,17 @@ it.each([
     .rejects.toMatchObject({ code: "quantity_requires_v2" });
   await expect(db.query("UPDATE public.catalog_skus SET net_weight_g=0 WHERE id=$1", [data.skuId]))
     .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
+  await expect(db.query(`UPDATE public.catalog_skus SET net_content_dimension=NULL, net_content_unit=NULL,
+    net_content_unscaled=NULL, net_content_scale=NULL WHERE id=$1`, [data.skuId]))
+    .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
 });
 
 it("catalog_publish_typed_readiness_and_projection schema shape", async () => {
   const constraints = await db.query(`SELECT conname,convalidated,contype FROM pg_constraint
     WHERE conrelid='public.catalog_skus'::regclass AND conname IN
-      ('catalog_skus_net_content_check','catalog_skus_gross_mass_check','catalog_skus_publication_net_content_check')
+      ('catalog_skus_net_content_check','catalog_skus_gross_mass_check')
     ORDER BY conname`);
-  expect(constraints.rows).toEqual(["gross_mass", "net_content", "publication_net_content"].map(name => ({
+  expect(constraints.rows).toEqual(["gross_mass", "net_content"].map(name => ({
     conname: `catalog_skus_${name}_check`, convalidated: true, contype: "c",
   })));
   expect((await db.query("SELECT attnotnull FROM pg_attribute WHERE attrelid='public.catalog_skus'::regclass AND attname='net_weight_g'")).rows)

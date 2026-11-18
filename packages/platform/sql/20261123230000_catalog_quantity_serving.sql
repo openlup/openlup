@@ -9,7 +9,9 @@ DECLARE
   v_divisor numeric;
   v_projection integer;
 BEGIN
-  IF NEW.publication_facts IS NULL THEN
+  -- Legacy editor caches can occupy publication_facts without a retained
+  -- publication SKU. Only an authoritative quantity belongs to this guard.
+  IF NEW.publication_facts->'netContent' IS NULL THEN
     RETURN NEW;
   END IF;
   IF NEW.net_content_dimension = 'mass' THEN
@@ -33,7 +35,7 @@ BEGIN
       END IF;
     END IF;
   END IF;
-  IF NEW.net_weight_g IS DISTINCT FROM v_projection THEN
+  IF NEW.net_content_dimension IS NULL OR NEW.net_weight_g IS DISTINCT FROM v_projection THEN
     RAISE EXCEPTION 'catalog_skus_legacy_net_grams_check'
       USING ERRCODE = '23514', CONSTRAINT = 'catalog_skus_legacy_net_grams_check';
   END IF;
@@ -43,9 +45,6 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_check_legacy_net_grams() FROM PUBLIC;
 
 ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;
-ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_publication_net_content_check
-  CHECK (publication_facts IS NULL OR net_content_dimension IS NOT NULL) NOT VALID;
-ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_publication_net_content_check;
 
 CREATE TRIGGER catalog_skus_legacy_net_grams_check BEFORE INSERT OR UPDATE OF
   product_id, publication_facts, net_weight_g, net_content_dimension, net_content_unscaled, net_content_scale, net_content_unit

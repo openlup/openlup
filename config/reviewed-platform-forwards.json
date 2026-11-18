@@ -5991,9 +5991,7 @@
         "grantOnlyFunctions": [],
         "dataStatements": [],
         "existingTableStatements": [
-          "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;",
-          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_publication_net_content_check\n  CHECK (publication_facts IS NULL OR net_content_dimension IS NOT NULL) NOT VALID;",
-          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_publication_net_content_check;"
+          "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;"
         ],
         "createdTriggers": [
           {
@@ -8596,12 +8594,12 @@
     },
     {
       "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
-      "sha256": "a3c8686aa652318d6f72c3347469f16e98b6b3ca49f3b85e3fbaea8c85260dcd",
+      "sha256": "80f8917fc009cb7552fe88a718f15f79670c2da9d99a44dcc99ac33ac0ece523",
       "functions": [
         {
           "signature": "public.catalog_check_legacy_net_grams()",
           "beforeSha256": null,
-          "afterSha256": "a37105370a179c4a4c680d2bb7a9c66208f5affcb2fe45e6056b2f4f1ffdd7c6"
+          "afterSha256": "b88561d2bd35ccc992984b6b23a80239b8a3efcb0d44ca7a4940143476fbacc9"
         }
       ]
     }

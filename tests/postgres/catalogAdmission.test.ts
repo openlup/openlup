@@ -1423,12 +1423,12 @@ it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
     try {
       const offerVersion = purpose === "sized" ? "sized.v1" : "classic";
       const authority = publisher(read).serving({ types: [definition], offerVersion, maxItems: 5000 });
-      const items = await authority.listQuoteCatalogItems();
-      const item = items.find(item => item.skuId === f.sku);
-      expect(item).toMatchObject({ productId: f.product, acceptedReference: f.reference });
+      const { items } = await authority.detail(f.value.product.slug!);
+      const item = items.find(item => item.sku.id === f.sku);
+      expect(item).toMatchObject({ product: { id: f.product }, acceptedReference: f.reference });
       const input: CatalogAdmissionInput = {
         ...f.admission, purpose: purpose === "order" ? "order" : "account",
-        heads: [{ productId: item!.productId, head: item!.acceptedReference.publicationHead }],
+        heads: [{ productId: item!.product.id, head: item!.acceptedReference.publicationHead }],
         skuRevisions: [{ reference: item!.acceptedReference, quantity: 2 }],
         offerEvidence: purpose === "order" ? { offerVersion } : { offerVersion, subscriptionId: f.subscription, lane: purpose, ...(purpose === "sized" ? { optIn: true } : {}) },
       };
