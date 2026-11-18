@@ -449,6 +449,9 @@ execFileSync("git", ["init", "--quiet", target]);`);
 
 describe("qualified image publication", () => {
   const publish = job(workflow, "publish-qualified-image"), body = script(step(publish, "Verify and publish the qualified archive"));
+  it("enables the same OCI export store as qualification before publishing", () => {
+    expect([step(publish, "Enable OCI export with the bundled Docker builder"), publish.indexOf("Enable OCI export with the bundled Docker builder") < publish.indexOf("Verify and publish the qualified archive")]).toEqual([step(job(workflow, "exact-set-qualification"), "Enable OCI export with the bundled Docker builder"), true]);
+  });
   it("isolates writes from candidate execution and skips the publisher on non-publishing dispatches", () => {
     expect(publish).toContain("needs: exact-set-qualification");
     expect(publish).toContain("if: ${{ needs.exact-set-qualification.result == 'success' && (github.event_name == 'workflow_run' || inputs.publish_image) }}");

@@ -402,6 +402,8 @@ archive manifest digest before any write. With `publish_image: false` (the defau
 the publisher job is skipped and no write token is minted. That run retains the
 qualification job's receipt, with no separate publication receipt. The in-script
 `PUBLISH_IMAGE` guard remains a second layer.
+Both qualification and publication enable the bundled Docker builder's
+containerd image store before exporting archives.
 The existing per-tag workflow concurrency serializes these runs. An existing
 version tag with a different digest refuses by name; ambiguous registry errors
 also refuse. A digest-preserving copy is followed by registry manifest readback.
