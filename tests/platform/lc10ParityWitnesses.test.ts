@@ -3,6 +3,10 @@ import { createCatalogCandidateService,catalogDefinitionDigest,createCatalogProd
 import type { CatalogDraftPayloadV2,CatalogDraftPayloadV5 } from "@openlup/platform/catalog/contracts";
 import { createPostgresSuccessorStore,createNativeRenewalCodec } from "@openlup/platform/subscriptions";
 import type { HistoricalSuccessorProtocolBinding } from "@openlup/platform/subscriptions";
+import { customerSubscriptionPreviewResponseSchema } from "../../src/domains/customers/subscriptionFacadeContracts.js";
+import type { CustomerSubscriptionPreviewResponse } from "../../src/domains/customers/subscriptionFacadeContracts.js";
+import { ambientSettlementProfile } from "../../src/lib/currency/platformCurrency.js";
+import { attachSubscriptionPreviewQuote } from "../../server/adapters/supabase/customerSubscriptionPreviewQuoteLedger.js";
 const definition={key:"example:article",version:1,units:[{code:"openlup:g",dimension:"mass" as const,integral:false}],netContentUnits:["openlup:g"],dimensions:[],axes:[],validatorRef:`sha256:${"a".repeat(64)}`,validateContent:()=>[]};
 const registry=createCatalogProductTypeRegistry([definition]);
 function input() {
@@ -62,4 +66,89 @@ it("successor declaration uses a new grammar and leaves prior authoring bytes cl
   const invalid = structuredClone(payload);
   invalid.publication.operations = invalid.publication.operations.map(operation => operation.op === "create_sku" ? { ...operation,successorOf: operation.skuId } : operation);
   expect(catalogDraftPayloadV5Schema.safeParse(invalid).success).toBe(false);
+});
+
+function previewResponse() {
+  const money={amountMinor:100,currency:ambientSettlementProfile.defaultCurrency},at="2040-01-01T12:00:00.000Z";
+  return {preview:{subscriptionId:"10000000-0000-4000-8000-000000000001",action:"update_package_template",canApply:true,
+    blockedReason:null as string|null,nextCycleAt:at,editCutoffAt:at,templateVersion:1,quoteHash:"a".repeat(64),
+    lockedCycle:{locked:false,status:null},futureTemplate:{templateVersion:1,effectiveCycleAt:at,priceAgreementPolicy:"lock_until_edit"},
+    deliverability:{status:"unknown",blockedReason:null as string|null},catalogAvailability:{status:"unknown",blockedReason:null as string|null},
+    chargeTiming:{requiresConfirmation:false,confirmed:false,earliestChargeAt:null},
+    dateAvailability:{earliestAllowedAt:at,latestAllowedAt:at,availableDates:[at],blockedReason:null as string|null},
+    packageEdit:{currentRecurringPrice:money,newRecurringPrice:money,delta:{...money,amountMinor:0},quoteHash:"a".repeat(64),effectiveCycleAt:at,priceAgreementPolicy:"lock_until_edit"}}};
+}
+it.each([
+  ["lc10_parity__LC10_11067__customerSubscriptionPreviewResponseSchema__kills_delete_outermost_validation_call_only","response"],
+  ["lc10_parity__LC10_11068__customerSubscriptionPreviewResponseSchema__kills_delete_outermost_validation_call_only","preview"],
+  ["lc10_preview_lockedCycle_rejects_unknown_fields","lockedCycle"],
+  ["lc10_preview_futureTemplate_rejects_unknown_fields","futureTemplate"],
+  ["lc10_parity__LC10_11087__customerSubscriptionPreviewResponseSchema__kills_delete_outermost_validation_call_only","deliverability"],
+  ["lc10_parity__LC10_11097__customerSubscriptionPreviewResponseSchema__kills_delete_outermost_validation_call_only","catalogAvailability"],
+  ["lc10_preview_chargeTiming_rejects_unknown_fields","chargeTiming"],
+  ["lc10_parity__LC10_11108__customerSubscriptionPreviewResponseSchema__kills_delete_outermost_validation_call_only","dateAvailability"],
+  ["lc10_preview_packageEdit_rejects_unknown_fields","packageEdit"],
+] as const)("%s",(_name,path)=>{
+  const response=previewResponse();expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(true);
+  const target=path==="response"?response:path==="preview"?response.preview:response.preview[path];
+  Object.assign(target,{unrecognized:true});
+  expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(false);
+});
+it.each([
+  ["lc10_parity__LC10_11074__customerSubscriptionPreviewResponseSchema__kills_remove_allowed_member_or_literal","preview"],
+  ["lc10_parity__LC10_11094__customerSubscriptionPreviewResponseSchema__kills_remove_allowed_member_or_literal","deliverability"],
+  ["lc10_parity__LC10_11103__customerSubscriptionPreviewResponseSchema__kills_remove_allowed_member_or_literal","catalogAvailability"],
+  ["lc10_parity__LC10_11113__customerSubscriptionPreviewResponseSchema__kills_remove_allowed_member_or_literal","dateAvailability"],
+] as const)("%s",(_name,path)=>{
+  const response=previewResponse(),target=path==="preview"?response.preview:response.preview[path];
+  for(const value of [null,"not_active","edit_window_closed","cycle_locked","payment_blocked","missing_payment_method","invalid_address"]){
+    target.blockedReason=value;expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(true);
+  }
+  target.blockedReason="unknown_reason";expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(false);
+});
+
+type PreviewResponseFixture=ReturnType<typeof previewResponse>;
+it.each([
+  ["11069",(r:PreviewResponseFixture)=>{r.preview.action="";}],
+  ["11070",(r:PreviewResponseFixture)=>{r.preview.action="a".repeat(81);}],
+  ["11080",(r:PreviewResponseFixture)=>{r.preview.templateVersion=1.5;}],
+  ["11081",(r:PreviewResponseFixture)=>{r.preview.templateVersion=0;}],
+  ["11084",(r:PreviewResponseFixture)=>{r.preview.futureTemplate.templateVersion=1.5;}],
+  ["11085",(r:PreviewResponseFixture)=>{r.preview.futureTemplate.templateVersion=0;}],
+  ["11106",(r:PreviewResponseFixture)=>{r.preview.quoteHash="z".repeat(64);}],
+  ["11117",(r:PreviewResponseFixture)=>{r.preview.packageEdit.quoteHash="z".repeat(64);}],
+  ["11109",(r:PreviewResponseFixture)=>{r.preview.dateAvailability.availableDates=Array.from({length:62},()=>"2040-01-01T12:00:00.000Z");}],
+] as const)("lc10_parity__LC10_%s__customerSubscriptionPreviewResponseSchema__kills_delete_outermost_validation_call_only",(_id,mutate)=>{
+  const response=previewResponse();expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(true);
+  mutate(response);expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(false);
+});
+it.each([
+  ["11088","deliverability","address_book_validated"],
+  ["11089","deliverability","blocked"],
+  ["11090","deliverability","unknown"],
+  ["11098","catalogAvailability","blocked"],
+  ["11099","catalogAvailability","unknown"],
+] as const)("lc10_parity__LC10_%s__customerSubscriptionPreviewResponseSchema__kills_remove_allowed_member_or_literal",(_id,path,status)=>{
+  const response=previewResponse();response.preview[path].status=status;
+  expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(true);
+  if(path==="catalogAvailability"){response.preview[path].status="available";expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(true);}
+  response.preview[path].status="invalid";expect(customerSubscriptionPreviewResponseSchema.safeParse(response).success).toBe(false);
+});
+
+it.each([
+  ["lc10_parity__LC10_08315__attachSubscriptionPreviewQuote__kills_delete_refusal_statement","absent"],
+  ["lc10_parity__LC10_08319__attachSubscriptionPreviewQuote__kills_delete_refusal_statement","line"],
+  ["lc10_parity__LC10_08325__attachSubscriptionPreviewQuote__kills_delete_refusal_statement","bundle"],
+] as const)("%s",async(_name,mode)=>{
+  const rpc=vi.fn(async()=>({data:null,error:null})),repriceForEdit=vi.fn(async()=>null),repriceRecipeSet=vi.fn(async()=>null);
+  const response=previewResponse() as CustomerSubscriptionPreviewResponse,before=structuredClone(response);
+  const action=mode==="bundle"?"update_bundle":"update_addon_quantity";
+  await expect(attachSubscriptionPreviewQuote({userId:"10000000-0000-4000-8000-000000000002",
+    serviceClient:{rpc} as unknown as Parameters<typeof attachSubscriptionPreviewQuote>[0]["serviceClient"],
+    subscriptionRepricer:mode==="absent"?undefined:{repriceForEdit,repriceRecipeSet} as unknown as Parameters<typeof attachSubscriptionPreviewQuote>[0]["subscriptionRepricer"],
+    action:{action,subscriptionId:response.preview.subscriptionId},canApply:true,nextCycleAt:response.preview.nextCycleAt,response,
+  })).rejects.toThrow("subscription_preview_reprice_unavailable");
+  expect(rpc).not.toHaveBeenCalled();expect(response).toEqual(before);
+  if(mode==="line"){expect(repriceForEdit).toHaveBeenCalledOnce();expect(repriceRecipeSet).not.toHaveBeenCalled();}
+  if(mode==="bundle"){expect(repriceRecipeSet).toHaveBeenCalledOnce();expect(repriceForEdit).not.toHaveBeenCalled();}
 });

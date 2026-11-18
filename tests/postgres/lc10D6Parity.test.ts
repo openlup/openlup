@@ -10,6 +10,8 @@ import type { SubscriptionEditConsent } from "@openlup/platform/subscriptions/co
 import type { OutboxEventRow } from "@openlup/core/outbox";
 import { createPostgresTransactionalDeliveryStore,createTransactionalDelivery,createCapturedTransactionalDelivery } from "@openlup/platform/communications";
 import { ecommercePaid } from "./communicationEcommerceFixture.js";
+import { captureStoreJourney,journeyCensus,journeySelection,storeJourneyResources,type JourneyInstallation } from "../helpers/storeJourney.js";
+import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
@@ -18,6 +20,8 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
 
 const migration = "db/platform/migrations/20261123130000_catalog_successors.sql";
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
+const transferResources=storeJourneyResources();
+let transferSource:JourneyInstallation,transferTarget:JourneyInstallation;
 let pool: Pool, db: PoolClient, connectionString:string;
 beforeAll(async () => {
   const container = await runPostgresContainer({ name: `catalog-successors-${process.pid}`, password: "synthetic-successors" }); containers.push(container);
@@ -27,8 +31,10 @@ beforeAll(async () => {
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
   if (!manifest.forward.some((unit: { file: string }) => unit.file === migration)) await pool.query(readFileSync(migration, "utf8"));
+  transferSource=await transferResources.installation("successor-source");
+  transferTarget=await transferResources.installation("successor-target");
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
+afterAll(async()=>{try{await transferResources.close();}finally{await closePostgres(containers,pools);}}, postgresTeardownTimeoutMs);
 beforeEach(async () => { db = await pool.connect(); await db.query("BEGIN"); });
 afterEach(async () => { await db.query("ROLLBACK"); db.release(); });
 async function legacy() {
@@ -420,6 +426,30 @@ it("lc10_selector_nonblocking",async()=>{
     expect((await pool.query("SELECT state FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=$1",[claimed.operationId])).rows).toEqual([{state:"waiting"}]);
   } finally {await pause.release();await recovering;await selecting;await worker.query("ROLLBACK");await selector.query("ROLLBACK");await restore();worker.release();selector.release();observer.release();}
 });
+
+it.each(["preview_first","resolution_first"])("lc10_preview_take_resolution_contention",async order=>{
+  const f=await createSuccessorJourney(pool),reader=await pool.connect(),resolver=await pool.connect(),observer=await pool.connect(),pause=await gate(observer);
+  const signature=order==="preview_first"?"public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)":"public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)";
+  const boundary=order==="preview_first"?"AND action=p_action AND quote_hash=p_hash AND template_version=p_version ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE;":"SELECT * INTO q FROM public.subscription_quote_previews WHERE id=(proposal.preview->>'id')::uuid FOR UPDATE NOWAIT;";
+  let restore:()=>Promise<unknown>=async()=>{},reading:ReturnType<typeof tracked>|undefined,resolving:ReturnType<typeof tracked>|undefined;
+  const resolve=()=>resolver.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at]);
+  const read=()=>reader.query("SELECT public.subscription_quote_preview_take($1,$2,$3,$4,$5,1,$6,$7) AS result",[f.principal,f.client,f.subscription,f.offer.action,f.offer.applyPayload.acceptedQuoteHash,randomUUID(),f.at]);
+  try {
+    restore=await hook(signature,boundary,pause.sql);await reader.query("BEGIN");await resolver.query("BEGIN");
+    const readerPid=await pid(reader),resolverPid=await pid(resolver),observerPid=await pid(observer);
+    if(order==="preview_first"){
+      reading=tracked(read());await blocked(observer,readerPid,observerPid);const before=await state();
+      expect(await tracked(resolve())).toMatchObject({ok:false,error:{code:"55P03",message:"lc10_commerce_busy"}});expect(await state()).toEqual(before);
+      await resolver.query("ROLLBACK");await pause.release();expect(await reading).toMatchObject({ok:true});await reader.query("COMMIT");
+      await resolver.query("BEGIN");expect(await tracked(resolve())).toMatchObject({ok:true,value:{rows:[{result:{status:"applied"}}]}});await resolver.query("COMMIT");
+    }else{
+      resolving=tracked(resolve());await blocked(observer,resolverPid,observerPid);reading=tracked(read());await blocked(observer,readerPid,resolverPid);
+      await pause.release();expect(await resolving).toMatchObject({ok:true,value:{rows:[{result:{status:"applied"}}]}});await resolver.query("COMMIT");
+      expect(await reading).toMatchObject({ok:false,error:{code:"22023",message:"subscription_edit_stale_template"}});
+    }
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_successor_operations_v2 WHERE subscription_id=$1",[f.subscription])).rows).toEqual([{count:1}]);
+  } finally {await pause.release();await resolver.query("ROLLBACK");await resolving;await reader.query("ROLLBACK");await reading;await restore();reader.release();resolver.release();observer.release();}
+});
 it.each(["legacy_first","resolver_first"])("lc10_D6_direct_legacy_outcome_root_contention",async schedule=>{
   const f=await prepareLegacy(),observer=await pool.connect(),legacy=await pool.connect(),resolver=await pool.connect();
   const lPid=await pid(legacy),rPid=await pid(resolver),oPid=await pid(observer),pause=await gate(observer);
@@ -698,6 +728,46 @@ it("lc10_D6_one_live_generation",async()=>{
     .toEqual([{indisunique:true,predicate:"(superseded_by_proposal_id IS NULL)",columns:["root_operation_id"]}]);
 });
 
+it("lc10_successor_transfer_preserves_nonempty_graph_and_replay",async()=>{
+  const owner=transferSource.owner,f=await createSuccessorJourney(owner,{continuation:true}),following=f.continuation!;
+  const rootBefore=(await owner.query("SELECT to_jsonb(o) AS row FROM public.subscription_renewal_operations o WHERE id=$1",[f.operationId])).rows;
+  const first=(await owner.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result;
+  const withdraw=structuredClone(f.successor.value);withdraw.product.sharedContent.catalogAction="revise";
+  withdraw.publication.operations=[{op:"set_product_lifecycle",productSlug:withdraw.product.slug!,expectedState:"active",state:"withdrawn",children:[{skuCode:f.successor.code,expectedState:"active"}]}];
+  await f.publish(withdraw,f.successor.draft,1,f.successor.head);
+  const at=(await owner.query(`SELECT to_char((lease_expires_at+interval '1 second') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at FROM public.subscription_successor_operations_v2 WHERE id=$1`,[first.operationId])).rows[0].at;
+  const {options}=successorEditor({...f,successor:following,at});options.withTransaction=work=>transaction(work,owner);
+  const editor=createPostgresPackageEditor(options),actor={actorId:f.principal,clientId:f.client};
+  const quoted=await editor.previewStockWaitSuccessor(actor,{subscriptionId:f.subscription,planDays:28,base:[{variantId:following.sku,qty:1}],addons:[],expectedTemplateVersion:2},{caseId:first.caseId,caseKind:"successor"});
+  const price=(await owner.query("SELECT to_jsonb(p) AS row FROM public.price_entries p WHERE variant_id=$1",[following.sku])).rows[0].row;
+  const admission={...f.offer.applyPayload.catalogAdmission,heads:[{productId:following.product,head:following.head}],skuRevisions:[{reference:following.reference,quantity:1}],priceContextVersions:[{skuId:following.sku,priceListId:price.price_list_id,entryId:price.id,entry:price}]};
+  const nextFrozen=f.codec.withDestination!(f.codec.freeze({...f.header,template_version:3,lines:[{lineOrdinal:1,sku:following.code,quantity:1,unitAmountMinor:777}],catalog_acceptance:{schemaVersion:2,lines:[following.reference]},graduation_pricing:[{sku:following.code,quantity:1,unitAmountMinor:777,isAddon:false,quoteLine:{sku:following.code,quantity:1,unitPriceGross:{amountMinor:777,currency:"XXX"},lineSubtotalGross:{amountMinor:777,currency:"XXX"}}}]},{subscriptionId:f.subscription,scheduledAt:f.anchor,scheduledInstant:Date.parse(f.anchor)}),f.destination);
+  const store=createPostgresSuccessorStore({withTransaction:work=>transaction(work,owner),codec:f.codec,previews:{prepare:async(connection,input)=>{
+    const row=(await connection.query("UPDATE public.subscription_quote_previews SET quote_snapshot=quote_snapshot||jsonb_build_object('catalogAdmission',$2::jsonb) WHERE id=$1::uuid RETURNING *",[input.previewId,admission])).rows[0];
+    return {applyPayload:{...(row.request_payload as Record<string,unknown>),request:row.request_payload,...(row.quote_snapshot as Record<string,unknown>),...(row.totals as Record<string,unknown>)},cycleSnapshot:nextFrozen};
+  }}});
+  const offered=await store.offer(actor,{proposalId:randomUUID(),subscriptionId:f.subscription,predecessorSkuId:f.successor.sku,successorSkuId:following.sku,publicationId:following.declared.publicationId,previewId:quoted.previewId!,lane:"classic",action:"update_package_template",sourceBinding:{kind:"stock_wait",caseId:first.caseId,caseKind:"successor"},now:at});
+  const resolved=await store.resolve(actor,{caseId:first.caseId,proposalId:String(offered.id),acceptedQuoteHash:String(offered.quote_hash),commandKey:randomUUID(),now:at});
+  expect((await owner.query("SELECT to_jsonb(o) AS row FROM public.subscription_renewal_operations o WHERE id=$1",[f.operationId])).rows).toEqual(rootBefore);
+  expect((await owner.query("SELECT predecessor_generation_id,superseded_by_proposal_id FROM public.subscription_successor_operations_v2 WHERE id=$1",[first.operationId])).rows).toEqual([{predecessor_generation_id:null,superseded_by_proposal_id:offered.id}]);
+  expect((await owner.query("SELECT predecessor_generation_id FROM public.subscription_successor_operations_v2 WHERE id=$1",[resolved.operationId])).rows).toEqual([{predecessor_generation_id:first.operationId}]);
+  expect((await owner.query("SELECT count(*)::integer AS count FROM public.subscription_successor_operations_v2 WHERE root_operation_id=$1 AND superseded_by_proposal_id IS NULL",[f.operationId])).rows).toEqual([{count:1}]);
+  expect((await owner.query("SELECT next_cycle_at=$2::timestamptz AS anchor,next_cycle_number FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1",[f.subscription,f.anchor])).rows).toEqual([{anchor:true,next_cycle_number:1}]);
+  const original=await journeyCensus(transferSource.owner),packet=await captureStoreJourney(transferSource.owner,"successor-source");
+  for(const table of ["catalog_sku_successors","subscription_successor_proposals","subscription_successor_operations_v2","subscription_successor_wait_cases_v2","subscription_successor_reservations_v2"]){
+    expect(packet.owned.find(entry=>entry.table===table)?.rows).toHaveLength(2);
+  }
+  const request={owner:transferTarget.owner,installation:journeySelection,packet,freshTarget:await captureStoreJourney(transferTarget.owner,"successor-target")};
+  expect(await restoreConnectedNativeStore(request)).toMatchObject({replayed:false});
+  expect(await journeyCensus(transferTarget.owner)).toEqual(original);
+  const restored=await captureStoreJourney(transferTarget.owner,"successor-restored");
+  expect(restored.owned).toEqual(packet.owned);expect(restored.compatible.tables).toEqual(packet.compatible.tables);
+  expect(await restoreConnectedNativeStore(request)).toMatchObject({replayed:true});
+  expect(await journeyCensus(transferTarget.owner)).toEqual(original);
+  expect((await transferTarget.owner.query("SELECT public.subscription_stock_wait_read_v2($1,'successor') AS result",[resolved.caseId])).rows[0].result).toMatchObject({schemaVersion:2,caseKind:"successor",case:{operation_id:resolved.operationId}});
+  expect((await transferTarget.owner.query("SELECT root_operation_id FROM public.subscription_successor_operations_v2 WHERE id=$1",[resolved.operationId])).rows).toEqual([{root_operation_id:f.operationId}]);
+});
+
 it("successor_offer_requires_acceptance_and_never_substitutes",async()=>{
   const f=await prepareLegacy();
   expect((await db.query("SELECT state FROM public.subscription_successor_proposals WHERE id=$1",[f.proposalId])).rows).toEqual([{state:"offered"}]);
@@ -873,8 +943,8 @@ it("lc10_N2_immutable_operation_generation",async()=>{
   expect((await pool.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.predecessor_withdrawn.v2'",[f.subscription])).rows).toEqual([{id:first.notices[0].noticeId}]);
 });
 
-async function transaction<T>(work:(db:PoolClient)=>Promise<T>):Promise<T> {
-  const connection=await pool.connect();
+async function transaction<T>(work:(db:PoolClient)=>Promise<T>,owner=pool):Promise<T> {
+  const connection=await owner.connect();
   try {await connection.query("BEGIN");const result=await work(connection);await connection.query("COMMIT");return result;}
   catch(error){await connection.query("ROLLBACK");throw error;}finally{connection.release();}
 }
@@ -941,7 +1011,7 @@ it.each(["opened_first","publication_first"])("lc10_N3_shared_completion",async 
 });
 
 /** Existing journey resources, with real publication, frozen wait and consent owners. */
-async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" | "recover"; recoveryStock?: number;lane?:"classic"|"exact"|"sized";ordinary?:boolean } = {}) {
+async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" | "recover"; recoveryStock?: number;lane?:"classic"|"exact"|"sized";ordinary?:boolean;continuation?:boolean } = {}) {
   const definition={ key:"example:article",version:1,units:[{code:"openlup:g",dimension:"mass" as const,integral:false}],netContentUnits:["openlup:g"],dimensions:[],axes:[],validatorRef:`sha256:${"a".repeat(64)}`,validateContent:()=>[] };
   const registry=createCatalogProductTypeRegistry([definition]);
   const rules={canonicalizeDocument:canonicalCatalogDraftJson,deriveSkuFacts:(document:unknown)=>({derived:(document as {derived:number}).derived}),validateProduct:()=>[],classifySkuChange:()=>"compatible" as const};
@@ -1010,7 +1080,7 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
         definitionDigest: manifest.product.definitionDigest,optionDigest: facts.optionDigest,netContent: facts.netContent });
       return { product,sku,draft,code,value,head,reference,declared };
     }
-    const predecessor=await article(),successor=await article(predecessor.sku);
+    const predecessor=await article(),successor=await article(predecessor.sku),continuation=options.continuation?await article(successor.sku):undefined;
     const client=randomUUID(),principal=randomUUID(),subscription=randomUUID(),activationCycle=randomUUID(),list=randomUUID(),entry=randomUUID(),destination=randomUUID();
     const clock=(await db.query(`SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at,
       to_char((CASE WHEN $1::boolean THEN now()+interval '28 days' ELSE now()-interval '1 day' END) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS anchor,
@@ -1020,6 +1090,7 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     await db.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)",[client,`${client}@example.invalid`,principal]);
     await db.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',now()-interval '2 days')",[list]);
     await db.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'any',777,now()-interval '2 days')",[entry,list,successor.sku]);
+    if(continuation)await db.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'any',777,now()-interval '2 days')",[randomUUID(),list,continuation.sku]);
     await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,started_at,currency_code,price_list_id) VALUES($1,$2,28,$3,$4,'XXX',$5)",[subscription,client,anchor,authorized,list]);
     await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,1,0,617,'XXX',$3)",[subscription,predecessor.sku,predecessor.reference.skuRevisionId]);
     await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3::timestamptz-interval '28 days','paid')",[activationCycle,subscription,anchor]);
@@ -1041,7 +1112,7 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     // The withdrawal and empty-scan source are committed before the later wait creator.
     await db.query("COMMIT");await db.query("BEGIN");
     const stock=createPostgresFulfillmentStockSyncPort(db,{ sourceKey: source,readLocalInventoryStock: async()=>[] });
-    for (const [sku,quantity] of [[predecessor.code,0],[successor.code,100]] as const) await stock.recordProviderStockCurrent({ requestKey: `stock:${sku}`,snapshot: { providerRef: "synthetic",collectedAt: at,sourceRevision: null,revisionSource: "collection",quantityKind: "snapshot",skuRef: sku,totalQuantity: quantity,forSaleQuantity: quantity,reservedOrUnavailableQuantity: 0,syncRunId: subscription },inventoryClass: "sellable",lastSyncedAt: at,staleAfter: (await db.query("SELECT now()+interval '1 day' AS until")).rows[0].until.toISOString() });
+    for (const [sku,quantity] of [[predecessor.code,0],[successor.code,100],...(continuation?[[continuation.code,100] as const]:[])] as const) await stock.recordProviderStockCurrent({ requestKey: `stock:${sku}`,snapshot: { providerRef: "synthetic",collectedAt: at,sourceRevision: null,revisionSource: "collection",quantityKind: "snapshot",skuRef: sku,totalQuantity: quantity,forSaleQuantity: quantity,reservedOrUnavailableQuantity: 0,syncRunId: subscription },inventoryClass: "sellable",lastSyncedAt: at,staleAfter: (await db.query("SELECT now()+interval '1 day' AS until")).rows[0].until.toISOString() });
     const claimedOperation=options.ordinary?{operationId:null,claimToken:null}:await rpc(db,"subscription_claim_due_renewal",[codec.identity(frozen),codec.fingerprint(frozen),wire,"synthetic",300,claimed]);
     let admitted: Record<string,unknown>,preRecovery: Record<string,unknown>|null=null;
     if(options.ordinary){admitted={};}
@@ -1082,8 +1153,8 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
       applyPayload: { ...nativeRequest,request:nativeRequest,...nativeEvidence,...totals },cycleSnapshot: codec.encode(newFrozen) };
     const proposal=await rpc(db,"subscription_successor_proposal_offer_v2",[subscription,client,offer,at]);
     await db.query("COMMIT");
-    return { client,principal,subscription,predecessor,successor,withdrawalHead,at,anchor,source,codec,frozen,wire,preRecovery,
-      publish:(payload:CatalogDraftPayloadV4|CatalogDraftPayloadV5,draftId:string,revision:number,head:CatalogHeadRef|null)=>transaction(connection=>publishOn(connection,payload,draftId,revision,head)),
+    return { client,principal,subscription,predecessor,successor,continuation,withdrawalHead,at,anchor,source,codec,frozen,wire,preRecovery,header,destination,
+      publish:(payload:CatalogDraftPayloadV4|CatalogDraftPayloadV5,draftId:string,revision:number,head:CatalogHeadRef|null)=>transaction(connection=>publishOn(connection,payload,draftId,revision,head),pool),
       operationId: String(claimedOperation.operationId),claimToken: String(admitted.claimToken??claimedOperation.claimToken),caseId: String(admitted.caseId),proposalId,quoteHash: String(proposal.quote_hash),offer };
   } catch(error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }
