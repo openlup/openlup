@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { z } from "zod";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort, installRenewalStockProtectionPolicy } from "@openlup/platform/inventory";
+import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort, createPostgresStockAvailability, installRenewalStockProtectionPolicy } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -268,10 +268,14 @@ it("requires the helper EXECUTE upgrade for old ATP grants, without granting set
       .toEqual([{ allowed: false }]);
     expect((await db.query("SELECT public.inventory_renewal_protection_days() AS days")).rows).toEqual([{ days: 14 }]);
     expect((await atp()).rows[0].result).toMatchObject({ available_quantity: 10, soft_subscription_demand_quantity: 0 });
+    const stock = createPostgresStockAvailability(db, { sourceKey: f.source, now: () => AT });
+    expect((await stock.readPort.read({ skus: [f.sku], horizonDays: 14, excludeOrderId: null })).size).toBe(1);
+    await expect(stock.readPort.read({ skus: [f.sku], horizonDays: 21, excludeOrderId: null })).rejects.toThrow("native_stock_read_options_unsupported");
     await db.query("RESET ROLE");
     await installRenewalStockProtectionPolicy(db, { revision: "runtime-upgrade", renewalProtectionDays: 21 });
     await db.query("SET LOCAL ROLE inventory_policy_runtime");
     expect((await db.query("SELECT public.inventory_renewal_protection_days() AS days")).rows).toEqual([{ days: 21 }]);
     expect((await atp()).rows[0].result).toMatchObject({ available_quantity: 8, soft_subscription_demand_quantity: 2 });
+    expect((await stock.readPort.read({ skus: [f.sku], horizonDays: 21, excludeOrderId: null })).size).toBe(1);
   } finally { await db.query("ROLLBACK"); db.release(); }
 });

@@ -1,8 +1,6 @@
 import { parseStockReadResponse, stockObject as object, stockQuantity as quantity } from "./stockReadResponse.js";
 import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 
-import { readRenewalStockProtectionPolicy } from "./renewalStockProtection.js";
-
 interface StockQueryExecutor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
@@ -27,8 +25,9 @@ export function createPostgresStockAvailability(executor: StockQueryExecutor, op
     readPort: {
       async read(input) {
         if (input.excludeOrderId !== null) throw new Error("native_stock_read_options_unsupported");
-        const policy = await readRenewalStockProtectionPolicy(executor);
-        if (input.horizonDays !== policy.renewalProtectionDays) throw new Error("native_stock_read_options_unsupported");
+        // Read through the definer helper so runtime roles need no commerce_settings SELECT.
+        const installedDays = (await executor.query("SELECT public.inventory_renewal_protection_days() AS days")).rows[0]?.days;
+        if (input.horizonDays !== installedDays) throw new Error("native_stock_read_options_unsupported");
         if (!input.skus.length) return new Map();
         const value = (await executor.query(`SELECT public.inventory_new_purchase_stock_read(
           $1::text,$2::jsonb,$3::timestamptz) AS response`, [options.sourceKey, JSON.stringify(input.skus), options.now()])).rows[0]?.response;
