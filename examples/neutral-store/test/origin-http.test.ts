@@ -6,6 +6,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, connect } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
+import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { configurations } from '../owned/store.config.ts';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -147,8 +148,10 @@ test('catalog_pdp_reads_new_publication_without_rebuild serves typed public fact
   } as Item;
   let available = true;
   let published = false;
+  let adopted = true;
   const rows = () => {
     if (!available) throw new Error('private connection details');
+    if (!adopted) throw new CommerceQuoteCatalogReadError('catalog_authority_unsupported');
     return { version: String(item.acceptedReference.publicationHead.revision), items: published ? [item] : [] };
   };
   const binding = pendingBindings();
@@ -168,6 +171,10 @@ test('catalog_pdp_reads_new_publication_without_rebuild serves typed public fact
     };
     assert.deepEqual(await get('/api/catalogue'), { status: 200, body: { version: '1', items: [], nextCursor: null } });
     assert.equal((await get('/api/catalogue/article')).status, 404);
+    adopted = false;
+    assert.deepEqual(await get('/api/catalogue/article'), { status: 404, body: { ok: false, code: 'starter_route_unknown' } });
+    assert.equal((await get('/api/catalogue')).status, 503);
+    adopted = true;
     published = true;
     item.sku.title = 'Second';
     item.acceptedReference.publicationHead.revision++;

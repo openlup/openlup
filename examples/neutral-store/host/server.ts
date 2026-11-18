@@ -9,6 +9,7 @@ import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
 import type { NeutralSkuEnvelopeV2 } from '@openlup/platform/catalog';
+import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
@@ -58,8 +59,14 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     }
     const page = slug === null
       ? await bindings.catalogue.list({ cursor: url.searchParams.get('cursor'), limit: 100 })
-      : await bindings.catalogue.detail(slug);
-    if (slug !== null && page.items.length === 0) { sendJson(response, 404, { ok: false, code: 'starter_route_unknown' }); return; }
+      : await bindings.catalogue.detail(slug).catch((error: unknown) => {
+        if (error instanceof CommerceQuoteCatalogReadError && error.code === 'catalog_authority_unsupported') return null;
+        throw error;
+      });
+    if (page === null || (slug !== null && page.items.length === 0)) {
+      sendJson(response, 404, { ok: false, code: 'starter_route_unknown' });
+      return;
+    }
     sendJson(response, 200, { version: page.version, items: page.items.map(publicCatalogueItem),
       ...('nextCursor' in page ? { nextCursor: page.nextCursor } : {}) });
     return;
