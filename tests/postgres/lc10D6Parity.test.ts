@@ -532,12 +532,13 @@ it("lc10_D6_document_fk_witness_precedence",async()=>{
   expect((await db.query("SELECT to_jsonb(p) AS row FROM public.catalog_products p WHERE id=$1",[f.predecessor.product])).rows[0].row).toEqual(before);
 });
 
-// PENDING-CD: retain this custom-role diagnostic unchanged until the coordinator rules.
-it.skip("lc10_D6_invoker_ATP_permission_regression",async()=>{
+// Custom roles opt in through the documented helper grant; raw tables stay private.
+it("lc10_D6_invoker_ATP_custom_role_upgrade",async()=>{
   const container=await runPostgresContainer({name:`successor-invoker-${process.pid}`,password:"synthetic-invoker"});containers.push(container);
   if(!await waitForPostgresTcpReady(container.connectionString))throw Error("Invoker parity requires PostgreSQL");
-  const owner=new Pool({connectionString:container.connectionString});pools.push(owner);
-  const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
+  const owner=new Pool({connectionString:container.connectionString,options:qualifiedPostgresStartupOptions({generation:"qualified-v2",roleMode:"installer-managed",bootstrapLogin:"postgres",migrationLogin:"postgres",runtimeLogin:"lc10_runtime",restoreLogin:"lc10_restore"})});pools.push(owner);
+  await owner.query("CREATE ROLE lc10_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS; CREATE ROLE lc10_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
+  const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8")).qualified;
   for(const unit of [manifest.baseline,...manifest.forward]) {if(unit.file===migration)break;await owner.query(readFileSync(unit.file,"utf8"));}
   // Existing native invoker contract: no successor relation or privilege exists.
   await owner.query(`CREATE ROLE lc10_inventory_reader NOLOGIN NOINHERIT NOBYPASSRLS;
@@ -546,16 +547,37 @@ it.skip("lc10_D6_invoker_ATP_permission_regression",async()=>{
       public.subscription_renewal_operations,public.subscription_cycles,public.subscriptions,public.subscription_renewal_terms,public.subscription_renewal_term_lines TO lc10_inventory_reader;
     GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),public.inventory_channel_exposure_quantity(text,text) TO lc10_inventory_reader`);
   const connection=await owner.connect();
-  const call=()=>connection.query("SELECT public.inventory_available_to_promise('synthetic-source','synthetic-sku',clock_timestamp(),false) AS result");
+  const call=(source="synthetic-source",sku="synthetic-sku",at?:string)=>connection.query("SELECT public.inventory_available_to_promise($1,$2,coalesce($3::timestamptz,clock_timestamp()),false) AS result",[source,sku,at??null]);
   try {
     await connection.query("SET ROLE lc10_inventory_reader");
-    expect((await call()).rows[0].result).toEqual({available_quantity:0,for_sale_quantity:0,hard_hold_quantity:0,safety_quantity:0,soft_subscription_demand_quantity:0,channel_exposure_quantity:0});
+    const before=(await call()).rows[0].result;
+    expect(before).toEqual({available_quantity:0,for_sale_quantity:0,hard_hold_quantity:0,safety_quantity:0,soft_subscription_demand_quantity:0,channel_exposure_quantity:0});
     await connection.query("RESET ROLE");
     await owner.query(readFileSync(migration,"utf8"));
     expect((await owner.query("SELECT count(*)::integer AS count FROM public.subscription_successor_reservations_v2")).rows).toEqual([{count:0}]);
     expect((await owner.query("SELECT prosecdef FROM pg_proc WHERE oid='public.inventory_available_to_promise(text,text,timestamptz,boolean)'::regprocedure")).rows).toEqual([{prosecdef:false}]);
     await connection.query("SET ROLE lc10_inventory_reader");
-    await expect(call()).rejects.toMatchObject({code:"42501",message:"permission denied for table subscription_successor_reservations_v2"});
+    await expect(call()).rejects.toMatchObject({code:"42501",message:"permission denied for function inventory_successor_reservation_quantity"});
+    await connection.query("RESET ROLE");
+    const f=await createSuccessorJourney(owner);
+    await owner.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6)",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at]);
+    await connection.query("SET ROLE service_role");
+    expect((await call()).rows[0].result).toEqual(before);
+    const held=(await call(f.source,f.successor.code,f.at)).rows[0].result;
+    expect(held).toMatchObject({available_quantity:99,hard_hold_quantity:1});
+    await connection.query("RESET ROLE");
+    const grant="GRANT EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) TO lc10_inventory_reader";
+    async function witness(){
+      await connection.query("SET ROLE lc10_inventory_reader");
+      try{expect((await call()).rows[0].result).toEqual(before);expect((await call(f.source,f.successor.code,f.at)).rows[0].result).toEqual(held);}
+      finally{await connection.query("RESET ROLE");}
+    }
+    await owner.query(grant);await witness();
+    expect((await owner.query("SELECT has_table_privilege('lc10_inventory_reader','public.subscription_successor_reservations_v2','SELECT') AS reads")).rows).toEqual([{reads:false}]);
+    await owner.query("REVOKE EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) FROM lc10_inventory_reader");
+    try{expect(await tracked(witness())).toMatchObject({ok:false,error:{code:"42501"}});}
+    finally{await owner.query(grant);}
+    await witness();
   } finally {await connection.query("RESET ROLE");connection.release();}
 });
 

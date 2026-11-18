@@ -3322,7 +3322,8 @@ checkout write contract. The allocator alone uses the renewal exemption.
 
 For a separate native runtime role, the host must explicitly grant `EXECUTE` on
 `public.inventory_available_to_promise(text,text,timestamptz,boolean)` and its
-helper `public.inventory_channel_exposure_quantity(text,text)`, including for
+helpers `public.inventory_channel_exposure_quantity(text,text)` and
+`public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)`, including for
 roles that reserve renewals or call N3 deficits/admission/refusal recovery.
 New-purchase readers additionally need `EXECUTE` on
 `public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)`.
@@ -3332,8 +3333,23 @@ Alongside the caller's existing relation privileges, ATP requires `SELECT` on
 `subscription_renewal_terms`, `subscription_renewal_term_lines`,
 `subscription_renewal_operations` and `subscription_cycles` in `public`;
 new-purchase reads also require `SELECT` on `public.catalog_skus`.
-These invoker helpers have no shipped runtime grant. The allocator retains its
-existing ACL, and neither X nor Y calls ATP; their existing grants still apply.
+A role granted EXECUTE on
+`public.inventory_available_to_promise(text,text,timestamptz,boolean)` also needs
+EXECUTE on
+`public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)`
+after installing the successor forward. Grant it before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) TO runtime_role;
+```
+
+Without this grant, ATP fails with SQLSTATE `42501`, including with no successor
+reservations. The internal helper is `SECURITY DEFINER`, returns only a quantity
+and grants EXECUTE to `service_role` where present; callers need no SELECT on
+the private successor tables. ATP remains `SECURITY INVOKER`. The allocator
+retains its existing ACL, and neither X nor Y calls ATP; their existing grants
+still apply.
 
 X restores released late-paid reservation lines to committed, non-expiring ATP
 holds once, returning from its immutable recovery receipt before further writes.

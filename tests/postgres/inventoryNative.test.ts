@@ -229,6 +229,10 @@ it("requires explicit relation privileges under native invoker rights and refuse
       GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),
         public.inventory_channel_exposure_quantity(text,text) TO inventory_runtime`);
     await db.query("SET ROLE inventory_runtime");
+    await expect(reserve(db).reserve(f.input)).rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_successor_reservation_quantity" });
+    await db.query("RESET ROLE");
+    await pool.query("GRANT EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) TO inventory_runtime");
+    await db.query("SET ROLE inventory_runtime");
     const held = await reserve(db).reserve(f.input);
     expect(held).toMatchObject({ reserved: true, status: "held", replayed: false });
     expect(await reserve(db).reserve(f.input)).toMatchObject({ reservationId: held.reservationId, replayed: true });
