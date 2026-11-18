@@ -1583,6 +1583,67 @@ export interface StockWaitStorePort {
     }>;
 }
 ```
+## dist/subscriptions/contracts/stockWaitReads.d.ts
+
+```ts
+import type { PaymentIntentStatus } from "@openlup/core/payment";
+import type { StockWaitCase, StockWaitDeficit } from "./stockWait.js";
+import type { SuccessorCaseKind } from "./successors.js";
+/** @experimental */
+export type StockWaitReadState = StockWaitCase["state"];
+/** @experimental */
+export interface StockWaitReadNotice {
+    templateSlug: "subscription-stock-wait-started" | "subscription-stock-wait-resumed";
+    status: string;
+    lastErrorCode: string | null;
+    updatedAt: string;
+}
+/** Compact read evidence. Snapshot, recipient and command bindings stay server-side.
+ * @experimental
+ */
+export interface StockWaitReadProjection {
+    schemaVersion: 2;
+    caseKind: SuccessorCaseKind;
+    id: string;
+    clientId: string;
+    subscriptionId: string;
+    cycleNumber: number;
+    scheduledAt: string;
+    state: StockWaitReadState;
+    deficits: StockWaitDeficit[];
+    orderId: string | null;
+    cycleId: string | null;
+    fulfillmentId: string | null;
+    openedAt: string;
+    lastCheckedAt: string;
+    stockSecuredAt: string | null;
+    resumedAt: string | null;
+    closedAt: string | null;
+    blockReason: string | null;
+    automaticRecoveryEligible: boolean;
+    independentBlock: string | null;
+    notices: StockWaitReadNotice[];
+}
+/** @experimental */
+export interface StockWaitOperatorSummary {
+    totalCount: number;
+    productTotals: {
+        sku: string;
+        displayName: string;
+        missingUnits: number;
+        affectedCases: number;
+    }[];
+}
+/** @experimental */
+export interface StockWaitAdminPage extends StockWaitOperatorSummary {
+    cases: (StockWaitReadProjection & {
+        paymentStatus: PaymentIntentStatus | "not_started";
+        paymentEvidence: "recorded" | "missing" | "not_applicable";
+    })[];
+    page: number;
+    pageSize: number;
+}
+```
 ## dist/subscriptions/contracts/successors.d.ts
 
 ```ts
@@ -1735,6 +1796,8 @@ export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuc
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
+export { createPostgresStockWaitReads, stockWaitHealth } from "./postgresStockWaitReads.js";
+export type { StockWaitReadState, StockWaitReadNotice, StockWaitReadProjection, StockWaitOperatorSummary, StockWaitAdminPage } from "./contracts/stockWaitReads.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -2612,6 +2675,50 @@ export interface NativeRetryLifecycleBinding {
 export declare function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycleBinding): {
     failureHandoff: import("./contracts/dunning.js").RenewalFailureHandoffPort;
     settlement: import("./contracts/renewal.js").RenewalSettlementPort;
+};
+```
+## dist/subscriptions/postgresStockWaitReads.d.ts
+
+```ts
+import type { StockWaitAdminPage, StockWaitOperatorSummary, StockWaitReadProjection, StockWaitReadState } from "./contracts/stockWaitReads.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Server-side operator, operational and owned account readers. Bind authority
+ * to the authenticated request, and use one read-only repeatable-read snapshot
+ * for each invocation. Selecting a reader does not mount a route.
+ * @experimental
+ */
+export declare function createPostgresStockWaitReads(options: {
+    graph: "native" | "managed";
+    withReadSnapshot<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    authorizeOperator(): Promise<boolean>;
+    authorizeEvidence(): Promise<boolean>;
+    /** Resolve the authenticated account and its exact subscription set server-side. */
+    readOwnedAccount(): Promise<{
+        principalId: string;
+        clientId: string;
+        subscriptionIds: readonly string[];
+    } | null>;
+}): {
+    readOperatorSummary(input: StockWaitReadState | "all"): Promise<StockWaitOperatorSummary>;
+    listAdmin(input: {
+        state: StockWaitReadState | "all";
+        page: number;
+        pageSize: number;
+    }): Promise<StockWaitAdminPage>;
+    listEvidence(): Promise<StockWaitReadProjection[]>;
+    listCustomer(): Promise<StockWaitReadProjection[]>;
+};
+/** Healthy wait evidence requires a current shortage, a recent check and
+ * confirmed or fresh notice evidence. The clock is inclusive at 30 minutes.
+ * @experimental
+ */
+export declare function stockWaitHealth(rows: readonly StockWaitReadProjection[], now: Date): {
+    evidence: {
+        subscriptionId: string;
+        scheduledAt: string;
+        healthy: boolean;
+    }[];
+    stalledCount: number;
 };
 ```
 ## dist/subscriptions/postgresStockWaitStore.d.ts

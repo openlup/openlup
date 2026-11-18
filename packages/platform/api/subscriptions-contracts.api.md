@@ -432,6 +432,7 @@ export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, Subscri
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
 export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
 export type { LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
+export type { StockWaitReadState, StockWaitReadNotice, StockWaitReadProjection, StockWaitOperatorSummary, StockWaitAdminPage } from "./stockWaitReads.js";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 
@@ -1472,6 +1473,67 @@ export interface StockWaitStorePort {
         outcome: "refused";
         reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
     }>;
+}
+```
+## dist/subscriptions/contracts/stockWaitReads.d.ts
+
+```ts
+import type { PaymentIntentStatus } from "@openlup/core/payment";
+import type { StockWaitCase, StockWaitDeficit } from "./stockWait.js";
+import type { SuccessorCaseKind } from "./successors.js";
+/** @experimental */
+export type StockWaitReadState = StockWaitCase["state"];
+/** @experimental */
+export interface StockWaitReadNotice {
+    templateSlug: "subscription-stock-wait-started" | "subscription-stock-wait-resumed";
+    status: string;
+    lastErrorCode: string | null;
+    updatedAt: string;
+}
+/** Compact read evidence. Snapshot, recipient and command bindings stay server-side.
+ * @experimental
+ */
+export interface StockWaitReadProjection {
+    schemaVersion: 2;
+    caseKind: SuccessorCaseKind;
+    id: string;
+    clientId: string;
+    subscriptionId: string;
+    cycleNumber: number;
+    scheduledAt: string;
+    state: StockWaitReadState;
+    deficits: StockWaitDeficit[];
+    orderId: string | null;
+    cycleId: string | null;
+    fulfillmentId: string | null;
+    openedAt: string;
+    lastCheckedAt: string;
+    stockSecuredAt: string | null;
+    resumedAt: string | null;
+    closedAt: string | null;
+    blockReason: string | null;
+    automaticRecoveryEligible: boolean;
+    independentBlock: string | null;
+    notices: StockWaitReadNotice[];
+}
+/** @experimental */
+export interface StockWaitOperatorSummary {
+    totalCount: number;
+    productTotals: {
+        sku: string;
+        displayName: string;
+        missingUnits: number;
+        affectedCases: number;
+    }[];
+}
+/** @experimental */
+export interface StockWaitAdminPage extends StockWaitOperatorSummary {
+    cases: (StockWaitReadProjection & {
+        paymentStatus: PaymentIntentStatus | "not_started";
+        paymentEvidence: "recorded" | "missing" | "not_applicable";
+    })[];
+    page: number;
+    pageSize: number;
 }
 ```
 ## dist/subscriptions/contracts/successors.d.ts

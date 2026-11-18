@@ -1884,6 +1884,23 @@ operation, so worker claim generations cannot create duplicate notices. Native
 generation-aware retry, delivery and transfer bindings require host qualification
 before activation; package construction activates nothing.
 
+`createPostgresStockWaitReads` composes server-only operator, operational and
+owned customer reads. All three use the same version 2 case projection, with
+`caseKind` identifying legacy and successor rows. Operator pages use opened time
+then case ID, and counts and SKU totals cover the entire state filter. Payment
+facts come from known orders on the page. A known order with no intent remains
+visible as missing evidence.
+
+The operational reader selects the oldest 2,000 open observations. The customer
+reader rechecks the authenticated principal's client and selects at most 100
+open cases from the account's exact subscription set. Both limits apply before
+excluding ineligible waiting rows. The health projection requires a current
+shortage, no blocker, a case check at most 30 minutes old, and a confirmed
+started notice or a started notice with fresh delivery progress. A recorded
+case opening alone supplies no delivery evidence. See the
+[package binding](../../packages/platform/README.md#stock-wait-reads) for
+authorization and snapshot requirements.
+
 Native package, exact, sized and transaction-local legacy edit previews include a versioned per-line agreement disclosure. The complete current renewal-term baseline, currency and original lane digest bind the accepted hash. Missing or ambiguous terms and unavailable currency refuse; currency differences refuse without conversion. Added and removed sides are null, while a real zero remains numeric. Existing lane pricing, historical successful replay and subscription timing stay with their owners. The legacy bridge requires one authenticated transaction connection. These additions are experimental and unbound.
 
 The native preview-prune helper accepts a retention and batch limit, returns the deleted count and retains accepted history. The recorder delegates with its existing seven-day/500-row values; deployments own any independent invocation. See the [migration note](../../packages/platform/changes/lc9.md) for installation and managed-rail limits.

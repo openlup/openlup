@@ -2691,6 +2691,30 @@ neutral observation status/event aliases retain legacy fields and event keys.
 
 ## Subscription contracts and renewal port
 
+<a id="stock-wait-reads"></a>
+
+`createPostgresStockWaitReads` provides experimental server-only stock-wait
+reads. Bind `authorizeOperator` to the host's commerce-admin check and
+`authorizeEvidence` to its internal operations authority. Bind
+`readOwnedAccount` to the authenticated account's principal, client and exact
+subscription set. The reader rechecks ownership in PostgreSQL before returning
+customer cases. Keep this account binding and the database executor server-side.
+
+Supply `withReadSnapshot` with one read-only, repeatable-read transaction on
+a single connection. The executor needs read access to the case and subscription
+relations, client ownership columns, and delivery evidence. The operator reader
+also needs the graph's payment intent relation and the native reader needs SKU
+labels. Native hosts can use the existing successor store's owner-controlled
+read authority. A separate runtime role needs explicit read privileges and
+matching row policies for the relations it reads.
+
+The native graph reads both case kinds. The managed graph reads existing legacy
+cases under the host's service authority and treats only the specifically
+missing managed case table as empty. Failed reads of payments, subscriptions,
+notices or summary data propagate. An empty page beyond the end still includes
+the complete filtered totals. Customer reads omit payment facts. Call
+`stockWaitHealth` on the operational feed with the observation clock.
+
 `createPostgresSizedEditor` adds agreed-plan editing and explicit classic-to-sized
 opt-in on the selected sized SQL forward. Compose it with the classic binding
 through `createOfferDispatchedSubscriptionEditor`. Unchanged exact SKU/count/
