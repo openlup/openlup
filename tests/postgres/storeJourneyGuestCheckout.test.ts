@@ -31,6 +31,7 @@ const subscriptionOffer = { days, defaultDays: 28, minimumBaseUnits: 6, checkout
     [{ days, quantities: { kind: "range" as const, min: 1, max: 99, step: 1 } }]])) };
 const config: StoreConfig = {
   inventory: { renewalProtection: { revision: "fixture-1", renewalProtectionDays: 14 } },
+  subscriptionCreation: { editWindowHours: 72 },
   subscriptionOffers: { classic: subscriptionOffer, sized: subscriptionOffer },
   renewal: demoRenewalConfig("journey"),
   subscriptionEditing: undefined as never,

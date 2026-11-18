@@ -141,6 +141,18 @@ page does not make its configuration optional.
 
 ## Keep business configuration owned
 
+In the current source candidate for the next release after 1.1.0, set
+`subscriptionCreation: { editWindowHours: 72 }` in `owned/store.config.ts` to
+choose the edit cutoff for newly activated subscriptions. Startup requires an
+integer from 1 through 720 and refuses with
+`starter_subscription_creation_invalid`; the supplied default is 72. Ordinary
+checkout, acquisition and recovered checkout activation pass this trusted host
+value, including when it equals 72, so the starter opts in to the new SQL
+functions and their EXECUTE requirement. It freezes on each subscription row,
+so changing configuration leaves existing subscriptions unchanged.
+See [activation and edit windows](../../concepts/subscriptions.md#freeze-the-edit-window-at-activation)
+for the required native migration and cutoff semantics.
+
 In the current source candidate, keep one owned configuration entry per domain,
 such as `owned/renewal.config.ts` or `owned/quote.config.ts`, and compose it in
 `owned/store.config.ts`. Browser and host read that same input. Managed policy

@@ -33,6 +33,7 @@ export interface Product extends SellableCatalogItem {
 export interface StoreConfig {
   id: string;
   inventory: { renewalProtection: RenewalStockProtectionPolicy };
+  subscriptionCreation: { editWindowHours: number };
   subscriptionEditing: SubscriptionEditorConfig;
   subscriptionOffers: SubscriptionOffers;
   renewal: RenewalConfig;
@@ -120,6 +121,10 @@ export function assertConfig(config: StoreConfig): void {
     || !Number.isInteger(protection.renewalProtectionDays)
     || protection.renewalProtectionDays < 1 || protection.renewalProtectionDays > 3660) {
     throw new Error('inventory_renewal_protection_policy_invalid');
+  }
+  if (!Number.isInteger(config.subscriptionCreation?.editWindowHours)
+    || config.subscriptionCreation.editWindowHours < 1 || config.subscriptionCreation.editWindowHours > 720) {
+    throw new Error('starter_subscription_creation_invalid');
   }
   assertRenewalConfig(config.renewal);
   assertRetention(config.renewal.subscriptionCare);

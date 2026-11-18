@@ -5557,6 +5557,23 @@
         ]
       },
       {
+        "row": "K6",
+        "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "K7-INVENTORY-RENEWAL-PROTECTION",
         "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
         "replacedFunctions": [
@@ -7829,6 +7846,22 @@
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "4fecbcac3f60d0c4edf525bbdad73644bdf2bbaaa6b116b2c5d283d830cb2655",
           "afterSha256": "35bcc1e11ebc7ddd2d0b7c7d0e2e2bcf820d2167c9568089273940c830bf1cc6"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
+      "sha256": "10f1718a5317a045b109470f0c016e11bdc93ed6c0c7c6b004897432537a322e",
+      "functions": [
+        {
+          "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+          "beforeSha256": null,
+          "afterSha256": "ee1321f80654bcb7a3f8fa46ee47950127554406bca6b6c803e2c686b52f2e94"
+        },
+        {
+          "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "549bd5701142449bb97e5ec517a10f2909d4fe44400abb140dc15b1615ab740b"
         }
       ]
     },
