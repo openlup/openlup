@@ -1478,7 +1478,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261123130000_catalog_successors.sql",
+      "path": "db/platform/migrations/20261123210000_catalog_successors.sql",
       "class": "public-output"
     },
     {
@@ -4810,7 +4810,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261123130000_catalog_successors.sql",
+      "path": "packages/platform/sql/20261123210000_catalog_successors.sql",
       "class": "public-output"
     },
     {

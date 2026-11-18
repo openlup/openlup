@@ -19,7 +19,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const migration = "db/platform/migrations/20261123130000_catalog_successors.sql";
+const migration = "db/platform/migrations/20261123210000_catalog_successors.sql";
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 const transferResources=storeJourneyResources();
 let transferSource:JourneyInstallation,transferTarget:JourneyInstallation;

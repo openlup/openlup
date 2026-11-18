@@ -5800,7 +5800,7 @@
       },
       {
         "row": "catalogue-lc10",
-        "path": "db/platform/migrations/20261123130000_catalog_successors.sql",
+        "path": "db/platform/migrations/20261123210000_catalog_successors.sql",
         "replacedFunctions": [
           {
             "signature": "public.communication_paid_fact(public.commerce_orders)",
@@ -8404,7 +8404,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261123130000_catalog_successors.sql",
+      "path": "db/platform/migrations/20261123210000_catalog_successors.sql",
       "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87",
       "functions": [
         {

@@ -7,7 +7,7 @@
         "objectInventorySha256": "dd5aadad6cf540625dc858ebb25325364384ab12ef17831cef46cfa0c7489cdf",
         "tail": [
           {
-            "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
+            "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
             "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
           },
           {
@@ -638,7 +638,7 @@
         "objectInventorySha256": "01d8f609afbafcf992d367a4817f950af1d00ba08e8bef566401f20fe85478e6",
         "tail": [
           {
-            "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
+            "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
             "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
           },
           {
@@ -1289,7 +1289,7 @@
         "objectInventorySha256": "e44c2d03823e71c0665e4b50393b0f49856bb335f372e4a55576c245301b61ff",
         "tail": [
           {
-            "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
+            "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
             "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
           },
           {
@@ -1940,7 +1940,7 @@
         "objectInventorySha256": "1587f546baadf270b1a58bbcffb0d59e58d30d67283916023032c3cd5bdb4914",
         "tail": [
           {
-            "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
+            "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
             "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
           },
           {
@@ -2587,7 +2587,7 @@
         "objectInventorySha256": "f776b4f628d1422380c37ecf46a245cc6adef16723c5ec4eb9bf50d72d189a33",
         "tail": [
           {
-            "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
+            "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
             "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
           },
           {
