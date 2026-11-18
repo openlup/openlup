@@ -5715,6 +5715,26 @@
             "sha256": "cbc785f78bc0f439dde31c000a546c52c3bf3a91e6782638d216adb38961a0c8"
           }
         ]
+      },
+      {
+        "row": "catalogue-clm",
+        "path": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_price_policy_revisions_guard_insert()",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "subscription_price_policy_revisions_00_guard_insert",
+            "table": "public.subscription_price_policy_revisions",
+            "sha256": "9fa24f3f4d45568256de379358c76d2d8f751492c06cfcc177767bf5e5453bea"
+          }
+        ]
       }
     ]
   },
@@ -8074,6 +8094,17 @@
           "signature": "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)",
           "beforeSha256": null,
           "afterSha256": "42d9fd800b6c88134c548603302843f06856f1b34b93da76bcd23ffa93c21bb3"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
+      "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96",
+      "functions": [
+        {
+          "signature": "public.subscription_price_policy_revisions_guard_insert()",
+          "beforeSha256": null,
+          "afterSha256": "e1c913dd167e61e420b0b8630608063891ab8a882fc75eacc962653f676fd0ce"
         }
       ]
     }
