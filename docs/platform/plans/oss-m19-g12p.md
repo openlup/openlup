@@ -242,13 +242,13 @@ The additive-union byte check and unchanged adapter/test blobs establish the
 actual merge content independently. The subsequent browser test edit is an
 intentional additional delta, not claimed patch-equal to the old candidate.
 
-Merge-queue run `41367542443` failed one test in
+Archived merge-queue run `41367542443` (2026-11-02) failed one test in
 `src/public-reference/browserIdentity.test.tsx`, at old line 132: the account
 bearer assertion received undefined. Dependent aggregate jobs also failed.
 The synchronization cause is a CANDIDATE and was NOT reproduced: source PR run
 `41366544248` passed and the failed group run had the identical tree
 `37ba29b31da2bcf6d5dde0d3965768e68bf7eb12`; 20 of 20 gated isolated runs and
-one full shard 2/4 run passed on main
+one recorded full-shard 2/4 run passed on main
 `09cd599bfef6bff74f4431b0cf7a00ebf80f1e6a`. The full shard passed 553 files
 and 5301 tests with two declared skips. One earlier ungated isolated pass was
 disclosed and excluded from those 20 runs. The old assertion is unchanged since
