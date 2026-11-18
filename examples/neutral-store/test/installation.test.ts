@@ -141,18 +141,20 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
-    const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 5);
+    const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
+    const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
+    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call) && call.text.startsWith('INSERT INTO public.'));
+    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
-    const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
     assert.equal(protection.length, 1);
     assert.deepEqual(JSON.parse(String(protection[0]!.values?.[1])), config.inventory.renewalProtection);
-    const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
     assert.equal(reminders.length, 1);
+    const transaction = first.calls.slice(1, -1);
+    assert.ok(transaction.includes(protection[0]!) && transaction.includes(reminders[0]!));
     assert.deepEqual(JSON.parse(String(reminders[0]!.values?.[1])), config.checkoutRecoveryReminders);
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
     assert.equal(registry.length, acquisitionAddresses.length);

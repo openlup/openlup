@@ -138,8 +138,9 @@ nonblank `revision` and two nonempty arrays: `abandonedCart` admits `first`,
 missing keys, malformed JSON and invalid values refuse with
 `checkout_recovery_reminder_schedule_invalid` before enqueue writes.
 
-Absence keeps abandoned-cart hours 1/24/72 and checkout-recovery hours 1/20,
-with revision `default`. New payloads carry `stage` alongside `reminderHours`.
+Without an installed schedule, abandoned-cart waves use 1/24/72 hours. Checkout
+waves keep the 1h/20h keys and use the offsets supplied by host policy. The read
+helper reports revision `default`. New payloads carry `stage` alongside `reminderHours`.
 Renderers use the explicit stage; old payloads without it retain their previous
 hour mapping and rendered bytes. Unknown stages refuse through the handler's
 existing payload-error policy.
@@ -153,6 +154,25 @@ the preceding configured stage's processed event when one exists. Checkout final
 waves require confirmed acceptance of the first configured wave when one exists.
 A schedule containing only `last` has no predecessor requirement. Enqueue result
 counter names remain the legacy names, counted by stage.
+
+After the reminder guard migration, creating a wave consumes that stage for the
+order even if you later change its configured hour. Checkout waves written
+before stage labels were added use the historical first and last hour mapping.
+An unlabeled wave at any other hour consumes both stages.
+
+Install schedules on the installation connection in PostgreSQL's default
+`READ COMMITTED` isolation. Initial installation on an empty shop and repeating
+the identical schedule succeed. Installing an explicit schedule where none was
+stored counts as a change, even if it contains the default values.
+`checkout_recovery_schedule_change_blocked_open_episodes` reports how many
+pending orders already have a wave and the latest recorded checkout window end.
+An abandoned-cart wave with a valid draft receipt makes that end unbounded.
+
+If an active shop refuses the change, keep using its current schedule. If no
+schedule is stored, defer the first explicit install. Retry when the affected
+checkout windows have elapsed or the orders have closed. For abandoned carts,
+wait until payment, cancellation, or draft invalidation closes the episode.
+Schedule changes during open episodes require per-episode scheduling support.
 
 An installed schedule determines eligibility offsets and takes precedence over
 `firstOffsetSeconds` and `finalOffsetSeconds`; those legacy overrides remain

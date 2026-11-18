@@ -207,9 +207,25 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   writeFileSync(join(app, marketPath), "local market divergence");
   const conflict = run(); expect(conflict.status).toBe(1); assertUpgradeConflict(JSON.parse(conflict.stdout), marketPath);
   rmSync(join(app, marketPath));
+  const reminderTest = "test/installation.test.ts";
+  const localCheck = (source: string) => source.replace("  const root = fileURLToPath",
+      "  // Local installation check.\n  const root = fileURLToPath");
+  let reconciledReminderTest: string | undefined;
+  if (customized) {
+    const local = localCheck(from.files[reminderTest]!);
+    writeFileSync(join(app, reminderTest), local);
+    const refusal = run(); expect(refusal.status).toBe(1); assertUpgradeConflict(JSON.parse(refusal.stdout), reminderTest);
+    expect(read(reminderTest)).toBe(local);
+    reconciledReminderTest = execFileSync("git", ["merge-file", "-p", join(app, reminderTest),
+      join(source, previousOwnership.sourceMappings?.[reminderTest] ?? reminderTest), join(target, reminderTest)], { encoding: "utf8" });
+    expect(reconciledReminderTest).toBe(localCheck(to.files[reminderTest]!));
+    writeFileSync(join(app, reminderTest), from.files[reminderTest]!);
+  }
   const result = run(); expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied).toContain(marketPath);
+  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, reminderTest]));
+  expect(read(reminderTest)).toBe(to.files[reminderTest]);
   expect(JSON.parse(run().stdout).applied).toEqual([]);
+  if (reconciledReminderTest !== undefined) writeFileSync(join(app, reminderTest), reconciledReminderTest);
   // Expected bytes come from the target inventory, including contracts that
   // have no runtime refusal. The customized expectation adds each local edit.
   for (const path of targetOwnership.owned) {
@@ -254,6 +270,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   `], { cwd: app, encoding: "utf8", timeout: 10_000 });
   expect(startup.status, startup.error?.message ?? startup.stdout + startup.stderr).toBe(0);
   // A later owned edit also survives replay of the same snapshots.
+  if (reconciledReminderTest !== undefined) writeFileSync(join(app, reminderTest), to.files[reminderTest]!);
   edit("owned/store.config.ts", customized ? "#663d57" : "#3d6657", "#123456");
   expect(JSON.parse(run().stdout).applied).toEqual([]);
   expect(read("owned/store.config.ts")).toContain("#123456");

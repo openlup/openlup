@@ -1,0 +1,1 @@
+- Create each checkout-recovery and abandoned-cart reminder stage at most once per order. Schedule installation refuses changes while pending orders with existing waves are still in their reminder windows.

@@ -1,6 +1,7 @@
 import { installedPolicy } from "./installedPolicy.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/checkoutRecoveryReminders.js";
 
+const settingKey = "checkout_recovery_reminders";
 const code = "checkout_recovery_reminder_schedule_invalid";
 function validate(value: unknown): CheckoutRecoveryReminderSchedule {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
@@ -30,10 +31,10 @@ const fallback: CheckoutRecoveryReminderSchedule = { revision: "default",
 interface Executor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
-const store = (db: Executor) => installedPolicy(db, "checkout_recovery_reminders", validate, structuredClone(fallback), code);
+const store = (db: Executor) => installedPolicy(db, settingKey, validate, structuredClone(fallback), code);
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export async function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void> {
-  await store(db).install(schedule);
+  await db.query("SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)", [settingKey, JSON.stringify(validate(schedule))]);
 }
 /** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
 export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule> {

@@ -1478,6 +1478,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4859,6 +4863,10 @@
     },
     {
       "path": "packages/platform/sql/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125000000_checkout_recovery_reminder_guard.sql",
       "class": "public-output"
     },
     {

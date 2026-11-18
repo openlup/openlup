@@ -423,6 +423,7 @@ duty, retry and delivery evidence, including for guest orders.
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
+| Install a changed reminder schedule during an open reminder episode | Pending orders with existing waves block the change until their checkout windows elapse or their abandoned drafts close. Follow the [reminder installation guide](../how-to/build/checkout-recovery.md#install-reminder-stages-and-hours) to retry. | `checkout_recovery_schedule_change_blocked_open_episodes` |
 | Pay a paid, manually cancelled or revoked checkout through recovery | No new payment can start. Expired source orders must qualify for recreation as a fresh order; the source itself is not paid. | `starter_recovery_paid` for an already-paid target; `starter_recovery_unavailable` for unavailable authority |
 | Recreate after commercial changes, unsupported content, unavailable stock or uncertain prior settlement | Recreation must pass frozen re-quote, content, stock and prior non-settlement checks before replacement payment. | `starter_recovery_order_changed` or `starter_recovery_unavailable` |
 | Recreate without the original private checkout capture | A missing, corrupt or erased original email capture refuses before a new quote or payment; current profile data cannot replace it. | `starter_recovery_unavailable` |
