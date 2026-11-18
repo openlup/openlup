@@ -396,6 +396,12 @@ before replay. `decision` persists alternating approve/revoke decisions against
 the exact candidate reference and digest. Publication requires approval; a later
 revocation leaves the publication and its original replay receipt intact.
 
+The candidate facade reconstructs sealed v3 inputs at the requested head. Its
+structural report distinguishes staged input, a confirmed refusal and unknown
+evidence. The activation report carries per-channel pending issues and uses
+current installed evidence before marking an enabling candidate ready. A matching
+sealed registration can stage a new document before it exists in the live rows.
+
 The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
 The installed document binding supplies the document's schema, reference,

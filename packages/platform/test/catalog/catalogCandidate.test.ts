@@ -1,3 +1,5 @@
+import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
+import { input as publicationInput, registry as publicationRegistry } from "./fixtures/publicationInput.js";
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { createCatalogCandidateService, type CatalogCandidateDeps } from "../../src/catalog/candidate.js";
@@ -124,4 +126,63 @@ describe("self-contained catalogue preview", () => {
     expect(await validateCatalogDraftV2(draft, createCatalogProductTypeRegistry([sized])))
       .toEqual({ valid: false, issues: [{ path: "skus.1.options", code: "duplicate_combination" }] });
   });
+});
+
+it.each([
+  ["sealed new document", "staged", "pending", []],
+  ["missing unit trade identifier", "blocked-input", "pending", ["unit_trade_identifier_missing"]],
+  ["required binding unavailable", "unknown", "pending", ["publication_preparation_unavailable"]],
+  ["hard issue with unavailable binding", "blocked-input", "pending", ["unit_trade_identifier_missing", "publication_preparation_unavailable"]],
+  ["missing SKU code", "blocked-input", "pending", ["sku_code_missing"]],
+  ["activation ready", "staged", "ready", []],
+  ["activation blocked", "staged", "blocked-input", []],
+  ["activation unknown", "staged", "unknown", []],
+] as const)("the v3 facade reports preparation and activation for %s", async (mode, structural, activation, codes) => {
+  const fixture = publicationInput(), { payload, record } = fixture;
+  if (mode.includes("trade identifier") || mode.includes("hard issue")) delete payload.skus[0].identifiers;
+  if (mode === "missing SKU code") {
+    delete payload.skus[0].code;
+    payload.product.sharedContent.publicationSkus = [];
+    payload.product.sharedContent.requestedModes = [];
+  }
+  const prior = mode.startsWith("activation") ? compileCatalogPublication(fixture) : null;
+  const head = prior ? { publicationId: listId, revision: 1, documentDigest: prior.product.document!.digest } : null;
+  if (prior) {
+    payload.product.sharedContent.catalogAction = "revise";
+    const sku = payload.skus[0], skuCode = sku.code!;
+    sku.grossMass = sku.netContent;
+    sku.logisticsRef = "example:logistics";
+    payload.product.sharedContent.requestedModes[0].modes = ["one_time"];
+    payload.product.sharedContent.offerMemberships = [{ skuCode, offerVersion: "example:offer", admitted: true }];
+    payload.publication.operations = [
+      { op: "set_sku_metadata", skuCode, logisticsRef: sku.logisticsRef },
+      { op: "set_offer_membership", ...payload.product.sharedContent.offerMemberships[0] },
+      { op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false },
+    ];
+  }
+  const deps = {
+    readDraft: async () => structuredClone(record), registry: publicationRegistry,
+    installedDefinitionDigest: async () => catalogDefinitionDigest(fixture.definition),
+    currentHead: async () => head ? { outcome: "found" as const, head, documentRef: "example:document", observations: [] }
+      : { outcome: "unpublished" as const },
+    resolveHead: async () => head,
+    ...(mode.includes("unavailable") ? {} : { publicationRules: fixture.rules }),
+    readPublicationState: async () => prior && { ...prior, retainedSources: [] },
+    assessActivation: async () => mode === "activation unknown" ? null
+      : mode === "activation blocked" ? { ready: false, reasons: ["installed_business_block"] } : { ready: true, reasons: [] },
+  };
+  const service = createCatalogCandidateService(deps);
+  const prepared = await service.prepareCandidate({ draftId: record.draftId, draftRevision: record.revision, expectedHead: head });
+  expect(prepared.preparation).toMatchObject({ structural: { outcome: structural }, activation: { outcome: activation } });
+  expect(prepared.issues.map(issue => issue.code)).toEqual(expect.arrayContaining([...codes]));
+  if (mode === "sealed new document") {
+    expect(prepared.issues).toEqual([]);
+    expect(prepared.preparation!.activation.issues.map(issue => issue.code)).toEqual(expect.arrayContaining(["gross_mass_missing", "logistics_reference_missing", "price_reference_missing"]));
+  }
+  if (mode === "missing SKU code") {
+    expect(prepared.issues.map(issue => issue.code)).not.toContain("unit_trade_identifier_missing");
+    expect(prepared.preparation!.activation.issues.some(issue => issue.path.startsWith("skus.0."))).toBe(false);
+  }
+  expect(await service.validate(prepared.candidateRef)).toEqual(prepared);
+  expect(await service.compareCandidate({ ...prepared, expectedHead: head })).toEqual(prepared);
 });

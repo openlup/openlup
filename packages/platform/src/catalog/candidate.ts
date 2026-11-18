@@ -1,16 +1,17 @@
 import { createHash } from "node:crypto";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
-import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
-import type { CatalogValidationPort } from "./publicationPorts.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
+import { catalogPublicationPreparationIssues, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
+  type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
 import { z } from "./validation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -37,6 +38,14 @@ export interface CatalogCandidateDeps {
   attributeReferences?: CatalogAttributeReferencePort;
   /** The price owner validates proposed operations; its absence blocks a price-bearing preview. */
   validatePrices?: (payload: CatalogDraftPayloadV2) => Promise<readonly CatalogDraftIssue[]>;
+  /** @experimental Installed rules for sealed v3 publication inputs. */
+  publicationRules?: CatalogPublicationRules;
+  /** @experimental Reads the exact retained snapshot at the requested head. */
+  readPublicationState?: (head: CatalogHeadRef) => Promise<Pick<CatalogPublicationCompileInput,
+    "product" | "skus" | "documents" | "retainedSources"> | null>;
+  /** @experimental Supplies current evidence for an explicit enabling phase. */
+  assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef) =>
+    Promise<{ ready: boolean; reasons: readonly string[] } | null>;
 }
 const refuse = (code: CatalogCandidateError["code"]): never => { throw new CatalogCandidateError(code); };
 const equal = (left: CatalogHeadRef | null, right: CatalogHeadRef | null): boolean => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
@@ -44,10 +53,69 @@ const equal = (left: CatalogHeadRef | null, right: CatalogHeadRef | null): boole
 /** No candidate state: each call reconstructs every digest input through the supplied readers.
  * @experimental
  */
-export function createCatalogCandidateService(deps: CatalogCandidateDeps): CatalogValidationPort & {
+export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
+  validate(candidateRef: string): Promise<CatalogCandidatePreview>;
   prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
   compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
 } {
+  async function preparePublication(record: CatalogDraftPublicationStoredRecord, payload: CatalogDraftPayloadV3,
+    definition: CatalogProductTypeDefinition, head: CatalogHeadRef | null, existingIssues: readonly CatalogDraftIssue[]):
+    Promise<NonNullable<CatalogCandidatePreview["preparation"]>> {
+    const rules = deps.publicationRules;
+    const authored = catalogPublicationPreparationIssues(payload, { definition, rules: rules ?? {} });
+    const hard: CatalogDraftIssue[] = [], unknown: CatalogDraftIssue[] = [];
+    for (const issue of new Map([...existingIssues, ...authored].map(issue => [`${issue.path}:${issue.code}`, issue])).values()) {
+      if (issue.code.endsWith("_unavailable")) unknown.push(issue);
+      else hard.push(issue);
+    }
+    if (!payload.product.documentRevision) hard.push({ path: "product.documentRevision", code: "document_reference_missing" });
+    if (!rules || head && !deps.readPublicationState) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
+    let compiled: ReturnType<typeof compileCatalogPublication> | undefined;
+    if (hard.length === 0 && unknown.length === 0 && rules) {
+      try {
+        const current = head ? await deps.readPublicationState?.(head) : { product: null, skus: [], documents: [], retainedSources: [] };
+        if (!current || head && current.product?.id !== record.productId)
+          unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
+        else compiled = compileCatalogPublication({ ...current, record, payload, definition, rules });
+      } catch (error) {
+        if (error instanceof CatalogPublicationError) hard.push({ path: "publication", code: error.code });
+        else unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
+      }
+    }
+    const activation: NonNullable<CatalogCandidatePreview["preparation"]>["activation"] = { outcome: "pending", issues: [] };
+    const pending = payload.skus.flatMap((sku, index) => {
+      if (!sku.code) return [];
+      const path = `skus.${index}`, issues: (CatalogDraftIssue & { channel?: "one_time" | "subscription" })[] = [];
+      const content = payload.product.sharedContent;
+      const modes = content.requestedModes.find(intent => intent.skuCode === sku.code)?.modes;
+      if (!sku.grossMass) issues.push({ path: `${path}.grossMass`, code: "gross_mass_missing" });
+      if (!sku.logisticsRef) issues.push({ path: `${path}.logisticsRef`, code: "logistics_reference_missing" });
+      if (!sku.priceOperations?.length) issues.push({ path: `${path}.priceOperations`, code: "price_reference_missing" });
+      if (!modes) issues.push({ path: "product.sharedContent.requestedModes", code: "requested_modes_missing" });
+      for (const channel of modes ?? []) issues.push({ path: `${path}.priceOperations`, code: "activation_not_assessed", channel });
+      const mediaRef = content.presentation.mediaRef;
+      if (sku.assetRefs?.length && !mediaRef) issues.push({ path: "product.sharedContent.presentation.mediaRef", code: "media_reference_missing" });
+      else if ((mediaRef || sku.assetRefs?.length) && !payload.publication.evidence.media?.some(claim => claim.skuCode === sku.code))
+        issues.push({ path: `${path}.assetRefs`, code: "media_readiness_unknown" });
+      return issues;
+    });
+    activation.issues = pending;
+    if (payload.publication.operations.some(op => op.op === "set_eligibility" && (op.sellableStandalone || op.sellableInSubscription))) {
+      let verdict: Awaited<ReturnType<NonNullable<CatalogCandidateDeps["assessActivation"]>>> | undefined;
+      if (head && compiled) {
+        try { verdict = await deps.assessActivation?.(compiled, head); } catch { /* Missing current evidence is an unknown verdict. */ }
+      }
+      const parsed = publicationReadinessVerdict.safeParse(verdict);
+      activation.outcome = hard.length > 0 || !head ? "blocked-input" : parsed.success
+        ? parsed.data.ready ? "ready" : "blocked-input"
+        : "unknown";
+      activation.issues = hard.length ? [...hard, ...pending] : !head ? [{ path: "publication", code: "product_not_materialized" }]
+        : parsed.success ? parsed.data.reasons.map(code => ({ path: "publication", code }))
+        : [...pending, { path: "publication", code: "activation_unknown" }];
+    }
+    return { structural: { outcome: hard.length ? "blocked-input" : unknown.length ? "unknown" : "staged", issues: [...hard, ...unknown] },
+      activation };
+  }
   async function reconstruct(candidateRef: string): Promise<{ preview: CatalogCandidatePreview; head: CatalogHeadRef | null }> {
     try {
       if (typeof candidateRef !== "string" || candidateRef.length > 200) return refuse("candidate_invalid");
@@ -67,7 +135,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
       const record = parsed.data, payload = record.payload;
       const canonicalPayload = canonicalCatalogDraftJson(payload);
       const latest = await deps.readDraft(record.draftId);
-      if (!latest || latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status) return refuse("candidate_invalid");
+      if (!latest || latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status || latest.productId !== record.productId) return refuse("candidate_invalid");
       const current = await deps.currentHead(record.productId);
       if (current.outcome !== "found" && current.outcome !== "unpublished") return refuse("candidate_dependency_unavailable");
       const head = current.outcome === "found" ? headSchema.parse(current.head) : null;
@@ -84,7 +152,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
         const validationPayload = payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload);
         const validation = await validateCatalogDraftV2(validationPayload, deps.registry, deps.attributeReferences);
         issues.push(...(validation.valid ? validation.readiness.publication.issues : validation.issues));
-        if (payload.product.documentRevision) {
+        if (payload.schemaVersion === 2 && payload.product.documentRevision) {
           if (!deps.readDocument) issues.push({ path: "product.documentRevision", code: "document_validation_unavailable" });
           else {
             const document = await deps.readDocument({ ...payload.product.documentRevision });
@@ -100,7 +168,9 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
       const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalPayload).update(",")
         .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: installed }])).update(",")
         .update(canonicalCatalogDraftJson(expectedHead)).update("]").digest("hex");
-      return { head: expectedHead, preview: { candidateRef, candidateDigest, issues,
+      const preparation = payload.schemaVersion === 3 ? await preparePublication(record, payload, definition, expectedHead, issues) : undefined;
+      return { head: expectedHead, preview: { candidateRef, candidateDigest, issues: preparation?.structural.issues ?? issues,
+        ...(preparation ? { preparation } : {}),
         impact: { productId: record.productId, skuIds: payload.skus.map(sku => sku.id),
           priceOperationCount: payload.schemaVersion !== 1 ? payload.skus.reduce((sum, sku) => sum + (sku.priceOperations?.length ?? 0), 0) : 0 } } };
     } catch (error) {

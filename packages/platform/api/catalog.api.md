@@ -1110,7 +1110,7 @@ import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegist
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
-import type { CatalogValidationPort } from "./publicationPorts.js";
+import { compileCatalogPublication, type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
 /** @experimental */
 export declare class CatalogCandidateError extends Error {
     readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable";
@@ -1132,11 +1132,21 @@ export interface CatalogCandidateDeps {
     attributeReferences?: CatalogAttributeReferencePort;
     /** The price owner validates proposed operations; its absence blocks a price-bearing preview. */
     validatePrices?: (payload: CatalogDraftPayloadV2) => Promise<readonly CatalogDraftIssue[]>;
+    /** @experimental Installed rules for sealed v3 publication inputs. */
+    publicationRules?: CatalogPublicationRules;
+    /** @experimental Reads the exact retained snapshot at the requested head. */
+    readPublicationState?: (head: CatalogHeadRef) => Promise<Pick<CatalogPublicationCompileInput, "product" | "skus" | "documents" | "retainedSources"> | null>;
+    /** @experimental Supplies current evidence for an explicit enabling phase. */
+    assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef) => Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    } | null>;
 }
 /** No candidate state: each call reconstructs every digest input through the supplied readers.
  * @experimental
  */
-export declare function createCatalogCandidateService(deps: CatalogCandidateDeps): CatalogValidationPort & {
+export declare function createCatalogCandidateService(deps: CatalogCandidateDeps): {
+    validate(candidateRef: string): Promise<CatalogCandidatePreview>;
     prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
     compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
 };
@@ -1799,6 +1809,19 @@ export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
     issues: readonly CatalogDraftIssue[];
+    /** @experimental Phase reports for sealed publication inputs. */
+    preparation?: {
+        structural: {
+            outcome: "staged" | "blocked-input" | "unknown";
+            issues: readonly CatalogDraftIssue[];
+        };
+        activation: {
+            outcome: "ready" | "pending" | "blocked-input" | "unknown";
+            issues: readonly (CatalogDraftIssue & {
+                channel?: "one_time" | "subscription";
+            })[];
+        };
+    };
     impact: {
         productId: string;
         skuIds: readonly string[];
@@ -4501,7 +4524,17 @@ export declare class CatalogPublicationError extends Error {
 export declare const publicationRefuse: (code: string, outcome?: CatalogPublicationError["outcome"]) => never;
 export declare const publicationJson: (input: unknown, maxBytes?: number) => string;
 export declare const publicationDigest: (input: unknown, maxBytes?: number) => string;
+/** PostgreSQL C collation orders UTF-8 bytes, including supplementary code points.
+ * @experimental
+ */
 export declare const comparePublicationText: (left: string, right: string) => number;
+/** @experimental */
+export declare const publicationReadinessReasons: z.ZodArray<z.ZodString>;
+/** @experimental */
+export declare const publicationReadinessVerdict: z.ZodObject<{
+    ready: z.ZodBoolean;
+    reasons: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
 export declare const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku>;
 export declare const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct>;
 export declare const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2>;
@@ -4562,13 +4595,19 @@ export declare function catalogPublicationClaim(record: CatalogDraftPublicationS
 /** Temporary native publication boundary, until versioned quantity readers land. */
 export declare function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): string;
 export declare function assertCatalogPublicationMassInputs(payload: unknown, definition: CatalogProductTypeDefinition): void;
+type AmountBinding = {
+    definition: CatalogProductTypeDefinition;
+    rules: Pick<CatalogPublicationRules, "validateSkuAmounts">;
+};
+/** @experimental */
+export declare function catalogPublicationPreparationIssues(payload: CatalogDraftPayloadV3, binding?: AmountBinding): {
+    path: string;
+    code: string;
+}[];
 /** Hard preparation guard, independent of dark/activation readiness.
  * @experimental
  */
-export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3, binding?: {
-    definition: CatalogProductTypeDefinition;
-    rules: Pick<CatalogPublicationRules, "validateSkuAmounts">;
-}): void;
+export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3, binding?: AmountBinding): void;
 /** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic.
  * @experimental
  */
@@ -4583,6 +4622,7 @@ export declare function compileCatalogPublication(input: CatalogPublicationCompi
     activation: boolean;
     changed: boolean;
 };
+export {};
 ```
 ## dist/catalog/readPorts.d.ts
 

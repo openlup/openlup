@@ -18,7 +18,7 @@ import { catalogProductTypeRefSchema } from "./productTypeSchemas.js";
 import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
-  publicationJson, publicationDigest, comparePublicationText, type CatalogPublicationDocument } from "./publicationValidation.js";
+  publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
@@ -33,10 +33,6 @@ const decisionSchema = z.object({ schemaVersion: z.literal(2), action: z.enum(["
   candidateRef: z.string().min(1).max(200), candidateDigest: digest, reason: z.string().min(1).max(1000).refine(value => value.trim() === value) }).strict();
 const bindingSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
-const readinessReasons = z.array(z.string().regex(/^[a-z][a-z0-9_]{0,159}$/u)).max(100)
-  .refine(reasons => new Set(reasons).size === reasons.length);
-const readinessVerdict = z.object({ ready: z.boolean(), reasons: readinessReasons }).strict()
-  .refine(({ ready, reasons }) => ready === (reasons.length === 0));
 const equal = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
 const require = (value: unknown, code: string, outcome?: CatalogPublicationError["outcome"]) => { if (!value) publicationRefuse(code, outcome); };
 const tuple = (db: PgQueryExecutor, sql: string, values: unknown[] = []) => db.query(sql, values).then(result => result.rows);
@@ -272,14 +268,14 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       && (operation.sellableStandalone || operation.sellableInSubscription)) || structural.includes(sku) && sku.status === "active"
       && (sku.sellableStandalone || sku.sellableInSubscription) && sku.memberships.some(row => row.admitted));
     const check = (result: { ready: boolean; reasons: readonly string[] }, reason: string) => {
-      require(readinessVerdict.safeParse(result).success, "catalog_publication_readiness_invalid", "dependency_unavailable");
+      require(publicationReadinessVerdict.safeParse(result).success, "catalog_publication_readiness_invalid", "dependency_unavailable");
       require(result.ready, reason);
     };
     for (const [skus, requirePrice] of [[structural, false], [priced, true]] as const) {
       const reason = requirePrice ? "catalog_publication_v3_activation_readiness_failed" : "catalog_publication_v3_structural_readiness_failed";
       for (const sku of skus) {
         const rows = await tuple(db, "SELECT public.catalog_publication_sku_reasons($1::uuid,$2::boolean) AS reasons", [sku.id, requirePrice]);
-        const reasons = readinessReasons.safeParse(rows[0]?.reasons);
+        const reasons = publicationReadinessReasons.safeParse(rows[0]?.reasons);
         require(rows.length === 1 && reasons.success, "catalog_publication_readiness_invalid", "dependency_unavailable");
         require(reasons.data?.length === 0, reason);
       }

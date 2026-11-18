@@ -26,13 +26,21 @@ export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLI
   return text;
 };
 export const publicationDigest = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes): string => createHash("sha256").update(publicationJson(input, maxBytes)).digest("hex");
-// PostgreSQL COLLATE "C" orders UTF-8 bytes, including supplementary code points.
+/** PostgreSQL C collation orders UTF-8 bytes, including supplementary code points.
+ * @experimental
+ */
 export const comparePublicationText = (left: string, right: string): number => Buffer.compare(Buffer.from(left), Buffer.from(right));
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
 const ref = z.string().min(1).max(240).refine(value => value.trim() === value);
+/** @experimental */
+export const publicationReadinessReasons = z.array(z.string().regex(/^[a-z][a-z0-9_]{0,159}$/u)).max(100)
+  .refine(reasons => new Set(reasons).size === reasons.length);
+/** @experimental */
+export const publicationReadinessVerdict = z.object({ ready: z.boolean(), reasons: publicationReadinessReasons }).strict()
+  .refine(({ ready, reasons }) => ready === (reasons.length === 0));
 const facts = z.record(z.string(), z.json());
 const attributes = catalogDraftSkuV2Schema.shape.attributes.unwrap();
 const claimSchema = z.object({ draftId: id, revision, commandKey: ref, fingerprint: digest }).strict();
@@ -125,26 +133,41 @@ export function assertCatalogPublicationMassInputs(payload: unknown, definition:
       catalogPublicationIntegralGrams(value as CatalogQuantity, definition);
   }
 }
+type AmountBinding = { definition: CatalogProductTypeDefinition; rules: Pick<CatalogPublicationRules, "validateSkuAmounts"> };
+
+/** @experimental */
+export function catalogPublicationPreparationIssues(payload: CatalogDraftPayloadV3, binding?: AmountBinding) {
+  const issues: { path: string; code: string }[] = [];
+  const add = (path: string, code: string) => issues.push({ path, code });
+  if (!authoredSlug.safeParse(payload.product.slug).success) add("product.slug", "commerce_product_slug_unsupported");
+  const codes = new Set(payload.skus.map(sku => sku.code));
+  const content = payload.product.sharedContent;
+  for (const key of ["publicationSkus", "requestedModes", "offerMemberships"] as const)
+    if (content[key].some(intent => !codes.has(intent.skuCode))) add(`product.sharedContent.${key}`, "intent_sku_absent");
+  payload.skus.forEach((sku, index) => {
+    const path = `skus.${index}`;
+    if (!sku.code) { add(`${path}.code`, "sku_code_missing"); return; }
+    if (!sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
+      && identifier.packagingLevel === "unit" && isValidGtin(identifier.value))) add(`${path}.identifiers`, "unit_trade_identifier_missing");
+    if (!binding || sku.netContent?.dimension !== "mass") return;
+    try {
+      if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, binding.definition);
+      const netGrams = catalogPublicationIntegralGrams(sku.netContent, binding.definition);
+      if (binding.rules.validateSkuAmounts && binding.rules.validateSkuAmounts({ code: sku.code, netGrams }) !== true)
+        add(`${path}.netContent`, "catalog_publication_authored_amounts_invalid");
+    } catch (error) {
+      if (!(error instanceof CatalogPublicationError)) throw error;
+      add(`${path}.${error.code.startsWith("catalog_publication_gross") ? "grossMass" : "netContent"}`, error.code);
+    }
+  });
+  return issues;
+}
 /** Hard preparation guard, independent of dark/activation readiness.
  * @experimental
  */
-export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3,
-  binding?: { definition: CatalogProductTypeDefinition; rules: Pick<CatalogPublicationRules, "validateSkuAmounts"> }): void {
-  need(authoredSlug.safeParse(payload.product.slug).success, "commerce_product_slug_unsupported");
-  const codes = new Set(payload.skus.map(sku => sku.code));
-  const content = payload.product.sharedContent;
-  for (const intents of [content.publicationSkus, content.requestedModes, content.offerMemberships])
-    need(intents.every(intent => codes.has(intent.skuCode)), "intent_sku_absent");
-  for (const sku of payload.skus) {
-    need(sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
-      && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)), "unit_trade_identifier_missing");
-    if (!binding || !sku.code || sku.netContent?.dimension !== "mass") continue;
-    if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, binding.definition);
-    if (binding.rules.validateSkuAmounts) {
-      const netGrams = catalogPublicationIntegralGrams(sku.netContent, binding.definition);
-      need(binding.rules.validateSkuAmounts({ code: sku.code, netGrams }) === true, "catalog_publication_authored_amounts_invalid");
-    }
-  }
+export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3, binding?: AmountBinding): void {
+  const [first] = catalogPublicationPreparationIssues(payload, binding);
+  if (first) publicationRefuse(first.code);
 }
 /** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic.
  * @experimental
