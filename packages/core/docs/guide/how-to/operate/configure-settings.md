@@ -1,7 +1,5 @@
 # Configure settings
 
-<!-- npm-scripts: starter -->
-
 Find the renewal stock protection horizon or other business settings before
 choosing how to change them. The [Settings catalogue](settings-catalogue.md)
 lists each key, its owner and the expected effect. This discovery surface is
@@ -12,9 +10,9 @@ experimental.
 From an extracted starter with matching packages installed, run:
 
 ```sh
-npm run settings -- list --goal "renewal stock protection horizon"
-npm run settings -- show inventory_renewal_protection --json
-npm run settings -- explain commerce_setting_unknown
+node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"
+node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json
+node --experimental-strip-types host/settings.ts explain commerce_setting_unknown
 ```
 
 The commands work offline. `show` includes the value schema where available,
@@ -32,7 +30,7 @@ inventory row uses the platform fallback. An absent reminder row uses the host
 call parameters for checkout recovery and the 1, 24 and 72 hour schedule for
 abandoned carts. The result names the source and includes checkout offsets when
 the host supplies its policy. To explain the absent-row behavior offline, run
-`npm run settings -- explain checkout_recovery_reminders`.
+`node --experimental-strip-types host/settings.ts explain checkout_recovery_reminders`.
 
 ## Modes and runtime levels
 
@@ -49,7 +47,7 @@ mechanism for each key.
 ## Refusals
 
 Machine-readable refusals carry `code`, `path`, `rule`, `hint` and
-`remediation`. Run `npm run settings -- explain <refusal-code>` for the
+`remediation`. Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
 recheck command and whether retrying can help.
 
 | Code | Next step |

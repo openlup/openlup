@@ -1,14 +1,14 @@
 import { parseArgs } from 'node:util';
 import { explainSetting, invalidSettingsCommand, listSettings, showSetting, type SettingReader } from '@openlup/platform/operations/server';
 
-const help = `Usage: npm run settings -- list [--goal <text>] | show <key> | explain <refusal-code-or-key>
+const help = `Usage: node --experimental-strip-types host/settings.ts list [--goal <text>] | show <key> | explain <refusal-code-or-key>
 Use --json for versioned output. Add --help to see these examples.
 For a connected show, pass --database-url <read-capable-url>.
 
 Examples:
-  npm run settings -- list --goal "renewal stock protection horizon"
-  npm run settings -- show inventory_renewal_protection --json
-  npm run settings -- explain commerce_setting_unknown`;
+  node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"
+  node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json
+  node --experimental-strip-types host/settings.ts explain commerce_setting_unknown`;
 
 async function run(args: string[]) {
   let parsed;
@@ -44,28 +44,21 @@ async function run(args: string[]) {
     const { default: pg } = await import('pg');
     const db = new pg.Pool({ connectionString: databaseUrl });
     try {
-      const { readRenewalStockProtectionOverride, renewalStockProtectionSetting } = await import('@openlup/platform/inventory');
-      const { checkoutRecoveryReminderSetting } = await import('@openlup/platform/commerce');
-      const { readCheckoutRecoveryReminderOverride } = await import('@openlup/platform/commerce/server');
+      const { readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } = await import('@openlup/platform/inventory');
+      const { readCheckoutRecoveryReminderOverride, describeCheckoutRecoveryReminderSetting, checkoutRecoveryReminderAbsence } = await import('@openlup/platform/commerce/server');
       const { checkoutWavePolicy } = await import('../owned/acquisition-policy.ts');
       const readers: Record<string, SettingReader> = {
-        [renewalStockProtectionSetting.key]: async () => {
+        [describeRenewalStockProtectionSetting().key]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
-        [checkoutRecoveryReminderSetting.key]: async () => {
+        [describeCheckoutRecoveryReminderSetting().key]: async () => {
           const policy = await readCheckoutRecoveryReminderOverride(db);
           if (policy) return {
             present: true, revision: policy.revision, value: { ...policy,
               abandonedCart: [...policy.abandonedCart], checkoutRecovery: [...policy.checkoutRecovery] },
           };
-          return { present: false, effective: {
-            abandonedCart: [...checkoutRecoveryReminderSetting.absentMeans.value.abandonedCart],
-            checkoutRecovery: [
-              { stage: 'first', afterHours: checkoutWavePolicy.firstOffsetSeconds / 3600 },
-              { stage: 'last', afterHours: checkoutWavePolicy.finalOffsetSeconds / 3600 },
-            ],
-          } };
+          return { present: false, effective: checkoutRecoveryReminderAbsence(checkoutWavePolicy) };
         },
       };
       print(await showSetting({ key: value }, readers), values.json);

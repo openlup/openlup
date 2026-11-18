@@ -5678,10 +5678,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/commerce/checkoutRecoveryReminderSetting.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/commerce/checkoutRecoveryStartSchemas.ts",
       "class": "public-output"
     },
@@ -6366,15 +6362,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/starterTermsPort.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/commerce/server/supabaseCommerceReturnsPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/commerce/settingBoundaries.ts",
       "class": "public-output"
     },
     {
@@ -8327,10 +8323,6 @@
     },
     {
       "path": "packages/platform/src/operations/server/settingsRead.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/operations/settingsSchema.ts",
       "class": "public-output"
     },
     {

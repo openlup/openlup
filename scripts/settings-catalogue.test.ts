@@ -1,3 +1,5 @@
+import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import { settingsReadTools } from "@openlup/platform/operations/server";
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { checkSettingsCatalogue, renderSettingsCatalogue, settingDescriptors } from "./settings-catalogue.ts";
@@ -15,4 +17,8 @@ it("has a domain descriptor for every catalogue entry and covers installed and E
   expect(new Set(entries.map(({ key }) => key)).size).toBe(55);
   expect(entries.filter(({ kind }) => kind === "cap")).toHaveLength(43);
   expect(entries.filter(({ kind }) => kind === "invariant")).toHaveLength(7);
+});
+
+it("advertises settings results that the pinned MCP SDK accepts", () => {
+  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools).toHaveLength(2);
 });

@@ -28,15 +28,15 @@ export const subscriptionSettings = [
     schemaVersion: 1,
     rules: [],
     examples: [],
-    fallback: { minCancellationAgeDays: 14, maxCancellationAgeDays: 120 },
+    fallback: { minCancellationAgeDays: 14, maxCancellationAgeDays: 120, requireRetentionConsent: true },
     defaultBasis: { kind: "reference-code" },
-    whyThisDefault: "The age window preserves the established outreach timing after cancellation.",
+    whyThisDefault: "The age window preserves the established outreach timing after cancellation. The platform keeps its neutral default of requiring retention consent at the send gate.",
     effect: {
       appliesTo: "Candidates for new winback messages.",
       frozenOn: ["Existing winback delivery receipts retain their deduplication identity."],
       impact: "customer-promise",
     },
-    runtime: { level: "read-only", reason: "Discovery documents the age window. The full policy, consent behavior and episode change need separate qualification." },
+    runtime: { level: "read-only", reason: "Discovery documents the age window and send gate. The full policy and episode changes need separate qualification." },
     change: { operation: "No settings write operation is available for this key." },
   },
 ] as const;

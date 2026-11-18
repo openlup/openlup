@@ -383,7 +383,9 @@ export function proveSettingsDiscovery(app: string): void {
   assert(start >= 0, "starter settings guidance missing");
   const end = guideBytes.indexOf("\n## ", start + heading.length);
   const section = guideBytes.slice(start, end < 0 ? undefined : end);
-  const settings = (...args: string[]) => run("npm", ["--silent", "run", "settings", "--", ...args]);
+  const settingsArgs = ["--experimental-strip-types", "host/settings.ts"];
+  const command = "node " + settingsArgs.join(" ");
+  const settings = (...args: string[]) => run(process.execPath, [...settingsArgs, ...args]);
   const show = () => {
     const result = JSON.parse(settings("show", key, "--json"));
     assert.equal(result.schemaVersion, 1);
@@ -405,21 +407,21 @@ export function proveSettingsDiscovery(app: string): void {
     assert(lookup.hits.some((hit: { file: string }) => hit.file.endsWith("/configure-settings.md")),
       "openlup-context did not find Configure settings");
     const lines = readFileSync(entry.file, "utf8").split("\n").slice(entry.start - 1, entry.end);
-    assert(lines.includes(`npm run settings -- show ${key}`), "catalogue entry did not lead to show");
+    assert(lines.includes(`${command} show ${key} --json`), "catalogue entry did not lead to show");
     show();
   } finally {
     writeFileSync(guide, guideBytes);
   }
 
   // The mirror follows only the instructions in the restored application guide.
-  assert(section.includes('npm run settings -- list --goal "' + goal + '"'));
+  assert(section.includes(`${command} list --goal "${goal}"`));
   const list = JSON.parse(settings("list", "--goal", goal, "--json"));
   assert.deepEqual(list.entries.map(({ key }: { key: string }) => key), [key]);
-  assert(section.includes(`npm run settings -- show ${list.entries[0].key} --json`));
+  assert(section.includes(`${command} show ${list.entries[0].key} --json`));
   show();
   assert(settings("list", "--goal", goal).includes(key));
   assert(settings("show", key).includes("Existing reservations"));
-  const refused = spawnSync("npm", ["--silent", "run", "settings", "--", "show", "no_such_setting", "--json"],
+  const refused = spawnSync(process.execPath, [...settingsArgs, "show", "no_such_setting", "--json"],
     { cwd: app, env, encoding: "utf8" });
   assert.equal(refused.status, 1);
   const { refusal } = JSON.parse(refused.stdout);

@@ -15,10 +15,8 @@ lives in the [reader guide](packages/core/docs/guide/README.md).
 Change rules and contributor process stay in `AGENTS.md` and `CONTRIBUTING.md`;
 do not duplicate reader guide content here.
 
-<!-- npm-scripts: starter -->
-
 Business settings have a versioned [catalogue](packages/core/docs/guide/how-to/operate/settings-catalogue.md).
-In an extracted starter, run `npm run settings -- list` to find a key by goal.
+In an extracted starter, run `node --experimental-strip-types host/settings.ts list` to find a key by goal.
 Follow [Configure settings](packages/core/docs/guide/how-to/operate/configure-settings.md) and [Add a setting](CONTRIBUTING.md#add-a-setting) for the reader and contributor paths.
 
 Read these documents before changing a related boundary:

@@ -128,10 +128,10 @@ New-purchase requests must use the installed horizon and cannot waive protection
 
 ## Change a business setting
 
-From the starter application root, run `npm run settings -- list` to find the
+From the starter application root, run `node --experimental-strip-types host/settings.ts list` to find the
 key by goal. For example, run
-`npm run settings -- list --goal "renewal stock protection horizon"`, then
-`npm run settings -- show inventory_renewal_protection --json`. Check the
+`node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"`, then
+`node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json`. Check the
 owner, allowed values, effect and frozen records before changing configuration.
 See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
 for the read path and refusal guidance.

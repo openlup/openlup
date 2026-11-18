@@ -27,7 +27,7 @@ it.each([false, true])("reconciles settings guidance and the managed CLI upgrade
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const script = "host/settings.ts";
   const base = "# App guide\n";
-  const section = "\n## Change a business setting\n\nRun `npm run settings -- list`.\n";
+  const section = "\n## Change a business setting\n\nRun `node --experimental-strip-types host/settings.ts list`.\n";
   write("AGENTS.md", customized ? base + "\nLocal workflow.\n" : base);
   candidate("AGENTS.md", base + section);
   const targetOwnership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));

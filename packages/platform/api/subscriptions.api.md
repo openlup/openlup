@@ -2862,11 +2862,12 @@ export declare const subscriptionSettings: readonly [{
     readonly fallback: {
         readonly minCancellationAgeDays: 14;
         readonly maxCancellationAgeDays: 120;
+        readonly requireRetentionConsent: true;
     };
     readonly defaultBasis: {
         readonly kind: "reference-code";
     };
-    readonly whyThisDefault: "The age window preserves the established outreach timing after cancellation.";
+    readonly whyThisDefault: "The age window preserves the established outreach timing after cancellation. The platform keeps its neutral default of requiring retention consent at the send gate.";
     readonly effect: {
         readonly appliesTo: "Candidates for new winback messages.";
         readonly frozenOn: readonly ["Existing winback delivery receipts retain their deduplication identity."];
@@ -2874,7 +2875,7 @@ export declare const subscriptionSettings: readonly [{
     };
     readonly runtime: {
         readonly level: "read-only";
-        readonly reason: "Discovery documents the age window. The full policy, consent behavior and episode change need separate qualification.";
+        readonly reason: "Discovery documents the age window and send gate. The full policy and episode changes need separate qualification.";
     };
     readonly change: {
         readonly operation: "No settings write operation is available for this key.";

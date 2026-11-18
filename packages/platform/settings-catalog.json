@@ -148,8 +148,8 @@
         ]
       },
       "absentMeans": {
-        "description": "Checkout recovery wave offsets come from host call parameters. Abandoned cart waves use 1, 24 and 72 hours.",
-        "source": "host call parameters",
+        "description": "Checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.",
+        "source": "host call parameters, with SQL defaults for omitted offsets",
         "value": {
           "abandonedCart": [
             {
@@ -627,10 +627,8 @@
       "rules": [
         {
           "code": "inventory_renewal_protection_policy_invalid",
-          "path": [
-            "revision"
-          ],
-          "description": "The revision must contain a non-whitespace character."
+          "path": [],
+          "description": "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660."
         }
       ]
     },
@@ -1183,12 +1181,13 @@
       "examples": [],
       "fallback": {
         "minCancellationAgeDays": 14,
-        "maxCancellationAgeDays": 120
+        "maxCancellationAgeDays": 120,
+        "requireRetentionConsent": true
       },
       "defaultBasis": {
         "kind": "reference-code"
       },
-      "whyThisDefault": "The age window preserves the established outreach timing after cancellation.",
+      "whyThisDefault": "The age window preserves the established outreach timing after cancellation. The platform keeps its neutral default of requiring retention consent at the send gate.",
       "effect": {
         "appliesTo": "Candidates for new winback messages.",
         "frozenOn": [
@@ -1198,7 +1197,7 @@
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Discovery documents the age window. The full policy, consent behavior and episode change need separate qualification."
+        "reason": "Discovery documents the age window and send gate. The full policy and episode changes need separate qualification."
       },
       "change": {
         "operation": "No settings write operation is available for this key."

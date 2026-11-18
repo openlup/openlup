@@ -167,7 +167,7 @@ export * from "./ports.js";
 export * from "./observabilityContracts.js";
 export * from "./observabilityPorts.js";
 export * from "./alertHumanContext.js";
-export * from "./settings.js";
+export type * from "./settings.js";
 ```
 ## dist/operations/contracts/observabilityContracts.d.ts
 

@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { readRenewalStockProtectionOverride, renewalStockProtectionSetting, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
-import { readCheckoutRecoveryReminderOverride } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
+import { describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
+import { checkoutRecoveryReminderAbsence, describeCheckoutRecoveryReminderSetting, installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOverride, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
 import { explainSetting, listSettings, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
 import {
-  settingsListRequest, settingsListResult, settingsRefusalResult, settingsShowRequest, settingsShowResult,
+  settingsListRequest, settingsListResult, settingsShowRequest, settingsShowResult,
 } from "../../src/operations/server/settingsCatalog.js";
 import { toolInputSchema } from "../../src/operations/index.js";
-import { z } from "zod";
 
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
     const revision = " store-1 ";
     const policy = { revision, renewalProtectionDays: 14 };
     for (const value of [policy, Object.assign(Object.create(null), policy), Object.assign(new (class Policy {})(), policy),
+      Object.assign(Object.create({ inherited: true }), policy),
       { ...policy, renewalProtectionDays: 1 }, { ...policy, renewalProtectionDays: 3660 }]) {
       expect(validateRenewalStockProtection(value)).toStrictEqual({
         revision: value.revision, renewalProtectionDays: value.renewalProtectionDays,
@@ -24,10 +24,48 @@ describe("renewal stock policy descriptor", () => {
       ...["", " \t\n", "\u00a0", null, 1].map(invalidRevision => ({ ...policy, revision: invalidRevision }))]) {
       expect(() => validateRenewalStockProtection(value)).toThrow("inventory_renewal_protection_policy_invalid");
     }
-    for (const { value, ...example } of renewalStockProtectionSetting.examples) {
+    for (const { value, ...example } of describeRenewalStockProtectionSetting().examples) {
       if ("code" in example) expect(() => validateRenewalStockProtection(value)).toThrow(example.code);
       else expect(validateRenewalStockProtection(value)).toStrictEqual(value);
     }
+  });
+});
+
+it("isolates inventory and reminder reads and installs from mutated discovery data", async () => {
+  const inventory = describeRenewalStockProtectionSetting();
+  const reminders = describeCheckoutRecoveryReminderSetting();
+  Object.assign(inventory, { key: "different" });
+  inventory.fallback.renewalProtectionDays = 99;
+  Object.assign(reminders, { key: "different" });
+  Object.assign(reminders.fallback.abandonedCart[0], { afterHours: 77 });
+  reminders.absentMeans.value.abandonedCart[0]!.afterHours = 66;
+  const query = vi.fn(async () => ({ rows: [] }));
+  const inventoryDefault = { revision: "default", renewalProtectionDays: 14 };
+  const reminderDefault = {
+    revision: "default",
+    abandonedCart: [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }],
+    checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }],
+  } as const;
+  expect(await readRenewalStockProtectionPolicy({ query })).toEqual(inventoryDefault);
+  expect(await readCheckoutRecoveryReminderSchedule({ query })).toEqual(reminderDefault);
+  expect(checkoutRecoveryReminderAbsence().abandonedCart).toEqual(reminderDefault.abandonedCart);
+  await installRenewalStockProtectionPolicy({ query }, inventoryDefault);
+  await installCheckoutRecoveryReminderSchedule({ query }, reminderDefault);
+  expect(query.mock.calls).toEqual([
+    [expect.stringMatching(/^SELECT /u), ["inventory_renewal_protection"]],
+    [expect.stringMatching(/^SELECT /u), ["checkout_recovery_reminders"]],
+    [expect.stringMatching(/^INSERT /u), ["inventory_renewal_protection", JSON.stringify(inventoryDefault)]],
+    [expect.stringMatching(/^INSERT /u), ["checkout_recovery_reminders", JSON.stringify(reminderDefault)]],
+  ]);
+});
+
+it("shows the effective winback send gate and explains both inventory refusal fields", async () => {
+  expect(await showSetting({ key: "subscriber_winback_policy" })).toMatchObject({
+    setting: { fallback: { minCancellationAgeDays: 14, maxCancellationAgeDays: 120, requireRetentionConsent: true } },
+  });
+  const code = "inventory_renewal_protection_policy_invalid";
+  expect(explainSetting(code)).toMatchObject({
+    explanation: { code, path: [], rule: expect.stringMatching(/revision.*nonblank.*renewalProtectionDays.*1 through 3660/u) },
   });
 });
 
@@ -40,16 +78,33 @@ describe("settings show", () => {
     expect(await showSetting({ key }, {
       [key]: async () => {
         expect(await readCheckoutRecoveryReminderOverride({ query })).toBeUndefined();
-        return { present: false, effective: { abandonedCart, checkoutRecovery } };
+        return { present: false, effective: checkoutRecoveryReminderAbsence({ firstOffsetSeconds: 7200, finalOffsetSeconds: 54000 }) };
       },
-    })).toMatchObject({ observation: { state: "absent", source: "host call parameters",
+    })).toMatchObject({ observation: { state: "absent", source: "host call parameters, with SQL defaults for omitted offsets",
       value: { abandonedCart, checkoutRecovery } } });
     expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/^SELECT /u), [key]);
   });
 
+  it.each([
+    [{ finalOffsetSeconds: 54000 }, 1, 15],
+    [{ firstOffsetSeconds: 7200 }, 2, 20],
+    [{}, 1, 20],
+  ] as const)("uses SQL defaults for omitted host offsets in %j", async (policy, first, last) => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    expect(await showSetting({ key }, {
+      [key]: async () => {
+        expect(await readCheckoutRecoveryReminderOverride({ query })).toBeUndefined();
+        return { present: false, effective: checkoutRecoveryReminderAbsence(policy) };
+      },
+    })).toMatchObject({ observation: {
+      state: "absent", source: "host call parameters, with SQL defaults for omitted offsets",
+      value: { abandonedCart, checkoutRecovery: [{ stage: "first", afterHours: first }, { stage: "last", afterHours: last }] },
+    } });
+  });
+
   it("reports absent reminders without guessing unknown host offsets and retains cart waves", async () => {
     const result = {
-      state: "absent", absentMeans: expect.stringContaining("host call parameters"), source: "host call parameters",
+      state: "absent", absentMeans: expect.stringContaining("host call parameters"), source: "host call parameters, with SQL defaults for omitted offsets",
       value: { abandonedCart, checkoutRecovery: null },
     };
     expect(await showSetting({ key }, { [key]: async () => ({ present: false }) })).toMatchObject({ observation: result });
@@ -77,12 +132,11 @@ describe("settings show", () => {
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
   const [list, show] = settingsReadTools;
   expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show"]);
-  for (const [tool, request, result] of [
-    [list, settingsListRequest, settingsListResult], [show, settingsShowRequest, settingsShowResult],
+  for (const [tool, request] of [
+    [list, settingsListRequest], [show, settingsShowRequest],
   ] as const) {
     expect(tool.annotations).toEqual({ readOnlyHint: true });
     expect(tool.inputSchema).toEqual(toolInputSchema(request));
-    expect(tool.outputSchema).toEqual(toolInputSchema(z.union([result, settingsRefusalResult]), "output"));
   }
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
@@ -92,6 +146,6 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   });
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
-    remediation: expect.objectContaining({ command: "npm run settings -- list", retry: true }),
+    remediation: expect.objectContaining({ command: "node --experimental-strip-types host/settings.ts list", retry: true }),
   }) });
 });

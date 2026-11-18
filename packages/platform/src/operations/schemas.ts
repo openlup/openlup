@@ -1,3 +1,4 @@
+import type { ZodType } from "zod";
 import { z } from "./validation.js";
 
 export const adminPipelineTesterSchema = z.object({
@@ -120,3 +121,8 @@ export const platformControlPlaneMutationResponseSchema = z.object({
   revision: z.number().int().min(1).nullable(),
   recordedAt: platformTimestampSchema,
 });
+
+/** @experimental Derive inline JSON Schema from the Zod contract used by a tool. */
+export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input"): Record<string, unknown> {
+  return z.toJSONSchema(schema, { target: "draft-07", io, reused: "inline" });
+}

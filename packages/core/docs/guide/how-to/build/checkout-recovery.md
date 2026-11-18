@@ -140,8 +140,11 @@ nonblank `revision` and two nonempty arrays: `abandonedCart` admits `first`,
 missing keys, malformed JSON and invalid values refuse with
 `checkout_recovery_reminder_schedule_invalid` before enqueue writes.
 
-Absence keeps abandoned-cart hours 1/24/72 and checkout-recovery hours 1/20,
-with revision `default`. New payloads carry `stage` alongside `reminderHours`.
+Without an installed row, abandoned-cart waves use 1, 24 and 72 hours.
+Checkout-recovery eligibility uses the host call offsets. SQL supplies 1 hour
+for an omitted first offset and 20 hours for an omitted final offset. The
+read helper returns the nominal schedule with revision `default`. New
+payloads carry `stage` alongside `reminderHours`.
 Renderers use the explicit stage; old payloads without it retain their previous
 hour mapping and rendered bytes. Unknown stages refuse through the handler's
 existing payload-error policy.

@@ -11,7 +11,7 @@
       "remediation": {
         "retry": true,
         "action": "Find a key in the list, then run show with that key.",
-        "command": "npm run settings -- list"
+        "command": "node --experimental-strip-types host/settings.ts list"
       }
     },
     {
@@ -24,7 +24,7 @@
       "remediation": {
         "retry": true,
         "action": "Use explain with the reported code.",
-        "command": "npm run settings -- explain commerce_setting_unknown"
+        "command": "node --experimental-strip-types host/settings.ts explain commerce_setting_unknown"
       }
     },
     {
@@ -35,7 +35,7 @@
       "remediation": {
         "retry": true,
         "action": "Review command syntax and correct the arguments.",
-        "command": "npm run settings -- --help"
+        "command": "node --experimental-strip-types host/settings.ts --help"
       }
     },
     {
@@ -48,7 +48,7 @@
       "remediation": {
         "retry": true,
         "action": "Check the connection and SELECT access, or omit the connection to use discovery offline.",
-        "command": "npm run settings -- list"
+        "command": "node --experimental-strip-types host/settings.ts list"
       }
     },
     {
@@ -61,20 +61,18 @@
       "remediation": {
         "retry": false,
         "action": "Review the catalogue for the key's documented change mechanism.",
-        "command": "npm run settings -- list"
+        "command": "node --experimental-strip-types host/settings.ts list"
       }
     },
     {
       "code": "inventory_renewal_protection_policy_invalid",
-      "path": [
-        "revision"
-      ],
-      "rule": "The revision must contain a non-whitespace character.",
+      "path": [],
+      "rule": "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660.",
       "hint": "Check the value schema and examples for inventory_renewal_protection.",
       "remediation": {
         "retry": true,
         "action": "Check the schema and correct the rejected value.",
-        "command": "npm run settings -- show inventory_renewal_protection"
+        "command": "node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json"
       }
     }
   ]

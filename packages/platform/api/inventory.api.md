@@ -438,7 +438,7 @@ export { createPostgresStockAvailability } from "./postgresStockAvailability.js"
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
-export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, renewalStockProtectionSetting } from "./renewalStockProtection.js";
+export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } from "./renewalStockProtection.js";
 export { inventorySettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
@@ -728,7 +728,7 @@ export {};
 import { z } from "zod";
 import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
 /** @experimental Discovery metadata for the installed renewal stock protection policy. */
-export declare const renewalStockProtectionSetting: {
+export declare function describeRenewalStockProtectionSetting(): {
     readonly key: "inventory_renewal_protection";
     readonly domain: "inventory";
     readonly kind: "installed";
@@ -740,8 +740,8 @@ export declare const renewalStockProtectionSetting: {
     }, z.core.$strict>;
     readonly rules: readonly [{
         readonly code: "inventory_renewal_protection_policy_invalid";
-        readonly path: readonly ["revision"];
-        readonly description: "The revision must contain a non-whitespace character.";
+        readonly path: readonly [];
+        readonly description: "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660.";
         readonly check: (value: RenewalStockProtectionPolicy) => boolean;
     }];
     readonly examples: readonly [{
@@ -763,8 +763,8 @@ export declare const renewalStockProtectionSetting: {
         readonly code: "inventory_renewal_protection_policy_invalid";
     }];
     readonly fallback: {
-        readonly revision: "default";
-        readonly renewalProtectionDays: 14;
+        readonly revision: string;
+        readonly renewalProtectionDays: number;
     };
     readonly defaultBasis: {
         readonly kind: "reference-code";

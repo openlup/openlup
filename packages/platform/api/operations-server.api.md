@@ -1187,7 +1187,7 @@ export * from "./ports.js";
 export * from "./observabilityContracts.js";
 export * from "./observabilityPorts.js";
 export * from "./alertHumanContext.js";
-export * from "./settings.js";
+export type * from "./settings.js";
 ```
 ## dist/operations/contracts/observabilityContracts.d.ts
 
@@ -1365,11 +1365,11 @@ export * from "./alertPagingPolicy.js";
 export * from "./alertThrottlePolicy.js";
 export * from "./errors.js";
 export * from "./clients.js";
-export { toolInputSchema } from "./settingsSchema.js";
 ```
 ## dist/operations/schemas.d.ts
 
 ```ts
+import type { ZodType } from "zod";
 import { z } from "./validation.js";
 export declare const adminPipelineTesterSchema: z.ZodObject<{
     id: z.ZodString;
@@ -1508,6 +1508,8 @@ export declare const platformControlPlaneMutationResponseSchema: z.ZodObject<{
     revision: z.ZodNullable<z.ZodNumber>;
     recordedAt: z.ZodString;
 }, z.core.$strip>;
+/** @experimental Derive inline JSON Schema from the Zod contract used by a tool. */
+export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
 ```
 ## dist/operations/server/adminAlertsHandlers.d.ts
 
@@ -1832,13 +1834,6 @@ export declare const settingsReadTools: readonly [{
     };
 }];
 export {};
-```
-## dist/operations/settingsSchema.d.ts
-
-```ts
-import { type ZodType } from "zod";
-/** @experimental Derive inline JSON Schema from the Zod contract used by a tool. */
-export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
 ```
 ## dist/operations/validation.d.ts
 

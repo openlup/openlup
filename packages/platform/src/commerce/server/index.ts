@@ -211,4 +211,5 @@ export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.j
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
 
-export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOverride } from "./checkoutRecoveryReminderSchedule.js";
+export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOverride, describeCheckoutRecoveryReminderSetting, checkoutRecoveryReminderAbsence } from "./checkoutRecoveryReminderSchedule.js";
+export { commerceSettingBoundaries } from "./settingBoundaries.js";

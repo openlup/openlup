@@ -82,5 +82,3 @@ export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvail
 export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";
 export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION,checkoutRecoveryStartRequestSchema,checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
 export type { CheckoutRecoveryStartRequest,CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
-export { checkoutRecoveryReminderSetting } from "./checkoutRecoveryReminderSetting.js";
-export { commerceSettingBoundaries } from "./settingBoundaries.js";

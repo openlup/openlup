@@ -1,6 +1,56 @@
 import { installedPolicy } from "./installedPolicy.js";
-import { checkoutRecoveryReminderSetting as setting } from "../index.js";
+import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
+
+const key = "checkout_recovery_reminders";
+const fallback = {
+  revision: "default",
+  abandonedCart: [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }],
+  checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }],
+} as const satisfies CheckoutRecoveryReminderSchedule;
+
+// Match commerce_checkout_recovery_policy when a supplied policy omits an offset.
+const firstOffsetSeconds = 3600;
+const finalOffsetSeconds = 72000;
+
+/** @experimental Describe the effective waves when no installed schedule exists. */
+export function checkoutRecoveryReminderAbsence(policy?: Pick<CheckoutRecoveryWavePolicy, "firstOffsetSeconds" | "finalOffsetSeconds">) {
+  return {
+    abandonedCart: fallback.abandonedCart.map(wave => ({ ...wave })),
+    checkoutRecovery: policy ? [
+      { stage: "first", afterHours: (policy.firstOffsetSeconds ?? firstOffsetSeconds) / 3600 },
+      { stage: "last", afterHours: (policy.finalOffsetSeconds ?? finalOffsetSeconds) / 3600 },
+    ] : null,
+  };
+}
+
+/** @experimental Discovery metadata for the installed schedule and absent-row behavior. */
+export function describeCheckoutRecoveryReminderSetting() {
+  return {
+    key,
+    domain: "commerce",
+    kind: "installed",
+    goal: "Find when checkout recovery and abandoned cart reminders are sent.",
+    schemaVersion: 1,
+    rules: [],
+    examples: [],
+    fallback: structuredClone(fallback),
+    absentMeans: {
+      description: "Checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.",
+      source: "host call parameters, with SQL defaults for omitted offsets",
+      value: checkoutRecoveryReminderAbsence(),
+    },
+    defaultBasis: { kind: "reference-code" },
+    whyThisDefault: "The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.",
+    effect: {
+      appliesTo: "Scheduling new reminder waves.",
+      frozenOn: ["Enqueued messages and send receipts retain their recorded identity."],
+      impact: "customer-promise",
+    },
+    runtime: { level: "read-only", reason: "Runtime editing needs episode lineage and delivery replay evidence." },
+    change: { operation: "installCheckoutRecoveryReminderSchedule" },
+  } as const;
+}
 
 const code = "checkout_recovery_reminder_schedule_invalid";
 function validateCheckoutRecoveryReminderSchedule(value: unknown): CheckoutRecoveryReminderSchedule {
@@ -28,12 +78,12 @@ function validateCheckoutRecoveryReminderSchedule(value: unknown): CheckoutRecov
 interface Executor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
-const store = (db: Executor) => installedPolicy(db, setting.key, validateCheckoutRecoveryReminderSchedule, structuredClone(setting.fallback), code);
+const store = (db: Executor) => installedPolicy(db, key, validateCheckoutRecoveryReminderSchedule, structuredClone(fallback), code);
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export async function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void> {
   await store(db).install(schedule);
 }
-/** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
+/** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule> {
   return store(db).read();
 }
