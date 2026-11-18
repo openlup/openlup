@@ -1,11 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync, realpathSync, rmSync } from 'node:fs';
+import { dirname, join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { catalogDefinitionDigest } from '@openlup/platform/catalog';
 import { configurations } from '../owned/store.config.ts';
+import { catalogueConformance } from '../owned/catalogue.ts';
+import { offerVersion } from '../owned/catalog-packs/supplements/catalogue.ts';
+import { fixtures, requiredChecks } from '../owned/catalog-packs/supplements/fixtures.ts';
+import { pack } from '../owned/catalog-packs/supplements/pack.ts';
 import { bindRegisteredCatalogue, starterCatalogue, selectCatalogueConfiguration } from '../host/catalogue-selection.ts';
 import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
 import { installStarterCatalogueDefinitions } from '../installation/install.ts';
 import { starterQuoteCatalogue } from '../host/editor-catalogue.ts';
+import { parseHostArguments } from '../shared/config.ts';
 
 const configuredEntries = starterCatalogue.list().filter(({ configuration }) => Object.hasOwn(configurations, configuration.id));
 for (const entry of configuredEntries) test(`MC5-N-005 ${entry.configuration.id} drives boot, authoring, install and read composition`, async () => {
@@ -61,6 +71,70 @@ test('RP1-D-003a selects the supplements pack through the explicit LC8 binding',
   assert.equal(binding.readEnabled(), true);
   assert.equal(binding.writerEnabled(), false);
   await assert.rejects(bindRegisteredCatalogue(starterCatalogue.select(), transactions), { message: 'starter_catalogue_registration_invalid' });
+});
+
+test('catalogue_transport_matrix RP2-D-002 projects the selected runtime pack and RP1 fixtures', async () => {
+  const app = fileURLToPath(new URL('../', import.meta.url));
+  const options = parseHostArguments(['--configuration', 'supplements-pack', '--catalogue-publication', 'on',
+    '--database-url', 'postgresql://starter_runtime@127.0.0.1/neutral_store']);
+  const selected = starterCatalogue.select(options.configuration);
+  assert.equal(options.cataloguePublication, true);
+  assert.equal(selected.pack, pack);
+  assert.deepEqual(selected.scope, { types: pack.types.map(({ key, version }) => ({ key, version })), offerVersion });
+  assert.equal(starterCatalogue.list().filter(entry => entry.pack === pack).length, 1);
+  assert.deepEqual(catalogueConformance.packs.map(entry => entry.pack), [selected.pack]);
+  const transactions = { async run(): Promise<never> { throw new Error('offline binding must perform no effects'); } };
+  const binding = await bindRegisteredCatalogue(selected, transactions);
+  assert.equal(binding.registration, selected);
+  assert.equal(binding.readEnabled(), true);
+  assert.equal(binding.writerEnabled(), false);
+
+  const runtimeTypes = pack.types.map(type => {
+    const resolved = selected.types.resolve(type);
+    assert(resolved);
+    return resolved;
+  });
+  const executor = { async query(sql: string, values?: unknown[]) {
+    assert.match(sql, /catalog_definition_install/u);
+    const { manifest } = JSON.parse(String(values?.[2]));
+    const installed = JSON.parse(manifest);
+    assert.equal(installed.id, pack.id);
+    assert.deepEqual(installed.types, runtimeTypes.map(type => ({
+      key: type.key, version: type.version, definitionDigest: catalogDefinitionDigest(type),
+    })));
+    assert.deepEqual(installed.subscriptionProfileDefinitions, pack.subscriptionProfileDefinitions);
+    return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(manifest).digest('hex'),
+      subscriptionProfileDefinitions: pack.subscriptionProfileDefinitions } }] };
+  } };
+  await installStarterCatalogueDefinitions(executor, selected.configuration.id);
+  for (const draft of fixtures.drafts) {
+    assert.deepEqual(selected.types.resolve(draft.product.type)?.validateContent(draft.product.sharedContent), []);
+  }
+
+  const report = JSON.parse(execFileSync('npm', ['--silent', 'run', 'catalogue:check:source'], { cwd: app, encoding: 'utf8' }));
+  assert.equal(report.formatVersion, 1);
+  assert.equal(report.exitCode, 0);
+  assert.deepEqual(report.findings, []);
+  assert.equal(report.transport.checkerInvocations, 1);
+  const { subjectPath, subjectHash } = report.transport;
+  assert(!realpathSync(subjectPath).startsWith(realpathSync(app) + sep));
+  try {
+    const bytes = readFileSync(subjectPath);
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), subjectHash);
+    const subject = JSON.parse(bytes.toString('utf8'));
+    const expected = JSON.parse(JSON.stringify({
+      packs: [{ ...fixtures, pack: { ...pack, types: runtimeTypes }, profilePolicies: binding.profilePolicies }],
+      requiredChecks,
+    }));
+    assert.deepEqual(subject, expected);
+    const pkg = dirname(fileURLToPath(import.meta.resolve('@openlup/platform/package.json')));
+    const inert = spawnSync(process.execPath, [join(pkg, 'src/lifecycle/openlup.mjs'),
+      'catalogue', 'check', '--packs', subjectPath, '--json'], { cwd: app, encoding: 'utf8' });
+    assert.equal(inert.status, 2, inert.stdout);
+    const { findings } = JSON.parse(inert.stdout);
+    assert.deepEqual(findings.map(({ code, path }: { code: string; path: string }) => [code, path]),
+      fixtures.drafts.map((_, i) => ['conformance_owner_unavailable', `/packs/0/drafts/${i}/product/sharedContent`]));
+  } finally { rmSync(dirname(subjectPath), { recursive: true }); }
 });
 
 import { bindCataloguePorts } from '../host/catalogue-binding.ts';
