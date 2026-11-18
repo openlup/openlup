@@ -313,15 +313,19 @@ price with a subsequent expected-base command.
 
 ## Compatible data transfer
 
-The native admission forward preserves all six replaced routine signatures and
-adds one service-callable assertion with a fixed search path. Plain and promoted
+The native admission forward preserves the replaced routine signatures. The
+service-callable assertion and evidence builder use fixed search paths. Plain and promoted
 purchase entrypoints require lineage only for native version 3 publication facts;
 existing legacy inputs retain their results. The lifecycle write fence and current
 publication writer refuse a downgrade to the legacy route. Completed commands
 replay before current checks. Effectful subscription edits prelock the exact
 existing lines and terms they will mutate before the shared catalogue barrier.
-The publisher retains its nonblocking busy refusal. New public admission symbols
-are experimental and installation changes no capability or agreement.
+The publisher retains its nonblocking busy refusal. Shared evidence reads use the
+native offer membership page and carry the exact governed subset and consulted
+product heads. First purchase acceptance freezes proof on the draft. Binding
+occurs at captured-payment activation and the first renewal attachment copies
+the proof after checking the frozen agreement. Public admission symbols are
+experimental and installation leaves the feature unbound.
 
 No table or transfer classification is added by this forward: the existing
 authoritative line, order, event and retained-term carriers retain the accepted

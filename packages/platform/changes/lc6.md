@@ -1,29 +1,26 @@
 Adds an experimental, unbound native catalogue admission fence to order acceptance
 and subscription edits. `CatalogAdmissionPort.assertCurrent` delegates to the same
-SQL assertion called by the native writers. It checks immutable accepted references,
-current publication heads, offer membership and the exact consulted price rows.
-Sized unchanged or reduced selections keep their retained identities; fresh and
-increased demand requires current admission. Existing lane pricing is unchanged.
+SQL assertion called by the native writers. It distinguishes
+unreadable authority, invalid anchors, stale heads and invalid membership.
+Sized unchanged or reduced selections retain immutable identities. A separate
+context records any price the existing quote owner consulted for a retained
+selection. Mixed carts and edits prove the exact governed subset.
 
-Migration: apply the complete native catalogue including the admission forward
-after the lifecycle forward. Compose the new server evidence alongside existing
-quote provenance, keeping existing strict readers for historical formats and the
-lifecycle-aware reference reader for new acceptance. No capability is enabled.
-Plain and promoted order functions retain their identical signatures and legacy
-results. Missing lineage refuses only for a purchased product or SKU with native
-version 3 publication data; raw writes and old publication writers cannot downgrade
-those facts. Completed commands replay before current admission. The publisher's
-existing busy refusal is unchanged.
+Migration: apply the complete native catalogue, including the membership-page,
+lifecycle and admission forwards. Capture evidence using the native checkout
+wrapper alongside the original trusted quote. The existing edit previews record
+their own private evidence in the ledgers. Historical formats keep their
+existing reader and new acceptance uses the lifecycle-aware reference reader.
+The publisher retains its nonblocking busy refusal.
 
-Mixed acceptance prelocks its existing commerce targets before taking shared
-catalogue guards. The new port requires the accepting connection and transaction;
-it grants no transaction, identity or pricing authority. Capture full evidence in
-the trusted preview ledger, never from a browser. Native package, exact and sized
-SQL writers consume `quote_snapshot.catalogAdmission`; the native legacy bundle
-lane binds `compositionConstraint.catalogAdmission` through its existing request
-fingerprint. Order writers consume `quoteSnapshot.catalogAdmission`. Acceptance
-is recorded in the existing lifecycle carriers, without repricing or rescheduling
-any agreement. Archive remains unavailable; no obligation is drained.
+The order entrypoints keep their signatures and legacy results. A purchased
+product or SKU with native version 3 publication data requires lineage. Accepted
+subscription drafts freeze the configured offer and proof. Captured-payment
+activation binds the offer and first renewal attachment copies the exact proof
+after checking the frozen line agreement. Accepted edits record the proof in
+existing servicing carriers and clearing the last governed line clears it.
+Replay precedes current admission. Commerce prelocking precedes shared catalogue
+guards. Installation leaves the feature unbound.
 
 Transfer: no new relation, constraint, trigger, backfill or transfer class is
 introduced. Existing authoritative order, line, event and retained-term capture

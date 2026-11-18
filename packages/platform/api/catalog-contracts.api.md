@@ -44,6 +44,10 @@ export interface CatalogAdmissionInput {
         optIn?: boolean;
     };
     priceContextVersions: readonly CatalogAdmissionPriceContext[];
+    /** Current price rows independently consulted for a retained selection.
+     * @experimental
+     */
+    retainedPriceContextVersions?: readonly CatalogAdmissionPriceContext[];
     purpose: "order" | "account";
 }
 ```

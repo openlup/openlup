@@ -1459,24 +1459,21 @@ capture; installation composes no acceptance or publication service.
 
 The experimental `createPostgresCatalogAdmission()` supplies
 `CatalogAdmissionPort.assertCurrent(db, evidence)` for the accepting transaction.
-The native order and edit writers use that same assertion after replay and commerce
-prelocking. Supply `CatalogAdmissionInput` beside existing server quote provenance:
-complete immutable SKU references and quantities, current product heads, native
-offer evidence and exact consulted price-row versions. Package, exact and sized
-edit previews retain it at `quote_snapshot.catalogAdmission`; the legacy bundle
-lane binds it through `compositionConstraint.catalogAdmission` and its existing
-request fingerprint. Order snapshots carry it at `quoteSnapshot.catalogAdmission`.
-These are trusted server carriers; they are not browser admission or a second quote.
-The accepting connection holds the shared guards through commit or rollback.
-Missing or stale evidence refuses before mutation. Purchases of products and SKUs
-without native version 3 publication facts retain their existing behavior;
-governed facts cannot be downgraded through an old writer. Sized retained selections
-resolve immutable accepted facts, and current admission applies to fresh or
-increased selections. Lane pricing and frozen renewal/retry servicing keep their
-existing rules. A publisher contending with an edit retains its
-`catalog_publication_busy` refusal; after the edit commits, a new attempt can run.
-Installation activates nothing and does not qualify archive. Follow the
-[catalogue lock order](../../docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order).
+Native writers use the same assertion after replay and commerce prelocking. The
+trusted preview ledgers build and store immutable SKU references, consulted
+product heads, offer membership and exact owner price-row evidence. The native
+checkout wrapper's experimental `captureCatalogAdmission(quoteSnapshot)` reads
+the catalogue membership page in a repeatable-read transaction. Pass the result
+through the wrapper's server-only identity argument alongside the original
+server quote.
+
+Governed draft acceptance freezes the configured offer and proof on the draft.
+Captured-payment activation applies the binding and first renewal attachment
+copies the proof. Mixed carts record the governed subset. An edit that removes
+its last governed line clears the selection. A sized edit can retain an
+immutable selection while a separate price context records a price consulted
+for that edit. Current admission applies to fresh or increased demand.
+The accepting connection holds shared guards through commit or rollback.
 
 The unpaginated native `catalog_bound_obligations_v2` query is the common archive
 and withdrawal-impact owner. It requires unfiltered evidence across every

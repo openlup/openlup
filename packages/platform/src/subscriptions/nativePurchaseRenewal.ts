@@ -46,7 +46,10 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
             count(DISTINCT (item.line#>>'{unitPriceGross,amountMinor}')::bigint)::integer AS price_count,
             coalesce((SELECT (role->>'isAddon')::boolean FROM jsonb_array_elements(
               public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,linePricing}') role
-              WHERE role->>'sku'=sku.sku),false) AS is_addon,o.currency_code
+              WHERE role->>'sku'=sku.sku),false) AS is_addon,o.currency_code,
+            (SELECT (ref->>'skuRevisionId')::uuid FROM public.subscription_renewal_terms t
+             CROSS JOIN LATERAL jsonb_array_elements(t.catalog_acceptance->'lines') ref
+             WHERE t.subscription_id=s.id AND ref->>'skuId'=sku.id::text) AS catalog_sku_revision_id
           FROM public.subscriptions s JOIN public.commerce_orders o ON o.id=$2::uuid
           CROSS JOIN LATERAL jsonb_array_elements(o.metadata#>'{orderDraftSnapshot,lines}') WITH ORDINALITY item(line,ordinal)
           JOIN public.catalog_skus sku ON sku.sku=item.line->>'sku'
@@ -69,10 +72,10 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
         ), eligible AS MATERIALIZED (
           SELECT id FROM locked WHERE NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=locked.id)
         ), template AS (
-          INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
-          SELECT e.id,l.variant_id,l.quantity,l.sort_order,l.is_addon,l.unit_price_minor,l.currency_code
+          INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,catalog_sku_revision_id)
+          SELECT e.id,l.variant_id,l.quantity,l.sort_order,l.is_addon,l.unit_price_minor,l.currency_code,l.catalog_sku_revision_id
           FROM eligible e CROSS JOIN jsonb_to_recordset($2::jsonb) AS l(variant_id uuid,quantity integer,sort_order integer,
-            is_addon boolean,unit_price_minor bigint,currency_code text)
+            is_addon boolean,unit_price_minor bigint,currency_code text,catalog_sku_revision_id uuid)
           ON CONFLICT(subscription_id,variant_id) DO NOTHING RETURNING id
         )${contextUpdate} SELECT id FROM eligible`, context.priceListId
           ? [id, JSON.stringify(lines), context.priceListId, context.currency] : [id, JSON.stringify(lines)]);

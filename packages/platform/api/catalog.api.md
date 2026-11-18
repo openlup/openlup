@@ -1329,6 +1329,10 @@ export interface CatalogAdmissionInput {
         optIn?: boolean;
     };
     priceContextVersions: readonly CatalogAdmissionPriceContext[];
+    /** Current price rows independently consulted for a retained selection.
+     * @experimental
+     */
+    retainedPriceContextVersions?: readonly CatalogAdmissionPriceContext[];
     purpose: "order" | "account";
 }
 ```
@@ -5193,7 +5197,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123190000_catalog_admission";
     readonly catalogPath: "db/platform/migrations/20261123190000_catalog_admission.sql";
     readonly position: 153;
-    readonly sha256: "45188d7a73aa01dc5bc57147d04c58a4d5d0bdf1af3869f89dbbd20588ceb2a0";
+    readonly sha256: "16c1a172c47bae3c8a9d237560ea3a24e474bfa4134bec5f7ca33a5be2e20344";
     readonly url: URL;
 }];
 ```

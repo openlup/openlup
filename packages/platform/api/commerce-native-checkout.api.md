@@ -248,6 +248,13 @@ export interface NativeCheckoutDraftRequest {
     idempotencyKey: string;
     quoteSnapshot: CreateQuoteResponse;
 }
+/** Trusted native draft identity and quote-time evidence. Never parse it from a browser request.
+ * @experimental
+ */
+export interface NativeCheckoutAdmissionIdentity {
+    clientId?: string | null;
+    catalogAdmission?: object | null;
+}
 export interface NativeCheckoutDraftResponse {
     contractVersion: typeof COMMERCE_CONTRACT_VERSION;
     orderDraft: OrderDraftSummary<CreateQuoteResponse["quote"], typeof COMMERCE_CONTRACT_VERSION>;
@@ -258,9 +265,7 @@ export interface NativeCheckoutDraftResponse {
  * Changed requests refuse without superseding or dispatching a payment.
  */
 export declare function createPostgresNativeCheckoutPersistence(executor: NativeCheckoutQuery): {
-    createOrderDraft(request: NativeCheckoutDraftRequest, options?: {
-        clientId?: string | null;
-    }): Promise<NativeCheckoutDraftResponse>;
+    createOrderDraft(request: NativeCheckoutDraftRequest, options?: NativeCheckoutAdmissionIdentity): Promise<NativeCheckoutDraftResponse>;
 };
 export interface NativeAcquisitionCheckoutPool {
     connect(): Promise<NativeCheckoutQuery & {
@@ -276,9 +281,11 @@ export interface NativeAcquisitionCheckoutOptions {
 /** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
  * commit; host authorization and quote acceptance precede this boundary. */
 export declare function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions): {
-    createOrderDraft(request: NativeCheckoutDraftRequest, identity?: {
-        clientId?: string | null;
-    }): Promise<NativeCheckoutDraftResponse>;
+    /** Reads offer membership and price evidence for a server-produced quote in one snapshot.
+     * @experimental
+     */
+    captureCatalogAdmission(quoteSnapshot: CreateQuoteResponse): Promise<object | null>;
+    createOrderDraft(request: NativeCheckoutDraftRequest, identity?: NativeCheckoutAdmissionIdentity): Promise<NativeCheckoutDraftResponse>;
 };
 ```
 ## dist/http/deadline.d.ts

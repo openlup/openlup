@@ -18,6 +18,14 @@ export interface NativeCheckoutDraftRequest {
   quoteSnapshot: CreateQuoteResponse;
 }
 
+/** Trusted native draft identity and quote-time evidence. Never parse it from a browser request.
+ * @experimental
+ */
+export interface NativeCheckoutAdmissionIdentity {
+  clientId?: string | null;
+  catalogAdmission?: object | null;
+}
+
 export interface NativeCheckoutDraftResponse {
   contractVersion: typeof COMMERCE_CONTRACT_VERSION;
   orderDraft: OrderDraftSummary<CreateQuoteResponse["quote"], typeof COMMERCE_CONTRACT_VERSION>;
@@ -57,7 +65,7 @@ const responseSchema = z.object({
 export function createPostgresNativeCheckoutPersistence(
   executor: NativeCheckoutQuery,
 ): {
-  createOrderDraft(request: NativeCheckoutDraftRequest, options?: { clientId?: string | null }): Promise<NativeCheckoutDraftResponse>;
+  createOrderDraft(request: NativeCheckoutDraftRequest, options?: NativeCheckoutAdmissionIdentity): Promise<NativeCheckoutDraftResponse>;
 } {
   return {
     async createOrderDraft(request, options) {
@@ -90,7 +98,7 @@ export function createPostgresNativeCheckoutPersistence(
         // PostgreSQL array, not JSON. No gateway or driver coercion is assumed.
         const result = await executor.query(`SELECT public.commerce_create_promoted_order_draft_with_outbox(
           $1::text, $2::jsonb, $3::jsonb, $4::uuid) AS response`,
-        [input.idempotencyKey, JSON.stringify(input.quoteSnapshot), JSON.stringify(draft), clientId]);
+        [input.idempotencyKey, JSON.stringify(options?.catalogAdmission == null ? input.quoteSnapshot : { ...input.quoteSnapshot, catalogAdmission: options.catalogAdmission }), JSON.stringify(draft), clientId]);
         response = result.rows[0]?.response;
       } catch (error) {
         const { code, message } = (error && typeof error === "object" ? error : {}) as { code?: string; message?: string };
@@ -132,7 +140,24 @@ export interface NativeAcquisitionCheckoutOptions {
  * commit; host authorization and quote acceptance precede this boundary. */
 export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions) {
   return {
-    async createOrderDraft(request: NativeCheckoutDraftRequest, identity?: { clientId?: string | null }) {
+    /** Reads offer membership and price evidence for a server-produced quote in one snapshot.
+     * @experimental
+     */
+    async captureCatalogAdmission(quoteSnapshot: CreateQuoteResponse): Promise<object | null> {
+      const snapshot = createQuoteResponseSchema.parse(quoteSnapshot);
+      const db = await pool.connect();
+      try {
+        await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        const result = await db.query(
+          "SELECT public.catalog_admission_build_evidence($1::jsonb,$2::text,$3::jsonb,'order') AS evidence",
+          [JSON.stringify(snapshot.quote.lines), snapshot.quote.context?.mode ?? "one_time", JSON.stringify({ quoteSnapshot: snapshot })],
+        );
+        await db.query("COMMIT");
+        return (result.rows[0]?.evidence ?? null) as object | null;
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
+    },
+    async createOrderDraft(request: NativeCheckoutDraftRequest, identity?: NativeCheckoutAdmissionIdentity) {
       const db = await pool.connect();
       try {
         await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
@@ -140,7 +165,9 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
         await db.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1::text, 0))", [key]);
         const persistence = createPostgresNativeCheckoutPersistence(db);
         // The existing writer owns replay, changed-input and ownership validation.
-        const replay = (await db.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [key])).rows.length > 0;
+        const replay = (await db.query(`SELECT o.metadata#>'{quoteSnapshot,catalogAdmission}' AS evidence
+          FROM public.commerce_order_draft_receipts r JOIN public.commerce_orders o ON o.id=r.order_id
+          WHERE r.idempotency_key=$1`, [key])).rows[0];
         const context = request.quoteSnapshot.quote.context as Record<string, unknown> | undefined;
         if (!replay && context?.mode === "subscription") {
           const policy = options.financialPolicy;
@@ -183,7 +210,9 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
             } else if (candidate !== undefined || starter != null || hasGrant) changed();
           }
         }
-        const result = await persistence.createOrderDraft(request, identity);
+        const result = await persistence.createOrderDraft(request, replay
+          ? { clientId: identity?.clientId, catalogAdmission: replay.evidence == null ? undefined : replay.evidence as object }
+          : identity);
         await db.query("COMMIT");
         return result;
       } catch (error) { await db.query("ROLLBACK"); throw error; }

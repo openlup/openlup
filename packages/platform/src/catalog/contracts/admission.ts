@@ -26,5 +26,9 @@ export interface CatalogAdmissionInput {
   mode: "one_time" | "subscription";
   offerEvidence: { offerVersion: string; subscriptionId?: string; lane?: "classic" | "exact" | "sized" | "legacy"; optIn?: boolean };
   priceContextVersions: readonly CatalogAdmissionPriceContext[];
+  /** Current price rows independently consulted for a retained selection.
+   * @experimental
+   */
+  retainedPriceContextVersions?: readonly CatalogAdmissionPriceContext[];
   purpose: "order" | "account";
 }

@@ -17,7 +17,9 @@ export function createPostgresCatalogAdmission(): CatalogAdmissionPort {
     async assertCurrent(db, input) {
       await db.query("SELECT public.catalog_admission_assert_current($1::jsonb,$2::jsonb,$3::text,$4::jsonb,$5::jsonb,$6::text)",
         [canonicalCatalogDraftJson(input.heads), canonicalCatalogDraftJson(input.skuRevisions), input.mode,
-          canonicalCatalogDraftJson(input.offerEvidence), canonicalCatalogDraftJson(input.priceContextVersions), input.purpose]);
+          canonicalCatalogDraftJson(input.retainedPriceContextVersions === undefined ? input.offerEvidence
+            : { ...input.offerEvidence, retainedPriceContextVersions: input.retainedPriceContextVersions }),
+          canonicalCatalogDraftJson(input.priceContextVersions), input.purpose]);
     },
   };
 }
