@@ -1,3 +1,4 @@
+import { mapPackageEditError } from "@openlup/platform/subscriptions";
 import {
   customerSubscriptionPreviewResponseSchema,
   type CustomerSubscriptionPreviewRequest,
@@ -72,7 +73,11 @@ export function createPostgresCustomerSubscriptionControlPort(
           p_accepted_quote_hash: action.acceptedQuoteHash,
         },
       );
-      if (error) throw mapControlError(error);
+      if (error) {
+        const admission = mapPackageEditError(error, "apply", action.action);
+        if (admission.reason?.startsWith("customer_self_service_")) throw conflict(admission.reason);
+        throw mapControlError(error);
+      }
       if (data === null) return null;
       return customerSubscriptionActionResponseSchema.parse(
         data,

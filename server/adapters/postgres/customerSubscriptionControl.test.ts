@@ -100,4 +100,21 @@ describe("Postgres customer subscription control adapter", () => {
         details: { reason: "subscription_edit_idempotency_conflict" },
       });
   });
+
+  it.each([
+    "customer_self_service_invalid_catalog_anchor",
+    "customer_self_service_stale_edit_catalog_head",
+    "customer_self_service_invalid_offer_membership",
+  ])("LC6-D-128 legacy apply preserves the catalogue diagnostic %s", async reason => {
+    const port = createPostgresCustomerSubscriptionControlPort({ rpc: async () => ({ data: null,error: { message: reason } }) });
+    await expect(port.applyAction(USER_ID,{ ...action,acceptedQuoteHash: QUOTE })).rejects.toMatchObject({
+      code: "CONFLICT",details: { reason },
+    });
+  });
+
+  it("LC6-D-128 legacy apply leaves unreadable catalogue authority as an upstream error", async () => {
+    const error = { message: "catalog_propagation_head_unreadable",code: "55000" };
+    const port = createPostgresCustomerSubscriptionControlPort({ rpc: async () => ({ data: null,error }) });
+    await expect(port.applyAction(USER_ID,{ ...action,acceptedQuoteHash: QUOTE })).rejects.toBe(error);
+  });
 });
