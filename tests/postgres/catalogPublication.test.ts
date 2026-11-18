@@ -51,6 +51,7 @@ beforeAll(async () => {
     await db.query(readFileSync(unit.file, "utf8"));
   }
   await db.query(readFileSync("db/platform/migrations/20261122190000_catalog_publication.sql", "utf8"));
+  await db.query(readFileSync("db/platform/migrations/20261123230000_catalog_quantity_serving.sql", "utf8"));
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -525,16 +526,32 @@ it("separates the native price-only 64-character ceiling from dark structural re
   expect(staged).toBe(true); expect(await snapshot()).toEqual(before);
 });
 it.each([
-  ["net", "fractional", "15", 1], ["net", "zero", "0", 0], ["net", "negative", "-1", 0], ["net", "out_of_range", "2147483648", 0],
-  ["gross", "fractional", "15", 1], ["gross", "zero", "0", 0], ["gross", "negative", "-1", 0], ["gross", "out_of_range", "10000000000000000000000000000000000000000", 0],
-] as const)("catalog_publication_refuses_%s_%s_mass", async (kind, _case, unscaled, scale) => {
+  ["MC5-N-001 fractional net", "15", 1],
+  ["MC5-N-001 oversized net", "2147483648", 0],
+] as const)("catalog_publish_typed_readiness_and_projection %s", async (_case, unscaled, scale) => {
   const data = await draft(), payload = structuredClone(data.payload);
-  payload.skus[0][kind === "net" ? "netContent" : "grossMass"] = { dimension: "mass", unit: "openlup:g", unscaled, scale };
-  // Native drafts retain opaque quantity input; publication must refuse even
-  // when the input did not pass through the stricter TypeScript draft facade.
-  const command = await save(payload, data.draftId, 1), before = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_integral_grams_required" });
-  expect(await snapshot()).toEqual(before);
+  const netContent = { dimension: "mass" as const, unit: "openlup:g", unscaled, scale };
+  payload.skus[0]!.netContent = netContent;
+  payload.skus[0]!.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "3000000000", scale: 0 };
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  const read = await authority.readbackV2(receipt.head);
+  expect(read).toMatchObject({ outcome: "page", items: [{ facts: { netContent } }] });
+  const rows = await db.query("SELECT net_weight_g, net_content_unscaled::text, net_content_scale FROM public.catalog_skus WHERE id=$1", [data.skuId]);
+  expect(rows.rows).toEqual([{ net_weight_g: null, net_content_unscaled: unscaled, net_content_scale: scale }]);
+  await expect(db.query("UPDATE public.catalog_skus SET net_weight_g=0 WHERE id=$1", [data.skuId]))
+    .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
+});
+
+it("catalog_publish_typed_readiness_and_projection schema shape", async () => {
+  const constraints = await db.query(`SELECT conname,convalidated,contype FROM pg_constraint
+    WHERE conrelid='public.catalog_skus'::regclass AND conname IN
+      ('catalog_skus_net_content_check','catalog_skus_gross_mass_check','catalog_skus_legacy_net_grams_check')
+    ORDER BY conname`);
+  expect(constraints.rows).toEqual(["gross_mass", "legacy_net_grams", "net_content"].map(name => ({
+    conname: `catalog_skus_${name}_check`, convalidated: true, contype: "c",
+  })));
+  expect((await db.query("SELECT attnotnull FROM pg_attribute WHERE attrelid='public.catalog_skus'::regclass AND attname='net_weight_g'")).rows)
+    .toEqual([{ attnotnull: false }]);
 });
 it("catalog_publication_preserves_integer_grams_at_native_boundaries", async () => {
   const data = await draft(), payload = structuredClone(data.payload);

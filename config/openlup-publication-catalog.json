@@ -1482,6 +1482,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4814,6 +4818,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123230000_catalog_quantity_serving.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5374,6 +5382,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/physicalQuantity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
       "class": "public-output"
     },
@@ -5423,6 +5435,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/servingRead.ts",
       "class": "public-output"
     },
     {
@@ -9670,6 +9686,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/catalogServing.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/fixtures/categoryDocument.ts",
       "class": "public-output"
     },
@@ -9683,6 +9703,10 @@
     },
     {
       "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/serving-witness-census.md",
       "class": "public-output"
     },
     {

@@ -12,7 +12,7 @@ type ResolvedPriceObservation = {
   unitPriceMinor: number;
 };
 
-type StrictCatalogFactsItem = CommerceQuoteCatalogItem & {
+type StrictCatalogFactsItem = Omit<CommerceQuoteCatalogItem, "netWeightG"> & {
   documentRevision: { id: string; digest: string };
 };
 
@@ -70,7 +70,7 @@ export function createCatalogFactsProvenance(input: {
 }
 
 export function catalogFactsForQuoteLine(
-  enabled: boolean, item: CommerceQuoteCatalogItem, resolved: ResolvedPriceObservation,
+  enabled: boolean, item: Omit<CommerceQuoteCatalogItem, "netWeightG">, resolved: ResolvedPriceObservation,
   base: ResolvedPriceObservation, mode: "one_time" | "subscription",
   atTime: string, currency: string, resolvedUnitAmountMinor: number,
   resolvedLineAmountMinor: number, baseUnitAmountMinor: number,

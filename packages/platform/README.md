@@ -1284,6 +1284,22 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
+Experimental native publication serving is available through
+`createPostgresCatalogPublication(...).serving({ types, offerVersion })`.
+Use the same instance for listing, product detail, quote and editor selection.
+The V2 reader verifies the installed type scope, current heads and documents in
+one database snapshot. Listing cursors carry an observed version and refuse
+after the applicable head moves. A successful empty result means that the
+scoped authority has no applicable offers. Unknown or unreadable authority
+returns a named error.
+
+V2 facts carry exact net content, separate gross mass, the registered type and
+options, and publication evidence for downstream admission. Keep V1 consumers
+on their legacy path or use `asLegacyIntegralGrams` to check whether a typed
+quantity has an exact positive signed integer gram representation. Configure
+prices and authorize effects through their existing owners.
+
+
 Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
 `runCatalogExtensionConformance`. The existing bin runs
 `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.

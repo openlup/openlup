@@ -1187,6 +1187,37 @@ export declare function breadcrumbLd(items: {
         name: string;
     }[];
 };
+/**
+ * Project declared mass into Product JSON-LD using the caller's weight fact.
+ * @experimental
+ */
+export declare function productLdV2(origin: string, product: Omit<ProductFacts, "netContent"> & {
+    weight?: import("@openlup/core/catalog").CatalogQuantity | null;
+}): {
+    url: string;
+    weight?: {
+        "@type": string;
+        value: number;
+        unitCode: string;
+    } | undefined;
+    gtin13?: string | undefined;
+    sku?: string | undefined;
+    image: string[];
+    category?: string | undefined;
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    inLanguage: string;
+    brand: {
+        "@id": string;
+        "@type": string;
+        name: string;
+    };
+    manufacturer: {
+        "@id": string;
+    };
+};
 ```
 ## dist/marketing/seo/metadata.d.ts
 

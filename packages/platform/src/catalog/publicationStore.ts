@@ -1,3 +1,6 @@
+import { createCatalogServingReader, type CatalogServingScopeV2 } from "./servingRead.js";
+import { asLegacyIntegralGrams, catalogPhysicalUnits } from "./physicalQuantity.js";
+import type { CatalogQuantity, CatalogProductTypeDefinition } from "./contracts/productTypes.js";
 import { catalogSuccessorStoredRecordSchema as catalogDraftPublicationStoredRecordSchema, catalogSuccessorValidationPayload } from "./successorPublication.js";
 import type { CatalogDraftPayloadV5, CatalogFullPublicationV4, CatalogSuccessorStoredRecord as CatalogDraftPublicationStoredRecord } from "./contracts/successors.js";
 import { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "../pricing/index.js";
@@ -17,10 +20,9 @@ import { catalogLifecycleValidationPayload as catalogDraftV3ValidationPayload, c
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
-import { catalogProductTypeRefSchema } from "./productTypeSchemas.js";
 import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
-import { catalogSkuStateSchema as catalogPublishedSkuSchema, catalogSuccessorPublicationStateSchema as catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
+import { catalogSkuStateSchema as catalogPublishedSkuSchema, catalogSuccessorPublicationStateSchema as catalogPublicationManifestSchema, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -175,11 +177,6 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       expectedHead = headSchema.parse({ publicationId: rows[0]!.id, revision: rows[0]!.revision, documentDigest: rows[0]!.digest });
     }
     const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [match![1], Number(match![2])]);
-    const header = z.object({ payload: z.object({ product: z.object({ type: catalogProductTypeRefSchema }) }) }).safeParse(rows[0]?.record);
-    if (header.success) {
-      const definition = deps.registry.resolve(header.data.payload.product.type);
-      if (definition) assertCatalogPublicationMassInputs((rows[0]!.record as { payload: unknown }).payload, definition);
-    }
     const record = catalogDraftPublicationStoredRecordSchema.parse(rows[0]?.record);
     require(record.productId === productId && record.payload.schemaVersion >= 3, "candidate_invalid");
     const payload = record.payload as CatalogDraftPayloadV3 | CatalogDraftPayloadV4 | CatalogDraftPayloadV5, definition = deps.registry.resolve(payload.product.type);
@@ -427,7 +424,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           successors.push({ successorSkuId: sku.id,successorOf: operation.successorOf });
         }
         await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,min_order_qty,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g)
-          VALUES($1,$2,$3,$4,'draft',$5,$6,false,false,$7::integer)`, [sku.id, product.id, sku.code, sku.title, sku.minQuantity, sku.isAddon, catalogPublicationIntegralGrams(sku.netContent, definition, "net")]);
+          VALUES($1,$2,$3,$4,'draft',$5,$6,false,false,$7::integer)`, [sku.id, product.id, sku.code, sku.title, sku.minQuantity, sku.isAddon, legacyProjection(sku.netContent, definition)]);
       } else if (operation.op === "create_identifier") {
         const sku = state.skus.find(sku => sku.code === operation.skuCode)!;
         await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme,original_value,display_label,source_ref)
@@ -469,10 +466,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       const identity = canonicalizeCatalogCombinationV2({ definition, axes: product.axes, options: sku.options });
       await db.query(`UPDATE public.catalog_skus SET publication_facts=$2::jsonb,attribute_values=$3::jsonb,option_values=$4::jsonb,
         canonical_option_bytes=$5::bytea,combination_digest=$6::bytea,net_content_dimension=$7,net_content_unscaled=$8::numeric,net_content_scale=$9,net_content_unit=$10,
-        gross_mass_dimension=$11,gross_mass_unscaled=$12::numeric,gross_mass_scale=$13,gross_mass_unit=$14,asset_ref=$15 WHERE id=$1`,
+        gross_mass_dimension=$11,gross_mass_unscaled=$12::numeric,gross_mass_scale=$13,gross_mass_unit=$14,asset_ref=$15,net_weight_g=$16::integer WHERE id=$1`,
       [sku.id, publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes), publicationJson(sku.attributes), publicationJson(sku.options), identity.canonicalOptionBytes, identity.combinationDigest,
         sku.netContent.dimension, sku.netContent.unscaled, sku.netContent.scale, sku.netContent.unit,
-        sku.grossMass?.dimension ?? null, sku.grossMass?.unscaled ?? null, sku.grossMass?.scale ?? null, sku.grossMass?.unit ?? null, sku.assetRefs[0] ?? null]);
+        sku.grossMass?.dimension ?? null, sku.grossMass?.unscaled ?? null, sku.grossMass?.scale ?? null, sku.grossMass?.unit ?? null, sku.assetRefs[0] ?? null, legacyProjection(sku.netContent, definition)]);
     }
     return successors.sort((a,b) => a.successorSkuId.localeCompare(b.successorSkuId));
   }
@@ -495,13 +492,13 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         AND s.gross_mass_dimension IS NOT DISTINCT FROM $17 AND s.gross_mass_unscaled IS NOT DISTINCT FROM $18::numeric
         AND s.gross_mass_scale IS NOT DISTINCT FROM $19::smallint AND s.gross_mass_unit IS NOT DISTINCT FROM $20
         AND s.canonical_option_bytes=$21::bytea AND s.combination_digest=$22::bytea
-        AND s.asset_ref IS NOT DISTINCT FROM $23::text AND s.net_weight_g=$24::integer AS valid
+        AND s.asset_ref IS NOT DISTINCT FROM $23::text AND s.net_weight_g IS NOT DISTINCT FROM $24::integer AS valid
         FROM public.catalog_skus s WHERE s.id=$1`, [sku.id, publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes), sku.code, sku.productId, sku.title, sku.status,
         sku.minQuantity, sku.isAddon, sku.sellableStandalone, sku.sellableInSubscription, publicationJson(sku.attributes), publicationJson(sku.options),
         sku.netContent.dimension, sku.netContent.unscaled, sku.netContent.scale, sku.netContent.unit, sku.grossMass?.dimension ?? null,
         sku.grossMass?.unscaled ?? null, sku.grossMass?.scale ?? null, sku.grossMass?.unit ?? null,
         identity.canonicalOptionBytes, identity.combinationDigest, sku.assetRefs[0] ?? null,
-        catalogPublicationIntegralGrams(sku.netContent, definition!, "net")]);
+        legacyProjection(sku.netContent, definition!)]);
       require(rows[0]?.valid === true, "catalog_publication_post_state_mismatch");
       const identifiers = await tuple(db, `SELECT scheme,issuer,original_value AS value,normalized_value AS normalized,identifier_kind AS kind,CASE pack_kind WHEN 'unit' THEN 'unit' ELSE 'case' END AS "packagingLevel",
         quantity,is_primary AS "isPrimary",display_label AS label,source_ref AS "sourceRef" FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1 ORDER BY normalized_value,issuer`, [sku.id]);
@@ -729,7 +726,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     /** @experimental */
     readbackV3,
     /** @experimental */
-    readbackV4, resolveRetained };
+    readbackV4, resolveRetained,
+    /** @experimental */
+    serving(scope: CatalogServingScopeV2) { return createCatalogServingReader(deps, load, scope); },
+  };
 }
 function encodeCursor(value: { kind: "history" | "facts"; productId: string; highWater: number; before: number }): string {
   return Buffer.from(publicationJson({ schemaVersion: 1, ...value })).toString("base64url");
@@ -761,3 +761,8 @@ function checkedDecisionReceipt(value: unknown): CatalogDecisionReceiptV2 {
   return decisionSchema.extend({ fingerprint: digest, actorId: id, decidedAt: instant }).strict().parse(value);
 }
 function equalHead(a: CatalogHeadRef | null, b: CatalogHeadRef): boolean { return a !== null && publicationJson(a) === publicationJson(b); }
+
+function legacyProjection(net: CatalogQuantity, definition: CatalogProductTypeDefinition): number | null {
+  const projection = asLegacyIntegralGrams(net, catalogPhysicalUnits(definition));
+  return projection.outcome === "converted" ? projection.grams : null;
+}

@@ -5977,6 +5977,24 @@
             "sha256": "0c0477be22a27a5fbdc779b61fa7ae73fe77c079f2f7ab4a05037c022cf87363"
           }
         ]
+      },
+      {
+        "row": "catalogue-mc5",
+        "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_legacy_net_grams(uuid,text,numeric,smallint,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "existingTableStatements": [
+          "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (\n  publication_facts IS NULL OR (net_content_dimension IS NOT NULL AND\n    net_weight_g IS NOT DISTINCT FROM public.catalog_legacy_net_grams(\n      product_id, net_content_dimension, net_content_unscaled, net_content_scale, net_content_unit))\n) NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_legacy_net_grams_check;"
+        ]
       }
     ]
   },
@@ -8566,6 +8584,17 @@
           "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "3c7343f356bfcac6aa2439e142b3cda06f8616b07b6a72926e5b5bc534795f56"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
+      "sha256": "260de21a18383d2ab86cc4506d06690ca70263d842b9fd3fa47cece535d754ff",
+      "functions": [
+        {
+          "signature": "public.catalog_legacy_net_grams(uuid,text,numeric,smallint,text)",
+          "beforeSha256": null,
+          "afterSha256": "26613fca9cdaa1037fad25dd043935e25481a4d371a5da0551d3cd6ba8ac644f"
         }
       ]
     }

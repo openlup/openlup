@@ -2585,7 +2585,7 @@ export interface CatalogPriceContext {
     atTime: string;
 }
 /** Refusal vocabulary shared by managed and portable catalog readers. */
-export type CatalogSkuAuthorityRefusal = "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
+export type CatalogSkuAuthorityRefusal = "quantity_requires_v2" | "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
 export declare class CatalogSkuAuthorityError extends Error {
     readonly code: CatalogSkuAuthorityRefusal;
     constructor(code: CatalogSkuAuthorityRefusal);
@@ -4284,6 +4284,9 @@ export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSucces
 export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
 export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
+export { asLegacyIntegralGrams } from "./physicalQuantity.js";
+export type { CatalogServingReadPortV2, CatalogServingScopeV2, NeutralSkuEnvelopeV2 } from "./servingRead.js";
+export { buildResolvedSkuProjectionV2, type ResolvedSkuProjectionV2 } from "./resolvedSkuProjection.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4411,6 +4414,23 @@ export type CatalogMediaImportOutcome = {
     failedKey: string;
 };
 export declare function importCatalogMediaSourcePack(root: string, storage: BlobStoragePort): Promise<CatalogMediaImportOutcome>;
+```
+## dist/catalog/physicalQuantity.d.ts
+
+```ts
+import { type CatalogQuantityUnit } from "@openlup/core/catalog";
+import type { CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
+export declare function catalogPhysicalUnits(definition: Pick<CatalogProductTypeDefinition, "units">): CatalogQuantityUnit[];
+/**
+ * Convert only an exact, positive mass that fits the legacy signed integer column.
+ * @experimental
+ */
+export declare function asLegacyIntegralGrams(quantity: CatalogQuantity, units?: readonly CatalogQuantityUnit[]): {
+    outcome: "converted";
+    grams: number;
+} | {
+    outcome: "quantity_requires_v2";
+};
 ```
 ## dist/catalog/postgresBundleAdminWriteStore.d.ts
 
@@ -4759,6 +4779,7 @@ export {};
 ## dist/catalog/publicationStore.d.ts
 
 ```ts
+import { type CatalogServingScopeV2 } from "./servingRead.js";
 import type { CatalogFullPublicationV4 } from "./contracts/successors.js";
 import type { VerifiedCatalogPublisher, CatalogPublicationPort, CatalogPublicationReadPort } from "./publicationPorts.js";
 import type { CatalogPublicationDependencies, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
@@ -4814,6 +4835,8 @@ export declare function createPostgresCatalogPublication<Context>(deps: CatalogP
         reference: CatalogSkuRevisionRef;
         sku: CatalogPublishedSku;
     }>;
+    /** @experimental */
+    serving(scope: CatalogServingScopeV2): import("./servingRead.js").CatalogServingReadPortV2;
 };
 ```
 ## dist/catalog/publicationValidation.d.ts
@@ -4892,14 +4915,10 @@ export interface CatalogPublicationCompileInput {
     capacity?: number;
 }
 export declare function catalogPublicationClaim(record: CatalogDraftPublicationStoredRecord): CatalogDraftClaimV3;
-/** Temporary native publication boundary, until versioned quantity readers land. */
-export declare function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition, kind: "net" | "gross"): string;
-export declare function assertCatalogPublicationMassInputs(payload: unknown, definition: CatalogProductTypeDefinition): void;
 /** Hard preparation guard, independent of dark/activation readiness. */
 export declare function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4): void;
-/** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic. */
+/** Exact comparison after owner-defined conversion within the same dimension. */
 export declare function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void;
-/** Ordered publication compiler using installed definitions; never persists or calls commerce. */
 export declare function compileCatalogPublication(input: CatalogPublicationCompileInput): {
     product: CatalogProductState;
     skus: CatalogSkuState[];
@@ -5103,6 +5122,15 @@ export interface ResolvedSkuProjectionInput {
     pricing: ResolvedSkuProjection["pricing"];
 }
 export declare function buildResolvedSkuProjection(input: ResolvedSkuProjectionInput): ResolvedSkuProjection;
+/** Resolved sale-unit prices paired with exact publication facts. @experimental */
+export interface ResolvedSkuProjectionV2 {
+    contractVersion: "catalog.resolved-sku.v2";
+    envelope: import("./servingRead.js").NeutralSkuEnvelopeV2;
+    priceContext: ResolvedSkuProjection["priceContext"];
+    pricing: ResolvedSkuProjection["pricing"];
+}
+/** Compose already-verified publication facts with the caller's price authority. @experimental */
+export declare function buildResolvedSkuProjectionV2(input: Omit<ResolvedSkuProjectionV2, "contractVersion">): ResolvedSkuProjectionV2;
 ```
 ## dist/catalog/rpcErrors.d.ts
 
@@ -5217,6 +5245,72 @@ export declare const sellableCatalogListResponseSchema: z.ZodObject<{
         }>>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
+```
+## dist/catalog/servingRead.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import { type CommerceQuoteCatalogItemV2 } from "../pricing/commerceQuoteCatalogReadPort.js";
+import { type NeutralSkuEnvelopeV1 } from "./contracts/foundation.js";
+import type { CatalogHeadRef } from "./contracts/lifecycle.js";
+import type { CatalogAcceptedReferenceV2, CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
+import type { CatalogSkuRevisionRef } from "./contracts/publication.js";
+import type { CatalogProductTypeRef, CatalogQuantity } from "./contracts/productTypes.js";
+import type { CatalogPublicationDependencies } from "./publicationPortsV2.js";
+import { type CatalogPublicationDocument } from "./publicationValidation.js";
+/** Current, verified catalogue facts shared by presentation and commerce. @experimental */
+export interface NeutralSkuEnvelopeV2 {
+    contractVersion: "catalog.foundation.v2";
+    product: NeutralSkuEnvelopeV1["product"] & {
+        title: string;
+        type: CatalogProductTypeRef;
+        attributes: CatalogProductState["attributes"];
+    };
+    sku: Omit<NeutralSkuEnvelopeV1["sku"], "netContent"> & {
+        title: string;
+        netContent: CatalogQuantity;
+        grossMass: CatalogQuantity | null;
+        minQuantity: number;
+        options: CatalogSkuState["options"];
+        attributes: CatalogSkuState["attributes"];
+    };
+    documentRevision: NeutralSkuEnvelopeV1["documentRevision"];
+    identifiers: NeutralSkuEnvelopeV1["identifiers"];
+    acceptedReference: CatalogAcceptedReferenceV2;
+}
+/** Explicitly selected host configuration and offer scope. @experimental */
+export interface CatalogServingScopeV2 {
+    types: readonly CatalogProductTypeRef[];
+    offerVersion: string;
+    maxItems?: number;
+}
+/** Current listing, detail and commerce reads share one installed authority. @experimental */
+export interface CatalogServingReadPortV2 {
+    list(query: {
+        cursor: string | null;
+        limit: number;
+    }): Promise<{
+        items: NeutralSkuEnvelopeV2[];
+        version: string;
+        nextCursor: string | null;
+    }>;
+    detail(slug: string): Promise<{
+        items: NeutralSkuEnvelopeV2[];
+        version: string;
+    }>;
+    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItemV2[]>;
+    listEditorSkus(): Promise<NeutralSkuEnvelopeV2[]>;
+}
+interface CurrentPublication {
+    head: CatalogHeadRef | null;
+    product: CatalogProductState | null;
+    skus: readonly CatalogSkuState[];
+    references: readonly CatalogSkuRevisionRef[];
+    documents: readonly CatalogPublicationDocument[];
+}
+type LoadPublication = (db: PgQueryExecutor, productId: string) => Promise<CurrentPublication>;
+export declare function createCatalogServingReader<Context>(deps: CatalogPublicationDependencies<Context>, load: LoadPublication, scope: CatalogServingScopeV2): CatalogServingReadPortV2;
+export {};
 ```
 ## dist/catalog/sql.d.ts
 
@@ -5349,6 +5443,12 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20261123210000_catalog_successors.sql";
     readonly position: 155;
     readonly sha256: "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87";
+    readonly url: URL;
+}, {
+    readonly id: "20261123230000_catalog_quantity_serving";
+    readonly catalogPath: "db/platform/migrations/20261123230000_catalog_quantity_serving.sql";
+    readonly position: 156;
+    readonly sha256: "260de21a18383d2ab86cc4506d06690ca70263d842b9fd3fa47cece535d754ff";
     readonly url: URL;
 }];
 ```
@@ -6294,7 +6394,7 @@ type ResolvedPriceObservation = {
     priceEntryId: string;
     unitPriceMinor: number;
 };
-type StrictCatalogFactsItem = CommerceQuoteCatalogItem & {
+type StrictCatalogFactsItem = Omit<CommerceQuoteCatalogItem, "netWeightG"> & {
     documentRevision: {
         id: string;
         digest: string;
@@ -6316,7 +6416,7 @@ export declare function createCatalogFactsProvenance(input: {
     baseUnitAmountMinor: number;
     policy?: PolicyDerivedSubscriptionFacts;
 }): CatalogFactsProvenance;
-export declare function catalogFactsForQuoteLine(enabled: boolean, item: CommerceQuoteCatalogItem, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts): CatalogFactsProvenance | undefined;
+export declare function catalogFactsForQuoteLine(enabled: boolean, item: Omit<CommerceQuoteCatalogItem, "netWeightG">, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts): CatalogFactsProvenance | undefined;
 /** Public responses retain every money field but never server-only catalog identifiers. */
 export declare function projectPublicQuoteSnapshot<Snapshot extends CreateQuoteResponse>(snapshot: Snapshot): Snapshot;
 export {};
@@ -6797,6 +6897,7 @@ export declare function createCommerceQuoteBatchHandler<Request extends CreateQu
 ## dist/pricing/commerceQuoteCatalogReadPort.d.ts
 
 ```ts
+import type { CatalogAcceptedReferenceV2, CatalogQuantity } from "@openlup/core/catalog";
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
     skuId: string;
@@ -6819,10 +6920,20 @@ export interface CommerceQuoteCatalogItem {
 export interface CommerceQuoteCatalogReadPort {
     listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
 }
-export type CommerceQuoteCatalogReadRefusalCode = "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
+export type CommerceQuoteCatalogReadRefusalCode = "quantity_requires_v2" | "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_unsupported" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
 export declare class CommerceQuoteCatalogReadError extends Error {
     readonly code: CommerceQuoteCatalogReadRefusalCode;
     constructor(code: CommerceQuoteCatalogReadRefusalCode);
+}
+/** Exact catalogue facts for quote and effect admission. @experimental */
+export interface CommerceQuoteCatalogItemV2 extends Omit<CommerceQuoteCatalogItem, "netWeightG"> {
+    netContent: CatalogQuantity;
+    grossMass: CatalogQuantity | null;
+    acceptedReference: CatalogAcceptedReferenceV2;
+}
+/** @experimental */
+export interface CommerceQuoteCatalogReadPortV2 {
+    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItemV2[]>;
 }
 ```
 ## dist/pricing/commerceQuoteHandler.d.ts
@@ -7357,7 +7468,7 @@ import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js
 export interface SkuIndexEntry<Item = CommerceQuoteCatalogItem> {
     item: Item;
 }
-export declare function buildSkuIndex<Item extends CommerceQuoteCatalogItem>(quoteCatalogReadPort: {
+export declare function buildSkuIndex<Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">>(quoteCatalogReadPort: {
     listQuoteCatalogItems(): Promise<Item[]>;
 }): Promise<Map<string, SkuIndexEntry<Item>>>;
 export declare function eligibleQtyForMode(request: CreateQuoteRequest, mode: Exclude<PricingMode, "any">): number;
@@ -7442,7 +7553,7 @@ export interface QuotePromotionResult {
     codeRejections: CommerceCodeRejection[];
     codeRejectionDetails: CommerceCodeRejectionDetail[];
 }
-export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext> {
+export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">, LineContext extends object, Context extends CommerceQuoteContext> {
     quoteCatalogReadPort: {
         listQuoteCatalogItems(): Promise<Item[]>;
     };
@@ -7483,7 +7594,7 @@ export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteReques
         atTime: string;
     }): Promise<QuotePromotionResult>;
 }
-export declare function createDbBackedCommerceQuotePort<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext>(deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>): {
+export declare function createDbBackedCommerceQuotePort<Request extends CreateQuoteRequest, Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">, LineContext extends object, Context extends CommerceQuoteContext>(deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>): {
     createQuote: (request: Request, options?: CreateQuoteOptions) => Promise<Omit<CreateQuoteResponse, "quote"> & {
         quote: Omit<CreateQuoteResponse["quote"], "context"> & {
             context: Context & {
@@ -7573,6 +7684,7 @@ export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogP
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
 export { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "./postgresCatalogPriceSetupStore.js";
+export type { CommerceQuoteCatalogItemV2, CommerceQuoteCatalogReadPortV2 } from "./commerceQuoteCatalogReadPort.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 

@@ -1,3 +1,5 @@
+import { canonicalizeCatalogQuantity } from "@openlup/core/catalog";
+
 import type { OrganizationFacts } from "../contracts/contactLegal.js";
 
 export type JsonLdNode = Record<string, unknown> & { "@context"?: string; "@id"?: string };
@@ -150,4 +152,18 @@ export function breadcrumbLd(items: { name: string; url?: string }[], pageUrl: s
       ...(item.url ? { item: item.url } : {}),
     })),
   };
+}
+
+/**
+ * Project declared mass into Product JSON-LD using the caller's weight fact.
+ * @experimental
+ */
+export function productLdV2(origin: string, product: Omit<ProductFacts, "netContent"> & {
+  weight?: import("@openlup/core/catalog").CatalogQuantity | null;
+}) {
+  const node = productLd(origin, product);
+  if (product.weight?.dimension !== "mass") return node;
+  const mass = canonicalizeCatalogQuantity(product.weight);
+  const value = Number(mass.unscaled) / 10 ** mass.scale;
+  return { ...node, weight: { "@type": "QuantitativeValue", value, unitCode: "GRM" } };
 }

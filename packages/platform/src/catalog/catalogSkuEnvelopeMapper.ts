@@ -25,6 +25,7 @@ export interface PostgresCatalogSkuEnvelopeRow {
   sku_product_id: string | null;
   sku_code: string | null;
   net_content_unscaled: number | null;
+  typed_net_content_dimension?: string | null;
   sku_status: "draft" | "active" | "archived" | null;
   sellable_one_time: boolean | null;
   sellable_subscription: boolean | null;
@@ -72,13 +73,15 @@ export function requirePostgresCatalogSkuEnvelopeRow(
     !row.sku_id
     || !row.sku_product_id
     || !row.sku_code
-    || row.net_content_unscaled === null
     || row.sku_status === null
     || row.sellable_one_time === null
     || row.sellable_subscription === null
     || row.is_addon === null
   ) {
     throw new CatalogSkuAuthorityError(refusal);
+  }
+  if (row.net_content_unscaled === null) {
+    throw new CatalogSkuAuthorityError(row.typed_net_content_dimension ? "quantity_requires_v2" : refusal);
   }
 }
 

@@ -172,6 +172,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261122210000_catalog_admission.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122210000_catalog_admission.sql) |
 | [`20261122220000_subscription_edit_consent.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261122220000_subscription_edit_consent.sql) |
 | [`20261123210000_catalog_successors.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261123210000_catalog_successors.sql) |
+| [`20261123230000_catalog_quantity_serving.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/20261123230000_catalog_quantity_serving.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

@@ -99,3 +99,6 @@ export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSucces
 export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
 export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
+export { asLegacyIntegralGrams } from "./physicalQuantity.js";
+export type { CatalogServingReadPortV2, CatalogServingScopeV2, NeutralSkuEnvelopeV2 } from "./servingRead.js";
+export { buildResolvedSkuProjectionV2, type ResolvedSkuProjectionV2 } from "./resolvedSkuProjection.js";
