@@ -5,7 +5,8 @@ and a candidate snapshot. Use `planAppUpgrade` and `applyAppUpgrade` from
 `@openlup/platform/lifecycle`, and keep application-specific brand, content,
 policy and integration composition outside that managed inventory.
 
-For a 0.43.0 starter, first follow the [required owned-file migration](v1-0-0.md#starter-applications-from-0430).
+For a starter application, first follow the owned-file migration in the applicable
+[per-release notes](README.md#per-release-notes).
 
 ## Prepare snapshots
 
@@ -95,9 +96,12 @@ Published provenance and post-publication qualification remain separate.
 The published-set qualification also exercises the neutral starter from the
 previous complete published set through the target release's public upgrade
 CLI. Managed snapshots come from each starter's ownership inventory. The check
-first applies the [required 0.43.0 starter migration](v1-0-0.md#starter-applications-from-0430)
-when applicable: target-only entries create three owned files, and four pristine
-owned contracts take the target extraction's bytes. It then customizes owned
+first follows the applicable starter migration in the
+[per-release notes](README.md#per-release-notes). This includes the
+[0.43.0 transition](v1-0-0.md#starter-applications-from-0430) and the migration
+from 1.1.0 to its successor. The notes identify pristine owned files that take
+the target extraction's bytes and any owned paths created via target-only
+snapshot entries. The check then customizes owned
 theme and fragment files, refuses a divergent managed file,
 interrupts apply with a process kill, resumes with identical snapshots and
 requires replay to make no changes. A harness check refuses incomplete file

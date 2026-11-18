@@ -1422,13 +1422,6 @@ The existing Migration gate reads the exact head Git tree's fragments alongside
 legacy Unreleased, validates fragments even for additive changes, and retains
 the coherent prepared-version alternative. Source fragments never ship in npm.
 
-A PR that adds or changes a starter-owned file or its owned-file contract must
-include the packaged starter migration in a Core fragment and matching steps
-in `scripts/packages/distribution-cli-proof.ts`, with regression evidence in
-its test. Describe pristine replacement, customized reconciliation, startup
-refusals and any explicit installed-policy step. Release preparation consumes
-the fragment into the next reader upgrade guide; do not edit released sections.
-
 Ordinary module and dependency PRs keep the committed source-release contract
 snapshot unchanged. Both `--policy` and `--inventory` run its generator and
 validate structure and authored identity, runtime, database seam and signed
@@ -1504,6 +1497,13 @@ that required CI and the change's own review would miss.
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
    Before `prepare`, run `npm run preflight` and have it green, or explain each
    `WARN` in the task record. Full local verification is optional.
+
+   A PR that adds or changes a starter-owned file or its owned-file contract must
+   include the packaged starter migration in a Core fragment and matching steps
+   in `scripts/packages/distribution-cli-proof.ts`, with regression evidence in
+   its test. Describe pristine replacement, customized reconciliation, startup
+   refusals and any explicit installed-policy step. Release preparation consumes
+   the fragment into the next reader upgrade guide. Leave released sections intact.
 3. **Describe the task in the PR description.** Record the finite outcome, scope
    and exclusions, acceptance criteria, risk, actual delivery authority and
    evidence. Keep this record current through fixes and handoffs.

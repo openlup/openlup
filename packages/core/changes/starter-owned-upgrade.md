@@ -48,8 +48,10 @@ actions: {
 Each value is an array without duplicates, containing only `skip`, `slide`,
 `order_now`, `pause`, `cancel`, `resume` or `reactivate`; empty arrays disable
 actions. Missing keys, unknown keys or invalid arrays refuse startup with
-`starter_subscription_actions_invalid`. State admission and the payment-state
-allowlists both apply; these choices cannot bypass the native command guards.
+`starter_subscription_actions_invalid`. State admission applies to all actions.
+The payment-state allowlists apply to actions other than `reactivate`.
+To disable reactivation, remove `reactivate` from `actions.cancelled`.
+Native command guards still apply.
 
 Add `subscriptionCare.pausePresets` with
 `{ allowed: ['2_weeks', '1_month', 'indefinite'], default: '2_weeks' }`.
@@ -124,8 +126,9 @@ Omitting the new file prevents module loading with `ERR_MODULE_NOT_FOUND`.
 Import the owned `market` registry into `owned/store.config.ts` and
 spread it into every `market` object, preserving local country, currency and
 timezone. In `owned/renewal.config.ts`, use `market.defaultLocale` for
-`notices.locale`; keep notice country mappings within the supported language
-set. Invalid notice locale or country mappings refuse with
+`notices.locale`. Every country notice mapping must select a locale in the
+owned registry's `market.locales`. Remove or remap entries for any locale you
+drop from the registry. Invalid notice locale or country mappings refuse with
 `starter_renewal_configuration_invalid`. Change the two product text reads in
 `owned/demo-seed.ts` to `name[config.market.defaultLocale]` and
 `description[config.market.defaultLocale]`.
@@ -138,7 +141,8 @@ keep `CopyKey` exported from `owned/copy.ts` and use `quoteRefusalKeys` for
 `isQuoteRefusalCode`, as in the target, so the refusal allowlist is independent
 of a translation. Every configured locale must have nonblank strings for the
 complete key inventory, including `renewalNoticeCopy`'s `paid` members. Extra
-inactive translations may remain.
+inactive translations may remain. The managed locale test checks coverage and
+startup validation and accepts customized wording.
 
 The same requirement applies to localized brand, store, media, product,
 recovery message, return/hold choice and acquisition-address labels in owned
@@ -158,7 +162,14 @@ accepting that prefixed form after removing whitespace, parentheses, plus and
 hyphens). A customized policy may omit `local` to keep the existing fallback;
 there is no new required owned member. If provided, all three callbacks must
 be functions or construction refuses with `saved_address_policy_invalid`.
-Use the application's own country formats rather than copying fictional rules.
+Use the application's own country formats. These callbacks run only when the
+selected country resolves to the policy's configured country, including aliases.
+Normalization can run more than once per parse. Keep the callbacks deterministic
+and effect-free, without I/O, authorization checks or reads of mutable state.
+The platform trims and collapses input whitespace and uppercases postal input
+before normalization. Postal input and output are bounded to 24 characters and
+phone input and local output to 64. Return `null` to refuse a supplied phone.
+A callback throw refuses the affected field with its configured policy message.
 
 After reconciliation, apply the managed snapshots, install the target's exact
 dependencies and run typechecking, build, application tests and startup checks.

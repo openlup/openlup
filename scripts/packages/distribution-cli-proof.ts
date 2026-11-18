@@ -90,6 +90,12 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
       "owned/copy.ts", "owned/editor-copy.ts", "owned/quote-copy.ts", "owned/renewal-copy.ts", "owned/demo-seed.ts"]) {
       writeFileSync(join(app, path), readFileSync(join(target, path)));
     }
+    // Check the extraction inventory independently of the replacement list.
+    const ownership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
+    for (const path of ownership.owned) {
+      if (path === created) continue; // The CLI creates this path from the target snapshot.
+      assert(readFileSync(join(app, path)).equals(readFileSync(join(target, path))), `starter owned migration did not match target: ${path}`);
+    }
   }
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
