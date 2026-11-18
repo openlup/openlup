@@ -3316,6 +3316,60 @@ it.each(["archive eligible product", "leave last membership", "live eligible", "
     } finally { await connection.query("ROLLBACK"); connection.release(); }
   }));
 
+it("publication rechecks omitted activation sources after acquiring the lineage relation fence", async () => inPriceDatabase(async () => {
+  const priced = realPriceAuthority(), pricedActor = (await priced.authorize(null))!;
+  const data = await priceDraft(), first = await commit(data.publication, priced, pricedActor), payload = structuredClone(data.payload);
+  const { sharedContent: content } = payload.product, reference = payload.product.documentRevision!;
+  const document = { ...content.document, revisionNo: 2 };
+  const canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+  Object.assign(content, { catalogAction: "revise", document, publicationSkus: [], requestedModes: [], offerMemberships: [] });
+  delete payload.product.primarySkuId;
+  payload.skus = [];
+  payload.product.documentRevision = { ...reference, id: revisionId, revisionNo: 2, digest };
+  payload.publication = { kind: "compensation", evidence: {}, operations: [
+    { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo: 2, documentRef: reference.documentRef,
+      sourceRef: reference.sourceRef, canonicalText, digest, provenance: { source: "current_draft" } },
+    { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+  ] };
+  const command = await save(payload, data.draftId, 2, first.head);
+  await approve(command);
+  let restored = false;
+  const target = createPostgresCatalogPublication(dependencies(async sql => {
+    if (!sql.startsWith("SELECT (SELECT to_jsonb(h)") || restored) return;
+    await db.query("UPDATE public.catalog_skus SET status='active',sellable_standalone=true WHERE id=$1", [data.skuId]);
+    restored = true;
+  }));
+  const capability = (await target.authorize(null))!;
+  await db.query("UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1", [data.skuId]);
+  try {
+    expect(await target.publish(command, capability)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+    expect(restored).toBe(true);
+    expect((await db.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
+      .toEqual([{ revision: first.head.revision }]);
+  } finally {
+    if (!restored) await db.query("UPDATE public.catalog_skus SET sellable_standalone=true WHERE id=$1", [data.skuId]);
+  }
+}));
+
+it.each([
+  ["gross", "catalog_publication_gross_mass_required"],
+  ["media", "catalog_publication_media_readiness_unproven"],
+] as const)("publication checks authored %s before the expected head", async (mode, reason) => inPriceDatabase(async () => {
+  const data = await priceDraft(), payload = structuredClone(data.payload);
+  if (mode === "gross") delete payload.skus[0].grossMass;
+  else {
+    payload.product.sharedContent.presentation = { mediaRef: "example:unverified" };
+    const operation = payload.publication.operations.find(operation => operation.op === "set_product_presentation")!;
+    if (operation.op === "set_product_presentation") operation.presentation = payload.product.sharedContent.presentation;
+  }
+  const command = await save(payload, data.draftId, 2, data.publication.expectedHead);
+  await approve(command);
+  const before = await snapshot();
+  expect(await authority.publish({ ...command, expectedHead: { ...command.expectedHead!, publicationId: randomUUID() } }, actor))
+    .toEqual({ outcome: "validation_issue", reason });
+  expect(await snapshot()).toEqual(before);
+}));
+
 it.each([
   ["publish", "  padded  ", true],
   ["publish", " ", true],

@@ -313,9 +313,13 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       require(rows.length === 1, "catalog_tax_class_unavailable");
     }
     const explicit = prepared.payload.publication.evidence.drafts ?? [];
-    const affected = catalogPublicationAffected(prepared.payload), activationCodes = new Set(affected.enabling);
-    for (const sku of before.liveSkus) if (sku.status === "active" && (sku.sellable_standalone || sku.sellable_in_subscription)
-      && affected.source(sku.sku)) activationCodes.add(sku.sku);
+    const affected = catalogPublicationAffected(prepared.payload);
+    function activationCodes(liveSkus: RetainedState["liveSkus"]) {
+      const codes = new Set(affected.enabling);
+      for (const sku of liveSkus) if (sku.status === "active" && (sku.sellable_standalone || sku.sellable_in_subscription)
+        && affected.source(sku.sku)) codes.add(sku.sku);
+      return codes;
+    }
     const media = prepared.payload.publication.evidence.media ?? [], mediaCodes = new Set(media.map(claim => claim.skuCode));
     const authoredSkus = new Map(prepared.payload.skus.map(sku => [sku.code, sku]));
     for (const claim of media) {
@@ -324,8 +328,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         return publicationRefuse("catalog_publication_draft_advanced", "conflict");
       return publicationRefuse("catalog_publication_media_evidence_mismatch");
     }
-    const currentSourceCodes = new Set([...activationCodes, ...mediaCodes]);
-    const fallbackCodes = [...activationCodes].filter(code => !authoredSkus.has(code));
+    // Guard possible retained sources before lineage locks. Eligibility is
+    // evaluated from live rows under the relation fence below.
+    const possibleCodes = publication
+      ? new Set([...affected.enabling, ...before.liveSkus.map(sku => sku.sku).filter(affected.source)])
+      : activationCodes(before.liveSkus);
+    const fallbackCodes = [...possibleCodes].filter(code => !authoredSkus.has(code));
     const publishedSources = before.head && fallbackCodes.length ? await tuple(db, `SELECT DISTINCT ON (sku.sku)
       sku.sku AS code,draft.draft_id,draft.revision,draft.command_key,draft.fingerprint
       FROM public.catalog_publications publication
@@ -382,25 +390,30 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const retained = [...resolved.entries()].filter(([key]) => key !== primaryKey).map(([, source]) => source);
     const declared = explicit.map(claim => resolved.get(`${claim.draftId}@${claim.revision}`)!)
       .sort((a, b) => comparePublicationText(a.draftId, b.draftId));
-    const selectedSources = new Map<string, CatalogDraftPublicationStoredRecord & { payload: CatalogDraftPayloadV3 }>();
-    for (const code of currentSourceCodes) {
-      const fallback = published.get(code);
-      const source = authoredSkus.has(code) ? prepared.record
-        : declared.find(source => source.payload.skus.some(sku => sku.code === code))
-          ?? (fallback ? resolved.get(`${fallback.draftId}@${fallback.revision}`) : undefined);
-      if (!source || source.payload.schemaVersion !== 3)
-        return publicationRefuse(mediaCodes.has(code) ? "catalog_publication_media_evidence_mismatch" : "catalog_publication_operation_source_missing");
-      selectedSources.set(code, { ...source, payload: source.payload });
-      if (publication || mediaCodes.has(code))
-        require(heads.some(head => head.draft_id === source.draftId && head.product_id === source.productId
-          && head.revision === source.revision && head.status === "open"), "catalog_publication_draft_advanced", "conflict");
+    function selectActivationSources(liveSkus: RetainedState["liveSkus"]) {
+      const activating = activationCodes(liveSkus);
+      const selectedSources = new Map<string, CatalogDraftPublicationStoredRecord & { payload: CatalogDraftPayloadV3 }>();
+      for (const code of new Set([...activating, ...mediaCodes])) {
+        const fallback = published.get(code);
+        const source = authoredSkus.has(code) ? prepared.record
+          : declared.find(source => source.payload.skus.some(sku => sku.code === code))
+            ?? (fallback ? resolved.get(`${fallback.draftId}@${fallback.revision}`) : undefined);
+        if (!source || source.payload.schemaVersion !== 3)
+          return publicationRefuse(mediaCodes.has(code) ? "catalog_publication_media_evidence_mismatch" : "catalog_publication_operation_source_missing");
+        selectedSources.set(code, { ...source, payload: source.payload });
+        if (publication || mediaCodes.has(code))
+          require(heads.some(head => head.draft_id === source.draftId && head.product_id === source.productId
+            && head.revision === source.revision && head.status === "open"), "catalog_publication_draft_advanced", "conflict");
+      }
+      return { activationCodes: activating, selectedSources };
     }
+    if (!publication) selectActivationSources(before.liveSkus);
     for (const claim of media) {
       const sku = authoredSkus.get(claim.skuCode)!;
       require(!catalogPublicationMediaIssue(prepared.payload.product.sharedContent.presentation?.mediaRef, sku.assetRefs ?? [], claim),
         "catalog_publication_media_evidence_mismatch");
     }
-    return { retained, activationCodes, selectedSources };
+    return { retained, selectActivationSources };
   }
   async function lockLineage(db: PgQueryExecutor, productId: string) {
     const guard = await tuple(db, "SELECT pg_try_advisory_xact_lock(hashtextextended('catalog-publication-global',0)) AS allowed");
@@ -493,7 +506,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const documentRevisions = prepared.payload.publication.operations.flatMap(operation => operation.op === "register_document_revision" ? [operation.revisionNo] : []);
         if (prepared.payload.product.documentRevision) documentRevisions.push(prepared.payload.product.documentRevision.revisionNo);
         const preliminary = await load(db, command.productId, undefined, true, documentRevisions);
-        const { retained: retainedSources, activationCodes, selectedSources } = await lockDraftEvidence(db, prepared, preliminary, true);
+        const { retained: retainedSources, selectActivationSources } = await lockDraftEvidence(db, prepared, preliminary, true);
         assertCatalogPublicationPreparation(prepared.payload, { definition: prepared.definition, rules: deps.rules });
         assertCatalogPublicationAuthorship({ ...prepared, skus: preliminary.skus, retainedSources, rules: deps.rules });
         for (const operation of prepared.payload.publication.operations) {
@@ -502,14 +515,28 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           require(live && String(live.net_weight_g) === catalogPublicationIntegralGrams(operation.netContent, prepared.definition),
             "catalog_publication_derived_source_mismatch");
         }
+        await lockLineage(db, command.productId);
+        const liveSkus = (await tuple(db, `SELECT id,product_id,sku,status,sellable_standalone,sellable_in_subscription,net_weight_g,option_values
+          FROM public.catalog_skus WHERE product_id=$1::uuid`, [command.productId])) as RetainedState["liveSkus"];
+        const { activationCodes, selectedSources } = selectActivationSources(liveSkus);
+        const mediaBySku = new Map(prepared.payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
         for (const code of activationCodes) {
-          const authored = selectedSources.get(code)?.payload.skus.find(sku => sku.code === code);
-          const sku = preliminary.liveSkus.find(sku => sku.sku === code);
+          const source = selectedSources.get(code);
+          const authored = source?.payload.skus.find(sku => sku.code === code);
+          const sku = liveSkus.find(sku => sku.sku === code);
           require(authored?.netContent && sku?.id === authored.id && sku.product_id === authored.productId
             && String(sku.net_weight_g) === catalogPublicationIntegralGrams(authored.netContent, prepared.definition)
             && equal(sku.option_values, authored.options), "catalog_publication_operation_source_mismatch");
+          assertCatalogPublicationGrossMass(authored!.netContent!, authored!.grossMass ?? null, prepared.definition);
+          const mediaRef = source!.payload.product.sharedContent.presentation?.mediaRef, assets = authored!.assetRefs ?? [];
+          const claim = mediaBySku.get(code);
+          require(!catalogPublicationMediaIssue(mediaRef, assets, claim), "catalog_publication_media_readiness_unproven");
+          if (claim) {
+            const verdict = await deps.verifyMedia(db, claim);
+            require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
+            require(verdict, "catalog_publication_media_readiness_unproven");
+          }
         }
-        await lockLineage(db, command.productId);
         const priceCommands = prepared.payload.skus.flatMap(sku => sku.priceOperations ?? []);
         let prelockedBatch: unknown;
         if (priceCommands.length) {
@@ -538,19 +565,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           && (change.state === "withdrawn" ? sku.status === "archived" : sku.status === "active")), "catalog_publication_variant_state_mismatch");
         for (const sku of compiled.skus) {
           if (!activationCodes.has(sku.code)) continue;
-          const source = selectedSources.get(sku.code);
-          require(source, "catalog_publication_operation_source_missing");
-          const authored = source!.payload.skus.find(value => value.code === sku.code)!;
-          assertCatalogPublicationGrossMass(authored.netContent!, authored.grossMass ?? null, prepared.definition);
-          const mediaRef = compiled.product.presentation?.mediaRef;
-          const hasMedia = (authored.assetRefs?.length ?? 0) > 0 || typeof source!.payload.product.sharedContent.presentation.mediaRef === "string";
-          if (!hasMedia && sku.assetRefs.length === 0 && typeof mediaRef !== "string") continue;
-          const claim = prepared.payload.publication.evidence.media?.find(claim => claim.skuCode === sku.code);
-          require(claim && claim.mediaRef === mediaRef && equal(claim.assetRefs, [...(authored.assetRefs ?? [])].sort(comparePublicationText))
-            && equal(claim.assetRefs, [...sku.assetRefs].sort(comparePublicationText)), "catalog_publication_media_readiness_unproven");
-          const verdict = await deps.verifyMedia(db, claim!);
-          require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
-          require(verdict, "catalog_publication_media_readiness_unproven");
+          require(!catalogPublicationMediaIssue(compiled.product.presentation?.mediaRef, sku.assetRefs, mediaBySku.get(sku.code)),
+            "catalog_publication_media_readiness_unproven");
         }
         const next = (current.head?.revision ?? 0) + 1;
         require(Number.isSafeInteger(next) && next <= 2_147_483_647, "catalog_publication_revision_limit");
