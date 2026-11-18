@@ -109,18 +109,13 @@ committed [image inventory](../../config/ci-images.json); see
 digest-only verification, disposable PostgreSQL timeouts and workflow permission
 rules.
 
-One-time owner setup is required: organization **Settings → Packages → Package
-Creation** must allow Public packages (and initial private creation, because
-GHCR creates packages private). After the first authorized run, for each package
-under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
-**Package settings → Manage Actions access**, add that repository with **Write**
-access if inheritance does not already grant it. Under **Danger Zone → Change
-visibility**, select **Public** and confirm. Check anonymous mirror pulls after
-making packages public. PostgreSQL consumers with upstream sources fall back
-while packages are absent or private. The required `install-packages` PostgreSQL
-startup step and the starter browser image are mirror-only exceptions: an absent
-or inaccessible organization package fails `install-proof`. `GITHUB_TOKEN` cannot
-make a package public; linking a public repository does not change package visibility. See GitHub's
+Apply the [owner setup requirements](../../CONTRIBUTING.md#ci-image-mirror) in
+organization **Settings → Packages → Package Creation**. After the first
+authorized mirror run, open each mirror under **openlup → Packages**. Use
+**Connect repository** to link `openlup/openlup`, **Package settings → Manage
+Actions access** to grant the required access if inheritance does not already
+provide it, and **Danger Zone → Change visibility** to set the required
+visibility. Confirm anonymous pulls after applying the settings. See GitHub's
 [package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
 

@@ -337,9 +337,13 @@ trigger, permission, checkout and credential-transport assertions.
 PostgreSQL consumers with upstream sources fall back while packages are absent or
 private. The required `install-packages` PostgreSQL startup step and the starter
 browser image are mirror-only exceptions: an absent or inaccessible organization
-package fails `install-proof`. `GITHUB_TOKEN` cannot make a package public;
-linking a public repository does not change package visibility. One-time
-organization package creation, repository linking and visibility setup are in
+package fails `install-proof`. The organization must allow public package
+creation and the initial private creation GHCR uses. After the first authorized
+mirror run, the owner must link each mirror package to `openlup/openlup`, ensure
+that repository has Actions `Write` access, set package visibility to `Public`,
+and confirm anonymous pulls. `GITHUB_TOKEN` cannot make a package public;
+linking a public repository does not change package visibility. For the GitHub
+settings steps, see
 [CI image mirror and container pulls](docs/platform/DEVELOPMENT_AND_RELEASE.md#ci-image-mirror-and-container-pulls).
 
 ### Required and raw checks
