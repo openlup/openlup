@@ -2523,9 +2523,10 @@ it("native publication refuses a bare move to an intermediate immutable revision
     if (revisionNo === 2) second = structuredClone(payload);
   }
   const payload = second!; payload.publication.operations = [{ op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
-  const command = await save(payload, data.draftId, 3, head); await approve(command);
+  const command = await save(payload, data.draftId, 3, head);
   const stable = await snapshot();
-  expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" });
+  expect(await authority.decision(approvalCommand(command), actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" });
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_approval_required" });
   expect(await snapshot()).toEqual(stable);
 });
 
@@ -3172,6 +3173,26 @@ it.each([
     expect(await snapshot()).toEqual(stable);
   }
   expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
+});
+
+it.each((["approve", "revoke"] as const).flatMap(action => [
+  { action, issue: "missing document", refusal: { outcome: "validation_issue", reason: "document_reference_missing" } },
+  { action, issue: "off-head document", refusal: { outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" } },
+  { action, issue: "frozen membership repeat", refusal: { outcome: "validation_issue", reason: "catalog_publication_membership_change_not_allowed" } },
+]))("first $action validates $issue", async ({ action, issue, refusal }) => {
+  const data = await draft(), first = await commit(data.publication), payload = structuredClone(data.payload);
+  const { sharedContent: content } = payload.product;
+  content.catalogAction = "revise";
+  payload.publication.operations = [{ op: "set_offer_membership", ...content.offerMemberships[0] }];
+  if (issue === "missing document") delete payload.product.documentRevision;
+  if (issue === "off-head document") payload.product.documentRevision = { ...payload.product.documentRevision!, id: randomUUID(), revisionNo: 2 };
+  const command = await save(payload, data.draftId, 1, first.head);
+  const deps = dependencies(), target = createPostgresCatalogPublication({
+    ...deps, rules: { ...deps.rules, validateMembershipChange: () => issue !== "frozen membership repeat" },
+  });
+  const capability = (await target.authorize(null))!, before = await snapshot();
+  expect(await target.decision({ ...approvalCommand(command), action }, capability), issue).toEqual(refusal);
+  expect(await snapshot()).toEqual(before);
 });
 
 it.each([

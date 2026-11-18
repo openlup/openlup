@@ -245,6 +245,26 @@ function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicati
 type PublicationSourceInput = Pick<CatalogPublicationCompileInput, "record" | "payload" | "retainedSources" | "rules">;
 type PublicationOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
 
+function skuCreationFacts(operation: Extract<PublicationOperation, { op: "create_sku" }>,
+  source: { sku: CatalogDraftPayloadV3["skus"][number]; source: CatalogDraftPublicationStoredRecord }, productId: string): CatalogPublishedSku {
+  const { sku } = source;
+  need(sku.netContent?.dimension === "mass", "catalog_publication_mass_required_until_mc5");
+  return { id: operation.skuId, productId, code: operation.skuCode, title: operation.title,
+    status: "draft", minQuantity: operation.minQuantity, isAddon: operation.isAddon, sellableStandalone: false, sellableInSubscription: false,
+    netContent: sku.netContent!, grossMass: sku.grossMass ?? null, options: sku.options, attributes: sku.attributes ?? {},
+    facts: operation.facts, identifiers: [], assetRefs: sku.assetRefs ?? [], logisticsRef: null, memberships: [], source: catalogPublicationClaim(source.source) };
+}
+
+function applyMembershipChange(rules: CatalogPublicationRules, sku: CatalogPublishedSku,
+  { offerVersion, admitted }: Extract<PublicationOperation, { op: "set_offer_membership" }>) {
+  const row = { offerVersion, admitted };
+  if (rules.validateMembershipChange)
+    need(rules.validateMembershipChange(sku, row) === true, "catalog_publication_membership_change_not_allowed");
+  const index = sku.memberships.findIndex(value => value.offerVersion === offerVersion);
+  if (index < 0) sku.memberships.push(row); else sku.memberships[index] = row;
+  sku.memberships.sort((a, b) => comparePublicationText(a.offerVersion, b.offerVersion));
+}
+
 function assertDerivedSource(operation: Extract<PublicationOperation, { op: "set_derived_sku_facts" }>,
   original: Pick<CatalogPublishedSku, "netContent"> | undefined, authoredRevision: number | undefined) {
   need(original && equal(original.netContent, operation.netContent) && operation.documentRevisionNo === authoredRevision,
@@ -323,16 +343,27 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
 /** Check the authored operation inputs before resolving the publication head.
  * @experimental
  */
-export function assertCatalogPublicationAuthorship(input: PublicationSourceInput & { skus: readonly CatalogPublishedSku[] }) {
+export function assertCatalogPublicationAuthorship(input: PublicationSourceInput &
+  { skus: readonly CatalogPublishedSku[]; register?: boolean }) {
   const { payload } = input;
   const authored = publicationAuthorship(input);
+  const registrationSkus = input.register && input.rules.validateMembershipChange
+    ? new Map(input.skus.map(sku => [sku.code, { ...sku, memberships: [...sku.memberships] }])) : null;
   for (const operation of payload.publication.operations) {
     if ("productSlug" in operation) authored.productOperation(operation);
     if (operation.op === "register_document_revision") authored.document(operation);
     if (operation.op === "set_derived_sku_facts") {
       const actual = input.skus.find(sku => sku.code === operation.skuCode);
       assertDerivedSource(operation, actual, payload.product.documentRevision?.revisionNo);
-    } else if ("skuCode" in operation) authored.skuOperation(operation);
+    } else if ("skuCode" in operation) {
+      const source = authored.skuOperation(operation);
+      if (registrationSkus && operation.op === "create_sku")
+        registrationSkus.set(operation.skuCode, skuCreationFacts(operation, source, payload.product.id));
+      if (registrationSkus && operation.op === "set_offer_membership") {
+        const sku = registrationSkus.get(operation.skuCode);
+        if (sku) applyMembershipChange(input.rules, sku, operation);
+      }
+    }
   }
 }
 
@@ -429,11 +460,7 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
     } else if (operation.op === "create_sku") {
       need(!skus.has(operation.skuCode) && ![...skus.values()].some(sku => sku.id === operation.skuId), "catalog_publication_v3_compile_sku_conflict");
       const source = authorship.skuOperation(operation);
-      need(source.sku.netContent?.dimension === "mass", "catalog_publication_mass_required_until_mc5");
-      const sku: CatalogPublishedSku = { id: operation.skuId, productId: knownProduct().id, code: operation.skuCode, title: operation.title,
-        status: "draft", minQuantity: operation.minQuantity, isAddon: operation.isAddon, sellableStandalone: false, sellableInSubscription: false,
-        netContent: source.sku.netContent!, grossMass: source.sku.grossMass ?? null, options: source.sku.options, attributes: source.sku.attributes ?? {},
-        facts: operation.facts, identifiers: [], assetRefs: source.sku.assetRefs ?? [], logisticsRef: null, memberships: [], source: catalogPublicationClaim(source.source) };
+      const sku = skuCreationFacts(operation, source, knownProduct().id);
       existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing.options)));
       const identity = combination(sku.options);
       need(!existingCombinations.has(identity), "duplicate_combination");
@@ -482,12 +509,7 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
     } else if (operation.op === "set_offer_membership") {
       const sku = knownSku(operation.skuCode);
       authorship.skuOperation(operation);
-      const index = sku.memberships.findIndex(value => value.offerVersion === operation.offerVersion);
-      const row = { offerVersion: operation.offerVersion, admitted: operation.admitted };
-      if (input.rules.validateMembershipChange)
-        need(input.rules.validateMembershipChange(sku, row) === true, "catalog_publication_membership_change_not_allowed");
-      if (index < 0) sku.memberships.push(row); else sku.memberships[index] = row;
-      sku.memberships.sort((a, b) => comparePublicationText(a.offerVersion, b.offerVersion));
+      applyMembershipChange(input.rules, sku, operation);
     } else if (operation.op === "set_product_presentation") {
       authorship.productOperation(operation);
       knownProduct().presentation = operation.presentation;

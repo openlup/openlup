@@ -361,10 +361,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       if (Object.is(claim, prepared.record) || explicit.includes(claim))
         require(head?.revision === source.revision && head.status === "open", "catalog_publication_draft_advanced", "conflict");
     }
-    for (const claim of explicit) {
+    for (const claim of [prepared.record, ...explicit]) {
       const source = resolved.get(`${claim.draftId}@${claim.revision}`)!;
       require(source.payload.schemaVersion === 3 && equal(source.payload.product.type, prepared.payload.product.type), "catalog_publication_source_mismatch");
       const reference = source.payload.product.documentRevision;
+      if (claim === prepared.record) require(reference, "document_reference_missing");
       require(reference?.productId === source.productId, "catalog_publication_document_source_mismatch");
       const operations = prepared.payload.publication.operations;
       if (!equal(before.product?.document ?? null, reference)) {
@@ -457,7 +458,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           const prepared = await candidate(db, command.candidateRef, command.candidateDigest, command.productId);
           const before = await load(db, command.productId, undefined, true);
           const { retained } = await lockDraftEvidence(db, prepared, before, false);
-          assertCatalogPublicationAuthorship({ ...prepared, skus: before.skus, retainedSources: retained, rules: deps.rules });
+          assertCatalogPublicationAuthorship({ ...prepared, skus: before.skus, retainedSources: retained, rules: deps.rules, register: true });
         }
         require(count === (command.action === "approve" ? 0 : 1), "catalog_publication_decision_balance_invalid", "conflict");
         const time = observedRow(await tuple(db, "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).value as string;
