@@ -409,7 +409,14 @@ The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
 The installed document binding supplies the document's schema, reference,
 product slug and revision. The writer checks them against the sealed reference
-and canonical bytes. Moving to an off-head document requires a matching
+and canonical bytes. Publication writes the document payload as a whole and
+compares it as a whole for the canonical-text constraint and for immutable
+registration replay. The compiler calls the installed `rules.canonicalizeDocument`
+callback for canonicalization. The portable catalogue boundary checks the exact
+path, trimmed line and occurrence count of those uses. It refuses SQL field
+extraction and containment, private document imports and direct document
+canonicalization, validation, logging or serialization.
+Moving to an off-head document requires a matching
 registration before the move. On creation, the persisted product name must
 match the sealed document's string `name`. An explicit null presentation effect
 clears an existing presentation.

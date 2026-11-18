@@ -755,6 +755,8 @@ function defaultCapacityInput() {
 }
 describe.each([50_000, 50_001])("cycle1 default capacity boundary at %i SKUs", count => {
   let result: ReturnType<typeof compileCatalogPublication> | undefined, refusal: unknown;
+  // The exact boundary compiles the full roster. Setup took 0.24 s and compilation
+  // took 3.7–4.1 s on Node 24.21.0. Hosted shard 4 exhausted the default 10 s hook.
   beforeAll(() => {
     const { data, next } = defaultCapacityInput();
     if (count === 50_001) {
@@ -768,7 +770,7 @@ describe.each([50_000, 50_001])("cycle1 default capacity boundary at %i SKUs", c
           packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null }];
     }
     try { result = compileCatalogPublication(data); } catch (error) { refusal = error; }
-  });
+  }, 30_000);
   it("retains the exact admission or refusal", () => {
     if (count === 50_000) { expect(refusal).toBeUndefined(); expect(result?.skus).toHaveLength(50_000); }
     else { expect(result).toBeUndefined(); expect(refusal).toMatchObject({ message: "product_capacity_exceeded" }); }
