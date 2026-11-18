@@ -123,6 +123,11 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
 }
 
 /** One bounded local checkout-recovery pass, using the installed job and outbox owners. */
+/** Explicit installed stage wins; payloads without a stage keep the historical hour rule. */
+export function checkoutRecoveryIsFinal(input: { reminderHours: number; stage?: 'first' | 'last' }): boolean {
+  return input.stage === undefined ? input.reminderHours > 1 : input.stage === 'last';
+}
+
 export async function runCheckoutRecovery(input: { executor: import('pg').Pool; config: StoreConfig; publicOrigin: string;
   capture?: PrivateCapture; now?: string; enabled?: boolean }) {
   const { executor, config } = input, at = input.now ?? new Date().toISOString(), schedule = checkoutRecoverySchedule;
@@ -174,7 +179,7 @@ export async function runCheckoutRecovery(input: { executor: import('pg').Pool; 
   };
   const email: TransactionalEmailPort<Locale> = {
     findExistingSend: async (_template, eventId) => await capture.read(key(eventId)) !== null,
-    sendCheckoutRecovery: sendInput => send(sendInput, false, sendInput.reminderHours > 1),
+    sendCheckoutRecovery: sendInput => send(sendInput, false, checkoutRecoveryIsFinal(sendInput)),
     sendCheckoutExpiredNotice: sendInput => send(sendInput, true),
     sendReturnApprovedNotice: refuse, sendReturnRejectedNotice: refuse, sendOrderConfirmation: refuse,
     sendOrderPaidConfirmation: refuse, sendPaymentFailedNotice: refuse, sendOrderCanceledNotice: refuse,
