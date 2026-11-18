@@ -15,6 +15,7 @@ export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailab
 export type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 export { createNewPurchaseStockAvailabilityPort } from "./newPurchaseStockAvailability.js";
 export { MIN_CHECKOUT_RESERVATION_TTL_MINUTES, MAX_CHECKOUT_RESERVATION_TTL_MINUTES, DEFAULT_CHECKOUT_RESERVATION_TTL_MINUTES, reservationPolicyFor, normalizedTtlMinutes } from "./reservationPolicy.js";
+export type { CheckoutReservationLifetimePolicy } from "./contracts/reservation.js";
 export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPort } from "./renewalReservation.js";
 export { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchaseReservationPort, type PurchaseReservationInput, type PurchaseReservationResult, type PurchaseInventoryReservationPort } from "./purchaseReservation.js";
 export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
