@@ -1788,3 +1788,44 @@ it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].flat
     }
   },
 );
+
+it.each([false,true])("LC6-D-070 mixed sized work locks the legacy SKU before price, control=%s", async control => {
+  const f = await fixture(packs[0]), legacy = await legacyFixture(), command = await edit(f,"sized");
+  const e = await session(), w = await session(), h = await pool.connect(), stop = await gate(h);
+  const ep = await pid(e), wp = await pid(w), hp = await pid(h);
+  const p = command.payload as ProbePayload;
+  const prior = p.lines[0];
+  const constraint = { kind: "unit_count",value: 3,dailyNeed: 1 };
+  p.lines = [prior,{ ...prior,variantId: legacy.sku,qty: 1,quoteLine: {
+    sku: legacy.code,quantity: 1,unitPriceGross: money(617),lineSubtotalGross: money(617),
+  } }];
+  p.compositionConstraint = constraint;
+  p.request.compositionConstraint = constraint;
+  p.request.resizeLever = { kind: "subscription.sized.parcel",value: {
+    optInToSized: true,coreLines: [{ variantId: f.sku,qty: 2 },{ variantId: legacy.sku,qty: 1 }],
+  } };
+  let restore = async () => {};
+  try {
+    await ledger({ db: e,f,p,lane: "sized",command });
+    await e.query("COMMIT");
+    await e.query("BEGIN");
+    const locked = "ORDER BY s.id FOR SHARE;";
+    restore = await hook(admissionSignature,locked,stop.sql,body => control ? body.replace(
+      " OR\n  (p_offer_evidence->>'lane'='sized' AND (p_offer_evidence->'legacySkuIds') ? s.id::text)","",
+    ) : body);
+    const editing = tracked(command.invoke(e));
+    await blocker(h,ep,hp);
+    const writing = tracked(w.query("UPDATE public.catalog_skus SET title=title||' revised' WHERE id=$1 RETURNING id", [legacy.sku]));
+    if (control) expect(await writing).toMatchObject({ ok: true,value: { rowCount: 1 } });
+    else await blocker(h,wp,ep);
+    if (control) await w.query("ROLLBACK");
+    await stop.release();
+    const edited = await editing;
+    if (!edited.ok) throw edited.error;
+    expect(edited.value).toMatchObject({ status: "applied" });
+    await e.query("ROLLBACK");
+    if (!control) expect(await writing).toMatchObject({ ok: true,value: { rowCount: 1 } });
+  } finally {
+    await stop.release(); await e.query("ROLLBACK"); await w.query("ROLLBACK"); await restore(); e.release(); w.release(); h.release();
+  }
+});
