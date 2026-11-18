@@ -389,4 +389,84 @@ describe('six real Git witnesses', () => {
     await expect(captureSessionCandidate(f.cwd, pin, { env: {}, runGit: pinGit })).rejects.toThrow('fork point changed');
     await expect(captureSessionCandidate(f.cwd, undefined, { env: { OPENLUP_STACK_BASE: 'bad' }, runGit: pinGit })).rejects.toThrow('full commit digest');
   });
+  it('supports --help without a session or directory creation and status --explain without writing Git objects or state', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const empty = await mkdtemp(join(tmpdir(), 'native-review-help-')); directories.push(empty);
+    await expect(sessionMain(['--help'], { cwd: empty, env: {} })).resolves.toBe(0);
+    expect(console.log).toHaveBeenLastCalledWith(expect.stringContaining('status [--explain]'));
+    expect(await readdir(empty)).toEqual([]);
+    await expect(sessionMain(['--help', 'extra'], { cwd: empty, env: {} })).rejects.toThrow('without extra arguments');
+
+    const f = await fixture(); const session = await f.review();
+    const listObjects = async (dir: string): Promise<string[]> => {
+      const entries = await readdir(dir, { withFileTypes: true });
+      const nested = await Promise.all(entries.map(entry => entry.isDirectory() ? listObjects(join(dir, entry.name)) : [join(dir, entry.name)]));
+      return nested.flat().sort();
+    };
+    const objectsBefore = await listObjects(join(f.cwd, '.git', 'objects'));
+    const sessionBytesBefore = await readFile(f.statePath, 'utf8');
+    await expect(f.cli('status')).resolves.toBe(0);
+    expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toEqual(session);
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(explained).toMatchObject({
+      version: 2, status: 'verify_required', verified: false,
+      candidate: { status: 'clean', matchesSession: true, clean: true, stale: false },
+      requirements: { floor: 1, acceptedReports: 1, missingReports: 0, reviewers: ['cold-reviewer'] },
+      openFindings: [],
+    });
+    await writeFile(join(f.cwd, 'source.txt'), 'dirty working tree\n');
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const dirtyExplained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(dirtyExplained).toMatchObject({
+      status: 'dirty', verified: false,
+      candidate: { status: 'dirty', matchesSession: false, clean: false, stale: false },
+    });
+    expect(await listObjects(join(f.cwd, '.git', 'objects'))).toEqual(objectsBefore);
+    expect(await readFile(f.statePath, 'utf8')).toBe(sessionBytesBefore);
+    expect(await readdir(join(f.scratch, 'agent-review'))).toEqual(['session.json']);
+    await expect(f.cli('status', '--unknown')).rejects.toThrow('use status [--explain]');
+  });
+
+  it('keeps review verification separate from merge preflight after a conflicting main move', async () => {
+    const f = await fixture();
+    await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'source.txt'), 'conflicting main change\n');
+    f.commit();
+    f.git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+    f.git('checkout', '-q', 'main');
+
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(explained).toMatchObject({
+      status: 'verify_required',
+      verified: false,
+      mergePreflight: { status: 'not_checked', checkedBy: 'receipt' },
+    });
+    expect(explained.nextAction).toContain('verify to confirm');
+    expect(explained.nextAction).not.toContain('merge preflight');
+    expect(explained.verifyChecksPending).not.toContainEqual(expect.stringMatching(/merge preflight/u));
+    await expect(f.cli('verify')).resolves.toBe(0);
+    expect(console.log).toHaveBeenLastCalledWith('reviewed');
+    await expect(f.cli('receipt', '12')).rejects.toThrow('merge_preflight: candidate conflicts with origin/main');
+  });
+
+  it('explains that rebased history needs a fresh preparation and full review', async () => {
+    const f = await fixture();
+    await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'source.txt'), 'rebased change\n');
+    f.commit();
+
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(explained).toMatchObject({ status: 'stale', verified: false });
+    expect(explained.nextAction).toContain('prepare --new');
+    expect(explained.nextAction).toContain('full review');
+    const intentPath = join(f.scratch, 'intent.json');
+    await expect(f.cli('prepare', intentPath)).rejects.toThrow('rebased history; use prepare --new');
+    await expect(f.cli('prepare', '--new', intentPath)).resolves.toBe(0);
+    await expect(f.cli('verify')).rejects.toThrow('independent PASS reports required');
+  });
 });
