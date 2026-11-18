@@ -2808,6 +2808,51 @@ it.each([
 });
 
 
+it.each([
+  ["media", ["a", "z"]],
+  ["media", ["\uE000", "\u{10000}"]],
+  ["membership", ["a", "z"]],
+  ["membership", ["\uE000", "\u{10000}"]],
+] as const)("publication matches database collation for %s references %j", async (field, [lower, higher]) => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  const content = payload.product.sharedContent, skuCode = payload.skus[0].code!;
+  if (field === "media") {
+    const mediaRef = "example:collation", assetRefs = [lower, higher].sort();
+    content.presentation = { mediaRef };
+    payload.skus[0].assetRefs = assetRefs;
+    const op = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
+    if (op.op === "set_product_presentation") op.presentation = content.presentation;
+    payload.publication.evidence.media = [{ skuCode, mediaRef, assetRefs, revisionDigest: "a".repeat(64) }];
+    const command = await save(payload, data.draftId, 1);
+    if (assetRefs[0] === lower) {
+      await commit(command);
+    } else {
+      await approve(command);
+      const stable = await snapshot();
+      expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
+      expect(await snapshot()).toEqual(stable);
+    }
+    return;
+  }
+  content.offerMemberships = [{ skuCode, offerVersion: higher, admitted: false }];
+  const op = payload.publication.operations.find(op => op.op === "set_offer_membership")!;
+  if (op.op === "set_offer_membership") op.offerVersion = higher;
+  const first = await commit(await save(payload, data.draftId, 1));
+  content.catalogAction = "revise";
+  content.offerMemberships[0].offerVersion = lower;
+  const membership = { op: "set_offer_membership" as const, ...content.offerMemberships[0] };
+  payload.publication.operations = [membership];
+  const second = await commit(await save(payload, data.draftId, 2, first.head));
+  content.presentation = { routePath: { en: "/ordering" } };
+  payload.publication.operations.push({ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation });
+  const final = await commit(await save(payload, data.draftId, 3, second.head));
+  const before = await authority.readbackV2(second.head), after = await authority.readbackV2(final.head);
+  expect(before).toMatchObject({ outcome: "page", items: [{ facts: { memberships: [
+    { offerVersion: lower, admitted: false }, { offerVersion: higher, admitted: false },
+  ] } }] });
+  expect(after.outcome === "page" && after.items).toEqual(before.outcome === "page" && before.items);
+});
+
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);
   payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation"; payload.skus = []; delete payload.product.primarySkuId;

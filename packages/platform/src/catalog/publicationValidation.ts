@@ -26,6 +26,8 @@ export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLI
   return text;
 };
 export const publicationDigest = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes): string => createHash("sha256").update(publicationJson(input, maxBytes)).digest("hex");
+// PostgreSQL COLLATE "C" orders UTF-8 bytes, including supplementary code points.
+export const comparePublicationText = (left: string, right: string): number => Buffer.compare(Buffer.from(left), Buffer.from(right));
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -46,7 +48,7 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
   attributes, facts, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32), logisticsRef: ref.nullable(),
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict().superRefine((sku, context) => {
-  if (!sku.memberships.every((row, index) => index === 0 || sku.memberships[index - 1]!.offerVersion < row.offerVersion)
+  if (!sku.memberships.every((row, index) => index === 0 || comparePublicationText(sku.memberships[index - 1]!.offerVersion, row.offerVersion) < 0)
     || sku.identifiers.filter(row => row.isPrimary).length > 1)
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
 }) as z.ZodType<CatalogPublishedSku>;
@@ -284,7 +286,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       const index = sku.memberships.findIndex(value => value.offerVersion === operation.offerVersion);
       const row = { offerVersion: operation.offerVersion, admitted: operation.admitted };
       if (index < 0) sku.memberships.push(row); else sku.memberships[index] = row;
-      sku.memberships.sort((a, b) => a.offerVersion < b.offerVersion ? -1 : a.offerVersion > b.offerVersion ? 1 : 0);
+      sku.memberships.sort((a, b) => comparePublicationText(a.offerVersion, b.offerVersion));
     } else if (operation.op === "set_product_presentation") {
       need(equal(operation.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_source_mismatch");
       knownProduct().presentation = operation.presentation;
