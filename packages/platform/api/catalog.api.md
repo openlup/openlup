@@ -4538,7 +4538,7 @@ export declare function createPostgresCatalogPublication<Context>(deps: CatalogP
 import { z } from "./validation.js";
 import { catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
 import type { CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
-import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord, CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord, CatalogPublicationFacts, CatalogDraftPublicationOperationV3 } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3 } from "./contracts/draftV3.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./contracts/publication.js";
 /** @experimental */
@@ -4645,12 +4645,17 @@ export declare function catalogPublicationAffected(payload: CatalogDraftPayloadV
     source: (code: string) => boolean;
     priced: (sku: CatalogPublishedSku) => boolean;
 };
+/** Checks a sealed media claim against the presentation and SKU before consulting installed evidence.
+ * @experimental
+ */
+export declare function catalogPublicationMediaIssue(mediaRef: unknown, assets: readonly string[], claim?: NonNullable<CatalogDraftPayloadV3["publication"]["evidence"]["media"]>[number]): "media_reference_missing" | "media_readiness_unknown" | "media_readiness_mismatch" | null;
 type PublicationSourceInput = Pick<CatalogPublicationCompileInput, "record" | "payload" | "retainedSources" | "rules">;
 /** Check the authored operation inputs before resolving the publication head.
  * @experimental
  */
 export declare function assertCatalogPublicationAuthorship(input: PublicationSourceInput & {
     skus: readonly CatalogPublishedSku[];
+    register?: boolean;
 }): void;
 /** Ordered publication compiler using installed definitions; never persists or calls commerce.
  * @experimental
@@ -4665,14 +4670,20 @@ export declare function compileCatalogPublication(input: CatalogPublicationCompi
 /** Compile ordered effects and defer the final eligibility check until readiness is known.
  * @experimental
  */
-export declare function compileCatalogPublicationEffects(input: CatalogPublicationCompileInput): {
+export declare function compileCatalogPublicationEffects(input: CatalogPublicationCompileInput): Generator<{
+    operation: CatalogDraftPublicationOperationV3;
+    product: CatalogPublishedProduct;
+    skus: Map<string, CatalogPublishedSku>;
+    documents: CatalogPublicationDocument[];
+}, {
     product: CatalogPublishedProduct;
     skus: CatalogPublishedSku[];
     documents: CatalogPublicationDocument[];
     activation: boolean;
     changed: boolean;
     validateAfterReadiness: () => void;
-};
+    validatePriceReadiness: () => void;
+}, unknown>;
 export {};
 ```
 ## dist/catalog/readPorts.d.ts
@@ -5078,7 +5089,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "43bb985529ddd68a8ef6b69f8eb869a1fe3181e33d6b7e1b2d93e38c987e0705";
+        readonly sha256: "3c6f5d435c5d262d09326fbbeb6c32cf13bac578689a4be9c646b2f2d99a6bd9";
         readonly url: URL;
     }
 ];
