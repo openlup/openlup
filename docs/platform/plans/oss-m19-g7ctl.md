@@ -120,7 +120,7 @@ ordered-list equality differ from the base production expectations.
 | `scripts/reviewed-batch-forward.test.ts` | 691 |
 | `scripts/public-ci-neutrality.test.ts` | 60 |
 | `scripts/source-preview-release.test.ts` | 718 |
-| `tests/postgres/nativeStoreForwardCatalog.test.ts` | 126 |
+| Native forward catalogue suite before the role-based split | 126 |
 | `tests/postgres/invoicingManagedCorrection.test.ts` | 26 |
 | `tests/postgres/starterGraduationCadence.test.ts` | 14 |
 | `tests/postgres/reviewedPortableCreation.test.ts` | 20 |

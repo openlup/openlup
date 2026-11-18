@@ -5,7 +5,9 @@ import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation,
 import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 
-import { input, definition, rules } from "./fixtures/publicationInput.js";
+import { createPostgresCatalogPublication } from "../../src/catalog/publicationStore.js";
+import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/contracts/publication.js";
+import { input, definition, registry, rules } from "./fixtures/publicationInput.js";
 it("W32_V5-0597_predicate_precedence_boundary", () => {
   const data = input();
   data.payload.publication.operations.splice(1, 0, { op: "set_product_status", productSlug: "article", status: "active" });
@@ -782,4 +784,83 @@ it.each([false, true])("cycle1 retained roster order cannot manufacture a materi
   const result = compileCatalogPublication(data);
   expect(result.changed).toBe(false);
   expect(result.skus.map(sku => sku.id)).toEqual(["20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002"]);
+});
+
+it("keeps the legacy publication refusal for an unrecognized publisher", async () => {
+  const target = createPostgresCatalogPublication({
+    registry, rules, authorizeHuman: async () => ({ ok: true, userId: input().payload.product.id, role: "admin", isMachineActor: false }),
+    transactions: { run: work => work({ async query(sql) {
+      expect(sql).toBe("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      return { rows: [] };
+    } }) },
+    readiness: async () => { throw new Error("Unexpected readiness call"); },
+    verifyMedia: async () => { throw new Error("Unexpected media call"); },
+  });
+  const issuedByAnotherAuthority = createPostgresCatalogPublication({
+    registry, rules, authorizeHuman: async () => ({ ok: true, userId: input().payload.product.id, role: "admin", isMachineActor: false }),
+    transactions: { run: async () => { throw new Error("Unexpected transaction"); } },
+    readiness: async () => { throw new Error("Unexpected readiness call"); },
+    verifyMedia: async () => { throw new Error("Unexpected media call"); },
+  });
+  const capability = await issuedByAnotherAuthority.authorize(null);
+  if (!capability) throw new Error("Missing test capability");
+  expect(await target.publication.publish({ productId: input().payload.product.id, commandKey: "publish:1",
+    candidateRef: "candidate", candidateDigest: "a".repeat(64), expectedHead: null, changes: [] }, capability))
+    .toEqual({ outcome: "unauthorized", reason: "publisher_not_authorized" });
+});
+
+it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the remaining SKU", async () => {
+  const { product, skus, documents } = compileCatalogPublication(input());
+  const [document] = documents;
+  const head = { publicationId: "50000000-0000-4000-8000-000000000001", revision: 2, documentDigest: document.reference.digest };
+  const { skuBytes, pageBytes } = CATALOG_PUBLICATION_LIMITS;
+  const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+  const items = Array.from({ length: 5 }, (_, index) => {
+    const suffix = String(index + 1).padStart(12, "0");
+    const facts = { ...skus[0], id: `20000000-0000-4000-8000-${suffix}`, code: `ARTICLE-${suffix}`, facts: { padding: "" } };
+    const reference = { skuId: facts.id, revisionId: `60000000-0000-4000-8000-${suffix}`, revision: 1, digest: "0".repeat(64) };
+    return { reference, facts };
+  });
+  const nextCursor = Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts", productId: product.id, highWater: head.revision, before: 4 })).toString("base64url");
+  const expected = { outcome: "page", schemaVersion: 2, head, product, items: items.slice(0, 4), nextCursor };
+  const setPadding = (item: typeof items[number], bytes: number) => {
+    item.facts.facts.padding = "é".repeat(Math.floor(bytes / 2)) + "x".repeat(bytes % 2);
+    item.reference.digest = digest(publicationJson(item.facts));
+  };
+  for (const item of items.slice(0, 3)) setPadding(item, skuBytes - Buffer.byteLength(publicationJson(item.facts)));
+  setPadding(items[3], pageBytes - Buffer.byteLength(publicationJson(expected)));
+  setPadding(items[4], 0);
+  const canonicalState = publicationJson({ schemaVersion: 2, product, skus: items.map(({ reference }) => reference) });
+  const stored = items.map(({ reference, facts }) => {
+    const text = publicationJson(facts);
+    return { id: reference.revisionId, sku_id: reference.skuId, revision: reference.revision, digest: reference.digest, bytes: Buffer.byteLength(text), full_facts: text };
+  });
+  const ref = document.reference;
+  const fetched: unknown[] = [];
+  const target = createPostgresCatalogPublication({
+    registry, rules, authorizeHuman: async () => ({ ok: false }),
+    transactions: { run: work => work({ async query(sql, params) {
+      if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
+      if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) return { rows: [{ product_id: product.id,
+        revision: head.revision, canonical_state: canonicalState, digest: digest(canonicalState), document_id: ref.id, document_digest: ref.digest,
+        revision_no: ref.revisionNo, schema_id: ref.schemaId, document_ref: ref.documentRef, source_ref: ref.sourceRef, canonical_text: document.canonicalText }] };
+      const ids = params?.[1] as string[];
+      if (sql.startsWith("SELECT id,sku_id,revision,digest,octet_length")) return { rows: stored.filter(row => ids.includes(row.id)) };
+      if (sql.startsWith("SELECT id,full_facts")) {
+        fetched.push(ids);
+        return { rows: stored.filter(row => ids.includes(row.id)) };
+      }
+      throw new Error("Unexpected publication read");
+    } }) },
+    readiness: async () => { throw new Error("Unexpected readiness call"); },
+    verifyMedia: async () => { throw new Error("Unexpected media call"); },
+  });
+  const first = await target.readbackV2(head);
+  expect(first.outcome).toBe("page");
+  if (first.outcome !== "page") throw new Error("Missing full-fact page");
+  expect(Buffer.byteLength(publicationJson(first))).toBe(pageBytes);
+  expect(first.items.map(item => item.reference)).toEqual(expected.items.map(item => item.reference));
+  expect(first.nextCursor).toBe(nextCursor);
+  expect(await target.readbackV2(head, first.nextCursor)).toEqual({ ...expected, items: items.slice(4), nextCursor: null });
+  expect(fetched).toEqual([stored.slice(0, 4).map(row => row.id), [stored[4].id]]);
 });

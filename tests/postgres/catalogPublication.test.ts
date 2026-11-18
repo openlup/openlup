@@ -19,6 +19,8 @@ const definition = { key: "example:article", version: 1, units: [{ code: "openlu
   netContentUnits: ["openlup:g"], dimensions: [{ key: "pack_size", kind: "quantity" as const, dimension: "mass" as const, units: ["openlup:g"] }, { key: "axis_flag", kind: "boolean" as const }], axes: [{ key: "pack_size", attributeKey: "pack_size" }, { key: "axis_flag", attributeKey: "axis_flag" }], attributes: [{ key: "pack_size", scope: "variant" as const, valueType: { kind: "quantity" as const, dimension: "mass" as const, units: ["openlup:g"] }, required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }, { key: "details", scope: "variant" as const,
     valueType: { kind: "list" as const, item: { kind: "text" as const, maxLength: 1900 }, min: 0, max: 300 }, required: false,
     cardinality: { min: 0, max: 300 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
+    { key: "reference", scope: "variant" as const, valueType: { kind: "reference" as const, allowlist: ["example:asset"] }, required: false,
+      cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
     { key: "product_flag", scope: "product" as const, valueType: { kind: "boolean" as const }, required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
     { key: "axis_flag", scope: "variant" as const, valueType: { kind: "boolean" as const }, required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
   validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
@@ -2501,6 +2503,11 @@ it("cycle1 native receipts distinguish product-only changes and SKU withdrawals"
   payload.publication.operations = [{ op: "set_sku_status", skuCode: sku.code!, status: "archived" }];
   const fourth = await commit(await save(payload, data.draftId, 3, third.head));
   expect(fourth.changes).toMatchObject([{ variantId: sku.id, variantRevision: 2, state: "withdrawn" }]);
+  const current = await authority.reads.current(data.productId);
+  expect(current).toMatchObject({ outcome: "found", head: fourth.head, observations: expect.arrayContaining([
+    expect.objectContaining({ variantId: data.skuId, variantRevision: 1, state: "draft" }),
+    expect.objectContaining({ variantId: sku.id, variantRevision: 2, state: "withdrawn" }),
+  ]) });
   expect(await authority.receipt({ productId: data.productId, commandKey: fourth.commandKey }, actor)).toEqual({ outcome: "found", receipt: fourth });
 });
 
@@ -2890,4 +2897,116 @@ it("cycle1 native readiness requires the primary unit identifier", async () => {
     await client.query("UPDATE public.catalog_sku_identifiers SET is_primary=true WHERE catalog_sku_id=$1 AND identifier_kind='gtin' AND pack_kind='unit'", [skuId]);
     expect(await reasons()).toEqual([]);
   } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("cycle1 native readiness requires the current document pointer", async () => {
+  const client = await db.connect(), productId = randomUUID(), skuId = randomUUID();
+  try {
+    await client.query("BEGIN");
+    await client.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,'Unpointed native document','draft')", [productId, `unpointed-${productId}`]);
+    await client.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Unpointed native SKU')", [skuId, productId, `SKU-${skuId}`]);
+    await client.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [productId, skuId]);
+    await client.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest) VALUES($1,1,'legacy:document','unpointed','{}','native-fixture','{}',$2)", [productId, "a".repeat(64)]);
+    expect((await client.query("SELECT public.catalog_publication_sku_reasons($1,false) AS reasons", [skuId])).rows[0].reasons).toEqual(["document_revision_missing"]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("cycle1 native readiness precedence keeps identity before archived status", async () => {
+  const client = await db.connect(), skuId = foreignPublished.data.payload.skus[0].id;
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE public.catalog_products SET slug=$2 WHERE id=$1", [foreignPublished.data.productId, "p".repeat(65)]);
+    await client.query("UPDATE public.catalog_skus SET status='archived',publication_facts=jsonb_set(publication_facts,'{logisticsRef}','\"native-logistics\"') WHERE id=$1", [skuId]);
+    expect((await client.query("SELECT public.catalog_publication_sku_reasons($1,true) AS reasons", [skuId])).rows[0].reasons).toEqual(["primary_sku_missing", "commerce_identity_unsupported", "sku_archived"]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("refuses malformed legacy publication lookup before querying a head", async () => {
+  const invalidHead = { ...foreignPublished.head, revision: 0 };
+  let queried = false;
+  const target = createPostgresCatalogPublication(dependencies(sql => { if (!sql.startsWith("SET TRANSACTION")) queried = true; }));
+  expect(await target.reads.readback(invalidHead)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  expect(queried).toBe(false);
+});
+
+it("refuses a well-formed legacy head with no retained publication", async () => {
+  const missingHead = { ...foreignPublished.head, publicationId: randomUUID() };
+  expect(await authority.reads.readback(missingHead)).toEqual({ outcome: "unsupported", reason: "publication_not_supported" });
+});
+
+it("refuses a publication history receipt bound to a different product", async () => {
+  const rows = (await db.query(`SELECT p.revision,p.id,r.result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
+    FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id
+    WHERE p.id=$1 AND r.kind='publish'`, [foreignPublished.head.publicationId])).rows;
+  expect(rows).toHaveLength(1);
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, returned) => {
+    if (sql.startsWith("SELECT p.revision,p.id,r.result")) returned.splice(0, returned.length, ...rows);
+  }));
+  expect(await target.reads.history(paged.data.productId, null))
+    .toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+});
+
+it("returns absence when publication recovery finds an approval under the same scope and key", async () => {
+  const scope = { productId: foreignPublished.data.productId, commandKey: `approve:${foreignPublished.data.publication.commandKey}` };
+  expect((await db.query("SELECT kind FROM public.catalog_operator_receipts WHERE scope_id=$1 AND command_key=$2", [scope.productId, scope.commandKey])).rows)
+    .toEqual([{ kind: "approve" }]);
+  expect(await authority.receipt(scope, actor)).toEqual({ outcome: "absent" });
+  expect(await authority.readPort(actor).receipt(scope)).toEqual({ outcome: "absent" });
+});
+
+it("refuses a full-fact head with the correct revision and a different document digest", async () => {
+  const wrongDigest = (foreignPublished.head.documentDigest.startsWith("a") ? "b" : "a") + foreignPublished.head.documentDigest.slice(1);
+  expect(await authority.readbackV2({ ...foreignPublished.head, documentDigest: wrongDigest }))
+    .toEqual({ outcome: "conflict", reason: "head_conflict" });
+});
+
+it("refuses noncanonical full-fact manifest bytes with an unchanged semantic digest", async () => {
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) rows[0].canonical_state = ` ${rows[0].canonical_state as string}`;
+  }));
+  expect(await target.readbackV2(foreignPublished.head)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_manifest_invalid" });
+});
+
+it("refuses a same-product full-fact cursor from an earlier publication revision", async () => {
+  const cursor = Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts", productId: paged.data.productId,
+    highWater: paged.head.revision - 1, before: 1 })).toString("base64url");
+  expect(await authority.readbackV2(paged.head, cursor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_cursor_invalid" });
+});
+
+it("refuses noncanonical retained SKU bytes with an unchanged semantic digest", async () => {
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT id,full_facts FROM public.catalog_sku_revisions")) rows[0].full_facts = ` ${rows[0].full_facts as string}`;
+  }));
+  expect(await target.readbackV2(foreignPublished.head)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" });
+});
+
+it("rolls back when an identifier differs from the compiled post-state", async () => {
+  const data = await draft(); await approve(data.publication);
+  const before = await snapshot();
+  const target = createPostgresCatalogPublication(dependencies(async (sql, executor) => {
+    if (sql.startsWith("SELECT to_char(clock_timestamp()"))
+      await executor.query("UPDATE public.catalog_sku_identifiers SET display_label='Different identifier label' WHERE catalog_sku_id=$1", [data.skuId]);
+  }));
+  expect(await target.publish(data.publication, (await target.authorize(null))!))
+    .toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("rolls back when a resolved attribute reference becomes unavailable at projection", async () => {
+  const data = await draft();
+  data.payload.skus[0].attributes = { reference: { namespace: "example:asset", id: "projection-asset" } };
+  const command = await save(data.payload, data.draftId, 1);
+  let projecting = false;
+  const target = createPostgresCatalogPublication({
+    ...dependencies(sql => { if (sql.startsWith("DELETE FROM public.catalog_attribute_projection")) projecting = true; }),
+    attributeReferences: { resolve: async references => references.map(reference => ({
+      ...reference, status: projecting ? "unavailable" as const : "resolved" as const,
+    })) },
+  });
+  const capability = (await target.authorize(null))!;
+  await approve(command, target, capability);
+  const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_attribute_projection_invalid" });
+  expect(projecting).toBe(true);
+  expect(await snapshot()).toEqual(before);
 });

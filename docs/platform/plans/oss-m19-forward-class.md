@@ -60,7 +60,8 @@ each found a new gap between the hand-written lexer and PostgreSQL; the fourth,
 a function header that hides its attribute list inside a quoted default, is
 reproduced on real PostgreSQL by the new catalog test. The parser is therefore
 not repaired further. A required real-PostgreSQL catalog test,
-`tests/postgres/nativeStoreForwardCatalog.test.ts`, is the truth for function
+now split into runs [with `service_role`](../../../tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts) and
+[without `service_role`](../../../tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts), is the truth for function
 identity, security attribute, `search_path` and privileges: it replays one chain,
 the legacy selection, for every bound forward, applies the forward and compares
 what PostgreSQL reports with the slot's lists, with and without `service_role`.
