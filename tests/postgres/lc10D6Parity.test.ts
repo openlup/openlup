@@ -2172,13 +2172,21 @@ it.each([
   if (observation === "wrong_cycle") await pool.query("UPDATE public.subscription_successor_wait_cases_v2 SET cycle_id=$2 WHERE id=$1",
     [resolved.caseId, f.header.activation_cycle_id]);
   if (observation === "wrong_order" || observation === "wrong_fulfillment") {
-    const foreign = await transaction(connection => ecommercePaid(connection, { at: f.at }));
+    const foreign = await createSuccessorJourney(pool);
+    const accepted = (await pool.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+      [foreign.caseId, foreign.proposalId, foreign.quoteHash, randomUUID(), foreign.client, foreign.at])).rows[0].result;
+    const generation = (await pool.query("SELECT claim_token,operation_fingerprint FROM public.subscription_successor_operations_v2 WHERE id=$1",
+      [accepted.operationId])).rows[0];
+    const preparedForeign = (await pool.query("SELECT public.commerce_prepare_successor_renewal_v2($1,$2,$3) AS result",
+      [accepted.operationId, generation.claim_token, foreign.at])).rows[0].result;
+    await pool.query("SELECT public.commerce_settle_successor_renewal_v2($1,$2,$3,$4)", [accepted.operationId, randomUUID(),
+      { operationFingerprint: generation.operation_fingerprint, outcome: "succeeded", externalRef: `synthetic:${accepted.operationId}` }, foreign.at]);
     if (observation === "wrong_order") await pool.query(
-      "UPDATE public.subscription_successor_wait_cases_v2 SET order_id=$2 WHERE id=$1", [resolved.caseId, foreign.order]);
+      "UPDATE public.subscription_successor_wait_cases_v2 SET order_id=$2 WHERE id=$1", [resolved.caseId, preparedForeign.orderId]);
     else {
       await pool.query("SELECT public.fulfillment_create_shipment($1,$2,'synthetic-fulfillment','{}'::jsonb,$3)",
-        [randomUUID(), foreign.order, f.at]);
-      const shipment = (await pool.query("SELECT id FROM public.fulfillment_shipments WHERE order_id=$1", [foreign.order])).rows[0].id;
+        [randomUUID(), preparedForeign.orderId, foreign.at]);
+      const shipment = (await pool.query("SELECT id FROM public.fulfillment_shipments WHERE order_id=$1", [preparedForeign.orderId])).rows[0].id;
       await pool.query("UPDATE public.subscription_successor_wait_cases_v2 SET fulfillment_id=$2 WHERE id=$1", [resolved.caseId, shipment]);
     }
   }
