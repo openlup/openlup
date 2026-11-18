@@ -702,9 +702,9 @@ it.each((["frozen", "admit", "reserve", "recover"] as const).flatMap(path =>
     await db.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'planned')", [f.subscription, f.anchor]);
   }
   if (fact === "different_client" && path === "frozen") {
-    // Skew just the loaded proposal. Changing the subscription would also invalidate the receipt and wait case.
+    // Skew the loaded proposal on this transaction's connection. The receipt and wait case stay valid.
     const restore = await hook("public.subscription_stock_wait_frozen_v2(uuid)",
-      " SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=g.proposal_id;", " p.client_id:=gen_random_uuid();");
+      " SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=g.proposal_id;", " p.client_id:=gen_random_uuid();", db);
     try {
       await expect(db.query("SELECT public.subscription_stock_wait_frozen_v2($1) AS result", [g.id]))
         .resolves.toMatchObject({ rows: [{ result: null }] });
@@ -836,11 +836,11 @@ async function prepareLegacy() {
   return { ...f,prepared,external };
 }
 const tracked=<T>(work:Promise<T>)=>work.then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
-async function hook(signature:string,boundary:string,insertion:string) {
-  const before=(await pool.query("SELECT pg_get_functiondef(oid) AS ddl,prosrc FROM pg_proc WHERE oid=$1::regprocedure",[signature])).rows[0];
+async function hook(signature:string,boundary:string,insertion:string,connection:Pool|PoolClient=pool) {
+  const before=(await connection.query("SELECT pg_get_functiondef(oid) AS ddl,prosrc FROM pg_proc WHERE oid=$1::regprocedure",[signature])).rows[0];
   expect(before.prosrc.split(boundary)).toHaveLength(2);
-  await pool.query(before.ddl.replace(before.prosrc,()=>before.prosrc.replace(boundary,()=>boundary+insertion)));
-  return ()=>pool.query(before.ddl);
+  await connection.query(before.ddl.replace(before.prosrc,()=>before.prosrc.replace(boundary,()=>boundary+insertion)));
+  return ()=>connection.query(before.ddl);
 }
 async function gate(observer:PoolClient) {
   const key=BigInt(`0x${randomUUID().replaceAll("-","").slice(0,14)}`).toString();
