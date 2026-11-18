@@ -21,9 +21,9 @@ expands that list.
 | Source only | Archive extraction tooling and package/compiler checks retained by the source release |
 | Generated | Local provenance, artifact identities, installation lockfile and build or browser output |
 
-The candidate installation lockfile is ignored; released or reconstructed
-extraction commits its registry lockfile. Both remain generated and outside
-owned/managed upgrade snapshots.
+A plain local extraction ignores its installation lockfile. Released,
+reconstructed and digest-verified candidate extractions commit theirs. Either
+way the lockfile stays generated and outside owned/managed upgrade snapshots.
 
 `demoData` is a subset of owned files; it does not make the fictional data safe
 for a customer environment. Replace its data, authority, policies and external
@@ -330,7 +330,9 @@ before local normalization, then validates the normalized postal result.
 Phone callbacks receive trimmed input with collapsed whitespace; a null result
 refuses a supplied phone, while an absent or blank phone stays null. Postal
 input and output remain bounded to 24 characters, phone input and local output
-to 64. Foreign postal rules and the 6–32 character foreign phone rule bypass
+to 64. Both normalizers must return a nonempty string within those bounds and
+`isValidPostalCode` must return literal `true`; any other result refuses the
+field. Foreign postal rules and the 6–32 character foreign phone rule bypass
 the callbacks. Country aliases, field bounds and message keys remain platform
 mechanics. Callbacks must be effect-free: no I/O, authorization or mutable-state
 reads; normalization may run more than once per parse. A callback throw refuses
