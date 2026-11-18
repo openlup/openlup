@@ -371,14 +371,18 @@ export function assertCatalogPublicationAuthorship(input: PublicationSourceInput
  * @experimental
  */
 export function compileCatalogPublication(input: CatalogPublicationCompileInput): { product: CatalogPublishedProduct; skus: CatalogPublishedSku[]; documents: CatalogPublicationDocument[]; activation: boolean; changed: boolean } {
-  const { validateAfterReadiness, ...effects } = compileCatalogPublicationEffects(input);
+  const compilation = compileCatalogPublicationEffects(input);
+  let step = compilation.next();
+  while (!step.done) step = compilation.next();
+  const { validatePriceReadiness, validateAfterReadiness, ...effects } = step.value;
+  validatePriceReadiness();
   validateAfterReadiness();
   return effects;
 }
 /** Compile ordered effects and defer the final eligibility check until readiness is known.
  * @experimental
  */
-export function compileCatalogPublicationEffects(input: CatalogPublicationCompileInput) {
+export function* compileCatalogPublicationEffects(input: CatalogPublicationCompileInput) {
   const canonicalPayload = canonicalCatalogDraftJson(input.payload);
   // Check the temporary numeric domain before strict positive-quantity decoding,
   // so zero, negative, fractional and overflow all have the same stable refusal.
@@ -521,11 +525,12 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
     } else if (operation.op === "set_derived_sku_facts") {
       const sku = knownSku(operation.skuCode);
       const original = originalById.get(sku.id);
-      assertDerivedSource(operation, original, authoredDocument.revisionNo);
+      assertDerivedSource(operation, original, authoredDocument?.revisionNo);
       need(knownProduct().document?.revisionNo === operation.documentRevisionNo, "catalog_publication_derived_source_mismatch");
       need(equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
       sku.facts = operation.facts;
     } else { const _exhaustive: never = operation; publicationRefuse("catalog_publication_operation_invalid"); }
+    yield { operation, product: knownProduct(), skus, documents };
   }
   const result = knownProduct();
   if (payload.product.documentRevision) need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
@@ -573,12 +578,6 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
     catalogPublicationIntegralGrams(sku.netContent, input.definition);
     need(equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), sku.facts),
       "catalog_publication_v3_compile_derived_facts_mismatch");
-    if (affected.priced(sku)) {
-      need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
-      assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, input.definition);
-      need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
-        && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
-    }
     const key = combination(sku.options);
     need(!identities.has(key), "duplicate_combination"); identities.add(key);
     publicationJson(catalogPublishedSkuSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
@@ -589,6 +588,14 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
     need(equal(result.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
   const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
   need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
+  function validatePriceReadiness() {
+    for (const sku of skus.values()) if (affected.priced(sku)) {
+      need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
+      assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, input.definition);
+      need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
+        && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
+    }
+  }
   function validateAfterReadiness() {
     if (payload.publication.operations.some(operation => operation.op === "set_product_status" && operation.status === "active")) {
       need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
@@ -607,5 +614,5 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
   }
   if (!changed && input.product) { result.source = input.product.source; result.content = input.product.content; }
   need(changed || payload.publication.kind === "compensation" && payload.publication.operations.length > 0, "catalog_publication_v3_compile_change_noop");
-  return { product: result, skus: sorted, documents, activation, changed, validateAfterReadiness };
+  return { product: result, skus: sorted, documents, activation, changed, validateAfterReadiness, validatePriceReadiness };
 }

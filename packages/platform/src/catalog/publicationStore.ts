@@ -434,12 +434,14 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(verdict.success, "catalog_publication_readiness_invalid", "dependency_unavailable");
     require(verdict.data?.ready === true, reason);
   }
-  async function checkReadiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[] }, payload: CatalogDraftPayloadV3) {
+  async function checkReadiness(db: PgQueryExecutor,
+    state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[]; validatePriceReadiness(): void }, payload: CatalogDraftPayloadV3) {
     const affected = catalogPublicationAffected(payload);
     const hasPresentation = payload.publication.operations.some(operation => operation.op === "set_product_presentation");
     const structural = state.skus.filter(sku => affected.structural(sku.code));
     const priced = state.skus.filter(affected.priced);
     for (const [skus, requirePrice] of [[structural, false], [priced, true]] as const) {
+      if (requirePrice) state.validatePriceReadiness();
       const reason = requirePrice ? "catalog_publication_v3_activation_readiness_failed" : "catalog_publication_v3_structural_readiness_failed";
       for (const sku of skus) {
         const rows = await tuple(db, "SELECT public.catalog_publication_sku_reasons($1::uuid,$2::boolean) AS reasons", [sku.id, requirePrice]);
@@ -560,7 +562,13 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(validation.valid && validation.readiness.publication.issues.every(issue =>
           issue.code === "primary_sku_missing" && current.product?.primarySkuId !== null && current.product !== null
           || issue.code === "sku_missing" && current.skus.length > 0), "candidate_invalid");
-        const compiled = compileCatalogPublicationEffects({ ...prepared, product: current.product, skus: current.skus, documents: current.documents, retainedSources, rules: deps.rules });
+        const compilation = compileCatalogPublicationEffects({ ...prepared, product: current.product, skus: current.skus, documents: current.documents, retainedSources, rules: deps.rules });
+        let step = compilation.next();
+        while (!step.done) {
+          await applyOperation(db, step.value, fingerprint, prepared.definition);
+          step = compilation.next();
+        }
+        const compiled = step.value;
         for (const change of command.changes) require(compiled.skus.some(sku => sku.id === change.variantId
           && (change.state === "withdrawn" ? sku.status === "archived" : sku.status === "active")), "catalog_publication_variant_state_mismatch");
         for (const sku of compiled.skus) {
@@ -571,7 +579,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const next = (current.head?.revision ?? 0) + 1;
         require(Number.isSafeInteger(next) && next <= 2_147_483_647, "catalog_publication_revision_limit");
         const publicationId = randomUUID();
-        await applyOperations(db, prepared.payload, compiled, current, fingerprint, prepared.definition);
+        await applyAuthoredProjection(db, compiled, current, prepared.definition);
         if (priceCommands.length) {
           for (const price of priceCommands) require(compiled.skus.some(sku => sku.id === price.variantId && sku.productId === command.productId), "catalog_price_parent_mismatch");
           // The sole atomic price write call. It uses this executor and cannot commit independently.
@@ -623,9 +631,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       });
     } catch (error) { return failure(error); }
   }
-  async function applyOperations(db: PgQueryExecutor, payload: CatalogDraftPayloadV3, state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[]; documents: CatalogPublicationDocument[] },
-    before: RetainedState, fingerprint: string, definition: NonNullable<ReturnType<typeof deps.registry.resolve>>) {
-    const product = state.product;
+  async function applyOperation(db: PgQueryExecutor, { operation, product, skus, documents }: {
+    operation: CatalogDraftPayloadV3["publication"]["operations"][number];
+    product: CatalogPublishedProduct; skus: ReadonlyMap<string, CatalogPublishedSku>; documents: readonly CatalogPublicationDocument[];
+  }, fingerprint: string, definition: NonNullable<ReturnType<typeof deps.registry.resolve>>) {
     async function pointer(documentId: string) {
       await db.query("INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint) VALUES(pg_current_xact_id(),$1,$2,$3)", [product.id, documentId, fingerprint]);
       const updated = await tuple(db, "UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1 AND current_document_revision_id IS DISTINCT FROM $2::uuid RETURNING id", [product.id, documentId]);
@@ -633,81 +642,84 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       const residue = await tuple(db, "SELECT 1 FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=pg_current_xact_id() LIMIT 1");
       require(residue.length === 0, "catalog_publication_pointer_capability_unconsumed");
     }
-    for (const operation of payload.publication.operations) {
-      if (operation.op === "create_product") {
-        const prefix = { ...product, status: "draft", primarySkuId: null, document: null, presentation: null };
-        await db.query(`INSERT INTO public.catalog_products(id,slug,name,status,type_key,type_version,variant_axes,attribute_values,publication_facts)
+    if (operation.op === "create_product") {
+      const prefix = { ...product, status: "draft", primarySkuId: null, document: null, presentation: null };
+      await db.query(`INSERT INTO public.catalog_products(id,slug,name,status,type_key,type_version,variant_axes,attribute_values,publication_facts)
           VALUES($1,$2,$3,'draft',$4,$5,$6::text[],$7::jsonb,$8::jsonb)`, [product.id, product.slug, operation.name, product.type.key, product.type.version,
-          product.axes, publicationJson(product.attributes), publicationJson(prefix)]);
-      } else if (operation.op === "register_document_revision") {
-        const document = state.documents.find(document => document.reference.id === operation.revisionId)!;
-        const values = [operation.revisionId, product.id, operation.revisionNo, document.reference.schemaId,
-          document.reference.documentRef, operation.canonicalText, document.reference.sourceRef, publicationJson(document.provenance), document.reference.digest];
-        await db.query(`INSERT INTO public.catalog_product_document_revisions
+        product.axes, publicationJson(product.attributes), publicationJson(prefix)]);
+    } else if (operation.op === "register_document_revision") {
+      const document = documents.find(document => document.reference.id === operation.revisionId)!;
+      const values = [operation.revisionId, product.id, operation.revisionNo, document.reference.schemaId,
+        document.reference.documentRef, operation.canonicalText, document.reference.sourceRef, publicationJson(document.provenance), document.reference.digest];
+      await db.query(`INSERT INTO public.catalog_product_document_revisions
           (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
           VALUES($1,$2,$3,$4,$5,$6::text::jsonb,$7,$8::jsonb,$9,$6) ON CONFLICT DO NOTHING`, values);
-        // An independent insert can win either identity key. Compare the actual immutable row after that race.
-        const saved = await tuple(db, `SELECT id=$1 AND product_id=$2 AND revision_no=$3 AND schema_id=$4 AND document_ref=$5
+      // An independent insert can win either identity key. Compare the actual immutable row after that race.
+      const saved = await tuple(db, `SELECT id=$1 AND product_id=$2 AND revision_no=$3 AND schema_id=$4 AND document_ref=$5
           AND canonical_text=$6 AND document_payload=$6::text::jsonb AND source_ref=$7 AND provenance=$8::jsonb AND digest=$9 AS matches
           FROM public.catalog_product_document_revisions WHERE id=$1 OR (product_id=$2 AND revision_no=$3)`, values);
-        require(saved.length === 1 && saved[0]?.matches === true, "catalog_publication_v3_compile_document_conflict", "conflict");
-      } else if (operation.op === "move_document_pointer") {
-        const document = state.documents.find(document => document.reference.revisionNo === operation.documentRevisionNo)!;
-        const current = observedRow(await tuple(db, "SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [product.id]));
-        require(current.current_document_revision_id === null || id.safeParse(current.current_document_revision_id).success, readInvalid, "dependency_unavailable");
-        if (current.current_document_revision_id !== document.reference.id) await pointer(document.reference.id);
-        await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{document}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(document.reference)]);
-      } else if (operation.op === "create_sku") {
-        const sku = state.skus.find(sku => sku.id === operation.skuId)!;
-        const prefix = { ...sku, status: "draft", sellableStandalone: false, sellableInSubscription: false,
-          identifiers: [], memberships: [], logisticsRef: null, facts: operation.facts };
-        await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,min_order_qty,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g,publication_facts)
+      require(saved.length === 1 && saved[0]?.matches === true, "catalog_publication_v3_compile_document_conflict", "conflict");
+    } else if (operation.op === "move_document_pointer") {
+      const document = documents.find(document => document.reference.revisionNo === operation.documentRevisionNo)!;
+      const current = observedRow(await tuple(db, "SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [product.id]));
+      require(current.current_document_revision_id === null || id.safeParse(current.current_document_revision_id).success, readInvalid, "dependency_unavailable");
+      if (current.current_document_revision_id !== document.reference.id) await pointer(document.reference.id);
+      await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{document}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(document.reference)]);
+    } else if (operation.op === "create_sku") {
+      const sku = skus.get(operation.skuCode)!;
+      const prefix = { ...sku, status: "draft", sellableStandalone: false, sellableInSubscription: false,
+        identifiers: [], memberships: [], logisticsRef: null, facts: operation.facts };
+      await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,min_order_qty,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g,publication_facts)
           VALUES($1,$2,$3,$4,'draft',$5,$6,false,false,$7::integer,$8::jsonb)`, [sku.id, product.id, sku.code, sku.title, sku.minQuantity, sku.isAddon,
-          catalogPublicationIntegralGrams(sku.netContent, definition), publicationJson(prefix, CATALOG_PUBLICATION_LIMITS.skuBytes)]);
-      } else if (operation.op === "create_identifier") {
-        const sku = state.skus.find(sku => sku.code === operation.skuCode)!;
-        const gtin = operation.scheme === "gs1:gtin";
-        const normalized = gtin ? operation.value.padStart(14, "0") : operation.value;
-        if (gtin) {
-          // The publication guard is held. Compare with legacy GTINs as well as
-          // identifiers created by publication, regardless of their issuer.
-          const existing = await tuple(db, `SELECT 1 FROM public.catalog_sku_identifiers
+        catalogPublicationIntegralGrams(sku.netContent, definition), publicationJson(prefix, CATALOG_PUBLICATION_LIMITS.skuBytes)]);
+    } else if (operation.op === "create_identifier") {
+      const sku = skus.get(operation.skuCode)!;
+      const gtin = operation.scheme === "gs1:gtin";
+      const normalized = gtin ? operation.value.padStart(14, "0") : operation.value;
+      if (gtin) {
+        // The publication guard is held. Compare with legacy GTINs as well as
+        // identifiers created by publication, regardless of their issuer.
+        const existing = await tuple(db, `SELECT 1 FROM public.catalog_sku_identifiers
             WHERE identifier_kind='gtin' AND ltrim(normalized_value,'0')=ltrim($1,'0') LIMIT 1`, [normalized]);
-          require(existing.length === 0, "catalog_publication_identity_conflict", "conflict");
-        }
-        await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme,original_value,display_label,source_ref)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [sku.id, operation.issuer, gtin ? "gtin" : "other",
-          normalized, operation.packagingLevel === "case" ? "collective" : "unit",
-          operation.quantity, operation.isPrimary, operation.scheme, operation.value, operation.label, operation.sourceRef]);
-        const { op: _op, skuCode: _skuCode, ...identifier } = operation;
-        await db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{identifiers}',
-          publication_facts->'identifiers' || $2::jsonb) WHERE id=$1`, [sku.id, publicationJson([identifier])]);
-      } else if (operation.op === "set_primary_sku") {
-        const sku = state.skus.find(sku => sku.code === operation.skuCode)!;
-        await db.query("UPDATE public.catalog_products SET primary_sku_id=$2::uuid,publication_facts=jsonb_set(publication_facts,'{primarySkuId}',to_jsonb($2::text)) WHERE id=$1", [product.id, sku.id]);
-      } else if (operation.op === "set_product_status") await db.query("UPDATE public.catalog_products SET status=$2,updated_at=transaction_timestamp(),publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE id=$1", [product.id, operation.status]);
-      else if (operation.op === "set_product_presentation") {
-        if (operation.presentation !== null) {
-          require(deps.presentationReadiness, "catalog_publication_presentation_unavailable", "dependency_unavailable");
-          checkReadinessVerdict(await deps.presentationReadiness!(db, product.id, operation.presentation), "catalog_publication_v3_structural_readiness_failed");
-        }
-        await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{presentation}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(operation.presentation)]);
+        require(existing.length === 0, "catalog_publication_identity_conflict", "conflict");
       }
-      else if (operation.op === "set_sku_status") await db.query(`UPDATE public.catalog_skus SET status=$2,updated_at=transaction_timestamp(),
+      await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme,original_value,display_label,source_ref)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [sku.id, operation.issuer, gtin ? "gtin" : "other",
+        normalized, operation.packagingLevel === "case" ? "collective" : "unit",
+        operation.quantity, operation.isPrimary, operation.scheme, operation.value, operation.label, operation.sourceRef]);
+      const { op: _op, skuCode: _skuCode, ...identifier } = operation;
+      await db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{identifiers}',
+          publication_facts->'identifiers' || $2::jsonb) WHERE id=$1`, [sku.id, publicationJson([identifier])]);
+    } else if (operation.op === "set_primary_sku") {
+      const sku = skus.get(operation.skuCode)!;
+      await db.query("UPDATE public.catalog_products SET primary_sku_id=$2::uuid,publication_facts=jsonb_set(publication_facts,'{primarySkuId}',to_jsonb($2::text)) WHERE id=$1", [product.id, sku.id]);
+    } else if (operation.op === "set_product_status") await db.query("UPDATE public.catalog_products SET status=$2,updated_at=transaction_timestamp(),publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE id=$1", [product.id, operation.status]);
+    else if (operation.op === "set_product_presentation") {
+      if (operation.presentation !== null) {
+        require(deps.presentationReadiness, "catalog_publication_presentation_unavailable", "dependency_unavailable");
+        checkReadinessVerdict(await deps.presentationReadiness!(db, product.id, operation.presentation), "catalog_publication_v3_structural_readiness_failed");
+      }
+      await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{presentation}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(operation.presentation)]);
+    }
+    else if (operation.op === "set_sku_status") await db.query(`UPDATE public.catalog_skus SET status=$2,updated_at=transaction_timestamp(),
         publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE product_id=$1 AND sku=$3`, [product.id, operation.status, operation.skuCode]);
-      else if (operation.op === "set_eligibility") await db.query(`UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3,updated_at=transaction_timestamp(),
+    else if (operation.op === "set_eligibility") await db.query(`UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3,updated_at=transaction_timestamp(),
         publication_facts=jsonb_set(jsonb_set(publication_facts,'{sellableStandalone}',to_jsonb($2::boolean)),'{sellableInSubscription}',to_jsonb($3::boolean))
         WHERE product_id=$1 AND sku=$4`, [product.id, operation.sellableStandalone, operation.sellableInSubscription, operation.skuCode]);
-      else if (operation.op === "set_sku_metadata") await db.query(`UPDATE public.catalog_skus SET
+    else if (operation.op === "set_sku_metadata") await db.query(`UPDATE public.catalog_skus SET
         publication_facts=jsonb_set(publication_facts,'{logisticsRef}',$2::jsonb) WHERE product_id=$1 AND sku=$3`, [product.id, publicationJson(operation.logisticsRef), operation.skuCode]);
-      else if (operation.op === "set_derived_sku_facts") await db.query(`UPDATE public.catalog_skus SET
+    else if (operation.op === "set_derived_sku_facts") await db.query(`UPDATE public.catalog_skus SET
         publication_facts=jsonb_set(publication_facts,'{facts}',$2::jsonb),updated_at=transaction_timestamp() WHERE product_id=$1 AND sku=$3`, [product.id, publicationJson(operation.facts), operation.skuCode]);
-      else if (operation.op === "set_offer_membership") await db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}',
+    else if (operation.op === "set_offer_membership") await db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}',
         (SELECT jsonb_agg(member ORDER BY member->>'offerVersion' COLLATE "C") FROM
           (SELECT member FROM jsonb_array_elements(publication_facts->'memberships') AS member WHERE member->>'offerVersion'<>$2
             UNION ALL SELECT $3::jsonb) AS members)) WHERE product_id=$1 AND sku=$4`,
-      [product.id, operation.offerVersion, publicationJson({ offerVersion: operation.offerVersion, admitted: operation.admitted }), operation.skuCode]);
-    }
+    [product.id, operation.offerVersion, publicationJson({ offerVersion: operation.offerVersion, admitted: operation.admitted }), operation.skuCode]);
+  }
+  async function applyAuthoredProjection(db: PgQueryExecutor,
+    state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[] }, before: RetainedState,
+    definition: NonNullable<ReturnType<typeof deps.registry.resolve>>) {
+    const product = state.product;
     if (before.product) {
       const fields = ["source", "content", "attributes", "axes"] as const;
       const patch = Object.fromEntries(fields.filter(name => !equal(before.product![name], product[name])).map(name => [name, product[name]]));

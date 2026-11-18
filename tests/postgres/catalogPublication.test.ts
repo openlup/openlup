@@ -3200,6 +3200,8 @@ it.each([
   ["create", "en", true],
   ["revise", "pl", true],
   ["compensation", "en", true],
+  ["revise then archive", "pl", false],
+  ["compensation then archive", "en", false],
   ["preview", "pl", false],
 ] as const)("route ownership is checked before later publication work for %s/%s: child price %s", async (kind, locale, price) => inPriceDatabase(async () => {
   const other = await draft(), otherPayload = structuredClone(other.payload), path = `/occupied-${other.productId}`;
@@ -3208,7 +3210,7 @@ it.each([
   if (presentation.op === "set_product_presentation") presentation.presentation = otherPayload.product.sharedContent.presentation;
   await commit(await save(otherPayload, other.draftId, 1));
   const data = await priceDraft(false), payload = structuredClone(data.payload);
-  const existing = kind === "revise" || kind === "compensation", initial = existing ? await commit(data.publication) : null;
+  const existing = kind.startsWith("revise") || kind.startsWith("compensation"), initial = existing ? await commit(data.publication) : null;
   const content = payload.product.sharedContent;
   content.presentation = { routePath: { [locale]: path } };
   if (existing) {
@@ -3218,7 +3220,10 @@ it.each([
     const op = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
     if (op.op === "set_product_presentation") op.presentation = content.presentation;
   }
-  if (kind === "compensation") payload.publication.kind = "compensation";
+  if (kind.startsWith("compensation")) payload.publication.kind = "compensation";
+  if (kind.endsWith("then archive")) payload.publication.operations.push({
+    op: "set_sku_status", skuCode: payload.skus[0].code!, status: "archived",
+  });
   if (price) {
     const operation = payload.skus[0].priceOperations![0];
     operation.commandKey = `stale:${data.skuId}`;
@@ -4056,6 +4061,26 @@ it.each([
   expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason });
   expect(await snapshot()).toEqual(before);
 });
+
+it.each(["membership", "logistics"] as const)("publication structural readiness precedes priced %s", async missing => inPriceDatabase(async () => {
+  const data = await priceDraft(), payload = structuredClone(data.payload);
+  if (missing === "membership") {
+    payload.product.sharedContent.offerMemberships[0].admitted = false;
+    payload.publication.operations = payload.publication.operations.filter(operation => operation.op !== "set_offer_membership");
+  } else {
+    delete payload.skus[0].logisticsRef;
+    payload.publication.operations = payload.publication.operations.filter(operation => operation.op !== "set_sku_metadata");
+  }
+  const command = await save(payload, data.draftId, 2, data.publication.expectedHead);
+  const target = createPostgresCatalogPublication({ ...dependencies(),
+    readiness: async (_db, _state, priced) => { expect(priced).toBe(false); return { ready: false, reasons: ["fixture_structural_block"] }; },
+  });
+  const capability = (await target.authorize(null))!;
+  await approve(command, target, capability);
+  const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+  expect(await snapshot()).toEqual(before);
+}));
 
 it.each(["product", "SKU"] as const)("publication stores only effects reached in the %s creation prefix", async mode => {
   const data = await draft(), payload = structuredClone(data.payload);
