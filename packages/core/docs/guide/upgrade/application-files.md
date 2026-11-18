@@ -97,7 +97,9 @@ The published-set qualification also exercises the neutral starter from the
 previous complete published set through the target release's public upgrade
 CLI. Managed snapshots come from each starter's ownership inventory. The check
 first follows the applicable starter migration in the
-[per-release notes](README.md#per-release-notes). This includes the
+[per-release notes](README.md#per-release-notes); before release preparation
+publishes it there, a pending migration is in the source repository's
+unreleased Core change notes. This includes the
 [0.43.0 transition](v1-0-0.md#starter-applications-from-0430) and the migration
 from 1.1.0 to its successor. The notes identify pristine owned files that take
 the target extraction's bytes and any owned paths created via target-only

@@ -170,8 +170,10 @@ Omitting the new file prevents module loading with `ERR_MODULE_NOT_FOUND`.
 
 Import the owned `market` registry into `owned/store.config.ts` and
 spread it into every `market` object, preserving local country, currency and
-timezone. In `owned/renewal.config.ts`, use `market.defaultLocale` for
-`notices.locale`. Startup refuses unsupported notice locales or country keys
+timezone. The target `owned/renewal.config.ts` sets `notices.locale` to
+`market.defaultLocale`. A pristine file takes that change; a customized notice
+locale may stay when it is in `market.locales`, otherwise notices fall back to
+`market.defaultLocale`. Startup refuses unsupported notice locales or country keys
 other than two uppercase letters with `starter_renewal_configuration_invalid`.
 A country mapping to a platform-supported locale outside `market.locales`
 passes startup validation. Notice delivery falls back to `market.defaultLocale`.
@@ -218,7 +220,9 @@ Normalization can run more than once per parse. Keep the callbacks deterministic
 and effect-free, without I/O, authorization checks or reads of mutable state.
 The platform trims and collapses input whitespace and uppercases postal input
 before normalization. Postal input and output are bounded to 24 characters and
-phone input and local output to 64. Return `null` to refuse a supplied phone.
+phone input and local output to 64. Postal normalization must return a
+nonempty string and `isValidPostalCode` must return literal `true` to accept;
+any other result refuses the field. Return `null` to refuse a supplied phone.
 A callback throw refuses the affected field with its configured policy message.
 
 #### Managed tests that pin demonstration values
@@ -227,6 +231,8 @@ A callback throw refuses the affected field with its configured policy message.
 `test/renewal.test.ts` expects the demonstration account action lists, allowed
 pause presets and both pause defaults. `test/address-outcomes.test.ts` matches
 the demonstration wording for a change that applies from the next parcel.
+`test/acquisition-quote.test.ts` requires each quote refusal translation to
+exceed 20 characters, although startup accepts any nonblank translation.
 `browser/acquisition.spec.ts` also uses the demonstration saved-address formats,
 account actions and pause defaults. The browser specs (`browser/*.spec.ts`,
 including `editor-components.spec.ts`, `e4.spec.ts`, `journey.spec.ts` and
