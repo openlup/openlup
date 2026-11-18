@@ -55,6 +55,7 @@ beforeAll(async () => {
     await db.query(readFileSync(unit.file, "utf8"));
   }
   await db.query(readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8"));
+  await db.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
   await db.query(readFileSync("db/platform/migrations/20261123170000_catalog_publication_reads.sql", "utf8"));
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
@@ -3200,6 +3201,8 @@ describe("governed publication reads", () => {
     await commit((await draft()).publication);
     expect(await authority.membershipPage({ ...query, cursor: page.nextCursor }))
       .toEqual({ outcome: "conflict", reason: "catalog_publication_head_moved" });
+    await expect(db.query(pageSql, [offerVersion, firstId, 1, null, page.headDigest]))
+      .rejects.toMatchObject({ code: "40001", message: "catalog_publication_head_moved" });
     expect(await authority.activationReadiness([first.code], page.headDigest))
       .toEqual({ outcome: "conflict", reason: "catalog_publication_head_moved" });
   });
@@ -3229,15 +3232,23 @@ describe("governed publication reads", () => {
   });
 
   it.each([
-    ["LC6-D-094.revision", "UPDATE public.catalog_sku_revisions SET digest=repeat('0',64) WHERE sku_id=$1"],
     ["LC6-D-094.identity", "UPDATE public.catalog_skus SET sku='CHANGED' WHERE id=$1"],
     ["LC6-D-094.mode", "UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1"],
     ["LC6-D-094.measure", "UPDATE public.catalog_skus SET net_weight_g=101 WHERE id=$1"],
     ["LC6-D-094.document", "UPDATE public.catalog_products SET current_document_revision_id=NULL WHERE primary_sku_id=$1"],
   ])("%s", async (rule, change) => isolated(async connection => {
-    if (rule === "LC6-D-094.revision") await connection.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
     if (rule === "LC6-D-094.document") await connection.query("ALTER TABLE public.catalog_products DISABLE TRIGGER catalog_products_publication_pointer_fence");
     await connection.query(change, [firstId]);
+    expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
+  }));
+
+  it("LC6-D-094.revision", async () => isolated(async connection => {
+    await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+    await connection.query(`WITH changed AS (
+      SELECT id,jsonb_set(canonical_state::jsonb,'{skus,0,digest}',to_jsonb(repeat('0',64)))::text AS state
+      FROM public.catalog_publications WHERE id=$1
+    ) UPDATE public.catalog_publications p SET canonical_state=changed.state,digest=encode(sha256(convert_to(changed.state,'UTF8')),'hex')
+      FROM changed WHERE p.id=changed.id`, [first.receipt.head.publicationId]);
     expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
   }));
 
