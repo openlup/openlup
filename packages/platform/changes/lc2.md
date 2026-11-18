@@ -30,9 +30,10 @@ A decision reason may be null. A supplied reason preserves whitespace, requires
 text beyond ASCII spaces, and accepts up to 1,000 UTF-8 bytes. History,
 replay and recovery verify the kinded receipt against its immutable publication
 or decision. A ledger row with an inconsistent or missing companion fails closed.
-Reads verify the publication predecessor and the immutable SKU roster, including
-items outside the requested page. Receipt changes must match the SKU versions
-issued by that publication. A media evidence change requires its SKU in the
+The predecessor foreign key binds the immediate revision even in a bulk insert.
+Reads verify the predecessor and the immutable SKU roster, including items
+outside the requested page. Receipt changes must match the SKU versions issued
+by that publication. A media evidence change requires its SKU in the
 current authored revision. Publication verifies that revision's claim against
 the applied presentation and SKU assets.
 

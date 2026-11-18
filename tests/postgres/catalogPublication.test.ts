@@ -172,6 +172,11 @@ async function snapshot(executor: PgQueryExecutor = db) {
     "catalog_publication_pointer_capabilities", "outbox_events", "subscriptions", "subscription_lines", "commerce_orders", "commerce_order_items", "price_entries", "catalog_price_setup_receipts"];
   return Object.fromEntries(await Promise.all(tables.map(async table => [table, (await executor.query(`SELECT coalesce(jsonb_agg(value ORDER BY value::text),'[]') AS rows FROM (SELECT to_jsonb(t) AS value FROM public.${table} t) rows`)).rows[0].rows])));
 }
+function insertStoredFixture(executor: PgQueryExecutor, table: string, row: Record<string, unknown>) {
+  const columns = Object.keys(row).filter(column => table !== "catalog_publications" || column !== "previous_revision").join(",");
+  return executor.query(`INSERT INTO public.${table} (${columns}) SELECT ${columns}
+    FROM jsonb_populate_record(NULL::public.${table},$1::jsonb)`, [JSON.stringify(row)]);
+}
 it("catalog_readback_returns_exact_historical_head", async () => {
   const data = await draft(), first = await commit(data.publication), retained = await authority.readbackV2(first.head);
   await commit(await revise(data, first.head));
@@ -784,7 +789,7 @@ it.each([
       const rows = (await client.query(`SELECT to_jsonb(t) AS row FROM public.${table} t WHERE ${condition} LIMIT 1`, [value])).rows;
       expect(rows).toHaveLength(1); records.set(table, rows[0].row);
       await client.query("SAVEPOINT duplicate_record");
-      await expect(client.query(`INSERT INTO public.${table} SELECT * FROM jsonb_populate_record(NULL::public.${table},$1::jsonb)`, [JSON.stringify(rows[0].row)])).rejects.toMatchObject({ code: "23505" });
+      await expect(insertStoredFixture(client, table, rows[0].row)).rejects.toMatchObject({ code: "23505" });
       await client.query("ROLLBACK TO SAVEPOINT duplicate_record");
     }
     const cases: [string, Record<string, unknown>, string][] = [
@@ -814,7 +819,7 @@ it.each([
     ];
     for (const [table, patch, code] of cases) {
       await client.query("SAVEPOINT invalid_record");
-      await expect(client.query(`INSERT INTO public.${table} SELECT * FROM jsonb_populate_record(NULL::public.${table},$1::jsonb)`, [JSON.stringify({ ...records.get(table), ...patch })])).rejects.toMatchObject({ code });
+      await expect(insertStoredFixture(client, table, { ...records.get(table), ...patch })).rejects.toMatchObject({ code });
       await client.query("ROLLBACK TO SAVEPOINT invalid_record");
     }
     const receipt = records.get("catalog_operator_receipts")!;
@@ -848,7 +853,7 @@ it.each([
     ];
     for (const [table, patch] of foreignCases) {
       await client.query("SAVEPOINT foreign_record");
-      await expect(client.query(`INSERT INTO public.${table} SELECT * FROM jsonb_populate_record(NULL::public.${table},$1::jsonb)`, [JSON.stringify({ ...records.get(table), ...patch })])).rejects.toMatchObject({ code: "23503" });
+      await expect(insertStoredFixture(client, table, { ...records.get(table), ...patch })).rejects.toMatchObject({ code: "23503" });
       await client.query("ROLLBACK TO SAVEPOINT foreign_record");
     }
     for (const table of ["catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions", "catalog_product_document_revisions", "catalog_draft_revisions"]) {
@@ -3384,7 +3389,7 @@ it.each(["zero revision", "max revision", "zero draft revision", "max absent dra
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    const insert = client.query("INSERT INTO public.catalog_publications SELECT (jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb)).*", [JSON.stringify(row)]);
+    const insert = insertStoredFixture(client, "catalog_publications", row);
     if (rejection) await expect(insert).rejects.toMatchObject(rejection); else expect((await insert).rowCount).toBe(1);
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
