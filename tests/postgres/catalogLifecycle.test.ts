@@ -593,7 +593,29 @@ it.each([
   expect(await archive(f)).toMatchObject({ reason: expected.outcome === "unknown" ? "catalog_obligation_evidence_unknown" : "catalog_archive_refuses_outstanding_obligations" });
 });
 
+async function seedInvalidRetainedSku(reference: CatalogAcceptedReferenceV2): Promise<CatalogAcceptedReferenceV2> {
+  const prior = (await db.query("SELECT * FROM public.catalog_publications WHERE id=$1", [reference.publicationHead.publicationId])).rows[0];
+  const stored = (await db.query("SELECT full_facts FROM public.catalog_sku_revisions WHERE id=$1", [reference.skuRevisionId])).rows[0];
+  const publicationId = randomUUID(), skuRevisionId = randomUUID(), revision = prior.revision + 1;
+  const badFacts = canonicalCatalogDraftJson({ ...JSON.parse(stored.full_facts), schemaVersion: 99 });
+  const skuDigest = createHash("sha256").update(badFacts).digest("hex");
+  const manifest = JSON.parse(prior.canonical_state);
+  manifest.skus = manifest.skus.map((entry: { skuId: string }) => entry.skuId === reference.skuId
+    ? { skuId: entry.skuId, revisionId: skuRevisionId, revision, digest: skuDigest } : entry);
+  const canonical = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(canonical).digest("hex");
+  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+    SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
+    FROM public.catalog_publications WHERE id=$5`, [publicationId,`synthetic:stored:${publicationId}`,canonical,digest,prior.id]);
+  // Inject a coherent digest and manifest around one unsupported retained record.
+  await db.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_record_admit");
+  await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,$4,$5,$6,$7)",
+    [skuRevisionId,reference.skuId,prior.product_id,revision,publicationId,badFacts,skuDigest]);
+  await db.query("ALTER TABLE public.catalog_sku_revisions ENABLE TRIGGER catalog_sku_revisions_record_admit");
+  return { ...reference, skuRevisionId, publicationHead: { ...reference.publicationHead, publicationId, revision } };
+}
+
 it.each([
+  ["LC5-D-017", "unsupported retained version", "catalog_accepted_reference_mismatch"],
   ["LC5-A-026", "extra nested key", "catalog_accepted_reference_invalid"],
   ["LC5-A-026", "bad UUID", "catalog_accepted_reference_invalid"],
   ["LC5-A-026", "wrong quantity scalar", "catalog_accepted_reference_invalid"],
@@ -602,7 +624,8 @@ it.each([
 ] as const)("accepted tuple %s refuses %s at SQL ingress", async (_rule, defect, message) => {
   const f = await seed({ policy: "example:policy@1" }), standing = await standingActive(f);
   const { demandPolicyRef: _policy, ...legacy } = standing.accepted;
-  const reference = defect === "omitted policy" ? legacy : {
+  const reference = defect === "unsupported retained version" ? await seedInvalidRetainedSku(standing.accepted)
+    : defect === "omitted policy" ? legacy : {
     ...standing.accepted,
     ...(defect === "extra nested key" ? { publicationHead: { ...standing.head, extra: true } } : {}),
     ...(defect === "bad UUID" ? { skuRevisionId: "malformed" } : {}),
