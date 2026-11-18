@@ -3979,7 +3979,7 @@ it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplic
         expect(recordedChanges.map(change => change.variantRevision).sort()).toEqual([1, 2]);
         await writeReceipt({ ...first, publicationDigest, changes: recordedChanges });
       } else {
-        const receipt = { ...first, changes: mode === "wrong observation status" ? [{ ...first.changes[0], state: "active" }]
+        const receipt: typeof first = { ...first, changes: mode === "wrong observation status" ? [{ ...first.changes[0], state: "active" }]
           : [...first.changes, first.changes[0]] };
         await writeReceipt(receipt);
       }
