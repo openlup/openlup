@@ -291,7 +291,9 @@ determines the publishable set. Source snapshots are separate. The sequence is:
    ancestry, contexts, a byte-identical fresh source snapshot at the exact Git
    target, the set version of every publishable package and, for a
    patch set, each unchanged API snapshot. It cold-packs every package through
-   the shared inventory-based prerequisite route and scans every tarball, then
+   the shared inventory-based prerequisite route. Before release planning, a set
+   dispatch runs the adjacent starter upgrade against the retained, manifest-verified
+   local tarballs, then scans every tarball and
    decides each package by its tag, release and npm state, before protected
    `release` approval; dispatch itself is not approval. The release gate that
    decides ancestry, contexts and the tag's commit runs as it is at the dispatched

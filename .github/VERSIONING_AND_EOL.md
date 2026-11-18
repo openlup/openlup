@@ -849,7 +849,10 @@ A release takes three steps:
    annotated tag with the release App's tagger line and the release message, so a
    lightweight or hand-made tag is ignored, but a tagger line proves nothing on
    its own. It then packs every publishable package with
-   `npm run packages:check -- --cold --out <dir> --release-set <version>` and scans
+   `npm run packages:check -- --cold --out <dir> --release-set <version>`.
+   Before release planning, it runs the [adjacent starter upgrade proof](../docs/platform/DISTRIBUTION_EVIDENCE.md#interrupted-adjacent-set-starter-upgrade)
+   from the previous published set to the retained digest-verified candidate
+   packs; failure stops the dispatch before tags or npm publication. It scans
    the unpacked tarballs with checksum-verified gitleaks 8.30.1. Cold preparation
    removes only untracked generated `dist` output in inventory packages before
    each selected pack; tracked output, symlinks and unsupported output layouts

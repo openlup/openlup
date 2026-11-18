@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, chmodSync, existsSync, realpathSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
@@ -10,7 +11,7 @@ import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, mig
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
 function fixture() {
-  const directory = mkdtempSync(join(tmpdir(), "upgrade-pair-unit-")); directories.push(directory);
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "upgrade-pair-unit-"))); directories.push(directory);
   const write = (path: string, content: unknown) => { mkdirSync(dirname(join(directory, path)), { recursive: true }); writeFileSync(join(directory, path), typeof content === "string" ? content : JSON.stringify(content)); };
   write("ownership.json", { managed: ["z.ts", "generated.json", "package.json"], owned: ["owned.ts"], generated: ["generated.json"] });
   write("z.ts", "previous bytes"); write("owned.ts", "local bytes");
@@ -101,3 +102,44 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(readFileSync(join(app, "owned.ts"), "utf8")).toBe("local bytes");
   expect(to.files).toEqual(from.files);
 });
+
+it.each([false, true])("runs retained unpublished candidates and detects a newly required owned file: %s", missing => {
+  const { directory, write } = fixture(), source = join(directory, "source"), packs = join(directory, "packs"), version = "999999.0.0";
+  const run = (command: string, args: string[], cwd = source) => execFileSync(command, args, { cwd, encoding: "utf8", stdio: "pipe" });
+  cpSync(resolve("scripts"), join(source, "scripts"), { recursive: true }); mkdirSync(packs); write("source/package.json", { type: "module" }); write("source/config/ci-images.json", readFileSync(resolve("config/ci-images.json"), "utf8"));
+  write("source/examples/neutral-store/extract.mjs", readFileSync(resolve("examples/neutral-store/extract.mjs"), "utf8"));
+  const names = ["core", "outbox", "platform"], dependencies = Object.fromEntries(names.map(name => ["@openlup/" + name, version]));
+  write("source/config/openlup-packages.json", { schemaVersion: 2, packages: names.map(name => ({ name: "@openlup/" + name, directory: "packages/" + name, publish: true })), unreleased: [] });
+  const packages = names.map(name => {
+    const path = join(directory, "package-" + name); cpSync(resolve("packages", name), path, { recursive: true, filter: path => !path.split("/").includes("node_modules") });
+    const metadata = JSON.parse(readFileSync(join(path, "package.json"), "utf8")); metadata.version = version;
+    for (const section of ["dependencies", "peerDependencies"]) for (const key of Object.keys(metadata[section] ?? {})) if (key.startsWith("@openlup/")) metadata[section][key] = version;
+    writeFileSync(join(path, "package.json"), JSON.stringify(metadata)); write("source/packages/" + name + "/package.json", metadata);
+    const [pack] = JSON.parse(run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packs], path)), bytes = readFileSync(join(packs, pack.filename));
+    return { name: metadata.name, version, filename: pack.filename, integrity: pack.integrity, sha256: createHash("sha256").update(bytes).digest("hex") };
+  });
+  const required = missing ? "new.mjs" : "fragments.ts", starter = "source/examples/neutral-store/";
+  const files = { "owned/store.config.ts": "export default '#3d6657';", "owned/fragments.ts": "export default 'offer-intro';", "owned/new.mjs": "export default true;", "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`, "browser/dev-loop.proof.ts": "import 'node:assert/strict';", ".gitignore": "node_modules/\npackage-lock.json\n" };
+  for (const [path, bytes] of Object.entries(files)) write(starter + path, bytes);
+  const ownership = { owned: Object.keys(files).filter(path => path.startsWith("owned/")), managed: ["ownership.json", "package.json", ...Object.keys(files).filter(path => !path.startsWith("owned/"))], generated: [], sourceOnly: [] };
+  write(starter + "ownership.json", ownership); write(starter + "starter-release.json", {});
+  write(starter + "package.json", { name: "candidate-fixture", version: "0.0.0", private: true, type: "module", dependencies, scripts: { test: "node --experimental-strip-types --test test/candidate.test.mjs", typecheck: `node --check owned/${required}`, build: "node --version" } });
+  run("git", ["init", "--initial-branch=main"]); run("git", ["add", "."]);
+  run("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@localhost", "-c", "commit.gpgsign=false", "commit", "-m", "Candidate fixture"]);
+  run("git", ["remote", "add", "origin", "https://github.com/openlup/openlup.git"]);
+  const commit = run("git", ["rev-parse", "HEAD"]).trim(), manifest = join(packs, "packages-manifest.json"), receipt = join(directory, "receipt.json");
+  writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit, packages }));
+  write("deny.mjs", `import http from 'node:http'; import https from 'node:https'; import {existsSync,readFileSync,appendFileSync} from 'node:fs'; const p=existsSync('package.json')?JSON.parse(readFileSync('package.json')):{}; if (Object.values(p.dependencies??{}).some(v=>String(v).includes('${version}'))) for (const m of [http,https]) {const request=m.request; m.request=(...args)=>{const url=String(args[0]?.href??args[0]?.path??args[0]); if(decodeURIComponent(url).includes('@openlup/')) {appendFileSync(${JSON.stringify(join(directory, "denied"))},url); throw Error('candidate registry request denied');} return request.apply(m,args);};}`);
+  write("bin/npm", `#!/bin/sh\nexec "${process.execPath}" --import "${join(directory, "deny.mjs")}" "${resolve(dirname(process.execPath), "../lib/node_modules/npm/bin/npm-cli.js")}" "$@"\n`); chmodSync(join(directory, "bin/npm"), 0o755);
+  const result = spawnSync(process.execPath, [join(source, "scripts/packages/exact-set-qualification.mjs"), "openlup-core-v" + version, commit, receipt, "--candidate", manifest], { cwd: source, env: { ...env, PATH: join(directory, "bin") + ":" + env.PATH }, encoding: "utf8", timeout: 180_000 });
+  expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
+  expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
+  expect(evidence.upgrade.phases).toHaveLength(missing ? 7 : 8); expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
+  if (!missing) for (const mode of ["candidate", "released"]) {
+    const path = receipt + ".applications/1/input/package-lock.json", lock = JSON.parse(readFileSync(path, "utf8")); cpSync(join(packs, packages[0]!.filename), join(directory, "foreign.tgz"));
+    lock.packages["node_modules/@openlup/core"].resolved = "file:" + (mode === "candidate" ? join(directory, "foreign.tgz") : join(packs, packages[0]!.filename)); writeFileSync(path, JSON.stringify(lock));
+    const refused = spawnSync(process.execPath, [resolve("examples/neutral-store/extract.mjs"), join(directory, mode), "--source", receipt + ".applications/1/source/examples/neutral-store", "--mode", mode, "--set-version", version, "--source-revision", commit, "--manifest", manifest, "--lockfile", path], { encoding: "utf8" });
+    expect(refused.status).toBe(1); expect(refused.stderr).toContain("starter_release_lock_non_registry: @openlup/core");
+  }
+  if (missing) expect(evidence.upgrade.checks.at(-1)).toMatchObject({ command: ["npm", "test"], result: "FAIL" });
+}, 180_000);
