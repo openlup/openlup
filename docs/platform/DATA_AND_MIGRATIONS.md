@@ -3295,14 +3295,17 @@ its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
 refusal recovery. Uncaptured refusals rotate on the existing renewal operation
 `updated_at` selection stamp, so recovery failures before case creation cannot
 keep occupying a bounded page. Captured waits retain their case selection stamp.
-The seam subtracts hard commitments and fixed 14-day active
-subscription demand from new-purchase availability. Native safety and channel
-exposure remain zero. This is no advance reservation lifecycle or one-time
+The seam subtracts hard commitments and active subscription demand through the
+native horizon installed via `inventory_renewal_protection` (default 14 days)
+from new-purchase availability. The managed ATP contract remains fixed at 14 days.
+Native safety and channel exposure remain zero. This is no advance reservation
+lifecycle or one-time
 checkout write contract. The allocator alone uses the renewal exemption.
 
 For a separate native runtime role, the host must explicitly grant `EXECUTE` on
 `public.inventory_available_to_promise(text,text,timestamptz,boolean)` and its
-helper `public.inventory_channel_exposure_quantity(text,text)`, including for
+helpers `public.inventory_channel_exposure_quantity(text,text)` and
+`public.inventory_renewal_protection_days()`, including for
 roles that reserve renewals or call N3 deficits/admission/refusal recovery.
 New-purchase readers additionally need `EXECUTE` on
 `public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)`.
@@ -3312,8 +3315,23 @@ Alongside the caller's existing relation privileges, ATP requires `SELECT` on
 `subscription_renewal_terms`, `subscription_renewal_term_lines`,
 `subscription_renewal_operations` and `subscription_cycles` in `public`;
 new-purchase reads also require `SELECT` on `public.catalog_skus`.
-These invoker helpers have no shipped runtime grant. The allocator retains its
-existing ACL, and neither X nor Y calls ATP; their existing grants still apply.
+When upgrading a custom runtime role from the earlier grant list, apply exactly
+one additional grant after the policy migration and before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Without it ATP fails with SQLSTATE `42501`, even when the policy is absent;
+permission failure never falls back to 14 days. The policy helper is
+`SECURITY DEFINER` with `search_path = pg_catalog, pg_temp` and reads the
+schema-qualified settings table, so ATP callers need no `SELECT` on
+`commerce_settings`. The TypeScript policy reader separately needs that `SELECT`
+to return the revision and days. The policy helper grants `EXECUTE` to
+`service_role`; the other invoker helpers have no shipped runtime grant.
+The allocator retains its existing ACL, and neither X nor Y calls ATP; their
+existing grants still apply.
 
 X restores released late-paid reservation lines to committed, non-expiring ATP
 holds once, returning from its immutable recovery receipt before further writes.

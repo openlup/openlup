@@ -5569,7 +5569,7 @@
         "createdFunctions": [
           {
             "signature": "public.inventory_renewal_protection_days()",
-            "searchPath": "pg_catalog"
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -7834,7 +7834,7 @@
     },
     {
       "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
-      "sha256": "24054888416c59ef8d2ffc1685447150a25f75d23a1ab0f76c162b50d98a16d9",
+      "sha256": "383b9a3fbac03c9a0ec5ab4fcb049dae2e121756f28c8de51933ffd3a8965834",
       "functions": [
         {
           "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
@@ -7844,7 +7844,7 @@
         {
           "signature": "public.inventory_renewal_protection_days()",
           "beforeSha256": null,
-          "afterSha256": "2c3a572282ec6537cb6c6de1c5f96f7465297a2001b89182549d1454dc7345ee"
+          "afterSha256": "4d1570aecc30219d65da01d175f2d87c95c1cc4caef9d803c0f9e20e803f74db"
         }
       ]
     }

@@ -84,9 +84,20 @@ exactly `{ revision: 'store-1', renewalProtectionDays: 14 }`, with a nonblank re
 and an integer from 1 through 3660. Absence returns
 `{ revision: 'default', renewalProtectionDays: 14 }` and keeps historical ATP results.
 Malformed stored data refuses with `inventory_renewal_protection_policy_invalid`.
-Use a host-owned installation connection to write; runtime reads require SELECT
-on `commerce_settings` and EXECUTE on `inventory_renewal_protection_days()`.
-Qualified installations supply these through their existing service-role binding.
+Use a host-owned installation connection to write. ATP callers need EXECUTE on
+`inventory_renewal_protection_days()` in addition to their existing ATP grants.
+After the migration, upgrade each custom runtime role before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Without it, ATP raises SQLSTATE `42501` even when no policy is installed. The
+restricted SECURITY DEFINER helper reads settings with its owner's privileges;
+ATP callers need no settings-table SELECT. The TypeScript policy reader still
+requires SELECT on `commerce_settings` to return revision and days. Qualified
+installations supply both privileges through their service-role binding.
 
 `createPostgresStockAvailability().readPort.read` admits only `horizonDays` equal
 to the installed value and no excluded order; otherwise it retains

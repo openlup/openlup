@@ -1,7 +1,8 @@
 -- Installed renewal priority only. No seed, allocation or subscription lifecycle changes.
--- The invoker validator preserves the existing ATP SQL header and ACL unchanged.
+-- The restricted definer validator keeps settings reads behind its EXECUTE grant.
+-- ATP retains its existing invoker SQL header and ACL unchanged.
 CREATE FUNCTION public.inventory_renewal_protection_days()
-RETURNS integer LANGUAGE plpgsql STABLE SET search_path = pg_catalog AS $$
+RETURNS integer LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
  raw_policy text;
  policy jsonb;
@@ -32,8 +33,8 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM anon;
-REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM authenticated;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO service_role;'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.inventory_available_to_promise(
