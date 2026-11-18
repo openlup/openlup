@@ -19,8 +19,8 @@ import { pricingSettingBoundaries } from "@openlup/platform/pricing";
 import { promotionsSettingBoundaries } from "@openlup/platform/promotions";
 
 type SourceDescriptor = Omit<SettingDescriptor, "schema" | "previewSchema"> & {
-  schema?: ZodType | Record<string, unknown>;
-  previewSchema?: ZodType;
+  schema?: ZodType | SettingDescriptor["schema"];
+  previewSchema?: ZodType | SettingDescriptor["previewSchema"];
 };
 
 function informationalSettings(
@@ -69,7 +69,7 @@ function describeSetting(entry: SourceDescriptor) {
   return {
     ...metadata,
     schema: schema ? (isZod(schema) ? toolInputSchema(schema) : schema) : null,
-    previewSchema: previewSchema ? toolInputSchema(previewSchema, "output") : null,
+    previewSchema: previewSchema ? (isZod(previewSchema) ? toolInputSchema(previewSchema, "output") : previewSchema) : null,
     rules: rules.map(({ code, path, description }) => ({ code, path, description })),
   };
 }
