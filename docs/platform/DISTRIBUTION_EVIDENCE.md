@@ -122,7 +122,17 @@ a production deployment. Later proofs need their own executed evidence.
 
 ## Interrupted adjacent-set starter upgrade
 
-The same qualification job adds one step using the existing
+Before publication, the set-release preflight also runs this file/dependency
+proof after packing and before release planning, tags or npm publication. The
+target comes exclusively from the retained complete local set, verified by the
+pack manifest against its commit, SHA-256 and SHA-512 digests. Extraction admits
+local tarball resolutions only for those verified entries; other dependencies
+retain registry-origin checks. The receipt identifies the target as
+`candidate, local digest-verified`. A failed application test or typecheck on
+the upgraded predecessor fails the receipt and blocks dispatch. This candidate
+proof supplies no published provenance, schema, image or canary qualification.
+
+After publication, the unchanged qualification job adds one step using the existing
 [distribution CLI proof](../../scripts/packages/distribution-cli-proof.ts) in
 pair mode. Its no-pair mode retains the fixed published 0.35.0→0.36.0 witness
 and existing PR execution. Pair mode chooses the greatest stable core release
@@ -402,6 +412,8 @@ archive manifest digest before any write. With `publish_image: false` (the defau
 the publisher job is skipped and no write token is minted. That run retains the
 qualification job's receipt, with no separate publication receipt. The in-script
 `PUBLISH_IMAGE` guard remains a second layer.
+Both qualification and publication enable the bundled Docker builder's
+containerd image store before exporting archives.
 The existing per-tag workflow concurrency serializes these runs. An existing
 version tag with a different digest refuses by name; ambiguous registry errors
 also refuse. A digest-preserving copy is followed by registry manifest readback.

@@ -76,6 +76,8 @@ const RELEASE_GATE_COMMENT = "      # The same release gate as the preflight and
 const stepList = (jobText: string) => jobText.split(/^ {6}- /mu).slice(1).map((text) => text.slice(text.startsWith("name: ") ? 6 : 0, text.indexOf("\n")));
 /** Each step of a job as its text after `- `, without the comment lines that introduce the next one. */
 const stepTexts = (jobText: string) => jobText.split(/^ {6}- /mu).slice(1).map((text) => text.replace(/\n+$/u, "\n").replace(/(?: {6}#[^\n]*\n)+$/u, ""));
+const ADJACENT_STEP = "Prove the adjacent starter upgrade against retained candidate packs";
+const ADJACENT_RUN = '        if: inputs.package == \'all\'\n        working-directory: target\n        run: node --experimental-strip-types scripts/packages/exact-set-qualification.mjs "openlup-core-v$VERSION" "$TARGET_COMMIT" "$RUNNER_TEMP/candidate-upgrade.json" --candidate "$RUNNER_TEMP/packs/packages-manifest.json"\n';
 const PLAN_STEP = "Decide each package's release from its tag, release and npm state";
 /** Until its gate passes a job runs in main's checkout only; then it checks the target out into target/. */
 const GATE_FIRST = {
@@ -84,7 +86,7 @@ const GATE_FIRST = {
 } as const;
 /** The steps that read the target or run its code: each runs in target/. */
 const IN_TARGET = {
-  preflight: [TARGET_ASSERT_STEP, "run: npm ci --ignore-scripts --no-audit --fund=false", "Refuse a mismatched version, an existing tag and a version npm holds or passed", "Pack and check the packages of this release", PLAN_STEP],
+  preflight: [TARGET_ASSERT_STEP, "run: npm ci --ignore-scripts --no-audit --fund=false", "Refuse a mismatched version, an existing tag and a version npm holds or passed", "Pack and check the packages of this release", ADJACENT_STEP, PLAN_STEP],
   release: [TARGET_ASSERT_STEP, "Repeat the manifest, version, tag and npm refusals and prepare the note", "Refuse publication if the draft differs", "Verify the completed immutable release and its tag"],
 } as const;
 const IN_FLIGHT_STEP = "Refuse while any package release or publication is in flight";
@@ -176,6 +178,7 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     && inOrder(job(producer, "pack"), ["package-release.ts registry", "npm run packages:check"]),
   "npm re-read immediately before publishing, past the cache": ({ producer }) => inOrder(job(producer, "publish"), ["if (actual !== sha256)", RECHECK_STEP, "npm publish"])
     && ["?cache-bypass=${randomUUID()}", "await read(`https://registry.npmjs.org/-/package/${path}/dist-tags`)", "if (held.has(version)) throw", "if (!above(other)) throw", `' "$RELEASE_TAG"`].every((clause) => step(producer, RECHECK_STEP).includes(clause)),
+  "the adjacent candidate proof blocks set releases before planning": ({ dispatch }) => stepBody(job(dispatch, "preflight"), ADJACENT_STEP) === ADJACENT_RUN && inOrder(job(dispatch, "preflight"), [PACK_RUN, ADJACENT_RUN, PLAN_RUN]),
   "the preflight plans each package after packing and scanning every tarball": ({ dispatch }) => stepBody(job(dispatch, "preflight"), "Pack and check the packages of this release") === PACK_RUN
     && job(dispatch, "preflight").endsWith(`      - name: ${PLAN_STEP}\n${PLAN_RUN}\n`) && count(dispatch, "package-release.ts plan") === 1
     && inOrder(job(dispatch, "preflight"), [PACK_RUN, GITLEAKS_SCAN, `      - name: ${PLAN_STEP}\n`])
@@ -197,7 +200,7 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     && job(dispatch, "preflight").includes("    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:") && job(dispatch, "release").includes("    environment: release\n    permissions:\n      contents: read\n      checks: read\n      attestations: read\n    env:")
     && job(producer, "pack").includes("    permissions:\n      contents: read\n      checks: read\n      attestations: read\n") && job(producer, "publish").includes("    permissions:\n      id-token: write\n"),
   "exact App token grant": ({ dispatch, producer }) => step(dispatch, "Obtain the maintainer-configured release identity") === APP_IDENTITY && count(dispatch, "create-github-app-token@") === 1 && !producer.includes("create-github-app-token"),
-  "exact run conditions": ({ dispatch, producer }) => JSON.stringify(conditions(dispatch)) === JSON.stringify([`    ${GATE}`, `    ${GATE}`, "        if: failure()"])
+  "exact run conditions": ({ dispatch, producer }) => JSON.stringify(conditions(dispatch)) === JSON.stringify([`    ${GATE}`, "        if: inputs.package == 'all'", `    ${GATE}`, "        if: failure()"])
     && JSON.stringify(conditions(producer)) === JSON.stringify([`    ${PACK_GATE}`])
     && /^ {8}if: failure\(\)\n {8}run: \|\n {10}echo '[^'\n]*'\n$/u.test(step(dispatch, "Recovery requires the maintainer")),
   "the App-token job installs, builds and packs nothing": ({ dispatch }) => !/npm (?:ci|install|run|pack|exec)\b|npx |packages:check -- --out|packages-check\.ts|--out\b|--pack\b/u.test(job(dispatch, "release")),
@@ -229,6 +232,8 @@ type Defect = { control: string; plant: string; in: keyof Workflows; from: strin
 
 /** One or more planted defects per control. Each replaces committed text, so a stale anchor fails too. */
 const DEFECTS: Defect[] = [
+  { control: "the adjacent candidate proof blocks set releases before planning", plant: "missing proof", in: "dispatch", from: `      - name: ${ADJACENT_STEP}\n${ADJACENT_RUN}`, to: "" },
+  { control: "the adjacent candidate proof blocks set releases before planning", plant: "ignored failure", in: "dispatch", from: ADJACENT_RUN, to: ADJACENT_RUN.replace('\n        run:', '\n        continue-on-error: true\n        run:') },
   { control: "publication requires the audit from the same attempt", plant: "accept an old audit", in: "producer", from: '"$AUDIT_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"', to: '"$AUDIT_ATTEMPT" = "$AUDIT_ATTEMPT"' },
   { control: "publication requires the audit from the same attempt", plant: "ignore stale audit failure", in: "producer", from: "          fi\n      - uses: actions/download-artifact@", to: "          fi\n        continue-on-error: true\n      - uses: actions/download-artifact@" },
   { control: "release environment", plant: "drop the protected environment", in: "dispatch", from: "    environment: release\n", to: "" },

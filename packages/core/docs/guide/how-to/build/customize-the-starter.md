@@ -43,6 +43,12 @@ not verify archive origin or package provenance. Follow the
 [adoption identity checks](../../start/adopt-from-npm.md#compare-at-first-adoption-and-upgrade)
 for those separate obligations.
 
+The release preflight also uses candidate extraction with retained, complete
+local packs verified by their manifest and SHA-256/SHA-512 digests. That mode
+admits local resolutions only for the verified set entries and records
+`candidate, local digest-verified`; it does not weaken the released recipe
+above or establish published provenance.
+
 A mismatch refuses with `starter_release_*`; a nonempty destination refuses
 with `starter_extract_directory_not_empty`. Stop and check the selected source
 and input pair. Do not silently replace them with local tarballs, regenerate the

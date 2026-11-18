@@ -1171,7 +1171,10 @@ integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
 package's tarball in an empty directory, with a `packages-manifest.json` of
 their versions and digests. `-- --release-tag openlup-<package>-v<version>`
 packs only that publishable package and requires its manifest version to be
-`<version>`. The command publishes nothing;
+`<version>`. The command publishes nothing. Set-release dispatch separately runs the
+[adjacent starter upgrade proof](docs/platform/DISTRIBUTION_EVIDENCE.md#interrupted-adjacent-set-starter-upgrade)
+against those retained digest-verified local packs before release planning;
+post-publication provenance and qualification checks still run separately.
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
 the protected release approval leads to direct OIDC publication.
 
