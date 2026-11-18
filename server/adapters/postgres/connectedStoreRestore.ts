@@ -631,7 +631,8 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
     // These guards verify retained canonical bytes and identity without rewriting them.
-    catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
+    catalog_publications: ["catalog_publications_record_admit", "catalog_publications_predecessor_admit"],
+    catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
     catalog_skus: ["catalog_skus_publication_identity_fence"],
     catalog_sku_identifiers: ["catalog_identifiers_publication_identity_fence"],

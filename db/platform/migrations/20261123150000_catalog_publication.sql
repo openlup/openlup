@@ -23,7 +23,6 @@ CREATE TABLE public.catalog_publications (
  product_id uuid NOT NULL REFERENCES public.catalog_products(id),
  revision integer NOT NULL CHECK (revision BETWEEN 1 AND 2147483647),
  previous_id uuid,
- previous_revision integer GENERATED ALWAYS AS (NULLIF(revision - 1, 0)) STORED,
  draft_id uuid NOT NULL,
  draft_revision integer NOT NULL CHECK (draft_revision BETWEEN 1 AND 2147483647),
  command_key text NOT NULL CHECK (octet_length(command_key) BETWEEN 1 AND 200),
@@ -35,7 +34,7 @@ CREATE TABLE public.catalog_publications (
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  committed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  UNIQUE(product_id,revision), UNIQUE(product_id,id), UNIQUE(product_id,id,revision), UNIQUE(product_id,command_key),
- FOREIGN KEY(product_id,previous_id,previous_revision) REFERENCES public.catalog_publications(product_id,id,revision),
+ FOREIGN KEY(product_id,previous_id) REFERENCES public.catalog_publications(product_id,id),
  FOREIGN KEY(product_id,draft_id,draft_revision) REFERENCES public.catalog_draft_revisions(product_id,draft_id,revision),
  FOREIGN KEY(product_id,document_revision_id) REFERENCES public.catalog_product_document_revisions(product_id,id)
 );
@@ -168,6 +167,14 @@ CREATE FUNCTION public.catalog_publication_record_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE canonical text; expected text; body jsonb;
 BEGIN
+ IF TG_WHEN = 'AFTER' THEN
+  -- A predecessor in the same bulk insert may become visible only after the row check.
+  IF NEW.revision > 1 AND NOT EXISTS(SELECT 1 FROM public.catalog_publications p
+   WHERE p.product_id=NEW.product_id AND p.id=NEW.previous_id AND p.revision=NEW.revision-1) THEN
+   RAISE EXCEPTION 'catalog_publication_lineage_invalid' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+ END IF;
  IF TG_TABLE_NAME = 'catalog_publications' THEN
   canonical := NEW.canonical_state; expected := NEW.digest;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
@@ -204,6 +211,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_record_admit() FROM PUBLIC;
 CREATE TRIGGER catalog_publications_record_admit BEFORE INSERT ON public.catalog_publications FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_record_admit();
+CREATE TRIGGER catalog_publications_predecessor_admit AFTER INSERT ON public.catalog_publications FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_record_admit();
 CREATE TRIGGER catalog_sku_revisions_record_admit BEFORE INSERT ON public.catalog_sku_revisions FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_record_admit();
 CREATE TRIGGER catalog_document_publication_record_admit BEFORE INSERT ON public.catalog_product_document_revisions FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_record_admit();
 
