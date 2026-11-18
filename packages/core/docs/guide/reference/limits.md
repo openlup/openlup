@@ -64,6 +64,27 @@ This forward is unreleased; apply the matching package's complete native
 catalogue before using longer cadences. The managed chain has no corresponding
 90-day cap and receives no migration in this change.
 
+## Quantity and line representation
+
+Checkout commands represent at most **99 units per line** and **50 lines**.
+The platform schema keeps these fixed bounds as private
+`MAX_CHECKOUT_LINE_QUANTITY` and `MAX_CHECKOUT_LINES` constants; they are not
+configurable package exports. The starter also retains its **100-unit cart**
+bound (`MAX_STARTER_OFFER_UNITS`). Owned business limits may be lower.
+
+In the current source candidate, startup refuses unsupported owned configuration:
+
+| Configuration above the representation bound | Startup code |
+| --- | --- |
+| `offer.maxUnits > 100`, or any subscription SKU quantity domain maximum above 99 | `starter_units_above_representation` |
+| `maximumBaseLines + maximumAddonLines > 50` in either subscription offer | `starter_lines_above_representation` |
+
+Exactly these bounds are accepted. Subscription `maximumUnits` is a separate
+aggregate business limit; it does not replace the per-SKU or line bounds.
+Lowering owned limits applies to fresh admission. Completed matching checkout
+receipts and authorized paid-order reads retain their stored result, with
+ownership and request fingerprint checks intact.
+
 ## Fulfillment execution limits
 
 The native capability reader names these boundaries before provider I/O. A
@@ -340,7 +361,8 @@ both demonstrations use 160. Phone and postal-code fields share the native
 destination bounds. `subscriptionOffers` owns cadences, defaults and per-SKU
 quantities; `offer.cadenceDays` is a derived UI projection. Configured days must
 be whole numbers from 1 through 3660 (`MAX_CADENCE_DAYS`). Invalid offer domains
-refuse with `starter_subscription_offer_invalid`; invalid projected choices
+refuse with `starter_subscription_offer_invalid`, except values above the
+representation bounds, which use the named codes listed above; invalid projected choices
 refuse with `starter_offer_invalid`. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and unit prices fit
 PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis

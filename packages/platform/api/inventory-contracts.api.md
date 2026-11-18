@@ -101,7 +101,7 @@ export interface SubscriptionForecastTotals extends SubscriptionForecastCounts {
 ```ts
 export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInventoryReservationsRequest, AdminInventoryStockAdjustmentRequest, AdminInventorySubscriptionForecastRequest, InventoryStockListResponse, InventoryReservationsListResponse, InventoryStockAdjustmentResponse, InventorySubscriptionForecastResponse, InventorySubscriptionForecastSku, InventoryForecastDemandLine, InventoryForecastSupplyLine, InventoryForecastResponse, } from "./inventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
-export type { ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
+export type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
 export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
 export type { RenewalStockProtectionPolicy } from "./renewalStockProtection.js";
 ```
@@ -302,6 +302,12 @@ export interface RenewalStockProtectionPolicy {
 ## dist/inventory/contracts/reservation.d.ts
 
 ```ts
+/** Checked on each policy helper call: positive integers up to 5270400 (ten years), min <= default <= max. */
+export interface CheckoutReservationLifetimePolicy {
+    minMinutes: number;
+    maxMinutes: number;
+    defaultMinutes: number;
+}
 export interface ReservationPolicyInput {
     reservationKind: string;
     paymentTargetKind: "one_time_order" | "subscription_cycle" | string;
