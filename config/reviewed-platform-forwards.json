@@ -5776,7 +5776,7 @@
       },
       {
         "row": "catalogue-lc9",
-        "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+        "path": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
         "replacedFunctions": [
           {
             "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
@@ -8203,7 +8203,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+      "path": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
       "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a",
       "functions": [
         {

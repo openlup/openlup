@@ -7,7 +7,7 @@
         "objectInventorySha256": "aee65b30281ce911ca104542edf40d8d8b94cbf89cb1d08b5e81d3a88af80fe0",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
             "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
           },
           {
@@ -634,7 +634,7 @@
         "objectInventorySha256": "1562b0063d9d4e4857f4b3c2bf02810ca0d0a6acd4f5fd362b0f5d7e270b64d7",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
             "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
           },
           {
@@ -1281,7 +1281,7 @@
         "objectInventorySha256": "220ff3a5c2b9546f2f8012492b2494a3a4b7a9cdb63dd587a765d25f6d852a85",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
             "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
           },
           {
@@ -1928,7 +1928,7 @@
         "objectInventorySha256": "a62e241e4f70ae38b47211a81f93066c6fc6e6b7c6a4568ad2b3a9ed9eb8c084",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
             "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
           },
           {
@@ -2571,7 +2571,7 @@
         "objectInventorySha256": "215bd38eb71097c67c04acda404edc7d934e9eafcec0a791c0cbb3db62b0cba0",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
             "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
           },
           {

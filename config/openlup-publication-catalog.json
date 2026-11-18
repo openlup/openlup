@@ -1474,7 +1474,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+      "path": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
       "class": "public-output"
     },
     {
@@ -4802,7 +4802,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261122220000_subscription_edit_consent.sql",
+      "path": "packages/platform/sql/20261123200000_subscription_edit_consent.sql",
       "class": "public-output"
     },
     {
