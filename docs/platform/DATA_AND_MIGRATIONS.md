@@ -2203,7 +2203,8 @@ lead. This classification check does not grant access: unlisted `block` and
 `retain` tables retain owner-only table ACLs and no column ACLs. Only listed
 census tables receive the exact census privilege exception.
 
-The [PostgreSQL catalogue witness](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+The PostgreSQL catalogue suite ([with `service_role`](../../tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts) and
+[without `service_role`](../../tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts))
 independently requires a new relation, migration ownership, enabled RLS,
 owner-only table ACL, exactly `client_id` SELECT for `service_role`, and exactly
 the named permissive SELECT policy with `true` and no check. With that role
@@ -2266,7 +2267,7 @@ fix every column, type, nullability, default, ordered primary/unique key, CHECK
 and inline single-column `ON DELETE RESTRICT` reference. Only unquoted SQL
 words fold case; literal values and token kinds stay exact. No other action,
 shape or appended SQL gains admission. The independent
-[catalogue comparator](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+[catalogue comparator](../../tests/postgres/nativeStoreForwardCatalog.shared.ts)
 checks installed columns and constraints, ordered FK keys and exact targets,
 RESTRICT, update/match/validation/deferrability, ordinary-table identity and
 RLS and column collation. Client-bearing shapes require blocking absorption
@@ -2526,7 +2527,8 @@ reviewers of that feature PR must assess the proof. This control cannot supply i
 The static checks above are a first gate for ordinary mistakes, not the boundary
 against deliberately evasive SQL. For function identity, security attribute,
 `search_path` and privileges, the truth is the required real-PostgreSQL
-[catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). It replays
+catalogue suite ([with `service_role`](../../tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts) and
+[without `service_role`](../../tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts)). Each file replays
 one chain, the legacy selection's manifest units in path order with earlier bound forwards
 applied cumulatively, and does not replay the `qualified-v2`, `qualified-admin` or
 operator-provisioned histories. With no bound forward it replays that chain once, so
@@ -2597,7 +2599,9 @@ It runs with and without `service_role`, and its refusal cases include a functio
 header that hides its attribute list inside a quoted default and a file whose
 backslash makes the database run statements the static reader cannot see. A native-SQL change is
 refused when it also touches admission machinery, and the machinery includes the
-catalog test and these named files: `tests/postgres/nativeStoreForwardCatalog.test.ts`,
+catalog test and these named files:
+`tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts`,
+`tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`, `tests/postgres/nativeStoreForwardCatalog.shared.ts`,
 `tests/helpers/postgresContainer.ts`, `vitest.config.ts`, `scripts/run-vitest.mjs`,
 `scripts/ci-test-scope.mjs`, `scripts/ci-image-pull.mjs`, `scripts/ci-image-mirror.mjs`,
 `scripts/disposable-docker.mjs`, `scripts/ci-vitest-duration-keys.ts`,

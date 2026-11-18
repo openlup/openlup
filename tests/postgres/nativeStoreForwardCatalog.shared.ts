@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { NATIVE_SUCCESSOR_TABLE_SQL, readReviewedForwardRegistry, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -884,7 +884,7 @@ async function replayChain(connectionString: string) {
   return { outcomes, creationOutcomes, applied };
 }
 
-describe.each([{ serviceRole: true }, { serviceRole: false }])("native store forward catalog, service_role present: $serviceRole", ({ serviceRole }) => {
+export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole: boolean }) {
   let container: PostgresContainer | undefined;
   let pool: Pool;
   let replay = { outcomes: new Map<string, Error | null>(), creationOutcomes: new Map<string, Error | null>(), applied: 0 };
@@ -1600,4 +1600,4 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
   it.each(bound)("holds the catalog boundary of $pin.path", ({ pin }) => {
     expect(replay.outcomes.get(pin.path), pin.path).toBeNull();
   });
-});
+}
