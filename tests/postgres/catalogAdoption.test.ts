@@ -288,6 +288,7 @@ it.each(["compatible", "material", "inconclusive"] as const)("catalog_legacy_bin
   expect(await authority.reads.current(product)).toMatchObject({ outcome: "found", head: first.receipt.head,
     observations: [{ variantId: sku, draftRef: null }] });
   const actor = (await authority.authorize(null))!;
+  const identifier = (await pool.query("SELECT normalized_value FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1", [sku])).rows[0].normalized_value;
   const skuCode = `ARTICLE-${sku}`, slug = `article-${product}`, draftId = randomUUID();
   const payload: CatalogDraftPayloadV4 = { schemaVersion: 4,
     product: { id: product, type: { key: definition.key, version: 1 }, slug, dimensions: [], primarySkuId: sku,
@@ -296,6 +297,7 @@ it.each(["compatible", "material", "inconclusive"] as const)("catalog_legacy_bin
       sharedContent: { schemaVersion: 1, catalogAction: "revise", presentation: { title: "Displayed article" },
         publicationSkus: [], offerMemberships: [], requestedModes: [] } },
     skus: [{ id: sku, productId: product, code: skuCode, options: {},
+      identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: identifier, packagingLevel: "unit" }],
       netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
       ...(classification === "compatible" ? {} : { grossMass: { dimension: "mass", unit: "openlup:g", unscaled: "120", scale: 0 } }) }],
     publication: { kind: "release", evidence: {}, operations: [
