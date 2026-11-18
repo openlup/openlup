@@ -24,4 +24,5 @@ function retainedRegistry(types: CatalogProductTypeRegistry | undefined) {
 }
 
 export const starterCatalogue = authored.starterCatalogue ?? retainedRegistry(authored.catalogDraftRegistry);
+export type StarterCatalogueSelection = ReturnType<typeof starterCatalogue.select>;
 export const selectCatalogueConfiguration = (id?: string) => starterCatalogue.select(id).configuration;

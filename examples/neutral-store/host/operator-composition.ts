@@ -111,7 +111,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       : ['action', 'draftId', 'expectedRevision', 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
     const drafts = createCatalogDraftHandler<ActionContext>({
-      store: createPostgresCatalogDraftStore(input.executor), registry: starterCatalogue.select(context.config.id).types,
+      store: createPostgresCatalogDraftStore(input.executor), registry: context.catalogueRegistration?.types ?? starterCatalogue.select().types,
       authorizeOperator: async action => action.actor.operatorRef ? { actorId: action.actor.operatorRef } : null,
     });
     const result = payload.action === undefined ? await drafts.list({ limit: 30 }, context)

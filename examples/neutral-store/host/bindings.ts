@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { StoreConfig } from '../shared/config.ts';
+import type { StarterCatalogueSelection } from './catalogue-selection.ts';
 import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
 import { operationLimits } from '../shared/limits.ts';
 import { evaluateOffer, parseCart, validateCart } from '../shared/offer.ts';
@@ -25,6 +26,8 @@ export interface ActionContext {
   requestCookie?: string;
   actor: VerifiedActor;
   config: StoreConfig;
+  /** Selected at HTTP boot. Trusted programmatic composition can supply its legacy configuration directly. */
+  catalogueRegistration?: StarterCatalogueSelection;
   setCookie?: (cookie: string) => void;
   accept?: () => Promise<void>;
 }

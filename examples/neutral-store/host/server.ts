@@ -95,7 +95,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
       return;
     }
     const actor = await bindings.authenticate(request);
-    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config, ...(request.headers.cookie ? { requestCookie: request.headers.cookie } : {}),
+    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config, catalogueRegistration: registration, ...(request.headers.cookie ? { requestCookie: request.headers.cookie } : {}),
       setCookie: cookie => response.setHeader('Set-Cookie', cookie),
       accept: async () => { sendJson(response, 200, { ok: true, value: { accepted: true } }); } });
     if (!response.writableEnded) sendJson(response, result.ok ? 200 : result.status ?? 409, result);

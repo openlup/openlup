@@ -27,7 +27,10 @@ for (const entry of starterCatalogue.list()) test(`MC5-N-005 ${entry.configurati
     return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(payload.manifest).digest('hex') } }] };
   } };
   assert.equal(selectCatalogueConfiguration(configuration.id), configuration);
-  assert.equal(starterQuoteCatalogue(executor, configuration).registration, entry);
+  assert.equal(starterQuoteCatalogue(executor, configuration, entry).registration, entry);
+  const explicitConfig = { ...configuration, id: 'programmatic' };
+  assert.equal(starterQuoteCatalogue(executor, explicitConfig).registration, undefined);
+  assert.throws(() => starterQuoteCatalogue(executor, explicitConfig, entry), { message: 'starter_catalogue_registration_invalid' });
   assert.ok(entry.types.resolve(draftType)?.netContentUnits.includes('openlup:g'));
   assert.ok(entry.types.resolve({ key: draftType.key, version: 1 }));
   await installStarterCatalogueDefinitions(executor, configuration.id);

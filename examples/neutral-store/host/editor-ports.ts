@@ -6,6 +6,7 @@ import { createPostgresStockAvailability } from '@openlup/platform/inventory';
 import type { CompositionRulesPort } from '@openlup/core/bundle';
 import type { SizedCatalogFact, SizedHostPorts, SubscriptionQueryExecutor, PackageEditConstraintMapper } from '@openlup/platform/subscriptions';
 import type { StoreConfig } from '../shared/config.ts';
+import type { StarterCatalogueSelection } from './catalogue-selection.ts';
 import { isRecord } from '../shared/offer.ts';
 import { documentDigest, editorProducts, demoIdentifier, productDocument, starterQuoteCatalogue } from './editor-catalogue.ts';
 
@@ -32,8 +33,8 @@ function priceReads(db: SubscriptionQueryExecutor): CommercePriceAuthorityReadPo
     },
   };
 }
-export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig) {
-  const { registration, legacy: quoteCatalogReadPort } = starterQuoteCatalogue(db, config);
+export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig, selected?: StarterCatalogueSelection) {
+  const { registration, legacy: quoteCatalogReadPort } = starterQuoteCatalogue(db, config, selected);
   const taxProfile = { included: true as const,country: config.market.country,category: config.purchase.tax.category,
     vatRateBps: config.purchase.tax.vatRateBps,legalBasis: config.purchase.tax.legalBasis };
   const quotePort = createDbBackedCommerceQuotePort<CreateQuoteRequest,CommerceQuoteCatalogItem,Record<string, never>,{ mode: 'one_time' | 'subscription'; promoCodes: string[]; cadenceDays: number | null }>({
