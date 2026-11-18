@@ -748,9 +748,11 @@ BEGIN
  SELECT * INTO hint FROM public.subscription_successor_operations_v2 WHERE id=p_operation_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'successor_generation_not_found' USING ERRCODE='22023'; END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
  BEGIN PERFORM 1 FROM public.subscription_renewal_operations WHERE id=hint.root_operation_id FOR UPDATE NOWAIT;
  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=hint.id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=(SELECT original_case_id FROM public.subscription_successor_proposals WHERE id=g.proposal_id) FOR UPDATE NOWAIT;
  SELECT * INTO r FROM public.subscription_successor_reservations_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  IF g.claim_token IS DISTINCT FROM p_claim_token OR g.lease_expires_at<=p_now THEN RAISE EXCEPTION 'fulfillment_renewal_reservation_stale_claim' USING ERRCODE='40001'; END IF;
  IF g.superseded_by_proposal_id IS NOT NULL OR s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM g.scheduled_at
@@ -822,6 +824,8 @@ BEGIN
   END IF;
   PERFORM id FROM public.subscriptions
    WHERE id = v_operation.subscription_id FOR UPDATE NOWAIT;
+
+  PERFORM 1 FROM public.clients WHERE id=(SELECT client_id FROM public.subscriptions WHERE id=v_operation.subscription_id) FOR KEY SHARE NOWAIT;
 
   BEGIN
     PERFORM 1 FROM public.subscription_renewal_operations WHERE id=(SELECT root_operation_id FROM public.subscription_successor_operations_v2 WHERE id=p_operation_id) FOR UPDATE NOWAIT;
@@ -960,6 +964,8 @@ BEGIN
   SELECT value,scheduled_at,subscription_id,operation_id FROM (
    SELECT jsonb_build_object('schemaVersion',2,'operationKind','legacy','due',to_jsonb(d)) value,d.scheduled_at,d.subscription_id,NULL::uuid operation_id
     FROM public.subscription_list_due_renewals(p_now,p_limit) d
+    WHERE NOT EXISTS(SELECT 1 FROM public.subscription_successor_operations_v2 owned
+      WHERE owned.subscription_id=d.subscription_id AND owned.scheduled_at=d.scheduled_at AND owned.superseded_by_proposal_id IS NULL)
    UNION ALL
    SELECT jsonb_build_object('schemaVersion',2,'operationKind','successor','operationId',g.id,'identityKey',g.identity_key,'operationFingerprint',g.operation_fingerprint,'snapshot',g.cycle_snapshot),g.scheduled_at,g.subscription_id,g.id
     FROM public.subscription_successor_operations_v2 g JOIN public.subscriptions s ON s.id=g.subscription_id
@@ -1294,6 +1300,7 @@ BEGIN
   RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
+ PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
  SELECT * INTO q FROM public.subscription_quote_previews WHERE id=(p_request->>'previewId')::uuid FOR UPDATE NOWAIT;
  IF NOT FOUND OR q.subscription_id IS DISTINCT FROM s.id OR q.client_id IS DISTINCT FROM s.client_id OR q.template_version IS DISTINCT FROM s.template_version
   OR q.status<>'previewed' OR q.expires_at<=p_now OR q.action IS DISTINCT FROM p_request->>'action'
@@ -1310,6 +1317,13 @@ BEGIN
   END IF;
   IF original_case IS NULL OR root IS NULL THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
  ELSIF source->>'kind' IS DISTINCT FROM 'ordinary_edit' THEN RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
+ IF root IS NOT NULL THEN
+  BEGIN
+   PERFORM 1 FROM public.subscription_renewal_operations WHERE id=root AND subscription_id=s.id FOR UPDATE NOWAIT;
+  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
+  IF NOT FOUND THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
+  PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=original_case FOR UPDATE NOWAIT;
+ END IF;
  -- The new hash binds the complete retained native preview and explicit source; its inner hash stays unchanged.
  hash:=encode(sha256(convert_to(jsonb_build_array('subscription.successor',2,proposal_id,p_subscription_id,p_client_id,predecessor,successor,publication,source,p_request->>'lane',p_request->>'action',q.quote_hash,q.request_payload,q.quote_snapshot,q.totals,p_request)::text,'UTF8')),'hex');
  SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=proposal_id FOR UPDATE NOWAIT;
@@ -1330,7 +1344,9 @@ BEGIN
  VALUES('subscription',s.id,'subscription.successor.offered.v2','subscription-successor:'||p.id::text||':offered:v2',
   jsonb_build_object('schemaVersion',2,'proposalId',p.id,'subscriptionId',s.id,'clientId',s.client_id,'predecessorSkuId',predecessor,'successorSkuId',successor,'quoteHash',hash,'expiresAt',q.expires_at));
  RETURN to_jsonb(p);
-EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03';
+EXCEPTION WHEN lock_not_available THEN
+ IF SQLERRM='lc10_root_operation_busy' THEN RAISE; END IF;
+ RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03';
 END; $$;
 REVOKE ALL ON FUNCTION public.subscription_successor_proposal_offer_v2(uuid,uuid,jsonb,timestamptz) FROM PUBLIC;
 
@@ -1367,6 +1383,7 @@ BEGIN
  IF current_setting('transaction_isolation')<>'read committed' THEN RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023'; END IF;
  IF NOT pg_try_advisory_xact_lock(846832106,1) THEN RAISE EXCEPTION 'inventory_admission_busy' USING ERRCODE='55P03'; END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
  SELECT * INTO proposal FROM public.subscription_successor_proposals WHERE id=p_proposal_id FOR UPDATE NOWAIT;
  SELECT * INTO q FROM public.subscription_quote_previews WHERE id=(proposal.preview->>'id')::uuid FOR UPDATE NOWAIT;
  PERFORM 1 FROM public.subscription_command_receipts WHERE actor_id=p_actor_id AND idempotency_key=p_key FOR UPDATE NOWAIT;
@@ -1379,6 +1396,7 @@ BEGIN
   SELECT * INTO root FROM public.subscription_renewal_operations WHERE id=proposal.original_operation_id FOR UPDATE NOWAIT;
  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
  SELECT * INTO prior_generation FROM public.subscription_successor_operations_v2 WHERE root_operation_id=root.id AND superseded_by_proposal_id IS NULL FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=proposal.original_case_id FOR UPDATE NOWAIT;
  source_case_kind:=proposal.source_binding->>'caseKind';
  IF proposal.source_binding->>'kind' IS DISTINCT FROM 'stock_wait' OR source_case_kind NOT IN ('legacy','successor') OR source_case_kind IS NULL
   OR proposal.source_binding->>'caseId' IS DISTINCT FROM p_case_id::text THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
@@ -2133,9 +2151,11 @@ BEGIN
  IF NOT pg_try_advisory_xact_lock(846832106,1) THEN RAISE EXCEPTION 'inventory_admission_busy' USING ERRCODE='55P03'; END IF;
  SELECT * INTO hint FROM public.subscription_successor_operations_v2 WHERE id=p_operation_id;
  SELECT * INTO s FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
  BEGIN PERFORM 1 FROM public.subscription_renewal_operations WHERE id=hint.root_operation_id FOR UPDATE NOWAIT;
  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=p_operation_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=(SELECT original_case_id FROM public.subscription_successor_proposals WHERE id=g.proposal_id) FOR UPDATE NOWAIT;
  SELECT * INTO c FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  SELECT * INTO r FROM public.subscription_successor_reservations_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  IF g.id IS NULL OR g.operation_fingerprint IS DISTINCT FROM p_fingerprint OR g.superseded_by_proposal_id IS NOT NULL OR s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM g.scheduled_at
@@ -2210,7 +2230,7 @@ BEGIN
  END LOOP;
  PERFORM h.product_id FROM public.catalog_publication_heads h WHERE h.product_id IN (SELECT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku') ORDER BY h.product_id FOR SHARE NOWAIT;
  FOR line IN SELECT value FROM jsonb_array_elements(snapshot->'lines') ORDER BY value->>'sku' LOOP
-  SELECT * INTO sku FROM public.catalog_skus WHERE sku=line->>'sku';
+  SELECT k.* INTO sku FROM public.catalog_skus k WHERE k.sku=line->>'sku';
   IF sku.id IS NULL OR sku.publication_facts->>'code' IS DISTINCT FROM sku.sku OR sku.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb THEN RAISE EXCEPTION 'catalog_obligation_evidence_unknown' USING ERRCODE='55000'; END IF;
   IF sku.publication_facts->>'lifecycleState'<>'withdrawn' THEN CONTINUE; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.catalog_publication_heads WHERE product_id=sku.product_id) OR EXISTS(
@@ -2274,6 +2294,7 @@ BEGIN
  IF FOUND THEN
   IF event->>'outcome' IS DISTINCT FROM outcome OR event->>'externalRef' IS DISTINCT FROM external_ref OR event->>'reason' IS DISTINCT FROM reason
    OR event->>'operationFingerprint' IS DISTINCT FROM g.operation_fingerprint THEN RAISE EXCEPTION 'commerce_renewal_outcome_idempotency_conflict' USING ERRCODE='23505'; END IF;
+  IF jsonb_typeof(event->'result') IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'commerce_renewal_outcome_attempt_not_prepared' USING ERRCODE='22023'; END IF;
   RETURN event->'result';
  END IF;
  IF g.state<>'attempt_prepared' OR g.superseded_by_proposal_id IS NOT NULL OR g.cycle_id IS NULL OR g.order_id IS NULL OR g.settlement_intent_id IS NULL THEN RAISE EXCEPTION 'commerce_renewal_outcome_attempt_not_prepared' USING ERRCODE='22023'; END IF;
@@ -2321,6 +2342,8 @@ BEGIN
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=hint.id FOR UPDATE NOWAIT;
  SELECT * INTO c FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  IF c.id IS NULL THEN RETURN NULL; END IF;
+ PERFORM 1 FROM public.subscription_cycles WHERE id=g.cycle_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE NOWAIT;
  SELECT * INTO shipment FROM public.fulfillment_shipments WHERE order_id=p_order_id AND replaces_shipment_id IS NULL ORDER BY id LIMIT 1 FOR UPDATE NOWAIT;
  IF c.state='closed' OR g.superseded_by_proposal_id IS NOT NULL OR EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status='pending_payment') THEN RETURN NULL; END IF;
  IF g.state<>'succeeded' OR NOT EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status IN ('paid','fulfillment_pending','fulfilled'))

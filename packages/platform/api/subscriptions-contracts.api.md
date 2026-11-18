@@ -425,6 +425,7 @@ export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, Dunn
 export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitFrozenCase, StockWaitStorePort } from "./stockWait.js";
 export type { SubscriptionLifecycleTerms, SubscriptionCancelSurvey, SubscriptionSaveOffer, SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
+export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./successors.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
 export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
@@ -462,6 +463,25 @@ export type SubscriptionLifecycleFact = {
     kind: "winback_eligible";
     cancelledAt: string;
     paymentMethodRef: string;
+}
+/** @experimental */
+ | {
+    kind: "predecessor_withdrawn";
+    frozenFingerprint: string;
+    withdrawalPublicationId: string;
+    predecessors: {
+        skuId: string;
+        skuCode: string;
+    }[];
+}
+/** @experimental */
+ | {
+    kind: "successor_offered";
+    proposalId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    quoteHash: string;
+    expiresAt: string;
 });
 /** M04 receives a descriptor; host owns copy, recipient, consent and transport. */
 export interface SubscriptionLifecycleMessageDescriptor {
@@ -1447,5 +1467,38 @@ export interface StockWaitStorePort {
         outcome: "refused";
         reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
     }>;
+}
+```
+## dist/subscriptions/contracts/successors.d.ts
+
+```ts
+import type { SubscriptionEditConsent } from "./editConsent.js";
+/** @experimental */
+export type SuccessorCaseKind = "legacy" | "successor";
+/** Terminal decisions never apply themselves during renewal.
+ * @experimental
+ */
+export type SuccessorProposalState = "offered" | "accepted" | "declined" | "expired";
+/** @experimental */
+export interface SuccessorResolutionRequest {
+    caseId: string;
+    proposalId: string;
+    acceptedQuoteHash: string;
+    commandKey: string;
+    clientId: string;
+    now: string;
+}
+/** @experimental */
+export interface SuccessorProposal {
+    id: string;
+    subscriptionId: string;
+    clientId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    publicationId: string;
+    state: SuccessorProposalState;
+    quoteHash: string;
+    expiresAt: string;
+    editConsent: SubscriptionEditConsent;
 }
 ```

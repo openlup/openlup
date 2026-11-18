@@ -1134,9 +1134,9 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
 ## dist/catalog/candidate.d.ts
 
 ```ts
+import type { CatalogSuccessorStoredRecord as CatalogDraftPublicationStoredRecord } from "./contracts/successors.js";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import type { CatalogLifecycleStoredRecord as CatalogDraftPublicationStoredRecord } from "./contracts/lifecycleV2.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
@@ -1208,6 +1208,7 @@ export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryE
 ## dist/catalog/catalogDraftStore.d.ts
 
 ```ts
+import type { CatalogSuccessorStoredRecord } from "./contracts/successors.js";
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import type { CatalogLifecycleStoredRecord } from "./contracts/lifecycleV2.js";
@@ -1227,6 +1228,10 @@ export declare function createPostgresCatalogDraftStoreV3(client: PgQueryExecuto
  * @experimental
  */
 export declare function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): CatalogDraftStorePort<CatalogLifecycleStoredRecord>;
+/** Explicit successor dialect opt-in.
+ * @experimental
+ */
+export declare function createPostgresCatalogDraftStoreV5(client: PgQueryExecutor): CatalogDraftStorePort<CatalogSuccessorStoredRecord>;
 ```
 ## dist/catalog/catalogPackManifest.d.ts
 
@@ -2617,6 +2622,7 @@ export type { ListBundlesRequest, ListBundlesResponse, BundleSummaryView, GetBun
 export type { SellableBundle, SellableBundleComponent, SellableBundleAvailability, SellableBundleListResponse } from "./bundleAvailability.js";
 export type { AgentReason } from "./rpcErrors.js";
 export * from "./attributes.js";
+export type { CatalogWithdrawalImpactPort, CatalogSkuSuccessor, CatalogDraftPayloadV5, CatalogDraftCommandV5, CatalogSuccessorStoredCommand, CatalogSuccessorStoredRecord, CatalogFullPublicationV4 } from "./successors.js";
 export type { CatalogConformanceCode, CatalogConformanceRule, CatalogDefinitionIssue } from "./catalogConformance.js";
 export * from "./catalogPack.js";
 export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./productTypes.js";
@@ -2800,6 +2806,7 @@ export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/c
 export type CatalogObligationFamilyV2 = "template" | "pending_activation" | "frozen_renewal" | "outstanding_order" | "replacement" | "stock_wait" | "graduation";
 /** @experimental */
 export interface CatalogBoundObligationV2 {
+    caseKind?: "legacy" | "successor";
     family: CatalogObligationFamilyV2;
     sourceId: string;
     subscriptionId: string | null;
@@ -3166,6 +3173,75 @@ export interface SellableCatalogListResponse {
     items: SellableCatalogItem[];
 }
 ```
+## dist/catalog/contracts/successors.d.ts
+
+```ts
+import type { CatalogDraftSummary } from "./draft.js";
+import type { CatalogDraftPayloadV4 } from "./lifecycleV2.js";
+import type { CatalogBoundObligationsV2 } from "./lifecycleV2.js";
+/** Uses the same authoritative, complete obligation result as lifecycle archive.
+ * @experimental
+ */
+export interface CatalogWithdrawalImpactPort {
+    report(skuId: string): Promise<CatalogBoundObligationsV2>;
+}
+/** A declared pair is immutable publication provenance. No implicit graph traversal.
+ * @experimental
+ */
+export interface CatalogSkuSuccessor {
+    predecessorSkuId: string;
+    successorSkuId: string;
+    publicationId: string;
+}
+/** Successor declarations are bound to the original authored operation.
+ * @experimental
+ */
+export interface CatalogDraftPayloadV5 extends Omit<CatalogDraftPayloadV4, "schemaVersion" | "publication"> {
+    schemaVersion: 5;
+    publication: Omit<import("./lifecycleV2.js").CatalogDraftPayloadV4["publication"], "operations"> & {
+        operations: (Exclude<import("./lifecycleV2.js").CatalogDraftPublicationOperationV4, {
+            op: "create_sku";
+        }> | (Extract<import("./lifecycleV2.js").CatalogDraftPublicationOperationV4, {
+            op: "create_sku";
+        }> & {
+            successorOf?: string;
+        }))[];
+    };
+}
+/** @experimental */
+export interface CatalogDraftCommandV5 {
+    schemaVersion: 5;
+    action: "create" | "revise" | "abandon" | "resume";
+    draftId: string;
+    commandKey: string;
+    expectedRevision: number;
+    payload?: CatalogDraftPayloadV5;
+}
+/** @experimental */
+export type CatalogSuccessorStoredCommand = import("./lifecycleV2.js").CatalogLifecycleStoredCommand | CatalogDraftCommandV5;
+/** @experimental */
+export interface CatalogSuccessorStoredRecord extends CatalogDraftSummary {
+    payload: import("./lifecycleV2.js").CatalogLifecycleStoredPayload | CatalogDraftPayloadV5;
+}
+/** Versioned manifest adds declarations without changing product or SKU facts.
+ * @experimental
+ */
+export interface CatalogFullPublicationV4 {
+    outcome: "page";
+    schemaVersion: 4;
+    head: import("./lifecycle.js").CatalogHeadRef;
+    product: import("./lifecycleV2.js").CatalogPublishedProductV3;
+    items: {
+        reference: import("./publication.js").CatalogSkuRevisionRef;
+        facts: import("./lifecycleV2.js").CatalogPublishedSkuV3;
+    }[];
+    successors: {
+        successorSkuId: string;
+        successorOf: string;
+    }[];
+    nextCursor: string | null;
+}
+```
 ## dist/catalog/contracts/variantAxes.d.ts
 
 ```ts
@@ -3202,6 +3278,7 @@ export interface CatalogCombinationChangeV2 {
 ## dist/catalog/draftHandler.d.ts
 
 ```ts
+import type { CatalogSuccessorStoredRecord } from "./contracts/successors.js";
 import { type CatalogDraftApplyResult, type CatalogDraftRecord, type CatalogDraftPage, type CatalogDraftRefusal } from "./draftSchemas.js";
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
@@ -3210,7 +3287,7 @@ import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js"
 import { type CatalogDraftOperator, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { type CatalogDraftReadiness } from "./draftValidation.js";
-export interface CatalogDraftHandlerDeps<Context, Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftHandlerDeps<Context, Record extends CatalogSuccessorStoredRecord = CatalogDraftRecord> {
     store: CatalogDraftStorePort<Record>;
     registry: CatalogProductTypeRegistry;
     attributeReferences?: CatalogAttributeReferencePort;
@@ -3298,17 +3375,37 @@ export declare function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftH
         page: CatalogDraftPage;
     }>;
 };
+/** Explicit successor authoring dialect; prior handlers retain their schemas.
+ * @experimental
+ */
+export declare function createCatalogDraftHandlerV5<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogSuccessorStoredRecord>): {
+    execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
+        outcome: "committed" | "replayed";
+        record: CatalogSuccessorStoredRecord;
+    }) & {
+        issues?: readonly CatalogDraftIssue[];
+        readiness?: CatalogDraftReadiness;
+    }>;
+    get(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
+        outcome: "found";
+        record: CatalogSuccessorStoredRecord | null;
+    }>;
+    list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
+        outcome: "listed";
+        page: CatalogDraftPage;
+    }>;
+};
 ```
 ## dist/catalog/draftPorts.d.ts
 
 ```ts
+import type { CatalogSuccessorStoredRecord } from "./contracts/successors.js";
 import type { CatalogDraftGetQuery, CatalogDraftListQuery, CatalogDraftPage, CatalogDraftRefusal, CatalogDraftRecord } from "./draftSchemas.js";
-import type { CatalogLifecycleStoredRecord } from "./contracts/lifecycleV2.js";
 /** Portable adapters accept this actor only after the injected operator authorizer succeeds. */
 export interface CatalogDraftOperator {
     actorId: string;
 }
-export interface CatalogDraftStorePort<Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftStorePort<Record extends CatalogSuccessorStoredRecord = CatalogDraftRecord> {
     apply(input: {
         canonicalCommand: string;
         fingerprint: string;
@@ -4182,6 +4279,11 @@ export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
 export { createPostgresCatalogAdmission } from "./admission.js";
 export type { CatalogAdmissionPort } from "./admission.js";
+export type { CatalogWithdrawalImpactPort, CatalogSkuSuccessor, CatalogDraftPayloadV5, CatalogDraftCommandV5, CatalogSuccessorStoredCommand, CatalogSuccessorStoredRecord, CatalogFullPublicationV4 } from "./contracts/successors.js";
+export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSuccessorStoredPayloadSchema, catalogSuccessorStoredCommandSchema, catalogSuccessorStoredRecordSchema, catalogSuccessorStoredApplyResultSchema } from "./successorPublication.js";
+export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
+export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
+export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4657,6 +4759,7 @@ export {};
 ## dist/catalog/publicationStore.d.ts
 
 ```ts
+import type { CatalogFullPublicationV4 } from "./contracts/successors.js";
 import type { VerifiedCatalogPublisher, CatalogPublicationPort, CatalogPublicationReadPort } from "./publicationPorts.js";
 import type { CatalogPublicationDependencies, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
 import type { CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./contracts/publication.js";
@@ -4695,6 +4798,8 @@ export declare function createPostgresCatalogPublication<Context>(deps: CatalogP
     readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
     /** @experimental */
     readbackV3: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV3 | CatalogPublicationFailure>;
+    /** @experimental */
+    readbackV4: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV4 | CatalogPublicationFailure>;
     resolveRetained: (binding: CatalogRetainedSourceBinding, scope: VerifiedCatalogReadScope) => Promise<CatalogPublicationFailure | {
         outcome: "found";
         head: {
@@ -4802,6 +4907,44 @@ export declare function compileCatalogPublication(input: CatalogPublicationCompi
     activation: boolean;
     changed: boolean;
 };
+/** Successor declarations live in a separate manifest version.
+ * @experimental
+ */
+export declare const catalogSuccessorPublicationStateSchema: z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodType<CatalogPublicationManifestV2, unknown, z.core.$ZodTypeInternals<CatalogPublicationManifestV2, unknown>>, z.ZodObject<{
+    schemaVersion: z.ZodLiteral<3>;
+    product: z.ZodType<CatalogProductState & {
+        schemaVersion: 3;
+        lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
+    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogProductState & {
+        schemaVersion: 3;
+        lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
+    } & Record<"definitionDigest", string>, unknown>>;
+    skus: z.ZodArray<z.ZodObject<{
+        skuId: z.ZodGUID;
+        revisionId: z.ZodGUID;
+        revision: z.ZodNumber;
+        digest: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>]>, z.ZodObject<{
+    schemaVersion: z.ZodLiteral<4>;
+    product: z.ZodType<CatalogProductState & {
+        schemaVersion: 3;
+        lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
+    } & Record<"definitionDigest", string>, unknown, z.core.$ZodTypeInternals<CatalogProductState & {
+        schemaVersion: 3;
+        lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2;
+    } & Record<"definitionDigest", string>, unknown>>;
+    skus: z.ZodArray<z.ZodObject<{
+        skuId: z.ZodGUID;
+        revisionId: z.ZodGUID;
+        revision: z.ZodNumber;
+        digest: z.ZodString;
+    }, z.core.$strict>>;
+    successors: z.ZodArray<z.ZodObject<{
+        successorSkuId: z.ZodGUID;
+        successorOf: z.ZodGUID;
+    }, z.core.$strict>>;
+}, z.core.$strict>]>;
 ```
 ## dist/catalog/readPorts.d.ts
 
@@ -5201,7 +5344,52 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly position: 154;
     readonly sha256: "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a";
     readonly url: URL;
+}, {
+    readonly id: "20261123130000_catalog_successors";
+    readonly catalogPath: "db/platform/migrations/20261123130000_catalog_successors.sql";
+    readonly position: 155;
+    readonly sha256: "2dd9a7de148f80e4dab503617bf049f0c3beaf2e855cc8257ace91732ef58e4e";
+    readonly url: URL;
 }];
+```
+## dist/catalog/successorPublication.d.ts
+
+```ts
+import { z } from "./validation.js";
+import type { CatalogDraftCommandV5, CatalogDraftPayloadV5, CatalogSuccessorStoredRecord, CatalogSuccessorStoredCommand } from "./contracts/successors.js";
+/** Separate authoring version; older strict schemas retain their grammar and bytes.
+ * @experimental
+ */
+export declare const catalogDraftPayloadV5Schema: z.ZodType<CatalogDraftPayloadV5>;
+/** @experimental */
+export declare const catalogDraftCommandV5Schema: z.ZodType<CatalogDraftCommandV5>;
+/** @experimental */
+export declare const catalogSuccessorStoredPayloadSchema: z.ZodUnion<readonly [z.ZodType<import("./contracts/lifecycleV2.js").CatalogLifecycleStoredPayload, unknown, z.core.$ZodTypeInternals<import("./contracts/lifecycleV2.js").CatalogLifecycleStoredPayload, unknown>>, z.ZodType<CatalogDraftPayloadV5, unknown, z.core.$ZodTypeInternals<CatalogDraftPayloadV5, unknown>>]>;
+/** @experimental */
+export declare const catalogSuccessorStoredCommandSchema: z.ZodType<CatalogSuccessorStoredCommand>;
+/** @experimental */
+export declare const catalogSuccessorStoredRecordSchema: z.ZodType<CatalogSuccessorStoredRecord>;
+/** @experimental */
+export declare const catalogSuccessorStoredApplyResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    outcome: z.ZodEnum<{
+        replayed: "replayed";
+        committed: "committed";
+    }>;
+    record: z.ZodType<CatalogSuccessorStoredRecord, unknown, z.core.$ZodTypeInternals<CatalogSuccessorStoredRecord, unknown>>;
+}, z.core.$strict>, z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    currentRevision: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>]>;
+/** Pure validation adapter only: original canonical payload remains the digest input.
+ * @experimental
+ */
+export declare function catalogSuccessorValidationPayload(payload: CatalogDraftPayloadV5): import("./contracts/lifecycleV2.js").CatalogDraftPayloadV4;
 ```
 ## dist/catalog/validation.d.ts
 
@@ -5243,6 +5431,16 @@ export declare function validateCatalogCombinationChangesV2(input: {
     incoming: readonly CatalogCombinationChangeV2[];
     capacity?: number;
 }): readonly CatalogRetainedCombinationV2[];
+```
+## dist/catalog/withdrawalImpact.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { CatalogWithdrawalImpactPort } from "./contracts/successors.js";
+/** Lifecycle archive and withdrawal impact share one authoritative, unpaginated query.
+ * @experimental
+ */
+export declare function createPostgresCatalogWithdrawalImpact(executor: PgQueryExecutor): CatalogWithdrawalImpactPort;
 ```
 ## dist/data/binding.d.ts
 

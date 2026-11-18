@@ -727,7 +727,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
   return { authorize, authorizeReadScope(context: Context): VerifiedCatalogReadScope { const scope = Object.freeze({}); readers.set(scope, context); return scope as VerifiedCatalogReadScope; },
     publication, reads, readPort, publish, decision, receipt: recoverReceipt, readbackV2,
     /** @experimental */
-    readbackV3, readbackV4, resolveRetained };
+    readbackV3,
+    /** @experimental */
+    readbackV4, resolveRetained };
 }
 function encodeCursor(value: { kind: "history" | "facts"; productId: string; highWater: number; before: number }): string {
   return Buffer.from(publicationJson({ schemaVersion: 1, ...value })).toString("base64url");

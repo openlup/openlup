@@ -1,9 +1,13 @@
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import type { PgQueryExecutor } from "@openlup/platform/data";
-import { createPostgresCatalogPublication,createCatalogProductTypeRegistry,installCatalogDefinitions,catalogDefinitionDigest,canonicalCatalogDraftJson,catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
+import { createPostgresCatalogPublication,createCatalogProductTypeRegistry,installCatalogDefinitions,catalogDefinitionDigest,canonicalCatalogDraftJson,catalogAcceptedReferenceV2Schema,createPostgresCatalogWithdrawalImpact } from "@openlup/platform/catalog";
 import type { CatalogDraftPayloadV4,CatalogDraftPayloadV5,CatalogHeadRef } from "@openlup/platform/catalog/contracts";
-import { createNativeCatalogRenewalCodecV2 } from "@openlup/platform/subscriptions";
+import { createNativeCatalogRenewalCodecV2,createPostgresSuccessorStore,createPostgresSuccessorNotices,successorNoticeSources } from "@openlup/platform/subscriptions";
+import { readOutboxDispatchConfig } from "@openlup/outbox";
+import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
 import type { SubscriptionEditConsent } from "@openlup/platform/subscriptions/contracts";
+import type { OutboxEventRow } from "@openlup/core/outbox";
+import { createPostgresTransactionalDeliveryStore,createTransactionalDelivery,createCapturedTransactionalDelivery } from "@openlup/platform/communications";
 import { ecommercePaid } from "./communicationEcommerceFixture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -13,10 +17,11 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
 
 const migration = "db/platform/migrations/20261123130000_catalog_successors.sql";
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
-let pool: Pool, db: PoolClient;
+let pool: Pool, db: PoolClient, connectionString:string;
 beforeAll(async () => {
   const container = await runPostgresContainer({ name: `catalog-successors-${process.pid}`, password: "synthetic-successors" }); containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Successor witnesses require real PostgreSQL");
+  connectionString=container.connectionString;
   pool = new Pool({ connectionString: container.connectionString }); pools.push(pool);
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
@@ -61,6 +66,12 @@ it("lc10_D6_C3_direct_legacy_json", async () => {
   expect(result.actual).toEqual(result.expected);
   expect(Object.keys(result.actual)).toHaveLength(21);
   expect((await db.query("SELECT public.subscription_stock_wait_projection(NULL::public.subscription_stock_wait_cases) AS result")).rows).toEqual([{ result: null }]);
+  const populated=(await db.query(`WITH value AS (SELECT jsonb_populate_record(NULL::public.subscription_stock_wait_cases,to_jsonb(c)||jsonb_build_object(
+    'cycle_id',gen_random_uuid(),'order_id',gen_random_uuid(),'fulfillment_id',gen_random_uuid(),'state','synthetic-composite',
+    'resumed_at',now(),'stock_secured_at',now(),'closed_at',now(),'last_selected_at',now(),'block_reason','synthetic',
+    'notice_messages',jsonb_build_object('excluded',true))) AS row FROM public.subscription_stock_wait_cases c WHERE id=$1)
+    SELECT public.subscription_stock_wait_projection(row) AS actual,to_jsonb(row)-'due_snapshot'-'cycle_snapshot'-'notice_messages' AS expected FROM value`,[f.caseId])).rows[0];
+  expect(populated.actual).toEqual(populated.expected);
 });
 it("lc10_D6_C4_direct_legacy_read", async () => {
   const f = await legacy();
@@ -68,6 +79,50 @@ it("lc10_D6_C4_direct_legacy_read", async () => {
   expect(result.actual).toEqual(result.expected);
   expect((await db.query("SELECT public.subscription_stock_wait_read($1) AS result", [randomUUID()])).rows).toEqual([{ result: null }]);
   expect((await db.query("SELECT public.subscription_stock_wait_read_v2($1,'legacy') AS result", [f.caseId])).rows[0].result).toEqual({ schemaVersion: 2, caseKind: "legacy", case: result.expected });
+});
+
+it.each([
+  {name:"lc10_N1_admit_late_opened_fact",creator:"admit" as const,recoveryStock:0,signature:"public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)"},
+  {name:"lc10_N1_recover_full_stock_opened_fact",creator:"recover" as const,recoveryStock:100,signature:"public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)"},
+])("$name",async({creator,recoveryStock,signature})=>{
+  const observer=await pool.connect(),pause=await gate(observer),oPid=await pid(observer);
+  const before=(await pool.query("SELECT id FROM public.outbox_events WHERE event_type='catalog.publication.committed'")).rows.map(row=>row.id);
+  const notices=createPostgresSuccessorNotices({withTransaction:transaction,impact:createPostgresCatalogWithdrawalImpact(pool),recipient:async()=>null,delivery:{enqueue:async()=>{throw Error("source_must_only_handoff");}}});
+  const boundary=creator==="admit"?"PERFORM public.subscription_stock_wait_enqueue(c,'started');":`UPDATE public.subscription_stock_wait_cases SET refusal_observations=refusal_observations||
+   COALESCE((SELECT jsonb_agg(to_jsonb(observation) ORDER BY occurred_at,id) FROM public.subscription_renewal_outcomes observation WHERE renewal_operation_id=op.id),'[]'::jsonb)
+   WHERE id=c.id;`;
+  const restore=await hook(signature,boundary,pause.sql);
+  const creating=tracked(createSuccessorJourney(pool,{creator,recoveryStock}));
+  try {
+    await expect.poll(async()=>(await observer.query("SELECT count(*)::integer AS count FROM pg_stat_activity WHERE $1::integer=ANY(pg_blocking_pids(pid)) AND query LIKE '%subscription_stock_wait_%'",[oPid])).rows[0].count).toBe(1);
+    const withdrawal=(await pool.query(`SELECT to_jsonb(e) AS event FROM public.outbox_events e JOIN public.catalog_publications p ON p.id=(e.payload#>>'{head,publicationId}')::uuid
+      WHERE e.event_type='catalog.publication.committed' AND e.id<>ALL($1::uuid[]) AND p.canonical_state::jsonb#>>'{product,lifecycleState}'='withdrawn'`,[before])).rows;
+    expect(withdrawal).toHaveLength(1);
+    const published=withdrawal[0].event as OutboxEventRow;
+    const outbox=createPostgresOutboxStore(pool),config=readOutboxDispatchConfig({});
+    const known=[...successorNoticeSources,"subscription_stock_wait.started","subscription_stock_wait.resumed"];
+    let emptyScanAcknowledged=false;
+    const count=Number((await pool.query("SELECT count(*) AS count FROM public.outbox_events WHERE event_type='catalog.publication.committed'")).rows[0].count);
+    for(let batch=0;batch<count&&!emptyScanAcknowledged;batch++) {
+      const claimed=await outbox.claimBatch({eventTypes:[published.event_type],knownEventTypes:known,batchSize:config.batchSize,visibilitySeconds:config.visibilitySeconds,maxAttempts:config.maxAttempts});
+      for(const source of claimed) {
+        expect(await notices.handle(source)).toEqual({kind:"processed"});
+        expect(await outbox.markProcessed({eventId:source.id,claimToken:String(source.metadata.claimToken)})).toEqual({applied:true});
+        if(source.id===published.id)emptyScanAcknowledged=true;
+      }
+    }
+    expect(emptyScanAcknowledged).toBe(true);
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.outbox_events WHERE event_type='subscription.predecessor_withdrawn.v2' AND payload->>'withdrawalPublicationId'=$1",[published.payload.head && (published.payload.head as {publicationId:string}).publicationId])).rows).toEqual([{count:0}]);
+    await pause.release();const created=await creating;if(!created.ok)throw created.error;
+    const f=created.value;
+    const openings=await outbox.claimBatch({eventTypes:["subscription_stock_wait.opened.v1"],knownEventTypes:known,batchSize:config.batchSize,visibilitySeconds:config.visibilitySeconds,maxAttempts:config.maxAttempts});
+    const opening=openings.find(row=>row.aggregate_id===f.caseId);expect(opening).toBeDefined();
+    expect(await notices.handle(opening!)).toEqual({kind:"processed"});
+    expect(await outbox.markProcessed({eventId:opening!.id,claimToken:String(opening!.metadata.claimToken)})).toEqual({applied:true});
+    const handoff=await sourceEvent("subscription.predecessor_withdrawn.v2",f.subscription);
+    expect(handoff.payload).toMatchObject({reason:"predecessor_withdrawn",caseId:f.caseId,operationId:f.operationId});
+    expect((await pool.query("SELECT status FROM public.outbox_events WHERE id=$1",[published.id])).rows).toEqual([{status:"processed"}]);
+  } finally {await pause.release();await creating;await restore();observer.release();}
 });
 
 it("stock_wait_successor_resolution_supersedes_atomically", async () => {
@@ -126,7 +181,9 @@ async function hook(signature:string,boundary:string,insertion:string) {
 async function gate(observer:PoolClient) {
   const key=BigInt(`0x${randomUUID().replaceAll("-","").slice(0,14)}`).toString();
   await observer.query("SELECT pg_advisory_lock($1::bigint)",[key]);
-  return { sql:`PERFORM pg_advisory_lock(${key}::bigint); PERFORM pg_advisory_unlock(${key}::bigint);`,release:()=>observer.query("SELECT pg_advisory_unlock($1::bigint)",[key]) };
+  return { sql:`DECLARE lc10_gate_lock_timeout text:=current_setting('lock_timeout'); BEGIN
+    PERFORM set_config('lock_timeout','0',true); PERFORM pg_advisory_lock(${key}::bigint); PERFORM pg_advisory_unlock(${key}::bigint);
+    PERFORM set_config('lock_timeout',lc10_gate_lock_timeout,true); END;`,release:()=>observer.query("SELECT pg_advisory_unlock($1::bigint)",[key]) };
 }
 const pid=async(connection:PoolClient)=>Number((await connection.query("SELECT pg_backend_pid() AS id")).rows[0].id);
 async function blocked(observer:PoolClient,waiter:number,holder:number) {
@@ -141,7 +198,7 @@ async function state() {
 it.each(["legacy_first","resolver_first"])("lc10_D6_direct_legacy_outcome_root_contention",async schedule=>{
   const f=await prepareLegacy(),observer=await pool.connect(),legacy=await pool.connect(),resolver=await pool.connect();
   const lPid=await pid(legacy),rPid=await pid(resolver),oPid=await pid(observer),pause=await gate(observer);
-  let restore=async()=>{};
+  let restore=async()=>{},finished=false;
   const invoke=()=>legacy.query("SELECT public.commerce_record_subscription_renewal_outcome($1,$2,$3,'succeeded',$4,NULL,$5) AS result",[f.operationId,randomUUID(),f.codec.fingerprint(f.frozen),f.external,f.at]);
   const resolve=()=>resolver.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at]);
   let old:Promise<{ok:true;value:unknown}|{ok:false;error:unknown}>|undefined;
@@ -150,24 +207,27 @@ it.each(["legacy_first","resolver_first"])("lc10_D6_direct_legacy_outcome_root_c
     if(schedule==="legacy_first") {
       restore=await hook("public.commerce_record_subscription_renewal_outcome(uuid,text,text,text,text,text,timestamptz)","WHERE id = p_operation_id FOR UPDATE;",pause.sql);
       old=tracked(invoke());await blocked(observer,lPid,oPid);
-      const before=await state(),refused=await tracked(resolve());
-      expect(refused).toMatchObject({ok:false,error:{code:"55P03",message:"lc10_root_operation_busy"}});
-      await resolver.query("ROLLBACK");expect(await state()).toEqual(before);
-    } else {
-      restore=await hook("public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)","SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;",pause.sql);
-      const before=await state(),pending=tracked(resolve());await blocked(observer,rPid,oPid);
-      old=tracked(invoke());await blocked(observer,lPid,rPid);
-      await pause.release();expect(await pending).toMatchObject({ok:false,error:{code:"55P03",message:"lc10_root_operation_busy"}});
-      await resolver.query("ROLLBACK");
-      // L now owns the native settlement. R's proposal/template/sidecars remain unchanged.
-      const after=await state();for(const name of ["subscription_successor_proposals","subscription_successor_operations_v2","subscription_successor_wait_cases_v2","subscription_successor_reservations_v2","subscription_command_receipts","subscription_quote_previews","subscription_lines"])expect(after[name]).toEqual(before[name]);
+    } else restore=await hook("public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)","SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;",pause.sql);
+    const before=await state(),resolving=tracked(resolve()).finally(()=>{finished=true;});
+    if(schedule==="resolver_first") {
+      await blocked(observer,rPid,oPid);old=tracked(invoke());await blocked(observer,lPid,rPid);await pause.release();
     }
+    // An executable remove-NOWAIT mutant must fail on its actual root wait, before
+    // PostgreSQL's deadlock detector or the runner timeout can supply an error.
+    await expect.poll(async()=>finished?"finished":(await observer.query("SELECT $2::integer=ANY(pg_blocking_pids($1)) AS blocked",[rPid,lPid])).rows[0].blocked?"root_wait":"running").not.toBe("running");
+    if(!finished) {
+      await pause.release();await blocked(observer,lPid,rPid);
+      expect((await observer.query("SELECT $2::integer=ANY(pg_blocking_pids($1)) AS blocked",[rPid,lPid])).rows[0].blocked,"new root acquisition must refuse the inverse native wait").toBe(false);
+    }
+    expect(await resolving).toMatchObject({ok:false,error:{code:"55P03",message:"lc10_root_operation_busy"}});
+    await resolver.query("ROLLBACK");expect(await state()).toEqual(before);
     await pause.release();expect(await old).toMatchObject({ok:true});await legacy.query("COMMIT");
     expect((await pool.query("SELECT status FROM public.commerce_orders WHERE id=$1",[f.prepared.orderId])).rows).toEqual([{status:"paid"}]);
     await expect(resolve()).rejects.toMatchObject({code:"22023",message:"stock_wait_successor_provider_owned"});
     expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_successor_operations_v2 WHERE root_operation_id=$1",[f.operationId])).rows).toEqual([{count:0}]);
   } finally {
-    await pause.release();await legacy.query("ROLLBACK");await resolver.query("ROLLBACK");await restore();observer.release();legacy.release();resolver.release();
+    await observer.query("SELECT pg_cancel_backend($1)",[rPid]);await resolver.query("ROLLBACK");
+    await pause.release();await legacy.query("ROLLBACK");await restore();observer.release();legacy.release();resolver.release();
   }
 });
 
@@ -188,6 +248,32 @@ it("lc10_D6_document_fk_witness_precedence",async()=>{
     .rejects.toMatchObject({code:"23503",table:"catalog_publication_pointer_capabilities"});
   await db.query("ROLLBACK TO SAVEPOINT pointer_authority");
   expect((await db.query("SELECT to_jsonb(p) AS row FROM public.catalog_products p WHERE id=$1",[f.predecessor.product])).rows[0].row).toEqual(before);
+});
+
+it("lc10_D6_invoker_ATP_permission_regression",async()=>{
+  const container=await runPostgresContainer({name:`successor-invoker-${process.pid}`,password:"synthetic-invoker"});containers.push(container);
+  if(!await waitForPostgresTcpReady(container.connectionString))throw Error("Invoker parity requires PostgreSQL");
+  const owner=new Pool({connectionString:container.connectionString});pools.push(owner);
+  const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
+  for(const unit of [manifest.baseline,...manifest.forward]) {if(unit.file===migration)break;await owner.query(readFileSync(unit.file,"utf8"));}
+  // Existing native invoker contract: no successor relation or privilege exists.
+  await owner.query(`CREATE ROLE lc10_inventory_reader NOLOGIN NOINHERIT NOBYPASSRLS;
+    GRANT USAGE ON SCHEMA public TO lc10_inventory_reader;
+    GRANT SELECT ON public.fulfillment_stock_current,public.fulfillment_inventory_reservations,public.fulfillment_inventory_reservation_lines,
+      public.subscription_renewal_operations,public.subscription_cycles,public.subscriptions,public.subscription_renewal_terms,public.subscription_renewal_term_lines TO lc10_inventory_reader;
+    GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),public.inventory_channel_exposure_quantity(text,text) TO lc10_inventory_reader`);
+  const connection=await owner.connect();
+  const call=()=>connection.query("SELECT public.inventory_available_to_promise('synthetic-source','synthetic-sku',clock_timestamp(),false) AS result");
+  try {
+    await connection.query("SET ROLE lc10_inventory_reader");
+    expect((await call()).rows[0].result).toEqual({available_quantity:0,for_sale_quantity:0,hard_hold_quantity:0,safety_quantity:0,soft_subscription_demand_quantity:0,channel_exposure_quantity:0});
+    await connection.query("RESET ROLE");
+    await owner.query(readFileSync(migration,"utf8"));
+    expect((await owner.query("SELECT count(*)::integer AS count FROM public.subscription_successor_reservations_v2")).rows).toEqual([{count:0}]);
+    expect((await owner.query("SELECT prosecdef FROM pg_proc WHERE oid='public.inventory_available_to_promise(text,text,timestamptz,boolean)'::regprocedure")).rows).toEqual([{prosecdef:false}]);
+    await connection.query("SET ROLE lc10_inventory_reader");
+    await expect(call()).rejects.toMatchObject({code:"42501",message:"permission denied for table subscription_successor_reservations_v2"});
+  } finally {await connection.query("RESET ROLE");connection.release();}
 });
 
 it.each([
@@ -234,13 +320,19 @@ it("lc10_D6_paid_fact_legacy_bytes",async()=>{
   expect(start).toBeGreaterThan(0);
   await db.query(original.replace("public.communication_paid_fact","pg_temp.lc10_legacy_paid_fact"));
   const f=await prepareLegacy();
-  await pool.query("SELECT public.commerce_record_subscription_renewal_outcome($1,$2,$3,'succeeded',$4,NULL,$5)",[f.operationId,randomUUID(),f.codec.fingerprint(f.frozen),f.external,f.at]);
-  const orders=[f.prepared.orderId];
-  for(const options of [{},{initial:true},{discount:true},{complete:false}])orders.push((await ecommercePaid(db,{...options,at:f.at})).order);
-  for(const order of orders) {
-    const result=(await db.query("SELECT public.communication_paid_fact(o) AS actual,pg_temp.lc10_legacy_paid_fact(o) AS expected FROM public.commerce_orders o WHERE id=$1",[order])).rows[0];
-    expect(result.actual).toEqual(result.expected);
-  }
+  await db.query("CREATE TEMP TABLE lc10_paid_fact_probe(order_id uuid,actual jsonb,expected jsonb) ON COMMIT DROP");
+  const restore=await hook("public.commerce_order_emit_paid_notification()","PERFORM public.communication_event_paid_write(NEW.id);",
+    "INSERT INTO pg_temp.lc10_paid_fact_probe VALUES(NEW.id,public.communication_paid_fact(NEW),pg_temp.lc10_legacy_paid_fact(NEW));");
+  try {
+    await db.query("SELECT public.commerce_record_subscription_renewal_outcome($1,$2,$3,'succeeded',$4,NULL,$5)",[f.operationId,randomUUID(),f.codec.fingerprint(f.frozen),f.external,f.at]);
+    const orders=[f.prepared.orderId];
+    for(const options of [{},{initial:true},{discount:true},{complete:false}])orders.push((await ecommercePaid(db,{...options,at:f.at})).order);
+    const results=(await db.query("SELECT actual,expected FROM pg_temp.lc10_paid_fact_probe ORDER BY order_id")).rows;
+    expect(results).toHaveLength(orders.length);
+    for(const result of results)expect(result.actual).toEqual(result.expected);
+    expect(results.map(r=>r.actual.state).sort()).toEqual(["complete","complete","complete","complete","incomplete"]);
+    expect(results.filter(r=>r.actual.state==="complete").map(r=>r.actual.event.data.purchaseKind).sort()).toEqual(["one_time","one_time","renewal","subscription_initial"]);
+  } finally { await restore(); }
 });
 
 it("lc10_D6_C5_first_and_replay_json",async()=>{
@@ -290,6 +382,21 @@ it("stock_wait_successor_never_moves_cycle_earlier",async()=>{
   expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_delivery_alignment_arrivals a JOIN public.fulfillment_shipments f ON f.id=a.shipment_id JOIN public.commerce_orders o ON o.id=f.order_id JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=$1",[f.subscription])).rows).toEqual([{count:0}]);
 });
 
+it("lc10_D6_one_live_generation",async()=>{
+  const f=await createSuccessorJourney(pool);
+  const result=(await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result;
+  const g=(await db.query("SELECT * FROM public.subscription_successor_operations_v2 WHERE id=$1",[result.operationId])).rows[0];
+  const at=(await db.query("SELECT $1::timestamptz+interval '1 second' AS at",[g.lease_expires_at])).rows[0].at.toISOString();
+  const due=(await db.query("SELECT public.subscription_list_due_successor_renewals_v2(500,$1) AS result",[at])).rows[0].result as Record<string,unknown>[];
+  expect(due.filter(row=>row.operationId===g.id)).toHaveLength(1);
+  expect(due.filter(row=>row.operationKind==="legacy"&&(row.due as Record<string,unknown>).subscription_id===f.subscription)).toEqual([]);
+  expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_successor_operations_v2 WHERE root_operation_id=$1 AND superseded_by_proposal_id IS NULL",[f.operationId])).rows).toEqual([{count:1}]);
+  expect((await db.query(`SELECT i.indisunique,pg_get_expr(i.indpred,i.indrelid) AS predicate,
+    ARRAY(SELECT a.attname::text FROM unnest(i.indkey) WITH ORDINALITY k(n,ord) JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.n ORDER BY k.ord) AS columns
+    FROM pg_index i WHERE i.indexrelid=to_regclass('public.subscription_successor_operations_v2_live_root_key')`)).rows)
+    .toEqual([{indisunique:true,predicate:"(superseded_by_proposal_id IS NULL)",columns:["root_operation_id"]}]);
+});
+
 it("successor_offer_requires_acceptance_and_never_substitutes",async()=>{
   const f=await prepareLegacy();
   expect((await db.query("SELECT state FROM public.subscription_successor_proposals WHERE id=$1",[f.proposalId])).rows).toEqual([{state:"offered"}]);
@@ -317,6 +424,172 @@ it("stock_wait_successor_refuses_paid_or_provider_owned",async()=>{
   }
 });
 
+it.each(["resolution_first","recovery_first"])("stock_wait_successor_races_recovery_one_winner",async order=>{
+  const f=await createSuccessorJourney(pool,{creator:"recover",recoveryStock:100}),observer=await pool.connect(),winner=await pool.connect(),loser=await pool.connect();
+  const at=(await pool.query("SELECT lease_expires_at+interval '1 second' AS at FROM public.subscription_renewal_operations WHERE id=$1",[f.operationId])).rows[0].at.toISOString();
+  const pause=await gate(observer),wPid=await pid(winner),oPid=await pid(observer);
+  const resolve=(connection:PoolClient)=>connection.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,at]);
+  const recover=(connection:PoolClient)=>connection.query("SELECT public.subscription_stock_wait_recover_refusal($1,$2,'synthetic-recovery',$3) AS result",[f.operationId,f.codec.fingerprint(f.frozen),at]);
+  const resolutionFirst=order==="resolution_first";
+  const restore=await hook(resolutionFirst?"public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)":"public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+    resolutionFirst?"SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;":"SELECT * INTO s FROM public.subscriptions WHERE id=(SELECT subscription_id FROM public.subscription_renewal_operations WHERE id=p_operation_id) FOR UPDATE;",pause.sql);
+  let pending:Promise<unknown>|undefined;
+  try {
+    await winner.query("BEGIN");await loser.query("BEGIN");
+    pending=(resolutionFirst?resolve:recover)(winner);await blocked(observer,wPid,oPid);const before=await state();
+    await expect((resolutionFirst?recover:resolve)(loser)).rejects.toMatchObject({code:"55P03",message:"inventory_admission_busy"});
+    await loser.query("ROLLBACK");expect(await state()).toEqual(before);
+    await pause.release();expect((await pending as {rows:{result:Record<string,unknown>}[]}).rows[0].result).toMatchObject(resolutionFirst?{status:"applied"}:{waiting:false});
+    await winner.query("COMMIT");
+    await expect((resolutionFirst?recover:resolve)(loser)).rejects.toMatchObject({code:"22023",message:resolutionFirst?"stock_wait_binding_changed":"stock_wait_successor_lease_active"});
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_successor_operations_v2 WHERE root_operation_id=$1 AND superseded_by_proposal_id IS NULL",[f.operationId])).rows).toEqual([{count:resolutionFirst?1:0}]);
+  } finally {await pause.release();await winner.query("ROLLBACK");await loser.query("ROLLBACK");await restore();observer.release();winner.release();loser.release();}
+});
+
+it("lc10_exact_old_receipt",async()=>{
+  const f=await createSuccessorJourney(pool),key=randomUUID();
+  const claim=(connection:PgQueryExecutor)=>connection.query("SELECT public.subscription_claim_due_renewal($1,$2,$3,'synthetic-old-worker',300,$4) AS result",[f.codec.identity(f.frozen),f.codec.fingerprint(f.frozen),f.wire,f.at]);
+  const original=(await claim(pool)).rows[0]!.result;
+  const resolved=await transaction(async connection=>(await connection.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,key,f.client,f.at])).rows[0].result);
+  const changed=structuredClone(f.predecessor.value);changed.product.sharedContent.catalogAction="revise";changed.product.sharedContent.presentation={label:"Synthetic revision"};
+  changed.publication.operations=[{op:"set_product_presentation",productSlug:changed.product.slug!,presentation:{label:"Synthetic revision"}}];
+  const drift=await f.publish(changed,f.predecessor.draft,2,f.withdrawalHead);expect(drift.revision).toBe(f.withdrawalHead.revision+1);
+  const reconnected=new Pool({connectionString});
+  try {
+    expect((await claim(reconnected)).rows[0]!.result).toEqual(original);
+    const replay=(await reconnected.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,key,f.client,f.at])).rows[0].result;
+    expect(replay).toEqual(resolved);
+    expect((await reconnected.query("SELECT count(*)::integer AS count FROM public.subscription_successor_operations_v2 WHERE root_operation_id=$1",[f.operationId])).rows).toEqual([{count:1}]);
+  } finally {await reconnected.end();}
+});
+
+it("lc10_D6_one_native_realization_and_benefit",async()=>{
+  const f=await createSuccessorJourney(pool);
+  const resolved=(await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result;
+  const g=(await db.query("SELECT * FROM public.subscription_successor_operations_v2 WHERE id=$1",[resolved.operationId])).rows[0];
+  const store=createPostgresSuccessorStore({withTransaction:work=>work(db),codec:f.codec,previews:{prepare:async()=>{throw Error("unexpected_preview");}}});
+  const input={operationId:g.id,claimToken:g.claim_token,now:f.at};
+  const prepared=await store.prepare(input);
+  expect(await store.prepare(input)).toEqual({...prepared,replayed:true});
+  expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_cycles WHERE subscription_id=$1 AND status='paid'",[f.subscription])).rows).toEqual([{count:1}]);
+  const outcome={operationId:g.id,eventKey:randomUUID(),evidence:{operationFingerprint:g.operation_fingerprint,outcome:"succeeded" as const,externalRef:`synthetic:${g.id}`},now:f.at};
+  const settled=await store.settle(outcome);expect(await store.settle(outcome)).toEqual(settled);
+  await db.query("SAVEPOINT second_payment");
+  await expect(store.settle({...outcome,eventKey:randomUUID()})).rejects.toMatchObject({code:"22023",message:"commerce_renewal_outcome_attempt_not_prepared"});
+  await db.query("ROLLBACK TO SAVEPOINT second_payment");await db.query("RELEASE SAVEPOINT second_payment");
+  expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_cycles WHERE subscription_id=$1 AND status='paid'",[f.subscription])).rows).toEqual([{count:2}]);
+  expect((await db.query("SELECT next_cycle_number FROM public.subscription_renewal_terms WHERE subscription_id=$1",[f.subscription])).rows).toEqual([{next_cycle_number:2}]);
+  expect((await db.query("SELECT status FROM public.subscription_successor_reservations_v2 WHERE operation_id=$1",[g.id])).rows).toEqual([{status:"consumed"}]);
+  expect((await db.query("SELECT renewal_operation_id,renewal_operation_fingerprint FROM public.commerce_orders WHERE id=$1",[prepared.orderId])).rows).toEqual([{renewal_operation_id:null,renewal_operation_fingerprint:null}]);
+  await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('synthetic-successor','3pl',true) ON CONFLICT DO NOTHING");
+  await db.query("SELECT public.fulfillment_create_shipment($1,$2,'synthetic-successor','{}'::jsonb,$3)",[`shipment:${prepared.orderId}`,prepared.orderId,f.at]);
+  const first=await store.markResumed(String(prepared.orderId));expect(first).toMatchObject({schemaVersion:2,caseKind:"successor",case:{state:"resumed",operation_id:g.id,order_id:prepared.orderId}});
+  expect(await store.markResumed(String(prepared.orderId))).toEqual(first);
+  expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_delivery_alignment_arrivals WHERE shipment_id=(SELECT fulfillment_id FROM public.subscription_successor_operations_v2 WHERE id=$1)",[g.id])).rows).toEqual([{count:0}]);
+});
+
+it("lc10_D6_paid_fact_generation_binding",async()=>{
+  const f=await createSuccessorJourney(pool);
+  const resolved=(await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result;
+  const g=(await db.query("SELECT * FROM public.subscription_successor_operations_v2 WHERE id=$1",[resolved.operationId])).rows[0];
+  const prepared=(await db.query("SELECT public.commerce_prepare_successor_renewal_v2($1,$2,$3) AS result",[g.id,g.claim_token,f.at])).rows[0].result;
+  await db.query("CREATE TEMP TABLE lc10_paid_fact_edges(actual jsonb,wrong_client jsonb,wrong_cycle jsonb,wrong_fingerprint jsonb) ON COMMIT DROP");
+  const restore=await hook("public.commerce_order_emit_paid_notification()","PERFORM public.communication_event_paid_write(NEW.id);",`INSERT INTO pg_temp.lc10_paid_fact_edges VALUES(public.communication_paid_fact(NEW),
+    public.communication_paid_fact(jsonb_populate_record(NULL::public.commerce_orders,to_jsonb(NEW)||jsonb_build_object('client_id',gen_random_uuid()))),
+    public.communication_paid_fact(jsonb_populate_record(NULL::public.commerce_orders,to_jsonb(NEW)||jsonb_build_object('subscription_cycle_id',gen_random_uuid()))),
+    public.communication_paid_fact(jsonb_populate_record(NULL::public.commerce_orders,to_jsonb(NEW)||jsonb_build_object('renewal_operation_fingerprint',repeat('a',64)))));`);
+  try {
+    await db.query("SELECT public.commerce_settle_successor_renewal_v2($1,$2,$3,$4)",[g.id,randomUUID(),{operationFingerprint:g.operation_fingerprint,outcome:"succeeded",externalRef:`synthetic:${g.id}`},f.at]);
+    const probe=(await db.query("SELECT * FROM pg_temp.lc10_paid_fact_edges")).rows;
+    expect(probe).toHaveLength(1);expect(probe[0].actual).toMatchObject({state:"complete",event:{data:{orderId:prepared.orderId,purchaseKind:"renewal"}}});
+    for(const key of ["wrong_client","wrong_cycle","wrong_fingerprint"])expect(probe[0][key]).toEqual({state:"incomplete",reason:"renewal_evidence"});
+  } finally { await restore(); }
+});
+
+it("withdrawal_reports_bound_subscriptions",async()=>{
+  const f=await createSuccessorJourney(pool),impact=createPostgresCatalogWithdrawalImpact(db);
+  const result=await impact.report(f.predecessor.sku);
+  expect(result).toEqual((await db.query("SELECT public.catalog_bound_obligations_v2($1) AS result",[f.predecessor.sku])).rows[0].result);
+  expect(result).toMatchObject({outcome:"complete",obligations:expect.arrayContaining([
+    expect.objectContaining({family:"template",subscriptionId:f.subscription}),expect.objectContaining({family:"stock_wait",sourceId:f.caseId,subscriptionId:f.subscription})])});
+});
+
+it("stock_wait_notice_names_withdrawn_predecessor",async()=>{
+  const f=await createSuccessorJourney(pool);
+  const invoke=()=>db.query("SELECT public.subscription_successor_notice_v2($1,'legacy',$2) AS result",[f.caseId,f.withdrawalHead.publicationId]);
+  const first=(await invoke()).rows[0].result;
+  expect(first).toMatchObject({outcome:"handed_off",notices:[{messageKey:`subscription-predecessor-withdrawn:${f.withdrawalHead.publicationId}:${f.caseId}`,
+    payload:{reason:"predecessor_withdrawn",operationId:f.operationId,subscriptionId:f.subscription,clientId:f.client,predecessors:[{skuId:f.predecessor.sku,skuCode:f.predecessor.code}]}}]});
+  expect((await invoke()).rows[0].result).toEqual(first);
+});
+
+async function transaction<T>(work:(db:PoolClient)=>Promise<T>):Promise<T> {
+  const connection=await pool.connect();
+  try {await connection.query("BEGIN");const result=await work(connection);await connection.query("COMMIT");return result;}
+  catch(error){await connection.query("ROLLBACK");throw error;}finally{connection.release();}
+}
+async function sourceEvent(eventType:string,aggregateId:string):Promise<OutboxEventRow> {
+  return (await pool.query(`SELECT to_jsonb(e) AS event FROM public.outbox_events e WHERE event_type=$1 AND aggregate_id=$2
+    ORDER BY (CASE WHEN event_type='catalog.publication.committed' THEN (payload#>>'{head,revision}')::integer END) DESC NULLS LAST,created_at DESC,id DESC LIMIT 1`,[eventType,aggregateId])).rows[0]?.event;
+}
+
+it("lc10_handoff_before_ack",async()=>{
+  const f=await createSuccessorJourney(pool),sent:string[]=[];
+  let recipientAvailable=false,transportAvailable=false;
+  const receipts=createPostgresTransactionalDeliveryStore({connectionString});
+  const engine=createTransactionalDelivery({store:receipts,delivery:createCapturedTransactionalDelivery({outcome:command=>{
+    if(!transportAvailable)return {state:"failed"};sent.push(command.idempotencyKey);return {state:"accepted"};
+  }})});
+  const notices=createPostgresSuccessorNotices({withTransaction:transaction,impact:createPostgresCatalogWithdrawalImpact(pool),recipient:async clientId=>recipientAvailable?{recipientRef:clientId,locale:"en"}:null,
+    delivery:{enqueue:async descriptor=>{
+      const prior=await receipts.readReceipt(descriptor.messageKey);
+      const receipt=await engine.send({idempotencyKey:descriptor.messageKey,recipientReference:descriptor.recipientRef,templateReference:descriptor.templateSlug});
+      if(receipt.state!=="accepted")throw Error("subscription_notice_delivery_unavailable");
+      return {notificationId:receipt.deliveryReference,replayed:prior?.state==="accepted"};
+    }}});
+  try {
+    const opened=await sourceEvent("subscription_stock_wait.opened.v1",f.caseId);
+    expect(await notices.handle(opened)).toEqual({kind:"processed"});
+    const handoff=await sourceEvent("subscription.predecessor_withdrawn.v2",f.subscription);
+    expect(handoff).toMatchObject({idempotency_key:`subscription-predecessor-withdrawn:${f.withdrawalHead.publicationId}:${f.caseId}`});
+    expect(await receipts.readReceipt(handoff.idempotency_key)).toBeNull();
+    expect(await notices.handle(handoff)).toEqual({kind:"retry",reason:"subscription_notice_recipient_unresolved"});
+    recipientAvailable=true;expect((await notices.handle(handoff)).kind).toBe("retry");expect(sent).toEqual([]);
+    transportAvailable=true;expect(await notices.handle(handoff)).toEqual({kind:"processed"});
+    // No source acknowledgement: a restarted worker repeats both routes and the handoff.
+    expect(await notices.handle(opened)).toEqual({kind:"processed"});
+    expect(await notices.handle(await sourceEvent("catalog.publication.committed",f.predecessor.product))).toEqual({kind:"processed"});
+    expect(await notices.handle(handoff)).toEqual({kind:"processed"});expect(sent).toEqual([handoff.idempotency_key]);
+    expect(await receipts.readReceipt(handoff.idempotency_key)).toMatchObject({state:"accepted"});
+    expect((await pool.query("SELECT id FROM public.outbox_events WHERE event_type='subscription.predecessor_withdrawn.v2' AND aggregate_id=$1",[f.subscription])).rows).toEqual([{id:handoff.id}]);
+    const resolved=await transaction(async connection=>(await connection.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result);
+    expect(resolved.status).toBe("applied");
+    expect(await notices.handle(opened)).toEqual({kind:"processed"});
+    expect(await notices.handle(handoff)).toEqual({kind:"processed",detail:{obsolete:true}});expect(sent).toEqual([handoff.idempotency_key]);
+  } finally {await receipts.close();}
+});
+
+it.each(["opened_first","publication_first"])("lc10_N3_shared_completion",async order=>{
+  const f=await createSuccessorJourney(pool),observer=await pool.connect(),pause=await gate(observer),oPid=await pid(observer);
+  const notices=createPostgresSuccessorNotices({withTransaction:transaction,impact:createPostgresCatalogWithdrawalImpact(pool),recipient:async()=>null,
+    delivery:{enqueue:async()=>{throw Error("source_must_only_handoff");}}});
+  const opened=await sourceEvent("subscription_stock_wait.opened.v1",f.caseId),publication=await sourceEvent("catalog.publication.committed",f.predecessor.product);
+  const firstSource=order==="opened_first"?opened:publication,secondSource=order==="opened_first"?publication:opened;
+  const restore=await hook("public.subscription_successor_notice_v2(uuid,text,uuid)","SELECT * INTO s FROM public.subscriptions WHERE id=sub FOR UPDATE NOWAIT;",pause.sql);
+  let first:Promise<unknown>|undefined;
+  try {
+    first=notices.handle(firstSource);
+    await expect.poll(async()=>(await observer.query("SELECT count(*)::integer AS count FROM pg_stat_activity WHERE $1::integer=ANY(pg_blocking_pids(pid)) AND query LIKE '%subscription_successor_notice_v2%'",[oPid])).rows[0].count).toBe(1);
+    const before=await state();
+    expect(await notices.handle(secondSource)).toEqual({kind:"retry",reason:"lc10_commerce_busy"});expect(await state()).toEqual(before);
+    await pause.release();expect(await first).toEqual({kind:"processed"});
+    const handoff=await sourceEvent("subscription.predecessor_withdrawn.v2",f.subscription);
+    expect(await notices.handle(secondSource)).toEqual({kind:"processed"});
+    expect((await sourceEvent("subscription.predecessor_withdrawn.v2",f.subscription)).id).toBe(handoff.id);
+    expect((await pool.query("SELECT count(*)::integer AS count FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.predecessor_withdrawn.v2'",[f.subscription])).rows).toEqual([{count:1}]);
+  } finally {await pause.release();await first;await restore();observer.release();}
+});
+
 /** Existing journey resources, with real publication, frozen wait and consent owners. */
 async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" | "recover"; recoveryStock?: number } = {}) {
   const definition={ key:"example:article",version:1,units:[{code:"openlup:g",dimension:"mass" as const,integral:false}],netContentUnits:["openlup:g"],dimensions:[],axes:[],validatorRef:`sha256:${"a".repeat(64)}`,validateContent:()=>[] };
@@ -332,12 +605,11 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)",[admin,`${admin}@example.invalid`]);
     await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())",[admin]);
     await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1') ON CONFLICT(key) DO NOTHING");
-    const authority = createPostgresCatalogPublication({ registry,rules,authorizeHuman: async () => ({ ok: true as const,userId: admin,role: "admin",isMachineActor: false }),
+    async function publishOn(db:PoolClient,payload:CatalogDraftPayloadV4|CatalogDraftPayloadV5,draftId:string,revision:number,head:CatalogHeadRef|null) {
+      const authority = createPostgresCatalogPublication({ registry,rules,authorizeHuman: async () => ({ ok: true as const,userId: admin,role: "admin",isMachineActor: false }),
       readiness: async () => ({ ready: true,reasons: [] }),globalReadiness: async () => ({ ready: true,reasons: [] }),verifyMedia: async () => false,
       transactions: { async run(work) { await db.query("SAVEPOINT publisher"); try { const result = await work(db); await db.query("RELEASE SAVEPOINT publisher"); return result; } catch (error) { await db.query("ROLLBACK TO SAVEPOINT publisher"); throw error; } } } });
-    const actor = (await authority.authorize(null))!;
-    async function publish(payload: CatalogDraftPayloadV4 | CatalogDraftPayloadV5,
-      draftId: string,revision: number,head: CatalogHeadRef | null) {
+      const actor = (await authority.authorize(null))!;
       const command = { schemaVersion: payload.schemaVersion,action: revision ? "revise" : "create",draftId,commandKey: `draft:${revision}`,expectedRevision: revision,payload }, canonical = canonicalCatalogDraftJson(command);
       expect(await rpc(db,"catalog_draft_apply",[canonical,hash(canonical),"operator:synthetic"])).toMatchObject({ outcome: "committed" });
       const candidateRef = `v1:${draftId}@${revision + 1}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
@@ -347,6 +619,7 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
       if (!("receipt" in result)) throw new Error(JSON.stringify(result));
       return result.receipt.head;
     }
+    const publish=(payload:CatalogDraftPayloadV4|CatalogDraftPayloadV5,draftId:string,revision:number,head:CatalogHeadRef|null)=>publishOn(db,payload,draftId,revision,head);
     async function article(predecessor?: string) {
       const product = randomUUID(),sku = randomUUID(),draft = randomUUID(),document = randomUUID(),code = `ARTICLE-${sku}`,slug = `article-${product}`;
       const digits=(BigInt(`0x${sku.replaceAll("-","").slice(0,14)}`)%1_000_000_000_000n).toString().padStart(12,"0");
@@ -415,6 +688,8 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     const withdraw=structuredClone(predecessor.value); withdraw.product.sharedContent.catalogAction="revise";
     withdraw.publication.operations=[{ op: "set_product_lifecycle",productSlug: withdraw.product.slug!,expectedState: "active",state: "withdrawn",children: [{ skuCode: predecessor.code,expectedState: "active" }] }];
     const withdrawalHead=await publish(withdraw,predecessor.draft,1,predecessor.head);
+    // The withdrawal and empty-scan source are committed before the later wait creator.
+    await db.query("COMMIT");await db.query("BEGIN");
     const stock=createPostgresFulfillmentStockSyncPort(db,{ sourceKey: source,readLocalInventoryStock: async()=>[] });
     for (const [sku,quantity] of [[predecessor.code,0],[successor.code,100]] as const) await stock.recordProviderStockCurrent({ requestKey: `stock:${sku}`,snapshot: { providerRef: "synthetic",collectedAt: at,sourceRevision: null,revisionSource: "collection",quantityKind: "snapshot",skuRef: sku,totalQuantity: quantity,forSaleQuantity: quantity,reservedOrUnavailableQuantity: 0,syncRunId: subscription },inventoryClass: "sellable",lastSyncedAt: at,staleAfter: (await db.query("SELECT now()+interval '1 day' AS until")).rows[0].until.toISOString() });
     const claimedOperation=await rpc(db,"subscription_claim_due_renewal",[codec.identity(frozen),codec.fingerprint(frozen),wire,"synthetic",300,claimed]);
@@ -450,6 +725,8 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
       applyPayload: { ...request,request,planDays: 28,base: core,addons: [],...evidence,...totals },cycleSnapshot: codec.encode(newFrozen) };
     const proposal=await rpc(db,"subscription_successor_proposal_offer_v2",[subscription,client,offer,at]);
     await db.query("COMMIT");
-    return { client,principal,subscription,predecessor,successor,withdrawalHead,at,anchor,source,codec,frozen,wire,preRecovery,operationId: String(claimedOperation.operationId),claimToken: String(admitted.claimToken??claimedOperation.claimToken),caseId: String(admitted.caseId),proposalId,quoteHash: String(proposal.quote_hash),offer };
+    return { client,principal,subscription,predecessor,successor,withdrawalHead,at,anchor,source,codec,frozen,wire,preRecovery,
+      publish:(payload:CatalogDraftPayloadV4|CatalogDraftPayloadV5,draftId:string,revision:number,head:CatalogHeadRef|null)=>transaction(connection=>publishOn(connection,payload,draftId,revision,head)),
+      operationId: String(claimedOperation.operationId),claimToken: String(admitted.claimToken??claimedOperation.claimToken),caseId: String(admitted.caseId),proposalId,quoteHash: String(proposal.quote_hash),offer };
   } catch(error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }

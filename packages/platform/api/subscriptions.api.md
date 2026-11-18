@@ -572,6 +572,25 @@ export type SubscriptionLifecycleFact = {
     kind: "winback_eligible";
     cancelledAt: string;
     paymentMethodRef: string;
+}
+/** @experimental */
+ | {
+    kind: "predecessor_withdrawn";
+    frozenFingerprint: string;
+    withdrawalPublicationId: string;
+    predecessors: {
+        skuId: string;
+        skuCode: string;
+    }[];
+}
+/** @experimental */
+ | {
+    kind: "successor_offered";
+    proposalId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    quoteHash: string;
+    expiresAt: string;
 });
 /** M04 receives a descriptor; host owns copy, recipient, consent and transport. */
 export interface SubscriptionLifecycleMessageDescriptor {
@@ -1559,6 +1578,39 @@ export interface StockWaitStorePort {
     }>;
 }
 ```
+## dist/subscriptions/contracts/successors.d.ts
+
+```ts
+import type { SubscriptionEditConsent } from "./editConsent.js";
+/** @experimental */
+export type SuccessorCaseKind = "legacy" | "successor";
+/** Terminal decisions never apply themselves during renewal.
+ * @experimental
+ */
+export type SuccessorProposalState = "offered" | "accepted" | "declined" | "expired";
+/** @experimental */
+export interface SuccessorResolutionRequest {
+    caseId: string;
+    proposalId: string;
+    acceptedQuoteHash: string;
+    commandKey: string;
+    clientId: string;
+    now: string;
+}
+/** @experimental */
+export interface SuccessorProposal {
+    id: string;
+    subscriptionId: string;
+    clientId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    publicationId: string;
+    state: SuccessorProposalState;
+    quoteHash: string;
+    expiresAt: string;
+    editConsent: SubscriptionEditConsent;
+}
+```
 ## dist/subscriptions/editConsentLegacyBridge.d.ts
 
 ```ts
@@ -1673,6 +1725,11 @@ export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
 export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
 export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
 export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+export { createPostgresSuccessorStore } from "./postgresSuccessorStore.js";
+export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuccessorStore.js";
+export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
+export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
+export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -2422,6 +2479,8 @@ import type { RenewalSettlementPort } from "./contracts/renewal.js";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 /** Direct settlement persistence; terminal truth must arrive from an external acknowledgement. */
 export declare function createPostgresRenewalSettlementPort(executor: SubscriptionQueryExecutor, codec: NativeRenewalCodec, withTransaction?: <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => Promise<T>): RenewalSettlementPort;
+/** Existing retained-money projection, shared by explicit generation preparation. */
+export declare function applyNativeRenewalMoney(db: SubscriptionQueryExecutor, snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot, orderId: unknown): Promise<void>;
 ```
 ## dist/subscriptions/postgresRenewalStore.d.ts
 
@@ -2606,6 +2665,147 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
         outcome: "refused";
         reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
     }>;
+};
+```
+## dist/subscriptions/postgresSuccessorNotices.d.ts
+
+```ts
+import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
+/** Inert source registrations. A host binds these to its existing outbox worker.
+ * @experimental
+ */
+export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2"];
+/** Source claims must be committed before invocation. Commerce commits its handoff
+ * before M04 enqueue; a crash between enqueue and source acknowledgement replays
+ * the same message key. Construction registers no worker or capability.
+ * @experimental
+ */
+export declare function createPostgresSuccessorNotices(options: {
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Bind the catalogue owner's complete withdrawal-impact port. */
+    impact: {
+        report(skuId: string): Promise<{
+            outcome: "complete";
+            obligations: readonly {
+                family: string;
+                sourceId: string;
+                caseKind?: "legacy" | "successor";
+            }[];
+        } | {
+            outcome: "unknown" | "unavailable";
+            reason: string;
+        }>;
+    };
+    delivery: SubscriptionLifecycleMessagePort;
+    recipient(clientId: string): Promise<{
+        recipientRef: string;
+        locale: string;
+    } | null>;
+}): {
+    handle(row: OutboxEventRow): Promise<OutboxHandlerOutcome>;
+};
+```
+## dist/subscriptions/postgresSuccessorStore.d.ts
+
+```ts
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
+import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
+import type { PackageEditActor } from "./packageEditContracts.js";
+import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
+/** Server-owned native preview enrichment; it uses the selected existing edit lane.
+ * @experimental
+ */
+export interface SuccessorPreviewBinding {
+    prepare(db: SubscriptionQueryExecutor, input: {
+        previewId: string;
+        subscriptionId: string;
+        actor: PackageEditActor;
+    }): Promise<{
+        applyPayload: Record<string, unknown>;
+        cycleSnapshot: RenewalFrozenSnapshot | null;
+    }>;
+}
+/** @experimental */
+export interface SuccessorOfferInput {
+    proposalId: string;
+    subscriptionId: string;
+    predecessorSkuId: string;
+    successorSkuId: string;
+    publicationId: string;
+    previewId: string;
+    lane: "classic" | "exact" | "sized" | "legacy";
+    action: string;
+    sourceBinding: {
+        kind: "ordinary_edit";
+    } | {
+        kind: "stock_wait";
+        caseKind: SuccessorCaseKind;
+        caseId: string;
+    };
+    historicalBinding?: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">;
+    now: string;
+}
+/** Explicit native stores only. Construction mounts no consumer, payment rail or capability.
+ * @experimental
+ */
+export declare function createPostgresSuccessorStore(options: {
+    withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    codec: NativeRenewalCodec;
+    previews: SuccessorPreviewBinding;
+    historicalBindings?: readonly HistoricalSuccessorProtocolBinding[];
+}): {
+    offer(actor: PackageEditActor, input: SuccessorOfferInput): Promise<Record<string, unknown>>;
+    decide(actor: PackageEditActor, input: {
+        proposalId: string;
+        decision: "accepted" | "declined" | "expired";
+        commandKey: string;
+        quoteHash: string | null;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    resolve(actor: PackageEditActor, input: Omit<SuccessorResolutionRequest, "clientId">): Promise<Record<string, unknown>>;
+    readCase(caseId: string, caseKind: SuccessorCaseKind): Promise<Record<string, unknown> | null>;
+    listDue(limit: number, now: string): Promise<unknown>;
+    listCandidates(limit: number, now: string): Promise<unknown>;
+    claim(input: {
+        identityKey: string;
+        fingerprint: string;
+        snapshot: Record<string, unknown>;
+        workerId: string;
+        leaseSeconds?: number;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    reserve(input: {
+        operationId: string;
+        claimToken: string;
+        holdSeconds?: number;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    recover(input: {
+        operationId: string;
+        fingerprint: string;
+        workerId: string;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    prepare(input: {
+        operationId: string;
+        claimToken: string;
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    settle(input: {
+        operationId: string;
+        eventKey: string;
+        evidence: {
+            operationFingerprint: string;
+            outcome: "succeeded" | "refused";
+            externalRef: string;
+            reason?: string;
+        };
+        now: string;
+    }): Promise<Record<string, unknown>>;
+    markResumed(orderId: string): Promise<Record<string, unknown> | null>;
 };
 ```
 ## dist/subscriptions/postgresWinback.d.ts
@@ -3193,4 +3393,23 @@ export declare function apportionSubscriptionUnits(input: {
 }[];
 /** Application demand and quantity policy stay behind the existing core composition seam. */
 export declare function createSubscriptionSizingRules(policy: SubscriptionSizingPolicy): CompositionRulesPort;
+```
+## dist/subscriptions/successorProtocolBindings.d.ts
+
+```ts
+/** An installed historical binding supplies authority; current metadata cannot replace it.
+ * @experimental
+ */
+export interface HistoricalSuccessorProtocolBinding {
+    sourceIdentity: string;
+    candidateKind: string;
+    baseProtocol: string;
+    eventKind: string;
+    authorityRef: string;
+}
+export declare class Lc10ProtocolBindingError extends Error {
+    readonly code = "lc10_protocol_binding_unavailable";
+    constructor();
+}
+export declare function requireHistoricalProtocolBinding(input: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">, installedBindings: readonly HistoricalSuccessorProtocolBinding[]): HistoricalSuccessorProtocolBinding;
 ```

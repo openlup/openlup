@@ -623,7 +623,7 @@
     },
     {
       "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
-      "sha256": "a2a64e2cdc6c4fe52e19c06650d66dc3c4a01eaea5470bf82cccbd26149f53cb"
+      "sha256": "fdd5930d4dde05801241d916efceab6fdb785b8498b6cbf27dd5c77cc48e7416"
     }
   ],
   "objectInventorySha256": "aee65b30281ce911ca104542edf40d8d8b94cbf89cb1d08b5e81d3a88af80fe0",
@@ -1271,7 +1271,7 @@
       },
       {
         "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
-        "sha256": "a2a64e2cdc6c4fe52e19c06650d66dc3c4a01eaea5470bf82cccbd26149f53cb"
+        "sha256": "fdd5930d4dde05801241d916efceab6fdb785b8498b6cbf27dd5c77cc48e7416"
       }
     ],
     "objectInventorySha256": {
@@ -1923,7 +1923,7 @@
       },
       {
         "file": "db/platform/migrations/20261123130000_catalog_successors.sql",
-        "sha256": "a2a64e2cdc6c4fe52e19c06650d66dc3c4a01eaea5470bf82cccbd26149f53cb"
+        "sha256": "fdd5930d4dde05801241d916efceab6fdb785b8498b6cbf27dd5c77cc48e7416"
       }
     ],
     "objectInventorySha256": {
