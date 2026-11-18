@@ -5,12 +5,25 @@ Status: historical record, 2026-11-09.
 Status: qualification evidence for the one supported stable 1.x installation
 composition: the npm starter, PostgreSQL and the qualified image.
 
-The 1.0.0 set is published but failed exact-set qualification for starter
-upgrades in [run 44156615468](https://github.com/openlup/openlup/actions/runs/44156615468).
-The prepared 1.1.0 set supersedes it with the
-[required starter migration](../../packages/core/docs/guide/upgrade/v1-0-0.md#starter-applications-from-0430).
-It adds the cadence widening and native forward 151; qualification of 1.1.0 is
-recorded after publication, not inferred from local preparation.
+On 2026-11-18, [run 44263843134](https://github.com/openlup/openlup/actions/runs/44263843134)
+qualified `openlup-core-v1.1.0` (`ec24f180`): 1.0.0→1.1.0 upgrade,
+schema and canary passed. 1.1.0 is the first qualified stable set, including
+the npm set and `ghcr.io/openlup/neutral-store-starter:1.1.0` at
+`sha256:96f31906a5100d986ec5a0c0b8474ef2daa417e5d08d0816efc590bd9b74eadf`.
+Its evidence image, `ghcr.io/openlup/neutral-store-starter:1.1.0-evidence`, is at
+`sha256:5d779d5beaffe5a548cda51b571ef8eca1ef9502125090031ea1a9f5d448d75b`.
+Both are attested by `registry-tutorial.yml` on `main`. The first automatic
+[run 44255571945](https://github.com/openlup/openlup/actions/runs/44255571945)
+qualified the npm set, but image publication was refused before any registry
+write because the publisher lacked the containerd image store; the fix on
+`main` was followed by the single recovery run above.
+
+1.0.0 initially failed starter-upgrade qualification in
+[run 44156615468](https://github.com/openlup/openlup/actions/runs/44156615468).
+On 2026-11-18, [run 44256496392](https://github.com/openlup/openlup/actions/runs/44256496392)
+passed exact-set qualification for 0.43.0→1.0.0 using the
+[starter migration published with 1.1.0](../../packages/core/docs/guide/upgrade/v1-0-0.md#starter-applications-from-0430).
+This qualifies the 1.0.0 npm set without an image; it remains superseded by 1.1.0.
 
 ## Released starter inputs
 
@@ -169,8 +182,7 @@ updated migration harness and the published packages. Both extracted starters
 and the upgraded application passed the shared consumer checks. The owned
 migration, managed conflict refusal, interruption, incomplete-state refusal,
 resume, replay and owned-byte preservation all passed. This uses the migration
-now documented for 1.1.0; it does not replace the failed hosted 1.0.0 record or
-establish post-publication qualification of 1.1.0.
+published with 1.1.0. The later hosted qualification results are recorded above.
 
 The local 2026-11-17 1.0.0→1.1.0 published-to-candidate proof also passed
 through the same CLI pair harness and shared locked-input consumer checks.
@@ -181,8 +193,8 @@ typecheck, build and development-loop checks. The exact target lock moved
 unchanged; conflict refusal, interruption, incomplete-state refusal, resume,
 replay and owned customizations passed. The old store configuration imports
 remained in place, with the documented retention migration in
-`owned/renewal.config.ts`. This is local file/dependency evidence; 1.1.0 registry
-provenance and exact-set qualification remain post-publication obligations.
+`owned/renewal.config.ts`. This is local file/dependency evidence; the later
+hosted 1.1.0 qualification and provenance results are recorded above.
 
 For 0.40.0→0.41.0 the only changing managed file is the extracted
 `package.json` with exact package pins. The kill therefore interrupts the CLI

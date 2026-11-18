@@ -496,7 +496,7 @@ maintainer; the additional allowance does not expand this outcome. Final proof,
 submission of the updated candidate, its receipt and queueing are authorized in
 the named landing lane, provided main stays at the integration pin below.
 
-Hosted run `41393465458`, root shard 3/4, failed before PostgreSQL setup:
+Archived hosted run `41393465458` (2026-11-02), root shard 3/4, failed before PostgreSQL setup:
 `npm install --offline` reported `ENOTCACHED` for the registry's `zod` metadata.
 The fixture had installed three packed platform artifacts plus registry specs
 for `pg`, its types and Node types. Locked installation caches tarballs but does

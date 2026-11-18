@@ -30514,7 +30514,15 @@
       "class": "public-output"
     },
     {
-      "path": "tests/postgres/nativeStoreForwardCatalog.test.ts",
+      "path": "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeStoreForwardCatalog.shared.ts",
       "class": "public-output"
     },
     {
