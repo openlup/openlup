@@ -50,7 +50,10 @@ function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows
     readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false };
 }
 beforeAll(async () => {
-  const container = await runPostgresContainer({ name: `catalog-publication-${process.pid}`, password: "synthetic-catalog-publication" }); containers.push(container);
+  // Keep background maintenance out of the disposable fixtures' NOWAIT schedules.
+  const command = ["postgres", "-c", "autovacuum=off"];
+  const container = await runPostgresContainer({ name: `catalog-publication-${process.pid}`, password: "synthetic-catalog-publication", command });
+  containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Publication witnesses require real PostgreSQL");
   db = new Pool({ connectionString: container.connectionString }); pools.push(db);
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -67,9 +70,7 @@ beforeAll(async () => {
   for (let revision = 1; revision <= 1; revision++) receipt = await commit(await incrementalSku(data, receipt.head, revision));
   paged = { data, head: receipt.head };
   const other = await draft(), otherReceipt = await commit(other.publication); foreignPublished = { data: other, head: otherReceipt.head };
-  // Keep background maintenance out of the price fixture's NOWAIT schedules.
-  const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication",
-    command: ["postgres", "-c", "autovacuum=off"] });
+  const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication", command });
   containers.push(priceContainer);
   if (!await waitForPostgresTcpReady(priceContainer.connectionString)) throw new Error("Price publication witnesses require real PostgreSQL");
   priceDb = new Pool({ connectionString: priceContainer.connectionString }); pools.push(priceDb);
