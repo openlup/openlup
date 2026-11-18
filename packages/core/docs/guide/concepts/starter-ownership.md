@@ -313,8 +313,38 @@ shipment transaction commits and retain that wrapper's fail-soft policy.
 ## Saved addresses, billing and preferences
 
 The signed-in account can read, create, edit and delete its saved addresses.
-Native formatting and default clearing apply. Address writes, default clearing
-and account events have separate commits: reload after a failed save before
+Default clearing and the host's `CustomerSavedAddressValidationPolicy` apply.
+In the unreleased source candidate, `createCustomerSavedAddressRequestSchemas`
+from `@openlup/platform/shipping` accepts optional `local` callbacks:
+`normalizePostalCode`, `isValidPostalCode` and `normalizePhone`. They run only
+when the selected country resolves to the policy's `country`, including its
+aliases. Without `local`, the compatible built-in rules remain: five postal
+digits become `NN-NNN`; nine phone digits gain `phonePrefix`, and an existing
+prefix is retained. Removing those defaults is separate future work.
+
+The platform trims fields, collapses whitespace and uppercases postal input
+before local normalization, then validates the normalized postal result.
+Phone callbacks receive trimmed input with collapsed whitespace; a null result
+refuses a supplied phone, while an absent or blank phone stays null. Postal
+input and output remain bounded to 24 characters, phone input and local output
+to 64. Foreign postal rules and the 6–32 character foreign phone rule bypass
+the callbacks. Country aliases, field bounds and message keys remain platform
+mechanics. Callbacks must be effect-free: no I/O, authorization or mutable-state
+reads; normalization may run more than once per parse. A callback throw refuses
+its field with `messages.postalCode` or `messages.phone`, rather than escaping
+as a server error. Missing or nonfunction
+callbacks in a supplied `local` refuse schema creation with
+`saved_address_policy_invalid`.
+
+The current starter host imports `savedAddressValidation` from
+`owned/acquisition-policy.ts`. Its fictional country uses postal codes with two
+letters followed by four digits, and eight phone digits normalized with `+999`;
+edit that owned algorithm outside
+`StoreConfig` for another local format. These formats do not establish a real
+country or phone jurisdiction.
+
+Address writes, default clearing and account events have separate commits:
+reload after a failed save before
 retrying. An admitted command key returns the current book without another
 write. Deleting a missing or foreign row acknowledges zero deletions and returns
 only the caller's book; editing a foreign row refuses. Use by an active or paused
