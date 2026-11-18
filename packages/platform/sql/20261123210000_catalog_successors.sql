@@ -123,6 +123,61 @@ REVOKE ALL ON TABLE public.subscription_successor_operations_v2 FROM PUBLIC;
 REVOKE ALL ON TABLE public.subscription_successor_wait_cases_v2 FROM PUBLIC;
 REVOKE ALL ON TABLE public.subscription_successor_reservations_v2 FROM PUBLIC;
 
+-- Extend the sized editor's shared phase guard with the frozen logical cycle
+-- on the successor generation that owns the native cycle.
+CREATE OR REPLACE FUNCTION public.subscription_sized_consent_phase(p_client_id uuid,p_subscription_id uuid)
+ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE s public.subscriptions%ROWTYPE; intro jsonb; phase_config jsonb;
+ unreadable bigint; upcoming bigint; phase text:='none';
+BEGIN
+ SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
+ WITH activation AS (
+  SELECT (array_agg(o.subscription_cycle_id))[1] AS cycle_id
+  FROM public.subscription_activations a LEFT JOIN public.commerce_orders o ON o.id=a.order_id AND o.client_id=s.client_id
+  WHERE a.subscription_id=s.id AND a.state='active'
+  HAVING count(*)=1
+ ), identities AS (
+  SELECT c.status,CASE
+   WHEN c.renewal_operation_id IS NOT NULL THEN
+    CASE WHEN op.cycle_snapshot#>>'{cycle,status}'='correlated'
+     AND jsonb_typeof(op.cycle_snapshot#>'{cycle,logicalCycleNumber}')='number'
+     THEN op.cycle_snapshot#>>'{cycle,logicalCycleNumber}' END
+   WHEN g.id IS NOT NULL THEN
+    CASE WHEN g.cycle_snapshot#>>'{cycle,status}'='correlated'
+     AND jsonb_typeof(g.cycle_snapshot#>'{cycle,logicalCycleNumber}')='number'
+     THEN g.cycle_snapshot#>>'{cycle,logicalCycleNumber}' END
+   WHEN c.status='paid' AND c.id=(SELECT cycle_id FROM activation) THEN '1' END AS logical_number
+  FROM public.subscription_cycles c LEFT JOIN public.subscription_renewal_operations op
+   ON op.id=c.renewal_operation_id AND op.subscription_id=c.subscription_id
+  LEFT JOIN public.subscription_successor_operations_v2 g
+   ON g.cycle_id=c.id AND g.subscription_id=c.subscription_id
+  WHERE c.subscription_id=s.id
+ ), numbers AS (
+  SELECT status,CASE WHEN logical_number ~ '^[1-9][0-9]{0,15}$'
+   THEN CASE WHEN logical_number::bigint<=9007199254740991 THEN logical_number::bigint END END AS number
+  FROM identities
+ )
+ SELECT count(*) FILTER(WHERE number IS NULL),
+  coalesce(min(number) FILTER(WHERE status IN ('planned','payment_pending')),coalesce(max(number),0)+1)
+ INTO unreadable,upcoming FROM numbers;
+ IF unreadable<>0 OR upcoming>9007199254740991 THEN
+  RAISE EXCEPTION 'subscription_edit_cycle_history_unreadable' USING ERRCODE='22023'; END IF;
+ intro:=public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,starterPack}';
+ IF intro IS NOT NULL THEN
+  SELECT value_text::jsonb INTO phase_config FROM public.commerce_settings WHERE key='subscription_sized_intro_phase';
+  IF phase_config IS NULL OR COALESCE(phase_config->>'fixedThroughCycle','') !~ '^[1-9][0-9]{0,8}$'
+   OR COALESCE(phase_config->>'graduationCycle','') !~ '^[1-9][0-9]{0,8}$' THEN
+   RAISE EXCEPTION 'subscription_edit_invalid_sized_configuration' USING ERRCODE='22023'; END IF;
+  IF upcoming<=(phase_config->>'fixedThroughCycle')::integer THEN phase:='fixed';
+  ELSIF upcoming=(phase_config->>'graduationCycle')::integer AND s.template_version=(intro->>'basisTemplateVersion')::integer THEN
+   phase:='graduation_pending';
+  END IF;
+ END IF;
+ RETURN jsonb_build_object('upcomingCycle',upcoming,'phase',phase);
+END;
+$$;
+
 CREATE FUNCTION public.subscription_stock_wait_projection_v2(p_case public.subscription_successor_wait_cases_v2)
 RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
  SELECT CASE WHEN to_jsonb(p_case) IS NULL THEN NULL ELSE

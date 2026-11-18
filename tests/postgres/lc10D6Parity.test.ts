@@ -1684,6 +1684,45 @@ function sizedSuccessorEditor(f: Awaited<ReturnType<typeof createSuccessorJourne
   return { editor, request };
 }
 
+it.each([
+  { history: "ordinary", upcomingCycle: 3 },
+  { history: "payment-pending successor", upcomingCycle: 2 },
+  { history: "paid successor", upcomingCycle: 3 },
+  { history: "unnumberable", upcomingCycle: null },
+] as const)("LC9-D-053 shared sized phase with LC10 reads $history history", async ({ history, upcomingCycle }) => {
+  const f = await createSuccessorJourney(pool, { lane: "sized" });
+  const { editor } = sizedSuccessorEditor(f);
+  const readPhase = async () => (await editor.candidates({ actorId: f.principal, clientId: f.client }, f.subscription, true)).context.numberedPhase;
+
+  if (history === "unnumberable") {
+    await pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'paid')",
+      [f.subscription, f.anchor]);
+    await expect(readPhase()).rejects.toMatchObject({ code: "22023", message: "subscription_edit_cycle_history_unreadable" });
+    return;
+  }
+  if (history === "ordinary") {
+    await pool.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+      SELECT subscription_id,scheduled_at,'paid',id,operation_fingerprint FROM public.subscription_renewal_operations WHERE id=$1`,
+    [f.operationId]);
+  } else {
+    const { operationId } = (await pool.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+      [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, f.at])).rows[0].result;
+    const generation = (await pool.query(`SELECT claim_token,operation_fingerprint,cycle_number,cycle_snapshot->'cycle' AS cycle
+      FROM public.subscription_successor_operations_v2 WHERE id=$1`, [operationId])).rows[0];
+    expect(generation).toMatchObject({ cycle_number: 1, cycle: { status: "correlated", logicalCycleNumber: 2 } });
+    const prepared = (await pool.query("SELECT public.commerce_prepare_successor_renewal_v2($1,$2,$3) AS result",
+      [operationId, generation.claim_token, f.at])).rows[0].result;
+    expect(prepared.state).toBe("attempt_prepared");
+    if (history === "paid successor") {
+      await pool.query("SELECT public.commerce_settle_successor_renewal_v2($1,$2,$3,$4)", [operationId, randomUUID(),
+        { operationFingerprint: generation.operation_fingerprint, outcome: "succeeded", externalRef: `synthetic:${operationId}` }, f.at]);
+    }
+    const status = history === "paid successor" ? "paid" : "payment_pending";
+    expect((await pool.query("SELECT status FROM public.subscription_cycles WHERE id=$1", [prepared.cycleId])).rows).toEqual([{ status }]);
+  }
+  await expect(readPhase()).resolves.toEqual({ upcomingCycle, phase: "none" });
+});
+
 it.each(["classic", "exact", "sized"] as const)("lc10_quote_prune_skips_unrelated_locked_preview_%s", async lane => {
   const f = await createSuccessorJourney(pool, { lane }), other = await createSuccessorJourney(pool, { ordinary: true });
   const older = (await pool.query(`SELECT ($1::timestamptz-interval '9 days') AS created,
@@ -2774,15 +2813,15 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')",[subscription]);
     await db.query("INSERT INTO public.commerce_destinations(id,client_id,address) VALUES($1,$2,$3)",[destination,client,{ recipientName: "Synthetic recipient",line1: "1 Synthetic Lane",city: "Synthetic",postalCode: "00000",country: "ZZ" }]);
     const money=(amountMinor:number)=>({ amountMinor,currency: "XXX" }),oldLine={ lineOrdinal: 1,sku: predecessor.code,quantity: 1,unitAmountMinor: 617 };
-    const sizedQuoteLine = (article: typeof successor, amount: number) => ({
-      sku: article.code, productSlug: article.value.product.slug!, quantity: 1, unitPriceGross: money(amount), lineSubtotalGross: money(amount),
+    const sizedQuoteLine = (article: typeof successor, amount: number, quantity = 1) => ({
+      sku: article.code, productSlug: article.value.product.slug!, quantity, unitPriceGross: money(amount), lineSubtotalGross: money(amount * quantity),
       tax: { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "synthetic",
-        netAmount: money(amount), vatAmount: money(0), grossAmount: money(amount) },
+        netAmount: money(amount * quantity), vatAmount: money(0), grossAmount: money(amount * quantity) },
     });
     if (options.lane === "sized") await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
       VALUES($1,'subscription.starter_graduated',$2,$3,$4)`, [subscription, randomUUID(), {
       linePricing: [{ ...oldLine, isAddon: false, quoteLine: sizedQuoteLine(predecessor, 617) }],
-    }, at]);
+    }, authorized]);
     const codec=createNativeCatalogRenewalCodecV2(value=>catalogAcceptedReferenceV2Schema.parse(value));
     const header={ subscription_id: subscription,client_id: client,scheduled_at: anchor,cadence_days: 28,currency_code: "XXX",stock_source_key: source,settlement_channel_key: "sandbox",authorization_ref: "synthetic",payer_account_ref: null,
       unattended_charge_authorized_at: authorized,activation_cycle_id: activationCycle,activation_cycle_paid: true,paid_cycle_count: 1,next_cycle_number: 1,template_version: 1,
@@ -2814,7 +2853,9 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
       expect(admitted.waiting).toBe(true);
     }
     const qty=options.quotedQuantity??1,total=777*qty;
-    const innerHash=hash(randomUUID()),line={ variantId: successor.sku,qty,isAddon: false,quoteLine: { sku: successor.code,quantity: qty,unitPriceGross: money(777),lineSubtotalGross: money(total) } };
+    const quoteLine = options.lane === "sized" ? sizedQuoteLine(successor, 777, qty)
+      : { sku: successor.code, quantity: qty, unitPriceGross: money(777), lineSubtotalGross: money(total) };
+    const innerHash=hash(randomUUID()),line={ variantId: successor.sku,qty,isAddon: false,quoteLine };
     const lineId=(await db.query("SELECT id FROM public.subscription_lines WHERE subscription_id=$1",[subscription])).rows[0].id;
     const consent:SubscriptionEditConsent={version:1,currency:"XXX",baselineFingerprint:hash(JSON.stringify([1,"XXX",1,[[1,lineId,predecessor.sku,predecessor.code,false,1,617]]])),innerQuoteHash:innerHash,
       lines:[{kind:"removed",variantId:predecessor.sku,sku:predecessor.code,isAddon:false,agreedQuantity:1,newQuantity:null,agreedUnitMinor:617,newUnitMinor:null,deltaMinor:null,subtotalDeltaMinor:-617,reason:"removed"},

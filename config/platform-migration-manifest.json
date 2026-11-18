@@ -623,10 +623,10 @@
     },
     {
       "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-      "sha256": "2c0685796196a7c4daa5ec96a09bdd0dfbc5f245230465b06b16d4ebda740166"
+      "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
     }
   ],
-  "objectInventorySha256": "494ff00bcbd400363249b95cca637b9618f45ff8adb34818328c72d9493e9166",
+  "objectInventorySha256": "bdcaf8d7903486e1b3b501713c1af1e8329f21e48b1217686685416e7d8e8cc7",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1271,15 +1271,15 @@
       },
       {
         "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-        "sha256": "2c0685796196a7c4daa5ec96a09bdd0dfbc5f245230465b06b16d4ebda740166"
+        "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "a4bd5608b013d362ef43eefee7e243b4ebf3bd06f20a9f4dcc11911c2fd06e74"
+        "withRestore": "2c8864e1b4cacec72f4424c3a78f5769380b93522a9479bb2cfe2124f57451f6"
       },
       "separateMigrator": {
-        "withRestore": "52325fa80cb6a4d548eb8ebb07d30511c72f40a205a1cdb35b133a5d65d21ed7"
+        "withRestore": "cd26abf3e5280e4ec8c74451a03b4393a939644e6aeacc4ba7a66fff9ef6e5b0"
       }
     }
   },
@@ -1923,12 +1923,12 @@
       },
       {
         "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-        "sha256": "2c0685796196a7c4daa5ec96a09bdd0dfbc5f245230465b06b16d4ebda740166"
+        "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "0c2041346ae0f511984aa31573ebc2f024beccb4415e1a3f18b0f9113adc4b1f",
-      "operatorProvisioned": "d44089c97bec8bef37f8c1ff2a5787f9e0b31af0f503b6578d06d3f46b92c13f"
+      "installerManaged": "127e5098430fbfe9ec66785a52c3828a1ba89f87544d5033b1590752670d0702",
+      "operatorProvisioned": "341e8d0428e9cd4556c8d48aa85051f610b18155e785308858823dabc8790901"
     }
   }
 }
