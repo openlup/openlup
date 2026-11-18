@@ -1313,6 +1313,17 @@ BEGIN
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
  PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
+ SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=proposal_id FOR UPDATE NOWAIT;
+ IF FOUND THEN
+  hash:=encode(sha256(convert_to(jsonb_build_array('subscription.successor',2,proposal_id,p_subscription_id,p_client_id,
+   predecessor,successor,publication,p_request->'sourceBinding',p_request->>'lane',p_request->>'action',
+   p.preview->>'quote_hash',p.preview->'request_payload',p.preview->'quote_snapshot',p.preview->'totals',p_request)::text,'UTF8')),'hex');
+  IF p.quote_hash IS DISTINCT FROM hash OR p.subscription_id IS DISTINCT FROM s.id OR p.client_id IS DISTINCT FROM s.client_id OR p.request IS DISTINCT FROM p_request THEN
+   RAISE EXCEPTION 'subscription_command_idempotency_conflict' USING ERRCODE='23505'; END IF;
+  RETURN to_jsonb(p)||jsonb_build_object('state','offered','consent',NULL,'accepted_receipt',NULL,'terminal_at',NULL,
+   'created_at',(to_jsonb(p.created_at AT TIME ZONE 'UTC')#>>'{}')||'+00:00',
+   'expires_at',(to_jsonb(p.expires_at AT TIME ZONE 'UTC')#>>'{}')||'+00:00');
+ END IF;
  SELECT * INTO q FROM public.subscription_quote_previews WHERE id=(p_request->>'previewId')::uuid FOR UPDATE NOWAIT;
  IF NOT FOUND OR q.subscription_id IS DISTINCT FROM s.id OR q.client_id IS DISTINCT FROM s.client_id OR q.template_version IS DISTINCT FROM s.template_version
   OR q.status<>'previewed' OR q.expires_at<=p_now OR q.action IS DISTINCT FROM p_request->>'action'
@@ -1338,12 +1349,6 @@ BEGIN
  END IF;
  -- The new hash binds the complete retained native preview and explicit source; its inner hash stays unchanged.
  hash:=encode(sha256(convert_to(jsonb_build_array('subscription.successor',2,proposal_id,p_subscription_id,p_client_id,predecessor,successor,publication,source,p_request->>'lane',p_request->>'action',q.quote_hash,q.request_payload,q.quote_snapshot,q.totals,p_request)::text,'UTF8')),'hex');
- SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=proposal_id FOR UPDATE NOWAIT;
- IF FOUND THEN
-  IF p.subscription_id IS DISTINCT FROM s.id OR p.client_id IS DISTINCT FROM s.client_id OR p.quote_hash IS DISTINCT FROM hash OR p.request IS DISTINCT FROM p_request THEN
-   RAISE EXCEPTION 'subscription_command_idempotency_conflict' USING ERRCODE='23505'; END IF;
-  RETURN to_jsonb(p);
- END IF;
  IF NOT EXISTS(SELECT 1 FROM public.catalog_sku_successors WHERE predecessor_sku_id=predecessor AND successor_sku_id=successor AND publication_id=publication) THEN
   RAISE EXCEPTION 'successor_pair_not_declared' USING ERRCODE='22023'; END IF;
  IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id AND variant_id=predecessor)
@@ -1355,7 +1360,8 @@ BEGIN
  INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
  VALUES('subscription',s.id,'subscription.successor.offered.v2','subscription-successor:'||p.id::text||':offered:v2',
   jsonb_build_object('schemaVersion',2,'proposalId',p.id,'subscriptionId',s.id,'clientId',s.client_id,'predecessorSkuId',predecessor,'successorSkuId',successor,'quoteHash',hash,'expiresAt',q.expires_at));
- RETURN to_jsonb(p);
+ RETURN to_jsonb(p)||jsonb_build_object('created_at',(to_jsonb(p.created_at AT TIME ZONE 'UTC')#>>'{}')||'+00:00',
+  'expires_at',(to_jsonb(p.expires_at AT TIME ZONE 'UTC')#>>'{}')||'+00:00');
 EXCEPTION WHEN lock_not_available THEN
  IF SQLERRM='lc10_root_operation_busy' THEN RAISE; END IF;
  RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03';
@@ -2136,6 +2142,8 @@ CREATE FUNCTION public.subscription_stock_wait_admit_v2(p_input jsonb,p_due json
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE g public.subscription_successor_operations_v2; p public.subscription_successor_proposals; c public.subscription_successor_wait_cases_v2; frozen jsonb; result jsonb;
 BEGIN
+ IF jsonb_typeof(p_input) IS DISTINCT FROM 'object' OR jsonb_typeof(p_due) IS DISTINCT FROM 'object' THEN
+  RAISE EXCEPTION 'stock_wait_frozen_binding_changed' USING ERRCODE='23505'; END IF;
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=(p_input->>'operationId')::uuid;
  frozen:=public.subscription_stock_wait_frozen_v2(g.id);
  IF frozen IS NULL OR frozen->'snapshot' IS DISTINCT FROM p_input->'snapshot' OR frozen->>'operationFingerprint' IS DISTINCT FROM p_input->>'operationFingerprint'
@@ -2158,6 +2166,7 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE hint public.subscription_successor_operations_v2; g public.subscription_successor_operations_v2; s public.subscriptions;
  c public.subscription_successor_wait_cases_v2; r public.subscription_successor_reservations_v2; result jsonb;
  token uuid:=gen_random_uuid(); item jsonb; stock public.fulfillment_stock_current; available bigint; own_quantity bigint; v_deficits jsonb:='[]';
+ shortage_after_reserve boolean:=false;
 BEGIN
  IF p_now IS NULL OR NOT isfinite(p_now) OR length(btrim(coalesce(p_worker,''))) NOT BETWEEN 1 AND 240 THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
  IF current_setting('transaction_isolation')<>'read committed' THEN RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023'; END IF;
@@ -2178,30 +2187,52 @@ BEGIN
  IF public.subscription_stock_wait_frozen_v2(g.id) IS NULL OR g.lease_expires_at>p_now OR NOT coalesce(g.state='refused' AND g.terminal_reason IN ('inventory_unavailable','reservation_expired') OR g.state='reserved' AND c.state='stock_secured',false)
   OR r.id IS NOT NULL AND (r.operation_fingerprint IS DISTINCT FROM g.operation_fingerprint OR r.lines IS DISTINCT FROM g.cycle_snapshot->'lines' OR r.source_key IS DISTINCT FROM g.cycle_snapshot->>'stockSourceKey'
    OR r.status NOT IN ('released','expired') AND NOT (r.status='held' AND c.state='stock_secured')) THEN RAISE EXCEPTION 'stock_wait_recovery_provider_owned_or_not_eligible' USING ERRCODE='22023'; END IF;
- PERFORM k.sku FROM public.fulfillment_stock_current k JOIN jsonb_array_elements(g.cycle_snapshot->'lines') l ON l->>'sku'=k.sku
-  WHERE k.source_key=g.cycle_snapshot->>'stockSourceKey' ORDER BY k.source_key,k.sku FOR UPDATE OF k NOWAIT;
- FOR item IN SELECT value FROM jsonb_array_elements(g.cycle_snapshot->'lines') ORDER BY value->>'sku' LOOP
-  SELECT * INTO stock FROM public.fulfillment_stock_current WHERE source_key=g.cycle_snapshot->>'stockSourceKey' AND sku=item->>'sku';
-  IF stock.sku IS NULL THEN RAISE EXCEPTION 'stock_wait_stock_missing' USING ERRCODE='22023'; END IF;
-  IF stock.stale_after<=p_now THEN RAISE EXCEPTION 'stock_wait_stock_stale' USING ERRCODE='22023'; END IF;
-  own_quantity:=CASE WHEN r.status='committed' OR r.status='held' AND r.expires_at>p_now THEN (item->>'quantity')::bigint ELSE 0 END;
-  available:=CASE WHEN stock.inventory_class='sellable' THEN (public.inventory_available_to_promise(stock.source_key,stock.sku,p_now,true)->>'available_quantity')::bigint ELSE 0 END;
-  IF own_quantity+available<(item->>'quantity')::bigint THEN v_deficits:=v_deficits||jsonb_build_array(jsonb_build_object('sku',stock.sku,'requiredUnits',(item->>'quantity')::integer,'reservedUnits',own_quantity,'availableUnits',available,'missingUnits',(item->>'quantity')::bigint-own_quantity-available)); END IF;
- END LOOP;
- UPDATE public.subscription_successor_wait_cases_v2 SET deficits=v_deficits,last_checked_at=p_now WHERE id=c.id RETURNING * INTO c;
- PERFORM public.subscription_stock_wait_record_opened_v2(c);
- IF jsonb_array_length(v_deficits)>0 THEN RETURN jsonb_build_object('schemaVersion',2,'caseKind','successor','caseId',c.id,'waiting',true,'deficits',v_deficits); END IF;
- UPDATE public.subscription_successor_operations_v2 SET state='claimed',terminal_outcome=NULL,terminal_reason=NULL,terminal_at=NULL,
-  claim_token=token,claim_generation=claim_generation+1,claimed_by=p_worker,claimed_at=p_now,lease_expires_at=p_now+interval '5 minutes',updated_at=p_now WHERE id=g.id;
- IF r.id IS NULL THEN
-  result:=public.fulfillment_reserve_successor_renewal_v2(g.id,token,900,p_now);
-  IF NOT (result->>'reserved')::boolean THEN RAISE EXCEPTION 'stock_wait_atomic_shortage' USING ERRCODE='23514'; END IF;
- ELSE
-  UPDATE public.subscription_successor_reservations_v2 SET status='held',expires_at=p_now+interval '15 minutes',terminal_reason=NULL,updated_at=p_now WHERE id=r.id;
-  UPDATE public.subscription_successor_operations_v2 SET state='reserved' WHERE id=g.id;
- END IF;
- UPDATE public.subscription_successor_wait_cases_v2 SET state='stock_secured',deficits='[]',block_reason=NULL,stock_secured_at=coalesce(stock_secured_at,p_now),last_checked_at=p_now WHERE id=c.id;
- RETURN public.subscription_read_successor_renewal_v2(g.identity_key)||jsonb_build_object('waiting',false,'caseId',c.id,'replayed',false);
+ BEGIN
+  PERFORM k.sku FROM public.fulfillment_stock_current k JOIN jsonb_array_elements(g.cycle_snapshot->'lines') l ON l->>'sku'=k.sku
+   WHERE k.source_key=g.cycle_snapshot->>'stockSourceKey' ORDER BY k.source_key,k.sku FOR UPDATE OF k NOWAIT;
+  LOOP
+   v_deficits:='[]';
+   FOR item IN SELECT value FROM jsonb_array_elements(g.cycle_snapshot->'lines') ORDER BY value->>'sku' LOOP
+    SELECT * INTO stock FROM public.fulfillment_stock_current WHERE source_key=g.cycle_snapshot->>'stockSourceKey' AND sku=item->>'sku';
+    IF stock.sku IS NULL THEN RAISE EXCEPTION 'stock_wait_stock_missing' USING ERRCODE='22023'; END IF;
+    IF stock.stale_after<=p_now THEN RAISE EXCEPTION 'stock_wait_stock_stale' USING ERRCODE='22023'; END IF;
+    own_quantity:=CASE WHEN r.status='committed' OR r.status='held' AND r.expires_at>p_now THEN (item->>'quantity')::bigint ELSE 0 END;
+    available:=CASE WHEN stock.inventory_class='sellable' THEN (public.inventory_available_to_promise(stock.source_key,stock.sku,p_now,true)->>'available_quantity')::bigint ELSE 0 END;
+    IF own_quantity+available<(item->>'quantity')::bigint THEN v_deficits:=v_deficits||jsonb_build_array(jsonb_build_object('sku',stock.sku,'requiredUnits',(item->>'quantity')::integer,'reservedUnits',own_quantity,'availableUnits',available,'missingUnits',(item->>'quantity')::bigint-own_quantity-available)); END IF;
+   END LOOP;
+   IF jsonb_array_length(v_deficits)>0 THEN
+    UPDATE public.subscription_successor_wait_cases_v2 SET state='waiting',deficits=v_deficits,block_reason=NULL,last_checked_at=p_now WHERE id=c.id RETURNING * INTO c;
+    PERFORM public.subscription_stock_wait_record_opened_v2(c);
+    RETURN jsonb_build_object('schemaVersion',2,'caseKind','successor','caseId',c.id,'waiting',true,'deficits',v_deficits);
+   END IF;
+   IF shortage_after_reserve THEN RAISE EXCEPTION 'stock_wait_shortage_evidence_mismatch' USING ERRCODE='23514'; END IF;
+   -- A late shortage rolls back only the speculative claim and hold. Reobserve
+   -- against the unchanged wait before reporting any shortage.
+   BEGIN
+    UPDATE public.subscription_successor_operations_v2 SET state='claimed',terminal_outcome=NULL,terminal_reason=NULL,terminal_at=NULL,
+     claim_token=token,claim_generation=claim_generation+1,claimed_by=p_worker,claimed_at=p_now,lease_expires_at=p_now+interval '5 minutes',updated_at=p_now WHERE id=g.id;
+    IF r.id IS NULL THEN
+     result:=public.fulfillment_reserve_successor_renewal_v2(g.id,token,900,p_now);
+     IF result->>'reason'='inventory_unavailable' THEN RAISE EXCEPTION 'stock_wait_atomic_shortage' USING ERRCODE='23514'; END IF;
+     IF result->'reserved' IS DISTINCT FROM 'true'::jsonb THEN RAISE EXCEPTION 'stock_wait_reservation_commitment_missing' USING ERRCODE='23514'; END IF;
+    ELSE
+     UPDATE public.subscription_successor_reservations_v2 SET status='held',expires_at=p_now+interval '15 minutes',terminal_reason=NULL,updated_at=p_now WHERE id=r.id;
+     UPDATE public.subscription_successor_operations_v2 SET state='reserved' WHERE id=g.id;
+    END IF;
+   EXCEPTION WHEN check_violation THEN
+    IF SQLERRM<>'stock_wait_atomic_shortage' THEN RAISE; END IF;
+    shortage_after_reserve:=true;
+   END;
+   EXIT WHEN NOT shortage_after_reserve;
+  END LOOP;
+  UPDATE public.subscription_successor_wait_cases_v2 SET state='stock_secured',deficits='[]',block_reason=NULL,stock_secured_at=coalesce(stock_secured_at,p_now),last_checked_at=p_now WHERE id=c.id RETURNING * INTO c;
+  PERFORM public.subscription_stock_wait_record_opened_v2(c);
+  RETURN public.subscription_read_successor_renewal_v2(g.identity_key)||jsonb_build_object('waiting',false,'caseId',c.id,'replayed',false);
+ EXCEPTION WHEN lock_not_available THEN RAISE;
+ WHEN OTHERS THEN
+  UPDATE public.subscription_successor_wait_cases_v2 SET block_reason='stock_wait_check_failed',last_checked_at=p_now WHERE id=c.id;
+  RETURN jsonb_build_object('error','stock_wait_check_failed','caseId',c.id);
+ END;
 EXCEPTION WHEN lock_not_available THEN
  IF SQLERRM IN ('inventory_admission_busy','lc10_root_operation_busy') THEN RAISE; END IF;
  RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03';
@@ -2292,7 +2323,7 @@ REVOKE ALL ON FUNCTION public.subscription_successor_notice_v2(uuid,text,uuid) F
 CREATE FUNCTION public.commerce_settle_successor_renewal_v2(p_operation_id uuid,p_event_key text,p_payment_evidence jsonb,p_now timestamptz DEFAULT now()) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE hint public.subscription_successor_operations_v2; g public.subscription_successor_operations_v2; event jsonb; answer jsonb;
- outcome text; external_ref text; reason text; settled jsonb;
+ outcome text; external_ref text; reason text; settled jsonb; matches bigint;
 BEGIN
  IF p_now IS NULL OR NOT isfinite(p_now) OR length(btrim(coalesce(p_event_key,'')))<8 OR jsonb_typeof(p_payment_evidence) IS DISTINCT FROM 'object'
   OR p_payment_evidence->>'outcome' NOT IN ('succeeded','refused') OR p_payment_evidence->>'outcome' IS NULL THEN
@@ -2305,8 +2336,9 @@ BEGIN
  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=p_operation_id FOR UPDATE NOWAIT;
  IF p_payment_evidence->>'operationFingerprint' IS DISTINCT FROM g.operation_fingerprint THEN RAISE EXCEPTION 'commerce_renewal_outcome_fingerprint_conflict' USING ERRCODE='23505'; END IF;
- SELECT value INTO event FROM jsonb_array_elements(g.outcomes) WHERE value->>'eventKey'=p_event_key;
- IF FOUND THEN
+ SELECT count(*),min(value::text)::jsonb INTO matches,event FROM jsonb_array_elements(g.outcomes) WHERE value->>'eventKey'=p_event_key;
+ IF matches>1 THEN RAISE EXCEPTION 'commerce_renewal_outcome_idempotency_conflict' USING ERRCODE='23505'; END IF;
+ IF matches=1 THEN
   IF event->>'outcome' IS DISTINCT FROM outcome OR event->>'externalRef' IS DISTINCT FROM external_ref OR event->>'reason' IS DISTINCT FROM reason
    OR event->>'operationFingerprint' IS DISTINCT FROM g.operation_fingerprint THEN RAISE EXCEPTION 'commerce_renewal_outcome_idempotency_conflict' USING ERRCODE='23505'; END IF;
   IF jsonb_typeof(event->'result') IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'commerce_renewal_outcome_attempt_not_prepared' USING ERRCODE='22023'; END IF;

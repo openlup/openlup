@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCatalogCandidateService,catalogDefinitionDigest,createCatalogProductTypeRegistry,catalogDraftPayloadV5Schema,catalogDraftPayloadV4Schema } from "@openlup/platform/catalog";
+import { createCatalogCandidateService,catalogDefinitionDigest,createCatalogProductTypeRegistry,catalogDraftPayloadV5Schema,catalogDraftPayloadV4Schema,createPostgresCatalogWithdrawalImpact } from "@openlup/platform/catalog";
 import type { CatalogDraftPayloadV2,CatalogDraftPayloadV5 } from "@openlup/platform/catalog/contracts";
-import { createPostgresSuccessorStore,createNativeRenewalCodec } from "@openlup/platform/subscriptions";
+import { createPostgresSuccessorStore,createNativeRenewalCodec,createPostgresSuccessorNotices } from "@openlup/platform/subscriptions";
 import type { HistoricalSuccessorProtocolBinding } from "@openlup/platform/subscriptions";
 import { customerSubscriptionPreviewResponseSchema } from "../../src/domains/customers/subscriptionFacadeContracts.js";
 import type { CustomerSubscriptionPreviewResponse } from "../../src/domains/customers/subscriptionFacadeContracts.js";
@@ -16,11 +16,124 @@ function input() {
 }
 const historical = { sourceIdentity: "retained:synthetic", candidateKind: "adopt_v2", baseProtocol: "v3", eventKind: "adopt_v2" };
 const binding = { ...historical, authorityRef: "installed:synthetic" };
+
+const readSku = "81000000-0000-4000-8000-000000000001";
+const obligation = { family: "stock_wait", sourceId: "81000000-0000-4000-8000-000000000002",
+  subscriptionId: "81000000-0000-4000-8000-000000000003", skuId: readSku, skuCode: "SYNTHETIC", skuRevisionId: null };
+const completeImpact = (obligations: unknown[]) => ({ schemaVersion: 2, outcome: "complete", obligations });
+it.each([
+  ["mixed_valid", completeImpact([obligation, { ...obligation, caseKind: "successor", sourceId: obligation.subscriptionId }]), "complete"],
+  ["item_missing", completeImpact([null]), "unknown"],
+  ["item_primitive", completeImpact([8]), "unknown"],
+  ["family_unknown", completeImpact([{ ...obligation, family: "unrecognized" }]), "unknown"],
+  ["kind_unknown", completeImpact([{ ...obligation, caseKind: "unknown" }]), "unknown"],
+  ["source_invalid", completeImpact([{ ...obligation, sourceId: "invalid" }]), "unknown"],
+  ["sku_changed", completeImpact([{ ...obligation, skuId: obligation.sourceId }]), "unknown"],
+  ["item_duplicate", completeImpact([obligation, obligation]), "unknown"],
+  ["result_absent", undefined, "unavailable"],
+] as const)("lc10_read_impact_%s", async (_case, result, outcome) => {
+  const impact = createPostgresCatalogWithdrawalImpact({
+    query: async () => ({ rows: result === undefined ? [] : [{ result }] }),
+  });
+  const actual = await impact.report(readSku);
+  expect(actual.outcome).toBe(outcome);
+  if (outcome === "complete") expect(actual).toEqual(result);
+  else expect(actual).toEqual({ schemaVersion: 2, outcome, reason: `catalog_obligation_evidence_${outcome}` });
+});
+
+it.each([
+  ["mixed_valid", [obligation, { ...obligation, caseKind: "successor", sourceId: obligation.subscriptionId }], false, 2],
+  ["after_valid_unknown", [obligation, { ...obligation, family: "unexpected" }], false, 0],
+  ["after_valid_duplicate", [obligation, obligation], false, 0],
+  ["absent_case_kind_on_successor", [obligation], true, 0],
+] as const)("lc10_read_notice_impact_%s", async (_case, items, wrongKind, calls) => {
+  const publicationId = "81000000-0000-4000-8000-000000000004";
+  const notice = vi.fn();
+  const stored = createPostgresSuccessorNotices({
+    withTransaction: work => work({ query: async sql => {
+      if (sql.includes("FROM public.outbox_events")) return { rows: [{ matching: true }] };
+      if (sql.includes("FROM public.catalog_publications")) {
+        return { rows: [{ canonical_state: JSON.stringify({ skus: [{ skuId: readSku }] }) }] };
+      }
+      if (sql.includes("subscription_successor_notice_v2")) {
+        notice();
+        return { rows: [{ result: { outcome: "handed_off" } }] };
+      }
+      const cases = items.map(item => ({ source_id: item.sourceId,
+        legacy: !wrongKind && item.sourceId === obligation.sourceId, successor: wrongKind || item.sourceId !== obligation.sourceId }));
+      return { rows: cases };
+    } }),
+    impact: { report: async () => ({ outcome: "complete", obligations: items }) },
+    recipient: async () => null,
+    delivery: { enqueue: async () => { throw Error("publication_must_only_handoff"); } },
+  });
+  const at = "2026-11-18T12:00:00Z";
+  expect(await stored.handle({ id: publicationId, created_at: at, available_at: at, processed_at: null,
+    aggregate_type: "catalog", aggregate_id: obligation.subscriptionId, event_type: "catalog.publication.committed",
+    idempotency_key: publicationId, status: "pending", error: null, attempts: 0, metadata: {}, payload: { head: { publicationId } } }))
+    .toEqual(calls ? { kind: "processed" } : { kind: "retry", reason: "catalog_obligation_evidence_unknown" });
+  expect(notice).toHaveBeenCalledTimes(calls);
+});
+
+const readAt = "2026-11-18T12:00:00Z";
+const readFingerprint = "a".repeat(64);
+const waitCase = { id: obligation.sourceId, subscription_id: obligation.subscriptionId, client_id: readSku,
+  operation_id: obligation.subscriptionId, scheduled_at: readAt, cycle_number: 1, state: "waiting", deficits: [],
+  fingerprint: readFingerprint, identity_key: "synthetic:operation", opened_at: readAt, last_checked_at: readAt,
+  last_selected_at: null, stock_secured_at: null, resumed_at: null, closed_at: null, block_reason: null,
+  cycle_id: null, order_id: null, fulfillment_id: null };
+const caseRead = { schemaVersion: 2, caseKind: "successor", case: waitCase };
+const legacyDue = { schemaVersion: 2, operationKind: "legacy", due: { subscription_id: obligation.subscriptionId,
+  client_id: readSku, scheduled_at: readAt, cycle_number: 1, currency_code: "XXX", cadence_days: 28,
+  stock_source_key: "synthetic", settlement_channel_key: "native", authorization_ref: "synthetic",
+  payer_account_ref: null, unattended_charge_authorized_at: readAt, delivery_admission: "ready", delivery_block_reason: null } };
+const successorDue = { schemaVersion: 2, operationKind: "successor", operationId: obligation.subscriptionId,
+  identityKey: "synthetic:operation", operationFingerprint: readFingerprint, snapshot: { schemaVersion: 2 } };
+const successorCandidate = { ...successorDue, caseKind: "successor", caseId: obligation.sourceId, cycleNumber: 1,
+  binding: { caseKind: "successor", caseId: obligation.sourceId, operationId: obligation.subscriptionId,
+    rootOperationId: readSku, proposalId: readSku } };
+const legacyCandidate = { schemaVersion: 2, operationKind: "legacy", caseKind: "legacy",
+  frozen: { ...successorDue, caseId: null, cycleNumber: 1,
+    binding: { caseId: null, cycleId: null, orderId: null, paymentId: null, engineIdempotencyKey: successorDue.identityKey } } };
+const resumedCase = { ...caseRead, case: { ...waitCase, state: "resumed", order_id: readSku, resumed_at: readAt } };
+it.each([
+  ["readCase", "null", null, true],
+  ["readCase", "missing", undefined, false],
+  ["readCase", "exact", caseRead, true],
+  ["readCase", "kind_changed", { ...caseRead, caseKind: "legacy", case: { ...waitCase, renewal_operation_id: waitCase.operation_id } }, false],
+  ["readCase", "case_changed", { ...caseRead, case: { ...waitCase, id: readSku } }, false],
+  ["readCase", "bad_time", { ...caseRead, case: { ...waitCase, checked_at: readAt, last_checked_at: "date" } }, false],
+  ["readCase", "bad_state", { ...caseRead, case: { ...waitCase, state: "unknown" } }, false],
+  ["readCase", "nonpositive_cycle", { ...caseRead, case: { ...waitCase, cycle_number: 0 } }, false],
+  ["listDue", "exact_mixed", [legacyDue, successorDue], true],
+  ["listDue", "not_an_array", legacyDue, false],
+  ["listDue", "legacy_bad_currency", [{ ...legacyDue, due: { ...legacyDue.due, currency_code: 123 } }], false],
+  ["listDue", "successor_bad_snapshot", [{ ...successorDue, snapshot: [] }], false],
+  ["listCandidates", "exact_mixed", [legacyCandidate, successorCandidate], true],
+  ["listCandidates", "not_an_array", successorCandidate, false],
+  ["listCandidates", "legacy_binding_missing", [{ ...legacyCandidate, frozen: { ...legacyCandidate.frozen, binding: null } }], false],
+  ["listCandidates", "successor_binding_mismatch", [{ ...successorCandidate, binding: { ...successorCandidate.binding, operationId: readSku } }], false],
+  ["markResumed", "null", null, true],
+  ["markResumed", "exact", resumedCase, true],
+  ["markResumed", "wrong_order", { ...resumedCase, case: { ...resumedCase.case, order_id: obligation.sourceId } }, false],
+] as const)("lc10_read_versioned_%s_%s", async (method, _case, result, valid) => {
+  const store = createPostgresSuccessorStore({ codec: createNativeRenewalCodec(),
+    previews: { prepare: async () => { throw Error("read_must_not_prepare"); } },
+    withTransaction: work => work({ query: async () => ({ rows: result === undefined ? [] : [{ result }] }) }),
+  });
+  const reads = {
+    readCase: () => store.readCase(obligation.sourceId, "successor"), markResumed: () => store.markResumed(readSku),
+    listDue: () => store.listDue(50, readAt), listCandidates: () => store.listCandidates(50, readAt),
+  };
+  if (valid) expect(await reads[method]()).toEqual(result);
+  else await expect(reads[method]()).rejects.toHaveProperty("message", "subscription_renewal_response_invalid");
+});
+
 function historicalOffer(installedBindings:readonly HistoricalSuccessorProtocolBinding[],lineage=historical) {
   const effect=vi.fn(),id="90000000-0000-4000-8000-000000000001",subscriptionId="90000000-0000-4000-8000-000000000002",actor={actorId:id,clientId:"90000000-0000-4000-8000-000000000003"};
   const store=createPostgresSuccessorStore({codec:createNativeRenewalCodec(),historicalBindings:installedBindings,
     previews:{prepare:async()=>({applyPayload:{},cycleSnapshot:null})},withTransaction:async work=>{
-      effect();return work({query:async sql=>({rows:sql.includes("EXISTS")||sql.includes("pg_try_advisory")?[{allowed:true}]:sql.includes("FROM public.subscription_quote_previews")?[{actor_id:id,client_id:actor.clientId,subscription_id:subscriptionId}]:[{result:{state:"offered"}}]})});
+      effect();return work({query:async sql=>({rows:sql.includes("EXISTS")||sql.includes("pg_try_advisory")?[{allowed:true}]:sql.includes("FROM public.subscription_successor_proposals")?[]:sql.includes("FROM public.subscription_quote_previews")?[{actor_id:id,client_id:actor.clientId,subscription_id:subscriptionId}]:[{result:{state:"offered"}}]})});
     }});
   return {effect,invoke:()=>store.offer(actor,{proposalId:"90000000-0000-4000-8000-000000000004",subscriptionId,predecessorSkuId:"90000000-0000-4000-8000-000000000005",successorSkuId:"90000000-0000-4000-8000-000000000006",publicationId:"90000000-0000-4000-8000-000000000007",previewId:"90000000-0000-4000-8000-000000000008",lane:"classic",action:"update_package_template",sourceBinding:{kind:"ordinary_edit"},historicalBinding:lineage,now:"2026-01-01T00:00:00Z"})};
 }

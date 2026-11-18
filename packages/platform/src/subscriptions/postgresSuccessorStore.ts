@@ -9,6 +9,61 @@ import { isSizedOptIn, readSizedEditContext } from "./sizedEditContext.js";
 import type { SizedHostPorts } from "./sizedEditPorts.js";
 import { assertSizedSubjectFacts } from "./sizedEditQuote.js";
 
+const rowId = z.guid(), timestamp = z.iso.datetime({ offset: true });
+const nonblank = z.string().refine(value => value.trim().length > 0);
+const quantity = z.number().int().nonnegative(), cycleNumber = quantity.positive();
+const fingerprint = z.string().regex(/^[0-9a-f]{64}$/u);
+
+/** Internal native wait observation wire. @experimental */
+export const nativeWaitDeficitSchema = z.looseObject({
+  sku: nonblank, requiredUnits: cycleNumber, reservedUnits: quantity, availableUnits: quantity, missingUnits: quantity,
+});
+const waitCase = z.looseObject({
+  id: rowId, client_id: rowId, subscription_id: rowId, fingerprint, identity_key: nonblank,
+  scheduled_at: timestamp, cycle_number: cycleNumber, state: z.enum(["waiting", "stock_secured", "resumed", "closed"]),
+  deficits: z.array(nativeWaitDeficitSchema),
+  cycle_id: rowId.nullable(), order_id: rowId.nullable(), fulfillment_id: rowId.nullable(),
+  opened_at: timestamp, last_checked_at: timestamp, last_selected_at: timestamp.nullable(),
+  stock_secured_at: timestamp.nullable(), resumed_at: timestamp.nullable(), closed_at: timestamp.nullable(),
+  block_reason: z.string().nullable(), waitingNoticeRelevant: z.boolean().optional(),
+});
+const version = { schemaVersion: z.literal(2) };
+/** Internal versioned case wire. @experimental */
+export const successorCaseReadSchema = z.discriminatedUnion("caseKind", [
+  z.looseObject({ ...version, caseKind: z.literal("legacy"), case: waitCase.extend({ renewal_operation_id: rowId }) }),
+  z.looseObject({ ...version, caseKind: z.literal("successor"), case: waitCase.extend({ operation_id: rowId }),
+    waitingNoticeRelevant: z.boolean().optional() }),
+]);
+
+const frozen = z.looseObject({ operationId: rowId, identityKey: nonblank, operationFingerprint: fingerprint,
+  snapshot: z.record(z.string(), z.unknown()) });
+/** Internal due-candidate wire. @experimental */
+const successorDueListSchema = z.array(z.discriminatedUnion("operationKind", [
+  z.looseObject({ ...version, operationKind: z.literal("legacy"), due: z.looseObject({
+    subscription_id: rowId, client_id: rowId, scheduled_at: timestamp, cycle_number: cycleNumber, cadence_days: cycleNumber,
+    currency_code: z.string().regex(/^[A-Z]{3}$/u), stock_source_key: nonblank, settlement_channel_key: nonblank,
+    authorization_ref: nonblank, payer_account_ref: nonblank.nullable(), unattended_charge_authorized_at: timestamp,
+    delivery_admission: nonblank, delivery_block_reason: z.string().nullable(),
+  }) }),
+  frozen.extend({ ...version, operationKind: z.literal("successor") }),
+]));
+
+const legacyCandidate = frozen.extend({
+  caseId: rowId.nullable(), cycleNumber,
+  binding: z.looseObject({ caseId: rowId.nullable(), cycleId: rowId.nullable(), orderId: rowId.nullable(),
+    paymentId: rowId.nullable(), engineIdempotencyKey: nonblank }),
+}).refine(value => value.binding.caseId === value.caseId && value.binding.engineIdempotencyKey === value.identityKey);
+
+/** Internal frozen recovery selection wire. @experimental */
+const successorCandidateListSchema = z.array(z.discriminatedUnion("operationKind", [
+  z.looseObject({ ...version, operationKind: z.literal("legacy"), caseKind: z.literal("legacy"), frozen: legacyCandidate }),
+  frozen.extend({
+    ...version, operationKind: z.literal("successor"), caseKind: z.literal("successor"), caseId: rowId, cycleNumber,
+    binding: z.looseObject({ caseKind: z.literal("successor"), caseId: rowId, operationId: rowId,
+      rootOperationId: rowId, proposalId: rowId }),
+  }).refine(value => value.binding.caseId === value.caseId && value.binding.operationId === value.operationId),
+]));
+
 const successorCommandKey = z.string().trim().min(8).max(180);
 const successorQuoteHash = z.string().trim().regex(/^[a-f0-9]{64}$/u);
 const subjectSnapshot = z.object({
@@ -79,6 +134,11 @@ export function createPostgresSuccessorStore(options: {
 }) {
   const id=z.uuid(),stamp=z.iso.datetime(),hash=z.string().regex(/^[a-f0-9]{64}$/u);
   const call=async(db:SubscriptionQueryExecutor,name:string,args:unknown[])=>subscriptionRecord((await db.query(`SELECT public.${name}(${args.map((_,index)=>`$${index+1}`).join(",")}) AS result`,args)).rows[0]?.result);
+  async function read(db: SubscriptionQueryExecutor, sql: string, args: unknown[]) {
+    const { rows } = await db.query(sql, args);
+    if (rows.length !== 1 || rows[0]?.result === undefined) throw new Error("subscription_renewal_response_invalid");
+    return rows[0].result;
+  }
   async function authorize(db:SubscriptionQueryExecutor,actor:PackageEditActor,subscriptionId:string) {
     const row=(await db.query(`SELECT EXISTS(SELECT 1 FROM public.clients c JOIN public.subscriptions s ON s.client_id=c.id
       WHERE c.id=$1::uuid AND c.principal_id=$2::uuid AND s.id=$3::uuid) AS allowed`,[id.parse(actor.clientId),id.parse(actor.actorId),id.parse(subscriptionId)])).rows[0];
@@ -151,6 +211,20 @@ export function createPostgresSuccessorStore(options: {
         if(guard?.allowed!==true)throw Object.assign(new Error("lc10_commerce_busy"),{code:"55P03"});
         await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE NOWAIT",[input.subscriptionId,actor.clientId]).catch(error=>successorBusy(error));
         await db.query("SELECT id FROM public.clients WHERE id=$1::uuid FOR KEY SHARE NOWAIT",[actor.clientId]).catch(error=>successorBusy(error));
+        const { subscriptionId, now, historicalBinding: _historical, ...request } = input;
+        const authored = { ...request, ...(historicalBinding ? { historicalBinding } : {}) };
+        const prior = (await db.query(`SELECT p.subscription_id,p.client_id,p.preview->>'actor_id' AS actor_id,
+          p.request-ARRAY['applyPayload','cycleSnapshot']=$2::jsonb AS matching,
+          p.request
+          FROM public.subscription_successor_proposals p WHERE p.id=$1::uuid FOR UPDATE NOWAIT`,
+        [input.proposalId, authored]).catch(error => successorBusy(error))).rows[0];
+        if (prior) {
+          if (prior.client_id !== actor.clientId || prior.actor_id !== actor.actorId) throw new Error("subscription_command_forbidden");
+          if (prior.subscription_id !== subscriptionId || prior.matching !== true) {
+            throw Object.assign(new Error("subscription_command_idempotency_conflict"), { code: "23505" });
+          }
+          return call(db, "subscription_successor_proposal_offer_v2", [subscriptionId, actor.clientId, prior.request, now]);
+        }
         const preview=(await db.query("SELECT actor_id,client_id,subscription_id FROM public.subscription_quote_previews WHERE id=$1::uuid FOR UPDATE NOWAIT",[input.previewId]).catch(error=>successorBusy(error))).rows[0];
         if(!preview||preview.actor_id!==actor.actorId||preview.client_id!==actor.clientId||preview.subscription_id!==input.subscriptionId) throw new Error("subscription_command_forbidden");
         if(input.sourceBinding.kind==="stock_wait"){
@@ -165,8 +239,7 @@ export function createPostgresSuccessorStore(options: {
         }
         const native=await options.previews.prepare(db,{ previewId:input.previewId,subscriptionId:input.subscriptionId,actor });
         if(input.sourceBinding.kind==="stock_wait"&&!native.cycleSnapshot) throw new Error("dependency_unavailable");
-        const { subscriptionId,now,historicalBinding:_historical,...request }=input;
-        return call(db,"subscription_successor_proposal_offer_v2",[subscriptionId,actor.clientId,{ ...request,...(historicalBinding?{ historicalBinding }:{}),applyPayload:native.applyPayload,
+        return call(db,"subscription_successor_proposal_offer_v2",[subscriptionId,actor.clientId,{ ...authored,applyPayload:native.applyPayload,
           ...(native.cycleSnapshot?{ cycleSnapshot:options.codec.encode(native.cycleSnapshot) }:{}) },now]);
       });
     },
@@ -191,13 +264,30 @@ export function createPostgresSuccessorStore(options: {
       });
     },
     async readCase(caseId:string,caseKind:SuccessorCaseKind) {
-      return options.withTransaction(async db=>{
-        const value=(await db.query("SELECT public.subscription_stock_wait_read_v2($1::uuid,$2::text) AS result",[id.parse(caseId),caseKind])).rows[0]?.result;
-        return value==null?null:subscriptionRecord(value);
+      return options.withTransaction(async db => {
+        const value = await read(db, "SELECT public.subscription_stock_wait_read_v2($1::uuid,$2::text) AS result", [id.parse(caseId), caseKind]);
+        if (value === null) return null;
+        const parsed = successorCaseReadSchema.safeParse(value);
+        if (!parsed.success || parsed.data.caseKind !== caseKind || parsed.data.case.id !== caseId.toLowerCase()) {
+          throw new Error("subscription_renewal_response_invalid");
+        }
+        return subscriptionRecord(value);
       });
     },
-    listDue(limit:number,now:string) { return options.withTransaction(async db=>(await db.query("SELECT public.subscription_list_due_successor_renewals_v2($1::integer,$2::timestamptz) AS result",[limit,stamp.parse(now)])).rows[0]?.result); },
-    listCandidates(limit:number,now:string) { return options.withTransaction(async db=>(await db.query("SELECT public.subscription_stock_wait_candidates_v2($1::integer,$2::timestamptz) AS result",[limit,stamp.parse(now)])).rows[0]?.result); },
+    listDue(limit:number,now:string) {
+      return options.withTransaction(async db => {
+        const value = await read(db, "SELECT public.subscription_list_due_successor_renewals_v2($1::integer,$2::timestamptz) AS result", [limit, stamp.parse(now)]);
+        if (!successorDueListSchema.safeParse(value).success) throw new Error("subscription_renewal_response_invalid");
+        return value;
+      });
+    },
+    listCandidates(limit:number,now:string) {
+      return options.withTransaction(async db => {
+        const value = await read(db, "SELECT public.subscription_stock_wait_candidates_v2($1::integer,$2::timestamptz) AS result", [limit, stamp.parse(now)]);
+        if (!successorCandidateListSchema.safeParse(value).success) throw new Error("subscription_renewal_response_invalid");
+        return value;
+      });
+    },
     claim(input:{ identityKey:string;fingerprint:string;snapshot:Record<string,unknown>;workerId:string;leaseSeconds?:number;now:string }) {
       const snapshot=options.codec.decode(input.snapshot);hash.parse(input.fingerprint);
       if(options.codec.fingerprint(snapshot)!==input.fingerprint)throw new Error("subscription_renewal_snapshot_fingerprint_mismatch");
@@ -219,9 +309,15 @@ export function createPostgresSuccessorStore(options: {
       hash.parse(input.evidence.operationFingerprint);
       return options.withTransaction(db=>call(db,"commerce_settle_successor_renewal_v2",[id.parse(input.operationId),input.eventKey,input.evidence,stamp.parse(input.now)]));
     },
-    markResumed(orderId:string) { return options.withTransaction(async db=>{
-      const value=(await db.query("SELECT public.subscription_stock_wait_mark_resumed_v2($1::uuid) AS result",[id.parse(orderId)])).rows[0]?.result;
-      return value==null?null:subscriptionRecord(value);
-    }); },
+    markResumed(orderId:string) {
+      return options.withTransaction(async db => {
+        const value = await read(db, "SELECT public.subscription_stock_wait_mark_resumed_v2($1::uuid) AS result", [id.parse(orderId)]);
+        if (value === null) return null;
+        const parsed = successorCaseReadSchema.safeParse(value);
+        if (!parsed.success || parsed.data.caseKind !== "successor" || parsed.data.case.state !== "resumed"
+          || parsed.data.case.order_id !== orderId.toLowerCase()) throw new Error("subscription_renewal_response_invalid");
+        return subscriptionRecord(value);
+      });
+    },
   };
 }

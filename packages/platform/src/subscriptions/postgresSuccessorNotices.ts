@@ -5,6 +5,12 @@ import { subscriptionRecord } from "./postgresRenewalStore.js";
 import { nativeStockWaitDeficits } from "./postgresStockWaitStore.js";
 import { createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
 import type { SubscriptionLifecycleMessagePort, SubscriptionLifecycleFact } from "./contracts/messages.js";
+import { nativeWaitDeficitSchema, successorCaseReadSchema } from "./postgresSuccessorStore.js";
+
+const noticeObligations = z.array(z.object({
+  family: z.enum(["template", "pending_activation", "frozen_renewal", "outstanding_order", "replacement", "stock_wait", "graduation"]),
+  sourceId: z.guid(), caseKind: z.enum(["legacy", "successor"]).optional(),
+}));
 
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
@@ -47,9 +53,8 @@ export function createPostgresSuccessorNotices(options: {
   }
   async function complete(row:OutboxEventRow):Promise<OutboxHandlerOutcome> {
     if(row.event_type==="subscription_stock_wait.started"||row.event_type==="subscription_stock_wait.resumed") {
-      const parsed=z.object({caseId:z.guid(),clientId:z.guid(),subscriptionId:z.guid(),deficits:z.array(z.object({
-        sku:z.string().min(1),requiredUnits:z.number(),reservedUnits:z.number(),availableUnits:z.number(),missingUnits:z.number().nonnegative(),
-      }).passthrough()).default([])}).passthrough().safeParse(row.payload);
+      const parsed=z.looseObject({caseId:z.guid(),clientId:z.guid(),subscriptionId:z.guid(),
+        deficits:z.array(nativeWaitDeficitSchema).default([])}).safeParse(row.payload);
       if(!parsed.success)return {kind:"discard",reason:"stock_wait_notice_contract_invalid"};
       const payload=parsed.data,started=row.event_type==="subscription_stock_wait.started";
       const checked=await options.withTransaction(async db=>{
@@ -57,13 +62,15 @@ export function createPostgresSuccessorNotices(options: {
         const receipt=(await db.query("SELECT state FROM public.transactional_delivery_read_receipt($1::text)",[row.idempotency_key])).rows[0];
         if(receipt?.state==="accepted")return {kind:"accepted"} as const;
         const value=(await db.query("SELECT public.subscription_stock_wait_read_v2($1::uuid,'legacy') AS result",[payload.caseId])).rows[0]?.result;
-        if(value==null)throw new Error("stock_wait_notice_case_mismatch");
-        const envelope=subscriptionRecord(value);
-        const current=subscriptionRecord(envelope.case);
+        const envelope=successorCaseReadSchema.safeParse(value);
+        if(!envelope.success||envelope.data.caseKind!=="legacy")throw new Error("stock_wait_notice_case_mismatch");
+        const current=envelope.data.case;
         if(row.aggregate_type!=="subscription_stock_wait"||row.aggregate_id!==payload.caseId||current.id!==payload.caseId||current.client_id!==payload.clientId||current.subscription_id!==payload.subscriptionId)throw new Error("stock_wait_notice_case_mismatch");
         if(!started&&current.state!=="resumed")throw new Error("stock_wait_resume_milestone_missing");
         if(started&&(current.state!=="waiting"||current.waitingNoticeRelevant!==true))return {kind:"obsolete"} as const;
-        const deficits=(await nativeStockWaitDeficits(db,started?current.deficits:payload.deficits)).filter(value=>value.missing>0);
+        const observed=await nativeStockWaitDeficits(db,started?current.deficits:payload.deficits);
+        if(observed.some(item=>!z.guid().safeParse(item.skuId).success||!item.displayName.trim()))throw new Error("stock_wait_notice_contract_invalid");
+        const deficits=observed.filter(value=>value.missing>0);
         if(started&&deficits.length===0)return {kind:"empty"} as const;
         return {kind:"ready",current,deficits} as const;
       });
@@ -105,15 +112,34 @@ export function createPostgresSuccessorNotices(options: {
         if(!Array.isArray(state.skus))throw new Error("catalog_obligation_evidence_unknown");
         return state.skus.map(value=>id.parse(subscriptionRecord(value).skuId));
       });
-      const cases=new Map<string,{ id:string;kind:"legacy"|"successor" }>();
+      const cases=new Map<string,{ id:string;kind:"legacy"|"successor";implicitLegacy:boolean }>();
       for(const sku of skus) {
         const impact=await options.impact.report(sku);
         if(impact.outcome!=="complete")throw new Error(impact.reason);
-        for(const obligation of impact.obligations)if(obligation.family==="stock_wait") {
+        const parsed=noticeObligations.safeParse(impact.obligations);
+        if(!parsed.success)throw new Error("catalog_obligation_evidence_unknown");
+        const seen=new Set<string>();
+        for(const obligation of parsed.data)if(obligation.family==="stock_wait") {
           const kind=obligation.caseKind??"legacy";
-          cases.set(`${kind}:${obligation.sourceId}`,{ id:obligation.sourceId,kind });
+          const key=`${kind}:${obligation.sourceId}`;
+          if(seen.has(key))throw new Error("catalog_obligation_evidence_unknown");
+          seen.add(key);
+          const prior=cases.get(key);
+          cases.set(key,{ id:obligation.sourceId,kind,implicitLegacy:prior?.implicitLegacy===true||obligation.caseKind===undefined });
         }
       }
+      if(cases.size>0)await options.withTransaction(async db=>{
+        const ids=[...new Set([...cases.values()].map(entry=>entry.id))];
+        const { rows }=await db.query(`SELECT source_id,
+          EXISTS(SELECT 1 FROM public.subscription_stock_wait_cases WHERE id=source_id) AS legacy,
+          EXISTS(SELECT 1 FROM public.subscription_successor_wait_cases_v2 WHERE id=source_id) AS successor
+          FROM unnest($1::uuid[]) AS source(source_id)`,[ids]);
+        const bound=new Map(rows.map(row=>[row.source_id,row]));
+        if (rows.length!==ids.length || bound.size!==ids.length || [...cases.values()].some(entry=>{
+          const row=bound.get(entry.id);
+          return row?.[entry.kind]!==true || entry.implicitLegacy&&row.successor!==false;
+        })) throw new Error("catalog_obligation_evidence_unknown");
+      });
       for(const entry of cases.values())await options.withTransaction(db=>notice(db,entry.id,entry.kind,publicationId));
       return { kind:"processed" };
     }

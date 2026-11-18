@@ -8405,7 +8405,7 @@
     },
     {
       "path": "db/platform/migrations/20261123210000_catalog_successors.sql",
-      "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87",
+      "sha256": "089e044564edc6f22bf17d58fdd8facebde9f94f10026e9d884236e5ec9ebd0b",
       "functions": [
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",
@@ -8510,7 +8510,7 @@
         {
           "signature": "public.subscription_successor_proposal_offer_v2(uuid,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "9040d45e8825c465c947a4e9de602e34495d9378dcf5df40b7afa9d9b0656963"
+          "afterSha256": "fee6ba920d482a8c958cef3d0b1f09e25bd8da6e2435a805856640e8c1dc1c2a"
         },
         {
           "signature": "public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)",
@@ -8530,12 +8530,12 @@
         {
           "signature": "public.subscription_stock_wait_admit_v2(jsonb,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "68eabe0d3341655e748cfbbce1c5a5d0d5143d352fedbbeb4d941635a9cbef63"
+          "afterSha256": "28e12c8774ceb2390263a778d43d98cf7a56faa1dff8eaa562f899951e971577"
         },
         {
           "signature": "public.subscription_stock_wait_recover_refusal_v2(uuid,text,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "b388f15945b1764fca6af85b4902cc5d7a9c3c8e47e82e5f6d7ce6897d178386"
+          "afterSha256": "5227420cd1e1ffca8667f57a1a12d218288a0d7e33fe6ea5d23437aba3ab1262"
         },
         {
           "signature": "public.subscription_successor_notice_v2(uuid,text,uuid)",
@@ -8545,7 +8545,7 @@
         {
           "signature": "public.commerce_settle_successor_renewal_v2(uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "9885a448b95c83c4515551c7df704dc93decdd86e1c016aa5622c5742b01c210"
+          "afterSha256": "7abf2c68a9542ffd6f2278f50668a1541306c8ebe94fd4c17e6e8082617d2fd6"
         },
         {
           "signature": "public.subscription_stock_wait_mark_resumed_v2(uuid)",

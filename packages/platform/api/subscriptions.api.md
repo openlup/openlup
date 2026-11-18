@@ -2730,12 +2730,98 @@ export declare function createPostgresSuccessorNotices(options: {
 ## dist/subscriptions/postgresSuccessorStore.d.ts
 
 ```ts
+import { z } from "zod";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
 import type { SizedHostPorts } from "./sizedEditPorts.js";
+/** Internal native wait observation wire. @experimental */
+export declare const nativeWaitDeficitSchema: z.ZodObject<{
+    sku: z.ZodString;
+    requiredUnits: z.ZodNumber;
+    reservedUnits: z.ZodNumber;
+    availableUnits: z.ZodNumber;
+    missingUnits: z.ZodNumber;
+}, z.core.$loose>;
+/** Internal versioned case wire. @experimental */
+export declare const successorCaseReadSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    caseKind: z.ZodLiteral<"legacy">;
+    case: z.ZodObject<{
+        id: z.ZodGUID;
+        client_id: z.ZodGUID;
+        subscription_id: z.ZodGUID;
+        fingerprint: z.ZodString;
+        identity_key: z.ZodString;
+        scheduled_at: z.ZodISODateTime;
+        cycle_number: z.ZodNumber;
+        state: z.ZodEnum<{
+            resumed: "resumed";
+            closed: "closed";
+            waiting: "waiting";
+            stock_secured: "stock_secured";
+        }>;
+        deficits: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            requiredUnits: z.ZodNumber;
+            reservedUnits: z.ZodNumber;
+            availableUnits: z.ZodNumber;
+            missingUnits: z.ZodNumber;
+        }, z.core.$loose>>;
+        cycle_id: z.ZodNullable<z.ZodGUID>;
+        order_id: z.ZodNullable<z.ZodGUID>;
+        fulfillment_id: z.ZodNullable<z.ZodGUID>;
+        opened_at: z.ZodISODateTime;
+        last_checked_at: z.ZodISODateTime;
+        last_selected_at: z.ZodNullable<z.ZodISODateTime>;
+        stock_secured_at: z.ZodNullable<z.ZodISODateTime>;
+        resumed_at: z.ZodNullable<z.ZodISODateTime>;
+        closed_at: z.ZodNullable<z.ZodISODateTime>;
+        block_reason: z.ZodNullable<z.ZodString>;
+        waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
+        renewal_operation_id: z.ZodGUID;
+    }, z.core.$loose>;
+    schemaVersion: z.ZodLiteral<2>;
+}, z.core.$loose>, z.ZodObject<{
+    caseKind: z.ZodLiteral<"successor">;
+    case: z.ZodObject<{
+        id: z.ZodGUID;
+        client_id: z.ZodGUID;
+        subscription_id: z.ZodGUID;
+        fingerprint: z.ZodString;
+        identity_key: z.ZodString;
+        scheduled_at: z.ZodISODateTime;
+        cycle_number: z.ZodNumber;
+        state: z.ZodEnum<{
+            resumed: "resumed";
+            closed: "closed";
+            waiting: "waiting";
+            stock_secured: "stock_secured";
+        }>;
+        deficits: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            requiredUnits: z.ZodNumber;
+            reservedUnits: z.ZodNumber;
+            availableUnits: z.ZodNumber;
+            missingUnits: z.ZodNumber;
+        }, z.core.$loose>>;
+        cycle_id: z.ZodNullable<z.ZodGUID>;
+        order_id: z.ZodNullable<z.ZodGUID>;
+        fulfillment_id: z.ZodNullable<z.ZodGUID>;
+        opened_at: z.ZodISODateTime;
+        last_checked_at: z.ZodISODateTime;
+        last_selected_at: z.ZodNullable<z.ZodISODateTime>;
+        stock_secured_at: z.ZodNullable<z.ZodISODateTime>;
+        resumed_at: z.ZodNullable<z.ZodISODateTime>;
+        closed_at: z.ZodNullable<z.ZodISODateTime>;
+        block_reason: z.ZodNullable<z.ZodString>;
+        waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
+        operation_id: z.ZodGUID;
+    }, z.core.$loose>;
+    waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
+    schemaVersion: z.ZodLiteral<2>;
+}, z.core.$loose>], "caseKind">;
 /** Internal source check shared by the existing preview owners. */
 export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
     caseId: string;
@@ -2799,8 +2885,8 @@ export declare function createPostgresSuccessorStore(options: {
     }): Promise<Record<string, unknown>>;
     resolve(actor: PackageEditActor, input: Omit<SuccessorResolutionRequest, "clientId">): Promise<Record<string, unknown>>;
     readCase(caseId: string, caseKind: SuccessorCaseKind): Promise<Record<string, unknown> | null>;
-    listDue(limit: number, now: string): Promise<unknown>;
-    listCandidates(limit: number, now: string): Promise<unknown>;
+    listDue(limit: number, now: string): Promise<{} | null>;
+    listCandidates(limit: number, now: string): Promise<{} | null>;
     claim(input: {
         identityKey: string;
         fingerprint: string;
