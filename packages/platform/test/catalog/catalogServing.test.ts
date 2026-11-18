@@ -60,7 +60,7 @@ const publicationId = "10000000-0000-4000-8000-000000000003";
 const revisionId = "20000000-0000-4000-8000-000000000003";
 const scope = { types: [{ key: definition.key, version: definition.version }], offerVersion: "example:offer" };
 
-function reader(change: string, observed?: { revision: number; title: string; unavailable: boolean }) {
+function reader(change: string, observed?: { revision: number; title: string; unavailable: boolean; validations: number }) {
   const state = compileCatalogPublication(input());
   state.product.status = "active";
   const source = state.skus[0]!;
@@ -92,6 +92,9 @@ function reader(change: string, observed?: { revision: number; title: string; un
   if (change === "missing GTIN") source.identifiers.length = 0;
   if (change === "unsellable") { source.sellableStandalone = false; source.sellableInSubscription = false; }
   if (change === "withdrawn") source.status = "archived";
+  if (change === "withdrawn product") state.product.status = "archived";
+  if (change === "unadmitted") source.memberships = [{ offerVersion: scope.offerVersion, admitted: false }];
+  if (change === "different offer") source.memberships = [{ offerVersion: "example:other", admitted: true }];
   const executor = {
     async query(sql: string) {
       if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
@@ -104,7 +107,11 @@ function reader(change: string, observed?: { revision: number; title: string; un
     },
   } as PgQueryExecutor;
   return createCatalogServingReader({
-    transactions: { run: work => work(executor) }, registry, rules,
+    transactions: { run: work => work(executor) }, registry,
+    rules: { ...rules, validateProduct(...fields) {
+      if (observed) observed.validations++;
+      return rules.validateProduct(...fields);
+    } },
     authorizeHuman: async () => ({ ok: false }), readiness: async () => ({ ready: false, reasons: [] }),
     verifyMedia: async () => false,
   }, async () => {
@@ -149,10 +156,10 @@ it.each(servingPaths.flatMap(path => readFailures.map(([rule, change, code]) => 
   },
 );
 
-it.each(servingPaths.flatMap(path => ["empty", "withdrawn", "unsellable", "current"].map(change => ({ path, change }))))(
-  "catalog_authoritative_page_and_projection MC5-D-019 MC5-D-047 $path $change", async ({ path, change }) => {
+it.each(servingPaths.flatMap(path => ["empty", "withdrawn", "withdrawn product", "unsellable", "unadmitted", "different offer", "current"].map(change => ({ path, change }))))(
+  "catalog_authoritative_page_and_projection MC5-D-019 MC5-D-042 MC5-D-047 $path $change", async ({ path, change }) => {
     const items = await readPath(path, reader(change));
-    if (change === "current" || change === "unsellable" && path === "listing") {
+    if (change === "current" || (path === "listing" && change === "unsellable")) {
       expect(items).toHaveLength(1);
       expect(items[0]?.acceptedReference).toMatchObject({ publicationHead: { publicationId, revision: 1 }, skuRevisionId: revisionId });
     } else expect(items).toEqual([]);
@@ -167,8 +174,15 @@ it.each([
   await expect(reader("current").list({ cursor, limit })).rejects.toMatchObject({ code });
 });
 
+it("catalog_authoritative_page_and_projection MC5-D-006 refuses an unknown cursor anchor", async () => {
+  const port = reader("current");
+  const page = await port.list({ cursor: null, limit: 1 });
+  const cursor = Buffer.from(JSON.stringify([page.version, publicationId])).toString("base64url");
+  await expect(port.list({ cursor, limit: 1 })).rejects.toMatchObject({ code: "catalog_cursor_invalid" });
+});
+
 it("catalog_pdp_reads_new_publication_without_rebuild MC5-N-004", async () => {
-  const observed = { revision: 1, title: "First", unavailable: false };
+  const observed = { revision: 1, title: "First", unavailable: false, validations: 0 };
   const port = reader("current", observed);
   const first = await port.detail("article");
   expect(first.items[0]?.sku.title).toBe("First");
@@ -178,9 +192,12 @@ it("catalog_pdp_reads_new_publication_without_rebuild MC5-N-004", async () => {
   expect(second.items[0]?.sku.title).toBe("Second");
   expect(second.version).not.toBe(first.version);
   const productId = second.items[0]!.product.id;
+  expect(await port.detail("article")).toEqual(second);
+  expect(observed.validations).toBe(2);
   port.invalidateProduct(productId);
   port.invalidateProduct(productId);
   expect(await port.detail("article")).toEqual(second);
+  expect(observed.validations).toBe(3);
   observed.unavailable = true;
   await expect(port.detail("article")).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
 });

@@ -59,7 +59,7 @@ interface CurrentPublication {
   references: readonly CatalogSkuRevisionRef[];
   documents: readonly CatalogPublicationDocument[];
 }
-type ServingItem = { envelope: NeutralSkuEnvelopeV2; admitted: boolean };
+type ServingItem = { envelope: NeutralSkuEnvelopeV2; selectable: boolean };
 type LoadPublication = (db: PgQueryExecutor, productId: string) => Promise<CurrentPublication>;
 const digest = /^[a-f0-9]{64}$/u;
 const cursorSchema = z.tuple([z.string().regex(digest), z.guid().refine(id => id === id.toLowerCase())]);
@@ -176,6 +176,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
             if (!active(sku)) continue;
             const reference = references.find(ref => ref.skuId === sku.id);
             if (!reference || sku.productId !== product.id) return fail("catalog_authority_changed");
+            if (!sku.memberships.some(member => member.offerVersion === offerVersion && member.admitted)) continue;
             const identifiers: NeutralSkuEnvelopeV2["identifiers"] = sku.identifiers.map(identifier => ({
               issuer: identifier.issuer, normalizedValue: identifier.scheme === "gs1:gtin" ? identifier.value.padStart(14, "0") : identifier.value,
               kind: identifier.scheme === "gs1:gtin" ? "gtin" : "other", packKind: identifier.packagingLevel === "unit" ? "unit" : "collective",
@@ -191,7 +192,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
               schemaVersion: 2, skuId: sku.id, skuCode: sku.code, skuRevisionId: reference.revisionId,
               publicationHead: head, typeRef: product.type, definitionDigest: typeEntry.digest, optionDigest, netContent: sku.netContent,
             };
-            projected.push({ admitted: selectable && sku.memberships.some(member => member.offerVersion === offerVersion && member.admitted),
+            projected.push({ selectable,
               envelope: { contractVersion: "catalog.foundation.v2", documentRevision: product.document, identifiers, acceptedReference,
                 product: { id: product.id, slug: product.slug, title: product.name, type: product.type,
                   primarySkuId: product.primarySkuId, attributes: projectAttributes(product.attributes) },
@@ -220,7 +221,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
 
   async function selectable() {
     const page = await observe(null);
-    return page.items.filter(item => item.admitted).map(item => item.envelope);
+    return page.items.filter(item => item.selectable).map(item => item.envelope);
   }
 
   return {
@@ -238,7 +239,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
     async detail(slug) {
       if (!slugSchema.safeParse(slug).success) return fail("catalog_cursor_invalid");
       const { version, items } = await observe(slug);
-      return { version, items: items.some(item => item.admitted) ? items.map(item => item.envelope) : [] };
+      return { version, items: items.some(item => item.selectable) ? items.map(item => item.envelope) : [] };
     },
     async listQuoteCatalogItems() {
       return (await selectable()).map(({ product, sku, documentRevision, acceptedReference }) => ({
