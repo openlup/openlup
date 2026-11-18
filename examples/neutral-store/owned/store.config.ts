@@ -17,6 +17,7 @@ function offers(days: Numbers, defaultDays: number, skus: readonly string[]): Su
 const inputs = {
   supplements: {
     id: 'supplements',
+    subscriptionCreation: { editWindowHours: 72 },
     subscriptionOffers: offers(set(28, 56), 28, ['ASTER-DAWN-60', 'ASTER-DAWN-60-L', 'ASTER-DAWN-60-EXTRA',
       'ASTER-NOON-60', 'ASTER-NOON-60-L', 'ASTER-DUSK-30', 'ASTER-DUSK-30-L']),
     quote: quoteConfigurations.supplements,
@@ -116,6 +117,7 @@ const inputs = {
   },
   coffee: {
     id: 'coffee',
+    subscriptionCreation: { editWindowHours: 72 },
     subscriptionOffers: offers(set(14, 28, 56), 28, ['PEBBLE-LIGHT-250', 'PEBBLE-LIGHT-250-L', 'PEBBLE-LIGHT-250-EXTRA',
       'PEBBLE-MEDIUM-250', 'PEBBLE-MEDIUM-250-L', 'PEBBLE-DARK-250', 'PEBBLE-DARK-250-L']),
     quote: quoteConfigurations.coffee,

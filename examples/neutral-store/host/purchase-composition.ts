@@ -234,7 +234,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       let renewalAttachment: string | undefined;
       if (payload.outcome === 'captured') {
         if (!await isInitialCheckoutOrder(db, order.id)) return refused('starter_order_not_found');
-        renewalAttachment = await activation.activate({ orderId: order.id, acceptedQuote: storedQuote,
+        renewalAttachment = await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: order.id, acceptedQuote: storedQuote,
           currency: order.currency_code, capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
           stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
       }

@@ -36,6 +36,44 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Native activation edit window
+
+The native `20261123120000_subscription_edit_window_activation.sql` forward adds
+an invoker activation entry point and commit helper with `_with_edit_window`
+suffixes. Their optional final integer defaults to NULL, which explicitly uses
+72, matching the column default; explicit input must be 1–720 and refuses
+with `subscription_activation_edit_window_invalid` before writes. The value is
+stored in the initial subscription INSERT. Existing rows, cycle dates and edit
+fences are unchanged. Completed activation replay retains the stored value.
+
+A defaulted overload of the existing name makes PostgreSQL reject legacy calls
+as ambiguous even with typed arguments. The distinct names preserve existing
+function identities. This forward never redefines or changes privileges on
+either predecessor: their bodies, owner, ACLs and search paths remain identical.
+Old activation and repair callers retain their existing behavior and column
+default of 72. Each new function contains its predecessor's body with the edit
+window input; the new entry point uses the new commit helper. Neither legacy
+function calls the new functions, and neither new function calls a predecessor.
+Both new functions use SECURITY INVOKER with the pinned `public, pg_catalog`
+search path. They revoke PUBLIC privileges, conditionally revoke anon and
+authenticated, and conditionally grant EXECUTE to service_role using the admitted
+constant `pg_roles` blocks. Opting in requires EXECUTE on both new functions;
+service_role receives it where present, and owner-run self-host installations
+have it as owner. The TypeScript binding calls the unchanged predecessor when
+`editWindowHours` is omitted. The starter always passes its owned
+`subscriptionCreation.editWindowHours`, including 72, so it opts in.
+The mirrored package SQL and three native manifest selections bind the same
+bytes; only current inventories are remeasured.
+
+The managed chain has no native `subscription_activate_from_captured_payment`
+equivalent. Its separate `subscription_activate_from_paid_checkout_order` uses
+managed payment intents and subscription composition; it still supplies 72.
+That separate boundary and its provisional/starter path are unchanged here.
+The [activation witness](../../tests/postgres/subscriptionActivationEditWindow.test.ts)
+proves default and legacy compatibility, zero-write refusal, frozen replay and
+the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
+as the installed fence subtracts stored hours from the next cycle instant.
+
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while
