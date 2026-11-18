@@ -9,7 +9,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const head = "a".repeat(40);
 const previous = "b".repeat(40);
 const NAMES = ["dco", "typecheck", "install-packages", ...["0", "1,6", "2,4", "3,5"].map((groups) => `install-browser (${groups})`),
-  "install-proof", ...[1, 2, 3, 4, 5, 6].map((shard) => `test-full-shard (${shard}/6)`),
+  "install-proof", ...[1, 2, 3, 4, 5, 6, 7, 8].map((shard) => `test-full-shard (${shard}/8)`),
   "test", "self-check", "gitleaks", "pgtap", "native-review"];
 const source = { branch: "feature", repositoryId: 77 };
 type Run = { id: number; run_attempt: number; head_sha: string; head_branch: string; head_repository: { id: number } | null;
@@ -68,11 +68,11 @@ describe("rerun selection", () => {
   });
 
   it.each([
-    [{ "native-review": "failure", "test-full-shard (3/6)": "failure", test: "failure" }],
+    [{ "native-review": "failure", "test-full-shard (3/8)": "failure", test: "failure" }],
     [{ "native-review": "failure", "install-proof": "failure" }],
     [{ "native-review": "failure", "self-check": "cancelled" }],
     [{ "native-review": "failure", pgtap: "timed_out" }],
-    [{ "test-full-shard (1/6)": "failure", test: "failure" }],
+    [{ "test-full-shard (1/8)": "failure", test: "failure" }],
   ])("does not rerun native-review with another real failure %#", (results) => {
     expect(selectRerun([run()], jobs(results), head, source)).toMatchObject({ rerun: false, reason: expect.stringContaining("not only native-review") });
   });

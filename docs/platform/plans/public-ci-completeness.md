@@ -39,10 +39,10 @@ placement below; it preserves all proofs, selectors, six required contexts and
 Current execution is documented in [Development and release](../DEVELOPMENT_AND_RELEASE.md).
 
 The existing six contexts remain `dco`, `typecheck`, `install-proof`, `test`,
-`self-check` and `gitleaks`. The 19 October CI simplification supersedes the
-selector command and independent full-root diagnostic: four full-root shards
-and pgTAP feed required `test`, with conservative tooling-input selection on PR/group
-events. Whole-tree falsifiers always run. Complete core CI remains in the
+`self-check` and `gitleaks`. The 19 October 2026 CI simplification replaced the
+selector command and independent full-root diagnostic. Required `test` now
+aggregates all eight full-root shards and pgTAP. The root shards apply conservative
+tooling-input selection on PR and merge-group events. Whole-tree falsifiers always run. Complete core CI remains in the
 independent `install-proof` package gate. Lint blocks `typecheck`; UI neutrality
 and the tree ratchet block `self-check`.
 
