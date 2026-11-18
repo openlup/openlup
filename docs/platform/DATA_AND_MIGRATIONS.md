@@ -415,7 +415,9 @@ registration replay. The compiler calls the installed `rules.canonicalizeDocumen
 callback for canonicalization. The portable catalogue boundary checks the exact
 path, trimmed line and occurrence count of those uses. It refuses SQL field
 extraction and containment, private document imports and direct document
-canonicalization, validation, logging or serialization.
+canonicalization, validation, logging or serialization. Queries over document
+revisions name their columns explicitly so new storage fields do not enter
+the publication reader through a whole-row projection.
 Moving to an off-head document requires a matching
 registration before the move. On creation, the persisted product name must
 match the sealed document's string `name`. An explicit null presentation effect

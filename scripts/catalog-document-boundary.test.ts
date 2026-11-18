@@ -121,11 +121,11 @@ function exactUses(actual: readonly string[], expected: readonly string[]): bool
 
 function readsWholeDocumentRow(source: string): boolean {
   return source.split(/[`;]/).some(statement => {
-    if (/\bselect\s+\*\s+from\s+(?:public\.)?catalog_product_document_revisions\b/i.test(statement)) return true;
-    const tables = statement.matchAll(/\b(?:from|join)\s+(?:public\.)?(catalog_product_document_revisions)\b(?:\s+(?:as\s+)?([a-z_][\w]*))?/gi);
+    const tables = statement.matchAll(/\b(?:from|join)\s+(?:public\s*\.\s*)?(catalog_product_document_revisions)\b(?:\s+(?:as\s+)?([a-z_][\w]*))?/gi);
     return [...tables].some(([, table, alias]) => {
       const row = alias && !SQL_RESERVED_WORDS.has(alias.toLowerCase()) ? alias : table;
-      return new RegExp(String.raw`\b(?:to_jsonb|row_to_json|to_json)\s*\(\s*${row}\s*\)|\b${row}\s*\.\s*\*`, "i").test(statement);
+      return /\bselect\s+\*\s+from\b/i.test(statement)
+        || new RegExp(String.raw`\b(?:to_jsonb|row_to_json|to_json|jsonb?_agg)\s*\(\s*${row}\b\s*(?:\)|,|order\s+by)|\b${row}\s*\.\s*\*`, "i").test(statement);
     });
   });
 }
@@ -253,6 +253,8 @@ describe("portable catalog document boundary", () => {
   it.each([
     "SELECT to_jsonb(d) FROM public.catalog_product_document_revisions d;",
     "SELECT row_to_json(saved) FROM public.catalog_product_document_revisions AS saved;",
+    "SELECT json_agg(saved ORDER BY saved.id) FROM public.catalog_product_document_revisions AS saved;",
+    "SELECT jsonb_agg(saved) FROM public.catalog_product_document_revisions AS saved;",
     "SELECT saved.* FROM public.catalog_product_document_revisions saved;",
     "SELECT * FROM public.catalog_product_document_revisions;",
   ])("refuses a whole document row projection: %s", source => {
