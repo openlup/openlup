@@ -3749,6 +3749,38 @@ it.each(["legacy GTIN first", "row locker first", "publisher first with collidin
     }
   });
 
+it.each(["read committed", "repeatable read"] as const)("publication fences legacy GTIN writers at %s", async isolation => {
+  const owner = await db.connect(), legacy = await db.connect(), gtin = nextGtin();
+  const write = (client: import("pg").PoolClient, issuer: string, scheme: string | null) => client.query(
+    `INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,scheme)
+     VALUES($1,$2,'gtin',$3,'unit',1,$4)`, [foreignPublished.data.skuId, issuer, gtin, scheme]);
+  let completed = false;
+  let pending: Promise<unknown> | undefined;
+  try {
+    await owner.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    await legacy.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+    const pid = (await legacy.query("SELECT pg_backend_pid() AS id")).rows[0].id;
+    expect((await legacy.query("SELECT id FROM public.catalog_sku_identifiers WHERE normalized_value=$1", [gtin])).rowCount).toBe(0);
+    await write(owner, "example:published-race", "gs1:gtin");
+    const legacyIssuer = "example:legacy-race";
+    if (isolation === "read committed") {
+      pending = write(legacy, legacyIssuer, null).catch((error: unknown) => error).finally(() => { completed = true; });
+      await expect.poll(async () => completed ? "completed" : (await db.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [pid])).rows[0]?.wait_event).toBe("advisory");
+      await owner.query("COMMIT");
+      expect(await pending).toMatchObject({ code: "23505", message: "catalog_publication_identity_conflict" });
+    } else {
+      await owner.query("COMMIT");
+      await expect(write(legacy, legacyIssuer, null)).rejects.toMatchObject({ code: "0A000", message: "catalog_publication_gtin_requires_read_committed" });
+    }
+  } finally {
+    await owner.query("ROLLBACK");
+    await pending;
+    await legacy.query("ROLLBACK");
+    await owner.query("DELETE FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1 AND normalized_value=$2", [foreignPublished.data.skuId, gtin]);
+    legacy.release(); owner.release();
+  }
+});
+
 it("publication binds an omitted SKU to its newest authored issuance without rewriting SKU facts", async () => inPriceDatabase(async () => {
   const target = realPriceAuthority(), capability = (await target.authorize(null))!;
   const data = await priceDraft(), first = await commit(data.publication, target, capability);

@@ -418,6 +418,9 @@ extraction and containment, private document imports and direct document
 canonicalization, validation, logging or serialization. Queries over document
 revisions name their columns explicitly so new storage fields do not enter
 the publication reader through a whole-row projection.
+Native GTIN inserts and updates use Read Committed. The transaction locks the
+canonical identifier before checking collisions across issuers. A GTIN write
+under another isolation level refuses with `catalog_publication_gtin_requires_read_committed`.
 Moving to an off-head document requires a matching
 registration before the move. On creation, the persisted product name must
 match the sealed document's string `name`. An explicit null presentation effect
