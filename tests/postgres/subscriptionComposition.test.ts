@@ -155,7 +155,7 @@ it.each(["off", "protect", "arrival", "rollback", "dunning", "stock", "prepared"
     expect(await b.binding.realizationAdmitted(order)).toMatchObject({ state: "resumed" });
     expect(await b.binding.realizationAdmitted(order)).toMatchObject({ state: "resumed" });
     expect((await h.pool.query("SELECT event_type FROM public.outbox_events WHERE aggregate_id=(SELECT id FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=$1) ORDER BY event_type", [f.operation])).rows)
-      .toEqual([{ event_type: "subscription_stock_wait.resumed" }, { event_type: "subscription_stock_wait.started" }]);
+      .toEqual([{ event_type: "subscription_stock_wait.opened.v1" }, { event_type: "subscription_stock_wait.resumed" }, { event_type: "subscription_stock_wait.started" }]);
   } else if (scenario === "prepared") {
     await prepareOriginal(h.pool, f);
     await call(h.pool, "subscription_delivery_alignment_set_mode", ["protect"]);

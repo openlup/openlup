@@ -8405,7 +8405,7 @@
     },
     {
       "path": "db/platform/migrations/20261123130000_catalog_successors.sql",
-      "sha256": "682741e17038900381d6791a9e2daef474162de150a116324c02bb87d889e6ba",
+      "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87",
       "functions": [
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",

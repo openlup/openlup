@@ -2533,4 +2533,4 @@ END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) FROM anon;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) FROM authenticated;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz) TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz), public.subscription_stock_wait_record_opened(public.subscription_stock_wait_cases) TO service_role;'; END IF; END; $$;

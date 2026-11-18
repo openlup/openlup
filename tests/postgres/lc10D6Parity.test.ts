@@ -768,6 +768,25 @@ it("lc10_successor_transfer_preserves_nonempty_graph_and_replay",async()=>{
   expect((await transferTarget.owner.query("SELECT root_operation_id FROM public.subscription_successor_operations_v2 WHERE id=$1",[resolved.operationId])).rows).toEqual([{root_operation_id:f.operationId}]);
 });
 
+it("lc10_D6_legacy_opened_shipped_invoker_compat",async()=>{
+  const owner=transferSource.owner,f=await createSuccessorJourney(owner),connection=await owner.connect();
+  async function witness(){
+    await connection.query("SET ROLE service_role");
+    try{
+      expect((await connection.query("SELECT public.subscription_stock_wait_recover_refusal($1,$2,'compatibility',$3) AS result",[f.operationId,f.codec.fingerprint(f.frozen),f.at])).rows[0].result).toMatchObject({waiting:true,caseId:f.caseId});
+    }finally{await connection.query("RESET ROLE");}
+  }
+  try{
+    await witness();
+    expect((await owner.query("SELECT count(*)::integer AS count FROM public.outbox_events WHERE event_type='subscription_stock_wait.opened.v1' AND aggregate_id=$1",[f.caseId])).rows).toEqual([{count:1}]);
+    await owner.query("REVOKE EXECUTE ON FUNCTION public.subscription_stock_wait_record_opened(public.subscription_stock_wait_cases) FROM service_role");
+    try{expect(await tracked(witness())).toMatchObject({ok:false,error:{code:"42501",message:"permission denied for function subscription_stock_wait_record_opened"}});}
+    finally{await owner.query("GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_record_opened(public.subscription_stock_wait_cases) TO service_role");}
+    await witness();
+    expect((await owner.query("SELECT prosecdef FROM pg_proc WHERE oid='public.subscription_stock_wait_record_opened(public.subscription_stock_wait_cases)'::regprocedure")).rows).toEqual([{prosecdef:false}]);
+  }finally{await connection.query("RESET ROLE");connection.release();}
+});
+
 it("successor_offer_requires_acceptance_and_never_substitutes",async()=>{
   const f=await prepareLegacy();
   expect((await db.query("SELECT state FROM public.subscription_successor_proposals WHERE id=$1",[f.proposalId])).rows).toEqual([{state:"offered"}]);
