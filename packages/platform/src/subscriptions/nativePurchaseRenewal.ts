@@ -48,7 +48,7 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
               public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,linePricing}') role
               WHERE role->>'sku'=sku.sku),false) AS is_addon,o.currency_code,
             (SELECT (ref->>'skuRevisionId')::uuid FROM public.subscription_renewal_terms t
-             CROSS JOIN LATERAL jsonb_array_elements(t.catalog_acceptance->'lines') ref
+             CROSS JOIN LATERAL jsonb_array_elements(to_jsonb(t)#>'{catalog_acceptance,lines}') ref
              WHERE t.subscription_id=s.id AND ref->>'skuId'=sku.id::text) AS catalog_sku_revision_id
           FROM public.subscriptions s JOIN public.commerce_orders o ON o.id=$2::uuid
           CROSS JOIN LATERAL jsonb_array_elements(o.metadata#>'{orderDraftSnapshot,lines}') WITH ORDINALITY item(line,ordinal)
@@ -67,13 +67,15 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
           FROM eligible e WHERE s.id=e.id AND s.price_list_id IS NULL AND s.currency_code IS NULL RETURNING s.id
         )` : "";
         // Lines and context are atomic with each other, after the durable completion.
+        // Predecessor installations expose no frozen catalogue proof or revision column.
+        const governed = lines.some(line => typeof line.catalog_sku_revision_id === "string");
         await executor.query(`WITH locked AS MATERIALIZED (
           SELECT id FROM public.subscriptions WHERE id=$1::uuid AND template_version=1 FOR UPDATE
         ), eligible AS MATERIALIZED (
           SELECT id FROM locked WHERE NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=locked.id)
         ), template AS (
-          INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,catalog_sku_revision_id)
-          SELECT e.id,l.variant_id,l.quantity,l.sort_order,l.is_addon,l.unit_price_minor,l.currency_code,l.catalog_sku_revision_id
+          INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code${governed ? ",catalog_sku_revision_id" : ""})
+          SELECT e.id,l.variant_id,l.quantity,l.sort_order,l.is_addon,l.unit_price_minor,l.currency_code${governed ? ",l.catalog_sku_revision_id" : ""}
           FROM eligible e CROSS JOIN jsonb_to_recordset($2::jsonb) AS l(variant_id uuid,quantity integer,sort_order integer,
             is_addon boolean,unit_price_minor bigint,currency_code text,catalog_sku_revision_id uuid)
           ON CONFLICT(subscription_id,variant_id) DO NOTHING RETURNING id

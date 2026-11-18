@@ -261,6 +261,7 @@ CREATE FUNCTION public.catalog_admission_build_evidence(p_lines jsonb,p_mode tex
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; page jsonb; item jsonb; line jsonb;
  member jsonb; offer_version text; cursor_id uuid; head_digest text;
+ page_limit constant integer:=100; maximum_members constant integer:=500;
  seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
  retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text;
@@ -296,12 +297,13 @@ BEGIN
  IF to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NULL THEN
   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
  LOOP
-  page:=public.catalog_offer_memberships_page(offer_version,cursor_id,100,p_mode,head_digest);
+  page:=public.catalog_offer_memberships_page(offer_version,cursor_id,page_limit,p_mode,head_digest);
   IF page->>'protocol' IS DISTINCT FROM 'governed' OR NOT coalesce(page->>'headDigest' ~ '^[0-9a-f]{64}$',false)
    OR (head_digest IS NOT NULL AND page->>'headDigest' IS DISTINCT FROM head_digest)
    OR jsonb_typeof(page->'items') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-  IF jsonb_array_length(page->'items')>100 THEN
+  IF jsonb_array_length(page->'items')>page_limit
+   OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
   head_digest:=page->>'headDigest';
   FOR item IN SELECT value FROM jsonb_array_elements(page->'items') LOOP
@@ -315,7 +317,8 @@ BEGIN
    IF sku_id=ANY(scope) THEN members:=members||jsonb_build_object(sku_id::text,item); END IF;
   END LOOP;
   IF page->>'nextCursor' IS NOT NULL AND (
-    NOT coalesce(pg_input_is_valid(page->>'nextCursor','uuid'),false)
+    jsonb_array_length(page->'items')<>page_limit
+    OR NOT coalesce(pg_input_is_valid(page->>'nextCursor','uuid'),false)
     OR page->>'nextCursor' IS DISTINCT FROM seen_ids[cardinality(seen_ids)]::text) THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
   EXIT WHEN scope <@ seen_ids;

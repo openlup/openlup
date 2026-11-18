@@ -312,6 +312,49 @@ it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview ev
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
+const membershipReadBoundary = "page:=public.catalog_offer_memberships_page(offer_version,cursor_id,page_limit,p_mode,head_digest);";
+const membershipPages = [
+  { name: "complete selection across pages", pages: 4 },
+  { name: "roster beyond 500", pages: 5, predicate: "OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members" },
+  { name: "cursor with a short page", pages: 0, predicate: "jsonb_array_length(page->'items')<>page_limit\n    OR " },
+] as const;
+describe.each(membershipPages)("LC6-D-091 and LC6-D-097 $name", row => {
+  const cases = [{ control: false }, ...(row.pages === 4 ? [] : [{ control: true }])];
+  for (const { control } of cases) it(control ? "removal fails the precise witness" : "native preview", async context => {
+    const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+    if (!installed) { context.skip("Membership page comes from the predecessor installation"); return; }
+    const f = await fixture(packs[0]);
+    // Keep the installed page's digest and its final real rows. Prefix sorted
+    // protocol rows to exercise continuation without publishing hundreds of SKUs.
+    const extension = row.pages === 0 ? `
+    page:=jsonb_set(page,'{nextCursor}',page#>'{items,-1,skuId}');` : `
+    IF cardinality(seen_ids)<${row.pages * 100} THEN
+     page:=page||jsonb_build_object('items',(
+      SELECT jsonb_agg(jsonb_build_object('skuId','00000000-0000-0000-0000-'||lpad(n::text,12,'0'),
+       'skuCode','PAGE-WITNESS-'||n,'sellableInSubscription',true) ORDER BY n)
+      FROM generate_series(cardinality(seen_ids)+1,cardinality(seen_ids)+100) n),
+     'nextCursor','00000000-0000-0000-0000-'||lpad((cardinality(seen_ids)+100)::text,12,'0'));
+    END IF;`;
+    const restore = await hook("public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",membershipReadBoundary,extension,body => {
+      if (!control || !("predicate" in row)) return body;
+      expect(body.split(row.predicate)).toHaveLength(2);
+      return body.replace(row.predicate,"");
+    });
+    try {
+      if (row.pages === 4) {
+        await edit(f,"classic",true);
+        const { evidence } = (await pool.query("SELECT quote_snapshot->'catalogAdmission' AS evidence FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription])).rows[0];
+        expect(evidence.skuRevisions).toEqual(f.admission.skuRevisions);
+      } else {
+        const before = await snapshot();
+        const refuses = async () => expect(edit(f,"classic",true)).rejects.toMatchObject({ code: "55000",message: "catalog_admission_membership_authority_unavailable" });
+        if (control) await expect(refuses()).rejects.toMatchObject({ name: "AssertionError" });
+        else { await refuses(); expect(await snapshot()).toEqual(before); }
+      }
+    } finally { await restore(); }
+  });
+});
+
 it("F6 subscription precedes its owned preview, with the old-order cycle control", async () => {
   const f = await fixture(packs[0]), command = await edit(f), observer = await pool.connect(), t = await session(), e = await session();
   const gateT = await gate(observer), tPid = await pid(t), ePid = await pid(e), hPid = await pid(observer);
@@ -1640,6 +1683,10 @@ async function acquisitionCase({ offerVersion,result }: {
   const next = await changedDocument(f), publisher = await pool.connect();
   try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
   const activated = await activate();
+  const activeTerms = () => pool.query(`SELECT s.configured_offer_version,s.composition_constraint,t.catalog_acceptance
+    FROM public.subscriptions s LEFT JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1`, [activated.subscriptionId]);
+  const binding = { configured_offer_version: offerVersion,composition_constraint: offerVersion === "classic" ? null : sizeConstraint };
+  if (result === "bound") expect((await activeTerms()).rows).toEqual([{ ...binding,catalog_acceptance: null }]);
   if (result === "attachment mismatch") {
     const before = await snapshot();
     await expect(writer.complete(order)).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" });
@@ -1647,8 +1694,11 @@ async function acquisitionCase({ offerVersion,result }: {
     return;
   }
   expect(await writer.complete(order)).toEqual({ subscriptionId: activated.subscriptionId,replayed: false });
-  expect((await pool.query("SELECT s.configured_offer_version,s.composition_constraint,t.catalog_acceptance FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1", [activated.subscriptionId])).rows)
-    .toEqual([{ configured_offer_version: offerVersion,composition_constraint: offerVersion === "classic" ? null : sizeConstraint,catalog_acceptance: proof }]);
+  expect((await activeTerms()).rows).toEqual([{ ...binding,catalog_acceptance: proof }]);
+  expect((await pool.query(`SELECT line.catalog_sku_revision_id,terms.quantity,terms.unit_amount_minor
+    FROM public.subscription_lines line JOIN public.subscription_renewal_term_lines terms ON terms.subscription_id=line.subscription_id
+    WHERE line.subscription_id=$1 ORDER BY terms.line_ordinal`, [activated.subscriptionId])).rows)
+    .toEqual([{ catalog_sku_revision_id: f.reference.skuRevisionId,quantity: 2,unit_amount_minor: "617" }]);
   expect(await writer.complete(order)).toEqual({ subscriptionId: activated.subscriptionId,replayed: true });
 }
 
@@ -1669,7 +1719,6 @@ it.each([
     text: "PERFORM public.catalog_admission_bind_purchase(v_subscription_id,p_activation.order_id);",
     replace: "",
     result: "bound",
-    refusal: "subscription_activation_catalog_acceptance_mismatch",
   },
   {
     rule: "LC6-D-146 retained proof at attachment",
@@ -1685,14 +1734,13 @@ it.each([
     replace: "false",
     result: "attachment mismatch",
   },
-] as const)("$rule reversion fails the acquisition witness", async ({ signature,text,replace,result,...row }) => {
+] as const)("$rule reversion fails the acquisition witness", async ({ signature,text,replace,result }) => {
   const restore = await hook(signature,"BEGIN","",body => {
     expect(body.split(text)).toHaveLength(2);
     return body.replace(text,replace);
   });
   try {
-    const expected = "refusal" in row ? { code: "22023",message: row.refusal } : { name: "AssertionError" };
-    await expect(acquisitionCase({ offerVersion: "sized.v1",result })).rejects.toMatchObject(expected);
+    await expect(acquisitionCase({ offerVersion: "sized.v1",result })).rejects.toMatchObject({ name: "AssertionError" });
   } finally { await restore(); }
 });
 
