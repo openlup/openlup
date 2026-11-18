@@ -67,7 +67,10 @@ beforeAll(async () => {
   for (let revision = 1; revision <= 1; revision++) receipt = await commit(await incrementalSku(data, receipt.head, revision));
   paged = { data, head: receipt.head };
   const other = await draft(), otherReceipt = await commit(other.publication); foreignPublished = { data: other, head: otherReceipt.head };
-  const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication" }); containers.push(priceContainer);
+  // Keep background maintenance out of the price fixture's NOWAIT schedules.
+  const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication",
+    command: ["postgres", "-c", "autovacuum=off"] });
+  containers.push(priceContainer);
   if (!await waitForPostgresTcpReady(priceContainer.connectionString)) throw new Error("Price publication witnesses require real PostgreSQL");
   priceDb = new Pool({ connectionString: priceContainer.connectionString }); pools.push(priceDb);
   for (const unit of [manifest.baseline, ...manifest.forward]) await priceDb.query(readFileSync(unit.file, "utf8"));
