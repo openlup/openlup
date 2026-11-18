@@ -79,8 +79,8 @@ use `workflow_dispatch` on the default branch with an existing
 `openlup-core-vMAJOR.MINOR.PATCH` tag; historical qualification does not require
 that version to remain npm's `latest`.
 For each exact package version, the visibility check requires the expected
-version metadata and probes the tarball with HTTP HEAD, following redirects to
-a 2xx response.
+version metadata and a final 2xx response after redirects from the HTTP HEAD
+probe of the tarball.
 
 The trusted default-branch [entry point](../../scripts/packages/exact-set-qualification.mjs)
 archives the validated tag as data and calls the trusted starter extractor.

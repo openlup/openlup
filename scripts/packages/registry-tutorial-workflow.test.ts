@@ -164,7 +164,7 @@ describe("the blocking registry tutorial after publication", () => {
   });
 
   const tarball = "https://registry.example.test/package.tgz";
-  const available = [{ value: "0.13.1" }, { value: tarball }, {}];
+  const available = [{ value: "0.13.1" }, { value: tarball }, { value: "200" }];
   function registryWait(answers: Array<{ value?: string; fail?: boolean }>, expire = false, event = "workflow_run") {
     const directory = mkdtempSync(join(tmpdir(), "openlup-registry-wait-"));
     try {
@@ -203,15 +203,16 @@ console.log(answer.value ?? "");
     expect(wait).toContain("if (( delay < 30 )); then delay=$((delay + 5)); fi");
     const packages = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { name: string }) => `${entry.name}@0.13.1`);
     const green = packages.flatMap(() => available);
-    const result = registryWait([{ fail: true }, { value: "0.12.0" }, ...available.slice(0, 2), { fail: true }, ...green, { value: "0.12.0" }, ...green, { value: "0.13.1" }]);
+    const unavailable = (value: string) => [...available.slice(0, 2), { value }];
+    const result = registryWait([{ fail: true }, { value: "0.12.0" }, ...unavailable("302"), ...unavailable("404"), ...green, { value: "0.12.0" }, ...green, { value: "0.13.1" }]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe("ready=true\n");
     expect(result.summary).toBe("");
     const flags = ["--registry=https://registry.npmjs.org", "--fetch-retries=0", "--fetch-timeout=10000"];
     const version = (spec: string) => ["view", spec, "version", ...flags];
-    const probe = (spec: string) => [version(spec), ["view", spec, "dist.tarball", ...flags], ["-fsSIL", "--max-time", "10", "--", tarball]];
+    const probe = (spec: string) => [version(spec), ["view", spec, "dist.tarball", ...flags], ["-sSIL", "--max-time", "10", "-o", "/dev/null", "-w", "%{http_code}", "--", tarball]];
     const set = packages.flatMap(probe), latest = version("@openlup/core");
-    expect(result.requests).toEqual([version(packages[0]), version(packages[0]), ...probe(packages[0]), ...set, latest, ...set, latest]);
+    expect(result.requests).toEqual([version(packages[0]), version(packages[0]), ...probe(packages[0]), ...probe(packages[0]), ...set, latest, ...set, latest]);
   });
 
   it("qualifies historical dispatch versions without waiting for latest", () => {

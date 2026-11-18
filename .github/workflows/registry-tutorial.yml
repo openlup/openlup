@@ -101,7 +101,8 @@ jobs:
               if [ "$spec" != @openlup/core ]; then
                 remaining=$((deadline - SECONDS))
                 if (( remaining <= 0 )) || ! tarball="$(timeout "$remaining" npm view "$spec" dist.tarball --registry=https://registry.npmjs.org --fetch-retries=0 --fetch-timeout=10000)" ||
-                  (( (remaining = deadline - SECONDS) <= 0 )) || ! timeout "$remaining" curl -fsSIL --max-time 10 -- "$tarball" > /dev/null; then
+                  (( (remaining = deadline - SECONDS) <= 0 )) ||
+                  ! code="$(timeout "$remaining" curl -sSIL --max-time 10 -o /dev/null -w '%{http_code}' -- "$tarball")" || [[ "$code" != 2?? ]]; then
                   ready=false
                   break
                 fi
