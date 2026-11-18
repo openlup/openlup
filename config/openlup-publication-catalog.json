@@ -1470,7 +1470,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261122210000_catalog_admission.sql",
+      "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
       "class": "public-output"
     },
     {
@@ -4794,7 +4794,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261122210000_catalog_admission.sql",
+      "path": "packages/platform/sql/20261123190000_catalog_admission.sql",
       "class": "public-output"
     },
     {
