@@ -178,7 +178,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert(original !== null);
       const predecessor = join(workspace, "installation.test.previous.ts");
       writeFileSync(predecessor, original);
-      const reconciled = execFileSync("git", ["merge-file", "-p", join(app, conflict), predecessor, join(pair.to, conflict)], { encoding: "utf8" });
+      const reconciled = execFileSync("/usr/bin/git", ["merge-file", "-p", join(app, conflict), predecessor, join(pair.to, conflict)], { encoding: "utf8" });
       assert.equal(reconciled, localCheck(to.files[conflict]!), "reminder installation test reconciliation");
     }
     if (original !== null) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));

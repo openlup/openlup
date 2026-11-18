@@ -4469,8 +4469,14 @@ SELECT to return the revision and full schedule. The reminder guard forward
 the installation role's permissions. It takes the same transaction
 advisory lock as the guard and both producers, before reading the installed
 schedule. Enqueued waves and the guard check therefore serialize at `READ COMMITTED`.
-The guard uses the wave's recorded checkout deadline, with the historical
-checkout window as a fallback for a legacy wave without a deadline. Follow the
+The guard uses the checkout policy validator's maximum window of 2,147,483,647
+seconds from order creation. A pending abandoned cart with a valid draft receipt
+and no settlement intent has an unbounded window. A compacted checkout wave
+consumes both stages. Abandoned-cart stage identity survives compaction in the
+event type. Both producers apply stage deduplication after the candidate limit.
+An identical install returns without a write at every isolation level. Changes
+and producers require a fresh statement snapshot after the lock, so
+`REPEATABLE READ` and `SERIALIZABLE` refuse. Follow the
 [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
 to resolve an open-episode refusal before retrying installation.
 

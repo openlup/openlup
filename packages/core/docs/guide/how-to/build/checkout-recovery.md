@@ -158,21 +158,41 @@ counter names remain the legacy names, counted by stage.
 After the reminder guard migration, creating a wave consumes that stage for the
 order even if you later change its configured hour. Checkout waves written
 before stage labels were added use the historical first and last hour mapping.
-An unlabeled wave at any other hour consumes both stages.
+An unlabeled wave at any other hour consumes both stages. When retention
+compaction removes a checkout wave's payload, the order consumes both stages
+because its original stage is unknown. Abandoned-cart stages remain identifiable
+through their event types after compaction.
 
-Install schedules on the installation connection in PostgreSQL's default
-`READ COMMITTED` isolation. Initial installation on an empty shop and repeating
-the identical schedule succeed. Installing an explicit schedule where none was
-stored counts as a change, even if it contains the default values.
-`checkout_recovery_schedule_change_blocked_open_episodes` reports how many
-pending orders already have a wave and the latest recorded checkout window end.
-An abandoned-cart wave with a valid draft receipt makes that end unbounded.
+Use `READ COMMITTED` for reminder producers and schedule changes.
+`REPEATABLE READ` and `SERIALIZABLE` refuse with
+`checkout_recovery_schedule_isolation_unsupported`. An identical installation
+replay succeeds at any isolation level and performs no write. Installing an
+explicit schedule where none was stored counts as a change, even if it contains
+the default values. An empty shop accepts its first install at `READ COMMITTED`.
+
+The migration owner can run the installer. To delegate installation to a
+non-owner with settings-table read and write permissions, have the function owner
+grant execution to that role. For example, for a role named `schedule_installer`:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_install_checkout_recovery_reminder_schedule(text, jsonb),
+  public.commerce_checkout_recovery_schedule_change_guard(jsonb, jsonb),
+  public.commerce_checkout_recovery_reminder_schedule()
+TO schedule_installer;
+```
+
+`checkout_recovery_schedule_change_blocked_open_episodes` reports the number of
+blocking orders and the latest window end. For pending checkout orders with a
+wave, the guard uses the maximum window the host policy accepts, 2,147,483,647
+seconds (about 68 years) from order creation. A host can lengthen its checkout
+window after a wave is created. A pending abandoned cart with a wave and a
+valid draft receipt has an unbounded window until it gains a settlement intent
+or the draft or order closes.
 
 If an active shop refuses the change, keep using its current schedule. If no
-schedule is stored, defer the first explicit install. Retry when the affected
-checkout windows have elapsed or the orders have closed. For abandoned carts,
-wait until payment, cancellation, or draft invalidation closes the episode.
-Schedule changes during open episodes require per-episode scheduling support.
+schedule is stored, defer the first explicit install. Retry after the blocking
+orders close or the applicable windows end. Schedule changes during open
+episodes require per-episode scheduling support.
 
 An installed schedule determines eligibility offsets and takes precedence over
 `firstOffsetSeconds` and `finalOffsetSeconds`; those legacy overrides remain

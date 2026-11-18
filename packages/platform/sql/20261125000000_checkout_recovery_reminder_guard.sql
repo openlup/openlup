@@ -5,6 +5,7 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
     WHEN p_event.event_type <> 'commerce.checkout_recovery'
       OR p_event.idempotency_key LIKE 'checkout_recovery:operator:%'
       OR p_event.idempotency_key LIKE 'checkout_recovery:buyer:%' THEN NULL
+    WHEN p_event.metadata ? 'retentionCompactedAt' THEN 'both'
     WHEN p_event.payload->>'stage' IS NOT NULL THEN p_event.payload->>'stage'
     WHEN p_event.idempotency_key LIKE 'checkout_recovery:1h:%' THEN 'first'
     WHEN p_event.idempotency_key LIKE 'checkout_recovery:20h:%' THEN 'last'
@@ -21,13 +22,15 @@ DECLARE
   blocking_orders bigint;
   latest_window_end timestamptz;
   checked_at timestamptz;
+  -- The policy validator accepts checkoutSeconds up to the maximum signed integer.
+  maximum_checkout_window constant interval := make_interval(secs => 2147483647);
 BEGIN
+  IF p_before IS NOT DISTINCT FROM p_after THEN RETURN; END IF;
   -- A snapshot taken before the lock must be able to see the previous holder's commit.
   IF current_setting('transaction_isolation') IN ('repeatable read', 'serializable') THEN
     RAISE EXCEPTION 'checkout_recovery_schedule_isolation_unsupported' USING ERRCODE = '22023';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('checkout_recovery_reminders', 0));
-  IF p_before IS NOT DISTINCT FROM p_after THEN RETURN; END IF;
   checked_at := clock_timestamp();
 
   WITH open_waves AS (
@@ -38,6 +41,9 @@ BEGIN
         SELECT 1 FROM public.commerce_order_draft_receipts r
         WHERE r.order_id = o.id AND r.invalidated_at IS NULL
       )
+      AND NOT EXISTS (
+        SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id = o.id
+      )
       AND EXISTS (
         SELECT 1 FROM public.outbox_events e
         WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
@@ -45,16 +51,17 @@ BEGIN
                                'commerce.order_draft.abandoned.72h')
       )
     UNION ALL
-    -- Checkout waves persist the producer's host-specific window in expiresAt.
-    SELECT o.id, CASE
-      WHEN pg_input_is_valid(e.payload->>'expiresAt', 'timestamptz') THEN (e.payload->>'expiresAt')::timestamptz
-      ELSE o.created_at + make_interval(secs => (public.commerce_checkout_recovery_policy('{}')->>'checkoutSeconds')::integer)
-    END AS window_end
+    -- The host can lengthen its request window after a wave is created.
+    SELECT o.id, o.created_at + maximum_checkout_window AS window_end
     FROM public.commerce_orders o
-    JOIN public.outbox_events e ON e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
     WHERE o.status = 'pending_payment'
-      AND e.event_type = 'commerce.checkout_recovery'
-      AND public.commerce_checkout_recovery_event_stage(e) IS NOT NULL
+      AND o.created_at > checked_at - maximum_checkout_window
+      AND EXISTS (
+        SELECT 1 FROM public.outbox_events e
+        WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
+          AND e.event_type = 'commerce.checkout_recovery'
+          AND public.commerce_checkout_recovery_event_stage(e) IS NOT NULL
+      )
   )
   SELECT count(DISTINCT id), max(window_end)
   INTO blocking_orders, latest_window_end
@@ -73,7 +80,7 @@ CREATE FUNCTION public.commerce_install_checkout_recovery_reminder_schedule(p_ke
 RETURNS void LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE previous_schedule jsonb;
 BEGIN
-  IF p_key IS DISTINCT FROM 'checkout_recovery_reminders' THEN
+  IF p_key IS DISTINCT FROM 'checkout_recovery_reminders' OR p_schedule IS NULL THEN
     RAISE EXCEPTION 'checkout_recovery_reminder_schedule_invalid' USING ERRCODE = '22023';
   END IF;
   -- Lock before reading the previous state, including when no row exists yet.
@@ -83,6 +90,12 @@ BEGIN
   FROM public.commerce_settings WHERE key = p_key;
 
   PERFORM public.commerce_checkout_recovery_schedule_change_guard(previous_schedule, p_schedule);
+
+  -- Identical replay never writes, including under snapshot isolation.
+  IF previous_schedule IS NOT DISTINCT FROM p_schedule THEN
+    PERFORM public.commerce_checkout_recovery_reminder_schedule();
+    RETURN;
+  END IF;
 
   INSERT INTO public.commerce_settings(key, value_text)
   VALUES (p_key, p_schedule::text)
@@ -140,11 +153,6 @@ BEGIN
            SELECT 1 FROM public.outbox_events prior
             WHERE prior.aggregate_id = order_row.id AND prior.event_type = prior_type AND prior.status = 'processed'
          ))
-         AND NOT EXISTS (
-           SELECT 1 FROM public.outbox_events prior
-            WHERE prior.aggregate_type = 'commerce_order' AND prior.aggregate_id = order_row.id
-              AND prior.event_type = v_event_type
-         )
        ORDER BY order_row.created_at, order_row.id LIMIT v_limit
     ), inserted_rows AS (
       INSERT INTO public.outbox_events
@@ -154,6 +162,11 @@ BEGIN
           'reminderHours', hours, 'stage', wave->>'stage', 'createdAt', candidate.created_at),
         jsonb_build_object('source', 'checkout_recovery_lifecycle')
       FROM candidates AS candidate
+      WHERE NOT EXISTS (
+        SELECT 1 FROM public.outbox_events prior
+         WHERE prior.aggregate_type = 'commerce_order' AND prior.aggregate_id = candidate.id
+           AND prior.event_type = v_event_type
+      )
       ON CONFLICT (event_type, idempotency_key) DO NOTHING RETURNING 1
     ) SELECT count(*)::integer INTO inserted FROM inserted_rows;
     counts:=jsonb_set(counts,ARRAY['enqueued_'||stage_hour||'h'],to_jsonb(inserted));
@@ -201,12 +214,6 @@ BEGIN
      WHERE prior.aggregate_id=o.id AND prior.event_type='commerce.checkout_recovery'
       AND prior.idempotency_key='checkout_recovery:'||first_hours||'h:'||o.id
       AND prior.metadata->>'deliveryProfile'=policy->>'profile'))
-    AND NOT EXISTS (
-     SELECT 1 FROM public.outbox_events prior
-     WHERE prior.aggregate_type = 'commerce_order' AND prior.aggregate_id = o.id
-       AND prior.event_type = 'commerce.checkout_recovery'
-       AND public.commerce_checkout_recovery_event_stage(prior) IN (stage, 'both')
-    )
    ORDER BY o.created_at,o.id LIMIT LEAST(GREATEST(COALESCE(p_limit,200),1),1000)
   ), events AS (
    INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
@@ -214,7 +221,14 @@ BEGIN
     jsonb_build_object('orderId',c.id,'mode',c.mode,'reminderHours',wave,'stage',stage,'recoveryToken',c.raw_token,
      'expiresAt',c.created_at+make_interval(secs=>(policy->>'checkoutSeconds')::integer)),
     jsonb_build_object('source','checkout_recovery_waves','deliveryProfile',policy->>'profile','activitySeconds',(policy->>'activitySeconds')::integer)
-   FROM candidates c ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING aggregate_id,payload
+   FROM candidates c
+   WHERE NOT EXISTS (
+    SELECT 1 FROM public.outbox_events prior
+    WHERE prior.aggregate_type = 'commerce_order' AND prior.aggregate_id = c.id
+      AND prior.event_type = 'commerce.checkout_recovery'
+      AND public.commerce_checkout_recovery_event_stage(prior) IN (stage, 'both')
+   )
+   ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING aggregate_id,payload
   ), tokens AS (
    INSERT INTO public.commerce_checkout_recovery_tokens(order_id,client_id,token_hash,expires_at)
    SELECT e.aggregate_id,o.client_id,encode(sha256(convert_to(e.payload->>'recoveryToken','UTF8')),'hex'),
