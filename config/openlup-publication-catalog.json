@@ -29518,10 +29518,6 @@
       "class": "public-output"
     },
     {
-      "path": "tests/catalog/lc10ParityWitnesses.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "tests/fixtures/public-intake/b2b-notification-regions.json",
       "class": "public-output"
     },
@@ -29727,6 +29723,10 @@
     },
     {
       "path": "tests/platform/inventory/subscriptionStockContinuityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/lc10ParityWitnesses.test.ts",
       "class": "public-output"
     },
     {

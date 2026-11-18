@@ -8405,7 +8405,7 @@
     },
     {
       "path": "db/platform/migrations/20261123130000_catalog_successors.sql",
-      "sha256": "5475161fb7dd37e0575085d1789a99ac987b1bc818c4b33943135708b0e949b1",
+      "sha256": "682741e17038900381d6791a9e2daef474162de150a116324c02bb87d889e6ba",
       "functions": [
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",
@@ -8510,12 +8510,12 @@
         {
           "signature": "public.subscription_successor_proposal_offer_v2(uuid,uuid,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "8ed77623ba81858c032c4ca02c1b7b7f6ca0854d37e978f2884580c3878c9e5d"
+          "afterSha256": "9040d45e8825c465c947a4e9de602e34495d9378dcf5df40b7afa9d9b0656963"
         },
         {
           "signature": "public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "d4346e85c1b880a47b62a4cc0087de2a2d2f2658573e28d9f1e0c179513b24a5"
+          "afterSha256": "83b38f46bbe537b55fb6812c764c4139f598dbd3ae92e70816ee76d2a0e0a503"
         },
         {
           "signature": "public.fulfillment_release_successor_renewal_v2(uuid,uuid,text,timestamptz)",
@@ -8540,7 +8540,7 @@
         {
           "signature": "public.subscription_successor_notice_v2(uuid,text,uuid)",
           "beforeSha256": null,
-          "afterSha256": "e58e1179b4cb12c3b5f77ed8c7c3c88a985feb39e23e5bcfa9652c5ae5d790d1"
+          "afterSha256": "6e9e366f667852f2b7a5ade21db75c11e57a308a67e46fbfc7dffcc5692b6fc7"
         },
         {
           "signature": "public.commerce_settle_successor_renewal_v2(uuid,text,jsonb,timestamptz)",
@@ -8560,7 +8560,7 @@
         {
           "signature": "public.subscription_successor_proposal_decide_v2(uuid,uuid,text,text,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "9a370fb9d9f625bd7e31e91d42000255e9ffbaf5392bbf7c5fc433dce437b9f5"
+          "afterSha256": "2d40fcd0e6ef3fc5cab87ccdec912ebeec12696c949824946914927c95cf23bc"
         },
         {
           "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",

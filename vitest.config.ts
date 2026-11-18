@@ -126,7 +126,6 @@ export default defineConfig({
             // Golden-master harness (Platform Portability): deterministic dispatcher contract.
             // Narrow glob so Playwright specs under tests/preview/ stay out of vitest.
             "tests/golden-master/**/*.{test,spec}.ts",
-            "tests/catalog/**/*.{test,spec}.ts",
             // W10: node-postgres RLS round-trip (docker-gated, self-skips when no daemon).
             "tests/postgres/**/*.{test,spec}.ts",
             "tests/platform/**/*.{test,spec}.ts",

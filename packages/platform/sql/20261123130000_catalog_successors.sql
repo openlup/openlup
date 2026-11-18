@@ -1309,6 +1309,7 @@ BEGIN
   OR p_request->>'lane' NOT IN ('classic','exact','sized','legacy') OR p_request->>'lane' IS NULL
   OR jsonb_typeof(p_request->'sourceBinding') IS DISTINCT FROM 'object' OR jsonb_typeof(p_request->'applyPayload') IS DISTINCT FROM 'object' THEN
   RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('subscription-successor-proposal:'||proposal_id::text,0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;
  IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
  PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
@@ -1453,7 +1454,8 @@ BEGIN
  p_action:=proposal.action; p_payload:=proposal.request->'applyPayload';
  -- The selected native lane still consumes its original ledger/hash and complete request.
  p_payload:=jsonb_set(jsonb_set(p_payload,'{acceptedQuoteHash}',to_jsonb(q.quote_hash)),'{request,acceptedQuoteHash}',to_jsonb(q.quote_hash));
- admission:=p_payload->'catalogAdmission';
+ admission:=q.quote_snapshot->'catalogAdmission';
+ IF admission IS DISTINCT FROM p_payload->'catalogAdmission' THEN RAISE EXCEPTION 'customer_self_service_invalid_catalog_anchor' USING ERRCODE='22023'; END IF;
  IF admission IS NULL THEN RAISE EXCEPTION 'customer_self_service_invalid_catalog_anchor' USING ERRCODE='22023'; END IF;
  source:=prior_snapshot->>'stockSourceKey';
  PERFORM k.sku FROM public.fulfillment_stock_current k WHERE k.source_key=source AND (
@@ -2211,7 +2213,7 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s public.subscriptions; root public.subscription_renewal_operations; g public.subscription_successor_operations_v2;
  c public.subscription_stock_wait_cases; c2 public.subscription_successor_wait_cases_v2; sub uuid; root_id uuid; snapshot jsonb; operation uuid;
  case_state text; anchor timestamptz; fingerprint text; sku public.catalog_skus; line jsonb; episode uuid; previous_revision integer;
- key text; notice_id uuid; payload jsonb; stored jsonb; notices jsonb:='[]'; product uuid; position integer; notice jsonb; handed_off jsonb:='[]';
+ key text; notice_id uuid; payload jsonb; stored jsonb; notices jsonb:='[]'; product uuid; position integer; notice jsonb; handed_off jsonb:='[]'; catalogue_heads jsonb;
 BEGIN
  IF p_case_kind='legacy' THEN SELECT subscription_id,renewal_operation_id INTO sub,root_id FROM public.subscription_stock_wait_cases WHERE id=p_case_id;
  ELSIF p_case_kind='successor' THEN SELECT w.subscription_id,op.root_operation_id INTO sub,root_id FROM public.subscription_successor_wait_cases_v2 w JOIN public.subscription_successor_operations_v2 op ON op.id=w.operation_id WHERE w.id=p_case_id;
@@ -2235,11 +2237,7 @@ BEGIN
  END IF;
  IF s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM anchor OR case_state NOT IN ('waiting','stock_secured') THEN RETURN jsonb_build_object('outcome','obsolete','reason','wait_not_current'); END IF;
  IF jsonb_typeof(snapshot->'lines') IS DISTINCT FROM 'array' OR jsonb_array_length(snapshot->'lines')=0 THEN RAISE EXCEPTION 'catalog_obligation_evidence_unknown' USING ERRCODE='55000'; END IF;
- IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
- FOR product IN SELECT DISTINCT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku' ORDER BY k.product_id LOOP
-  IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('catalog-lineage:'||product::text,0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
- END LOOP;
- PERFORM h.product_id FROM public.catalog_publication_heads h WHERE h.product_id IN (SELECT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku') ORDER BY h.product_id FOR SHARE NOWAIT;
+ SELECT heads INTO catalogue_heads FROM (SELECT coalesce(jsonb_agg(to_jsonb(h) ORDER BY h.product_id),'[]'::jsonb) FROM public.catalog_publication_heads h WHERE h.product_id IN (SELECT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku')) captured(heads);
  FOR line IN SELECT value FROM jsonb_array_elements(snapshot->'lines') ORDER BY value->>'sku' LOOP
   SELECT k.* INTO sku FROM public.catalog_skus k WHERE k.sku=line->>'sku';
   IF sku.id IS NULL OR sku.publication_facts->>'code' IS DISTINCT FROM sku.sku OR sku.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb THEN RAISE EXCEPTION 'catalog_obligation_evidence_unknown' USING ERRCODE='55000'; END IF;
@@ -2267,10 +2265,16 @@ BEGIN
    notices:=notices||jsonb_build_array(jsonb_build_object('messageKey',key,'payload',payload));
   END IF;
  END LOOP;
+ PERFORM e.id FROM public.outbox_events e WHERE e.event_type='subscription.predecessor_withdrawn.v2' AND e.idempotency_key IN (SELECT n->>'messageKey' FROM jsonb_array_elements(notices) n) ORDER BY e.id FOR UPDATE NOWAIT;
+ IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
+ FOR product IN SELECT DISTINCT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku' ORDER BY k.product_id LOOP
+  IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('catalog-lineage:'||product::text,0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
+ END LOOP;
+ PERFORM h.product_id FROM public.catalog_publication_heads h WHERE h.product_id IN (SELECT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku') ORDER BY h.product_id FOR SHARE NOWAIT;
+ IF catalogue_heads IS DISTINCT FROM (SELECT coalesce(jsonb_agg(to_jsonb(h) ORDER BY h.product_id),'[]'::jsonb) FROM public.catalog_publication_heads h WHERE h.product_id IN (SELECT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(snapshot->'lines') l ON k.sku=l->>'sku')) THEN RAISE EXCEPTION 'catalog_obligation_evidence_unknown' USING ERRCODE='55000'; END IF;
  IF jsonb_array_length(notices)=0 THEN RETURN jsonb_build_object('outcome','obsolete','reason','no_current_withdrawal'); END IF;
  FOR notice IN SELECT value FROM jsonb_array_elements(notices) ORDER BY value->>'messageKey' LOOP
   key:=notice->>'messageKey'; payload:=notice->'payload';
-  PERFORM 1 FROM public.outbox_events WHERE event_type='subscription.predecessor_withdrawn.v2' AND idempotency_key=key FOR UPDATE NOWAIT;
   INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
    VALUES('subscription',s.id,'subscription.predecessor_withdrawn.v2',key,payload,jsonb_build_object('source','subscription_successor'))
    ON CONFLICT(event_type,idempotency_key) DO NOTHING;
@@ -2456,6 +2460,7 @@ BEGIN
  key:='successor-edit:'||encode(sha256(convert_to(actor::text||':'||p_command_key,'UTF8')),'hex');
  IF NOT pg_try_advisory_xact_lock(hashtextextended(actor::text||':'||key,0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
  SELECT * INTO s FROM public.subscriptions WHERE id=hint.subscription_id AND client_id=p_client_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
  SELECT * INTO proposal FROM public.subscription_successor_proposals WHERE id=hint.id FOR UPDATE NOWAIT;
  IF s.id IS NULL OR proposal.state<>'offered' THEN RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
  IF p_decision='expired' AND proposal.expires_at>p_now THEN RAISE EXCEPTION 'successor_proposal_not_expired' USING ERRCODE='22023'; END IF;
@@ -2473,7 +2478,8 @@ BEGIN
   PERFORM o.id FROM public.commerce_orders o JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at ORDER BY o.id FOR UPDATE OF o NOWAIT;
   PERFORM i.id FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at ORDER BY i.id FOR UPDATE OF i NOWAIT;
   payload:=jsonb_set(jsonb_set(proposal.request->'applyPayload','{acceptedQuoteHash}',to_jsonb(q.quote_hash)),'{request,acceptedQuoteHash}',to_jsonb(q.quote_hash));
-  admission:=payload->'catalogAdmission';
+  admission:=q.quote_snapshot->'catalogAdmission';
+ IF admission IS DISTINCT FROM proposal.request#>'{applyPayload,catalogAdmission}' THEN RAISE EXCEPTION 'customer_self_service_invalid_catalog_anchor' USING ERRCODE='22023'; END IF;
   IF admission IS NULL THEN RAISE EXCEPTION 'customer_self_service_invalid_catalog_anchor' USING ERRCODE='22023'; END IF;
   IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0)) THEN RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03'; END IF;
   FOR product IN SELECT DISTINCT k.product_id FROM public.catalog_skus k JOIN jsonb_array_elements(admission->'skuRevisions') l ON k.id=(l#>>'{reference,skuId}')::uuid ORDER BY k.product_id LOOP

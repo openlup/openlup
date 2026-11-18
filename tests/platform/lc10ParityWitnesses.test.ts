@@ -13,12 +13,12 @@ function input() {
 const historical = { sourceIdentity: "retained:synthetic", candidateKind: "adopt_v2", baseProtocol: "v3", eventKind: "adopt_v2" };
 const binding = { ...historical, authorityRef: "installed:synthetic" };
 function historicalOffer(installedBindings:readonly HistoricalSuccessorProtocolBinding[],lineage=historical) {
-  const effect=vi.fn(),id="90000000-0000-4000-8000-000000000001",actor={actorId:id,clientId:id};
+  const effect=vi.fn(),id="90000000-0000-4000-8000-000000000001",subscriptionId="90000000-0000-4000-8000-000000000002",actor={actorId:id,clientId:"90000000-0000-4000-8000-000000000003"};
   const store=createPostgresSuccessorStore({codec:createNativeRenewalCodec(),historicalBindings:installedBindings,
     previews:{prepare:async()=>({applyPayload:{},cycleSnapshot:null})},withTransaction:async work=>{
-      effect();return work({query:async sql=>({rows:sql.includes("EXISTS")?[{allowed:true}]:sql.includes("FROM public.subscription_quote_previews")?[{actor_id:id,client_id:id,subscription_id:id}]:[{result:{state:"offered"}}]})});
+      effect();return work({query:async sql=>({rows:sql.includes("EXISTS")||sql.includes("pg_try_advisory")?[{allowed:true}]:sql.includes("FROM public.subscription_quote_previews")?[{actor_id:id,client_id:actor.clientId,subscription_id:subscriptionId}]:[{result:{state:"offered"}}]})});
     }});
-  return {effect,invoke:()=>store.offer(actor,{proposalId:id,subscriptionId:id,predecessorSkuId:id,successorSkuId:id,publicationId:id,previewId:id,lane:"classic",action:"update_package_template",sourceBinding:{kind:"ordinary_edit"},historicalBinding:lineage,now:"2026-01-01T00:00:00Z"})};
+  return {effect,invoke:()=>store.offer(actor,{proposalId:"90000000-0000-4000-8000-000000000004",subscriptionId,predecessorSkuId:"90000000-0000-4000-8000-000000000005",successorSkuId:"90000000-0000-4000-8000-000000000006",publicationId:"90000000-0000-4000-8000-000000000007",previewId:"90000000-0000-4000-8000-000000000008",lane:"classic",action:"update_package_template",sourceBinding:{kind:"ordinary_edit"},historicalBinding:lineage,now:"2026-01-01T00:00:00Z"})};
 }
 describe("explicit historical successor authority", () => {
   it.each([

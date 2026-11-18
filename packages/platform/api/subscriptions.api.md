@@ -2059,6 +2059,7 @@ export declare function mapPackageEditError(error: unknown, phase: "preview" | "
 ## dist/subscriptions/packageEditor.d.ts
 
 ```ts
+import type { SuccessorCaseKind } from "./contracts/successors.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
 import type { PackageEditActor, PackageEditApplyResult, PackageEditPreview, PackageEditRequest, PackageEditorOptions } from "./packageEditContracts.js";
 type EditAction = "update_package_template" | ExactSubscriptionEditAction;
@@ -2075,6 +2076,13 @@ export declare function createPostgresPackageEditor(options: PackageEditorOption
         (actor: PackageEditActor, key: string, input: ExactSubscriptionEditRequest): Promise<PackageEditApplyResult<ExactSubscriptionEditAction>>;
         (actor: PackageEditActor, key: string, input: SubscriptionEditRequest): Promise<PackageEditApplyResult<EditAction>>;
     };
+    /** @experimental */
+    previewStockWaitSuccessor(actor: PackageEditActor, input: SubscriptionEditRequest, source: {
+        caseId: string;
+        caseKind: SuccessorCaseKind;
+    }): Promise<PackageEditPreview<EditAction> & {
+        previewId?: string;
+    }>;
 };
 export {};
 ```
@@ -2715,7 +2723,14 @@ import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBind
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
-/** Server-owned native preview enrichment; it uses the selected existing edit lane.
+/** Internal source check shared by the existing preview owners. */
+export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
+    caseId: string;
+    caseKind: SuccessorCaseKind;
+}): Promise<void>;
+/** Server-owned enrichment of a recorded native preview. The store preholds the
+ * subscription, client, preview and source parents. Enrichment may update only
+ * that preview; it takes no catalogue fence or other commerce lock.
  * @experimental
  */
 export interface SuccessorPreviewBinding {
@@ -3112,6 +3127,7 @@ export declare function normalizeSizedEdit(request: SizedEditRequest, context: S
 ## dist/subscriptions/sizedEditor.d.ts
 
 ```ts
+import type { SuccessorCaseKind } from "./contracts/successors.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
 import type { SizedEditorOptions } from "./sizedEditPorts.js";
@@ -3136,6 +3152,13 @@ export declare function createPostgresSizedEditor(options: SizedEditorOptions): 
         }[];
     }>;
     preview(actor: PackageEditActor, input: SizedEditRequest): Promise<SizedEditPreview>;
+    /** @experimental */
+    previewStockWaitSuccessor(actor: PackageEditActor, input: SizedEditRequest, source: {
+        caseId: string;
+        caseKind: SuccessorCaseKind;
+    }): Promise<SizedEditPreview & {
+        previewId?: string;
+    }>;
     apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult>;
 };
 /** Binding dispatch does not read sized context for lifecycle or ordinary classic operations. */

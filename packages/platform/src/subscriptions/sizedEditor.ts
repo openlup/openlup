@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline, type EditAgreementBaseline } from "./editConsentBaseline.js";
+import { lockUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
+import type { SuccessorCaseKind } from "./contracts/successors.js";
 import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
 import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
@@ -72,8 +74,10 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
   async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply", retained?: EditAgreementBaseline) {
     if (request.expectedTemplateVersion !== undefined && request.expectedTemplateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
     const baseline = retained ?? await readCompleteEditBaseline(db, request.subscriptionId);
+    if(typeof options.quotePort?.createServerAuthoritativeQuote!=="function")throw new Error("subscription_preview_reprice_unavailable");
     const host: SizedEditorOptions = { ...options, quotePort: { async createServerAuthoritativeQuote(input) {
       const result = await options.quotePort.createServerAuthoritativeQuote(input);
+      if(!result?.quote)throw new Error("subscription_preview_reprice_unavailable");
       assertEditQuoteCurrency(baseline.currency, result.quote); return result;
     } } };
     const quote = await quoteSizedEdit({ db, context, request, point, host, policy });
@@ -82,15 +86,48 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
       currentRecurringPrice: { amountMinor: editConsent.agreedTotalMinor, currency: editConsent.currency },
       delta: { amountMinor: editConsent.subtotalDeltaMinor, currency: editConsent.currency } };
   }
-  function blocked(row: Record<string, unknown>, request: SizedEditRequest): SizedEditPreview {
+  function blocked(row: Record<string, unknown>, request: SizedEditRequest, unpaidSuccessor = false): SizedEditPreview {
     const next = row.next_cycle_at instanceof Date ? row.next_cycle_at.toISOString() : row.next_cycle_at == null ? null : String(row.next_cycle_at);
     const cutoff = next ? new Date(Date.parse(next) - Number(row.edit_window_hours) * 3_600_000).toISOString() : null;
     const reason: PackageEditBlockedReason | null = row.payment_blocked ? "payment_blocked" : row.status !== "active" ? "not_active"
-      : row.cycle_locked ? "cycle_locked" : !row.method_healthy ? "missing_payment_method" : cutoff && Date.parse(cutoff) <= Date.parse(options.now()) ? "edit_window_closed" : null;
+      : row.cycle_locked ? "cycle_locked" : !row.method_healthy ? "missing_payment_method" : !unpaidSuccessor && cutoff && Date.parse(cutoff) <= Date.parse(options.now()) ? "edit_window_closed" : null;
     return { preview: { subscriptionId: request.subscriptionId, action: request.action, canApply: reason === null, blockedReason: reason,
       nextCycleAt: next, editCutoffAt: cutoff, templateVersion: Number(row.template_version) },
     lockedCycle: { locked: reason === "cycle_locked" || reason === "payment_blocked", status: reason === "cycle_locked" ? "blocked_preflight" : reason === "payment_blocked" ? "dunning" : null },
     futureTemplate: { templateVersion: Number(row.template_version), effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" } };
+  }
+  async function previewFor(actor:PackageEditActor,input:SizedEditRequest,stockWait?:{caseId:string;caseKind:SuccessorCaseKind}):Promise<SizedEditPreview&{previewId?:string}> {
+      const parsed = parse(input);
+      assertRequestLimits(parsed);
+      if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
+      return options.withTransaction(async db => {
+        const row = await owned(db, actor, parsed.subscriptionId);
+        if(stockWait){
+          const eligibility=blocked(row,parsed);
+          if(!eligibility.preview.canApply&&eligibility.preview.blockedReason!=="edit_window_closed")return eligibility;
+          await lockUnpaidSuccessorPreview(db,actor,parsed.subscriptionId,stockWait);
+        }
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
+        let eligibility = blocked(row, parsed);
+        if(stockWait&&(eligibility.preview.blockedReason===null||eligibility.preview.blockedReason==="edit_window_closed")){
+          eligibility=blocked(row,parsed,true);
+        }
+        if (!eligibility.preview.canApply) return eligibility;
+        const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
+        const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
+        const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request,stockWait!==undefined);
+        const priced = await quote(db, context, request, "preview", baseline), { subscriptionId: _id, ...raw } = request;
+        const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
+        const recorded=await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz) AS result",
+          [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
+            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
+            { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
+        const identity=stockWait?{previewId:z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id)}:{};
+        return { ...preview,...identity, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
+          newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
+            newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,
+            effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
+      });
   }
   return {
     async candidates(actor: PackageEditActor, id: string, optIn = false) {
@@ -107,30 +144,9 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         return { context, catalog: sizedCandidateCompatibility(await options.readCatalog(db, context), facts) };
       });
     },
-    async preview(actor: PackageEditActor, input: SizedEditRequest): Promise<SizedEditPreview> {
-      const parsed = parse(input);
-      assertRequestLimits(parsed);
-      if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
-      return options.withTransaction(async db => {
-        const row = await owned(db, actor, parsed.subscriptionId);
-        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
-        const eligibility = blocked(row, parsed);
-        if (!eligibility.preview.canApply) return eligibility;
-        const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
-        const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
-        const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request);
-        const priced = await quote(db, context, request, "preview", baseline), { subscriptionId: _id, ...raw } = request;
-        const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
-        await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
-          [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
-            { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
-        return { ...preview, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
-          newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
-            newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,
-            effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
-      });
-    },
+    preview(actor:PackageEditActor,input:SizedEditRequest):Promise<SizedEditPreview>{return previewFor(actor,input);},
+    /** @experimental */
+    previewStockWaitSuccessor(actor:PackageEditActor,input:SizedEditRequest,source:{caseId:string;caseKind:SuccessorCaseKind}){return previewFor(actor,input,source);},
     async apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult> {
       const parsed = parse(input);
       if (key !== key.trim() || key.length < 8 || key.length > 180) throw new Error("subscription_command_invalid_input");

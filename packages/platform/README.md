@@ -1499,7 +1499,14 @@ waits. Unknown or unavailable evidence never means no obligations.
 native renewal codec. Offers require explicit acceptance. Only the dedicated
 unpaid-wait command can supersede a frozen basket outside the ordinary edit
 window; it retains the original cycle anchor and refuses paid or provider-owned
-work. Existing legacy operation and case readers remain unchanged; version 2
+work.
+The native package and sized editors expose experimental
+`previewStockWaitSuccessor` methods for that exact unpaid source. They reuse the
+ordinary pricing, baseline, consent and ledger owners; only the cutoff refusal
+is lifted after authenticating the current frozen wait. Ordinary preview keeps
+its cutoff. A successful successor preview supplies the native preview ID for
+the existing server-owned admission and codec enrichment binding.
+Existing legacy operation and case readers remain unchanged; version 2
 case reads require an explicit kind. New execution identities never alias the
 root operation. `createPostgresSuccessorNotices` binds opened and publication
 facts to the same notice writer and the existing M04 descriptor port. Recipient

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline } from "./editConsentBaseline.js";
+import { lockUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
+import type { SuccessorCaseKind } from "./contracts/successors.js";
 import { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
 import { createClassicPackageRepricer } from "./classicPackageQuote.js";
@@ -68,8 +70,10 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
   const exactRepricer = (db: SubscriptionQueryExecutor, quotePort: PackageEditorOptions["quotePort"]) => createExactSubscriptionRepricer({ ...options, quotePort, readPort: createPostgresPackageEditReadPort(db) });
   async function quoteFor(db: SubscriptionQueryExecutor, request: ReturnType<typeof parse>) {
     const baseline = await readCompleteEditBaseline(db, request.subscriptionId);
+    if(typeof options.quotePort?.createServerAuthoritativeQuote!=="function")throw new Error("subscription_preview_reprice_unavailable");
     const quotePort: PackageEditorOptions["quotePort"] = { async createServerAuthoritativeQuote(input) {
       const result = await options.quotePort.createServerAuthoritativeQuote(input);
+      if(!result?.quote)throw new Error("subscription_preview_reprice_unavailable");
       assertEditQuoteCurrency(baseline.currency, result.quote); return result;
     } };
     const quote = await ("action" in request ? exactRepricer(db, quotePort).quote(request) : repricer(db, quotePort).quote(request));
@@ -91,7 +95,7 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
       expectedTemplateVersion: quote.expectedTemplateVersion, acceptedQuoteHash: request.acceptedQuoteHash };
   }
   const editor = {
-    async preview(actor: PackageEditActor, input: SubscriptionEditRequest): Promise<PackageEditPreview<EditAction>> {
+    async preview(actor: PackageEditActor, input: SubscriptionEditRequest, stockWait?:{caseId:string;caseKind:SuccessorCaseKind}): Promise<PackageEditPreview<EditAction>&{previewId?:string}> {
       const request = parse(input), action: EditAction = "action" in request ? request.action : "update_package_template";
       assertRequestLimits(request);
       if (request.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
@@ -100,9 +104,12 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         const now = options.now(), expires = new Date(Date.parse(now) + 15 * 60_000).toISOString();
         const cutoff = next ? new Date(Date.parse(next) - Number(row.edit_window_hours) * 3_600_000).toISOString() : null;
         // The shared blocker wins before ordinary edit eligibility; cycle lock precedes method/cutoff.
-        const reason: PackageEditBlockedReason | null = row.payment_blocked ? "payment_blocked" : row.status !== "active" ? "not_active"
+        let reason: PackageEditBlockedReason | null = row.payment_blocked ? "payment_blocked" : row.status !== "active" ? "not_active"
           : row.cycle_locked ? "cycle_locked" : !row.method_healthy ? "missing_payment_method"
             : cutoff && Date.parse(cutoff) <= Date.parse(now) ? "edit_window_closed" : null;
+        if(stockWait&&(reason===null||reason==="edit_window_closed")){
+          await lockUnpaidSuccessorPreview(db,actor,request.subscriptionId,stockWait);reason=null;
+        }
         const preview: PackageEditPreview<EditAction> = {
           preview: { subscriptionId: request.subscriptionId, action, canApply: reason === null,
             blockedReason: reason, nextCycleAt: next, editCutoffAt: cutoff, templateVersion: Number(row.template_version) },
@@ -122,11 +129,13 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
           ...(quote.portionModes ? { portionModes: quote.portionModes } : {}) }
           : { editConsent: quote.editConsent, baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
         const totals = exact ? {} : { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta };
-        await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)`,
+        const recorded=await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz) AS result`,
           [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,
             ledgerRequest, snapshot, totals, options.now()]);
-        if (exact) return { ...preview, editConsent: quote.editConsent, currentTotal: quote.currentRecurringPrice, newTotal: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash, quoteExpiresAt: expires };
-        return { ...preview, editConsent: quote.editConsent, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
+        const previewId=stockWait?z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id):undefined;
+        const identity=stockWait?{previewId}:{};
+        if (exact) return { ...preview,...identity, editConsent: quote.editConsent, currentTotal: quote.currentRecurringPrice, newTotal: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash, quoteExpiresAt: expires };
+        return { ...preview,...identity, editConsent: quote.editConsent, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
           newTotal: quote.newRecurringPrice, delta: quote.delta, packageEdit: { currentRecurringPrice: quote.currentRecurringPrice,
             newRecurringPrice: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash,
             effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" } };
@@ -167,5 +176,9 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
   function apply(actor: PackageEditActor, key: string, input: ExactSubscriptionEditRequest): Promise<PackageEditApplyResult<ExactSubscriptionEditAction>>;
   function apply(actor: PackageEditActor, key: string, input: SubscriptionEditRequest): Promise<PackageEditApplyResult<EditAction>>;
   function apply(actor: PackageEditActor, key: string, input: SubscriptionEditRequest) { return editor.apply(actor, key, input); }
-  return { preview, apply };
+  return { preview, apply,
+    /** @experimental */
+    previewStockWaitSuccessor(actor:PackageEditActor,input:SubscriptionEditRequest,source:{caseId:string;caseKind:SuccessorCaseKind}) {
+      return editor.preview(actor,input,source);
+    } };
 }

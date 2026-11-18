@@ -6,7 +6,31 @@ import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
 
-/** Server-owned native preview enrichment; it uses the selected existing edit lane.
+function successorBusy(error:unknown,reason:"lc10_commerce_busy"|"lc10_root_operation_busy"="lc10_commerce_busy"):never {
+  if((error as {code?:string}).code==="55P03")throw Object.assign(new Error(reason,{cause:error}),{code:"55P03"});throw error;
+}
+
+/** Internal source check shared by the existing preview owners. */
+export async function lockUnpaidSuccessorPreview(db:SubscriptionQueryExecutor,actor:PackageEditActor,subscriptionId:string,source:{caseId:string;caseKind:SuccessorCaseKind}) {
+  const id=z.uuid();id.parse(source.caseId);z.enum(["legacy","successor"]).parse(source.caseKind);
+  const owned=(await db.query("SELECT s.id FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id WHERE s.id=$1::uuid AND c.id=$2::uuid AND c.principal_id=$3::uuid FOR UPDATE OF s NOWAIT",[subscriptionId,actor.clientId,actor.actorId]).catch(error=>successorBusy(error))).rows;
+  if(owned.length!==1)throw new Error("subscription_command_forbidden");
+  await db.query("SELECT id FROM public.clients WHERE id=$1::uuid FOR KEY SHARE NOWAIT",[actor.clientId]).catch(error=>successorBusy(error));
+  const envelope=subscriptionRecord((await db.query("SELECT public.subscription_stock_wait_read_v2($1::uuid,$2::text) AS result",[source.caseId,source.caseKind])).rows[0]?.result);
+  const row=subscriptionRecord(envelope.case);
+  if(row.id!==source.caseId||row.subscription_id!==subscriptionId||row.client_id!==actor.clientId||!["waiting","stock_secured"].includes(String(row.state)))throw new Error("stock_wait_binding_changed");
+  const value=source.caseKind==="legacy"
+    ?(await db.query("SELECT public.subscription_stock_wait_frozen($1::uuid,$2::timestamptz) AS result",[subscriptionId,row.scheduled_at])).rows[0]?.result
+    :(await db.query("SELECT public.subscription_stock_wait_frozen_v2($1::uuid) AS result",[row.operation_id])).rows[0]?.result;
+  if(!value||subscriptionRecord(value).caseId!==source.caseId)throw new Error("stock_wait_successor_provider_owned");
+  const table=source.caseKind==="legacy"?"subscription_renewal_operations":"subscription_successor_operations_v2";
+  const operation=(await db.query(`SELECT state,terminal_reason FROM public.${table} WHERE id=$1::uuid`,[subscriptionRecord(value).operationId])).rows[0];
+  if(!operation||!(operation.state==="refused"&&["inventory_unavailable","reservation_expired"].includes(String(operation.terminal_reason))||operation.state==="reserved"&&row.state==="stock_secured"))throw new Error("stock_wait_successor_not_stock_only");
+}
+
+/** Server-owned enrichment of a recorded native preview. The store preholds the
+ * subscription, client, preview and source parents. Enrichment may update only
+ * that preview; it takes no catalogue fence or other commerce lock.
  * @experimental
  */
 export interface SuccessorPreviewBinding {
@@ -49,8 +73,22 @@ export function createPostgresSuccessorStore(options: {
       const historicalBinding=input.historicalBinding ? requireHistoricalProtocolBinding(input.historicalBinding,options.historicalBindings??[]) : undefined;
       return options.withTransaction(async db=>{
         await authorize(db,actor,input.subscriptionId);
-        const preview=(await db.query("SELECT actor_id,client_id,subscription_id FROM public.subscription_quote_previews WHERE id=$1::uuid",[input.previewId])).rows[0];
+        const guard=(await db.query("SELECT pg_try_advisory_xact_lock(hashtextextended('subscription-successor-proposal:'||$1::uuid::text,0)) AS allowed",[input.proposalId])).rows[0];
+        if(guard?.allowed!==true)throw Object.assign(new Error("lc10_commerce_busy"),{code:"55P03"});
+        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE NOWAIT",[input.subscriptionId,actor.clientId]).catch(error=>successorBusy(error));
+        await db.query("SELECT id FROM public.clients WHERE id=$1::uuid FOR KEY SHARE NOWAIT",[actor.clientId]).catch(error=>successorBusy(error));
+        const preview=(await db.query("SELECT actor_id,client_id,subscription_id FROM public.subscription_quote_previews WHERE id=$1::uuid FOR UPDATE NOWAIT",[input.previewId]).catch(error=>successorBusy(error))).rows[0];
         if(!preview||preview.actor_id!==actor.actorId||preview.client_id!==actor.clientId||preview.subscription_id!==input.subscriptionId) throw new Error("subscription_command_forbidden");
+        if(input.sourceBinding.kind==="stock_wait"){
+          const source=input.sourceBinding;
+          const query=source.caseKind==="legacy"
+            ?"SELECT renewal_operation_id AS root,id AS original_case FROM public.subscription_stock_wait_cases WHERE id=$1::uuid AND subscription_id=$2::uuid AND client_id=$3::uuid"
+            :"SELECT g.root_operation_id AS root,c.root_case_id AS original_case FROM public.subscription_successor_wait_cases_v2 c JOIN public.subscription_successor_operations_v2 g ON g.id=c.operation_id WHERE c.id=$1::uuid AND c.subscription_id=$2::uuid AND c.client_id=$3::uuid";
+          const parent=(await db.query(query,[id.parse(source.caseId),input.subscriptionId,actor.clientId])).rows[0];
+          if(!parent)throw new Error("stock_wait_binding_changed");
+          await db.query("SELECT id FROM public.subscription_renewal_operations WHERE id=$1::uuid FOR UPDATE NOWAIT",[parent.root]).catch(error=>successorBusy(error,"lc10_root_operation_busy"));
+          await db.query("SELECT id FROM public.subscription_stock_wait_cases WHERE id=$1::uuid FOR UPDATE NOWAIT",[parent.original_case]).catch(error=>successorBusy(error));
+        }
         const native=await options.previews.prepare(db,{ previewId:input.previewId,subscriptionId:input.subscriptionId,actor });
         if(input.sourceBinding.kind==="stock_wait"&&!native.cycleSnapshot) throw new Error("dependency_unavailable");
         const { subscriptionId,now,historicalBinding:_historical,...request }=input;
