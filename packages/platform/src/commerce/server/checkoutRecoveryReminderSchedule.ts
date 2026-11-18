@@ -66,9 +66,9 @@ export async function readCheckoutRecoveryReminderObservation(
 ) {
   const schedule = await store(db).readOverride();
   if (schedule) return {
-    present: true,
+    present: true as const,
     revision: schedule.revision,
     value: { ...schedule, abandonedCart: [...schedule.abandonedCart], checkoutRecovery: [...schedule.checkoutRecovery] },
-  } as const;
-  return { present: false, effective: checkoutRecoveryReminderAbsence(policy) } as const;
+  };
+  return { present: false as const, effective: checkoutRecoveryReminderAbsence(policy) };
 }
