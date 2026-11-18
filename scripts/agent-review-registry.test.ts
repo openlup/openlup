@@ -363,7 +363,7 @@ describe('real Git coverage histories', () => {
     await f.report({ ordinary: true, delta: next.candidate.coverage.delta });
     await expect(f.cli('verify')).resolves.toBe(0); await expect(f.cli('receipt', '12')).resolves.toBe(0);
   });
-  it.each(['scripts/agent-review-extra.mjs', 'db/platform/migrations/20990101000000_demo.sql', 'tests/postgres/nativeStoreForwardCatalog.test.ts'])('needs two delta reviewers for a repair of %s', async path => {
+  it.each(['scripts/agent-review-extra.mjs', 'db/platform/migrations/20990101000000_demo.sql', 'tests/postgres/nativeStoreForwardCatalog.shared.ts'])('needs two delta reviewers for a repair of %s', async path => {
     const f = await fixture(); await f.review(); await f.write(path, 'repair\n'); f.commit();
     await f.cli('prepare', f.request); const next = await f.state(); expect(next.candidate.coverage.kind).toBe('repair');
     await f.report({ ordinary: true, delta: next.candidate.coverage.delta }); await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');

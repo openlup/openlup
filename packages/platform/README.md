@@ -645,7 +645,7 @@ of an active pending order. It sends no mail and performs no settlement. See the
 selecting them. Reminder waves atomically mint distinct links without revoking
 older checkout links. Pending initial purchases remain eligible; renewal-cycle
 orders refuse. Successful or recent active payment evidence suppresses nudges.
-The final wave requires a confirmed first-wave receipt bound to its event,
+A final wave that follows a first wave requires a confirmed first-wave receipt bound to its event,
 template and selected delivery profile, independently of outbox completion.
 Skipped, disabled, ambiguous and failed sends do not create that evidence.
 The existing recovery email handler remains the consumer.

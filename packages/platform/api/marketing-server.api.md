@@ -172,7 +172,9 @@ export interface AbandonedCartEmailVars {
     firstName: string | null;
     /** Consumer-facing brand label injected by the app/composition root. */
     brandName: string;
-    reminderHours: AbandonedCartReminderHours;
+    reminderHours: number;
+    /** Explicit stage wins over the historical hour mapping. */
+    stage?: "first" | "gentle" | "last";
     /** Absolute CTA URL back to the configurator. */
     ctaUrl: string;
     /** Absolute signed unsubscribe URL (purpose 'marketing_newsletter'). */
@@ -354,7 +356,9 @@ export type CheckoutRecoveryMode = "subscription_cycle" | "one_time";
 export interface CheckoutRecoveryEmailVars {
     firstName: string | null;
     brandName: string;
-    reminderHours: CheckoutRecoveryReminderHours;
+    reminderHours: number;
+    /** Explicit stage wins over the historical hour mapping. */
+    stage?: "first" | "last";
     mode: CheckoutRecoveryMode;
     /** Absolute signed deep-link to complete payment for this order. */
     recoveryUrl: string;
