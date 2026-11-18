@@ -232,9 +232,10 @@ async function consentTakeEditLockOrder() {
     await blocker(h,tp,hp); const editing = tracked(mutation.invoke(e2)); await blocker(h,ep,tp); await stop.release();
     await blocker(h,tp,ep);
     const first = await Promise.race([taking.then(result => ({ db: t2,result })),editing.then(result => ({ db: e2,result }))]);
-    expect(first.result.ok).toBe(false); if (!first.result.ok) expect(first.result.error).toMatchObject({ code: "40P01" });
+    // Either response can be observed first after both queries have settled.
     await first.db.query("ROLLBACK"); const results = await Promise.all([taking,editing]);
     expect(results.filter(result => !result.ok)).toHaveLength(1);
+    for (const result of results) if (!result.ok) expect(result.error).toMatchObject({ code: "40P01" });
     await t2.query("ROLLBACK"); await e2.query("ROLLBACK");
   } finally { await stop.release(); await restoreTake(); await restore(); await t2.query("ROLLBACK"); await e2.query("ROLLBACK"); t2.release(); e2.release(); h.release(); }
 }
