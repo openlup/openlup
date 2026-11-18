@@ -6,12 +6,14 @@ import {
   canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, createPostgresCatalogPublication, createCatalogDraftHandlerV5, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV5, installCatalogDefinitions,
 } from '@openlup/platform/catalog';
 import { upgrade as extractedUpgrade } from '../../examples/neutral-store/owned/catalog-packs/supplements/fixtures.ts';
-import type { CatalogDecisionCommandV2, CatalogDraftPayloadV3, CatalogPublishCommand } from '@openlup/platform/catalog/contracts';
+import type { CatalogDecisionCommandV2, CatalogDraftPayloadV4, CatalogPublishCommand } from '@openlup/platform/catalog/contracts';
+import { createCatalogSubscriptionProfileBinding } from '@openlup/platform/subscriptions';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { supplementsCatalogueRegistration } from '../../examples/neutral-store/owned/catalogue.ts';
-import { initialDrafts } from '../../examples/catalog-packs/supplements/catalogue.ts';
+import { initialDrafts, initialPublications } from '../../examples/catalog-packs/supplements/catalogue.ts';
 import { upgrade } from '../../examples/catalog-packs/supplements/fixtures.ts';
 import { pack } from '../../examples/catalog-packs/supplements/pack.ts';
+import { policy } from '../../examples/catalog-packs/supplements/policy.ts';
 import {
   closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer,
@@ -108,6 +110,7 @@ describe('human publication boundary on the powder fixture', () => {
   const powder = initialDrafts[1];
   const publisher = (mutate?: (sql: string, rows: Record<string, unknown>[]) => void) => createPostgresCatalogPublication({
     registry,
+    subscriptionProfiles: createCatalogSubscriptionProfileBinding({ profiles: pack.subscriptionProfileDefinitions, policies: [policy] }),
     rules: {
       canonicalizeDocument: canonicalCatalogDraftJson,
       deriveSkuFacts: () => ({}),
@@ -148,14 +151,14 @@ describe('human publication boundary on the powder fixture', () => {
         VALUES($1,'admin','active','legacy',clock_timestamp())`, [principal]);
     }
 
-    const payload: CatalogDraftPayloadV3 = structuredClone(powder.payload);
+    const payload: CatalogDraftPayloadV4 = structuredClone(initialPublications[1]!);
     payload.product.sharedContent.requestedModes = [];
     payload.skus[0]!.priceOperations = [];
     payload.publication.operations = payload.publication.operations.filter(operation =>
-      operation.op !== 'set_eligibility' && operation.op !== 'set_sku_status' && operation.op !== 'set_product_status');
+      operation.op !== 'set_eligibility' && operation.op !== 'set_sku_lifecycle' && operation.op !== 'set_product_lifecycle');
     const prior = await owner.query('SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1', [powder.draftId]);
     const expectedRevision = Number(prior.rows[0]?.revision ?? 0);
-    const stored = await draftHandler().execute({ schemaVersion: 3, action: expectedRevision ? 'revise' : 'create',
+    const stored = await draftHandler().execute({ schemaVersion: 4, action: expectedRevision ? 'revise' : 'create',
       draftId: powder.draftId, commandKey: 'supplements:operator:dark-draft', expectedRevision, payload }, true);
     if (!('record' in stored)) throw new Error(JSON.stringify(stored));
     const candidateRef = `v1:${powder.draftId}@${stored.record.revision}/unpublished`;
@@ -195,13 +198,13 @@ describe('human publication boundary on the powder fixture', () => {
     ['RP1-D-011c', async () => {
       const capability = (await target.authorize(actorId))!;
       const first = await target.publish(publication, capability);
-      expect(first).toMatchObject({ outcome: 'committed' });
+      expect(first, JSON.stringify(first)).toMatchObject({ outcome: 'committed' });
       if (!('receipt' in first)) throw new Error(JSON.stringify(first));
       const before = await commerceCounts();
       expect(await target.publish(publication, capability)).toEqual({ outcome: 'replayed', receipt: first.receipt });
       expect(await commerceCounts()).toEqual(before);
       expect(before).toMatchObject({ publications: 1, products: 1, skus: 1, prices: 0 });
-      expect(await target.readbackV2(first.receipt.head)).toMatchObject({ outcome: 'page',
+      expect(await target.readbackV3(first.receipt.head)).toMatchObject({ outcome: 'page',
         product: { document: powder.payload.product.documentRevision }, items: [{ facts: { code: 'G1-POWDER-140' } }] });
     }],
     ['RP1-D-001a', async () => {
@@ -209,7 +212,7 @@ describe('human publication boundary on the powder fixture', () => {
       const failing = publisher((sql, rows) => {
         if (sql.includes('d.id AS document_id')) rows[0]!.document_id = randomUUID();
       });
-      expect(await failing.readbackV2(receipt.head)).toEqual({
+      expect(await failing.readbackV3(receipt.head)).toEqual({
         outcome: 'dependency_unavailable', reason: 'catalog_publication_manifest_invalid',
       });
     }],
@@ -218,7 +221,7 @@ describe('human publication boundary on the powder fixture', () => {
       const failing = publisher((sql, rows) => {
         if (sql.includes('octet_length(full_facts)')) rows[0]!.sku_id = randomUUID();
       });
-      expect(await failing.readbackV2(receipt.head)).toEqual({
+      expect(await failing.readbackV3(receipt.head)).toEqual({
         outcome: 'dependency_unavailable', reason: 'catalog_publication_sku_revision_invalid',
       });
     }],
