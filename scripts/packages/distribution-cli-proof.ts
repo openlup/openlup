@@ -78,8 +78,19 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
-/** The packaged 1.0 migration, before the proof adds its owned customizations. */
+/** Packaged pristine-file migrations, before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
+  // The next set is not numbered yet. Its managed locale contract identifies
+  // this migration without applying it to a released 1.1.0 or synthetic starter.
+  if (from.version === "1.1.0" && to.version !== from.version && Object.hasOwn(to.files, "shared/locales.ts")) {
+    const created = "owned/market.config.ts";
+    assert(!Object.hasOwn(from.files, created) && !Object.hasOwn(to.files, created), "migration_owned_snapshot_overlap");
+    to.files[created] = readFileSync(join(target, created), "utf8");
+    for (const path of ["AGENTS.md", "owned/renewal.config.ts", "owned/store.config.ts", "owned/acquisition-policy.ts",
+      "owned/copy.ts", "owned/editor-copy.ts", "owned/quote-copy.ts", "owned/renewal-copy.ts", "owned/demo-seed.ts"]) {
+      writeFileSync(join(app, path), readFileSync(join(target, path)));
+    }
+  }
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
   if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;

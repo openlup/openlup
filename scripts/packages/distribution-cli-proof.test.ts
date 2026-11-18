@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
@@ -101,3 +101,70 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(readFileSync(join(app, "owned.ts"), "utf8")).toBe("local bytes");
   expect(to.files).toEqual(from.files);
 });
+
+it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), "starter-next-set-"))); directories.push(directory);
+  const source = join(directory, "source"), app = join(directory, "app"), target = join(directory, "target");
+  mkdirSync(source);
+  const archive = join(directory, "starter.tar");
+  execFileSync("git", ["archive", "--output", archive, "openlup-core-v1.1.0", "examples/neutral-store"]);
+  execFileSync("tar", ["-xf", archive, "--strip-components=2", "-C", source]);
+  // Materialize the same owned/managed source mappings as extraction, without
+  // registry or provenance claims. Installed-package proof remains a separate gate.
+  const materialize = (input: string, output: string) => {
+    const ownership = JSON.parse(readFileSync(join(input, "ownership.json"), "utf8"));
+    for (const path of [...ownership.owned, ...ownership.managed]) {
+      mkdirSync(dirname(join(output, path)), { recursive: true });
+      cpSync(join(input, ownership.sourceMappings?.[path] ?? path), join(output, path));
+    }
+  };
+  materialize(source, app); materialize(resolve("examples/neutral-store"), target);
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: app, stdio: "pipe" });
+  const read = (path: string) => readFileSync(join(app, path), "utf8");
+  const edit = (path: string, before: string, after: string) => {
+    const bytes = read(path); expect(bytes).toContain(before);
+    writeFileSync(join(app, path), bytes.replaceAll(before, after));
+  };
+  const customizations = [
+    ["AGENTS.md", "Agent guide for this application", "Agent guide for the customized application"],
+    ["owned/store.config.ts", "#3d6657", "#663d57"],
+    ["owned/renewal.config.ts", "retryBackoffHours: [24, 48, 72]", "retryBackoffHours: [12, 36, 60]"],
+    ["owned/fragments.ts", "offer-intro", "adopter-offer-intro"],
+  ] as const;
+  if (customized) for (const [path, before, after] of customizations) edit(path, before, after);
+  const from = starterUpgradeSnapshot(app, "1.1.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+  const managedTarget = { ...to.files };
+  expect(existsSync(join(app, "owned/market.config.ts"))).toBe(false);
+  migrateStarterOwned(app, target, from, to);
+  expect(to.files).toEqual({ ...managedTarget, "owned/market.config.ts": readFileSync(join(target, "owned/market.config.ts"), "utf8") });
+  expect(Object.keys(from.files).some(path => path.startsWith("owned/"))).toBe(false);
+  // Reconcile customized files with the target contract, carrying their local
+  // values forward deliberately, as the packaged migration instructs.
+  if (customized) for (const [path, before, after] of customizations) if (path !== "owned/fragments.ts") edit(path, before, after);
+  const ownership = JSON.parse(read("ownership.json"));
+  const owned = Object.fromEntries(ownership.owned.map((path: string) => [path, read(path)]));
+  writeFileSync(join(directory, "from.json"), JSON.stringify(from)); writeFileSync(join(directory, "to.json"), JSON.stringify(to));
+  const run = () => spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+    "--from", join(directory, "from.json"), "--to", join(directory, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+  writeFileSync(join(app, "owned/market.config.ts"), "local market divergence");
+  const conflict = run(); expect(conflict.status).toBe(1); assertUpgradeConflict(JSON.parse(conflict.stdout), "owned/market.config.ts");
+  rmSync(join(app, "owned/market.config.ts"));
+  const result = run(); expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout).applied).toContain("owned/market.config.ts");
+  expect(JSON.parse(run().stdout).applied).toEqual([]);
+  for (const [path, bytes] of Object.entries(owned)) expect(read(path)).toBe(bytes);
+  if (customized) for (const [path, , after] of customizations) expect(read(path)).toContain(after);
+  symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
+  for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) {
+    const check = spawnSync("npm", args, { cwd: app, encoding: "utf8", timeout: 90_000 });
+    expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
+  }
+  const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval",
+    'const { createApplication } = await import("./host/server.ts"); const server = createApplication(); server.listen(0, "127.0.0.1", () => server.close());'],
+  { cwd: app, encoding: "utf8", timeout: 10_000 });
+  expect(startup.status, startup.error?.message ?? startup.stdout + startup.stderr).toBe(0);
+  // Same-version replay must not overwrite a later owned customization.
+  edit("owned/store.config.ts", customized ? "#663d57" : "#3d6657", "#123456");
+  migrateStarterOwned(app, target, { ...from, version: to.version }, to);
+  expect(read("owned/store.config.ts")).toContain("#123456");
+}, 180_000);
