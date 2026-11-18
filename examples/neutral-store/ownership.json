@@ -169,7 +169,8 @@
     "test/subscription-offer.test.ts",
     "shared/locales.ts",
     "shared/locale-copy.ts",
-    "test/locales.test.ts"
+    "test/locales.test.ts",
+    "test/subscription-creation.test.ts"
   ],
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md",

@@ -32,6 +32,7 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  subscriptionCreation: { editWindowHours: number };
   subscriptionEditing: SubscriptionEditorConfig;
   subscriptionOffers: SubscriptionOffers;
   renewal: RenewalConfig;
@@ -113,6 +114,10 @@ export interface StoreConfig {
 
 export function assertConfig(config: StoreConfig): void {
   assertLocaleMarket(config.market);
+  if (!Number.isInteger(config.subscriptionCreation?.editWindowHours)
+    || config.subscriptionCreation.editWindowHours < 1 || config.subscriptionCreation.editWindowHours > 720) {
+    throw new Error('starter_subscription_creation_invalid');
+  }
   assertRenewalConfig(config.renewal, config.market.locales);
   assertRetention(config.renewal.subscriptionCare);
   for (const offer of Object.values(config.subscriptionOffers)) assertSubscriptionOffer(offer, config.subscriptionEditing.catalogue.map(product => product.sku));

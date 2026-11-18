@@ -112,7 +112,13 @@ export function createPostgresPurchaseRenewalWriter(executor: SubscriptionQueryE
  * The host declares first; saved purchase facts survive activation ACK loss. */
 export async function activateNativePurchaseWithRenewal(executor: SubscriptionQueryExecutor, input: {
   orderId: string; idempotencyKey: string; capturedReference: string; facts: NativeRenewalPurchaseFacts;
+  /** Frozen on creation; omission retains the database default of 72 hours. */
+  editWindowHours?: number;
 }) {
+  if (input.editWindowHours !== undefined && (!Number.isInteger(input.editWindowHours)
+    || input.editWindowHours < 1 || input.editWindowHours > 720)) {
+    throw new Error("subscription_activation_edit_window_invalid");
+  }
   const writer = createPostgresPurchaseRenewalWriter(executor);
   // A failed facts writer must not withhold already-paid customer service.
   // Activation captures an enumerable duty even when facts need resubmission.
@@ -124,8 +130,12 @@ export async function activateNativePurchaseWithRenewal(executor: SubscriptionQu
   }
   const fingerprint = createHash("sha256").update(input.capturedReference).digest("hex");
   const activation = subscriptionRecord((await executor.query(
-    "SELECT public.subscription_activate_from_captured_payment($1::text,$2::uuid,$3::text) AS response",
-    [input.idempotencyKey, input.orderId, fingerprint])).rows[0]?.response);
+    input.editWindowHours === undefined
+      ? "SELECT public.subscription_activate_from_captured_payment($1::text,$2::uuid,$3::text) AS response"
+      : "SELECT public.subscription_activate_from_captured_payment_with_edit_window($1::text,$2::uuid,$3::text,$4::integer) AS response",
+    input.editWindowHours === undefined
+      ? [input.idempotencyKey, input.orderId, fingerprint]
+      : [input.idempotencyKey, input.orderId, fingerprint, input.editWindowHours])).rows[0]?.response);
   if (typeof activation.activatedAt === "string") activation.activatedAt = nativeInstant(activation.activatedAt);
   if (registrationConflict) throw registrationConflict;
   try {

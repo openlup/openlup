@@ -38,6 +38,7 @@ export function installedAcquisitionPredecessors(): AcquisitionPredecessors {
 export interface AcquisitionRenewalBinding {
   assertAvailable(acceptedQuote?: CreateQuoteResponse): void;
   activate(input: { orderId: string; acceptedQuote: CreateQuoteResponse; capturedReference: string;
+    editWindowHours?: number;
     methodFacts: Pick<import('@openlup/platform/subscriptions').NativeRenewalPurchaseFacts,
       'authorizationRef' | 'unattendedChargeAuthorizedAt' | 'payerAccountRef' | 'methodRef' | 'methodEvidenceRef'>; stockSourceKey: string; templateId: string }): Promise<string>;
 }
@@ -55,7 +56,8 @@ export function createAcquisitionRenewalBinding(db: Pool): AcquisitionRenewalBin
         lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku,
           quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })), renewalTerms };
       return (await activateNativePurchaseWithRenewal(db, { orderId: input.orderId,
-        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts })).renewalAttachment;
+        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts,
+        ...(input.editWindowHours === undefined ? {} : { editWindowHours: input.editWindowHours }) })).renewalAttachment;
     },
   };
 }
@@ -84,7 +86,8 @@ export function createInitialPurchaseActivation(db: Pool, renewal: AcquisitionRe
         renewalTerms: { version: 'native.renewal-terms.v1', ...(shippingTerms === undefined ? {} : { shippingTerms }) },
         lines: quote.lines.map((line, index) => ({ lineOrdinal: index + 1, sku: line.sku, quantity: line.quantity, unitAmountMinor: line.unitPriceGross.amountMinor })) };
       return (await activateNativePurchaseWithRenewal(db, { orderId: input.orderId,
-        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts })).renewalAttachment;
+        idempotencyKey: `activate:${input.orderId}`, capturedReference: input.capturedReference, facts,
+        ...(input.editWindowHours === undefined ? {} : { editWindowHours: input.editWindowHours }) })).renewalAttachment;
     },
   };
 }

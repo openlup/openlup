@@ -184,7 +184,7 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
         settlementIntentId: latest.paymentIntentId, attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
       if (accepted.status !== 200) return refuse('unavailable');
       if (outcome === 'captured' && latest.mode === 'subscription_cycle') {
-        await activation.activate({ orderId: latest.orderId, acceptedQuote, currency: latest.currency,
+        await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: latest.orderId, acceptedQuote, currency: latest.currency,
           capturedReference: latest.paymentIntentId, methodFacts: attempt.methodFacts,
           stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
       }
@@ -332,7 +332,7 @@ export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRo
           attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
         if (accepted.status !== 200) return refused();
         if (outcome === 'captured' && order.mode === 'subscription_cycle') {
-          await activation.activate({ orderId: order.orderId, acceptedQuote, currency: order.currency,
+          await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: order.orderId, acceptedQuote, currency: order.currency,
             capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts,
             stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
         }
