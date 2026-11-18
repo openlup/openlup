@@ -3,7 +3,7 @@ import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contr
 import { evaluatePromotionAdjustmentsV2 } from '@openlup/core/promo';
 import type { Pool } from 'pg';
 import { createHash } from 'node:crypto';
-import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson } from '@openlup/platform/catalog';
+import { canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
 import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError, CommerceQuoteError,
   ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
@@ -11,7 +11,7 @@ import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, Acqu
 import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQuotePromotionV2,
   createQuoteAutomaticPromotions, createQuotePromotionCodeAdjustments,
   createPromotionQuoteAcceptance, type PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
-import { verifyProductDocument } from './editor-catalogue.ts';
+import { starterQuoteCatalogue } from './editor-catalogue.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import { createQuoteShipping } from '../owned/quote-shipping.ts';
 import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
@@ -78,9 +78,7 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
     const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
       { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
-      quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (input,envelope) => {
-        verifyProductDocument(input, envelope, config.quote.document.schemaId);
-      } }),
+      quoteCatalogReadPort: starterQuoteCatalogue(db, config).legacy,
       isStrictD1Quote: true, commercePriceAuthorityPort: createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)),
       taxProfile, supportedTaxProfiles: [taxProfile], regionCode: config.market.country, currency: config.market.currency,
       now: () => atTime, hasPromotionCodePort: false, lineContext: () => ({}),

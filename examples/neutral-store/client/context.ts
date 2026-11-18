@@ -6,6 +6,7 @@ import type { CustomizationFragments } from '../owned/fragments.ts';
 
 export interface PageContext {
   config: StoreConfig;
+  catalogueDraftType: import('../shared/api.ts').AppConfigurationResponse['catalogueDraftType'];
   locale: Locale;
   route: ResolvedRoute;
   query: URLSearchParams;

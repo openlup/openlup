@@ -30,6 +30,7 @@ export type ActionResult =
 
 export interface AppConfigurationResponse {
   config: StoreConfig;
+  catalogueDraftType: import('@openlup/platform/catalog/contracts').CatalogProductTypeRef;
   artifact: { kind: 'local-candidate'; setVersion: string | null; verified: false };
 }
 

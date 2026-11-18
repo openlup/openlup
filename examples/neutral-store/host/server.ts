@@ -6,7 +6,7 @@ import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
-import { selectConfiguration } from '../owned/store.config.ts';
+import { starterCatalogue } from './catalogue-selection.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
 import type { NeutralSkuEnvelopeV2 } from '@openlup/platform/catalog';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
@@ -14,7 +14,8 @@ import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const options = parseHostArguments(process.argv.slice(2));
-const config = selectConfiguration(options.configuration);
+const registration = starterCatalogue.select(options.configuration);
+const config = registration.configuration;
 assertConfig(config);
 const configuredPort = options.port;
 // Listening on the container bridge is an explicit argument; Compose publishes loopback only.
@@ -72,7 +73,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     return;
   }
   if (url.pathname === '/api/config' && request.method === 'GET') {
-    sendJson(response, 200, { config, artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
+    sendJson(response, 200, { config, catalogueDraftType: { key: registration.draftType.key, version: registration.draftType.version }, artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
     return;
   }
   if (url.pathname.startsWith('/api/actions/')) {

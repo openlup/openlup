@@ -1,9 +1,19 @@
 import { createHash } from 'node:crypto';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
-import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import type { PgQueryExecutor } from '@openlup/platform/data';
+import { createPostgresCommerceQuoteCatalogReadPort, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { starterCatalogue } from './catalogue-selection.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
+
+/** The incumbent transport remains available until an installed publication binding is selected. */
+export function starterQuoteCatalogue(db: PgQueryExecutor, config: StoreConfig) {
+  const registration = starterCatalogue.select(config.id);
+  return { registration, legacy: createPostgresCommerceQuoteCatalogReadPort(db, {
+    verifyDocument: async (input, envelope) => verifyProductDocument(input, envelope, registration.configuration.quote.document.schemaId),
+  }) };
+}
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {
   const hex = createHash('sha256').update(`neutral-store-demo-v1:${config.id}:${kind}:${key}`).digest('hex');

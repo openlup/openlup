@@ -21,9 +21,9 @@ async function fixture(origin?: unknown, insecure?: boolean) {
   if (origin !== undefined) config.publicOrigin = origin as string;
   if (insecure !== undefined) config.allowInsecurePublicOrigin = insecure;
   await writeFile(resolve(directory, 'owned/store.config.ts'),
-    `export const configurations = { demo: ${JSON.stringify(config)} };
-export const defaultConfigurationId = 'demo';
-export function selectConfiguration() { return configurations.demo; }
+    `export const configurations = ${JSON.stringify({ ...configurations, [config.id]: config })};
+export const defaultConfigurationId = ${JSON.stringify(config.id)};
+export function selectConfiguration() { return configurations[defaultConfigurationId]; }
 `);
   return directory;
 }

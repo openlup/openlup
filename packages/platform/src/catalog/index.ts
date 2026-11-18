@@ -92,6 +92,7 @@ export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
 export { createPostgresCatalogAdmission } from "./admission.js";
 export type { CatalogAdmissionPort } from "./admission.js";
+export { buildCatalogAdmissionFromServing } from "./admission.js";
 export type { CatalogWithdrawalImpactPort, CatalogSkuSuccessor, CatalogDraftPayloadV5, CatalogDraftCommandV5,
   CatalogSuccessorStoredCommand, CatalogSuccessorStoredRecord, CatalogFullPublicationV4 } from "./contracts/successors.js";
 export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSuccessorStoredPayloadSchema,
@@ -102,3 +103,4 @@ export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
 export { asLegacyIntegralGrams } from "./physicalQuantity.js";
 export type { CatalogServingReadPortV2, CatalogServingScopeV2, NeutralSkuEnvelopeV2 } from "./servingRead.js";
 export { buildResolvedSkuProjectionV2, type ResolvedSkuProjectionV2 } from "./resolvedSkuProjection.js";
+export { projectManagedCatalogContent, type ManagedCatalogContentRow } from "./managedCatalogContent.js";

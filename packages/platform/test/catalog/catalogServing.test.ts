@@ -1,4 +1,6 @@
 import { expect, it } from "vitest";
+import { buildCatalogAdmissionFromServing } from "../../src/catalog/admission.js";
+import { projectManagedCatalogContent } from "../../src/catalog/managedCatalogContent.js";
 import { createDbBackedCommerceQuotePort } from "../../src/pricing/index.js";
 import { createPostgresCustomerOrderHistoryReadStore } from "../../src/account-support/postgresOrderHistory.js";
 import { mapCustomerOrderLines } from "../../src/account-support/orderHistory.js";
@@ -305,4 +307,30 @@ it("catalog_authoritative_page_and_projection MC5-D-022 editor excludes one-time
   const port = reader("one-time only");
   expect(await port.listQuoteCatalogItems()).toMatchObject([{ sellability: { oneTime: true, subscription: false } }]);
   expect(await port.listEditorSkus()).toEqual([]);
+});
+
+it.each(["order", "classic", "exact", "sized", "legacy"] as const)("MC5-D-026 %s retains serving facts for the transaction owner", async lane => {
+  const [item] = await reader("volume").listQuoteCatalogItems();
+  const purpose = lane === "order" ? "order" : "account";
+  const input = buildCatalogAdmissionFromServing({ purpose, mode: "subscription", priceContextVersions: [],
+    offerEvidence: lane === "order" ? { offerVersion: scope.offerVersion } : { offerVersion: scope.offerVersion, lane },
+    lines: [{ item: item!, quantity: 2 }, { item: item!, quantity: 3 }],
+  });
+  expect(input.heads).toEqual([{ productId: item!.productId, head: item!.acceptedReference.publicationHead }]);
+  expect(input.skuRevisions).toEqual([2, 3].map(quantity => ({ reference: item!.acceptedReference, quantity })));
+  expect(input.purpose).toBe(purpose);
+});
+
+it.each([
+  ["legacy", null, null, null, mass],
+  ["volume", "volume", "50.00", null, volume],
+  ["count", "count", "56", null, count],
+  ["fabricated grams", "volume", "50", 400, null],
+] as const)("MC5 managed content projection %s", (_name, dimension, amount, grams, expected) => {
+  const document = { productId: publicationId, id: revisionId, digest: "b".repeat(64) };
+  const row = { productId: publicationId, skuProductId: publicationId, document, currentDocumentRevisionId: revisionId,
+    legacyNetWeightG: 400, dimension, canonicalAmount: amount, grossGrams: null, projectedGrams: grams };
+  if (expected) expect(projectManagedCatalogContent(row)).toEqual({ netContent: expected, grossMass: null, documentRevision: document });
+  else expect(() => projectManagedCatalogContent(row)).toThrow("catalog_revision_invalid");
+  expect(() => projectManagedCatalogContent({ ...row, currentDocumentRevisionId: null })).toThrow("catalog_authority_changed");
 });

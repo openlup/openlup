@@ -24,13 +24,18 @@ their original representation. Native stock-wait hosts opt into typed
 readback with `retainedContent: "v2"`, or supply the renewal codec when
 composing typed notices.
 
-The managed twin would add typed content and gross mass to `catalog_skus` and
-resolve the installed type through `catalog_products`. A governed writer would
-maintain the checked, nullable `net_weight_g` projection atomically with the
-selected head and membership. Legacy classification and per-unit energy columns
-could be null when a different type supplies its required facts. Keep the
-existing authenticated administrator check and the scoped `openlup_mcp_reader`
-grant. The writer remains behind its current publication role and RLS checks.
-Historical order and stock-wait snapshots keep their existing bytes. New
-accepted lines can carry typed display facts. The managed rail does not supply
-this feature.
+The managed twin adds exact canonical quantities and a checked nullable gram
+projection to the existing `catalog_skus` row. The existing product document
+pointer remains authoritative. The migration keeps the incumbent mandatory
+columns and role policies for unbound compatibility. The optional managed
+content projection verifies document ownership and rejects inconsistent gram
+facts. Host activation and the legacy-column relaxation require a separate
+managed compatibility transition.
+
+Before applying the neutral starter's managed-file upgrade, use the candidate's
+catalogue upgrade step to reconcile the original owned registry and catalogue
+labels. The new registration specifies the definition install, scope and draft
+type for the selected configuration. The host receives the existing legacy
+quote path and can opt in to the same installed serving reader for checkout
+and edit. Preserve frozen admission facts from `buildCatalogAdmissionFromServing`
+for the accepting transaction to recheck.

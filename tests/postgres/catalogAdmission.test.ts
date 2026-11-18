@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
-  createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
+  buildCatalogAdmissionFromServing, createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
@@ -1426,12 +1426,12 @@ it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
       const { items } = await authority.detail(f.value.product.slug!);
       const item = items.find(item => item.sku.id === f.sku);
       expect(item).toMatchObject({ product: { id: f.product }, acceptedReference: f.reference });
-      const input: CatalogAdmissionInput = {
-        ...f.admission, purpose: purpose === "order" ? "order" : "account",
-        heads: [{ productId: item!.product.id, head: item!.acceptedReference.publicationHead }],
-        skuRevisions: [{ reference: item!.acceptedReference, quantity: 2 }],
+      const input = buildCatalogAdmissionFromServing({
+        mode: f.admission.mode, priceContextVersions: f.admission.priceContextVersions,
+        lines: [{ item: { productId: item!.product.id, acceptedReference: item!.acceptedReference }, quantity: 2 }],
+        purpose: purpose === "order" ? "order" : "account",
         offerEvidence: purpose === "order" ? { offerVersion } : { offerVersion, subscriptionId: f.subscription, lane: purpose, ...(purpose === "sized" ? { optIn: true } : {}) },
-      };
+      });
       await expect(createPostgresCatalogAdmission().assertCurrent(read, input)).resolves.toBeUndefined();
       const before = (await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows;
       const stale = { ...input, heads: [{ productId: f.product, head: { ...f.head, revision: 1 } }] };

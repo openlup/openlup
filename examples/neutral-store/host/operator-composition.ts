@@ -3,7 +3,7 @@ import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStore, createCatalogDraftHandler, BundleRpcError,
   evaluateBundleComposition } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
-import { catalogDraftRegistry } from '../owned/catalogue.ts';
+import { starterCatalogue } from './catalogue-selection.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
@@ -20,10 +20,6 @@ export function composeOperatorCapabilities(input: { executor: PgQueryExecutor; 
 Pick<ApplicationBindings, 'actions' | 'close'> {
   const catalog = createPostgresBundleCatalogStore(input.executor);
   const writer = createPostgresBundleAdminWriteStore({ connectionString: input.connectionString });
-  const drafts = createCatalogDraftHandler<ActionContext>({
-    store: createPostgresCatalogDraftStore(input.executor), registry: catalogDraftRegistry,
-    authorizeOperator: async context => context.actor.operatorRef ? { actorId: context.actor.operatorRef } : null,
-  });
   const actions: ApplicationBindings['actions'] = {};
   const support = (detail: boolean): ActionBinding => async (payload, context) => {
     if (!context.actor.operatorRef) return refused('operator_required');
@@ -114,6 +110,10 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     const fields = payload.action === undefined ? [] : payload.action === 'get' ? ['action', 'draftId']
       : ['action', 'draftId', 'expectedRevision', 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
+    const drafts = createCatalogDraftHandler<ActionContext>({
+      store: createPostgresCatalogDraftStore(input.executor), registry: starterCatalogue.select(context.config.id).types,
+      authorizeOperator: async action => action.actor.operatorRef ? { actorId: action.actor.operatorRef } : null,
+    });
     const result = payload.action === undefined ? await drafts.list({ limit: 30 }, context)
       : payload.action === 'get' ? await drafts.get({ draftId: payload.draftId }, context)
         : await drafts.execute({ schemaVersion: 1, action: payload.action, draftId: payload.draftId,

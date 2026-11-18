@@ -404,6 +404,10 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
 }
 `;
     await writeFile(resolve(target, 'owned/store.config.ts'), owned);
+    const cataloguePath = resolve(target, 'owned/catalogue.ts');
+    const catalogue = await readFile(cataloguePath, 'utf8');
+    await writeFile(cataloguePath, catalogue.replace(/ {2}\{ configuration: configurations\.supplements!.*\n {2}\{ configuration: configurations\.coffee!.*\n/u,
+      "  { configuration: configurations[defaultConfigurationId]!, pack: demonstrationPack, draftType, offerVersion: 'classic' },\n"));
     const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
       cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
     });

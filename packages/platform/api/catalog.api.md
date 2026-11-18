@@ -408,6 +408,7 @@ export interface AdminBundleWritePort {
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogAdmissionInput } from "./contracts/admission.js";
+import type { CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
 /** Call on the accepting transaction, after commerce prelocking and replay.
  * The shared guards remain held until that same connection commits or rolls back.
  * @experimental
@@ -415,6 +416,16 @@ import type { CatalogAdmissionInput } from "./contracts/admission.js";
 export interface CatalogAdmissionPort {
     assertCurrent(db: PgQueryExecutor, input: CatalogAdmissionInput): Promise<void>;
 }
+/** Build the facts to retain with a quote or an edit preview from the selected V2 rows.
+ * Reuse them at acceptance. The transaction-bound admission assertion owns check order.
+ * @experimental
+ */
+export declare function buildCatalogAdmissionFromServing(input: Omit<CatalogAdmissionInput, "heads" | "skuRevisions"> & {
+    lines: readonly {
+        item: Pick<CommerceQuoteCatalogItemV2, "productId" | "acceptedReference">;
+        quantity: number;
+    }[];
+}): CatalogAdmissionInput;
 /** The native SQL assertion is the single admission authority.
  * @experimental
  */
@@ -4279,6 +4290,7 @@ export { createCatalogDraftHandlerV4 } from "./draftHandler.js";
 export { catalogAcceptanceV2Schema, assertCatalogAcceptedReferenceV2, assertCatalogAcceptanceV2 } from "./acceptedReferenceStore.js";
 export { createPostgresCatalogAdmission } from "./admission.js";
 export type { CatalogAdmissionPort } from "./admission.js";
+export { buildCatalogAdmissionFromServing } from "./admission.js";
 export type { CatalogWithdrawalImpactPort, CatalogSkuSuccessor, CatalogDraftPayloadV5, CatalogDraftCommandV5, CatalogSuccessorStoredCommand, CatalogSuccessorStoredRecord, CatalogFullPublicationV4 } from "./contracts/successors.js";
 export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSuccessorStoredPayloadSchema, catalogSuccessorStoredCommandSchema, catalogSuccessorStoredRecordSchema, catalogSuccessorStoredApplyResultSchema } from "./successorPublication.js";
 export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
@@ -4287,6 +4299,7 @@ export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
 export { asLegacyIntegralGrams } from "./physicalQuantity.js";
 export type { CatalogServingReadPortV2, CatalogServingScopeV2, NeutralSkuEnvelopeV2 } from "./servingRead.js";
 export { buildResolvedSkuProjectionV2, type ResolvedSkuProjectionV2 } from "./resolvedSkuProjection.js";
+export { projectManagedCatalogContent, type ManagedCatalogContentRow } from "./managedCatalogContent.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4358,6 +4371,33 @@ export declare function resolveCatalogLifecycleProvenance(provenance: import("./
     draftRevision: number;
     draftCommandKey: string;
     draftFingerprint: string;
+};
+```
+## dist/catalog/managedCatalogContent.d.ts
+
+```ts
+import { type CatalogQuantity, type CatalogQuantityDimension } from "@openlup/core/catalog";
+/** Values from one managed read of the SKU and its existing current document. @experimental */
+export interface ManagedCatalogContentRow {
+    productId: string;
+    skuProductId: string;
+    currentDocumentRevisionId: string | null;
+    document: {
+        id: string;
+        productId: string;
+        digest: string;
+    };
+    legacyNetWeightG: number;
+    dimension: CatalogQuantityDimension | null;
+    canonicalAmount: string | null;
+    grossGrams: string | null;
+    projectedGrams: number | null;
+}
+/** Project exact content under the existing managed document pointer. Hosts opt in explicitly. @experimental */
+export declare function projectManagedCatalogContent(row: ManagedCatalogContentRow): {
+    netContent: CatalogQuantity;
+    grossMass: CatalogQuantity | null;
+    documentRevision: ManagedCatalogContentRow["document"];
 };
 ```
 ## dist/catalog/mediaSourcePack.d.ts

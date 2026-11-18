@@ -24,7 +24,9 @@ test('real lifecycle probe sends the configured Host; wrong Host and connection 
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
     const config = { ...structuredClone(Object.values(configurations)[0]!), publicOrigin: 'https://store.example.test' };
     await writeFile(resolve(directory, 'owned/store.config.ts'),
-      `export function selectConfiguration() { return ${JSON.stringify(config)}; }`);
+      `export const configurations = ${JSON.stringify({ ...configurations, [config.id]: config })};
+export const defaultConfigurationId = ${JSON.stringify(config.id)};
+export function selectConfiguration() { return configurations[defaultConfigurationId]; }`);
     const listener = createServer().listen(0, '127.0.0.1');
     await once(listener, 'listening');
     const address = listener.address();
@@ -68,7 +70,9 @@ test('default lifecycle leaves compose.yaml healthcheck in place', async () => {
     await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
     const config = structuredClone(Object.values(configurations)[0]!);
     delete config.publicOrigin;
-    await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify(config)}; }`);
+    await writeFile(resolve(directory, 'owned/store.config.ts'), `export const configurations = ${JSON.stringify({ ...configurations, [config.id]: config })};
+export const defaultConfigurationId = ${JSON.stringify(config.id)};
+export function selectConfiguration() { return configurations[defaultConfigurationId]; }`);
     const bin = resolve(directory, 'bin');
     await mkdir(bin);
     await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nif [ "$4" = "-f" ]; then /bin/cat > override.json; fi\n', { mode: 0o755 });

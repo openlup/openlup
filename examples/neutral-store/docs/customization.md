@@ -6,9 +6,9 @@ Status: maintainer implementation notes. Reader guidance: [OpenLup guide](../../
 
 ## One input and three fragments
 
-`owned/store.config.ts` exports `configurations`, `defaultConfigurationId` and
-`selectConfiguration`; each configuration satisfies `StoreConfig` in
-`shared/config.ts`. The host and lifecycle share that registry. The managed
+`owned/store.config.ts` supplies the `StoreConfig` values and default ID.
+Register the pack and select its draft type and offer in `owned/catalogue.ts`.
+The host, installer, authoring and lifecycle select the same entry. The managed
 `assertConfig` validator admits lowercase alphanumeric IDs with single hyphens,
 at most 80 characters, and checks required document, return and hold settings.
 
