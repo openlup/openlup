@@ -26,6 +26,7 @@ export interface CatalogAttributeProjectionValue {
   date_value: string | null; ref_value: string | null; quantity_dimension: string | null;
   canonical_unit: string | null; canonical_value: string | null;
 }
+/** @experimental */
 const validatedAttributes: unique symbol = Symbol("validated catalog attributes");
 /** @experimental */
 export type CatalogAttributeValidation =

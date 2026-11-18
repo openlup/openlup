@@ -1,8 +1,9 @@
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
 import { assertQuoteConfiguration, type QuoteConfiguration } from './quote-config.ts';
 import { isValidGtin } from '@openlup/platform/catalog/contracts';
-import { assertRenewalConfig, type RenewalConfig } from './renewal-config.ts';
+import { assertRetention, assertRenewalConfig, type RenewalConfig } from './renewal-config.ts';
 import { assertRecoveryConfiguration, type RecoveryConfiguration } from './recovery-config.ts';
 import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 import { assertEditorConfig, type SubscriptionEditorConfig } from './subscription-edit.ts';
@@ -109,6 +110,7 @@ export interface StoreConfig {
 
 export function assertConfig(config: StoreConfig): void {
   assertRenewalConfig(config.renewal);
+  assertRetention(config.renewal.subscriptionCare);
   for (const offer of Object.values(config.subscriptionOffers)) assertSubscriptionOffer(offer, config.subscriptionEditing.catalogue.map(product => product.sku));
   assertEditorConfig(config.subscriptionEditing);
   assertPublicOrigin(config);
@@ -142,8 +144,8 @@ export function assertConfig(config: StoreConfig): void {
     || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
-    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > 90
-    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > 90)) {
+    || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > MAX_CADENCE_DAYS
+    || offer.cadenceDays.some(day => !Number.isSafeInteger(day) || day < 1 || day > MAX_CADENCE_DAYS)) {
     throw new Error('starter_offer_invalid');
   }
   const purchase = config.purchase;

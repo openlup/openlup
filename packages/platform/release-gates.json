@@ -1024,20 +1024,20 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 2903736,
-      "maxFiles": 4654
+      "maxPackedBytes": 3094000,
+      "maxFiles": 5130
     },
     "docs": {
-      "maxPackedBytes": 113913,
+      "maxPackedBytes": 123000,
       "maxFiles": 8
     },
-    "maxPackedBytes": 3661074,
-    "maxUnpackedBytes": 17614723,
-    "maxFiles": 4830,
-    "capReason": "Under the coordinator-approved budget rule, canonical cold main 645faa295 measured with Node 24.21.0 and npm 11.19.0 is total 3417026 B packed / 16485720 B unpacked / 4619 files, code 2679987 B packed / 4448 files, and root docs 108386 B packed / 6 files. Remaining design upper forecasts sum to +207800 B packed / +954600 B unpacked / +189 files; calibrated code forecasts are +195000 B packed / +184 files and root docs +4400 B packed. Landed work is not forecast again. Paired total caps are 3661074 B packed (3417026 + 207800 + 36248) and 17614723 B unpacked (16485720 + 954600 + 174403). Code packed is 2903736 B (2679987 + 195000 + 28749); root docs packed is 113913 B (108386 + 4400 + 1127). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Projected total/code files 4808/4632 fit existing caps 4830/4654; preserve those caps, docs files 8, browser limits and the published baseline. Code and docs have no unpacked limit, so pairing is vacuous there. This budgets unbound 0.44.0 work and activates no capability.",
+    "maxPackedBytes": 3958000,
+    "maxUnpackedBytes": 19132000,
+    "maxFiles": 5330,
+    "capReason": "Measured on merged main 90c2d2ee0 (Node 24.22.2, npm 11.19.1): total 3441892 B packed / 16636303 B unpacked / 4637 files; code 2690387 B packed / 4464 files; docs 106726 B packed. Owner 2026-11-17: Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs, and these Platform caps held only 4-7%; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 3958000 B packed / 19132000 B unpacked / 5330 files; code 3094000 B / 5130 files; docs 123000 B. This activates no capability.",
     "baseline": {
-      "version": "0.42.0",
-      "packedBytes": 3212990
+      "version": "0.43.0",
+      "packedBytes": 3319432
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

@@ -9,7 +9,7 @@ const object = z.record(z.string(), z.unknown());
 const line = z.object({ lineId: z.uuid().nullable(), variantId: z.uuid(), sku: z.string().min(1), groupId: z.string().min(1),
   qty: z.number().int().positive(), isAddon: z.boolean(), quoteLine: object });
 const contextSchema = z.object({ subscriptionId: z.uuid(), clientId: z.uuid(), binding: z.enum(["classic", "sized.v1"]),
-  templateVersion: z.number().int().positive(), cadenceDays: z.number().int().positive(), compositionConstraint: object.nullable(),
+  templateVersion: z.number().int().positive(), cadenceDays: z.number().int().positive().max(2_147_483_647), compositionConstraint: object.nullable(),
   nextCycleAt: z.string().nullable(), paidCycleCount: z.number().int().nonnegative(), marker: object.nullable(),
   lines: z.array(line).min(1), graduationLines: z.array(line) });
 export async function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn = false): Promise<SizedEditContext> {

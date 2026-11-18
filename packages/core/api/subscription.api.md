@@ -450,6 +450,10 @@ export declare function statusPatch(status: SubscriptionStatus): Partial<EngineS
 ## dist/subscription/types.d.ts
 
 ```ts
+/** Maximum whole-day subscription cadence for finite date arithmetic; adopters choose their offered cadences.
+ * @beta
+ */
+export declare const MAX_CADENCE_DAYS = 3660;
 /** @beta */
 export declare const SUBSCRIPTION_STATUSES: readonly ["active", "paused", "cancelled", "completed"];
 /** @beta */

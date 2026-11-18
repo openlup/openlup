@@ -1462,7 +1462,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
+      "path": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261122200000_catalog_publication.sql",
       "class": "public-output"
     },
     {
@@ -2678,6 +2682,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/policy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/quote-config.ts",
       "class": "public-output"
     },
@@ -2783,6 +2791,10 @@
     },
     {
       "path": "examples/neutral-store/test/origin-policy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/policy.test.ts",
       "class": "public-output"
     },
     {
@@ -4798,7 +4810,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261122190000_catalog_publication.sql",
+      "path": "packages/platform/sql/20261122190000_subscription_cadence_bound.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261122200000_catalog_publication.sql",
       "class": "public-output"
     },
     {
@@ -6095,6 +6111,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/configuratorIntentPersistenceHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/configuratorIntentReplayFingerprint.ts",
       "class": "public-output"
     },
     {
@@ -9202,6 +9222,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/nativeRenewalCadence.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/nativeRenewalCodec.ts",
       "class": "public-output"
     },
@@ -11650,6 +11674,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/postgresCommandStore.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
@@ -11795,6 +11823,10 @@
     },
     {
       "path": "scripts/agent-review-decide.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/agent-review-derived.d.mts",
       "class": "public-output"
     },
     {
@@ -12043,6 +12075,10 @@
     },
     {
       "path": "scripts/dependency-audit-rsc-scan.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/disposable-docker.d.mts",
       "class": "public-output"
     },
     {
@@ -12971,6 +13007,10 @@
     },
     {
       "path": "scripts/test-hosted.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/tooling-declarations.test.ts",
       "class": "public-output"
     },
     {

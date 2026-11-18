@@ -1,6 +1,7 @@
 import { demoSubscriptionCare } from '../owned/renewal.config.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { assertConfig } from '../shared/config.ts';
 import { configurations } from '../owned/store.config.ts';
 import { assertRenewalConfig, assertSubscriptionCare, careAvailability, saveOfferKind, saveRescheduleTarget, type PortalSubscription } from '../shared/renewal-config.ts';
 
@@ -45,8 +46,13 @@ test('resume and reactivation belong to their recorded lifecycle state', () => {
   assert.equal(careAvailability({ ...row, status: 'paused' }, 'order_now', now), 'not_active');
 });
 test('reason-driven save offers retain the reference branches', () => {
-  assert.equal(saveOfferKind('too_much_product'), 'skip'); assert.equal(saveOfferKind('delivery_issue'), 'reschedule');
-  for (const reason of ['too_expensive', 'not_a_good_fit', 'other', 'appended_reason']) assert.equal(saveOfferKind(reason), 'pause');
+  const expected = { too_much_product: 'skip', delivery_issue: 'reschedule', too_expensive: 'pause', not_a_good_fit: 'pause', other: 'pause' };
+  for (const config of Object.values(configurations)) {
+    assertConfig(config);
+    assert.deepEqual(config.renewal.subscriptionCare.retentionReasons, Object.keys(expected));
+    for (const [reason, kind] of Object.entries(expected)) assert.equal(saveOfferKind(reason, config.renewal.subscriptionCare), kind);
+    for (const reason of ['appended_reason', 'toString', '__proto__']) assert.equal(saveOfferKind(reason, config.renewal.subscriptionCare), 'pause');
+  }
 });
 test('reschedule offer postpones the current renewal and clamps to configured bounds', () => {
   const config = demoSubscriptionCare();
@@ -63,4 +69,41 @@ test('invalid trusted care policy refuses before a scheduled claim', () => {
   }
   const config = demoSubscriptionCare(); config.terms.slideMinDays = config.terms.slideMaxDays + 1;
   assert.throws(() => assertSubscriptionCare(config), /starter_subscription_care_configuration_invalid/);
+});
+
+test('owned donor retention data selects skip, reschedule and the fallback without changing reason identity', () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const retention = { offerByReason: { too_much_food: 'skip', too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause' } as const;
+  config.renewal.subscriptionCare.retentionReasons = ['too_much_food', ...config.renewal.subscriptionCare.retentionReasons];
+  config.renewal.subscriptionCare.retention = retention;
+  assertConfig(config);
+  for (const [reason, kind] of Object.entries(retention.offerByReason)) assert.equal(saveOfferKind(reason, config.renewal.subscriptionCare), kind);
+  assert.equal(saveOfferKind('too_expensive', config.renewal.subscriptionCare), 'pause');
+  config.renewal.subscriptionCare.retention = { offerByReason: { other: 'reschedule' }, defaultOffer: 'skip' };
+  assertConfig(config);
+  assert.equal(saveOfferKind('other', config.renewal.subscriptionCare), 'reschedule');
+  assert.equal(saveOfferKind('too_expensive', config.renewal.subscriptionCare), 'skip');
+});
+test('startup refuses unknown retention reason keys and offer kinds with the named code', () => {
+  for (const retention of [
+    { offerByReason: { unknown_reason: 'skip' }, defaultOffer: 'pause' },
+    { offerByReason: { other: 'discount' }, defaultOffer: 'pause' },
+    { offerByReason: {}, defaultOffer: 'discount' },
+    { offerByReason: null, defaultOffer: 'pause' },
+    null,
+  ]) {
+    const config = structuredClone(Object.values(configurations)[0]!);
+    config.renewal.subscriptionCare.retention = retention as unknown as typeof config.renewal.subscriptionCare.retention;
+    assert.throws(() => assertConfig(config), { message: 'starter_retention_configuration_invalid' });
+  }
+});
+test('startup accepts three retry rungs and refuses budgets inconsistent with SQL attempt four', () => {
+  for (const ladder of [[24, 48], [24, 48, 72, 96]]) {
+    const config = structuredClone(Object.values(configurations)[0]!);
+    config.renewal.retryBackoffHours = ladder;
+    assert.throws(() => assertConfig(config), { message: 'starter_database_retry_budget' });
+  }
+  const config = structuredClone(Object.values(configurations)[0]!);
+  config.renewal.retryBackoffHours = [24, 72, 168];
+  assert.doesNotThrow(() => assertConfig(config));
 });

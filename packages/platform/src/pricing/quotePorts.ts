@@ -39,6 +39,7 @@ export class CommerceQuoteSnapshotError extends Error {
 }
 
 export type CommerceQuoteErrorCode =
+  | "cadence_limit_exceeded"
   | "UNKNOWN_SKU"
   | "PRICE_NOT_CONFIGURED"
   | "UNSUPPORTED_TAX_PROFILE"

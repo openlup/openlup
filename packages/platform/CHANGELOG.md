@@ -3,12 +3,17 @@
 Notable changes to this public-source workspace package are recorded here.
 “Unreleased” means no npm version carries the change yet; immutable OpenLup
 source previews may already ship some changes, and their release notes say
-which. Declaration snapshots track candidate drift, not a stable API or
-SemVer promise. This file keeps the current release and the two previous ones;
+which. Stable APIs follow SemVer from 1.0.0; experimental symbols and test-support
+subpaths retain their declared limits. This file keeps the current release and the two previous ones;
 earlier releases are recorded verbatim in `packages/platform/CHANGELOG-HISTORY.md`
 in the source repository.
 
 ## [Unreleased]
+
+## [1.0.0]
+
+- Publishable on the npm `latest` dist-tag as `1.0.0`, from tag
+  `openlup-platform-v1.0.0`.
 
 - Add optional effect-free `admitSubscriptionTerms` to classic, exact and sized
   subscription editor ports. It checks the full normalized base/add-on set with
@@ -28,6 +33,566 @@ is supplied. Check date representation for the selected operation.
 Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
 
 Migration: apply the complete native catalogue through `20261122110000_catalog_quantities.sql`, then call `backfillCatalogNetContent` with the install executor and batch size. Old grams and readers stay unchanged; the managed rail does not supply this feature.
+
+Add optional effect-free full-result admission to the existing classic, exact
+and sized editor ports. Supply nominal and effective cadence separately; run
+before pricing and writes, including frozen-price edits. Completed receipt
+replay precedes mutable limits and admission while fingerprint conflicts refuse.
+Absent callback preserves behavior.
+
+Cadence admission is superseded by [subscription-cadence-bound.md](#100):
+fresh quotes, drafts and editor results accept 1..3660 whole days. Transport,
+stored data and completed receipts retain PostgreSQL integer representation
+bounds. Historical generic SQL bundle/lifecycle paths retain their 90-day guards
+pending a separate forward.
+
+Migration: no SQL or core changes. Compose the optional callback in the host and
+validate resulting dates; starter offer derivation and activation remain separate.
+
+- Clarify the offline fulfillment conformance failure for missing provider
+  selection: `prepare(providerRef:null)` must return `selection_required` before
+  I/O. The expected refusal and zero-I/O requirement are unchanged.
+
+Add readonly catalogue pack descriptors, typed v1 draft authoring, declarative metadata, shared definition issues and server-computed definition/manifest digests. Catalogue quantity types now re-export Core's identical shape.
+
+Migration: additive catalog and catalog/contracts exports. Existing definitions remain valid; v1 command bytes and quantity/option helpers are unchanged. Invalid definitions retain invalid_catalog_type_definition and now carry their first structured issue. Pack results are recursively readonly. Typed SKU options follow each product's selected dimensions, including a closed empty shape, while preserving all inline v1 SKU fields. Explicit CatalogPackDraft annotations use the second type parameter for the selected keys; list quantity unit references are checked recursively. Inherited draft fields accept readonly identifiers and asset references as well as mutable arrays. Descriptor objects are closed at authoring boundaries; retain literal reference keys when declaring arrays separately. Quantity dimensions follow their declared units. The Node catalogPackIssues helper reports closed pack shape and reference issues through the shared definition validator. Pass readonly authored drafts through catalogDraftPayloadSchema.parse before assigning them to mutable v1 draft/command DTOs. Import the runtime CATALOG_CONFORMANCE_RULES record from @openlup/platform/catalog; catalog/contracts exports the conformance codes and rule shapes as types only, keeping checker prose out of the browser bundle. Attribute values remain outside v1 drafts. No installation, publication, SQL or activation; target package set 0.44.0.
+
+- Mark unbound catalogue extension symbols `@experimental`; retain the
+  starter's consumed product-type input without the tag.
+
+Migration: no runtime, signature, export or database change. The added TSDoc tags
+identify experimental symbols for compatibility guidance; existing readers keep
+their contracts.
+
+### Added
+
+Versioned catalogue draft payload v2, resume and stateless candidate previews.
+
+Migration: apply the complete native catalogue through position 147 before
+using v2 commands. `CatalogDraftPayload`, `CatalogDraftCommand` and their existing
+schemas retain v1 behavior. New `CatalogDraftPayloadV2` and command schemas carry
+typed attribute data and complete immediate positive gross one-time base-price
+commands at minimum quantity one, including the wholly-null or wholly-set
+expected entry ID and amount. A zero new amount refuses. Unknown payload and
+command versions refuse; later versions cannot reinterpret or rewrite v2 bytes.
+There are no price writes in this change.
+
+Opt in with `createPostgresCatalogDraftStoreV2` and `createCatalogDraftHandlerV2`;
+the original factories retain v1 admission and result types. These new factories return
+`CatalogDraftStoredRecord` / `CatalogDraftStoredApplyResult`, whose payload is the
+explicit v1-or-v2 union. Version-specific schemas remain available. `draftsFor`
+adds definition-typed v2 attributes and required-key checking; the wire schema
+and handler still save incomplete drafts, reporting publication readiness issues.
+The async `validateCatalogDraftV2` reuses the attribute owner and optional reference
+resolver. Old v1 consumers keep their exact canonical command and receipt bytes.
+Stop v2 authoring before rolling back readers; old latest-record readers refuse
+v2 records. Retain schema and history, and keep a compatible reader to access v2.
+
+The v2-only `resume` command copies an abandoned draft's payload into an open
+revision under the same retained reservations. Original abandonment receipts
+still replay exactly, and legacy revise on an abandoned head still refuses.
+No backfill or history rewrite occurs. All four draft relations remain
+authoritative retained transfer data in their existing order and privacy class;
+the round-trip matrix now covers v2 price plans and resume history. No new
+relation, client foreign key or absorption class is needed.
+
+`createCatalogCandidateService` prepares read-only previews through explicitly
+supplied authorized readers. Its reference encodes the immutable draft revision
+and expected publication identity, or known unpublished state. Reconstructing
+resolves and compares the whole head including documentDigest, compares installed
+and composed definition digests, and hashes the parsed canonical payload,
+definition evidence and expected head. The caller's head and candidate digest
+are checked by `compareCandidate`; missing price validation leaves a blocking
+issue for price-bearing drafts. Publication must run reconstruction and refusal
+of all issues inside its own transaction. No candidate table/cache, publisher
+constructor, publication binding or capability activation is added.
+
+Managed divergence design: the managed rail does not supply this feature.
+A future twin replaces the existing managed draft apply routine with the same
+version discrimination, retained receipts and resume semantics on its four
+existing draft relations. It derives the actor from verified session membership,
+retains their RLS/default-deny browser access and operator-session checks for
+drafts. Publication retains its separate human-admin boundary and excludes
+service credentials. Native
+owner/runtime invoker authorization maps to managed routine grants plus RLS;
+no native-only authorization role semantics are introduced. No live product/SKU
+column, including industry-specific nullable fields, is changed or relaxed here.
+
+- Add draft payload v3 for ordered publication operations, explicit eligibility,
+  immutable provenance/media claims and explicit document-derived SKU cache
+  effects. Freeze the shared-content extraction envelope and include every new
+  field and operation order in candidate reconstruction/digests. Saving a draft
+  executes no operation; publication and runtime capabilities remain unbound.
+
+Migration: upgrade to the explicit `createPostgresCatalogDraftStoreV3` and
+`createCatalogDraftHandlerV3` readers before authoring payload/commands v3.
+`CatalogDraftPublicationStored*` is the additive v1/v2/v3 union; existing v1 and
+v2 DTOs, parsers, handlers and adapters retain their version boundaries and exact
+canonical bytes, fingerprints and original receipt replay. Unknown versions
+refuse. The self-contained candidate-reference format remains v1 and resolves
+immutable v3 data without an additional candidate table. V3 prices use the
+unchanged positive gross one-time/minimum-one command; no scheduling, tier,
+context-version or zero-price extensions are added.
+
+The native forward expands only draft apply admission on the four existing
+retained draft relations. Abandon/resume retains reservations and payloads;
+there is no backfill, new relation or change to transfer order, privacy or
+absorption classes. Stop v3 authoring before rolling readers back; retain a
+compatible reader for v3 history. No live catalogue, price, subscription, order
+or delivery fact is changed.
+
+`sharedContent` has a closed versioned envelope for action, document,
+presentation, memberships, requested modes and complete authored SKU facts;
+installed validators own the opaque data within it. Provenance for the current
+draft resolves from its persisted receipt rather than recursively embedding its
+own fingerprint. Retained provenance uses an explicit immutable tuple and a
+matching evidence claim. The publisher still verifies every claim and operation;
+these input contracts provide no authorization or external readiness guarantee.
+
+Managed divergence design: the managed rail does not supply this feature.
+A future twin expands the managed draft apply routine on its existing heads,
+revisions, receipts and reservations, deriving the actor from verified session
+membership and preserving RLS, operator access and default-deny browser writes.
+The native invoker's owner/runtime grants have an equivalent managed routine
+and RLS expression; no native-only authorization semantics are introduced.
+No product/SKU column is changed; industry-specific food-column relaxation
+remains with the later reader/adoption boundary.
+
+Adds an unbound native immediate base-price writer, validated preview/apply/readback
+use case, PostgreSQL store and portable receipt/command contracts under pricing.
+The command retains the draft-v2/v3 price-operation grammar and exact canonical
+bytes. Later context, scheduling and list-lifecycle command extensions remain
+reserved for a new payload version.
+
+Migration: install the complete native catalogue through position 150,
+`20261122180000_catalog_base_price_writer`, after the native readiness-input unit.
+Old price readers continue reading ordinary price entries. New callers explicitly
+bind a verified human administrator's session to the store and handler; the SQL
+derives the actor, serializes receipt before price context, compares the expected
+base and atomically closes/inserts at one database statement instant. No capability
+is activated. Readiness reads native financial, agreement and audited cohort
+evidence; missing proof hard-refuses independently of ordinary readiness reasons.
+The existing global reason-membership aggregation defect remains unchanged: a
+second invalid SKU can remain hidden by an already present aggregate price-shape
+reason. This writer changes no agreed subscription money or schedule.
+
+The catalogue-local receipt relation is authoritative transfer data. Retain its
+exact fingerprints, actor metadata and responses with price history; no customer
+foreign key or client-absorption rule is added. Rollback means unbinding callers;
+retain committed history and receipts, and use a later expected-base command to
+correct a price. Do not delete evidence or downgrade a live database.
+
+Managed divergence design: a managed twin would use the existing managed
+`price_lists`, `price_entries`, subscription, promotion and operational evidence
+tables, plus a separately admitted catalogue receipt relation. Managed RLS must
+deny direct receipt/price writes and expose bounded execution only to verified
+active human administrators, excluding machine and revoked principals. Reconcile
+the managed role/administrator authority with its incumbent policies; authorization
+does not depend on a native-only role. The native readiness-input mapping and its
+audited never-populated baseline delta require their managed equivalents. Existing
+industry-specific catalogue columns are untouched; this price-only change needs
+no relaxation. The managed rail does not supply this feature.
+
+Stable 1.0 coordination (CD-S1-1): all new catalogue base-price writer symbols,
+including contracts, schemas, handler/store ports and factories, canonical command
+serialization and refusal helpers, are marked `@experimental` from their introduction.
+They are outside the 1.0.0 SemVer promise. Existing catalogue readers retain their
+current status. New result/kind unions and the hard-refusal reason tuple grow by
+addition only (D3); no existing union member is removed or renamed.
+
+Add unbound native offer-policy readiness inputs for the catalogue price writer.
+Existing subscriptions receive the legacy policy pair and a default-false fixture
+marker; future ordinary inserts default to pending acquisition. Installation
+records immutable marking-time count, membership fingerprint and database time.
+The separately audited, parameterless service capture inserts its baseline once.
+The audited-zero admission is a deliberate platform-forced delta: “a fresh install
+has nothing to protect.” It requires genuine empty marking provenance; a populated
+marking becoming empty retains the empty-baseline refusal.
+
+Migration: Apply the complete native migration catalogue. Old readers ignore the
+additive evidence columns. New price-writer integration must call the read-only
+input checks on its transaction before and after provisional prices, propagate
+hard domain/provenance refusals, and retain ordinary acquisition reasons.
+Graduation and edits that can preserve old quotes retain the governing purchase
+order provenance; an event name never turns those copies into independent quotes.
+Audit
+the complete legacy non-fixture cohort, including paused and cancelled rows,
+before explicitly invoking `commerce_capture_offer_policy_v2_legacy_baseline()`
+through the existing service SQL boundary. Installation and transfer never
+capture a baseline. Capture replay returns the original audit. Transfer carries
+marking and baseline bytes, reconciling only the actual pristine target marking
+row. Code rollback leaves the additive evidence and immutable audit in place;
+never reset a baseline to make a failed comparison pass. No capability is enabled,
+no application is composed, and no agreement is repriced or rescheduled.
+
+Managed divergence design: A managed twin would reuse its existing
+`public.subscriptions` policy/fixture columns and
+`public.commerce_offer_policy_rollout_baselines`, add marking provenance and
+implement the input checks over its managed promotions, prices, orders and
+agreements. Its incumbent service grants and RLS need separate reviewed
+reconciliation: marking must remain owner-written and immutable to ordinary
+service DML; baselines need service SELECT/INSERT with browser and UPDATE/DELETE
+denial, while capture retains the service authorization boundary. The same
+semantics are expressible through managed ACLs and RLS, including explicit
+handling of bypass roles. No food-column relaxation applies: this change authors
+no product or SKU shape.
+The managed rail does not supply this feature.
+
+### Fixed
+
+Preserve policy digests across a revision close.
+
+Migration: additive native catalogue position 146 adds `closed_from_open` to
+`subscription_price_policy_revisions`. The existing one-time NULL-to-finite
+close sets it atomically without changing any original digest input or digest.
+This single bit is sufficient because the guard admits no other close shape.
+The byte-identical package asset is part of the complete migration catalogue.
+
+Updated native readers verify the original tuple and serve the shortened
+half-open window. `SubscriptionPricePolicyRevision.closedFromOpen` is optional;
+legacy inputs keep their exact canonical bytes. Already-shortened legacy rows
+whose stored tuple cannot verify refuse with
+`subscription_price_policy_original_tuple_unverified`. No backfill guesses the
+original tuple or replaces a historical digest. Apply schema first, upgrade
+readers next, and verify retained history before enabling any later writer.
+Old readers retain unchanged-tuple behavior but refuse newly closed revisions;
+after a close, rollback must retain the new verifier. Keep schema and rows.
+
+The marker follows the existing AUTHORITATIVE policy capture/restore class and
+ordering, including byte-exact restore and replay. No new table, client foreign
+key, absorption or privacy-erasure duty is added. Subscription agreements,
+renewal terms and operations, orders, quantities and cycle dates are unchanged.
+This repair ships unbound: no scheduler, closing command, capability or activation.
+
+Managed divergence design: the managed rail does not supply this feature.
+Its future twin adds the same marker and validated CHECK to managed
+`subscription_price_policy_revisions`, preserving RLS and existing grants.
+Administrative write grants and RLS express the native owner-only mutation
+boundary; browser roles cannot close revisions or write the marker. The twin
+must update its reader and guard together and prove original-digest verification,
+shortened-window serving and legacy refusal. No native-only authorization role
+is required and no food-column relaxation applies to this policy-only forward.
+
+Add opt-in catalogue definition/quantity/v1-draft checks, explicit refusal
+fixtures and installed recipes with a copied stationery skeleton. Attribute/projection and combination fixtures reuse their owners; taxonomy, tax,
+profile and promotion semantics remain explicitly pending.
+
+Migration: Additive tooling for the next package set. Old imports and v1 canonical
+bytes remain unchanged. The new Node-only `@openlup/platform/catalog/testing`
+subpath and `openlup catalogue check --packs ./owned/catalogue.json --json` require
+explicit JSON fixture text; the supplied file is never imported. No database migration, installation,
+host wiring, publication or capability activation occurs. Upgrade all packages as
+one exact set; an offline PASS is scoped evidence only.
+
+Quantity fixture type references now use the shared `catalogProductTypeRefIssues`
+owner before resolution; malformed keys/versions report existing definition codes.
+Refusal capability keys must be own string keys, and pack versions share the
+installer's existing positive bounded integer rule. Valid inputs are unchanged;
+malformed fixtures and pack versions that could pass offline now refuse.
+
+Integrate attribute validation/projection and V2 combination owners into the
+offline catalogue checker. Replace executable subjects with JSON text and the
+copied executable skeleton with one static JSON fixture. Reference and refusal
+observations are checked without invoking caller code; retained identities are
+derived from fixture options and prove no persisted bytes or history.
+
+Migration: For the unreleased 0.44.0 set, migrate module-based callers to
+`await runCatalogExtensionConformance(JSON.stringify(subjectData))` and CLI files
+to `openlup catalogue check --packs ./owned/catalogue.json --json`. Omit
+`validateContent`; requested application content validation is unavailable (2).
+Replace refusal callbacks with `observedCode` and `zeroEffects` records, reference
+ports with resolution rows, and retained identity bytes with options. The single
+entry retains report fields, deterministic ordering and the five CLI exits.
+No SQL, publication, subscription changes or capability activation occurs.
+
+Primitive quantity fields are admitted before owner handoff. Only deliberate
+owner input errors in the checker's explicit code allowlist become input refusals
+(exit 1 at the input path). All other owner exceptions propagate unchanged;
+the direct promise rejects and the CLI returns 74 with raw errors withheld.
+Default failure is 74; only the tagged `JSON.parse` site gives 64. Integrity codes
+are never input-denial codes and propagate to CLI 74. API signatures, SQL and
+release caps are unchanged by this checker repair.
+
+Add native-only immutable catalogue definitions, install receipts, tax-class keys
+and nullable product type bindings. Export the explicit install-role installer,
+read-only registry probe and opt-in catalogue-write guard. Target set 0.44.0;
+no runtime capability is activated.
+
+Migration: apply the complete selected native catalogue including
+`20261122100000_catalog_definition_binding.sql`, then explicitly call
+`installCatalogDefinitions(installExecutor, pack)` with the native migration-owner
+executor. Existing rows stay NULL-bound legacy, with no backfill or inferred
+mapping. Old readers ignore the new nullable product columns; new readers treat
+NULL as not mapped and follow the composite FK for installed versions. Managed-to-native
+retained transfer supplies NULL only when a source binding column is absent;
+provided values and all other missing-column refusals are preserved. SKUs
+inherit the product type. `model_binding_state` is omitted because it would
+repeat NULL-ness before publication is introduced. Keep installed old versions
+in code while any product references them. Rolling code back leaves additive
+storage and immutable install history intact; do not delete versions or undo SQL.
+
+Applications can supply the probe result as `ReadinessInput.catalogRegistry` in
+`createVerificationInput()` for `openlup verify --app`, and wrap catalogue writes
+with `createCatalogDefinitionWriteGuard`. No existing store is automatically
+rebound. The probe needs SELECT on both catalogue tables through table ownership
+or a BYPASSRLS read role with row security inactive on both tables. Active row
+security makes the observation incomplete, including empty visible results; a
+missing definition remains a binding with a NULL installed digest. Either yields
+existing `unknown` readiness and makes the guard refuse before the write.
+Host calls after migrations, the net-content backfill driver and boot
+readiness are deferred to the later V2 reader/composition stage. Explicit
+type-upgrade mappings remain part of publication; this slice adds no reader V2
+or publication transaction.
+
+Managed divergence design: the managed rail does not supply this feature.
+A managed twin needs the three definition/install/tax-key tables, nullable product
+references and their complete-reference check, composite FK and index. Restrict
+installation to an administrative migration principal and expose only the read
+access the composed observer needs through grants and RLS. Runtime has no
+installer EXECUTE, direct definition writes or migration-owner membership.
+A same-table immutability trigger and invoker routine have managed equivalents;
+no native-only authorization semantics are required. This slice changes no constraints
+on `net_weight_g`, `pet_type`, `kcal_per_unit`, `requires_pet_profile` or
+`feeding_grams_per_unit`. Alternative quantity readers and managed nullability
+changes stay with the V2 reader stage. Definitions and receipts contain no customer foreign
+keys or personal data, and transfer carries all three relations as AUTHORITATIVE metadata.
+
+Add native-only nullable physical quantities on live SKUs and the explicit
+install-role `backfillCatalogNetContent(installExecutor, {batchSize})` driver.
+Target set 0.44.0; no capability or runtime composition is activated.
+
+Migration: apply the complete selected native catalogue through
+`20261122110000_catalog_quantities.sql`, then explicitly drain the backfill with
+the migration-owner executor and a positive integer `batchSize`. The migration
+itself does not backfill data. The driver converts positive legacy grams exactly
+to mass / scale 0 / `openlup:g`, preserves native zero as unknown and never
+replaces existing net content or infers gross mass. Interrupted runs resume;
+replay is a no-op. Gross dimension is explicit to reject non-mass values at the
+storage boundary. SQL checks complete groups, positive stored coefficients and
+scale 0–12, leaving unit admission to the later publisher and installed unit
+metadata. PostgreSQL `numeric(40,0)` coerces inputs before CHECK evaluation;
+trusted writers enforce decimal-string integrality before sending values.
+
+Old readers continue reading the unchanged non-null `net_weight_g`. V2 readers,
+the checked compatibility projection, nullability change and host migration
+wiring arrive in the later reader/composition stage. The new export is additive
+and requires explicit invocation; it is not a runtime writer. Rollback leaves
+nullable columns and converted content intact; do not reverse migration data.
+No subscription agreement, quantity, price or schedule is changed.
+
+Transfer carries all new columns in existing AUTHORITATIVE `catalog_skus` rows
+with unchanged restore order. No new customer reference, absorption policy or
+personal-data contributor is needed. Managed-to-native retained mapping fills
+only absent fields with NULL and preserves supplied values and existing
+refusals, including the exact-number guard.
+
+Managed divergence design: the managed rail does not supply this feature.
+The managed `catalog_skus` twin adds the same nullable groups and CHECKs, retaining
+table grants and RLS. Its administrative migration principal runs an equivalent
+owner-restricted invoker batch; runtime principals (including service, operator
+and browser roles) receive no backfill EXECUTE or migration-principal membership.
+The native design uses no authorization construct that managed grants and RLS
+cannot express. Existing `pet_type`, `net_weight_g` and `kcal_per_unit` are mandatory
+without defaults, `requires_pet_profile` has a default and
+`feeding_grams_per_unit` is already nullable. Their non-food relaxation belongs
+to the later reader stage; this forward changes none of them.
+
+Add native-only attribute storage and the single rebuildable SKU-keyed
+projection. Target set 0.44.0; everything remains unbound.
+
+Migration: apply the complete selected native catalogue through
+`20261122120000_catalog_attributes.sql` (position 144). Products and SKUs gain
+nullable `attribute_values` JSONB, checked as objects with an independent
+1,048,576-byte PostgreSQL rendered-text ceiling. Existing canonical JSON depth
+and byte safety checks remain at the owner boundary; the later V2 draft retains
+its separate aggregate canonical-byte ceiling. These byte measures differ.
+Existing rows keep NULL, opaque documents remain unchanged, and no default or
+backfill infers values. Old readers ignore the nullable columns; future V2
+readers consume typed values with publication evidence. V1 DTOs and canonical
+bytes are unchanged. Rollback leaves the expansion and data intact; do not drop
+populated columns or reverse the migration.
+
+The projection key distinguishes SKU, publication revision, attribute key,
+definition version and ordinal. There is no premature publication FK, synthetic
+revision, second attribute store or generation seed. The table is RLS-enabled
+with owner-only access and no runtime grants. Decimal/quantity exactness must be
+checked before future SQL writes because PostgreSQL numeric can coerce inputs.
+Value validation and pure preparation, publication/digests/atomicity, generation
+switching, serving and restore rebuilding remain pending. No capability flips,
+writer bindings or subscription agreement changes are supplied.
+
+Transfer retains product/SKU values as AUTHORITATIVE and classifies the
+projection REBUILDABLE: count-only capture, no carried rows, empty-target restore
+and no stale rows on replay. Managed retained mapping fills only absent new
+columns with NULL before supplied rows, retaining exact-number and other
+refusals. Free text/reference values may contain personal data and follow the
+sensitive retained stream. No direct clients FK means no new absorption census
+row; no new subject-erasure claim is made.
+
+Managed divergence design: the managed rail does not supply this feature.
+The managed twin adds nullable `attribute_values` JSONB on `catalog_products` and
+`catalog_skus`, equivalent object/rendered-byte CHECKs, and one projection table
+with the same key/index layout. Existing authoritative table grants and RLS
+remain. The administrative migration principal maintains the projection;
+runtime projection access remains denied pending a later explicit grant/RLS
+policy, and browser roles have no direct projection writes. Native ownership
+adds no authorization policy that managed grants and RLS cannot express.
+Relaxation of existing food-mandatory columns remains the later reader stage.
+
+Add the unbound catalogue attribute owner validator, injected allowlisted batch
+reference resolution and pure preparation for the single SKU-keyed projection.
+Supplied malformed values refuse; required values/locales are publication
+readiness issues. Each product/SKU attribute object independently fits the 1 MiB
+PostgreSQL-rendered text storage ceiling, including separator spaces and UTF-8
+string bytes. Numeric exponent expansion is conservatively bounded; admitted
+attribute shapes are counted exactly. Oversized objects refuse with
+`attribute_storage_too_large` and the product/SKU owner path. The aggregate
+canonical JSON safety bound remains separate. Each projected text slot also fits
+2,048 UTF-8 bytes, including whole localized maps and list scalars, independently
+of facet/filter flags. This conservative composite-index budget on the qualified
+8 KiB-page PostgreSQL profile refuses with `attribute_projection_text_too_large`
+before insertion; it does not depend on compressibility. Signed decimals remain strings, and Core quantity conversion
+refuses inexact or overflowing canonical numeric values before SQL.
+
+Migration: additive server exports and shared conformance codes only. Existing
+V1 drafts, DTOs, canonical bytes and readers are unchanged. Compose the new owner
+with installed definitions explicitly; do not pass attribute values to V1 drafts.
+Old readers ignore the nullable storage introduced separately. Future V2 readers
+must consume publication evidence. Shared conformance guidance and installed
+recipe links include all new attribute codes beside the offline checker's codes.
+The checker still checks definitions, exact quantities and v1 drafts only;
+attribute-value/projection checker integration remains pending. No SQL, data backfill, runtime writer or
+serving switch is included; rolling back this helper cannot rebuild or publish
+stored values. LC1/LC2 still own validation/digest/atomic publication integration,
+and later serving/restore work owns shadow generations and rebuilding.
+
+The L1 required-locale witness proves readiness and the admission predicate;
+it does not prove an actual publish has zero effects. Managed storage enablement
+remains absent: the managed rail does not supply this feature. All capabilities
+remain unbound; subscription agreements are unaffected.
+
+Add unbound native variant axes and V2 combination identity preparation for target
+package set 0.44.0. No catalogue consumer or capability is activated.
+
+Migration: apply the complete selected native catalogue through
+`20261122130000_catalog_variant_axes.sql` (position 145). Products gain nullable
+`variant_axes text[]` in declared display order. SKUs gain nullable object-checked
+`option_values`, `canonical_option_bytes` and a 32-byte-checked
+`combination_digest`. Existing rows keep NULL: no default, inferred mapping,
+empty combination or legacy digest is manufactured. Old readers ignore these
+nullable fields; future V2 readers require publication evidence. The additive
+code rollback leaves these columns, identities and data intact; do not drop
+populated columns or reverse the migration. Existing UUIDs, codes, ownership,
+history and legacy constraints remain.
+
+The active-SKU partial unique index uses only `(product_id, combination_digest)`
+with `status='active' AND combination_digest IS NOT NULL`, independently of
+product state or type. SQL enforces storage and uniqueness; it does not certify
+that caller-supplied bytes are canonical. `canonicalizeCatalogCombinationV2`
+computes versioned canonical bytes and SHA-256 server-side from installed
+definitions and complete selected options, using Core exact arithmetic and
+explicit unit factors. Labels and display order do not enter combination
+identity. Existing `canonicalCatalogOption`, v1 draft bytes and replay are
+unchanged. `classifyCatalogCombinationConflictV2` distinguishes duplicate bytes
+from a digest collision; neither case merges identities.
+V2 quantity options use Core's exact decimal grammar and canonical bounds after
+conversion/normalization, allowing equivalent padded coefficients up to 52 input
+digits. The v1 wire schema retains its 40-digit coefficient ceiling. Canonical
+integer overflow and precision loss still refuse; strict option-field closure
+is preserved.
+The shared conformance rule record includes the combination owner's codes and
+links them to the installed axis/unit recipes. The offline checker keeps its
+definitions, quantity fixtures and v1-draft scope; V2 combination fixtures and
+publication are not activated by these links.
+
+`validateCatalogCombinationChangesV2` is pure LC2 preparation over authoritative
+retained facts and incoming options, with no client digest input. It preserves
+omitted SKUs and withdrawal facts, requires a new SKU for an existing mapped
+identity change, and refuses occupied active combinations. The 10,000-SKU
+payload bound is separate from configured product capacity (default 50,000),
+counting retained and incoming identities without enumerating combinations.
+The publisher must bind definitions, enforce human authority, lock and validate
+within its transaction, enforce persisted incremental capacity and record
+immutable history. Explicit legacy conversion and the 15,768-SKU incremental
+publication witnesses remain LC2 integration obligations. Direct owner SQL
+uniqueness/concurrency witnesses are preparatory substrate, not a publish API.
+See the canonical catalogue extension agreements and lock order; this change
+adds no locking runtime, commerce caller, trigger or independently committing
+publisher. Referenced identity keys must never be changed in place.
+
+The new fields ride existing AUTHORITATIVE product/SKU capture entries and
+restore order. Managed retained mapping initializes only absent fields to NULL,
+preserves supplied fields and keeps existing refusals. The round-trip matrix
+compares every field, bytes, legacy NULLs and axis order after restore/replay.
+Text/options follow the sensitive retained stream. No new relation, client FK,
+absorption entry or privacy-erasure claim is introduced.
+
+Managed divergence design: the managed rail does not supply this feature.
+Its twin adds the same nullable columns to `catalog_products` and `catalog_skus`,
+with equivalent object and 32-byte CHECKs,
+and active-SKU partial uniqueness while preserving existing managed grants and
+RLS. Restrictive administrative writer grants and RLS can express the same
+authorization as native ownership; browser roles receive no direct identity
+writes. Existing format/content uniqueness remains until generic publication
+parity is proven. Food-column relaxation remains a later migration. The public
+release retains this divergence and supplies no managed activation.
+
+Distinguish combination identity integrity failures from incoming SKU identity
+changes in the unbound V2 combination owner for target package set 0.44.0.
+
+Migration: handle the additive `combination_identity_integrity_failed` code for
+inconsistent authoritative option identity evidence and colliding derived
+digests. An incoming mapped identity change still reports
+`sku_identity_change_requires_new_sku`. The earlier `combination_digest_collision`
+code remains in the exported union and guidance record for compatibility;
+`validateCatalogCombinationChangesV2` now reports the new integrity code for
+that condition. Refusal conditions, validation order and all other behavior stay
+unchanged. No SQL migration, writer activation or capability change is required.
+
+Declare per-subpath stable, experimental and test-support policies for the coherent 1.0.0 package set. Stable APIs follow SemVer with open unions and literal sets; symbols tagged `@experimental` remain outside the stable promise. Consumer evidence is explicitly first-party.
+
+Migration: keep a default branch for unknown union and literal-set values. Check the generated maturity table for experimental and test-support subpaths before upgrading. No runtime behavior or package export changes.
+
+Bound fresh subscription quotes, order drafts and editor results to 1..3660
+whole days (ten years), using the shared browser-shareable `MAX_CADENCE_DAYS`
+export from `@openlup/core/subscription`. Adopters choose offered cadences in
+owned configuration.
+
+Checkout command/intent transport, resume, recovery and account reads, editor
+contexts, retained renewal terms and frozen renewal snapshots keep PostgreSQL
+integer representation bounds (1..2147483647). Editor and native draft
+completed receipts replay before current limits; SQL ownership and fingerprint
+checks still refuse changed payloads. Fresh edits also check the resulting
+cadence when inherited from stored data. Classic historical price comparisons
+use retained billing facts rather than submitting old cadences for a fresh quote.
+
+Fresh native renewal snapshots and starter graduation above 3660 refuse with
+`NativeRenewalCadenceError`, reason `cadence_limit_exceeded`, the observed value
+and `maximumCadenceDays`; choose an executable cadence before starting a new
+renewal. Historical frozen operations remain readable and replayable. Quantity,
+revision and money bounds are unchanged.
+
+Identity persistence admits fresh cadence before its writing RPC. Historical
+completed retries authenticate a single read snapshot of the stored response and
+the writer's canonical JSONB fingerprint, including the route-verified identity,
+and refuse changed payloads without reopening the key. Fresh quote execution and unfinished resume writes
+also admit cadence before dependencies; expired recreation checks both stored
+cadences before provider I/O and returns `cadence_limit_exceeded`.
+
+Fresh work is bounded at 1..3660 whole days. Replay of completed commands above
+3660 is preserved on editor, native draft and renewal paths, but is not guaranteed
+on the checkout-command and saga-fallback paths: checkout command execution
+quotes before identity and draft replay, and `commercePaidOrderOrchestration`
+re-quotes before draft replay when no quote is supplied. Those two paths remain
+a follow-up. No published version admitted cadence above 120 days; PR4a's
+widening is unreleased, so no released data can contain values above 3660.
+
+Fresh subscription future-terms commands admit supplied cadence/plan days after
+receipt replay and before host translation or native preview/apply dispatch,
+so an out-of-range preview cannot persist a refusal receipt.
+
+Migration: no SQL changes. Existing 90-day SQL guards and the starter's
+`starter_database_cadence_limit` refusal above 90 remain pending a separate slice.
 
 ## [0.43.0]
 
@@ -165,12 +730,3 @@ stages, recovery authority or notices.
 Migration: Install the complete native catalogue through `20261114120000_payment_reconciliation_refund_evidence.sql`, then explicitly compose the payment rail and renewal webhook/lifecycle/retry ports together. Historical method refs require owner-authorized registration; no automatic backfill is supplied. No SQL migration is added.
 
 Known limits for the complete set: The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. The second reference provider's portable composition and the provider-profile refactor are deferred to a later set. Provider qualification is limited to fake-client proof; no live provider qualification is claimed. The starter still selects sandbox payments by default.
-
-## [0.41.0]
-
-- Publishable on the npm `latest` dist-tag as `0.41.0`, from tag
-  `openlup-platform-v0.41.0`.
-
-- Add the experimental `payments/testing` subpath with the existing conformance runner and a provider-neutral scripted transport fake. Optional safety fixtures exercise capability/refusal parity, network ambiguity, signed webhook replay, invalid money, partial amounts and chargebacks without live access. Existing adapter behavior and imports remain unchanged.
-- Reserve the measured platform artifact budget for the next payments implementation part; individual feature rows share these caps.
-Migration: `runPaymentAdapterConformance` now takes `readonly PaymentAdapterTestSubject[]`. That named type is the previous subject with its `verification` fixtures plus an optional `safety` member, so existing callers compile and run unchanged and need no action.

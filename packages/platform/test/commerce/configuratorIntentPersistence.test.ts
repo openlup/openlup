@@ -320,3 +320,43 @@ it("injects the host phone/country normalizer before stamping route identity", a
   expect(normalizePhoneToE164).toHaveBeenCalledExactlyOnceWith("123456789", "AA");
   expect(sentIntent(rpc)).toEqual({ ...request, contact: { phone: "+99123456789", opaque: true }, authenticatedUserId: CLIENT_ID });
 });
+
+import { configuratorIntentReplayFingerprint } from "../../src/commerce/server/configuratorIntentReplayFingerprint.js";
+describe.each(["intent", "command"] as const)("fresh %s cadence admission and read-only historical replay", kind => {
+  function fixture(cadenceDays: number, completed = false) {
+    const payload = kind === "intent" ? { ...(intentWithPhone("123456789") as object), cadenceDays }
+      : { ...commandWithPhone("123456789", "AA"), mode: "subscription", cadenceDays };
+    const canonical = kind === "intent" ? { ...payload, contact: { ...(payload as { contact: object }).contact, phone: "+99123456789" } }
+      : { ...payload, customer: { ...(payload as CheckoutCommandV1).customer, phone: "+99123456789" } };
+    const row = { response_payload: completedPayload(), request_fingerprint: configuratorIntentReplayFingerprint({ ...canonical, authenticatedUserId: SUBJECT_ID }) as string | null };
+    const selection = selectClient({ data: completed ? [row] : [], error: null });
+    const rpc = vi.fn(async () => ({ data: completedPayload(), error: null }));
+    const normalizePhoneToE164 = vi.fn(() => "+99123456789");
+    const port = createGenericPersistence(asClient({ from: selection.from, rpc }), { ...persistenceBindings, normalizePhoneToE164 }, { authenticatedUserId: SUBJECT_ID });
+    const run = () => kind === "intent" ? port.persistIntent(payload) : port.persistCheckoutCommand(payload as CheckoutCommandV1);
+    return { ...selection, rpc, row, normalizePhoneToE164, run };
+  }
+  it.each([0, 3661])("refuses fresh %i without a write RPC or normalizer call", async days => {
+    const f = fixture(days);
+    await expect(f.run()).rejects.toMatchObject({ name: "ConfiguratorIntentPersistenceConflictError",
+      details: { reason: "cadence_limit_exceeded", cadenceDays: days, maximumCadenceDays: 3660 } });
+    expect(f.rpc).not.toHaveBeenCalled(); expect(f.normalizePhoneToE164).not.toHaveBeenCalled();
+    expect(f.builder.eq).toHaveBeenCalledWith("status", "completed");
+  });
+  it.each([1, 3660])("admits fresh %i through the existing write path", async days => {
+    const f = fixture(days); await f.run();
+    expect(f.rpc).toHaveBeenCalledExactlyOnceWith("commerce_configurator_persist_intent", { p_intent: expect.objectContaining({ cadenceDays: days, authenticatedUserId: SUBJECT_ID }) });
+    expect(f.from).not.toHaveBeenCalled();
+  });
+  it("authenticates completed 3661 replay from one read snapshot without any RPC", async () => {
+    const f = fixture(3661, true);
+    await expect(f.run()).resolves.toMatchObject({ replayed: true });
+    expect(f.rpc).not.toHaveBeenCalled();
+    expect(f.select).toHaveBeenCalledWith("response_payload, request_fingerprint");
+  });
+  it.each([null, "mismatched"])("refuses missing or conflicting fingerprint %s without entering the writer", async fingerprint => {
+    const f = fixture(3661, true); f.row.request_fingerprint = fingerprint;
+    await expect(f.run()).rejects.toBeInstanceOf(ConfiguratorIntentPersistenceConflictError);
+    expect(f.rpc).not.toHaveBeenCalled();
+  });
+});

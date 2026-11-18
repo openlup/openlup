@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CHECKOUT_COMMAND_V1 } from "../../src/commerce/index.js";
 import { CommerceRuntimeConflictError, CommerceRuntimePersistenceError } from "../../src/commerce/index.js";
+import { createPostgresNativeCheckoutPersistence } from "../../src/commerce/server/native-checkout/index.js";
 import { createCommerceRuntimeService, makeOrderPort, makeInventoryPort, makePaymentPort, makeReadinessPort, quoteSnapshot, CLIENT_ID, ADDRESS_ID } from "./checkoutTestFixtures.js";
 function fixture(currency = "XTS") {
   const quote = quoteSnapshot({ amountMinor: 1490, currency });
@@ -10,9 +11,36 @@ function fixture(currency = "XTS") {
   const runtime = { orderPort: makeOrderPort(), inventoryPort: makeInventoryPort(), paymentPort: makePaymentPort(), readinessPort: makeReadinessPort() };
   const deps = { ...runtime, quotePort, persistencePort, orderDraftPort, resolveExecutionPort: vi.fn(() => ({ execute })) };
   const command = { version: CHECKOUT_COMMAND_V1 as typeof CHECKOUT_COMMAND_V1, idempotencyKey: "command-a", mode: "subscription" as const, cadenceDays: 21, lines: [{ sku: "ITEM-A", quantity: 14 }], customer: { firstName: "Buyer", lastName: "Example", email: "buyer@example.test", phone: "123456789" }, shippingAddress: { street: "Example 12", postalCode: "00000", city: "Example", country: "AA" }, currency: "XTS" };
-  return { deps, command, execute };
+  return { deps, command, execute, quote };
 }
 describe("neutral checkout command", () => {
+  it("replays a completed 21-day checkout through the native draft writer after quoting", async () => {
+    const f = fixture();
+    f.quote.quote.context = { mode: "subscription", cadenceDays: 21, promoCodes: [] };
+    f.deps.persistencePort.persistCheckoutCommand.mockResolvedValue({ idempotencyKey: f.command.idempotencyKey,
+      clientId: CLIENT_ID, shippingAddressId: ADDRESS_ID, subjectId: null, replayed: true });
+    const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: {
+      contractVersion: "commerce.v0", orderDraft: { orderId: `order_${CLIENT_ID}`, status: "draft",
+        paymentStatus: "not_started", idempotencyKey: f.command.idempotencyKey, quoteSnapshot: f.quote, replayed: true },
+    } }] }));
+    const native = createPostgresNativeCheckoutPersistence({ query });
+    const orderDraftPort = { createOrderDraft: vi.fn(native.createOrderDraft) };
+    const result = await createCommerceRuntimeService({ ...f.deps, orderDraftPort })
+      .startCheckoutCommand({ command: f.command, paymentProvider: "hidden_rehearsal" });
+
+    expect(result.persistence.replayed).toBe(true);
+    expect(result.quoteSnapshot.quote.context?.cadenceDays).toBe(21);
+    expect(f.deps.quotePort.createQuote).toHaveBeenCalledOnce();
+    expect(f.deps.persistencePort.persistCheckoutCommand).toHaveBeenCalledOnce();
+    await expect(orderDraftPort.createOrderDraft.mock.results[0].value).resolves.toMatchObject({ orderDraft: { replayed: true } });
+    expect(query).toHaveBeenCalledOnce();
+    expect(query.mock.calls[0][0]).toContain("public.commerce_create_promoted_order_draft_with_outbox");
+    expect(query.mock.calls[0][1]?.[0]).toBe(f.command.idempotencyKey);
+    expect(f.deps.quotePort.createQuote.mock.invocationCallOrder[0])
+      .toBeLessThan(f.deps.persistencePort.persistCheckoutCommand.mock.invocationCallOrder[0]);
+    expect(f.deps.persistencePort.persistCheckoutCommand.mock.invocationCallOrder[0])
+      .toBeLessThan(query.mock.invocationCallOrder[0]);
+  });
   it("uses the shared saga once, propagates its captured results and settles only rehearsal success", async () => {
     const f = fixture(); const result = await createCommerceRuntimeService(f.deps).startCheckoutCommand({ command: f.command, paymentProvider: "hidden_rehearsal" });
     expect(f.deps.quotePort.createQuote).toHaveBeenCalledOnce(); expect(f.deps.persistencePort.persistCheckoutCommand).toHaveBeenCalledOnce(); expect(f.deps.orderDraftPort.createOrderDraft).toHaveBeenCalledOnce(); expect(f.deps.orderPort.finalizeOrderForCheckout).toHaveBeenCalledOnce(); expect(f.execute).toHaveBeenCalledOnce(); expect(f.deps.paymentPort.applyResult).toHaveBeenCalledOnce();

@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import type { PromotionRow } from "@openlup/core/promo";
 import { selectAcquisitionTerms, assertAcquisitionTermsCapability, AcquisitionTermsError, resolvedAcquisitionTermsSchema,
@@ -86,6 +87,15 @@ export function createPostgresNativeCheckoutPersistence(
       };
       let response: unknown;
       try {
+        // A historical command must reach the SQL writer's fingerprint and
+        // ownership checks. Receipt existence never authorizes replay by itself.
+        const cadenceDays = quote.context?.cadenceDays;
+        if (typeof cadenceDays === "number" && cadenceDays > MAX_CADENCE_DAYS) {
+          const prior = await executor.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [input.idempotencyKey]);
+          if (!prior.rows.length) throw new CommerceOrderDraftPersistenceError(
+            `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days for a new order draft`,
+            { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+        }
         // Serialize JSON explicitly: pg treats an unencoded JS array as a
         // PostgreSQL array, not JSON. No gateway or driver coercion is assumed.
         const result = await executor.query(`SELECT public.commerce_create_promoted_order_draft_with_outbox(
@@ -93,6 +103,7 @@ export function createPostgresNativeCheckoutPersistence(
         [input.idempotencyKey, JSON.stringify(input.quoteSnapshot), JSON.stringify(draft), clientId]);
         response = result.rows[0]?.response;
       } catch (error) {
+        if (error instanceof CommerceOrderDraftPersistenceError) throw error;
         const { code, message } = (error && typeof error === "object" ? error : {}) as { code?: string; message?: string };
         if (code === "23505" || code === "40001") {
           throw new CommerceOrderDraftConflictError(undefined, { code });
@@ -142,6 +153,13 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
         // The existing writer owns replay, changed-input and ownership validation.
         const replay = (await db.query("SELECT 1 FROM public.commerce_order_draft_receipts WHERE idempotency_key=$1", [key])).rows.length > 0;
         const context = request.quoteSnapshot.quote.context as Record<string, unknown> | undefined;
+        const cadenceDays = context?.cadenceDays;
+        if (!replay && typeof cadenceDays === "number" && (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS)) {
+          // Refuse before acquisition policy, eligibility or catalogue owners.
+          throw new CommerceOrderDraftPersistenceError(
+            `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days for a new order draft`,
+            { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+        }
         if (!replay && context?.mode === "subscription") {
           const policy = options.financialPolicy;
           const read = async () => (await db.query("SELECT promotion_id,definition,active FROM public.commerce_promotion_definitions ORDER BY promotion_id")).rows;

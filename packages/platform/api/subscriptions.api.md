@@ -1520,6 +1520,7 @@ export { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, c
 export type { AutomaticRenewalRunStatus, AutomaticRenewalRunResult, AutomaticRenewalRunDeps, AutomaticRenewalPolicy } from "./automaticRenewal.js";
 export { createPostgresRenewalStore } from "./postgresRenewalStore.js";
 export type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export { NativeRenewalCadenceError } from "./nativeRenewalCadence.js";
 export { createNativeRenewalCodec } from "./nativeRenewalCodec.js";
 export { createPostgresPurchaseRenewalWriter, activateNativePurchaseWithRenewal } from "./nativePurchaseRenewal.js";
 export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePurchaseRenewal.js";
@@ -1650,6 +1651,18 @@ export declare function activateNativePurchaseWithRenewal(executor: Subscription
     activation: Record<string, unknown>;
     renewalAttachment: "complete";
 }>;
+```
+## dist/subscriptions/nativeRenewalCadence.d.ts
+
+```ts
+/** Fresh execution only; historical terms and frozen receipts retain integer representation. */
+export declare class NativeRenewalCadenceError extends Error {
+    readonly cadenceDays: number;
+    readonly reason = "cadence_limit_exceeded";
+    readonly maximumCadenceDays = 3660;
+    constructor(cadenceDays: number);
+}
+export declare function assertNativeRenewalCadence(cadenceDays: number): void;
 ```
 ## dist/subscriptions/nativeRenewalCodec.d.ts
 

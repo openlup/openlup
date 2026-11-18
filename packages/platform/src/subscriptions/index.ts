@@ -10,6 +10,7 @@ export { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, c
 export type { AutomaticRenewalRunStatus, AutomaticRenewalRunResult, AutomaticRenewalRunDeps, AutomaticRenewalPolicy } from "./automaticRenewal.js";
 export { createPostgresRenewalStore } from "./postgresRenewalStore.js";
 export type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export { NativeRenewalCadenceError } from "./nativeRenewalCadence.js";
 export { createNativeRenewalCodec } from "./nativeRenewalCodec.js";
 export { createPostgresPurchaseRenewalWriter, activateNativePurchaseWithRenewal } from "./nativePurchaseRenewal.js";
 export type { NativeRenewalPurchaseFacts, SandboxMethodHealth } from "./nativePurchaseRenewal.js";

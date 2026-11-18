@@ -55,6 +55,7 @@ export * from "./quantities.js";
  * @experimental
  */
 export type CatalogQuantityDimension = "mass" | "volume" | "count";
+/** @experimental */
 export interface CatalogQuantity {
     dimension: CatalogQuantityDimension;
     unscaled: string;

@@ -1,5 +1,7 @@
 import type { RenewalDue, RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule, RenewalStorePort } from "./contracts/renewal.js";
 import { graduateNativeRenewal, nativeRetainedTerms } from "./nativeRenewalTerms.js";
+import { NativeRenewalCadenceError } from "./nativeRenewalCadence.js";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 
 /** Transaction-bound executors may be supplied; no driver, environment or account is selected here. */
 export interface SubscriptionQueryExecutor {
@@ -60,6 +62,10 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
   }
   async function response(sql: string, values: unknown[]) {
     return codec.readback(subscriptionRecord((await executor.query(sql, values)).rows[0]?.response));
+  }
+  async function readRenewal(identityKey: string) {
+    const value = (await executor.query("SELECT public.subscription_read_renewal($1::text) AS response", [identityKey])).rows[0]?.response;
+    return value == null ? null : codec.readback(subscriptionRecord(value));
   }
   return {
     transactions: { graph: "native", prepare: "cycle_order_items_settlement_reservation_attempt",
@@ -123,13 +129,17 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
         const snapshot = codec.withDestination!(input.snapshot, String(document.destinationId));
         return store.claimDue({ ...input, snapshot });
       });
+      const cadenceDays = input.snapshot.templateSnapshot.cadenceDays;
+      if (cadenceDays > MAX_CADENCE_DAYS) {
+        // Readability of an old frozen wire does not admit a new operation.
+        // SQL still owns fingerprint validation when an operation already exists.
+        const prior = await readRenewal(codec.identity(input.snapshot));
+        if (!prior) throw new NativeRenewalCadenceError(cadenceDays);
+      }
       return response(`SELECT public.subscription_claim_due_renewal($1::text,$2::text,$3::jsonb,$4::text,$5::integer,$6::timestamptz) AS response`,
         [codec.identity(input.snapshot), codec.fingerprint(input.snapshot), JSON.stringify(codec.encode(input.snapshot)), input.workerId, input.leaseSeconds ?? 300, input.now]);
     },
-    async readRenewal(identityKey) {
-      const value = (await executor.query("SELECT public.subscription_read_renewal($1::text) AS response", [identityKey])).rows[0]?.response;
-      return value == null ? null : codec.readback(subscriptionRecord(value));
-    },
+    readRenewal,
     async refuseBeforePayment(input) {
       return response("SELECT public.subscription_refuse_renewal_preflight($1::uuid,$2::uuid,$3::text,$4::timestamptz) AS response",
         [input.operationId, input.claimToken, input.reason, input.occurredAt]);

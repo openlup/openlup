@@ -2,13 +2,17 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 152,
-        "exactTailCount": 42,
-        "objectInventorySha256": "12c51a344ea5287666b255da4140d54f8a3c89b937318df7698603a1f4e794e3",
+        "count": 153,
+        "exactTailCount": 43,
+        "objectInventorySha256": "88c8209bf4354cdd764af1668f2ee3e3ad010b4ac719177f6f7268b55793c3dc",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
-            "sha256": "790b939a838bbaadc3caafeb4cb985c43bd9b0ccc822d9048bd8d00ce4811b59"
+            "file": "db/platform/migrations/20261122200000_catalog_publication.sql",
+            "sha256": "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6"
+          },
+          {
+            "file": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+            "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8"
           },
           {
             "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
@@ -617,13 +621,17 @@
         ]
       },
       "bootstrap": {
-        "count": 157,
-        "exactTailCount": 42,
-        "objectInventorySha256": "06624ad89ad041e6ef2d40434b0dd6e3532cf1a84c28f943fc101985b3d527cf",
+        "count": 158,
+        "exactTailCount": 43,
+        "objectInventorySha256": "409f9c6dfbd4617c2166ab01af114a61113287678652bd8691dbc4b72c9d8787",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
-            "sha256": "790b939a838bbaadc3caafeb4cb985c43bd9b0ccc822d9048bd8d00ce4811b59"
+            "file": "db/platform/migrations/20261122200000_catalog_publication.sql",
+            "sha256": "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6"
+          },
+          {
+            "file": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+            "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8"
           },
           {
             "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
@@ -1252,13 +1260,17 @@
         ]
       },
       "separate": {
-        "count": 157,
-        "exactTailCount": 42,
-        "objectInventorySha256": "b4fd3b25ff502b14c8a1122f230afc964406ac52593f68b896ef2ceadb296a99",
+        "count": 158,
+        "exactTailCount": 43,
+        "objectInventorySha256": "3a5c736534c5b5ff0f50071b30d3c6919b8b49ca73d02c2ebfb9d03ee6c02183",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
-            "sha256": "790b939a838bbaadc3caafeb4cb985c43bd9b0ccc822d9048bd8d00ce4811b59"
+            "file": "db/platform/migrations/20261122200000_catalog_publication.sql",
+            "sha256": "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6"
+          },
+          {
+            "file": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+            "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8"
           },
           {
             "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
@@ -1887,13 +1899,17 @@
         ]
       },
       "admin-managed": {
-        "count": 156,
-        "exactTailCount": 42,
-        "objectInventorySha256": "bd619cbf94c23547dffac310ba8e85ecc6b70b584ebfe165dd81f831222ad584",
+        "count": 157,
+        "exactTailCount": 43,
+        "objectInventorySha256": "f435d49593693d68433fce3b46edafd454a129342a5055b7bf8d4d97a4d8107a",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
-            "sha256": "790b939a838bbaadc3caafeb4cb985c43bd9b0ccc822d9048bd8d00ce4811b59"
+            "file": "db/platform/migrations/20261122200000_catalog_publication.sql",
+            "sha256": "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6"
+          },
+          {
+            "file": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+            "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8"
           },
           {
             "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",
@@ -2518,13 +2534,17 @@
         ]
       },
       "admin-operator": {
-        "count": 156,
-        "exactTailCount": 42,
-        "objectInventorySha256": "b0c5cb9529242b9e19a924b9f07093823357005820c577dced0ab618c5a63d2b",
+        "count": 157,
+        "exactTailCount": 43,
+        "objectInventorySha256": "bbbbe98048b61319027cea1686b7c12d0e53cacbd8ec456d9c02f61eba10132f",
         "tail": [
           {
-            "file": "db/platform/migrations/20261122190000_catalog_publication.sql",
-            "sha256": "790b939a838bbaadc3caafeb4cb985c43bd9b0ccc822d9048bd8d00ce4811b59"
+            "file": "db/platform/migrations/20261122200000_catalog_publication.sql",
+            "sha256": "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6"
+          },
+          {
+            "file": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+            "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8"
           },
           {
             "file": "db/platform/migrations/20261122180000_catalog_base_price_writer.sql",

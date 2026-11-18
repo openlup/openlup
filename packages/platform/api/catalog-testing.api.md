@@ -59,6 +59,7 @@ export interface CatalogAttributeProjectionValue {
     canonical_unit: string | null;
     canonical_value: string | null;
 }
+/** @experimental */
 declare const validatedAttributes: unique symbol;
 /** @experimental */
 export type CatalogAttributeValidation = {
@@ -691,22 +692,28 @@ export interface CatalogPackInput {
         version: number;
     }[];
 }
+/** @experimental */
 type Profile<P extends CatalogPackInput> = P extends {
     subscriptionProfiles: readonly (infer R)[];
 } ? R : never;
+/** @experimental */
 type ProfileKeys<P extends CatalogPackInput> = Profile<P> extends infer R ? R extends {
     key: infer K extends string;
 } ? K : never : never;
+/** @experimental */
 type ProfileVersions<P extends CatalogPackInput> = Profile<P> extends infer R ? R extends {
     version: infer V extends number;
 } ? V : never : never;
 /** Keep authoring inputs closed, including referenced objects and nested union members. */
+/** @experimental */
 type Exact<Input, Shape> = unknown extends Shape ? Input : Input extends (...args: never[]) => unknown ? Input extends Shape ? Input : never : Input extends readonly unknown[] ? Shape extends readonly (infer Item)[] ? {
     [I in keyof Input]: Exact<Input[I], Item>;
 } : never : Input extends object ? Shape extends unknown ? Input extends Shape ? {
     [K in keyof Input]: K extends keyof Shape ? Exact<Input[K], Shape[K]> : never;
 } : never : never : Input extends Shape ? Input : never;
+/** @experimental */
 type Units<T extends CatalogProductTypeInput> = T["units"][number]["code"];
+/** @experimental */
 type QuantityIn<T extends CatalogProductTypeInput, Codes extends string> = T["units"][number] extends infer U ? U extends {
     code: Codes;
     dimension: CatalogQuantity["dimension"];
@@ -714,17 +721,21 @@ type QuantityIn<T extends CatalogProductTypeInput, Codes extends string> = T["un
     unit: U["code"];
     dimension: U["dimension"];
 } : never : never;
+/** @experimental */
 type UnitCodesFor<T extends CatalogProductTypeInput, D extends CatalogQuantity["dimension"]> = T["units"][number] extends infer U ? U extends {
     code: string;
     dimension: D;
 } ? U["code"] : never : never;
+/** @experimental */
 type AttributeKeys<T extends CatalogProductTypeInput> = T extends {
     attributes: readonly (infer A)[];
 } ? A extends {
     key: infer K extends string;
     scope: "variant";
 } ? K : never : never;
+/** @experimental */
 type Dimension<T extends CatalogProductTypeInput> = T["dimensions"][number];
+/** @experimental */
 type TypedOption<D, T extends CatalogProductTypeInput> = D extends {
     kind: "choice";
     values: readonly string[];
@@ -748,9 +759,11 @@ type TypedOption<D, T extends CatalogProductTypeInput> = D extends {
     value: boolean;
 } : CatalogOptionValue;
 /** Recursive view of values frozen by defineCatalogPack; callbacks keep their signatures. */
+/** @experimental */
 type CatalogReadonly<T> = T extends (...args: never[]) => unknown ? T : T extends object ? {
     readonly [K in keyof T]: CatalogReadonly<T[K]>;
 } : T;
+/** @experimental */
 type SelectedOptions<T extends CatalogProductTypeInput, Selected extends string> = [Extract<Dimension<T>, {
     key: Selected;
 }>] extends [never] ? Readonly<Record<string, never>> : {
@@ -758,6 +771,7 @@ type SelectedOptions<T extends CatalogProductTypeInput, Selected extends string>
         key: Selected;
     }> as D["key"]]: TypedOption<D, T>;
 };
+/** @experimental */
 type DraftForType<T extends CatalogProductTypeInput, Selected extends string = Dimension<T>["key"]> = Omit<CatalogReadonly<CatalogDraftPayload>, "product" | "skus"> & {
     product: Omit<CatalogReadonly<CatalogDraftPayload["product"]>, "type" | "dimensions"> & {
         type: Pick<T, "key" | "version">;
@@ -774,12 +788,15 @@ type DraftForType<T extends CatalogProductTypeInput, Selected extends string = D
  * @experimental
  */
 export type CatalogPackDraft<P extends CatalogPackInput, Selected extends string = P["types"][number]["dimensions"][number]["key"]> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? DraftForType<T, Selected> : never : never;
+/** @experimental */
 type DraftInput = CatalogReadonly<CatalogDraftPayload>;
+/** @experimental */
 type Attribute<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = T extends {
     attributes: readonly (infer A)[];
 } ? Extract<A, {
     scope: Scope;
 }> : never;
+/** @experimental */
 type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
     kind: "list";
     item: infer I;
@@ -809,6 +826,7 @@ type AttributeValue<V, T extends CatalogProductTypeInput> = V extends {
 } ? {
     readonly [K in V["requiredLocales"][number]]: string;
 } : unknown) : V extends CatalogAttributeValueType | CatalogAttributeScalarType ? string : never;
+/** @experimental */
 type RequiredAttribute<A> = A extends {
     required: true;
 } ? A : A extends {
@@ -816,6 +834,7 @@ type RequiredAttribute<A> = A extends {
         min: infer N extends number;
     };
 } ? number extends N ? never : N extends 0 ? never : A : never;
+/** @experimental */
 type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = {
     readonly [A in Attribute<T, Scope> as A extends {
         key: infer K extends string;
@@ -829,17 +848,21 @@ type TypedAttributes<T extends CatalogProductTypeInput, Scope extends "product" 
         valueType: infer V;
     } ? AttributeValue<V, T> : never;
 };
+/** @experimental */
 type AttributeField<T extends CatalogProductTypeInput, Scope extends "product" | "variant"> = [RequiredAttribute<Attribute<T, Scope>>] extends [never] ? {
     attributes?: TypedAttributes<T, Scope>;
 } : {
     attributes: TypedAttributes<T, Scope>;
 };
+/** @experimental */
 type DraftV2ForType<T extends CatalogProductTypeInput, Selected extends string> = {
     schemaVersion: 2;
     product: Omit<DraftForType<T, Selected>["product"], "attributes"> & AttributeField<T, "product">;
     skus: readonly (Omit<DraftForType<T, Selected>["skus"][number], "priceRef" | "attributes"> & AttributeField<T, "variant"> & Pick<CatalogReadonly<CatalogDraftPayloadV2["skus"][number]>, "priceOperations">)[];
 };
+/** @experimental */
 type AnyDraftInput = DraftInput | CatalogReadonly<CatalogDraftPayloadV2>;
+/** @experimental */
 type SelectedDraft<P extends CatalogPackInput, D extends AnyDraftInput> = P["types"][number] extends infer T ? T extends CatalogProductTypeInput ? D["product"]["type"] extends Pick<T, "key" | "version"> ? (D extends {
     schemaVersion: 2;
 } ? DraftV2ForType<T, D["product"]["dimensions"][number]> : DraftForType<T, D["product"]["dimensions"][number]>) & {
@@ -866,6 +889,7 @@ type SelectedDraft<P extends CatalogPackInput, D extends AnyDraftInput> = P["typ
         } : unknown : unknown);
     };
 } : never : never : never;
+/** @experimental */
 type AttributeReferences<V, T extends CatalogProductTypeInput> = V extends {
     kind: "quantity";
 } ? V & {
@@ -878,18 +902,21 @@ type AttributeReferences<V, T extends CatalogProductTypeInput> = V extends {
 } ? V & {
     item: AttributeReferences<Item, T>;
 } : V;
+/** @experimental */
 type AttributeInput<A, T extends CatalogProductTypeInput> = A extends {
     key: string;
     valueType: unknown;
 } ? string extends A["key"] ? never : A & {
     valueType: AttributeReferences<A["valueType"], T>;
 } : never;
+/** @experimental */
 type DimensionInput<D, T extends CatalogProductTypeInput> = D extends {
     kind: "quantity";
     dimension: infer K extends CatalogQuantity["dimension"];
 } ? D & {
     units: readonly UnitCodesFor<T, K>[];
 } : D;
+/** @experimental */
 type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInput> = T extends unknown ? string extends T["key"] | Units<T> ? never : number extends T["version"] ? never : T & {
     key: `${P["namespace"]}:${string}`;
     netContentUnits: readonly Units<T>[];
@@ -903,6 +930,7 @@ type TypeReferences<P extends CatalogPackInput, T extends CatalogProductTypeInpu
         attributeKey: AttributeKeys<T>;
     }[];
 } : never;
+/** @experimental */
 type PackReferences<P extends CatalogPackInput> = string extends P["namespace"] | P["taxClasses"][number]["key"] | ProfileKeys<P> ? never : number extends ProfileVersions<P> ? never : {
     types: {
         readonly [I in keyof P["types"]]: P["types"][I] extends CatalogProductTypeInput ? TypeReferences<P, P["types"][I]> : P["types"][I];
@@ -1576,6 +1604,7 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         code: string;
         dimension: CatalogQuantityDimension;
         integral: boolean;
+        /** @experimental */
         factor?: CatalogUnitFactor;
     }[];
     netContentUnits: string[];
@@ -1593,15 +1622,22 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
         key: string;
         kind: "boolean";
     })[];
+    /** @experimental */
     attributes?: readonly AttributeDefinition[];
+    /** @experimental */
     axes?: readonly CatalogAxisDefinition[];
+    /** @experimental */
     validatorRef?: string;
+    /** @experimental */
     subscriptionProfileRef?: CatalogProductTypeRef;
+    /** @experimental */
     taxClass?: string;
+    /** @experimental */
     labels?: Readonly<Record<string, string>>;
     validateContent: (content: unknown) => readonly CatalogDraftIssue[];
 }
 /** Readonly authoring counterpart; the existing mutable definition API stays compatible. */
+/** @experimental */
 export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units" | "netContentUnits" | "dimensions"> & {
     units: readonly CatalogProductTypeDefinition["units"][number][];
     netContentUnits: readonly string[];

@@ -12,6 +12,7 @@ ALTER TABLE public.catalog_sku_identifiers ADD COLUMN original_value text;
 ALTER TABLE public.catalog_sku_identifiers ADD COLUMN display_label text;
 ALTER TABLE public.catalog_sku_identifiers ADD COLUMN source_ref text;
 CREATE UNIQUE INDEX catalog_sku_identifiers_global_gtin_key ON public.catalog_sku_identifiers((CAST(normalized_value AS numeric))) WHERE identifier_kind = 'gtin';
+CREATE UNIQUE INDEX catalog_skus_publication_combination_key ON public.catalog_skus(product_id,combination_digest) WHERE combination_digest IS NOT NULL;
 CREATE UNIQUE INDEX catalog_draft_revisions_product_revision_key ON public.catalog_draft_revisions(product_id,draft_id,revision);
 CREATE TABLE public.catalog_publications (
  id uuid PRIMARY KEY,

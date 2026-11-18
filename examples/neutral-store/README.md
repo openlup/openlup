@@ -266,6 +266,9 @@ sends the configured Host; any external health probe must also send that Host.
 
 `owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts` own typed
 configuration, localized general copy and the named presentation fragments.
+Domain inputs include `owned/renewal.config.ts` (cancellation offers and retry
+timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
+[the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
 `./lifecycle verify` and `./lifecycle upgrade` delegate to the installed public
 CLI when it exists. They refuse explicitly before that capability is shipped.
@@ -510,8 +513,9 @@ cannot exceed the native destination bounds. Browser fields use those same limit
 
 The owned `subscriptionOffers` input defines subscription cadences, defaults and
 per-SKU quantity rules; `offer.cadenceDays` is a derived UI projection. Configured
-days are whole numbers from 1 through 90. The starter refuses values above 90
-with `starter_database_cadence_limit` until the historical SQL limit is widened.
+days are whole numbers from 1 through 3660, using `MAX_CADENCE_DAYS` from
+`@openlup/core/subscription`. Apply the complete native migration catalogue,
+including `20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
 Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and seeded unit prices fit
 PostgreSQL integers; each offered mode must have a positive seeded unit price.

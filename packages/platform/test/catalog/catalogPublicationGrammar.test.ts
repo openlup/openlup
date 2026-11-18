@@ -4,7 +4,7 @@ import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, compileCatalogPublication, publicationDigest } from "../../src/catalog/publicationValidation.js";
+import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, catalogPublishedProductSchema, compileCatalogPublication, publicationDigest } from "../../src/catalog/publicationValidation.js";
 import { input, registry } from "./fixtures/publicationInput.js";
 
 // Conservative aliases cover shared target grammar/identity predicates. Each
@@ -487,4 +487,65 @@ it.each(witnesses)("%s", () => {
   ]) expect(validateCatalogDraft(value as typeof v2, registry).valid).toBe(false);
   expect(() => createCatalogProductTypeRegistry([{ ...data.definition, version: 0 }])).toThrow();
   expect(() => createCatalogProductTypeRegistry([data.definition, data.definition])).toThrow();
+});
+
+it("cycle1 retained fact scalar and roster boundaries", () => {
+  const compiled = compileCatalogPublication(input());
+  function skuPatch(change: (sku: typeof compiled.skus[number]) => void, accepts: boolean) {
+    const sku = structuredClone(compiled.skus[0]); change(sku);
+    expect(catalogPublishedSkuSchema.safeParse(sku).success).toBe(accepts);
+  }
+  function productPatch(change: (product: typeof compiled.product) => void, accepts: boolean) {
+    const product = structuredClone(compiled.product); change(product);
+    expect(catalogPublishedProductSchema.safeParse(product).success).toBe(accepts);
+  }
+  for (const [field, maximum] of [["code",160],["title",500],["logisticsRef",240]] as const)
+    for (const length of [0,1,maximum-1,maximum,maximum+1]) skuPatch(sku => { sku[field] = "a".repeat(length); }, length>=1 && length<=maximum);
+  for (const value of [0,1,2,2_147_483_646,2_147_483_647,2_147_483_648,1.5]) {
+    const accepts = Number.isInteger(value) && value>=1 && value<=2_147_483_647;
+    skuPatch(sku => { sku.minQuantity=value; },accepts);
+    skuPatch(sku => { sku.source.revision=value; },accepts);
+    productPatch(product => { product.source.revision=value; },accepts);
+  }
+  for (const field of ["commandKey"] as const) for(const length of [0,1,239,240,241]) {
+    skuPatch(sku => {sku.source[field]="a".repeat(length);},length>=1&&length<=240);
+    productPatch(product => {product.source[field]="a".repeat(length);},length>=1&&length<=240);
+  }
+  for(const [field,maximum] of [["name",500],["slug",null]] as const) for(const length of [0,1,499,500,501])
+    productPatch(product=>{product[field]="a".repeat(length);},length>=1&&(maximum===null||length<=maximum));
+  for(const count of [0,1,15,16,17]) productPatch(product=>{product.axes=Array.from({length:count},(_,i)=>`axis${i}`);},count<=16);
+  productPatch(product=>{product.axes=["axis","axis"];},false);
+  for(const count of [0,1,31,32,33]) skuPatch(sku=>{sku.assetRefs=Array.from({length:count},(_,i)=>`example:asset-${i}`);},count<=32);
+  for(const [field,maximum] of [["scheme",240],["issuer",240],["value",128],["label",500],["sourceRef",240]] as const)
+    for(const length of [0,1,maximum-1,maximum,maximum+1]) skuPatch(sku=>{
+      const identifier=sku.identifiers[0];identifier.scheme="example:identifier";identifier.isPrimary=false;identifier[field]="a".repeat(length);
+    },length>=1&&length<=maximum);
+  for(const value of [0,1,2,999_998,999_999,1_000_000,2.5]) skuPatch(sku=>{
+    sku.identifiers[0].packagingLevel="case";sku.identifiers[0].isPrimary=false;sku.identifiers[0].quantity=value;
+  },Number.isInteger(value)&&value>=2&&value<=999_999);
+  for(const value of [0,1,2]) skuPatch(sku=>{sku.identifiers[0].quantity=value;},value===1);
+  skuPatch(sku=>{sku.memberships=[{offerVersion:"a",admitted:false},{offerVersion:"b",admitted:true}];},true);
+  skuPatch(sku=>{sku.memberships=[{offerVersion:"b",admitted:false},{offerVersion:"a",admitted:true}];},false);
+  skuPatch(sku=>{sku.memberships=[{offerVersion:"a",admitted:false},{offerVersion:"a",admitted:true}];},false);
+  skuPatch(sku=>{sku.identifiers.push({...sku.identifiers[0],value:"4006381333931"});},false);
+  for(const field of ["logisticsRef"] as const) for(const value of [" a","a ","\ta","a\n"]) skuPatch(sku=>{sku[field]=value;},false);
+  const ref={skuId:compiled.skus[0].id,revisionId:"50000000-0000-4000-8000-000000000001",revision:1,digest:"a".repeat(64)};
+  for(const revision of [0,1,2_147_483_647,2_147_483_648]) expect(catalogPublicationManifestSchema.safeParse({schemaVersion:2,product:compiled.product,skus:[{...ref,revision}]}).success).toBe(revision>=1&&revision<=2_147_483_647);
+  for(const skus of [[],[ref,ref],[{...ref,skuId:"20000000-0000-4000-8000-000000000002"},ref]])
+    expect(catalogPublicationManifestSchema.safeParse({schemaVersion:2,product:compiled.product,skus}).success).toBe(false);
+});
+
+it("cycle1 publication envelope exact UTF-8 boundary", () => {
+  const value = { text: "é" }, text = canonicalCatalogDraftJson(value), bytes = Buffer.byteLength(text);
+  expect(() => publicationDigest(value, bytes - 1)).toThrow("catalog_publication_envelope_too_large");
+  expect(publicationDigest(value, bytes)).toBe(publicationDigest(value, bytes + 1));
+});
+
+it("cycle1 primary identifier keeps independent scheme and packaging guards", () => {
+  const sku = compileCatalogPublication(input()).skus[0];
+  expect(catalogPublishedSkuSchema.safeParse(sku).success).toBe(true);
+  const foreignScheme = structuredClone(sku); foreignScheme.identifiers[0].scheme = "example:identifier";
+  expect(catalogPublishedSkuSchema.safeParse(foreignScheme).success).toBe(false);
+  const primaryCase = structuredClone(sku); primaryCase.identifiers[0].packagingLevel = "case"; primaryCase.identifiers[0].quantity = 2;
+  expect(catalogPublishedSkuSchema.safeParse(primaryCase).success).toBe(false);
 });

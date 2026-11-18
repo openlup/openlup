@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { CatalogProductTypeInput } from "./contracts/productTypes.js";
 /** Labels and callbacks are never definition identity. Runtime schemas bound the metadata. */
+/** @experimental */
 export function catalogDefinitionJson(definition: CatalogProductTypeInput): string {
   const issue = catalogProductTypeIssues([definition])[0];
   if (issue) throw Object.assign(new Error("invalid_catalog_type_definition"), { issue });

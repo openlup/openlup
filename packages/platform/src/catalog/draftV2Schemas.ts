@@ -25,9 +25,11 @@ const scalar = z.union([z.string(), z.boolean(), catalogQuantitySchema, catalogA
 const attributes = z.record(z.string(), z.union([scalar, z.array(scalar)]));
 // Keep the legacy leaf grammar without its cross-product refinement; check ownership below.
 const legacy = catalogDraftPayloadSchema;
+/** @experimental */
 export const catalogDraftSkuV2Schema = legacy.shape.skus.element.omit({ priceRef: true }).extend({
   attributes: attributes.optional(), priceOperations: z.array(catalogDraftPriceOperationV2Schema).optional(),
 }).strict();
+/** @experimental */
 export const catalogDraftProductV2Schema = legacy.shape.product.extend({ attributes: attributes.optional() }).strict();
 /** @experimental */
 export const catalogDraftPayloadV2Schema: z.ZodType<CatalogDraftPayloadV2> = z.object({
