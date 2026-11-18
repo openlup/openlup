@@ -24,6 +24,18 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_sized_baseline(uuid) FROM PUBLIC;
 
+-- Preserve the legacy bundle quote owner's row selection and whole amount.
+CREATE FUNCTION public.catalog_admission_legacy_price(p_list_id uuid,p_sku_id uuid,p_quantity integer,p_at timestamptz)
+RETURNS public.price_entries LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT p.* FROM public.price_entries p
+ WHERE p.variant_id=p_sku_id AND p.price_list_id=p_list_id
+  AND p.mode IN ('subscription','any') AND p.active AND p.min_qty<=p_quantity
+  AND p.valid_from<=p_at AND (p.valid_to IS NULL OR p.valid_to>p_at)
+ ORDER BY CASE p.mode WHEN 'subscription' THEN 0 ELSE 1 END,p.min_qty DESC,p.valid_from DESC,p.id
+ LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_legacy_price(uuid,uuid,integer,timestamptz) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_admission_assert_current(
  p_heads jsonb,p_sku_revisions jsonb,p_mode text,p_offer_evidence jsonb,p_price_context_versions jsonb,p_purpose text
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -224,6 +236,9 @@ BEGIN
    AND p.active AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
    AND to_jsonb(p)=price_context->'entry';
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
+  IF p_offer_evidence->>'lane'='legacy' AND (public.catalog_admission_legacy_price(subscription.price_list_id,
+    (price_context->>'skuId')::uuid,(demand->>'quantity')::integer,statement_timestamp())).id IS DISTINCT FROM (price_context->>'entryId')::uuid THEN
+   RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
  END LOOP;
 END;
 $$;
@@ -236,7 +251,7 @@ REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,
 CREATE FUNCTION public.catalog_admission_build_evidence(p_lines jsonb,p_mode text,p_binding jsonb,p_purpose text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; page jsonb; item jsonb; line jsonb;
- member jsonb; offer_version text; cursor_id uuid; head_digest text; pages integer:=0;
+ member jsonb; offer_version text; cursor_id uuid; head_digest text;
  seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
  retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text;
@@ -273,23 +288,29 @@ BEGIN
   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
  LOOP
   page:=public.catalog_offer_memberships_page(offer_version,cursor_id,100,p_mode,head_digest);
-  pages:=pages+1;
   IF page->>'protocol' IS DISTINCT FROM 'governed' OR NOT coalesce(page->>'headDigest' ~ '^[0-9a-f]{64}$',false)
    OR (head_digest IS NOT NULL AND page->>'headDigest' IS DISTINCT FROM head_digest)
    OR jsonb_typeof(page->'items') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+  IF jsonb_array_length(page->'items')>100 THEN
+   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
   head_digest:=page->>'headDigest';
   FOR item IN SELECT value FROM jsonb_array_elements(page->'items') LOOP
-   sku_id:=(item->>'skuId')::uuid;
-   IF sku_id IS NULL OR item->>'skuCode' IS NULL OR sku_id=ANY(seen_ids) OR item->>'skuCode'=ANY(seen_codes)
+   sku_id:=CASE WHEN pg_input_is_valid(item->>'skuId','uuid') THEN (item->>'skuId')::uuid END;
+   IF sku_id IS NULL OR nullif(item->>'skuCode','') IS NULL OR sku_id=ANY(seen_ids) OR item->>'skuCode'=ANY(seen_codes)
+    OR (p_mode='one_time' AND item->'sellableStandalone' IS DISTINCT FROM 'true'::jsonb)
+    OR (p_mode='subscription' AND item->'sellableInSubscription' IS DISTINCT FROM 'true'::jsonb)
     OR (cardinality(seen_ids)>0 AND sku_id<=seen_ids[cardinality(seen_ids)]) THEN
     RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
    seen_ids:=array_append(seen_ids,sku_id); seen_codes:=array_append(seen_codes,item->>'skuCode');
    IF sku_id=ANY(scope) THEN members:=members||jsonb_build_object(sku_id::text,item); END IF;
   END LOOP;
+  IF page->>'nextCursor' IS NOT NULL AND (
+    NOT coalesce(pg_input_is_valid(page->>'nextCursor','uuid'),false)
+    OR page->>'nextCursor' IS DISTINCT FROM seen_ids[cardinality(seen_ids)]::text) THEN
+   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
   EXIT WHEN scope <@ seen_ids;
-  IF page->>'nextCursor' IS NULL OR pages>=5 OR (page->>'nextCursor')::uuid IS DISTINCT FROM seen_ids[cardinality(seen_ids)]
-   OR (cursor_id IS NOT NULL AND (page->>'nextCursor')::uuid<=cursor_id) THEN
+  IF page->>'nextCursor' IS NULL THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
   cursor_id:=(page->>'nextCursor')::uuid;
  END LOOP;
@@ -303,10 +324,14 @@ BEGIN
   FROM public.catalog_sku_revisions r JOIN public.catalog_publications b ON b.product_id=r.product_id
   WHERE r.id=(member->>'skuRevisionId')::uuid AND r.sku_id=(line->>'skuId')::uuid
    AND b.id=(member#>>'{head,publicationId}')::uuid AND b.product_id=(line->>'productId')::uuid;
-  IF NOT FOUND OR member->>'productId' IS DISTINCT FROM line->>'productId' THEN
+  IF NOT FOUND OR member->>'productId' IS DISTINCT FROM line->>'productId'
+   OR member->>'skuCode' IS DISTINCT FROM sku_facts->>'code'
+   OR member->'document' IS DISTINCT FROM product_facts->'document'
+   OR member#>>'{head,documentDigest}' IS DISTINCT FROM product_facts#>>'{document,digest}' THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
   IF requested IS NOT NULL AND (requested->>'skuId' IS DISTINCT FROM line->>'skuId'
-    OR requested->>'documentDigest' IS DISTINCT FROM member#>>'{head,documentDigest}') THEN
+    OR requested->>'documentRevisionId' IS DISTINCT FROM member#>>'{document,id}'
+   OR requested->>'documentDigest' IS DISTINCT FROM member#>>'{head,documentDigest}') THEN
    RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
   reference:=jsonb_build_object('schemaVersion',2,'skuId',line->'skuId','skuCode',member->'skuCode',
    'skuRevisionId',member->'skuRevisionId','publicationHead',member->'head','typeRef',product_facts->'type',
@@ -1110,14 +1135,8 @@ BEGIN
     ) AS parsed
     JOIN public.catalog_skus AS sku ON sku.id = parsed.variant_id
       AND sku.status = 'active' AND sku.sellable_in_subscription = true
-    LEFT JOIN LATERAL (
-      SELECT p.id,p.unit_price_minor FROM public.price_entries p
-      WHERE p.variant_id=parsed.variant_id AND p.price_list_id=v_subscription.price_list_id
-        AND p.mode IN ('subscription','any') AND p.active AND p.min_qty<=parsed.quantity
-        AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
-      ORDER BY CASE p.mode WHEN 'subscription' THEN 0 ELSE 1 END,p.min_qty DESC,p.valid_from DESC,p.id
-      LIMIT 1
-    ) price ON true
+    LEFT JOIN LATERAL public.catalog_admission_legacy_price(
+      v_subscription.price_list_id,parsed.variant_id,parsed.quantity,statement_timestamp()) price ON true
   ) AS requested;
 
   IF v_lines IS NULL OR jsonb_array_length(v_lines)
@@ -1859,8 +1878,10 @@ BEGIN
   PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
   v_catalog_acceptance:=public.catalog_admission_accept(lines,q#>'{quote_snapshot,catalogAdmission}','subscription',
     jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN coalesce(opt_in,false) THEN 'sized.v1' ELSE s.configured_offer_version END,'lane','sized','optIn',coalesce(opt_in,false)),'account');
-  -- Admission is current SKU state under a row lock; no catalogue publication head exists here.
-  FOR line IN SELECT v FROM jsonb_array_elements(lines) v WHERE NOT (v->>'isAddon')::boolean LOOP
+  -- Governed lines already passed the common current or retained rule.
+  FOR line IN SELECT v FROM jsonb_array_elements(lines) v WHERE NOT (v->>'isAddon')::boolean
+   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v_catalog_acceptance->'lines') r
+    WHERE r->>'skuId'=(v->>'variantId')::uuid::text) LOOP
    IF COALESCE(opt_in,false) OR (line->>'qty')::integer>COALESCE((current_core->>(line->>'variantId'))::integer,0) THEN
     PERFORM 1 FROM public.catalog_skus WHERE id=(line->>'variantId')::uuid AND status='active' AND sellable_in_subscription FOR SHARE;
     IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_invalid_sku_admission' USING ERRCODE='22023'; END IF;

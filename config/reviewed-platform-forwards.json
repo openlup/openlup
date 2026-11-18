@@ -5823,6 +5823,10 @@
           {
             "signature": "public.catalog_admission_validate_proof(jsonb)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_legacy_price(uuid,uuid,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8193,7 +8197,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "16c1a172c47bae3c8a9d237560ea3a24e474bfa4134bec5f7ca33a5be2e20344",
+      "sha256": "5c3083f425a79b35da3799a0ad18eba3a7f62e51f9b333b3fbe337ce8ee0b8c6",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8223,7 +8227,7 @@
         {
           "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "ab9b88623f7f2c742ed70cc06a3664952bba444148404fa645b00d6b1f904837",
-          "afterSha256": "f2a78edded8f39f603ba33f8e3159271569ee60a6fd716aceb5cc63dcf128cc0"
+          "afterSha256": "298acc9a9a33dced6398cc44d5717ec8b05ceae12a01f528bfbc017da6f19c67"
         },
         {
           "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
@@ -8233,7 +8237,7 @@
         {
           "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
           "beforeSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d",
-          "afterSha256": "22a34d8d56566e5a447004caeeab25d3dc30cf1491ced76583ac8bdd9acb0a2f"
+          "afterSha256": "17c50ab858dea702a8cd234853a6266f046d37c2b3184ed6d8ac2d6b60c4a44d"
         },
         {
           "signature": "public.catalog_acceptance_record_admit_v2()",
@@ -8263,12 +8267,12 @@
         {
           "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "27bbcc5f75d35160d87b9109c58c2bfcf41afa95359fcaf8de0b8831cc89ebca"
+          "afterSha256": "a75979cd56d42bf045c996156d4db53fd4b0bca405f3c69335b8c7af58b02939"
         },
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "6c51f214aa0c9dcfff9f9f42d112dfe68f1a6d445979e6813b808c2b6924b3ee"
+          "afterSha256": "775ec187059189dfbda8dfdbef67bd00e47e6a5f362730bdd1b3da9881032ace"
         },
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
@@ -8289,6 +8293,11 @@
           "signature": "public.catalog_admission_validate_proof(jsonb)",
           "beforeSha256": null,
           "afterSha256": "0a083228c19deabf676aabcc4814a74bc4036c2104ab241ec70eacb3dadfcf32"
+        },
+        {
+          "signature": "public.catalog_admission_legacy_price(uuid,uuid,integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "4df180ed0de28ffd2a13904c8879e97b06e3261d6377c25aafddf806eb5230e7"
         }
       ]
     }
