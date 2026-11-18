@@ -8842,6 +8842,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/oneTimeOfferPricing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/ports.ts",
       "class": "public-output"
     },

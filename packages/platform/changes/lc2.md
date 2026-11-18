@@ -14,8 +14,10 @@ rounding. No compatibility value is replaced with zero or made nullable.
 Publication preserves active-and-eligible primary admission, status-independent
 physical identity uniqueness, retained source-head currentness and head-before-drift
 refusal order. Explicit current-draft claims bind command/fingerprint, and explicit
-media evidence requires a current open source even without activation. Structural and price readiness use the operations' affected sets;
-withdrawal-only publication skips unrelated commercial and global readiness.
+media evidence requires a current open source even without activation. The
+transaction-local structural check runs for presentation changes with or without
+affected SKUs. Price readiness uses the operations' affected SKU sets.
+Withdrawal-only publication skips unrelated commercial and global readiness.
 Compensation reapplies explicit product and SKU effects with unchanged retained
 values, while unaddressed projection drift still refuses and rolls back.
 Changed complete facts retain compatible attribute, axis, gross-mass and asset
@@ -26,14 +28,20 @@ new version 2 publication API. Existing publication ports retain their version 1
 DTOs through adapters. Nullable projection/canonical-text columns preserve old
 readers; unknown legacy lineage refuses rather than manufacturing retained
 history. Managed-to-native ingress defaults only absent product/SKU publication
-projections to NULL and never creates publication history. Keep the new reader
+projections to NULL and never creates publication history. New uniqueness indexes
+scope to published projections. Existing draft combinations and identifiers keep
+their original admission rules, and publication checks new GTINs against legacy
+and published identifiers. Keep the new reader
 while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 The price boundary uses the existing version 2 command through the price owner's
 same-transaction writer. The shared price-owner phases reserve sorted receipt
 keys before sorted contexts, verify every child belongs to the parent, and apply
 the original commands on the publisher's executor. Standalone apply uses these
-same phases in its single SQL transaction. Existing commands, receipts, refusals
+same phases in its single SQL transaction. It verifies the human actor before
+reading the command, checks the raw fingerprint before parsing JSON, and admits
+the target once before waiting for the price context.
+Existing commands, receipts, refusals
 and agreed subscriber prices are unchanged. The new public publication symbols and
 shared price transaction entry points carry `@experimental`; already published
 readers retain their existing annotations. New product/SKU status and publication

@@ -188,6 +188,7 @@ export interface CommerceTaxBreakdown extends CommerceTaxProfile {
 ```ts
 export declare const CATALOG_FACTS_PROVENANCE_VERSION: "catalog_facts_v1";
 export declare const CATALOG_FACTS_POLICY_PROVENANCE_VERSION: "catalog_facts_v2";
+export declare const CATALOG_FACTS_OFFER_PROVENANCE_VERSION: "catalog_facts_v3";
 interface CatalogFactsFields {
     skuId: string;
     documentRevisionId: string;
@@ -208,6 +209,10 @@ export type CatalogFactsProvenance = CatalogFactsFields & ({
     policyRevisionId: string;
     policyDigest: string;
     mode: "subscription";
+} | {
+    version: typeof CATALOG_FACTS_OFFER_PROVENANCE_VERSION;
+    offerPriceReference: string;
+    mode: "one_time";
 });
 export {};
 ```

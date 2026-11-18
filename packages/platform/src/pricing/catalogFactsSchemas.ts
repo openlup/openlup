@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./contracts/provenance.js";
+import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "./contracts/provenance.js";
 const catalogFactsFields = {
   skuId: z.string().uuid(),
   documentRevisionId: z.string().uuid(),
@@ -44,9 +44,19 @@ const catalogFactsV2ProvenanceSchema = z
  * historical and explicitly pre-cutover legacy subscription observations; v2
  * records the policy which derived a current subscription amount.
  */
+const catalogFactsV3ProvenanceSchema = z
+  .object({
+    version: z.literal(CATALOG_FACTS_OFFER_PROVENANCE_VERSION),
+    offerPriceReference: z.string().trim().min(1).max(120),
+    mode: z.literal("one_time"),
+    ...catalogFactsFields,
+  })
+  .strict();
+
 export const catalogFactsProvenanceSchema = z.union([
   catalogFactsV1ProvenanceSchema,
   catalogFactsV2ProvenanceSchema,
+  catalogFactsV3ProvenanceSchema,
 ]);
 
 

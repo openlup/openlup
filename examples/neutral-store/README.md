@@ -4,12 +4,10 @@ This starter is an application inside the OpenLup source repository, separate
 from its npm workspaces. It combines public package entries with application-owned
 configuration, browser pages and a local demonstration host.
 
-For an independent application, follow the
-[exact released-starter recipe](#start-from-an-exact-source-archive):
-download the 0.43.0 source archive and pinned input pair, extract with
-`--mode released`, run `npm ci`, then `./lifecycle up`. This starter
-application includes both one-time and subscription purchases. No local package
-packing or author checkout is needed.
+Start your application from the [1.1.0 demo store](https://github.com/openlup/demo-store)
+or use [release-matched starter inputs](../../docs/platform/DISTRIBUTION_EVIDENCE.md#released-starter-inputs)
+when available.
+This starter application includes both one-time and subscription purchases.
 
 Read the [guide](../../packages/core/docs/guide/README.md), follow the small
 [npm tutorial](../../packages/core/docs/guide/start/tutorial.md), or prepare an
@@ -45,7 +43,9 @@ the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
 ## Start from an exact source archive
 
-This recipe selects `openlup-core-v0.43.0`, source commit
+Start from the [1.1.0 demo store](https://github.com/openlup/demo-store) or use
+the starter inputs that match your selected release when available. The recipe
+below is historical. It selects `openlup-core-v0.43.0`, source commit
 `6facc3e72441ade5813397f65ac7edbe34fd1d0f`, and input commit
 `87dadb251b27b72a18718b08ac39951dd4f1fdd0`. The exact
 [manifest](https://github.com/openlup/openlup/blob/87dadb251b27b72a18718b08ac39951dd4f1fdd0/examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json)

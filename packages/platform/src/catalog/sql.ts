@@ -30,7 +30,7 @@ export const CATALOG_MIGRATIONS: readonly [
   /** @experimental */
   { readonly id: "20261122180000_catalog_base_price_writer"; readonly catalogPath: "db/platform/migrations/20261122180000_catalog_base_price_writer.sql"; readonly position: 150; readonly sha256: "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65"; readonly url: URL; },
   /** @experimental */
-  { readonly id: "20261123150000_catalog_publication"; readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql"; readonly position: 155; readonly sha256: "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6"; readonly url: URL; },
+  { readonly id: "20261123150000_catalog_publication"; readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql"; readonly position: 155; readonly sha256: "76ea5098ca8e9f66515f5d6b5c34aaad6071d976a8b5250f48ef0e3a30ecb54a"; readonly url: URL; },
   /** @experimental */
   { readonly id: "20261123160000_subscription_price_policy_close_provenance"; readonly catalogPath: "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql"; readonly position: 156; readonly sha256: "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"; readonly url: URL; }
 ] = [
@@ -48,6 +48,6 @@ export const CATALOG_MIGRATIONS: readonly [
   { id: "20261122160000_catalog_drafts_v3", catalogPath: "db/platform/migrations/20261122160000_catalog_drafts_v3.sql", position: 148, sha256: "e5c0fe84c7689a48ef9524037ee0e03ffc47057fcfc84088943fe8f657d0dbfd", url: new URL("../../sql/20261122160000_catalog_drafts_v3.sql", import.meta.url) },
   { id: "20261122170000_offer_policy_readiness_inputs", catalogPath: "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql", position: 149, sha256: "f19489a760c073f59b155d83dbab6bc2b33a96b5d17206806b21b257497d0e9f", url: new URL("../../sql/20261122170000_offer_policy_readiness_inputs.sql", import.meta.url) },
   { id: "20261122180000_catalog_base_price_writer", catalogPath: "db/platform/migrations/20261122180000_catalog_base_price_writer.sql", position: 150, sha256: "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65", url: new URL("../../sql/20261122180000_catalog_base_price_writer.sql", import.meta.url) },
-  { id: "20261123150000_catalog_publication", catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql", position: 155, sha256: "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6", url: new URL("../../sql/20261123150000_catalog_publication.sql", import.meta.url) },
+  { id: "20261123150000_catalog_publication", catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql", position: 155, sha256: "76ea5098ca8e9f66515f5d6b5c34aaad6071d976a8b5250f48ef0e3a30ecb54a", url: new URL("../../sql/20261123150000_catalog_publication.sql", import.meta.url) },
   { id: "20261123160000_subscription_price_policy_close_provenance", catalogPath: "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql", position: 156, sha256: "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96", url: new URL("../../sql/20261123160000_subscription_price_policy_close_provenance.sql", import.meta.url) },
 ] as const;

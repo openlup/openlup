@@ -52,7 +52,7 @@ export const GENERIC_JOB_DEDUPE_PREFIXES = [
 /**
  * How old a watchdog heartbeat may be before the health pill stops trusting it.
  *
- * The development-preview reference uses a conservative six-hour stale window
+ * The reference uses a conservative six-hour stale window
  * independent from any scheduler cadence. It is a policy default, not a
  * scheduling SLA; adopters must review it against their expected maximum
  * heartbeat delay and queue jitter.

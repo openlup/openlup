@@ -248,6 +248,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
   }
   async function checkReadiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[] }, payload: CatalogDraftPayloadV3, activation: boolean) {
     const operations = payload.publication.operations;
+    const hasPresentation = operations.some(operation => operation.op === "set_product_presentation");
     const wholeProduct = operations.some(operation => operation.op === "move_document_pointer"
       || operation.op === "set_product_status" && operation.status === "active");
     const structural = state.skus.filter(sku => wholeProduct || operations.some(operation => operation.op === "create_sku" && operation.skuCode === sku.code
@@ -266,7 +267,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const rows = await tuple(db, "SELECT public.catalog_publication_sku_reasons($1::uuid,$2::boolean) AS reasons", [sku.id, requirePrice]);
         require(rows.length === 1 && equal(rows[0]!.reasons, []), reason);
       }
-      if (skus.length) check(await deps.readiness(db, { product: state.product, skus: [...skus] }, requirePrice), reason);
+      if (skus.length || !requirePrice && hasPresentation) check(await deps.readiness(db, { product: state.product, skus: [...skus] }, requirePrice), reason);
     }
     if (activation) {
       require(deps.globalReadiness, "catalog_publication_readiness_unavailable", "dependency_unavailable");
@@ -444,9 +445,18 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           VALUES($1,$2,$3,$4,'draft',$5,$6,false,false,$7::integer)`, [sku.id, product.id, sku.code, sku.title, sku.minQuantity, sku.isAddon, catalogPublicationIntegralGrams(sku.netContent, definition)]);
       } else if (operation.op === "create_identifier") {
         const sku = state.skus.find(sku => sku.code === operation.skuCode)!;
+        const gtin = operation.scheme === "gs1:gtin";
+        const normalized = gtin ? operation.value.padStart(14, "0") : operation.value;
+        if (gtin) {
+          // The publication guard is held. Compare with legacy GTINs as well as
+          // identifiers created by publication, regardless of their issuer.
+          const existing = await tuple(db, `SELECT 1 FROM public.catalog_sku_identifiers
+            WHERE identifier_kind='gtin' AND ltrim(normalized_value,'0')=ltrim($1,'0') LIMIT 1`, [normalized]);
+          require(existing.length === 0, "catalog_publication_identity_conflict", "conflict");
+        }
         await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme,original_value,display_label,source_ref)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [sku.id, operation.issuer, operation.scheme === "gs1:gtin" ? "gtin" : "other",
-          operation.scheme === "gs1:gtin" ? operation.value.padStart(14, "0") : operation.value, operation.packagingLevel === "case" ? "collective" : "unit",
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [sku.id, operation.issuer, gtin ? "gtin" : "other",
+          normalized, operation.packagingLevel === "case" ? "collective" : "unit",
           operation.quantity, operation.isPrimary, operation.scheme, operation.value, operation.label, operation.sourceRef]);
       } else if (operation.op === "set_primary_sku") {
         const sku = state.skus.find(sku => sku.code === operation.skuCode)!;

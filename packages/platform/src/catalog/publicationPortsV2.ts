@@ -28,7 +28,11 @@ export interface CatalogPublicationDependencies<Context> {
   authorizeHuman(context: Context): Promise<{ ok: true; userId: string; role: string; isMachineActor: boolean } | { ok: false }>;
   attributeReferences?: CatalogAttributeReferencePort;
   prices?: CatalogPublicationPriceBoundary;
-  /** Runs in the publication transaction; no external I/O or commerce locks. Missing required evidence refuses. */
+  /**
+   * Runs in the publication transaction; no external I/O or commerce locks.
+   * A structural check can carry only product facts (for example, a presentation revision).
+   * Missing required evidence refuses.
+   */
   readiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: readonly CatalogPublishedSku[] }, requirePrice: boolean): Promise<{ ready: boolean; reasons: readonly string[] }>;
   globalReadiness?(db: PgQueryExecutor): Promise<{ ready: boolean; reasons: readonly string[] }>;
   /** External proof is prepared before locks; transaction-local admission verifies this immutable claim again. */
