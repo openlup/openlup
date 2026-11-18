@@ -1,6 +1,8 @@
 import { parseStockReadResponse, stockObject as object, stockQuantity as quantity } from "./stockReadResponse.js";
 import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 
+import { readRenewalStockProtectionPolicy } from "./renewalStockProtection.js";
+
 interface StockQueryExecutor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
@@ -8,7 +10,7 @@ export interface NativeStockPromise {
   availableQuantity: number; forSaleQuantity: number; hardHoldQuantity: number;
   safetyQuantity: number; softSubscriptionDemandQuantity: number; channelExposureQuantity: number;
 }
-/** Native read-only ATP. The fixed 14-day priority cannot be waived by a new
+/** Native read-only ATP. The installed priority cannot be waived by a new
  * purchase caller. Only the fenced native SQL allocator uses the renewal exemption. */
 export function createPostgresStockAvailability(executor: StockQueryExecutor, options: { sourceKey: string; now: () => string }): {
   readPort: NewPurchaseStockReadPort;
@@ -24,7 +26,9 @@ export function createPostgresStockAvailability(executor: StockQueryExecutor, op
     },
     readPort: {
       async read(input) {
-        if (input.horizonDays !== 14 || input.excludeOrderId !== null) throw new Error("native_stock_read_options_unsupported");
+        if (input.excludeOrderId !== null) throw new Error("native_stock_read_options_unsupported");
+        const policy = await readRenewalStockProtectionPolicy(executor);
+        if (input.horizonDays !== policy.renewalProtectionDays) throw new Error("native_stock_read_options_unsupported");
         if (!input.skus.length) return new Map();
         const value = (await executor.query(`SELECT public.inventory_new_purchase_stock_read(
           $1::text,$2::jsonb,$3::timestamptz) AS response`, [options.sourceKey, JSON.stringify(input.skus), options.now()])).rows[0]?.response;

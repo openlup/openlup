@@ -635,3 +635,14 @@ For recovery links, pass `--port` when the host uses a nondefault port;
 a configured `publicOrigin` takes precedence. Care links also use that configured
 origin when present. Keep the [retention and consent limits](../../reference/limits.md#subscription-care)
 in view when selecting care behavior.
+
+For the next minor source candidate, own `inventory.renewalProtection` in
+`owned/store.config.ts` (`{ revision: 'starter-1', renewalProtectionDays: 14 }`
+in each demo configuration). Its explicit installation step installs that policy;
+application startup only reads it and refuses with `starter_installed_policy_drift`
+when either the revision or days differ. Change the owned value, deliberately run
+the installation step with installation authority, then restart. An absent database
+key has revision `default`, so it does not match `starter-1` until installed.
+See [native stock priority](../../concepts/checkout.md#native-stock-priority) for
+validation, privileges and the request horizon contract. This candidate addition
+does not alter the historical 0.43.0 recipe above.

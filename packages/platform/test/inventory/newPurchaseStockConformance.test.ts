@@ -23,7 +23,7 @@ it("W2 preserves the normalized new-purchase quantity, fixed default horizon and
 
 it("W2 binds native ATP rather than a host override and exposes no renewal waiver or allocation call", async () => {
   const nativeRow = { ...row, source: "provider", providerForSale: 10, safetyStock: 0, available: 5 };
-  const query = vi.fn(async (_text: string, _values?: unknown[]) => ({ rows: [{ response: [nativeRow] }] }));
+  const query = vi.fn(async (text: string, _values?: unknown[]) => text.includes("commerce_settings") ? { rows: [] } : { rows: [{ response: [nativeRow] }] });
   const injected = { read: vi.fn() };
   const now = () => new Date(0).toISOString();
   const binding = createInventoryBindings({ dataKind: "postgres", provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") },
@@ -36,12 +36,14 @@ it("W2 binds native ATP rather than a host override and exposes no renewal waive
   }
   const sql = `SELECT public.inventory_new_purchase_stock_read(
           $1::text,$2::jsonb,$3::timestamptz) AS response`;
-  expect(query.mock.calls).toEqual([[sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]], [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]]]);
+  const policyRead = ["SELECT value_text FROM public.commerce_settings WHERE key=$1", ["inventory_renewal_protection"]];
+  expect(query.mock.calls).toEqual([policyRead, [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]],
+    policyRead, [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]]]);
   expect(injected.read).not.toHaveBeenCalled();
   query.mockClear();
   for (const input of [{ horizonDays: 13, excludeOrderId: null }, { horizonDays: 15, excludeOrderId: null }, { horizonDays: 14, excludeOrderId: "EXAMPLE-order" }]) {
     await expect(binding.newPurchaseStockReadPort!.read({ skus: [item.sku], ...input })).rejects.toThrow("native_stock_read_options_unsupported");
   }
   expect(await binding.newPurchaseStockReadPort!.read({ skus: [], horizonDays: 14, excludeOrderId: null })).toEqual(new Map());
-  expect(query).not.toHaveBeenCalled();
+  expect(query.mock.calls).toEqual([policyRead, policyRead, policyRead]);
 });

@@ -1,3 +1,4 @@
+import type { RenewalStockProtectionPolicy } from '@openlup/platform/inventory/contracts';
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
@@ -28,6 +29,7 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  inventory: { renewalProtection: RenewalStockProtectionPolicy };
   subscriptionEditing: SubscriptionEditorConfig;
   subscriptionOffers: SubscriptionOffers;
   renewal: RenewalConfig;
@@ -109,6 +111,13 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  const protection = config.inventory?.renewalProtection;
+  if (!protection || Object.keys(protection).sort().join(',') !== 'renewalProtectionDays,revision'
+    || typeof protection.revision !== 'string' || !protection.revision.trim()
+    || !Number.isInteger(protection.renewalProtectionDays)
+    || protection.renewalProtectionDays < 1 || protection.renewalProtectionDays > 3660) {
+    throw new Error('inventory_renewal_protection_policy_invalid');
+  }
   assertRenewalConfig(config.renewal);
   assertRetention(config.renewal.subscriptionCare);
   for (const offer of Object.values(config.subscriptionOffers)) assertSubscriptionOffer(offer, config.subscriptionEditing.catalogue.map(product => product.sku));
