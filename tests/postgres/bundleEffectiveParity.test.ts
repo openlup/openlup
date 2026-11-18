@@ -114,3 +114,21 @@ it("requires document, primary GTIN, status, weight and mode sellability for eve
   expect(await feed()).toHaveLength(1);
   expect(await store().listActiveBundleCompositions({ ...feedInput, mode: "subscription" })).toEqual([]);
 });
+
+it.each([
+  ["catalog_count_bundle_component_is_ready", "count", "openlup:piece", 56, 0, true],
+  ["MC5-N-002 volume", "volume", "openlup:ml", 50, 0, true],
+  ["MC5-N-002 fractional count", "count", "openlup:piece", 56, 1, false],
+  ["MC5-N-002 mismatched unit", "count", "openlup:ml", 56, 0, false],
+  ["MC5-D-014 unknown quantity", null, null, null, null, false],
+] as const)("catalog_bundle_content_only_boundary %s", async (_rule, dimension, unit, unscaled, scale, ready) => {
+  await db.query(`UPDATE public.catalog_skus SET net_weight_g=NULL, net_content_dimension=$2,
+    net_content_unit=$3, net_content_unscaled=$4, net_content_scale=$5 WHERE id=$1`,
+  [part, dimension, unit, unscaled, scale]);
+  await db.query("UPDATE public.catalog_bundle_components SET quantity=2 WHERE catalog_sku_id=$1", [part]);
+  const result = await feed();
+  if (ready) expect(result).toMatchObject([{ targetPriceMinor: 1600, components: expect.arrayContaining([
+    expect.objectContaining({ variantId: part, quantity: 2, referenceUnitPriceMinor: 1200 }),
+  ]) }]);
+  else expect(result).toEqual([]);
+});

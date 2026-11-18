@@ -4,6 +4,7 @@ import type { ActionInput, ActionResult, Operation } from '../shared/api.ts';
 import { operationLimits } from '../shared/limits.ts';
 import { evaluateOffer, parseCart, validateCart } from '../shared/offer.ts';
 import type { PersonalDataContributorRegistry } from '@openlup/platform/identity';
+import type { CatalogServingReadPortV2 } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 
 export interface VerifiedActor {
@@ -31,6 +32,7 @@ export interface ActionContext {
 export type ActionBinding = (input: ActionInput, context: ActionContext) => Promise<ActionResult>;
 
 export interface ApplicationBindings {
+  catalogue?: CatalogServingReadPortV2;
   /** Programmatic owner composition only; never serialized as an HTTP action. */
   personalData?: PersonalDataContributorRegistry<PgQueryExecutor>;
   actions: Partial<Record<Operation, ActionBinding>>;

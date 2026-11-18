@@ -181,7 +181,13 @@ async function databaseBrowserRecipe(argv) {
   const { hostname } = await import('node:os');
   const { default: pg } = await import('pg');
   const { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } = await import('@openlup/platform/migrations');
-  const { configurations } = await import('./owned/store.config.ts');
+  const { configurations, selectConfiguration } = await import('./owned/store.config.ts');
+  const projects = argv.flatMap((arg, index) => {
+    if (arg.startsWith('--project=')) return [arg.slice('--project='.length)];
+    if (arg === '--project') return [argv[index + 1] ?? ''];
+    return [];
+  });
+  const selected = projects.length ? [...new Set(projects)].map(id => selectConfiguration(id)) : Object.values(configurations);
   const { applyDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
@@ -201,7 +207,7 @@ async function databaseBrowserRecipe(argv) {
     await writeFile(viteConfig, `export default {root:${JSON.stringify(application)}};\n`, { mode: 0o600 });
     await child('npx', ['--no', '--', 'vite', 'build', '--config', viteConfig]);
     const entries = [];
-    for (const config of Object.values(configurations)) {
+    for (const config of selected) {
       const name = `starter-care-${process.pid}-${config.id}-${randomUUID().slice(0, 8)}`;
       containers.push(name);
       docker('run', '--detach', '--name', name, '--tmpfs', '/var/lib/postgresql/data:rw', '--label', 'dev.disposable=1', '--label', `dev.disposable.owner.pid=${process.pid}`, '--label', `dev.disposable.host=${hostname()}`, '--label', `dev.disposable.started=${Math.floor(Date.now() / 1000)}`, '--env', 'POSTGRES_HOST_AUTH_METHOD=trust', '--env', 'POSTGRES_DB=neutral_store', '--publish', '127.0.0.1::5432', 'postgres:16');

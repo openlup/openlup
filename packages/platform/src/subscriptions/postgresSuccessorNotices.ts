@@ -22,6 +22,8 @@ export const successorNoticeSources = Object.freeze([
  */
 export function createPostgresSuccessorNotices(options: {
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+  /** Optional presentation eviction after verifying the persisted commit event. */
+  invalidateCatalogueProduct?(productId: string): void;
   /** Bind the catalogue owner's complete withdrawal-impact port. */
   impact: { report(skuId:string): Promise<
     { outcome:"complete"; obligations:readonly { family:string;sourceId:string;caseKind?:"legacy"|"successor" }[] }
@@ -105,6 +107,7 @@ export function createPostgresSuccessorNotices(options: {
         if(!Array.isArray(state.skus))throw new Error("catalog_obligation_evidence_unknown");
         return state.skus.map(value=>id.parse(subscriptionRecord(value).skuId));
       });
+      options.invalidateCatalogueProduct?.(row.aggregate_id);
       const cases=new Map<string,{ id:string;kind:"legacy"|"successor" }>();
       for(const sku of skus) {
         const impact=await options.impact.report(sku);

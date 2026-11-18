@@ -69,7 +69,7 @@ export function buildOmnipackProductPayload(input: OmnipackProductInput): Record
 }
 
 /** Build a registration payload from the explicit packaged gross mass. @experimental */
-export function buildOmnipackProductPayloadV2(input: Omit<OmnipackProductInput, "pack"> & {
+export function buildTypedProductPayload(input: Omit<OmnipackProductInput, "pack"> & {
   pack: (Omit<OmnipackProductPack, "weightGrams"> & { grossMass: CatalogQuantity | null }) | null;
 }): Record<string, unknown> {
   let weightGrams = Number.NaN;

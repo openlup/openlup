@@ -1289,7 +1289,9 @@ Experimental native publication serving is available through
 Use the same instance for listing, product detail, quote and editor selection.
 The V2 reader verifies the installed type scope, current heads and documents in
 one database snapshot. Listing cursors carry an observed version and refuse
-after the applicable head moves. A successful empty result means that the
+after the applicable head moves. A host that binds the existing catalogue
+commit consumer can pass `serving.invalidateProduct` as its optional eviction
+callback. Reads check the database before using a cached projection. A successful empty result means that the
 scoped authority has no applicable offers. Unknown or unreadable authority
 returns a named error.
 

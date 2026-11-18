@@ -1,8 +1,18 @@
 import { expect, it } from "vitest";
+import { createDbBackedCommerceQuotePort } from "../../src/pricing/index.js";
+import { mapCustomerOrderLines } from "../../src/account-support/orderHistory.js";
+import { nativeStockWaitDeficits } from "../../src/subscriptions/postgresStockWaitStore.js";
+import type { RenewalFrozenSnapshotV3 } from "../../src/subscriptions/contracts/renewal.js";
 import { asLegacyIntegralGrams } from "../../src/catalog/physicalQuantity.js";
 import { productLdV2 } from "../../src/marketing/seo/jsonLd.js";
-import { buildOmnipackProductPayloadV2 } from "../../src/fulfillment/omnipack/omnipackProductPayload.js";
+import { buildTypedProductPayload } from "../../src/fulfillment/omnipack/omnipackProductPayload.js";
 import type { CatalogQuantity } from "../../src/catalog/contracts/productTypes.js";
+
+import { createCatalogServingReader } from "../../src/catalog/servingRead.js";
+import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
+import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
+import { input, registry, definition, rules } from "./fixtures/publicationInput.js";
+import type { PgQueryExecutor } from "../../src/data/index.js";
 
 const mass = { dimension: "mass", unit: "openlup:g", unscaled: "400", scale: 0 } as const;
 const volume = { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 } as const;
@@ -38,33 +48,31 @@ it.each([
   ["MC5-D-029 wrong dimension", volume, 10, "invalid_pack_weight"],
   ["MC5-D-029 bad width", mass, 0, "invalid_pack_width"],
 ] as const)("catalog_physical_destination_boundaries %s", (_rule, grossMass, widthMm, expected) => {
-  const project = () => buildOmnipackProductPayloadV2({ sku: "ARTICLE", ean: "5901234123457", productGroup: "Example", title: "Article",
+  const project = () => buildTypedProductPayload({ sku: "ARTICLE", ean: "5901234123457", productGroup: "Example", title: "Article",
     pack: { grossMass, widthMm, lengthMm: 10, heightMm: 10 } });
   if (typeof expected === "number") expect(project()).toHaveProperty("dimensions.weight", expected);
   else expect(project).toThrow(expected);
 });
 
-import { createCatalogServingReader } from "../../src/catalog/servingRead.js";
-import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
-import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
-import { input, registry, definition, rules } from "./fixtures/publicationInput.js";
-import type { PgQueryExecutor } from "../../src/data/index.js";
-
 const publicationId = "10000000-0000-4000-8000-000000000003";
 const revisionId = "20000000-0000-4000-8000-000000000003";
 const scope = { types: [{ key: definition.key, version: definition.version }], offerVersion: "example:offer" };
 
-function reader(change: string) {
+function reader(change: string, observed?: { revision: number; title: string; unavailable: boolean }) {
   const state = compileCatalogPublication(input());
   state.product.status = "active";
   const source = state.skus[0]!;
+  if (change === "volume") source.netContent = volume;
+  if (change === "count") source.netContent = count;
   source.status = "active";
   source.sellableStandalone = true;
   source.memberships = [{ offerVersion: scope.offerVersion, admitted: true }];
-  const row = { id: state.product.id, publication_id: publicationId, revision: 1, sku_count: 1 };
+  const row: { id: string; publication_id: string | null; revision: number; sku_count: number } = { id: state.product.id, publication_id: publicationId, revision: 1, sku_count: 1 };
   const head = { publicationId, revision: 1, documentDigest: state.documents[0]!.reference.digest };
   const reference = { skuId: source.id, revisionId, revision: 1, digest: "a".repeat(64) };
   if (change === "head") head.revision++;
+  if (change === "unadopted") row.publication_id = null;
+  if (change === "overflow") row.sku_count++;
   if (change === "cardinality") row.sku_count++;
   if (change === "missing document") state.documents.length = 0;
   if (change === "missing primary") state.product.primarySkuId = "20000000-0000-4000-8000-000000000004";
@@ -75,17 +83,20 @@ function reader(change: string) {
     async query(sql: string) {
       if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
       if (sql.includes("row_security_active")) {
-        if (change === "outage") throw new Error("synthetic read failure");
+        if (change === "outage" || observed?.unavailable) throw new Error("synthetic read failure");
         return { rows: [{ complete: change !== "restricted", definitions: [[definition.key, definition.version, catalogDefinitionDigest(definition)]] }] };
       }
-      return { rows: change === "empty" ? [] : [row] };
+      return { rows: change === "empty" ? [] : [observed ? { ...row, revision: observed.revision } : row] };
     },
   } as PgQueryExecutor;
   return createCatalogServingReader({
     transactions: { run: work => work(executor) }, registry, rules,
     authorizeHuman: async () => ({ ok: false }), readiness: async () => ({ ready: false, reasons: [] }),
     verifyMedia: async () => false,
-  }, async () => ({ ...state, head, references: [reference] }), {
+  }, async () => {
+    if (observed) { head.revision = observed.revision; source.title = observed.title; }
+    return { ...state, head, references: [reference] };
+  }, {
     ...scope, ...(change === "overflow" ? { maxItems: 1 } : {}),
   });
 }
@@ -106,6 +117,8 @@ const readFailures = [
   ["MC5-D-047", "missing GTIN", "catalog_primary_trade_item_invalid"],
   ["MC5-D-019", "restricted", "catalog_authority_unavailable"],
   ["MC5-D-006", "outage", "catalog_authority_unavailable"],
+  ["MC5-D-005", "overflow", "catalog_cardinality_exceeded"],
+  ["MC5-D-021", "unadopted", "catalog_authority_unsupported"],
 ] as const;
 
 it.each(servingPaths.flatMap(path => readFailures.map(([rule, change, code]) => ({ path, rule, change, code }))))(
@@ -130,4 +143,79 @@ it.each([
   ["old version", Buffer.from(JSON.stringify(["c".repeat(64), publicationId])).toString("base64url"), 1, "catalog_authority_changed"],
 ] as const)("catalog_authoritative_page_and_projection MC5-D-018 %s", async (_name, cursor, limit, code) => {
   await expect(reader("current").list({ cursor, limit })).rejects.toMatchObject({ code });
+});
+
+it("catalog_pdp_reads_new_publication_without_rebuild MC5-N-004", async () => {
+  const observed = { revision: 1, title: "First", unavailable: false };
+  const port = reader("current", observed);
+  const first = await port.detail("article");
+  expect(first.items[0]?.sku.title).toBe("First");
+  observed.revision = 2;
+  observed.title = "Second";
+  const second = await port.detail("article");
+  expect(second.items[0]?.sku.title).toBe("Second");
+  expect(second.version).not.toBe(first.version);
+  const productId = second.items[0]!.product.id;
+  port.invalidateProduct(productId);
+  port.invalidateProduct(productId);
+  expect(await port.detail("article")).toEqual(second);
+  observed.unavailable = true;
+  await expect(port.detail("article")).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+});
+
+it("catalog_volume_quotes_without_gram_coercion MC5-N-001", async () => {
+  const port = reader("volume");
+  const [observed] = await port.listQuoteCatalogItems();
+  expect(observed?.netContent).toEqual(volume);
+  expect(observed).not.toHaveProperty("netWeightG");
+  const taxProfile = { included: true as const, country: "ZZ", vatRateBps: 0, category: "standard", legalBasis: "Fictional" };
+  const quote = createDbBackedCommerceQuotePort({
+    quoteCatalogReadPort: port,
+    isStrictD1Quote: true,
+    commercePriceAuthorityPort: {
+      async resolvePrice(query) {
+        return { kind: "one_time", unitPriceMinor: 1490, base: {
+          variantId: query.variantId, mode: "one_time", matchedMinQty: 1, unitPriceMinor: 1490, amountKind: "gross",
+          priceListId: publicationId, priceEntryId: revisionId,
+        } };
+      },
+    },
+    taxProfile, supportedTaxProfiles: [taxProfile], regionCode: "ZZ", currency: "XXX",
+    now: () => "2026-01-01T00:00:00Z", hasPromotionCodePort: false,
+    lineContext(_line, item) {
+      expect(item.netContent).toEqual(volume);
+      expect(item.acceptedReference.skuRevisionId).toBe(revisionId);
+      return {};
+    },
+    quoteContext: request => () => ({ mode: request.mode, cadenceDays: null, promoCodes: [] }),
+    resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
+    applyPromotionCodesV2: async () => ({ discounts: [], codeRejections: [], codeRejectionDetails: [] }),
+  });
+  const snapshot = await quote.createServerAuthoritativeQuote({ mode: "one_time", lines: [{ sku: "ARTICLE", quantity: 2 }], promoCodes: [] });
+  expect(snapshot.quote.lines).toMatchObject([{ quantity: 2, unitPriceGross: { amountMinor: 1490 }, lineSubtotalGross: { amountMinor: 2980 } }]);
+});
+
+it.each([
+  ["MC5-N-007 old quantity absent", null],
+  ["MC5-D-027 typed volume", volume],
+  ["MC5-D-028 typed count", count],
+] as const)("catalog_retained_quantity_display %s", async (_rule, typedContent) => {
+  const db = { query: async () => ({ rows: [{ id: publicationId, sku: "ARTICLE", title: "Retained label" }] }) };
+  const deficits = [{ sku: "ARTICLE", requiredUnits: 2, reservedUnits: 0, availableUnits: 1, missingUnits: 1 }];
+  const [item] = await reader("current").listQuoteCatalogItems();
+  const accepted = { ...item!.acceptedReference, skuId: publicationId, netContent: typedContent ?? mass };
+  const snapshot = typedContent ? {
+    frozenRevision: "native.purchase-renewal.v3", catalogAcceptance: { schemaVersion: 2, lines: [accepted] },
+  } as RenewalFrozenSnapshotV3 : undefined;
+  const stock = await nativeStockWaitDeficits(db, deficits, snapshot);
+  const physical = typedContent ? { netContent: typedContent } : {};
+  expect(stock).toEqual([{ ...physical, skuId: publicationId, sku: "ARTICLE", displayName: "Retained label",
+    size: null, required: 2, available: 1, reserved: 0, missing: 1 }]);
+  const order = mapCustomerOrderLines([{
+    id: revisionId, sku_id: publicationId, quantity: 2, unit_price_cents: 1490, total_cents: 2980,
+    ...(typedContent ? { accepted_net_content: typedContent } : {}),
+  }], [], "XXX", { display: () => ({ title: "Retained label", variantName: null }) });
+  expect(order).toEqual([{ ...physical, lineId: revisionId, skuId: publicationId, title: "Retained label", variantName: null,
+    quantity: 2, unitPrice: { amountMinor: 1490, currency: "XXX" }, total: { amountMinor: 2980, currency: "XXX" },
+    listTotal: null, discount: null }]);
 });

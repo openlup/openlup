@@ -121,6 +121,7 @@ export {};
 ## dist/account-support/contracts/account.d.ts
 
 ```ts
+import type { CatalogQuantity } from "@openlup/core/catalog";
 /** Host-verified selection; never an authorization claim from a request body. */
 export interface CustomerContext {
     principalId: string;
@@ -336,6 +337,8 @@ export interface AccountOrderLine {
     unitPrice: AccountSupportMoney;
     total: AccountSupportMoney;
     variantName: string | null;
+    /** Exact net content retained when the line was accepted. @experimental */
+    netContent?: CatalogQuantity;
     productSlug?: string | null;
     displayLabel?: string | null;
     accentColor?: string | null;

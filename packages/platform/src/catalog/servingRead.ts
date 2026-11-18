@@ -1,5 +1,5 @@
 import type { PgQueryExecutor } from "../data/index.js";
-import { CommerceQuoteCatalogReadError, type CommerceQuoteCatalogItemV2 } from "../pricing/commerceQuoteCatalogReadPort.js";
+import { CommerceQuoteCatalogReadError, type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
 import { canonicalizeCatalogQuantity } from "@openlup/core/catalog";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { CatalogSkuAuthorityError, assertPrimaryUnitGtinAuthority, type NeutralSkuEnvelopeV1 } from "./contracts/foundation.js";
@@ -48,6 +48,8 @@ export interface CatalogServingReadPortV2 {
   detail(slug: string): Promise<{ items: NeutralSkuEnvelopeV2[]; version: string }>;
   listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItemV2[]>;
   listEditorSkus(): Promise<NeutralSkuEnvelopeV2[]>;
+  /** Evict derived presentation after an observed publication commit. */
+  invalidateProduct(productId: string): void;
 }
 
 interface CurrentPublication {
@@ -57,6 +59,7 @@ interface CurrentPublication {
   references: readonly CatalogSkuRevisionRef[];
   documents: readonly CatalogPublicationDocument[];
 }
+type ServingItem = { envelope: NeutralSkuEnvelopeV2; admitted: boolean };
 type LoadPublication = (db: PgQueryExecutor, productId: string) => Promise<CurrentPublication>;
 const digest = /^[a-f0-9]{64}$/u;
 const cursorSchema = z.tuple([z.string().regex(digest), z.guid().refine(id => id === id.toLowerCase())]);
@@ -89,17 +92,28 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
     return definition ? [`${ref.key}@${ref.version}`, { definition, digest: catalogDefinitionDigest(definition) }] : fail("catalog_read_not_configured");
   }));
   if (!types.length || definitions.size !== types.length || !offerVersion || offerVersion.length > 240) fail("catalog_read_not_configured");
+  const projections = new Map<string, { key: string; items: ServingItem[] }>();
 
   async function observe(slug: string | null) {
     try {
       return await deps.transactions.run(async db => {
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-        const observed = await db.query(`SELECT
-          (SELECT bool_and(NOT row_security_active(relation::regclass)
-                           AND has_table_privilege(relation::regclass, 'SELECT'))
-           FROM unnest(ARRAY['public.catalog_products','public.catalog_skus','public.catalog_publication_heads',
-             'public.catalog_publications','public.catalog_sku_revisions','public.catalog_product_document_revisions',
-             'public.catalog_type_versions','public.catalog_sku_identifiers']) AS scoped(relation)) AS complete,
+        const observed = await db.query(`WITH required AS (
+          SELECT relation::regclass AS id FROM unnest(ARRAY[
+            'public.catalog_products','public.catalog_skus','public.catalog_publication_heads',
+            'public.catalog_publications','public.catalog_sku_revisions','public.catalog_product_document_revisions',
+            'public.catalog_type_versions','public.catalog_sku_identifiers']) AS scoped(relation)
+        ), policies AS (
+          SELECT polrelid, polpermissive, pg_get_expr(polqual, polrelid) = 'true' AS unconditional
+          FROM pg_policy WHERE polrelid IN (SELECT id FROM required) AND polcmd IN ('r', '*')
+            AND EXISTS (SELECT 1 FROM unnest(polroles) AS roles(role_id)
+              WHERE CASE WHEN role_id = 0 THEN true ELSE pg_has_role(role_id, 'USAGE') END)
+        )
+        SELECT (SELECT bool_and(has_table_privilege(required.id, 'SELECT') AND
+          (NOT row_security_active(required.id) OR (
+            EXISTS (SELECT 1 FROM policies WHERE polrelid = required.id AND polpermissive AND unconditional)
+            AND NOT EXISTS (SELECT 1 FROM policies WHERE polrelid = required.id AND NOT polpermissive AND unconditional IS NOT TRUE)
+          ))) FROM required) AS complete,
           (SELECT coalesce(jsonb_agg(jsonb_build_array(version.type_key,version.version,version.definition_digest)), '[]'::jsonb)
            FROM public.catalog_type_versions version
            JOIN jsonb_to_recordset($1::jsonb) AS scope(key text, version integer)
@@ -120,7 +134,8 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
           ORDER BY p.id LIMIT $3::integer`, [JSON.stringify(types), slug, maxItems + 1]);
         if (rows.length > maxItems || rows.reduce((sum, row) => sum + Number(row.sku_count), 0) > maxItems) return fail("catalog_cardinality_exceeded");
         const version = publicationDigest([types, offerVersion, slug, rows.map(row => [row.id, row.publication_id, row.revision])]);
-        const items = new Map<string, { envelope: NeutralSkuEnvelopeV2; admitted: boolean }>();
+        const items = new Map<string, ServingItem>();
+        const skuIds = new Set<string>();
         const slugs = new Set<string>();
         const codes = new Set<string>();
         for (const row of rows) {
@@ -134,6 +149,20 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
           if (!active(product)) continue;
           const typeEntry = definitions.get(`${product.type.key}@${product.type.version}`);
           if (!typeEntry || ("definitionDigest" in product && product.definitionDigest !== typeEntry.digest)) return fail("catalog_authority_changed");
+          for (const sku of skus) {
+            if (skuIds.has(sku.id) || codes.has(sku.code)) return fail("catalog_authority_changed");
+            skuIds.add(sku.id);
+            codes.add(sku.code);
+          }
+          // The installed loader has already reverified the current database
+          // projection. Only derived presentation is cached, by immutable head.
+          const key = publicationDigest([head, typeEntry.digest]);
+          const cached = projections.get(product.id);
+          if (cached?.key === key) {
+            for (const item of structuredClone(cached.items)) items.set(item.envelope.sku.id, item);
+            continue;
+          }
+          const projected: ServingItem[] = [];
           const document = documents.find(document => document.reference.id === product.document?.id);
           if (!document || !product.document || deps.rules.validateProduct(product, skus, [document]).length !== 0) {
             return fail("catalog_document_schema_invalid");
@@ -144,8 +173,6 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
           const projectAttributes = (attributes: CatalogSkuState["attributes"]) =>
             Object.fromEntries(Object.entries(attributes).filter(([key]) => publicAttributes.has(key)));
           for (const sku of skus) {
-            if (items.has(sku.id) || codes.has(sku.code)) return fail("catalog_authority_changed");
-            codes.add(sku.code);
             if (!active(sku)) continue;
             const reference = references.find(ref => ref.skuId === sku.id);
             if (!reference || sku.productId !== product.id) return fail("catalog_authority_changed");
@@ -164,7 +191,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
               schemaVersion: 2, skuId: sku.id, skuCode: sku.code, skuRevisionId: reference.revisionId,
               publicationHead: head, typeRef: product.type, definitionDigest: typeEntry.digest, optionDigest, netContent: sku.netContent,
             };
-            items.set(sku.id, { admitted: selectable && sku.memberships.some(member => member.offerVersion === offerVersion && member.admitted),
+            projected.push({ admitted: selectable && sku.memberships.some(member => member.offerVersion === offerVersion && member.admitted),
               envelope: { contractVersion: "catalog.foundation.v2", documentRevision: product.document, identifiers, acceptedReference,
                 product: { id: product.id, slug: product.slug, title: product.name, type: product.type,
                   primarySkuId: product.primarySkuId, attributes: projectAttributes(product.attributes) },
@@ -173,6 +200,9 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
                   assetRef: sku.assetRefs[0] ?? null,
                   sellability: { status: sku.status, oneTime: sku.sellableStandalone, subscription: sku.sellableInSubscription } } } });
           }
+          if (projections.size >= maxItems) projections.clear();
+          projections.set(product.id, { key, items: structuredClone(projected) });
+          for (const item of projected) items.set(item.envelope.sku.id, item);
         }
         return { version, items: [...items.values()].sort((a, b) => a.envelope.sku.id < b.envelope.sku.id ? -1 : 1) };
       });
@@ -212,11 +242,13 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
     },
     async listQuoteCatalogItems() {
       return (await selectable()).map(({ product, sku, documentRevision, acceptedReference }) => ({
-        skuId: sku.id, skuCode: sku.code, variantId: sku.id, productSlug: product.slug, isPrimarySku: product.primarySkuId === sku.id,
-        netContent: sku.netContent, grossMass: sku.grossMass, isAddon: sku.isAddon, sellability: sku.sellability, acceptedReference,
+        productId: product.id, skuId: sku.id, skuCode: sku.code, variantId: sku.id, productSlug: product.slug, isPrimarySku: product.primarySkuId === sku.id,
+        netContent: sku.netContent, grossMass: sku.grossMass, isAddon: sku.isAddon,
+        sellability: { oneTime: sku.sellability.oneTime, subscription: sku.sellability.subscription }, acceptedReference,
         documentRevision: { id: documentRevision.id, digest: documentRevision.digest },
       }));
     },
     listEditorSkus: selectable,
+    invalidateProduct(productId) { projections.delete(productId); },
   };
 }

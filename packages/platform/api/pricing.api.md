@@ -1249,6 +1249,7 @@ export declare class CommerceQuoteCatalogReadError extends Error {
 }
 /** Exact catalogue facts for quote and effect admission. @experimental */
 export interface CommerceQuoteCatalogItemV2 extends Omit<CommerceQuoteCatalogItem, "netWeightG"> {
+    productId: string;
     netContent: CatalogQuantity;
     grossMass: CatalogQuantity | null;
     acceptedReference: CatalogAcceptedReferenceV2;

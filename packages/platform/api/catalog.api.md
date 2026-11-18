@@ -3880,7 +3880,6 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
         kind: z.ZodLiteral<"boolean">;
         value: z.ZodBoolean;
     }, z.core.$strict>], "kind">>;
-    productId: z.ZodGUID;
     netContent: z.ZodOptional<z.ZodObject<{
         dimension: z.ZodEnum<{
             count: "count";
@@ -3891,6 +3890,7 @@ export declare const catalogDraftSkuV2Schema: z.ZodObject<{
         scale: z.ZodNumber;
         unit: z.ZodString;
     }, z.core.$strict>>;
+    productId: z.ZodGUID;
     identifiers: z.ZodOptional<z.ZodArray<z.ZodObject<{
         scheme: z.ZodString;
         issuer: z.ZodString;
@@ -5250,7 +5250,7 @@ export declare const sellableCatalogListResponseSchema: z.ZodObject<{
 
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
-import { type CommerceQuoteCatalogItemV2 } from "../pricing/commerceQuoteCatalogReadPort.js";
+import { type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
 import { type NeutralSkuEnvelopeV1 } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogAcceptedReferenceV2, CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
@@ -5300,6 +5300,8 @@ export interface CatalogServingReadPortV2 {
     }>;
     listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItemV2[]>;
     listEditorSkus(): Promise<NeutralSkuEnvelopeV2[]>;
+    /** Evict derived presentation after an observed publication commit. */
+    invalidateProduct(productId: string): void;
 }
 interface CurrentPublication {
     head: CatalogHeadRef | null;
@@ -5448,7 +5450,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123230000_catalog_quantity_serving";
     readonly catalogPath: "db/platform/migrations/20261123230000_catalog_quantity_serving.sql";
     readonly position: 156;
-    readonly sha256: "260de21a18383d2ab86cc4506d06690ca70263d842b9fd3fa47cece535d754ff";
+    readonly sha256: "a3c8686aa652318d6f72c3347469f16e98b6b3ca49f3b85e3fbaea8c85260dcd";
     readonly url: URL;
 }];
 ```
@@ -6927,6 +6929,7 @@ export declare class CommerceQuoteCatalogReadError extends Error {
 }
 /** Exact catalogue facts for quote and effect admission. @experimental */
 export interface CommerceQuoteCatalogItemV2 extends Omit<CommerceQuoteCatalogItem, "netWeightG"> {
+    productId: string;
     netContent: CatalogQuantity;
     grossMass: CatalogQuantity | null;
     acceptedReference: CatalogAcceptedReferenceV2;

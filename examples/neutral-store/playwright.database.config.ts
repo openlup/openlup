@@ -1,14 +1,15 @@
 import { defineConfig } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { configurations } from './owned/store.config.ts';
 import type { SubscriptionProofOptions } from './browser/subscription-native-fixture.ts';
 
 // The proof wrapper starts installed/seeded PostgreSQL hosts with --database-url.
 // No implicit fallback to the database-less preview or a running developer host.
 const hosts: unknown = JSON.parse(readFileSync('.context/database-ui-hosts.json', 'utf8'));
-if (!Array.isArray(hosts) || hosts.length !== 2 || hosts.some(host =>
-  !host || !['supplements', 'coffee'].includes(host.id)
+if (!Array.isArray(hosts) || !hosts.length || hosts.some(host =>
+  !host || typeof host.id !== 'string' || !Object.hasOwn(configurations, host.id)
   || !/^http:\/\/127\.0\.0\.1:[0-9]+$/.test(host.baseURL))) throw new Error('starter_database_ui_hosts_required');
-if (new Set(hosts.map(host => host.id)).size !== 2) throw new Error('starter_database_ui_hosts_required');
+if (new Set(hosts.map(host => host.id)).size !== hosts.length) throw new Error('starter_database_ui_hosts_required');
 // Editor journeys own Compose fixtures; lifecycle browser retains its process-hosted care recipe.
 const editorProofs = hosts.every(host => typeof host.composeProject === 'string')
   ? ['subscription-journeys.spec.ts', 'subscription-api.spec.ts'] : [];

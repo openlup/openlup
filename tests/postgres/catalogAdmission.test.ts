@@ -1416,3 +1416,29 @@ it("admission binding promoted", async () => {
     await e.query("ROLLBACK"); expect(await snapshot()).toEqual(before);
   } finally { await stop.release(); await publishing; await e.query("ROLLBACK"); await w.query("ROLLBACK"); h.release(); w.release(); e.release(); }
 });
+
+it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
+  "catalog_bound_effect_rechecks_shared_authority MC5-D-026 %s", async purpose => {
+    const f = await fixture("serving"), read = await pool.connect();
+    try {
+      const offerVersion = purpose === "sized" ? "sized.v1" : "classic";
+      const authority = publisher(read).serving({ types: [definition], offerVersion, maxItems: 5000 });
+      const items = await authority.listQuoteCatalogItems();
+      const item = items.find(item => item.skuId === f.sku);
+      expect(item).toMatchObject({ productId: f.product, acceptedReference: f.reference });
+      const input: CatalogAdmissionInput = {
+        ...f.admission, purpose: purpose === "order" ? "order" : "account",
+        heads: [{ productId: item!.productId, head: item!.acceptedReference.publicationHead }],
+        skuRevisions: [{ reference: item!.acceptedReference, quantity: 2 }],
+        offerEvidence: purpose === "order" ? { offerVersion } : { offerVersion, subscriptionId: f.subscription, lane: purpose, ...(purpose === "sized" ? { optIn: true } : {}) },
+      };
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, input)).resolves.toBeUndefined();
+      const before = (await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows;
+      const stale = { ...input, heads: [{ productId: f.product, head: { ...f.head, revision: 1 } }] };
+      await expect(createPostgresCatalogAdmission().assertCurrent(read, stale)).rejects.toMatchObject({
+        code: "40001", message: purpose === "order" ? "commerce_order_draft_catalog_head_moved" : "customer_self_service_stale_edit_catalog_head",
+      });
+      expect((await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual(before);
+    } finally { read.release(); }
+  },
+);

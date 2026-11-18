@@ -382,3 +382,5 @@ function stockFailure(error: unknown, operation: "get_stock" | "get_stock_moveme
     operation, status: error.status, code: error.code, retryable,
   } });
 }
+
+export { buildTypedProductPayload } from "./omnipackProductPayload.js";

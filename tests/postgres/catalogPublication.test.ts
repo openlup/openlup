@@ -15,8 +15,11 @@ let db: Pool;
 let priceDb: Pool;
 const priceList = randomUUID(), anchorSku = randomUUID();
 const admin = randomUUID();
-const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
-  netContentUnits: ["openlup:g"], dimensions: [], axes: [], attributes: [{ key: "details", scope: "variant" as const,
+const definition = { key: "example:article", version: 1, units: [
+  { code: "openlup:g", dimension: "mass" as const, integral: false },
+  { code: "openlup:ml", dimension: "volume" as const, integral: false },
+  { code: "openlup:piece", dimension: "count" as const, integral: true },
+], netContentUnits: ["openlup:g", "openlup:ml", "openlup:piece"], dimensions: [], axes: [], attributes: [{ key: "details", scope: "variant" as const,
     valueType: { kind: "list" as const, item: { kind: "text" as const, maxLength: 1900 }, min: 0, max: 300 }, required: false,
     cardinality: { min: 0, max: 300 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
   validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
@@ -526,11 +529,13 @@ it("separates the native price-only 64-character ceiling from dark structural re
   expect(staged).toBe(true); expect(await snapshot()).toEqual(before);
 });
 it.each([
-  ["MC5-N-001 fractional net", "15", 1],
-  ["MC5-N-001 oversized net", "2147483648", 0],
-] as const)("catalog_publish_typed_readiness_and_projection %s", async (_case, unscaled, scale) => {
+  ["MC5-N-001 fractional net", "mass", "openlup:g", "15", 1],
+  ["MC5-N-001 oversized net", "mass", "openlup:g", "2147483648", 0],
+  ["MC5-N-003 count", "count", "openlup:piece", "56", 0],
+  ["MC5-N-003 volume", "volume", "openlup:ml", "50", 0],
+] as const)("catalog_publish_typed_readiness_and_projection %s", async (_case, dimension, unit, unscaled, scale) => {
   const data = await draft(), payload = structuredClone(data.payload);
-  const netContent = { dimension: "mass" as const, unit: "openlup:g", unscaled, scale };
+  const netContent = { dimension, unit, unscaled, scale };
   payload.skus[0]!.netContent = netContent;
   payload.skus[0]!.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "3000000000", scale: 0 };
   const receipt = await commit(await save(payload, data.draftId, 1));
@@ -1607,3 +1612,26 @@ it("catalog_publication_parent_replay_never_reruns_prices",async()=>inPriceDatab
   expect(await target.publish(data.publication,actor)).toEqual({outcome:"replayed",receipt});expect(priceCalls).toBe(calls);expect(await snapshot()).toEqual(before);
   expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows).toEqual([{unit_price_minor:1500}]);
 }));
+
+it("catalog_authoritative_page_and_projection MC5-D-019 distinguishes qualified empty from hidden authority", async () => {
+  const role = "mc5_catalog_reader";
+  await db.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`);
+  const scoped = ["catalog_products", "catalog_skus", "catalog_publication_heads", "catalog_publications",
+    "catalog_sku_revisions", "catalog_product_document_revisions", "catalog_type_versions", "catalog_sku_identifiers"];
+  const base = dependencies();
+  const qualified = createPostgresCatalogPublication<null>({ ...base, transactions: {
+    run: work => base.transactions.run(async client => {
+      await client.query(`SET LOCAL ROLE ${role}`);
+      return work(client);
+    }),
+  } }).serving({ types: [definition], offerVersion: "example:offer" });
+  const read = () => qualified.detail("no-published-product-with-this-slug");
+  await expect(read()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+  for (const table of scoped) {
+    await db.query(`GRANT SELECT ON public.${table} TO ${role}`);
+    await db.query(`CREATE POLICY mc5_catalog_read ON public.${table} FOR SELECT TO ${role} USING (true)`);
+  }
+  await expect(read()).resolves.toMatchObject({ items: [], version: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+  await db.query(`CREATE POLICY mc5_catalog_read_restricted ON public.catalog_publications AS RESTRICTIVE FOR SELECT TO ${role} USING (false)`);
+  await expect(read()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+});

@@ -1,3 +1,4 @@
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule } from "./renewal.js";
 export interface StockWaitRecoveryBinding {
   caseId: string | null; cycleId: string | null; orderId: string | null;
@@ -5,6 +6,8 @@ export interface StockWaitRecoveryBinding {
 }
 export interface StockWaitDeficit {
   skuId: string; sku: string; displayName: string; size: string | null;
+  /** Exact frozen content captured with the agreement. @experimental */
+  netContent?: CatalogQuantity;
   required: number;
   /** This operation's own reserved units. */
   reserved: number;

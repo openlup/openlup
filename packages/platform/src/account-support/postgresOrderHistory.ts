@@ -32,8 +32,12 @@ export function createPostgresCustomerOrderHistoryReadStore(
       return (await orderHeaders("WHERE o.id=$3::uuid", [orderId], true))[0] ?? null;
     },
     async readOrderLines(orderId) {
-      const result = await rows(`SELECT item.*,o.metadata,o.currency_code,o.total_amount_minor FROM public.commerce_order_items item
-        JOIN owned_orders o ON o.id=item.order_id
+      const result = await rows(`SELECT item.*,o.metadata,o.currency_code,o.total_amount_minor,
+        (SELECT accepted->'netContent'
+         FROM jsonb_array_elements(CASE WHEN to_jsonb(o)#>>'{catalog_acceptance,schemaVersion}' = '2'
+           THEN to_jsonb(o)#>'{catalog_acceptance,lines}' ELSE '[]'::jsonb END) accepted
+         WHERE accepted->>'skuId' = item.sku_id::text) AS accepted_net_content
+        FROM public.commerce_order_items item JOIN owned_orders o ON o.id=item.order_id
         WHERE o.id=$3::uuid ORDER BY item.line_ordinal,item.id`, [orderId]);
       // The existing projector owns aggregate reconciliation and its diagnostic-only
       // read fallback. Derived per-line VAT rounding is not a snapshot refusal.
@@ -142,9 +146,10 @@ function header(row: CustomerOrderHistoryRow, detail: boolean): CustomerOrderHis
   }
   return translated;
 }
-function line(row: CustomerOrderHistoryRow): CustomerOrderHistoryRow {
+function line({ accepted_net_content, ...row }: CustomerOrderHistoryRow): CustomerOrderHistoryRow {
+  const physical = accepted_net_content == null ? {} : { accepted_net_content };
   const metadata = record(row.metadata), quote = record(record(metadata.quoteSnapshot).quote);
-  if (!Object.keys(quote).length) return { ...row, unit_price_cents: minor(row.unit_amount_minor), total_cents: minor(row.line_amount_minor) };
+  if (!Object.keys(quote).length) return { ...row, ...physical, unit_price_cents: minor(row.unit_amount_minor), total_cents: minor(row.line_amount_minor) };
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const promoted = row.source_line_ordinal != null;
   const captured = record(lines[minor(promoted ? row.source_line_ordinal : row.line_ordinal) - 1]);
@@ -161,7 +166,7 @@ function line(row: CustomerOrderHistoryRow): CustomerOrderHistoryRow {
     || catalogTotal - discount !== effective || rate > 10000) {
     throw new Error("native_account_order_line_snapshot_mismatch");
   }
-  return { id: row.id, sku_id: row.sku_id, quantity, unit_price_cents: catalogUnit,
+  return { id: row.id, sku_id: row.sku_id, ...physical, quantity, unit_price_cents: catalogUnit,
     total_cents: catalogTotal, vat_rate_bps: rate, discount_allocated_cents: discount,
     effective_total_cents: effective, effective_net_cents: Math.round(effective * 10000 / (10000 + rate)),
     product_snapshot: { quoteLine: captured }, variant_snapshot: { sku: captured.sku } };

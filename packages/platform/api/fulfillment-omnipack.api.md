@@ -1276,6 +1276,7 @@ export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfill
     stockSync: FulfillmentStockSyncProvider;
     productSync: FulfillmentProductSyncProvider;
 };
+export { buildTypedProductPayload } from "./omnipackProductPayload.js";
 ```
 ## dist/fulfillment/omnipack/intake.d.ts
 
@@ -1413,6 +1414,35 @@ export declare function observation(input: {
     approveTrackingUrl: (url: string) => boolean;
     observationCodecs?: OmnipackObservationCodecs;
 }): FulfillmentObservation;
+```
+## dist/fulfillment/omnipack/omnipackProductPayload.d.ts
+
+```ts
+import { type CatalogQuantity } from "@openlup/core/catalog";
+export interface OmnipackProductPack {
+    weightGrams: number;
+    lengthMm: number;
+    widthMm: number;
+    heightMm: number;
+}
+export interface OmnipackProductInput {
+    sku: string;
+    ean: string | null;
+    productGroup: string;
+    title: string;
+    pack: OmnipackProductPack | null;
+}
+export declare class OmnipackProductPayloadError extends Error {
+    readonly code: string;
+    constructor(code: string);
+}
+export declare function buildOmnipackProductPayload(input: OmnipackProductInput): Record<string, unknown>;
+/** Build a registration payload from the explicit packaged gross mass. @experimental */
+export declare function buildTypedProductPayload(input: Omit<OmnipackProductInput, "pack"> & {
+    pack: (Omit<OmnipackProductPack, "weightGrams"> & {
+        grossMass: CatalogQuantity | null;
+    }) | null;
+}): Record<string, unknown>;
 ```
 ## dist/fulfillment/omnipack/omnipackStatusVocabulary.d.ts
 

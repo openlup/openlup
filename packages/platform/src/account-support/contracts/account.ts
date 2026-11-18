@@ -1,3 +1,4 @@
+import type { CatalogQuantity } from "@openlup/core/catalog";
 /** Host-verified selection; never an authorization claim from a request body. */
 export interface CustomerContext { principalId: string; clientId: string; graph: "managed" | "native" }
 export type AccountReadRefusal = "FORBIDDEN" | "NOT_FOUND" | "UPSTREAM_UNAVAILABLE" | "INVALID_RESPONSE";
@@ -215,6 +216,8 @@ export interface AccountOrderLine {
   unitPrice: AccountSupportMoney;
   total: AccountSupportMoney;
   variantName: string | null;
+  /** Exact net content retained when the line was accepted. @experimental */
+  netContent?: CatalogQuantity;
   productSlug?: string | null;
   displayLabel?: string | null;
   accentColor?: string | null;

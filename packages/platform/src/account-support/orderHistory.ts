@@ -244,6 +244,7 @@ export function mapCustomerOrderLines(
       lineId: text(row.id),
       skuId: nullableText(row.sku_id),
       ...presentation.display(row),
+      ...(row.accepted_net_content === undefined ? {} : { netContent: row.accepted_net_content as NonNullable<AccountOrderLine["netContent"]> }),
       quantity: Number(row.quantity),
       unitPrice: customerOrderMoney(money?.catalogUnit ?? row.unit_price_cents, currency),
       total: customerOrderMoney(total, currency),

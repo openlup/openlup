@@ -2,7 +2,11 @@ Adds experimental typed catalogue serving for native publication. The listing,
 detail, quote and editor readers resolve the same installed publication and
 document evidence. They distinguish an empty catalogue from unreadable or
 inconsistent authority. Sale-unit price selection stays with the existing price
-authority.
+authority. Retained customer order and stock-wait display can carry the
+exact content from a versioned accepted reference; the order line and stock
+deficit still count sellable units. Structured Product data derives weight
+only from explicit mass, while the product-registration adapter uses gross
+mass supplied for packaging.
 
 Migration: apply the complete native catalogue through
 `20261123230000_catalog_quantity_serving.sql`. Verify installed type versions,

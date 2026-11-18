@@ -1498,6 +1498,7 @@ export {};
 ## dist/subscriptions/contracts/stockWait.d.ts
 
 ```ts
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule } from "./renewal.js";
 export interface StockWaitRecoveryBinding {
     caseId: string | null;
@@ -1511,6 +1512,8 @@ export interface StockWaitDeficit {
     sku: string;
     displayName: string;
     size: string | null;
+    /** Exact frozen content captured with the agreement. @experimental */
+    netContent?: CatalogQuantity;
     required: number;
     /** This operation's own reserved units. */
     reserved: number;
@@ -2618,7 +2621,7 @@ export declare function createPostgresRetryLifecycleBinding(options: NativeRetry
 
 ```ts
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding } from "./contracts/stockWait.js";
-import type { RenewalSchedule } from "./contracts/renewal.js";
+import type { RenewalFrozenSnapshot, RenewalSchedule } from "./contracts/renewal.js";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeStockWaitBinding {
     executor: SubscriptionQueryExecutor;
@@ -2634,7 +2637,7 @@ export interface NativeStockWaitAdmission {
 /** Internal native projection shared with the checked notice observation.
  * @experimental
  */
-export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]>;
+export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown, snapshot?: RenewalFrozenSnapshot): Promise<StockWaitDeficit[]>;
 /** Each multi-statement mutation uses the host transaction. Payment execution is
  * deliberately outside this store. SQL owns stock locks and subtransactions. */
 export declare function createPostgresStockWaitStore(options: NativeStockWaitBinding): {
@@ -2701,6 +2704,8 @@ export declare const successorNoticeSources: readonly ["catalog.publication.comm
  */
 export declare function createPostgresSuccessorNotices(options: {
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Optional presentation eviction after verifying the persisted commit event. */
+    invalidateCatalogueProduct?(productId: string): void;
     /** Bind the catalogue owner's complete withdrawal-impact port. */
     impact: {
         report(skuId: string): Promise<{
