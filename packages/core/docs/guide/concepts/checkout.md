@@ -48,7 +48,7 @@ and attempt states, verified results, transient secrets and late success.
 
 ### Inventory reservation lifetime
 
-In the next minor release (currently unreleased), `reservationPolicyFor(input, policy?)`
+In 1.2.0, `reservationPolicyFor(input, policy?)`
 and `normalizedTtlMinutes(value, policy?)` from `@openlup/platform/inventory`
 accept a `CheckoutReservationLifetimePolicy` with `minMinutes`, `maxMinutes` and
 `defaultMinutes`. Omission preserves the 1440–2160-minute clamp and 1440-minute
@@ -101,7 +101,7 @@ channel exposure. The cutoff is inclusive. Only the fenced renewal allocator can
 skip soft demand; a new purchase cannot select that exemption. This policy does
 not change subscription dates, delivery alignment or frozen renewal terms.
 
-In the next minor candidate, `@openlup/platform/inventory` exports
+In 1.2.0, `@openlup/platform/inventory` exports
 `RenewalStockProtectionPolicy`, `installRenewalStockProtectionPolicy(db, policy)`
 and `readRenewalStockProtectionPolicy(db)`; its contracts subpath also exports the
 type. Apply the ordered native migration

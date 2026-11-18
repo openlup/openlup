@@ -69,320 +69,17 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
-The source-release contract derives stable posture for the canonical activation
-identity and retains development-preview, unstable posture for local fixtures.
-Historical `openlup-source-preview/N` tag names remain unchanged identifiers;
-the contract snapshot binds the selected tree through the existing preparation
-generator. Descendant releases preserve repository and evidence-class identity;
-the validator admits the transition from historical preview to stable posture.
-
-Review coverage helpers use the existing tooling owner in CONTRIBUTING.
-The catalogue attribute validator, reference port, pure projection preparation
-and package witnesses are explicit publication-catalogue paths, owned by the
-[package catalogue section](../../packages/platform/README.md#catalog). Their
-inclusion supplies source navigation only; it enables no publication or serving.
-Task records belong in the PR description under
-[Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
-
-The source-only outcome and package-set BOM generators route to
-[distribution evidence](DISTRIBUTION_EVIDENCE.md). Its projection section owns
-class grouping, exact input fingerprints and refusal of partial outcome claims;
-its BOM section owns committed inventory and verified artifact identity. The
-publication catalogue includes their helpers, wrappers, witnesses and the one
-generated outcome file. README evaluation paths and installation policy retain
-profile and sandbox-payment limits. Generated navigation grants no execution,
-installation, publication or support qualification.
-
-The hosted S3 task and storage witness are public source outputs. The runner
-owner in runtime guidance defines its explicit storage-only declaration, private
-lifecycle continuity and pending/observed/cleanup receipt boundary. The adapter
-owner defines prefix selection and opt-in single-current-version admission;
-default history refusal remains unchanged. Generated navigation grants no
-hosted qualification.
-
-The exact-shipment native G17 host binding and its local unit/native witnesses
-route to the [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
-The [data owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) defines its
-actual restricted-login recovery proof. This source routing does not establish
-whole-store transfer, host exclusion, provider qualification or new-dispatch
-runtime capability.
-
-The Node host and scheduler shutdown source, API reports and disposable
-PostgreSQL drain witness belong to the platform package's
-[scheduled jobs boundary](../../packages/platform/README.md#scheduled-jobs).
-Runtime guidance owns host dependency disposal and retains the separate
-external executor fencing and effect reconciliation duties. The publication
-catalogue includes the real-session witness; generated navigation establishes
-no current test result or complete store-transfer claim.
-
-The migration session hook, union/history controls, seven issued qualified
-approval inputs and five additional inert restricted-bootstrap fixtures retain the
-[migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue).
-The package entry and contributor witness descriptions link to that boundary;
-publication inventory includes the control witnesses and inert fixtures without
-admitting the five separately approved replacements to the canonical installation catalogue.
-The released legacy upgrade witness and its child process route to the same
-[data owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility). Its published
-predecessor pin, real backfill and code-rollback limit belong there; contributor
-guidance owns the process-kill test invocation and the child's execution-path
-registration. This adds no qualified-v2 upgrade lineage or migration SQL.
-
-Application lifecycle source, owner-local witnesses and its API report route
-to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
-The package README remains the short import entry, the package reference owns
-the disposable recipe, and database/runtime owners retain their separate
-compatibility and admission duties. Generated navigation adds no upgrade,
-installation or provider claim.
-The installed versioned-application witness routes to that same file-upgrade
-owner. Its existing native cold scenario observes the canonical database before
-fixture grants and exercises real operations through an application login;
-the database owner retains schema compatibility and qualified-role acceptance.
-
-The lifecycle legacy PostgreSQL role helper, its package witness and actual
-PostgreSQL witness route to the
-[finite legacy role-observation owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation).
-Its report is role-prerequisite evidence, never install readiness. The package
-reference owns the invocation; runtime guidance keeps installation and grant
-admission separate. Shared lifecycle API documentation retains both boundaries.
-
-The app-file witness's owned child Node process is named in the existing closed
-public execution inventory; this records its CLI carrier without adding a job.
-
-Portability source, package witnesses, the compatible-row PostgreSQL witness and
-its API report route to the
-[transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
-Data guidance retains canonical import-trigger/identity limitations; runtime
-guidance retains effect-time fencing and host capability ownership. Navigation
-and selected-row/local-object evidence do not close the full store-transfer outcome.
-
-The local handover sources (entry, cohort and catch-up helpers, dispatch actor,
-application actor and provider) route to that same transfer architecture owner.
-Runtime guidance explains exact process/backend retirement and the frozen
-coordinator; data guidance preserves interrupted graph/media state. Contributor
-guidance owns the opt-in command, four executable carriers and retained
-handover proof. The optional catch-up mode adds the finite preliminary/final-generation
-journey and its structured local report under the same transfer owner; it does
-not extend managed-history or hosted qualification. Exact publication and
-generated navigation add no execution,
-adopter-host qualification or delivered-predecessor claim.
-
-Operations source, owner-local witnesses, the unchanged control-plane SQL
-projection and the three operations API reports route to the
-[operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
-The package README is the short import entry point; the historical module record
-retains scope and task records retain candidate evidence. Navigation
-adds no activation or hosted-provider claim.
-
-Risk package sources, API reports, sparse SQL projection and neutral witnesses
-route to the [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts).
-The package README owns its three experimental entry summaries; migration
-guidance owns full-catalogue installation and unchanged SQL identities. The
-publication catalogue inventories these files; generated navigation establishes
-no activation, managed parity, privacy reconciliation or installation claim.
-
-The plain Vitest worker-policy witness is a public tooling source in the
-publication catalogue; its embedded child CLI is also a declared execution
-entrypoint, like the existing process witnesses. Register new tracked test paths there before final
-policy/inventory checks; those checks compare Git's tracked paths, so an
-untracked test alone cannot establish complete publication evidence.
-
-Marketing analytics source and its neutral witnesses belong to the platform
-runtime-boundary owner. Reference analytics and purchase bindings retain their
-host policy; runtime guidance explains local admission, consent ordering and the
-reference checkout-kind restriction. Publication inventory includes the package
-facts and the frozen reference purchase transcript; generated navigation carries
-no delivery or activation claim.
-
-The server-only analytics context handler and its package witness share that
-runtime-boundary owner. Package and architecture guidance explain its required
-host ports and absence of default persistence or a reference route; runtime
-guidance owns refusal ordering, verified-subject enrollment and the local meaning
-of `active`. Publication inventory includes these sources without claiming
-portable context SQL, activation or delivery.
-
-The historical renewal-control re-pin moved inert fixtures under
-`scripts/fixtures/reviewed-m10/`.
-The migration guide owns the exact 18-pin inventory (with historical 14/16-pin reads) and payment/stock/preview purpose; the data guide owns
-same-rail landing order and real PostgreSQL witnesses. Generated navigation
-lists these control inputs without admitting them to an installation manifest
-or establishing activation, package publication or managed parity.
-
-The CI image mirror workflow, dependency-free script and offline witnesses are
-public source outputs in the publication catalogue. Contributor checks own its
-default-branch execution and one-time package visibility/access setup; canonical
-contracts own the single owned digest inventory, the checksum-pinned PostgreSQL
-test packages and mirror-first PostgreSQL consumer selection with public upstream
-fallback, except the mirror-only required `install-packages` startup step.
-The shared pull module, PostgreSQL helper and stock pgTAP runner are public
-source outputs. Contributor checks own their bounded, digest-only retry/fallback,
-including exact local reuse, the gate's shared pull path and remaining-budget
-Retry-After fall-through within the selected sources. The mirror reads only that
-inventory. PostgreSQL consumers, including the pgTAP runner's install-proof pin,
-retain upstream sources in CI and locally, except the required `install-packages`
-PostgreSQL startup step: it selects only the GHCR mirror, has no upstream fallback
-and requires access to that organization package.
-The active CLI bump task is included as an authored catalogue output. Generated
-bindings establish no registry publication.
-
-Invoicing source, contract witnesses and both API reports route to the
-[invoicing architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).
-The package README keeps a short export summary; the package reference owns the
-longer host-seam recipe outside the npm tarball. Canonical contracts distinguish
-unknown, exact absence and unsupported duties. The design plan and offline conformance
-witnesses describe their limited proof without making a store or activation claim;
-navigation adds no runtime authority.
-
-The platform package README remains its API entry point, with brief module
-summaries and preserved top-level anchors. Longer identity and communications
-recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFERENCE.md),
-which the publication catalogue includes in the public source tree rather than
-the npm artifact. Detailed recipe links point there directly; existing identity,
-runtime and package ownership routes remain unchanged.
-
-Marketing's PostgreSQL export barrel and generated server API reports are public
-source outputs in the publication catalogue. The package README and
-[server composition recipe](../../packages/core/docs/guide/how-to/build/marketing.md#choose-the-import-boundary)
-own the separate handler and optional-peer adapter entries; the contributor
-guide owns their existing boundary, cold-consumer and PostgreSQL proof checks.
-
-Subscription source, contract witnesses and generated subscription API reports
-route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
-The package README links the exact export and refusal surface in that owner;
-canonical contracts own continuity and payment-evidence meaning. Navigation describes this
-contract step without implying that later stores or a runner are installed.
-
-Release preparation inventories core, outbox and platform changelog histories as
-public source documentation. These verbatim archives remain outside the npm
-artifacts; each packed changelog retains the current and two previous releases.
-The release guide owns the rolling rule and package READMEs retain API ownership.
-
-Frozen starter proof/limit records and the former platform README release notes
-live under `history/`, outside the npm artifacts. Markdown archive links are rebased; the complete
-proof text attachment retains every original byte and command. Current verification remains in the
-[starter recipe](../../examples/neutral-store/docs/proof.md); limits and public
-composition contracts remain in the installed reader guide. The history route
-does not replace those semantic owners.
-
-Fulfillment routing covers the complete `fulfillment*.api.md` report family,
-including the opt-in example report, under the existing architecture owner.
-The generated source map lists that family alongside its source and witnesses;
-this changes navigation coverage without adding an export or claiming conformance.
-
-O-P3b-2 removes the 27 duplicate root payment implementation/test paths from the
-publication catalogue. The package README owns the eleven experimental
-reference-support exports; payment contracts own nominal error trust and
-host-return translation, architecture owns package/host placement, and runtime
-owns inert composition. Root adapter and payment owners describe retained host
-policy and unchanged domain contracts. Package donor witnesses stay in place;
-the [A2 ledger](plans/oss-a2-payment-adapters.md#o-p3b-2-reference-support-and-root-rebinding-2026-10-22)
-records root retirement separately from C5 adopter retirement.
-
-The bounded unused-root payment retirement removes only the ten deleted paths
-from the authored publication catalogue. Generic HTTP helpers, package adapter
-sources and their witnesses keep their existing inventory and owners. Generated
-source bindings and navigation describe that smaller tree; they establish no
-new export, activation or release. The [case ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
-distinguishes root retirement from the remaining adopter obligation.
-
-The opt-in payment example's private capability descriptor is catalogued with
-its adapter sources; the existing public re-export is unchanged. The
-[payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example) owns the
-single-currency notification binding and ambiguous-currency refusal.
-
-The opt-in payment readback parity witness is catalogued as a public test output.
-It runs the contributed provider interpretation with the package-local donor host
-money check; the [A2 ledger](plans/oss-a2-payment-adapters.md#case-ledger-coordinator-budget-ruling-a) owns its
-parameterized case accounting, and the [payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
-owns readback behavior. The catalogue row makes that witness available in the
-public tree without adding a package export or claiming provider activation.
-
-The root README's [Velipet storefront screenshot](assets/velipet-storefront-en.png)
-is a public, English-language first-party application illustration. Its branding
-and content belong to that application; it is not a generic reference UI,
-installed-package acceptance result or independent-adopter certification. The
-publication catalogue includes the image so README links resolve in the public
-tree. This illustration changes no runtime, package or release contract.
-
-Its approved name/domain references have an exact-line, exact-carrier allowance
-in the tree-wide neutrality wrapper, as described in
-[contribution checks](../../CONTRIBUTING.md#package-policy-and-release-checks).
-The allowance admits only this case-study prose and screenshot references; code
-and unapproved references remain subject to the existing scanner and baseline.
-
-The native catalog move keeps the package README as owner of the two
-factory exports, sparse descriptor and structural contribution. The adapter
-owner explains reference compatibility paths; the runtime owner explains the
-explicit inert selection and unchanged default exposure. The package guide
-owns the proof files and reused packed-consumer scenario. The
-publication catalogue and derived source contract inventory these additions;
-neither generated navigation nor schema-object presence establishes activation
-or a successful installed consumer.
-
-The catalog extraction keeps the platform README as owner of its new package
-entries and moved witnesses, and the catalog domain README as owner of reference
-shims and retained browser schemas. Author the exact publication catalogue rows for moved tests
-and new package sources; there is no catalogue discovery generator. Validated
-regular non-executable `packages/{core,outbox,platform}/changes/*.md` fragments
-are the sole pattern admission without rows. Policy and inventory checks derive
-live source-release bindings, validate authored fields and structure, and report
-a stale committed snapshot without failure. Refresh that snapshot only in a
-reviewed release-preparation change with the source-release preparation CLI;
-release paths require strict equality against the target Git objects. These projections describe the
-unchanged source move; they establish no new installation or publication claim.
-
-OIDC selectors assign the explicit host composition, pinned disposable compose
-and real-issuer conformance modules to the identity guide. Package/API owners
-retain exported-contract explanations, architecture retains readiness and actor
-scope, and contributor tooling retains packed-consumer execution obligations.
-These routes describe source ownership, not successful issuer certification.
-
-Identity selectors also cover reference admission, the finite bundle schema
-inventories, direct reconcile and operator command composition. Their owner is
-the identity guide; runtime, package and publication owners retain their
-installation, consumer and execution-contract obligations.
-
-Identity ownership includes the disposable mailbox, profile-local policy and
-opt-in acceptance sources. The browser identity owner additionally describes
-the selected entry, account/admin mounts and closed import inventory. Runtime
-and architecture owners retain the shell's admission and public-policy boundary;
-contributor owners retain verification and command-inventory obligations.
-
-Privacy routing additionally names the identity-owned export/erasure contracts,
-canonical receipt SQL and projection, reference privacy routes and subscription
-veto, operator Settings panel and conformance modules. These selectors retain
-previous canonical owners. Package composition, runtime mounting and
-direct/managed schema limitations remain explained by their respective owners;
-generated navigation describes source locations rather than installation proof.
-
-Identity routing includes the direct operator challenge source and tests,
-canonical/projection SQL, runtime auth composition and browser auth seams. The
-browser identity owner covers both customer and operator page/provider composition,
-selected-profile inventory, callback and persistence guidance. The identity guide
-owns their behavior; package, architecture, migration and runtime owners retain
-their API, installation and host explanations. Generated navigation reflects
-these routes and never substitutes for those substantive owner updates.
-
 The [domain registry](../../src/lib/coreDomains.ts) names platform domains. The
 [publication catalogue](../../config/openlup-publication-catalog.json) supplies
 the public path inventory. A moved test keeps its `public-output` class
 and takes its new source owner; the subscription action-guard test now lives
-beside the reference handler and is owned by the runtime guide. The [documentation routing map](../../config/doc-routing.json)
-assigns those paths to canonical owner pages and sections; it is not a second
-domain or publication census.
-
-The portable operations reference binding and its composed witness route to the
-operations architecture owner. Their catalogue rows admit source and local
-proof, without adding a package entry, installed-default claim or hosted
-observability certification. Runtime guidance describes the host-supplied ports
-and captured delivery boundary separately.
-
-Partner acquisition keeps its existing Partners semantic owner when the neutral
-schemas, type-only port and PostgreSQL store are contributed under marketing.
-Exact source selectors extend the existing Partners route; marketing retains
-shared entry/distribution responsibilities. The Partners page links its package,
-public-producer and installed PostgreSQL witnesses, while data and architecture
-pages retain privacy/catalogue and host-composition duties. This routing creates
-no new domain, capability or installation claim.
+beside the reference handler and is owned by the runtime guide. The
+[documentation routing map](../../config/doc-routing.json) assigns those paths
+to canonical owner pages and sections; it is not a second domain or publication
+census. Open the generated [source map](SOURCE_MAP.md) first to look up any
+file's canonical owner page and section rather than scanning per-surface notes.
+Task records belong in the PR description under
+[Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 
 Most domains use `src/domains/<domain>/README.md` as their semantic owner. A
 server README adds server-specific security, money, authorization or operational
@@ -413,19 +110,56 @@ inputs placed under a plan/history directory. Those inputs retain their actual i
 Generated file views identify the responsibility owner and the source of the
 description. Authored guidance, source declarations and structural information
 are different evidence. A filename or exported symbol can establish a location
-or role, but cannot independently establish the module's behavior.
+or role, but cannot independently establish the module's behavior. Generated
+navigation, publication-catalogue rows and source-contract bindings never
+establish runtime activation, schema installation, managed parity,
+issuer/provider qualification, whole-store transfer or adopter absorption.
 
 Inventory, index, ancestry and object reads share one checkout-bound Git runner.
 It ignores ambient repository/index redirects, replacement objects and grafts,
 disables lazy fetching and filesystem monitors, and excludes global/system Git
 configuration. This preserves the actual object meaning of the reported SHA.
 
-The outbox rail owns its package protocol and transaction guide. Documentation routing assigns its source, explicit disposable consumer proof and reference composition to that guide; core retains shared kernel and checker documentation. Regenerated navigation lists these actual source responsibilities.
+### Surface-specific responsibility splits and boundary limits
 
-The normalized channel package sources, type/API reports and preservation tests
-route to the [package channel contract](../../packages/platform/README.md#channels).
-The data guide owns paired SQL, selected inventories and trusted-owner differences;
-architecture owns explicit owner composition and provider readiness boundaries.
+Exact path-to-owner mappings live in [`config/doc-routing.json`](../../config/doc-routing.json)
+and [SOURCE_MAP.md](SOURCE_MAP.md). The entries below record only the unique
+responsibility splits and boundary limits across shared surfaces:
+
+- **Source-release contract and catalogue updates:** derives stable posture for the canonical activation identity and retains development-preview, unstable posture for local fixtures. Historical `openlup-source-preview/N` tag names remain unchanged identifiers; the contract snapshot binds the selected tree through the preparation generator, descendant releases preserve repository and evidence-class identity, and the validator admits the transition from historical preview to stable posture. Author exact publication-catalogue rows for moved tests and new package sources (there is no catalogue discovery generator; validated regular non-executable `packages/{core,outbox,platform}/changes/*.md` fragments are the sole pattern admission without rows). Policy and inventory checks derive live source-release bindings, validate authored fields and structure, and report a stale committed snapshot without failure; refresh that snapshot only in a reviewed release-preparation change with the source-release preparation CLI (`release` paths require strict equality against target Git objects).
+- **Distribution evidence ([distribution evidence](DISTRIBUTION_EVIDENCE.md)):**
+  its projection section owns class grouping, exact input fingerprints and the
+  refusal to treat partial outcomes as complete. The publication catalogue
+  includes the generated outcome projection. The BOM section owns committed
+  package inventory and verified artifact identity. README evaluation paths
+  and installation policy retain profile and sandbox-payment limits.
+- **Hosted S3 task and storage witness:** the runner owner in runtime guidance defines its explicit storage-only declaration, private lifecycle continuity and pending/observed/cleanup receipt boundary; the adapter owner defines prefix selection and opt-in single-current-version admission, with default history refusal unchanged.
+- **Store transfer, G17 shipment binding, portability and handover ([transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)):** the [data owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility) defines restricted-login recovery proof for G17, retains canonical import-trigger/identity limitations for portability, and preserves interrupted graph/media state during handover. Runtime guidance owns effect-time fencing, host capability, exact process/backend retirement and the frozen coordinator. Contributor guidance owns the opt-in handover command, four executable carriers and retained handover proof. Optional catch-up mode adds the finite preliminary/final-generation journey and structured local report under the transfer owner without extending managed-history or hosted qualification, whole-store transfer, host exclusion, new-dispatch runtime capability or delivered-predecessor claims.
+- **Node host and scheduler shutdown ([scheduled jobs boundary](../../packages/platform/README.md#scheduled-jobs)):** runtime guidance owns host dependency disposal and retains the separate external executor fencing and effect reconciliation duties; the real-session drain witness establishes no current test result or complete store-transfer claim.
+- **Migrations, M10 fixtures and legacy upgrade ([migration owner](../../packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue) and [data owner](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)):** the migration owner retains the session hook, union/history controls, seven issued qualified approval inputs, five inert restricted-bootstrap fixtures (not admitted to the canonical installation catalogue), and the exact 18-pin `scripts/fixtures/reviewed-m10/` inventory (with historical 14/16-pin reads) and payment/stock/preview purpose. The data owner owns same-rail landing order, real PostgreSQL witnesses, and the released legacy upgrade witness's published predecessor pin, real backfill and code-rollback limit (adding no qualified-v2 upgrade lineage or migration SQL); contributor guidance owns the process-kill test invocation and child execution-path registration.
+- **Application file upgrades and legacy role observation ([application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades) and [finite legacy role-observation owner](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)):** the package README remains the short import entry, the package reference owns the disposable recipe and legacy role-helper invocation, and database/runtime owners retain schema compatibility, qualified-role acceptance and grant admission. The installed versioned-application witness observes the canonical database before fixture grants and exercises real operations through an application login; its owned child Node process is named in the closed public execution inventory without adding a job. The legacy role helper's report is role-prerequisite evidence, never install readiness; shared lifecycle API documentation retains both boundaries.
+- **Operations, risk, invoicing, fulfillment and subscriptions ([operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics), [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts), [invoicing architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts) and [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)):** the platform package README remains its API entry point with brief module summaries (including risk's three experimental entry summaries and subscription's exact export/refusal surface links) and preserved top-level anchors; longer identity, communications and invoicing host-seam recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFERENCE.md) in the public source tree outside the npm tarball. For operations, the historical module record retains scope, task records retain candidate evidence, and the portable reference binding/witness admit source and local proof without adding a package entry, installed-default claim or hosted observability certification (runtime guidance describes host-supplied ports and captured delivery separately). For risk, migration guidance owns full-catalogue installation and unchanged SQL identities. For invoicing, canonical contracts distinguish unknown, exact absence and unsupported duties, and offline conformance witnesses make no store or activation claim. For subscriptions, canonical contracts own continuity and payment-evidence meaning without implying installed stores or a runner. Fulfillment routing covers the complete `fulfillment*.api.md` report family (including the opt-in example report) under the architecture owner without adding an export or claiming conformance.
+- **Vitest worker-policy and review coverage helpers:** review coverage helpers use the tooling owner in `CONTRIBUTING.md`. The plain Vitest worker-policy witness's embedded child CLI is a declared execution entrypoint in the publication catalogue; register new tracked test paths there before final policy/inventory checks because those checks compare Git's tracked paths.
+- **Marketing, analytics and partner acquisition ([server composition recipe](../../packages/core/docs/guide/how-to/build/marketing.md#choose-the-import-boundary) and [Partners](../../src/domains/partners/README.md)):** the platform runtime-boundary owner covers marketing analytics source, the server-only analytics context handler and neutral witnesses; reference analytics/purchase bindings retain host policy (with the frozen reference purchase transcript in the publication inventory), runtime guidance explains local admission, consent ordering, reference checkout-kind restriction, refusal ordering, verified-subject enrollment and the local meaning of `active`, and package/architecture guidance explain required host ports and absence of default persistence, a reference route or portable context SQL. The package README and server composition recipe own the separate marketing handler and optional-peer PostgreSQL adapter entries, while contributor guidance owns their boundary, cold-consumer and PostgreSQL proof checks. Partner acquisition keeps its existing Partners semantic owner when neutral schemas, type-only port and PostgreSQL store are contributed under marketing (marketing retains shared entry/distribution responsibilities, the Partners page links its package, public-producer and installed PostgreSQL witnesses, and data/architecture pages retain privacy/catalogue and host-composition duties).
+- **CI image mirror, pull loop and pgTAP runner:** contributor checks own default-branch mirror execution, one-time package visibility/access setup, the active CLI bump task, and bounded digest-only retry/fallback (exact local reuse, shared pull path and remaining-budget `Retry-After` fall-through); canonical contracts own the single owned digest inventory, checksum-pinned PostgreSQL test packages and mirror-first PostgreSQL consumer selection with public upstream fallback, except the mirror-only required `install-packages` PostgreSQL startup step (which selects only the GHCR mirror, has no upstream fallback and requires access to that organization package).
+- **Changelog histories and frozen starter records:** release preparation inventories core, outbox and platform changelog histories outside npm artifacts while each packed changelog retains the current and two previous releases (the release guide owns the rolling rule and package READMEs retain API ownership). Frozen starter proof/limit records and former platform README release notes live under `history/` outside npm artifacts with rebased Markdown links and byte-preserved proof text attachments; current verification remains in the [starter recipe](../../examples/neutral-store/docs/proof.md) and limits/public composition contracts remain in the installed reader guide.
+- **Payment adapter extraction and opt-in examples ([payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example), [A2 ledger](plans/oss-a2-payment-adapters.md#o-p3b-2-reference-support-and-root-rebinding-2026-10-22), [unused-root case ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22) and [coordinator budget ledger](plans/oss-a2-payment-adapters.md#case-ledger-coordinator-budget-ruling-a)):** O-P3b-2 removes the 27 duplicate root payment implementation/test paths from the publication catalogue; the package README owns the eleven experimental reference-support exports, payment contracts own nominal error trust and host-return translation, architecture owns package/host placement, runtime owns inert composition, root adapter/payment owners describe retained host policy and unchanged domain contracts, package donor witnesses stay in place, and the A2 ledger records root retirement separately from C5 adopter retirement. O-P3b-1 removes only the ten deleted unused-root paths while generic HTTP helpers, package adapter sources and witnesses keep their owners. The opt-in payment example's private capability descriptor stays with its adapter sources (public re-export unchanged), with the payment contract owning single-currency notification binding, ambiguous-currency refusal and readback behavior, and the A2 case ledger owning parameterized case accounting for the readback parity witness (which runs the contributed provider interpretation with the package-local donor host money check).
+- **Catalog and channels ([package catalogue section](../../packages/platform/README.md#catalog), [package channel contract](../../packages/platform/README.md#channels) and [catalog domain](../../src/domains/catalog/README.md)):** the platform package README owns the catalogue attribute validator, reference port, pure projection preparation, two factory exports, sparse descriptor, structural contribution, new package entries and moved witnesses; the catalog domain README owns reference shims and retained browser schemas; the adapter owner explains reference compatibility paths, the runtime owner explains explicit inert selection and unchanged default exposure, and the package guide owns the proof files and reused packed-consumer scenario (schema-object presence establishes no activation or successful installed consumer). For normalized channel package sources, type/API reports and preservation tests, the data guide owns paired SQL, selected inventories and trusted-owner differences, while architecture owns explicit owner composition and provider readiness boundaries.
+- **Identity, OIDC, privacy and browser auth ([Identity](IDENTITY.md) and [browser identity reference](IDENTITY_BROWSER_REFERENCE.md)):** the identity guide owns OIDC explicit host composition, pinned disposable compose and real-issuer conformance modules (without certifying external issuers), reference admission, finite bundle schema inventories, direct reconcile, operator command composition, disposable mailbox, profile-local policy, opt-in acceptance, direct operator challenges, canonical/projection SQL, runtime auth composition, browser auth seams, and privacy export/erasure contracts, canonical receipt SQL/projection, reference privacy routes, subscription veto, operator Settings panel and conformance modules. The browser identity owner covers customer and operator page/provider composition, selected entry, account/admin mounts, closed import inventory, selected-profile inventory, callback and persistence guidance. Package/API, architecture, migration, runtime and contributor owners retain their exported-contract, readiness/actor scope, shell admission/public-policy, direct/managed schema limitation, installation, packed-consumer and command-inventory obligations.
+- **Outbox rail ([Outbox](../../packages/outbox/README.md)):** owns its package protocol, transaction guide, explicit disposable consumer proof and reference composition; core retains shared kernel and checker documentation.
+
+The root README's [Velipet storefront screenshot](assets/velipet-storefront-en.png)
+is a public, English-language first-party application illustration. Its branding
+and content belong to that application; it is not a generic reference UI,
+installed-package acceptance result or independent-adopter certification. The
+publication catalogue includes the image so README links resolve in the public
+tree. This illustration changes no runtime, package or release contract.
+
+Its approved name/domain references have an exact-line, exact-carrier allowance
+in the tree-wide neutrality wrapper, as described in
+[contribution checks](../../CONTRIBUTING.md#package-policy-and-release-checks).
+The allowance admits only this case-study prose and screenshot references; code
+and unapproved references remain subject to the existing scanner and baseline.
 
 ## Reader guide contract
 

@@ -100,8 +100,9 @@ first follows the applicable starter migration in the
 [per-release notes](README.md#per-release-notes); before release preparation
 publishes it there, a pending migration is in the source repository's
 unreleased Core change notes. This includes the
-[0.43.0 transition](v1-0-0.md#starter-applications-from-0430) and the migration
-from 1.1.0 to its successor. The notes identify pristine owned files that take
+[0.43.0 transition](v1-0-0.md#starter-applications-from-0430) and the
+[1.1.0 to 1.2.0 migration](v1-2-0.md#starter-applications-from-110).
+The notes identify pristine owned files that take
 the target extraction's bytes and any owned paths created via target-only
 snapshot entries. The check then customizes owned
 theme and fragment files, refuses a divergent managed file,

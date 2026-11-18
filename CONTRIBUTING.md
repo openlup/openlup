@@ -116,6 +116,14 @@ its users or operators can observe.
 
 ## Contribution checks
 
+Start from the question you need to answer during implementation:
+
+- **Find the contract owner and source paths:** open the generated [source map](docs/platform/SOURCE_MAP.md) (projected from [`config/doc-routing.json`](config/doc-routing.json)), then read the linked owner page and adjacent tests.
+- **Choose and run the right test:** use [Run and inspect](#run-and-inspect) and [Choose a location and proof](#choose-a-location-and-proof).
+- **Check structural and import boundaries:** use [Commands and lint rules](#commands-and-lint-rules).
+- **See what each CI or local diagnostic proves:** use the [diagnostic table](docs/platform/DEVELOPMENT_AND_RELEASE.md#what-each-diagnostic-proves).
+- **Follow the worktree, preflight, review and queue sequence:** use [Deliver a change](#deliver-a-change).
+
 Release tooling shares one coherent-set version rule: `0.N.P` with N at least
 1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1, without leading zeros or a
 prerelease. Patch sets compare API snapshots with the latest earlier patch in
@@ -326,20 +334,17 @@ new, more specific upstream tag; the old target tag stays as it is.
 Offline planning, skip/refuse and verification tests accompany exact workflow
 trigger, permission, checkout and credential-transport assertions.
 
-One-time owner setup is required: organization **Settings → Packages → Package
-Creation** must allow Public packages (and initial private creation, because
-GHCR creates packages private). After the first authorized run, for each package
-under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
-**Package settings → Manage Actions access**, add that repository with **Write**
-access if inheritance does not already grant it. Under **Danger Zone → Change
-visibility**, select **Public** and confirm. Check anonymous mirror pulls after
-making packages public. PostgreSQL consumers with upstream sources fall back
-while packages are absent or private. The required `install-packages` PostgreSQL
-startup step and the starter browser image are mirror-only exceptions: an absent
-or inaccessible organization package fails `install-proof`. `GITHUB_TOKEN` cannot
-make a package public; linking a public repository does not change package visibility. See GitHub's
-[package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
-and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
+PostgreSQL consumers with upstream sources fall back while packages are absent or
+private. The required `install-packages` PostgreSQL startup step and the starter
+browser image are mirror-only exceptions: an absent or inaccessible organization
+package fails `install-proof`. The organization must allow public package
+creation and the initial private creation GHCR uses. After the first authorized
+mirror run, the owner must link each mirror package to `openlup/openlup`, ensure
+that repository has Actions `Write` access, set package visibility to `Public`,
+and confirm anonymous pulls. `GITHUB_TOKEN` cannot make a package public;
+linking a public repository does not change package visibility. For the GitHub
+settings steps, see
+[CI image mirror and container pulls](docs/platform/DEVELOPMENT_AND_RELEASE.md#ci-image-mirror-and-container-pulls).
 
 ### Required and raw checks
 
@@ -943,17 +948,6 @@ These local witnesses do not establish real-provider or hosted qualification.
 
 #### Choose a location and proof
 
-Acquisition server characterization belongs under
-`packages/platform/test/marketing/server/`. The cross-boundary
-`tests/postgres/acquisitionEvidenceParity.test.ts` witness uses the existing
-container helper, applies the hash-checked migration-manifest prefix and calls
-package ports through a login granted only the acquisition runtime role. Docker
-absence throws as missing proof. The fixture owner is used only for setup, state
-inspection and the donor's append-only trigger proof. Port operations and
-separate SQL privilege-denial assertions use the runtime role, retaining all 11
-cases. The reference retains retirement, admin-auth binding and notification-copy
-checks.
-
 | Test | Placement and execution |
 |---|---|
 | Domain, server, API, MCP or tooling logic/contract | Adjacent descriptive `.test.ts`; root Node project discovers `api`, `mcp`, `scripts`, `server` and `src`. |
@@ -978,6 +972,17 @@ Use the smallest proof that can detect the failure:
 | Browser journey | Broken interaction in the selected mounted application. |
 
 Extend an existing meaningful case first; add a test for changed behavior, a discovered defect, or a required contract/refusal/replay boundary. Migrations, status mappings and idempotency rules require failure/replay regressions. Demonstrate adapter capabilities and refusals without live providers. Preserve the unchanged [adopter characterization witness](#contribute-existing-adopter-code-then-refactor) during refactoring. Do not test private implementation shape or add a harness solely to test the harness.
+
+Acquisition server characterization belongs under
+`packages/platform/test/marketing/server/`. The cross-boundary
+`tests/postgres/acquisitionEvidenceParity.test.ts` witness uses the existing
+container helper, applies the hash-checked migration-manifest prefix and calls
+package ports through a login granted only the acquisition runtime role. Docker
+absence throws as missing proof. The fixture owner is used only for setup, state
+inspection and the donor's append-only trigger proof. Port operations and
+separate SQL privilege-denial assertions use the runtime role, retaining all 11
+cases. The reference retains retirement, admin-auth binding and notification-copy
+checks.
 
 #### Sufficient evidence and material test gaps
 
