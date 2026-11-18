@@ -173,6 +173,36 @@ it.each([[0,1],[1,1],[2,2],[50,50],[51,50],[500,50],[501,50],[null,50]] as const
 const readPrepared = { schemaVersion: 2, operationKind: "successor", state: "attempt_prepared", replayed: true,
   operationId: readSku, operationFingerprint: readFingerprint, cycleId: obligation.subscriptionId,
   orderId: obligation.sourceId, settlementIntentId: obligation.sourceId };
+it.each(["w10", "w11", "r6"] as const)("lc10_saved_method_host_selection_%s", async path => {
+  const subscriptionId = readSku, clientId = obligation.sourceId;
+  const snapshot = { ...successorDue.snapshot, subscriptionId, clientId };
+  const candidate = path === "w10" ? { ...legacyCandidate, frozen: { ...legacyCandidate.frozen, snapshot } }
+    : { ...successorCandidate, snapshot };
+  const query = vi.fn(async (sql: string) => ({ rows: sql.includes("SELECT cycle_snapshot") ? [{ cycle_snapshot: snapshot }]
+    : [{ result: path === "r6" ? readPrepared : [candidate] }] }));
+  const connection = { query };
+  const methods = [
+    { ref: "inactive", active: false, healthy: false, updated: 5, created: 5 },
+    { ref: "active", active: true, healthy: false, updated: 4, created: 4 },
+    { ref: "healthy-old", active: true, healthy: true, updated: 1, created: 1 },
+    { ref: "healthy-new", active: true, healthy: true, updated: 1, created: 2 },
+  ];
+  const buyer = { email: null, firstName: null, lastName: "Synthetic" };
+  const selectSavedMethod = vi.fn(async () => ({ buyer, methodRef: [...methods].sort((a, b) =>
+    Number(b.active && b.healthy) - Number(a.active && a.healthy) || Number(b.active) - Number(a.active)
+    || b.updated - a.updated || b.created - a.created)[0]?.ref ?? null }));
+  const store = createPostgresSuccessorStore({ withTransaction: work => work(connection), selectSavedMethod,
+    codec: { ...createNativeRenewalCodec(), decode: vi.fn().mockReturnValue(snapshot) },
+    previews: { prepare: vi.fn() } });
+  for (const methodRef of ["healthy-new", "healthy-old", "active", "inactive", null]) {
+    const result = path === "r6" ? await store.prepare({ operationId: readSku, claimToken: readSku, now: readAt })
+      : (await store.listCandidates(1, readAt) as unknown[])[0];
+    expect(result).toEqual({ ...(path === "r6" ? readPrepared : candidate), paymentSelection: { methodRef, buyer } });
+    expect(selectSavedMethod).toHaveBeenLastCalledWith(connection, { subscriptionId, clientId, asOf: readAt });
+    methods.pop();
+  }
+  expect(selectSavedMethod).toHaveBeenCalledTimes(5);
+});
 const readWaiting = { schemaVersion: 2, caseKind: "successor", waiting: true, caseId: obligation.sourceId,
   deficits: [{ sku: "SYNTHETIC", requiredUnits: 1, reservedUnits: 0, availableUnits: 0, missingUnits: 1 }] };
 
@@ -220,6 +250,33 @@ it.each([["version",{version:1}],["data",{data:{}}],["flat",{}]] as const)("lc10
     {caseId:obligation.sourceId,caseKind:"legacy"})).rejects.toHaveProperty("message",kind==="flat"
       ?"preview_transaction":"subscription_reprice_invalid_request");
   expect(transaction).toHaveBeenCalledTimes(kind==="flat"?1:0);
+});
+
+it("lc10_quote_shipped_sized_constraint_envelope_result", async () => {
+  const stored = { status: "applied", action: "update_bundle", templateVersion: 4 };
+  const withTransaction: Parameters<typeof createPostgresSizedEditor>[0]["withTransaction"] = work => work({
+    query: async sql => ({ rows: sql.includes("SELECT s.*") ? [{ status: "active", payment_blocked: true,
+      method_healthy: true, configured_offer_version: "sized.v1", next_cycle_at: null, template_version: 3 }]
+      : sql.includes("FROM public.subscription_command_receipts") ? [{ matches: true, result: stored, status: "applied" }] : [] }),
+  });
+  const editor = createPostgresSizedEditor({ now: () => readAt, withTransaction,
+    policy: { minimumCoreUnits: 1, maximumCoreLines: 3, maximumAddonLines: 3, maximumQuantity: 12, allowedCadences: [28],
+      maximumExclusions: 20, maximumCatalogExclusions: 20, fixedThroughCycle: 2, graduationCycle: 3,
+      portionModes: { full: { mode: "complete", factor: 1 }, reduced: { mode: "partial", factor: 0.5 } } },
+    readFacts: vi.fn(), resolveOptInNeed: vi.fn(), readCatalog: vi.fn(), assertCurrentFacts: vi.fn(), proposePortion: vi.fn(),
+    quotePort: { createServerAuthoritativeQuote: vi.fn() } });
+  const actor = { actorId: obligation.sourceId, clientId: readSku };
+  const request = { subscriptionId: obligation.subscriptionId, action: "update_bundle" as const,
+    coreLines: [{ variantId: readSku, qty: 1 }], compositionConstraint: { kind: "unit_count", value: 1 } };
+  const expected = { preview: { subscriptionId: request.subscriptionId, action: "update_bundle", canApply: false,
+    blockedReason: "payment_blocked", nextCycleAt: null, editCutoffAt: null, templateVersion: 3 },
+  lockedCycle: { locked: true, status: "dunning" },
+  futureTemplate: { templateVersion: 3, effectiveCycleAt: null, priceAgreementPolicy: "lock_until_edit" } };
+  expect(await editor.preview(actor, request)).toEqual(expected);
+  const envelope = { ...request, compositionConstraint: { version: 1, data: request.compositionConstraint } };
+  await expect(editor.preview(actor, envelope)).resolves.toEqual(expected);
+  await expect(editor.apply(actor, "synthetic-command", { ...envelope, expectedTemplateVersion: 3, acceptedQuoteHash: readFingerprint }))
+    .resolves.toEqual({ ...stored, status: "replayed", originalStatus: "applied" });
 });
 
 function historicalOffer(installedBindings:readonly HistoricalSuccessorProtocolBinding[],lineage=historical) {

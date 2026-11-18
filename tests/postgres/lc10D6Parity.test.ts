@@ -21,6 +21,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const migration = "db/platform/migrations/20261123210000_catalog_successors.sql";
+const successorEditLimits = {
+  package: { maximumPlanDays: 90, maximumBaseLines: 6, maximumAddonLines: 12, maximumQuantity: 99 },
+  sized: { allowedCadences: [28, 90], maximumCoreLines: 6, maximumAddonLines: 12, maximumQuantity: 99 },
+};
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 const transferResources=storeJourneyResources();
 let transferSource:JourneyInstallation,transferTarget:JourneyInstallation;
@@ -399,7 +403,7 @@ it.each([
   const quoted=await editor.previewStockWaitSuccessor(actor,request,{caseId:f.caseId,caseKind:"legacy"});
   expect(quoted).toMatchObject({preview:{canApply:true,blockedReason:null},previewId:expect.any(String),currentTotal:money(617),newTotal:money(777),delta:money(160)});
   const admission=f.offer.applyPayload.catalogAdmission;
-  const store=createPostgresSuccessorStore({withTransaction:transaction,codec:f.codec,previews:{prepare:async(connection,input)=>{
+  const store=createPostgresSuccessorStore({withTransaction:transaction,codec:f.codec,editLimits:successorEditLimits,previews:{prepare:async(connection,input)=>{
     // The existing server binding supplies catalogue authority and the native codec;
     // prices, baseline, consent and quote identity come from the actual preview owner.
     const row=(await connection.query("UPDATE public.subscription_quote_previews SET quote_snapshot=quote_snapshot||jsonb_build_object('catalogAdmission',$2::jsonb) WHERE id=$1::uuid RETURNING *",[input.previewId,admission])).rows[0];
@@ -786,7 +790,7 @@ it.each(["retained", "freshened"] as const)("lc10_bind_claim_retains_frozen_temp
     await db.query("ROLLBACK TO SAVEPOINT foreign_template");
   } else {
     expect((await claim()).rows[0].result).toMatchObject({ acquired: true, reason: "lease_taken_over",
-      operation: { cycle_snapshot: original, claim_generation: operation.claim_generation + 1 } });
+      operation: { cycle_snapshot: original, claim_generation: Number(operation.claim_generation) + 1 } });
   }
   expect((await db.query("SELECT cycle_snapshot FROM public.subscription_successor_operations_v2 WHERE id=$1",
     [operation.id])).rows).toEqual([{ cycle_snapshot: original }]);
@@ -1088,6 +1092,7 @@ it.each((["legacy", "successor"] as const).flatMap(kind =>
   if (change === "cancelled") await db.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1", [f.subscription]);
   if (change === "reanchored" || change === "provider_owned") await db.query(
     "UPDATE public.subscriptions SET next_cycle_at=next_cycle_at+interval '1 day' WHERE id=$1", [f.subscription]);
+  await db.query("UPDATE public.subscriptions SET status='paused' WHERE status='active' AND id<>$1", [f.subscription]);
   const result = (await db.query("SELECT public.subscription_stock_wait_candidates_v2(50,$1) AS result", [at])).rows[0].result;
   expect(result.some((candidate: { caseId?: string; frozen?: { caseId: string } }) => (candidate.frozen ?? candidate).caseId === caseId))
     .toBe(change === "due");
@@ -1479,7 +1484,7 @@ it("lc10_successor_transfer_preserves_nonempty_graph_and_replay",async()=>{
   const price=(await owner.query("SELECT to_jsonb(p) AS row FROM public.price_entries p WHERE variant_id=$1",[following.sku])).rows[0].row;
   const admission={...f.offer.applyPayload.catalogAdmission,heads:[{productId:following.product,head:following.head}],skuRevisions:[{reference:following.reference,quantity:1}],priceContextVersions:[{skuId:following.sku,priceListId:price.price_list_id,entryId:price.id,entry:price}]};
   const nextFrozen=f.codec.withDestination!(f.codec.freeze({...f.header,template_version:3,lines:[{lineOrdinal:1,sku:following.code,quantity:1,unitAmountMinor:777}],catalog_acceptance:{schemaVersion:2,lines:[following.reference]},graduation_pricing:[{sku:following.code,quantity:1,unitAmountMinor:777,isAddon:false,quoteLine:{sku:following.code,quantity:1,unitPriceGross:{amountMinor:777,currency:"XXX"},lineSubtotalGross:{amountMinor:777,currency:"XXX"}}}]},{subscriptionId:f.subscription,scheduledAt:f.anchor,scheduledInstant:Date.parse(f.anchor)}),f.destination);
-  const store=createPostgresSuccessorStore({withTransaction:work=>transaction(work,owner),codec:f.codec,previews:{prepare:async(connection,input)=>{
+  const store=createPostgresSuccessorStore({withTransaction:work=>transaction(work,owner),codec:f.codec,editLimits:successorEditLimits,previews:{prepare:async(connection,input)=>{
     const row=(await connection.query("UPDATE public.subscription_quote_previews SET quote_snapshot=quote_snapshot||jsonb_build_object('catalogAdmission',$2::jsonb) WHERE id=$1::uuid RETURNING *",[input.previewId,admission])).rows[0];
     return {applyPayload:{...(row.request_payload as Record<string,unknown>),request:row.request_payload,...(row.quote_snapshot as Record<string,unknown>),...(row.totals as Record<string,unknown>)},cycleSnapshot:nextFrozen};
   }}});
@@ -1611,7 +1616,7 @@ it.each(successorCommandPaths.flatMap(([path, lane, mode]) => (
     const now = mode === "expired" ? (await pool.query(
       "SELECT expires_at+interval '1 second' AS at FROM public.subscription_successor_proposals WHERE id=$1", [f.proposalId],
     )).rows[0].at.toISOString() : f.at;
-    const store = createPostgresSuccessorStore({ withTransaction: transaction, codec: f.codec,
+    const store = createPostgresSuccessorStore({ withTransaction: transaction, codec: f.codec, editLimits: successorEditLimits,
       previews: { prepare: async () => { throw Error("decision_must_not_quote"); } },
       assertCurrentSizedFacts: async (_connection, context, expected) => {
         expect(expected).toMatchObject({ subscriptionId: context.subscriptionId, clientId: context.clientId });
@@ -1780,6 +1785,34 @@ it("lc10_quote_unrepresentable_lane_refuses_before_activation", async () => {
     .toEqual([{ variant_id: f.predecessor.sku }]);
 });
 
+it.each(["a4", "a10"] as const)("lc10_quote_sized_rejects_legacy_alias_%s", async path => {
+  const f = await createSuccessorJourney(pool, { lane: "sized", ordinary: path === "a4", applyLegacyAlias: true });
+  const store = createPostgresSuccessorStore({ withTransaction: transaction, codec: f.codec, editLimits: successorEditLimits,
+    previews: { prepare: async () => { throw Error("acceptance_must_not_quote"); } }, assertCurrentSizedFacts: async () => {} });
+  const actor = { actorId: f.principal, clientId: f.client };
+  const input = { proposalId: f.proposalId, commandKey: randomUUID(), now: f.at };
+  const before = await state();
+  await expect(path === "a4" ? store.decide(actor, { ...input, decision: "accepted", quoteHash: f.quoteHash })
+    : store.resolve(actor, { ...input, caseId: f.caseId, acceptedQuoteHash: f.quoteHash }))
+    .rejects.toHaveProperty("message", "subscription_reprice_invalid_request");
+  expect(await state()).toEqual(before);
+});
+
+it.each(([['a8', 'classic'], ['a9', 'exact'], ['a10', 'sized']] as const).flatMap(([path, lane]) =>
+  ([1, 100] as const).map(qty => [path, lane, qty] as const),
+))("lc10_quote_successor_host_bounds_%s_%s_%s", async (_path, lane, qty) => {
+  const f = await createSuccessorJourney(pool, { lane, quotedQuantity: qty });
+  const store = createPostgresSuccessorStore({ withTransaction: transaction, codec: f.codec, editLimits: successorEditLimits,
+    previews: { prepare: async () => { throw Error("acceptance_must_not_quote"); } }, assertCurrentSizedFacts: async () => {} });
+  const input = { proposalId: f.proposalId, commandKey: randomUUID(), now: f.at, caseId: f.caseId, acceptedQuoteHash: f.quoteHash };
+  const before = await state();
+  const result = store.resolve({ actorId: f.principal, clientId: f.client }, input);
+  if (qty === 100) {
+    await expect(result).rejects.toHaveProperty("message", "subscription_reprice_invalid_request");
+    expect(await state()).toEqual(before);
+  } else expect(await result).toMatchObject({ status: "applied", proposalId: f.proposalId });
+});
+
 it.each(["ordinary", "a4", "a10"].flatMap(path =>
   ["changed_subject", "absent_subject", "changed_exclusions", "invalid_exclusions", "exclusion_cap", "accepted"]
     .map(change => [path, change] as const),
@@ -1810,7 +1843,7 @@ it.each(["ordinary", "a4", "a10"].flatMap(path =>
     );
     return work(connection);
   });
-  const store = createPostgresSuccessorStore({ withTransaction: withSubject, codec: f.codec, assertCurrentSizedFacts: assertCurrentFacts,
+  const store = createPostgresSuccessorStore({ withTransaction: withSubject, codec: f.codec, editLimits: successorEditLimits, assertCurrentSizedFacts: assertCurrentFacts,
     previews: { prepare: async () => { throw Error("decision_must_not_quote"); } } });
   const { editor, request: ordinaryRequest } = sizedSuccessorEditor(f, {
     withTransaction: withSubject, assertCurrentFacts,
@@ -2139,7 +2172,7 @@ it.each([
   if (observation === "wrong_cycle") await pool.query("UPDATE public.subscription_successor_wait_cases_v2 SET cycle_id=$2 WHERE id=$1",
     [resolved.caseId, f.header.activation_cycle_id]);
   if (observation === "wrong_order" || observation === "wrong_fulfillment") {
-    const foreign = await ecommercePaid(pool, { at: f.at });
+    const foreign = await transaction(connection => ecommercePaid(connection, { at: f.at }));
     if (observation === "wrong_order") await pool.query(
       "UPDATE public.subscription_successor_wait_cases_v2 SET order_id=$2 WHERE id=$1", [resolved.caseId, foreign.order]);
     else {
@@ -2247,9 +2280,11 @@ it.each(["exact","maximum","over_cap","missing","not_array","empty","duplicate",
       const ids=Array.from({length:change==="maximum"?9999:10000},(_,index)=>`00000000-0000-4000-8000-${index.toString(16).padStart(12,"0")}`);
       const reference=manifest.skus[0];
       manifest.skus=[...ids.map(skuId=>({...reference,skuId})),...manifest.skus];
-      manifest.successors=[...ids.map(successorSkuId=>({successorSkuId,successorOf:pair.successorOf})),pair];
+      manifest.successors=[...ids.map(successorSkuId=>({successorOf:pair.successorOf,successorSkuId})),pair];
     }
-    const canonical=canonicalCatalogDraftJson(manifest),digest=createHash("sha256").update(canonical).digest("hex"),publication=randomUUID();
+    // These two fixtures target the native publication bound. The draft serializer has a smaller input cap.
+    const canonical=change==="maximum"||change==="over_cap"?JSON.stringify(manifest):canonicalCatalogDraftJson(manifest);
+    const digest=createHash("sha256").update(canonical).digest("hex"),publication=randomUUID();
     const insert=()=>db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,
       candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
       SELECT $2,product_id,3,id,draft_id,draft_revision,$2::uuid::text,candidate_digest,document_revision_id,$3,$4,actor_id
@@ -2354,13 +2389,13 @@ it("lc10_handoff_before_ack",async()=>{
     // No source acknowledgement: a restarted worker repeats both routes and the handoff.
     expect(await notices.handle(opened)).toEqual({kind:"processed"});
     expect(await notices.handle(await sourceEvent("catalog.publication.committed",f.predecessor.product))).toEqual({kind:"processed"});
-    expect(await notices.handle(handoff)).toEqual({kind:"processed"});expect(sent).toEqual([handoff.idempotency_key]);
+    expect(await notices.handle(handoff)).toEqual({kind:"processed",detail:{dedupe:"email_already_sent"}});expect(sent).toEqual([handoff.idempotency_key]);
     expect(await receipts.readReceipt(handoff.idempotency_key)).toMatchObject({state:"accepted"});
     expect((await pool.query("SELECT id FROM public.outbox_events WHERE event_type='subscription.predecessor_withdrawn.v2' AND aggregate_id=$1",[f.subscription])).rows).toEqual([{id:handoff.id}]);
     const resolved=await transaction(async connection=>(await connection.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result);
     expect(resolved.status).toBe("applied");
     expect(await notices.handle(opened)).toEqual({kind:"processed"});
-    expect(await notices.handle(handoff)).toEqual({kind:"processed",detail:{obsolete:true}});expect(sent).toEqual([handoff.idempotency_key]);
+    expect(await notices.handle(handoff)).toEqual({kind:"processed",detail:{dedupe:"email_already_sent"}});expect(sent).toEqual([handoff.idempotency_key]);
   } finally {await receipts.close();}
 });
 
@@ -2604,7 +2639,7 @@ it.each(["opened_first","publication_first"])("lc10_N3_shared_completion",async 
 
 /** Existing journey resources, with real publication, frozen wait and consent owners. */
 async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" | "recover"; recoveryStock?: number;lane?:"classic"|"exact"|"sized";ordinary?:boolean;continuation?:boolean;profile?:"strength"|"shade";retainedExclusions?:unknown;omitPublishedPair?:boolean;
-  historicalBinding?:HistoricalSuccessorProtocolBinding } = {}) {
+  historicalBinding?:HistoricalSuccessorProtocolBinding;applyLegacyAlias?:boolean;quotedQuantity?:number } = {}) {
   const profile=options.profile;
   const definition:CatalogProductTypeDefinition={ key:profile?`example:article-${profile}`:"example:article",version:1,
     units:[{code:"openlup:g",dimension:"mass",integral:false,...(profile?{factor:{canonicalUnit:"openlup:g",unscaled:"1",scale:0}}:{})}],netContentUnits:["openlup:g"],
@@ -2750,19 +2785,20 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
       admitted=await rpc(db,"subscription_stock_wait_admit",[{ operationId: claimedOperation.operationId,claimToken: claimedOperation.claimToken,snapshot: wire,operationFingerprint: codec.fingerprint(frozen),identityKey: codec.identity(frozen),worker: "synthetic" },{},claimed]);
       expect(admitted.waiting).toBe(true);
     }
-    const innerHash=hash(randomUUID()),line={ variantId: successor.sku,qty: 1,isAddon: false,quoteLine: { sku: successor.code,quantity: 1,unitPriceGross: money(777),lineSubtotalGross: money(777) } };
+    const qty=options.quotedQuantity??1,total=777*qty;
+    const innerHash=hash(randomUUID()),line={ variantId: successor.sku,qty,isAddon: false,quoteLine: { sku: successor.code,quantity: qty,unitPriceGross: money(777),lineSubtotalGross: money(total) } };
     const lineId=(await db.query("SELECT id FROM public.subscription_lines WHERE subscription_id=$1",[subscription])).rows[0].id;
     const consent:SubscriptionEditConsent={version:1,currency:"XXX",baselineFingerprint:hash(JSON.stringify([1,"XXX",1,[[1,lineId,predecessor.sku,predecessor.code,false,1,617]]])),innerQuoteHash:innerHash,
       lines:[{kind:"removed",variantId:predecessor.sku,sku:predecessor.code,isAddon:false,agreedQuantity:1,newQuantity:null,agreedUnitMinor:617,newUnitMinor:null,deltaMinor:null,subtotalDeltaMinor:-617,reason:"removed"},
-        {kind:"added",variantId:successor.sku,sku:successor.code,isAddon:false,agreedQuantity:null,newQuantity:1,agreedUnitMinor:null,newUnitMinor:777,deltaMinor:null,subtotalDeltaMinor:777,reason:"added"}],agreedTotalMinor:617,newTotalMinor:777,subtotalDeltaMinor:160};
+        {kind:"added",variantId:successor.sku,sku:successor.code,isAddon:false,agreedQuantity:null,newQuantity:qty,agreedUnitMinor:null,newUnitMinor:777,deltaMinor:null,subtotalDeltaMinor:total,reason:"added"}],agreedTotalMinor:617,newTotalMinor:total,subtotalDeltaMinor:total-617};
     const quoteHash=hash(JSON.stringify([consent.version,consent.innerQuoteHash,consent.currency,consent.baselineFingerprint,consent.lines.map(l=>[l.kind,l.variantId,l.sku,l.isAddon,l.agreedQuantity,l.newQuantity,l.agreedUnitMinor,l.newUnitMinor,l.deltaMinor,l.subtotalDeltaMinor,l.reason]),consent.agreedTotalMinor,consent.newTotalMinor,consent.subtotalDeltaMinor]));
-    const admission={ heads: [{ productId: successor.product,head: successor.head }],skuRevisions: [{ reference: successor.reference,quantity: 1 }],mode: "subscription",
+    const admission={ heads: [{ productId: successor.product,head: successor.head }],skuRevisions: [{ reference: successor.reference,quantity: qty }],mode: "subscription",
       offerEvidence: { offerVersion: "classic" },priceContextVersions: [{ skuId: successor.sku,priceListId: list,entryId: entry,entry: (await db.query("SELECT to_jsonb(p) AS row FROM public.price_entries p WHERE id=$1",[entry])).rows[0].row }],purpose: "account" };
-    const core=[{ variantId: successor.sku,qty: 1 }],totals={ currentRecurringPrice: money(617),newRecurringPrice: money(777),delta: money(160) };
+    const core=[{ variantId: successor.sku,qty }],totals={ currentRecurringPrice: money(617),newRecurringPrice: money(total),delta: money(total-617) };
     const request={ planDays: 28,base: core,addons: [],expectedTemplateVersion: 1,acceptedQuoteHash: quoteHash };
     const evidence={ baseLines: [line],addonLines: [],compositionConstraint: null,catalogAdmission: admission,editConsent: consent };
     const lane=options.lane??"classic",action=lane==="classic"?"update_package_template":lane==="exact"?"swap_base_line":"resize_bundle";
-    const constraint={kind:"unit_count",value:1,dailyNeed:1};
+    const constraint={kind:"unit_count",value:qty,dailyNeed:1};
     const nativeRequest=lane==="classic"?request:lane==="exact"?{action,fromVariantId:predecessor.sku,toVariantId:successor.sku,expectedTemplateVersion:1,acceptedQuoteHash:quoteHash}
       :{action,cadenceDays:28,compositionConstraint:constraint,resizeLever:{kind:"subscription.sized.parcel",value:{coreLines:core,optInToSized:true}},expectedTemplateVersion:1,acceptedQuoteHash:quoteHash};
     const subjectFacts = { clientId: client, subscriptionId: subscription, subjectRef: subscription,
@@ -2774,11 +2810,11 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     const nativeEvidence=lane==="classic"?evidence:{editConsent:consent,catalogAdmission:admission,lines:[lane==="exact"?{...line,lineId}:line],cadenceDays:28,compositionConstraint:lane==="sized"?constraint:null,...(lane==="sized"?{subjectFacts,optInFacts:{revision:1}}:{})};
     const ledgerRequest=lane==="classic"?{planDays:28,base:core,addons:[]}:Object.fromEntries(Object.entries(nativeRequest).filter(([key])=>!["expectedTemplateVersion","acceptedQuoteHash"].includes(key)));
     const quote=await rpc(db,"subscription_quote_preview_record",[principal,client,subscription,action,quoteHash,1,(await db.query("SELECT now()+interval '1 hour' AS until")).rows[0].until.toISOString(),ledgerRequest,nativeEvidence,totals,at]);
-    const newFrozen=codec.withDestination!(codec.freeze({ ...header,template_version: 2,lines: [{ lineOrdinal: 1,sku: successor.code,quantity: 1,unitAmountMinor: 777 }],catalog_acceptance: { schemaVersion: 2,lines: [successor.reference] },graduation_pricing: [{ sku: successor.code,quantity: 1,unitAmountMinor: 777,isAddon: false,quoteLine: line.quoteLine }] },schedule),destination);
+    const newFrozen=codec.withDestination!(codec.freeze({ ...header,template_version: 2,lines: [{ lineOrdinal: 1,sku: successor.code,quantity: qty,unitAmountMinor: 777 }],catalog_acceptance: { schemaVersion: 2,lines: [successor.reference] },graduation_pricing: [{ sku: successor.code,quantity: qty,unitAmountMinor: 777,isAddon: false,quoteLine: line.quoteLine }] },schedule),destination);
     const proposalId=randomUUID(),offer={ proposalId,predecessorSkuId: predecessor.sku,successorSkuId: successor.sku,publicationId: successor.declared.publicationId,
       previewId: quote.id,sourceBinding: options.ordinary?{kind:"ordinary_edit"}:{ kind: "stock_wait",caseKind: "legacy",caseId: admitted.caseId },lane,action,
       ...(options.historicalBinding?{historicalBinding:options.historicalBinding}:{}),
-      applyPayload: { ...nativeRequest,request:nativeRequest,...nativeEvidence,...totals },cycleSnapshot: codec.encode(newFrozen) };
+      applyPayload: { ...nativeRequest,request:nativeRequest,...nativeEvidence,...totals,...(options.applyLegacyAlias?{recipeLines:core}:{}) },cycleSnapshot: codec.encode(newFrozen) };
     const proposal=await rpc(db,"subscription_successor_proposal_offer_v2",[subscription,client,offer,at]);
     await db.query("COMMIT");
     return { client,principal,subscription,predecessor,successor,continuation,withdrawalHead,at,anchor,source,codec,frozen,wire,preRecovery,header,destination, sizedQuoteLine: sizedQuoteLine(successor, 777),subjectFacts,registry,rules,

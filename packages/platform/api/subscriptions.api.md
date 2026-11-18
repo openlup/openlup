@@ -2752,7 +2752,8 @@ import { z } from "zod";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
-import type { PackageEditActor } from "./packageEditContracts.js";
+import type { PackageEditActor, PackageEditLimits } from "./packageEditContracts.js";
+import type { SizedEditPolicy } from "./contracts/sizedEdit.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
 import type { SizedHostPorts } from "./sizedEditPorts.js";
 /** Internal native wait observation wire. @experimental */
@@ -2919,6 +2920,31 @@ export declare function createPostgresSuccessorStore(options: {
      * @experimental
      */
     assertCurrentSizedFacts?: SizedHostPorts["assertCurrentFacts"];
+    /** Host edit limits for fresh stock-wait acceptance.
+     * @experimental
+     */
+    editLimits?: {
+        package: PackageEditLimits;
+        sized: Pick<SizedEditPolicy, "maximumCoreLines" | "maximumAddonLines" | "maximumQuantity" | "allowedCadences">;
+    };
+    /** Select the most recent active and healthy saved method, then the most recent active method,
+     * then the most recent method. Compare last update first and creation time second.
+     * Read the owned subscription's payment data without changing it. Keep missing method
+     * references and buyer fields nullable.
+     * @experimental
+     */
+    selectSavedMethod?(db: SubscriptionQueryExecutor, input: {
+        subscriptionId: string;
+        clientId: string;
+        asOf: string;
+    }): Promise<{
+        methodRef: string | null;
+        buyer: {
+            email: string | null;
+            firstName: string | null;
+            lastName: string | null;
+        };
+    }>;
 }): {
     offer(actor: PackageEditActor, input: SuccessorOfferInput): Promise<Record<string, unknown>>;
     decide(actor: PackageEditActor, input: {
@@ -3263,7 +3289,16 @@ export declare function createSizedCompositionRules(input: {
 
 ```ts
 import type { SizedEditContext, SizedEditPolicy, SizedEditPhase, SizedEditRequest } from "./contracts/sizedEdit.js";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Internal parser for the shipped sized wire. @experimental */
+export declare function parseSizedEditRequest(request: unknown): SizedEditRequest;
+/** The successor wire requires the flat form for both requested and effective constraints.
+ * @experimental
+ */
+export declare function parseSuccessorSizedEditRequest(input: unknown, evidence?: {
+    subscriptionId: string;
+    applyPayload: unknown;
+}): SizedEditRequest;
 export declare function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn?: boolean): Promise<SizedEditContext>;
 /** Construct once per authenticated request; do not share across preview/apply. */
 export declare function createSizedEditContextScope(read: (id: string, optIn: boolean) => Promise<SizedEditContext>): (id: string, optIn?: boolean) => Promise<SizedEditContext>;

@@ -1511,7 +1511,19 @@ For sized acceptance, supply the ordinary sized editor's `assertCurrentFacts`
 callback as `assertCurrentSizedFacts`. The successor store checks the retained
 subject and calls that host assertion on the apply connection before taking
 the catalogue fence. Native acceptance SQL is an owner-only trusted primitive
-that compares retained quote facts. Customer-facing roles use the host wrapper.
+that compares retained quote facts and accepts its internal payload grammar.
+Customer-facing roles use the host wrapper. Successor sized requests require a
+flat composition constraint and the current sized line fields. Ordinary sized
+editor entry points keep their existing request behavior.
+Supply `editLimits` from the host's package and sized editors to accept a fresh
+stock-wait successor quote. The wrapper checks the accepted cadence, line counts
+and quantities against those bounds in the acceptance transaction.
+Bind `selectSavedMethod` to attach a saved-method selection to recovery
+candidates and prepared successor attempts. Among saved methods for the owned
+subscription, prefer active and healthy methods, then active methods, then the
+most recent method. Within each group, order by most recently updated and then
+by most recently created. Missing method references and buyer fields stay
+nullable. This selection leaves frozen payment authority intact.
 To record a resumed successor wait after fulfillment, bind the store's
 `markResumed` as the paid-fulfillment handler's `realizationAdmitted` callback.
 The handler acknowledges the paid event after the observer completes.

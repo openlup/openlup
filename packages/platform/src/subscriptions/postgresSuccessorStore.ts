@@ -3,9 +3,10 @@ import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExec
 import { applyNativeRenewalMoney } from "./postgresRenewalSettlement.js";
 import { requireHistoricalProtocolBinding, type HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
-import type { PackageEditActor } from "./packageEditContracts.js";
+import type { PackageEditActor, PackageEditLimits } from "./packageEditContracts.js";
+import type { SizedEditPolicy } from "./contracts/sizedEdit.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
-import { isSizedOptIn, readSizedEditContext } from "./sizedEditContext.js";
+import { isSizedOptIn, parseSuccessorSizedEditRequest, readSizedEditContext } from "./sizedEditContext.js";
 import type { SizedHostPorts } from "./sizedEditPorts.js";
 import { assertSizedSubjectFacts } from "./sizedEditQuote.js";
 import { buildEditConsent, hashEditConsent } from "./editConsent.js";
@@ -192,6 +193,20 @@ export function createPostgresSuccessorStore(options: {
    * @experimental
    */
   assertCurrentSizedFacts?: SizedHostPorts["assertCurrentFacts"];
+  /** Host edit limits for fresh stock-wait acceptance.
+   * @experimental
+   */
+  editLimits?: { package: PackageEditLimits;
+    sized: Pick<SizedEditPolicy, "maximumCoreLines" | "maximumAddonLines" | "maximumQuantity" | "allowedCadences"> };
+  /** Select the most recent active and healthy saved method, then the most recent active method,
+   * then the most recent method. Compare last update first and creation time second.
+   * Read the owned subscription's payment data without changing it. Keep missing method
+   * references and buyer fields nullable.
+   * @experimental
+   */
+  selectSavedMethod?(db: SubscriptionQueryExecutor, input: { subscriptionId: string; clientId: string; asOf: string }): Promise<{
+    methodRef: string | null; buyer: { email: string | null; firstName: string | null; lastName: string | null };
+  }>;
 }) {
   const id=z.uuid(),stamp=z.iso.datetime(),hash=z.string().regex(/^[a-f0-9]{64}$/u);
   const call=async(db:SubscriptionQueryExecutor,name:string,args:unknown[])=>subscriptionRecord((await db.query(`SELECT public.${name}(${args.map((_,index)=>`$${index+1}`).join(",")}) AS result`,args)).rows[0]?.result);
@@ -210,6 +225,16 @@ export function createPostgresSuccessorStore(options: {
     if(!row||row.client_id!==actor.clientId||subscriptionRecord(row.preview).actor_id!==actor.actorId) throw new Error("subscription_command_forbidden");
     await authorize(db,actor,String(row.subscription_id));
     return row;
+  }
+  async function withSavedMethod<T extends Record<string, unknown>>(db: SubscriptionQueryExecutor, result: T, snapshot: unknown, asOf: string) {
+    if (!options.selectSavedMethod) return result;
+    const { subscriptionId, clientId } = subscriptionRecord(snapshot);
+    return { ...result, paymentSelection: await options.selectSavedMethod(db, {
+      subscriptionId: id.parse(subscriptionId), clientId: id.parse(clientId), asOf,
+    }) };
+  }
+  function withCandidateSavedMethod(db: SubscriptionQueryExecutor, row: z.output<typeof successorCandidateListSchema>[number], now: string) {
+    return withSavedMethod(db, row, row.operationKind === "legacy" ? row.frozen.snapshot : row.snapshot, now);
   }
   async function assertRetainedAcceptance(db: SubscriptionQueryExecutor, actor: PackageEditActor,
     proposal: Awaited<ReturnType<typeof authorizeProposal>>, input: {
@@ -244,7 +269,7 @@ export function createPostgresSuccessorStore(options: {
     await authorize(db, actor, subscriptionId);
     await db.query("SELECT id FROM public.subscription_successor_proposals WHERE id=$1::uuid FOR UPDATE NOWAIT",
       [input.proposalId]).catch(error => successorBusy(error));
-    const quote = (await db.query(`SELECT q.request_payload, q.quote_snapshot, q.action, q.quote_hash
+    const quote = (await db.query(`SELECT q.request_payload, q.quote_snapshot, q.action, q.quote_hash, p.request->'applyPayload' AS apply_payload
       FROM public.subscription_successor_proposals p JOIN public.subscriptions s ON s.id=p.subscription_id
       JOIN public.subscription_quote_previews q ON q.id=(p.preview->>'id')::uuid
       WHERE p.id=$1::uuid AND p.state='offered' AND p.quote_hash=$2::text AND p.expires_at>$3::timestamptz
@@ -270,6 +295,23 @@ export function createPostgresSuccessorStore(options: {
     if (hashEditConsent(current) !== quote.quote_hash || (await db.query("SELECT $1::jsonb=$2::jsonb AS matching", [current, retained])).rows[0]?.matching !== true) {
       throw new Error("subscription_edit_quote_drift");
     }
+    const request = subscriptionRecord(quote.request_payload);
+    if (proposal.lane === "sized") parseSuccessorSizedEditRequest(request, { subscriptionId, applyPayload: quote.apply_payload });
+    if (source.kind === "stock_wait") {
+      const limits = options.editLimits;
+      if (!limits) throw new Error("dependency_unavailable");
+      const sized = proposal.lane === "sized";
+      const bounds = sized ? limits.sized : limits.package;
+      const coreLimit = sized ? limits.sized.maximumCoreLines : limits.package.maximumBaseLines;
+      const cadence = proposal.lane === "classic" ? request.planDays : evidence.cadenceDays;
+      const validCadence = typeof cadence === "number" && Number.isSafeInteger(cadence) && cadence > 0
+        && (sized ? limits.sized.allowedCadences.includes(cadence) : cadence <= limits.package.maximumPlanDays);
+      const nominalPlan = request.nominalPlanDays ?? request.planDays;
+      const coreCount = lines.filter(line => !line.isAddon).length;
+      if (!validCadence || (!sized && typeof nominalPlan === "number" && nominalPlan > limits.package.maximumPlanDays)
+        || coreCount < 1 || coreCount > coreLimit || lines.length - coreCount > bounds.maximumAddonLines
+        || lines.some(line => line.qty > bounds.maximumQuantity)) throw new Error("subscription_reprice_invalid_request");
+    }
     if (proposal.lane !== "sized") return;
     if (!options.assertCurrentSizedFacts) throw new Error("subscription_reprice_sized_subject_facts_unreadable");
     const snapshot = subjectSnapshot.safeParse(quote.quote_snapshot);
@@ -277,7 +319,7 @@ export function createPostgresSuccessorStore(options: {
     const { catalogFacts, ...facts } = snapshot.data.subjectFacts;
     assertSizedSubjectFacts(facts, { clientId, subscriptionId }, { maximumExclusions: 20 });
     const context = await readSizedEditContext(db, clientId, subscriptionId, isSizedOptIn({
-      action: String(quote.action), resizeLever: subscriptionRecord(quote.request_payload).resizeLever,
+      action: String(quote.action), resizeLever: request.resizeLever,
     }));
     await options.assertCurrentSizedFacts(db, context, facts, snapshot.data.optInFacts, catalogFacts);
   }
@@ -318,6 +360,9 @@ export function createPostgresSuccessorStore(options: {
           await db.query("SELECT id FROM public.subscription_stock_wait_cases WHERE id=$1::uuid FOR UPDATE NOWAIT",[parent.original_case]).catch(error=>successorBusy(error));
         }
         const native=await options.previews.prepare(db,{ previewId:input.previewId,subscriptionId:input.subscriptionId,actor });
+        if (input.lane === "sized") parseSuccessorSizedEditRequest(native.applyPayload.request, {
+          subscriptionId, applyPayload: native.applyPayload,
+        });
         if(input.sourceBinding.kind==="stock_wait"&&!native.cycleSnapshot) throw new Error("dependency_unavailable");
         return call(db,"subscription_successor_proposal_offer_v2",[subscriptionId,actor.clientId,{ ...authored,applyPayload:native.applyPayload,
           ...(native.cycleSnapshot?{ cycleSnapshot:options.codec.encode(native.cycleSnapshot) }:{}) },now]);
@@ -369,10 +414,11 @@ export function createPostgresSuccessorStore(options: {
         };
         const recovery = new Map(waiting.data.map(row => [waitKey(row), row]));
         const selected: unknown[] = [], seen = new Set<string>();
-        const add = (key: string, row: unknown) => {
+        const add = async (key: string, row: unknown) => {
           if (selected.length >= cap || seen.has(key)) return;
           seen.add(key);
-          selected.push(recovery.get(key) ?? row);
+          const wait = recovery.get(key);
+          selected.push(wait ? await withCandidateSavedMethod(db, wait, now) : row);
         };
         for (let index = 0; index < Math.max(due.data.length, waiting.data.length) && selected.length < cap; index++) {
           const normal = due.data[index], wait = waiting.data[index];
@@ -380,9 +426,9 @@ export function createPostgresSuccessorStore(options: {
             const key = normal.operationKind === "legacy"
               ? successorScheduleKey(normal.due.subscription_id, normal.due.scheduled_at)
               : successorScheduleKey(normal.snapshot.subscriptionId, normal.snapshot.scheduledAt);
-            add(key, normal);
+            await add(key, normal);
           }
-          if (wait) add(waitKey(wait), wait);
+          if (wait) await add(waitKey(wait), wait);
         }
         return selected;
       });
@@ -390,8 +436,14 @@ export function createPostgresSuccessorStore(options: {
     listCandidates(limit:number|null,now:string) {
       return options.withTransaction(async db => {
         const value = await read(db, "SELECT public.subscription_stock_wait_candidates_v2($1::integer,$2::timestamptz) AS result", [limit, stamp.parse(now)]);
-        if (!successorCandidateListSchema.safeParse(value).success) throw new Error("subscription_renewal_response_invalid");
-        return value;
+        const parsed = successorCandidateListSchema.safeParse(value);
+        if (!parsed.success) throw new Error("subscription_renewal_response_invalid");
+        if (!options.selectSavedMethod) return value;
+        const result = [];
+        for (const row of parsed.data) {
+          result.push(await withCandidateSavedMethod(db, row, now));
+        }
+        return result;
       });
     },
     claim(input:{ identityKey:string;fingerprint:string;snapshot:Record<string,unknown>;workerId:string;leaseSeconds?:number;now:string }) {
@@ -428,7 +480,7 @@ export function createPostgresSuccessorStore(options: {
         const prepared=preparedSuccessor.safeParse(result);
         if(!prepared.success||prepared.data.operationId!==input.operationId.toLowerCase())throw new Error("subscription_renewal_prepare_response_invalid");
         if(result.replayed!==true)await applyNativeRenewalMoney(db,snapshot,result.orderId);
-        return result;
+        return withSavedMethod(db, result, snapshot, input.now);
       });
     },
     settle(input:{ operationId:string;eventKey:string;evidence:{ operationFingerprint:string;outcome:"succeeded"|"refused";externalRef:string;reason?:string };now:string }) {

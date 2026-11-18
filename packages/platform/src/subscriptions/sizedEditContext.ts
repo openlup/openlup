@@ -2,8 +2,58 @@ import { z } from "zod";
 import { assertAgreedQuoteLine } from "./agreedPlanQuote.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedEditPhase, SizedEditRequest } from "./contracts/sizedEdit.js";
 import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { nativeRenewalTermsSchema } from "./nativeRenewalTerms.js";
+
+const uuid = z.uuid().transform(value => value.toLowerCase());
+const requestedLine = z.object({ variantId: uuid, qty: z.number().int().positive() }).strict();
+const acceptance = { subscriptionId: uuid, expectedTemplateVersion: z.number().int().positive().optional(), acceptedQuoteHash: z.string().regex(/^[a-f0-9]{64}$/u).optional() };
+const constraint = z.record(z.string(), z.unknown());
+const parcel = z.object({ kind: z.literal(SIZED_PARCEL_LEVER_KIND), value: z.object({ coreLines: z.array(requestedLine).min(1), optInToSized: z.literal(true).optional() }).strict() }).strict();
+const sizedRequestSchema = z.discriminatedUnion("action", [
+  z.object({ ...acceptance, action: z.literal("resize_bundle"), cadenceDays: z.number().int().positive(), compositionConstraint: constraint,
+    resizeLever: z.union([parcel, z.object({ kind: z.literal("portionMode"), value: z.object({ portionMode: z.string().min(1), planDays: z.number().int().positive() }).strict() }).strict()]) }).strict(),
+  z.object({ ...acceptance, action: z.literal("update_bundle"), coreLines: z.array(requestedLine).min(1),
+    addonLines: z.array(requestedLine).optional(), cadenceDays: z.number().int().positive().optional(), compositionConstraint: constraint }).strict(),
+  z.object({ ...acceptance, action: z.literal("update_base_mix"), base: z.array(requestedLine).min(1) }).strict(),
+  z.object({ ...acceptance, action: z.literal("update_plan_length"), planDays: z.number().int().positive() }).strict(),
+  z.object({ ...acceptance, action: z.literal("update_portion"), portionMode: z.string().min(1) }).strict(),
+  z.object({ ...acceptance, action: z.literal("add_addon"), variantId: uuid, qty: z.number().int().positive() }).strict(),
+  z.object({ ...acceptance, action: z.literal("update_addon_quantity"), variantId: uuid, qty: z.number().int().positive() }).strict(),
+  z.object({ ...acceptance, action: z.literal("remove_addon"), variantId: uuid }).strict(),
+]);
+/** Internal parser for the shipped sized wire. @experimental */
+export function parseSizedEditRequest(request: unknown): SizedEditRequest {
+  const result = sizedRequestSchema.safeParse(request);
+  if (!result.success) throw new Error("subscription_reprice_invalid_request");
+  return result.data;
+}
+
+/** The successor wire requires the flat form for both requested and effective constraints.
+ * @experimental
+ */
+export function parseSuccessorSizedEditRequest(input: unknown, evidence?: { subscriptionId: string; applyPayload: unknown }): SizedEditRequest {
+  const payload = evidence ? constraint.safeParse(evidence.applyPayload) : undefined;
+  const raw = constraint.safeParse(input);
+  if (!raw.success || payload?.success === false) throw new Error("subscription_reprice_invalid_request");
+  const request = evidence ? { ...raw.data, subscriptionId: evidence.subscriptionId } : raw.data;
+  // A retained graduation quote can carry its original portion mode alongside the resolved lever.
+  if (evidence && request.action === "resize_bundle" && Object.hasOwn(request, "portionMode")) {
+    const lever = constraint.safeParse(request.resizeLever);
+    if (lever.success && lever.data.kind === "portionMode") {
+      const value = constraint.safeParse(lever.data.value);
+      if (value.success && request.portionMode === value.data.portionMode) delete request.portionMode;
+    }
+  }
+  const parsed = parseSizedEditRequest(request);
+  if (payload?.success && Object.hasOwn(payload.data, "recipeLines")) throw new Error("subscription_reprice_invalid_request");
+  const flat = (value: unknown) => value == null || (typeof value === "object" && !Array.isArray(value)
+    && !Object.hasOwn(value, "version") && !Object.hasOwn(value, "data"));
+  if (!flat(payload?.data.compositionConstraint) || ("compositionConstraint" in parsed && !flat(parsed.compositionConstraint))) {
+    throw new Error("subscription_reprice_invalid_request");
+  }
+  return parsed;
+}
 
 const object = z.record(z.string(), z.unknown());
 const line = z.object({ lineId: z.uuid().nullable(), variantId: z.uuid(), sku: z.string().min(1), groupId: z.string().min(1),

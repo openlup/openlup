@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline, type EditAgreementBaseline } from "./editConsentBaseline.js";
 import { lockUnpaidSuccessorPreview, recordUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
@@ -7,7 +6,7 @@ import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditCo
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
 import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 import type { SizedEditorOptions } from "./sizedEditPorts.js";
-import { createSizedEditContextScope, isSizedOptIn, normalizeSizedEdit, readSizedEditContext } from "./sizedEditContext.js";
+import { createSizedEditContextScope, isSizedOptIn, normalizeSizedEdit, parseSizedEditRequest, parseSuccessorSizedEditRequest, readSizedEditContext } from "./sizedEditContext.js";
 import { assertSizedPolicy } from "./sizedComposition.js";
 import { assertSizedSubjectFacts, quoteSizedEdit, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -17,27 +16,6 @@ import { mapPackageEditError } from "./packageEditErrors.js";
 export function createPostgresSizedEditor(options: SizedEditorOptions) {
   assertSizedPolicy(options.policy);
   const policy = options.policy;
-  const uuid = z.uuid().transform(value => value.toLowerCase());
-  const line = z.object({ variantId: uuid, qty: z.number().int().positive() }).strict();
-  const acceptance = { subscriptionId: uuid, expectedTemplateVersion: z.number().int().positive().optional(), acceptedQuoteHash: z.string().regex(/^[a-f0-9]{64}$/u).optional() };
-  const constraint = z.record(z.string(), z.unknown());
-  const parcel = z.object({ kind: z.literal(SIZED_PARCEL_LEVER_KIND), value: z.object({ coreLines: z.array(line).min(1), optInToSized: z.literal(true).optional() }).strict() }).strict();
-  const schema = z.discriminatedUnion("action", [
-    z.object({ ...acceptance, action: z.literal("resize_bundle"), cadenceDays: z.number().int().positive(), compositionConstraint: constraint,
-      resizeLever: z.union([parcel, z.object({ kind: z.literal("portionMode"), value: z.object({ portionMode: z.string().min(1), planDays: z.number().int().positive() }).strict() }).strict()]) }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_bundle"), coreLines: z.array(line).min(1),
-      addonLines: z.array(line).optional(), cadenceDays: z.number().int().positive().optional(), compositionConstraint: constraint }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_base_mix"), base: z.array(line).min(1) }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_plan_length"), planDays: z.number().int().positive() }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_portion"), portionMode: z.string().min(1) }).strict(),
-    z.object({ ...acceptance, action: z.literal("add_addon"), variantId: uuid, qty: z.number().int().positive() }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_addon_quantity"), variantId: uuid, qty: z.number().int().positive() }).strict(),
-    z.object({ ...acceptance, action: z.literal("remove_addon"), variantId: uuid }).strict(),
-  ]);
-  const parse = (request: unknown): SizedEditRequest => {
-    const result = schema.safeParse(request);
-    if (!result.success) throw new Error("subscription_reprice_invalid_request"); return result.data;
-  };
   function assertRequestLimits(request: SizedEditRequest) {
     const core = "coreLines" in request ? request.coreLines : "base" in request ? request.base
       : request.action === "resize_bundle" && request.resizeLever.kind === SIZED_PARCEL_LEVER_KIND ? request.resizeLever.value.coreLines : [];
@@ -97,11 +75,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
     futureTemplate: { templateVersion: Number(row.template_version), effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" } };
   }
   async function previewFor(actor:PackageEditActor,input:SizedEditRequest,stockWait?:{caseId:string;caseKind:SuccessorCaseKind}):Promise<SizedEditPreview&{previewId?:string}> {
-      const parsed = parse(input);
-      if (stockWait && "compositionConstraint" in parsed &&
-        (Object.hasOwn(parsed.compositionConstraint, "version") || Object.hasOwn(parsed.compositionConstraint, "data"))) {
-        throw new Error("subscription_reprice_invalid_request");
-      }
+      const parsed = stockWait ? parseSuccessorSizedEditRequest(input) : parseSizedEditRequest(input);
       assertRequestLimits(parsed);
       if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
       return options.withTransaction(async db => {
@@ -156,7 +130,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
     /** @experimental */
     previewStockWaitSuccessor(actor:PackageEditActor,input:SizedEditRequest,source:{caseId:string;caseKind:SuccessorCaseKind}){return previewFor(actor,input,source);},
     async apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult> {
-      const parsed = parse(input);
+      const parsed = parseSizedEditRequest(input);
       if (key !== key.trim() || key.length < 8 || key.length > 180) throw new Error("subscription_command_invalid_input");
       return options.withTransaction(async db => {
         await owned(db, actor, parsed.subscriptionId);
