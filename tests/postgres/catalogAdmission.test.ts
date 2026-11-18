@@ -1514,18 +1514,24 @@ it("admission binding promoted", async () => {
   } finally { await stop.release(); await publishing; await e.query("ROLLBACK"); await w.query("ROLLBACK"); h.release(); w.release(); e.release(); }
 });
 
-const authorityPaths = ["assertion", "plain-one-time", "plain-subscription", "promoted-one-time", "promoted-subscription", ...lanes] as const;
+const authorityPaths = ["assertion", "port", "plain-one-time", "plain-subscription", "promoted-one-time", "promoted-subscription", ...lanes] as const;
 const authorityCases = [
   { rule: "LC6-D-007 unreadable before malformed", change: "unreadable", code: "55000" },
   { rule: "LC6-D-008 sealed SKU drift", change: "sku-drift", code: "55000" },
   { rule: "LC6-D-009 exact anchor keys", change: "extra-anchor-key", code: "22023" },
+  { rule: "LC6-D-009 malformed digest", change: "invalid-digest", code: "22023" },
   { rule: "LC6-D-012 stale before malformed selection", change: "stale", code: "40001" },
   { rule: "LC6-D-013 null selection", change: "null-selection", code: "22023" },
+  { rule: "LC6-D-015 invalid SKU UUID", change: "invalid-sku", code: "22023" },
+  { rule: "LC6-D-016 fractional quantity", change: "fractional-quantity", code: "22023" },
+  { rule: "LC6-D-019 duplicate memberships", change: "duplicate-memberships", code: "55000" },
   { rule: "LC6-D-141 surplus head", change: "surplus", code: "22023" },
 ] as const;
 it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path }))))("$rule via $path", async ({ path,change,code }) => {
-  const f = await fixture(packs[0]), input = structuredClone(f.admission);
-  const purchase = path.startsWith("plain") || path.startsWith("promoted"), account = !purchase && path !== "assertion";
+  const memberships = ["classic","classic","sized.v1","sized.v1"].map(offerVersion => ({ offerVersion,admitted: true }));
+  const f = await fixture(packs[0],change === "duplicate-memberships" ? { sku: { memberships } } : {}), input = structuredClone(f.admission);
+  const purchase = path.startsWith("plain") || path.startsWith("promoted"), account = !purchase && path !== "assertion" && path !== "port";
+  if (!account) input.purpose = "order";
   const missing = account ? accountAnchor : orderAnchor;
   const moved = account ? "customer_self_service_stale_edit_catalog_head" : headMoved;
   const refused = account ? "customer_self_service_invalid_offer_membership" : orderRefused;
@@ -1539,7 +1545,11 @@ it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path 
     Object.assign(input,{ skuRevisions: null });
     message = moved;
   }
+  if (change === "invalid-digest") input.heads[0].head.documentDigest = "z".repeat(64);
   if (change === "null-selection") { Object.assign(input,{ skuRevisions: null }); message = refused; }
+  if (change === "invalid-sku") { input.skuRevisions[0].reference.skuId = "unknown"; message = refused; }
+  if (change === "fractional-quantity") { input.skuRevisions[0].quantity = 1.5; message = refused; }
+  if (change === "duplicate-memberships") message = refused;
   if (change === "surplus") input.heads = [...input.heads,{ productId: randomUUID(),head: f.head }];
   const command = account ? await edit({ ...f,admission: input },path as Lane) : undefined;
   const before = await snapshot(), db = await session();
@@ -1555,6 +1565,8 @@ it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path 
       p.draft.context.mode = mode;
       const routine = path.startsWith("plain") ? "commerce_create_order_draft_with_outbox" : "commerce_create_promoted_order_draft_with_outbox";
       await expect(rpc(db,routine,p.args)).rejects.toMatchObject({ code,message });
+    } else if (path === "port") {
+      await expect(createPostgresCatalogAdmission().assertCurrent(db,input)).rejects.toMatchObject({ code,message });
     } else {
       await expect(rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,input.offerEvidence,
         JSON.stringify(input.priceContextVersions),"order"])).rejects.toMatchObject({ code,message });
