@@ -42,6 +42,28 @@ describe('native review decisions', () => {
   ])('%s', (_name, state, actual, now, code) => {
     expect(verdict(state(), actual, now).code).toBe(code);
   });
+  it('preserves v2 timestamp checks for PASS reports after the floor is met', () => {
+    const reviewed = recordReport(passed(), report({ reviewer: 'reviewer-2', verdict: 'FAIL' }), time);
+    reviewed.history.at(-1).report.at = time + 1;
+    expect(verdict(reviewed, observed, time).code).toBe('reviewed');
+    expect(explainSession(reviewed, observed, time).status).toBe('verify_required');
+
+    const incomplete = recordReport(prepare({ intent: { ...intent, risk: 'behavior' } }), report(), time);
+    incomplete.history.at(-1).report.at = time + 1;
+    expect(verdict(incomplete, observed, time).code).toBe('needs_agent_review');
+    expect(explainSession(incomplete, observed, time).status).toBe('needs_agent_review');
+    const complete = recordReport(incomplete, report({ reviewer: 'reviewer-2' }), time);
+    expect(verdict(complete, observed, time).code).toBe('invalid');
+    expect(explainSession(complete, observed, time).status).toBe('invalid');
+  });
+  it('distinguishes unreadable legacy findings from an empty list', () => {
+    const session = passed();
+    session.history.at(-1).report.findings = null;
+    expect(verdict(session, observed, time).code).toBe('invalid');
+    expect(explainSession(session, observed, time)).toMatchObject({
+      status: 'invalid', verified: false, openFindings: null,
+    });
+  });
   it.each([
     { reviewer: 'author' }, { reviewer: '' }, { cold: false }, { verdict: 'pass' },
     { documentation: undefined }, { documentation: '   ' }, { documentation: 42 }, { documentation: 'x'.repeat(4097) },

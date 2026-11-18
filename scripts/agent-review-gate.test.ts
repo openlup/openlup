@@ -451,4 +451,22 @@ describe('six real Git witnesses', () => {
     expect(console.log).toHaveBeenLastCalledWith('reviewed');
     await expect(f.cli('receipt', '12')).rejects.toThrow('merge_preflight: candidate conflicts with origin/main');
   });
+
+  it('explains that rebased history needs a fresh preparation and full review', async () => {
+    const f = await fixture();
+    await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'source.txt'), 'rebased change\n');
+    f.commit();
+
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(explained).toMatchObject({ status: 'stale', verified: false });
+    expect(explained.nextAction).toContain('prepare --new');
+    expect(explained.nextAction).toContain('full review');
+    const intentPath = join(f.scratch, 'intent.json');
+    await expect(f.cli('prepare', intentPath)).rejects.toThrow('rebased history; use prepare --new');
+    await expect(f.cli('prepare', '--new', intentPath)).resolves.toBe(0);
+    await expect(f.cli('verify')).rejects.toThrow('independent PASS reports required');
+  });
 });

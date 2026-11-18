@@ -221,7 +221,6 @@ function validateSessionReports(session, now) {
   }
   demand(session.history.every((event, index) => Number.isFinite(event.at) && event.at <= now && (index === 0 || event.at >= session.history[index - 1].at)), 'history time is invalid');
   if (session.version === 3) validateHistory(session);
-  else demand(!currentReports(session).some(report => report.at > now), 'report is from the future');
 }
 export function verdict(session, observed, now) {
   try {
@@ -237,6 +236,7 @@ export function verdict(session, observed, now) {
     const reports = currentReports(session).filter(report => report.verdict === 'PASS');
     const floor = Math.max(legacyRequiredReviewers(legacyClassifyRisk(observed, latestIntent(session).risk)), session.candidate.integration ? 2 : 0);
     if (reports.length < floor) return result(false, 'needs_agent_review', `${floor} independent PASS reports required`);
+    if (reports.some(report => report.at > now)) return result(false, 'invalid', 'report is from the future');
     if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
     return result(true, 'reviewed', 'reviewed');
   } catch (error) { return result(false, error.message.startsWith('needs_agent_review:') ? 'needs_agent_review' : 'invalid', error.message); }
@@ -260,6 +260,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
       reports = currentReports(session).filter(report => report.verdict === 'PASS');
       effectiveRisk = session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, intent.risk);
       floor = Math.max(legacyRequiredReviewers(effectiveRisk), session.candidate.integration ? 2 : 0);
+      if (reports.length >= floor) demand(!reports.some(report => report.at > now), 'report is from the future');
       scope = session.candidate.integration ? 'integration' : 'full';
       twoReviewerPaths = (session.candidate.changedPaths ?? []).filter(sensitivePath);
     }
@@ -270,8 +271,8 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     scope = session.candidate.integration ? 'integration' : 'full';
     twoReviewerPaths = (session.candidate.changedPaths ?? []).filter(session.version === 3 ? twoReviewerPath : sensitivePath);
   }
-  const openMaterial = [];
-  try { openMaterial.push(...openFindings(session).values()); } catch { /* malformed history already sets invalidReason */ }
+  let openMaterial = null;
+  try { openMaterial = [...openFindings(session).values()]; } catch (error) { invalidReason ??= error.message; }
   const missingReports = Math.max(0, floor - reports.length);
   const edge = session.version === 3 ? session.candidate.coverage : undefined;
   const coverage = edge ? {
@@ -289,21 +290,21 @@ export function explainSession(session, observed = session?.candidate, now = Dat
   const status = invalidReason || candidateStatus === 'unreadable' ? 'invalid'
     : candidateStatus === 'dirty' ? 'dirty'
       : candidateStatus === 'stale' ? 'stale'
-        : missingReports > 0 || openMaterial.length > 0 ? 'needs_agent_review' : 'verify_required';
+        : missingReports > 0 || openMaterial?.length ? 'needs_agent_review' : 'verify_required';
   const nextAction = candidateStatus === 'unreadable'
     ? `Resolve the Git comparison or OPENLUP_STACK_BASE error (${observed?.error ?? 'candidate unreadable'}) before running prepare or verify.`
     : candidateStatus === 'dirty'
       ? 'Commit or discard working-tree changes before running prepare, record or verify.'
       : candidateStatus === 'stale'
-        ? 'Run node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json to bind the current HEAD.'
+        ? 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.'
         : invalidReason
           ? `Fix invalid session state (${invalidReason}) or run node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json.`
-          : missingReports > 0 || openMaterial.length > 0
+          : missingReports > 0 || openMaterial?.length
             ? [
                 missingReports > 0
                   ? `Record ${missingReports} independent cold PASS report(s) (${coverage?.ordinaryAllowed ? `ordinary: true, delta: ${coverage.delta}` : `full tree ${session.candidate.tree}`}) with node scripts/agent-review-session.mjs record <report.json>`
                   : null,
-                openMaterial.length > 0 ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
+                openMaterial?.length ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
               ].filter(Boolean).join(' and ') + '.'
             : 'Run node scripts/agent-review-session.mjs verify to confirm the local review evidence.';
   return {
@@ -338,7 +339,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     verifyChecksPending: [
       'committed Git diff and tree against session.candidate',
       ...(session.version === 3 ? ['review rules snapshot against base and head (captureReviewRules)'] : []),
-      ...(session.version === 3 && session.candidate.coverage ? ['recorded coverage edge replay and integration/derived proof (validateEconomySession)'] : []),
+      ...(session.version === 3 && session.history.some(event => event.type === 'prepare' && event.candidate?.coverage) ? ['recorded coverage edge replay and integration/derived proof (validateEconomySession)'] : []),
     ],
     mergePreflight: { status: 'not_checked', checkedBy: 'receipt' },
   };

@@ -354,7 +354,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     demand(args.length === 0, 'use --help without extra arguments');
     console.log(SESSION_HELP); return 0;
   }
-  demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use --help, prepare [--new] <intent.json>, record <report.json>, verify, status [--explain], receipt <PR>, or verify-command');
+  demand(['prepare', 'record', 'verify', 'status', 'receipt', 'verify-command'].includes(verb), 'use prepare [--new] <intent.json>, record <report.json>, verify, status [--explain], receipt <PR>, verify-command or --help');
   const directory = join(cwd, '.context', 'scratch', 'agent-review'); const path = join(directory, 'session.json');
   let lock;
   if (['prepare', 'record'].includes(verb)) {
