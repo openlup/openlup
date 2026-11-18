@@ -55,7 +55,7 @@ export function resolveRoute(path: string, market: LocaleMarket = defaultMarket)
       }
     }
   }
-  return { key: 'notFound', locale: market.locales.find(locale => locale === 'pl' && clean.startsWith('/pl')) ?? market.defaultLocale };
+  return { key: 'notFound', locale: market.locales.find(locale => routes.home[locale].length > 1 && clean.startsWith(routes.home[locale])) ?? market.defaultLocale };
 }
 
 export function productPath(slug: string, locale: Locale): string {

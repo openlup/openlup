@@ -133,7 +133,7 @@ export function assertConfig(config: StoreConfig): void {
     || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
     throw new Error('starter_market_invalid');
   }
-  try { new Intl.DateTimeFormat('en', { timeZone: config.market.timezone }); }
+  try { new Intl.DateTimeFormat(config.market.defaultLocale, { timeZone: config.market.timezone }); }
   catch { throw new Error('starter_market_invalid'); }
   if (typeof config.id !== 'string' || config.id.length > 80
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');

@@ -2674,6 +2674,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/copy-keys.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/limits.ts",
       "class": "public-output"
     },

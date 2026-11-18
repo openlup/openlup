@@ -10,7 +10,7 @@ export function buildDemoSeed(config: StoreConfig) {
   const listId = identifier('price-list', config.market.currency);
   const products = documents.map(({ variants, productId }) => ({
     id: productId, slug: `demo-${config.id}-${variants[0]!.slug}`,
-    status: 'active', name: variants[0]!.name.en, description: variants[0]!.description.en,
+    status: 'active', name: variants[0]!.name[config.market.defaultLocale], description: variants[0]!.description[config.market.defaultLocale],
   }));
   const skus = catalogue.map(product => ({
     id: identifier('sku', product.sku), product_id: identifier('product', product.groupKey),

@@ -169,6 +169,7 @@
     "test/subscription-offer.test.ts",
     "shared/locales.ts",
     "shared/locale-copy.ts",
+    "shared/copy-keys.ts",
     "test/locales.test.ts",
     "test/subscription-creation.test.ts"
   ],

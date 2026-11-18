@@ -117,8 +117,8 @@ for (const config of Object.values(configurations)) {
     const ids = [...seed.products, ...seed.skus, ...seed.priceLists, ...seed.prices].map(row => row.id);
     assert.equal(new Set(ids).size, ids.length);
     for (const [index, product] of config.offer.products.entries()) {
-      assert.equal(seed.products[index]!.name, product.name.en);
-      assert.equal(seed.products[index]!.description, product.description.en);
+      assert.equal(seed.products[index]!.name, product.name[config.market.defaultLocale]);
+      assert.equal(seed.products[index]!.description, product.description[config.market.defaultLocale]);
       const sku = seed.skus.find(row => row.sku === product.sku)!;
       assert.equal(sku.product_id, seed.products[index]!.id);
       const oneTime = seed.prices.find(row => row.variant_id === sku.id && row.mode === 'one_time')!;

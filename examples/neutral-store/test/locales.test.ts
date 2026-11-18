@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { configurations } from '../owned/store.config.ts';
 import { copy } from '../owned/copy.ts';
 import { editorCopy } from '../owned/editor-copy.ts';
@@ -11,24 +12,26 @@ import { assertLocaleCopy, assertLocaleMarket, resolveLocale, type LocaleMarket 
 import { resolveRoute, routes } from '../shared/routes.ts';
 
 const original = Object.values(configurations)[0]!;
-const demoMarket = { locales: ['en', 'pl'], defaultLocale: 'en' } as const;
+const market = original.market;
+const firstLocale = market.locales[0]!;
 
-test('D: all demo routes and unknown-path locale choices retain their previous results', () => {
+test('D: configured routes and unknown-path locale choices retain their results', () => {
   for (const [key, translations] of Object.entries(routes)) {
-    for (const locale of demoMarket.locales) {
-      assert.deepEqual(resolveRoute(translations[locale], demoMarket), { key, locale });
-      if (translations[locale] !== '/') assert.deepEqual(resolveRoute(translations[locale] + '/', demoMarket), { key, locale });
+    for (const locale of market.locales) {
+      assert.deepEqual(resolveRoute(translations[locale], market), { key, locale });
+      if (translations[locale].length > 1) assert.deepEqual(resolveRoute(translations[locale] + '/', market), { key, locale });
+      assert.deepEqual(resolveRoute(`${routes.catalog[locale]}/item%20one`, market), { key: 'product', locale, slug: 'item one' });
+      assert.deepEqual(resolveRoute(`${routes.catalog[locale]}/%zz`, market), { key: 'notFound', locale });
     }
   }
-  for (const [path, locale] of [['/unknown', 'en'], ['/pl/unknown', 'pl'], ['/plausible', 'pl']] as const) {
-    assert.deepEqual(resolveRoute(path, demoMarket), { key: 'notFound', locale });
+  assert.deepEqual(resolveRoute('/unknown', market), { key: 'notFound', locale: market.defaultLocale });
+  const polish = market.locales.find(locale => routes.home[locale].startsWith('/pl'));
+  for (const path of ['/pl/unknown', '/plausible']) {
+    assert.deepEqual(resolveRoute(path, market), { key: 'notFound', locale: polish ?? market.defaultLocale });
   }
-  assert.deepEqual(resolveRoute('/products/item%20one', demoMarket), { key: 'product', locale: 'en', slug: 'item one' });
-  assert.deepEqual(resolveRoute('/produkty/item%20one', demoMarket), { key: 'product', locale: 'pl', slug: 'item one' });
-  assert.deepEqual(resolveRoute('/products/%zz', demoMarket), { key: 'notFound', locale: 'en' });
 });
 
-test('D: UI, editor, quote and email text retain the en/pl baseline bytes', () => {
+test('D: supplied UI, editor, quote and email translations retain the en/pl baseline bytes', () => {
   // JSON digests captured from 81016c600, before the registry change.
   for (const [registry, digest] of [
     [copy, '6fdb965b5997d0e5f78114d319e5f44f53aedadea87a8682b9d2f8d0a16a651e'],
@@ -40,14 +43,14 @@ test('D: UI, editor, quote and email text retain the en/pl baseline bytes', () =
 });
 
 test('R: empty, duplicate, unsupported and excluded-default locales have named refusals', () => {
-  for (const [market, message] of [
-    [{ locales: [], defaultLocale: 'en' }, 'starter_locales_invalid'],
-    [{ locales: ['en', 'en'], defaultLocale: 'en' }, 'starter_locales_invalid'],
-    [{ locales: ['en', 'de'], defaultLocale: 'en' }, 'starter_locale_unsupported: de'],
-    [{ locales: ['pl'], defaultLocale: 'en' }, 'starter_default_locale_invalid'],
+  for (const [invalid, message] of [
+    [{ locales: [], defaultLocale: firstLocale }, 'starter_locales_invalid'],
+    [{ locales: [firstLocale, firstLocale], defaultLocale: firstLocale }, 'starter_locales_invalid'],
+    [{ locales: [firstLocale, 'de'], defaultLocale: firstLocale }, 'starter_locale_unsupported: de'],
+    [{ locales: [firstLocale], defaultLocale: 'de' }, 'starter_default_locale_invalid'],
   ] as const) {
     const config = structuredClone(original);
-    Object.assign(config.market, market);
+    Object.assign(config.market, invalid);
     assert.throws(() => assertConfig(config), { message });
   }
 });
@@ -65,60 +68,66 @@ test('R: startup names the absent localized key and configured locale', () => {
     ['recovery.states.support', (c: StoreConfig) => c.recovery!.states.support],
   ] as const) {
     const config = structuredClone(original);
-    config.market = { ...config.market, ...demoMarket };
     config.subscriptionEditing.catalogue = structuredClone(config.subscriptionEditing.catalogue);
-    Reflect.deleteProperty(select(config), 'pl');
-    assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: ${path} (pl)` });
+    Reflect.deleteProperty(select(config), firstLocale);
+    assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: ${path} (${firstLocale})` });
   }
   const config = structuredClone(original);
-  Reflect.deleteProperty(config.renewal.notices.copy.pl.paid, 'subject');
-  assert.throws(() => assertConfig(config), { message: 'starter_locale_copy_missing: renewal.notices.copy.paid.subject (pl)' });
+  Reflect.deleteProperty(config.renewal.notices.copy[firstLocale].paid, 'subject');
+  assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: renewal.notices.copy.paid.subject (${firstLocale})` });
 });
 
-test('R: missing owned UI/editor/quote copy refuses through the startup validator', () => {
+test('R: required UI/editor/quote keys refuse even when absent from every translation', () => {
   for (const [registry, key, path] of [
-    [copy.pl, 'cart', 'copy.cart'], [editorCopy.pl, 'close', 'editorCopy.close'],
-    [quoteCopy.pl, 'loading', 'quoteCopy.loading'], [quoteRefusalCopy.pl, 'cadence_unavailable', 'quoteRefusalCopy.cadence_unavailable'],
+    [copy, 'cart', 'copy.cart'], [editorCopy, 'close', 'editorCopy.close'],
+    [quoteCopy, 'loading', 'quoteCopy.loading'], [quoteRefusalCopy, 'cadence_unavailable', 'quoteRefusalCopy.cadence_unavailable'],
   ] as const) {
-    const value = registry[key as keyof typeof registry];
+    // Include inactive translations: no surviving translation can supply the required key.
+    const translations = Object.values(registry);
+    const saved = translations.map(translation => Object.getOwnPropertyDescriptor(translation, key)!);
     try {
-      Reflect.deleteProperty(registry, key);
-      const config = structuredClone(original);
-      config.market = { ...config.market, ...demoMarket };
-      assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: ${path} (pl)` });
-    } finally { Reflect.set(registry, key, value); }
+      for (const translation of translations) Reflect.deleteProperty(translation, key);
+      assert.throws(() => assertConfig(original), { message: `starter_locale_copy_missing: ${path} (${firstLocale})` });
+    } finally {
+      translations.forEach((translation, index) => Object.defineProperty(translation, key, saved[index]!));
+    }
   }
-  assert.throws(() => assertLocaleCopy({ en: { paid: { subject: 'Paid' } }, pl: { paid: { subject: '' } } },
-    demoMarket.locales, 'mail'), { message: 'starter_locale_copy_missing: mail.paid.subject (pl)' });
+  assert.throws(() => assertLocaleCopy({ [firstLocale]: { paid: { subject: '' } } },
+    [firstLocale], 'mail', ['paid.subject']), { message: `starter_locale_copy_missing: mail.paid.subject (${firstLocale})` });
 });
 
-test('a Polish-only configuration needs no English localized fields and falls back to Polish', () => {
+test('a single configured locale needs no other localized fields and supplies the fallback', () => {
   const config = structuredClone(original);
-  config.market.locales = ['pl']; config.market.defaultLocale = 'pl';
-  function removeEnglish(value: unknown): void {
+  config.market.locales = [firstLocale]; config.market.defaultLocale = firstLocale;
+  function removeOtherLocales(value: unknown): void {
     if (!value || typeof value !== 'object') return;
-    if ('pl' in value) Reflect.deleteProperty(value, 'en');
-    for (const child of Object.values(value)) removeEnglish(child);
+    if (firstLocale in value) for (const locale of market.locales) {
+      if (locale !== firstLocale) Reflect.deleteProperty(value, locale);
+    }
+    for (const child of Object.values(value)) removeOtherLocales(child);
   }
-  removeEnglish(config);
+  removeOtherLocales(config);
   assert.doesNotThrow(() => assertConfig(config));
-  assert.equal(resolveLocale('en', config.market), 'pl');
-  assert.equal(resolveLocale(undefined, config.market), 'pl');
-  assert.deepEqual(resolveRoute('/produkty', config.market), { key: 'catalog', locale: 'pl' });
-  assert.deepEqual(resolveRoute('/products', config.market), { key: 'notFound', locale: 'pl' });
-  assert.deepEqual(resolveRoute('/unknown', config.market), { key: 'notFound', locale: 'pl' });
-  assertLocaleCopy({ pl: { only: 'Tylko polski' } }, config.market.locales, 'copy');
+  for (const product of buildDemoSeed(config).products) {
+    assert.ok(product.name.trim()); assert.ok(product.description.trim());
+  }
+  assert.equal(resolveLocale('unknown', config.market), firstLocale);
+  assert.equal(resolveLocale(undefined, config.market), firstLocale);
+  assert.deepEqual(resolveRoute(routes.catalog[firstLocale], config.market), { key: 'catalog', locale: firstLocale });
+  assert.deepEqual(resolveRoute('/unknown', config.market), { key: 'notFound', locale: firstLocale });
+  assertLocaleCopy({ [firstLocale]: { only: 'Configured copy' } }, config.market.locales, 'copy', ['only']);
 });
 
-test('the supplied bilingual locale literal preserves explicit routes and uses Polish for the fallback', () => {
-  const market: LocaleMarket = { locales: ['pl', 'en'], defaultLocale: 'pl' };
-  assertLocaleMarket(market);
+test('reordering configured locales preserves explicit routes and uses the chosen default', () => {
+  const reordered: LocaleMarket = { locales: [...market.locales].reverse(), defaultLocale: market.locales.at(-1)! };
+  assertLocaleMarket(reordered);
   const config = structuredClone(original);
-  Object.assign(config.market, market);
+  Object.assign(config.market, reordered);
   assert.doesNotThrow(() => assertConfig(config));
-  assert.equal(resolveLocale('en', market), 'en');
-  assert.equal(resolveLocale('unknown', market), 'pl');
-  assert.deepEqual(resolveRoute('/products', market), { key: 'catalog', locale: 'en' });
-  assert.deepEqual(resolveRoute('/produkty', market), { key: 'catalog', locale: 'pl' });
-  assert.deepEqual(resolveRoute('/unknown', market), { key: 'notFound', locale: 'pl' });
+  for (const locale of reordered.locales) {
+    assert.equal(resolveLocale(locale, reordered), locale);
+    assert.deepEqual(resolveRoute(routes.catalog[locale], reordered), { key: 'catalog', locale });
+  }
+  assert.equal(resolveLocale('unknown', reordered), reordered.defaultLocale);
+  assert.deepEqual(resolveRoute('/unknown', reordered), { key: 'notFound', locale: reordered.defaultLocale });
 });

@@ -1,12 +1,13 @@
 import type { LocaleCopy } from '../shared/locales.ts';
+import { quoteRefusalKeys, type QuoteCopyKey, type QuoteRefusalCode } from '../shared/copy-keys.ts';
 
 const quoteEnglish = { loading: 'Refreshing the purchase price…', unavailable: 'A current purchase price is unavailable.',
-    second: 'Second delivery', refresh: 'Review the refreshed terms and accept them before placing the order.' };
+    second: 'Second delivery', refresh: 'Review the refreshed terms and accept them before placing the order.' } satisfies Record<QuoteCopyKey, string>;
 export const quoteCopy = {
   en: quoteEnglish,
   pl: { loading: 'Odświeżanie ceny zakupu…', unavailable: 'Aktualna cena zakupu jest niedostępna.',
     second: 'Druga dostawa', refresh: 'Sprawdź odświeżone warunki i zaakceptuj je przed złożeniem zamówienia.' },
-} satisfies LocaleCopy<Record<keyof typeof quoteEnglish, string>>;
+} satisfies LocaleCopy<Record<QuoteCopyKey, string>>;
 
 /** Exact display allowlist. Never interpolate server messages or error details. */
 const refusalEnglish = {
@@ -25,7 +26,7 @@ const refusalEnglish = {
     subscription_price_policy_invalid: 'The subscription price policy is invalid. Correct the stored policy revision, then refresh.',
     subscription_price_policy_digest_mismatch: 'The subscription price policy failed its integrity check. Repair the stored revision and digest, then refresh.',
     starter_quote_refresh_required: 'The purchase terms need refreshing. Refresh the price and review the terms before ordering.',
-};
+} satisfies Record<QuoteRefusalCode, string>;
 export const quoteRefusalCopy = {
   en: refusalEnglish,
   pl: {
@@ -45,10 +46,10 @@ export const quoteRefusalCopy = {
     subscription_price_policy_digest_mismatch: 'Kontrola integralności polityki cen subskrypcji nie powiodła się. Napraw zapisaną wersję i skrót, a następnie odśwież stronę.',
     starter_quote_refresh_required: 'Warunki zakupu wymagają odświeżenia. Odśwież cenę i sprawdź warunki przed zamówieniem.',
   },
-} satisfies LocaleCopy<Record<keyof typeof refusalEnglish, string>>;
+} satisfies LocaleCopy<Record<QuoteRefusalCode, string>>;
 
-export function isQuoteRefusalCode(code: unknown): code is keyof typeof quoteRefusalCopy.en {
-  return typeof code === 'string' && Object.hasOwn(quoteRefusalCopy.en, code);
+export function isQuoteRefusalCode(code: unknown): code is QuoteRefusalCode {
+  return quoteRefusalKeys.some(key => key === code);
 }
 
 /** Browser-safe, case-sensitive display hints only; no payment or delivery authority. */

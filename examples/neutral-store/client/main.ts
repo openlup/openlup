@@ -135,7 +135,7 @@ function shellHeader(context: PageContext): HTMLElement {
     const alternatePath = context.route.key === 'product'
       ? productPath(context.route.slug ?? '', alternate)
       : context.route.key === 'notFound' ? routes.home[alternate] : routes[context.route.key][alternate];
-    const language = link(copy[alternate][alternate === 'pl' ? 'languagePolish' : 'languageEnglish'], alternatePath + location.search);
+    const language = link(copy[alternate][({ en: 'languageEnglish', pl: 'languagePolish' } as const)[alternate]], alternatePath + location.search);
     language.hreflang = alternate;
     language.lang = alternate;
     return language;

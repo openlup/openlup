@@ -1,4 +1,5 @@
 import type { Locale, LocaleCopy } from '../shared/locales.ts';
+import type { EditorCopyKey } from '../shared/copy-keys.ts';
 
 const en = {
   parcelItems: 'Items: {count} · {sizes}',
@@ -39,8 +40,7 @@ const en = {
   graduation: 'Upcoming package: {count} base units, every {days} days.',
   needUnavailable: 'The stored demonstration subject facts cannot be read. No need-entry form is available.',
   configuredLimit: 'Demand-driven plan and portion resizing is not configured in this demonstration.',
-};
-type EditorCopyKey = keyof typeof en;
+} satisfies Record<EditorCopyKey, string>;
 const pl: Record<EditorCopyKey,string> = {
   parcelItems: 'Produkty: {count} · {sizes}',
   classic: 'Edytuj pakiet', sized: 'Edytuj rozmiary i ilości', invitation: 'Wybierz rozmiary dla tej subskrypcji',

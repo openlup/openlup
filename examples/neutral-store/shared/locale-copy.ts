@@ -4,13 +4,17 @@ import { quoteCopy, quoteRefusalCopy } from '../owned/quote-copy.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { nativeLimits, operationLimitDefinitions } from './limits.ts';
 import { assertLocaleCopy, assertLocalized } from './locales.ts';
+import { copyKeys, editorCopyKeys, quoteCopyKeys, quoteRefusalKeys } from './copy-keys.ts';
 import type { StoreConfig } from './config.ts';
 
 /** Startup checks the same owned copy consumed by the host and browser. */
 export function assertStarterCopy(config: StoreConfig): void {
   const locales = config.market.locales;
-  for (const [path, registry] of Object.entries({ copy, editorCopy, quoteCopy, quoteRefusalCopy })) {
-    assertLocaleCopy(registry, locales, path);
+  for (const [path, registry, keys] of [
+    ['copy', copy, copyKeys], ['editorCopy', editorCopy, editorCopyKeys],
+    ['quoteCopy', quoteCopy, quoteCopyKeys], ['quoteRefusalCopy', quoteRefusalCopy, quoteRefusalKeys],
+  ] as const) {
+    assertLocaleCopy(registry, locales, path, keys);
   }
   for (const [path, section, keys] of [
     ['brand', config.brand, ['strapline', 'description']],

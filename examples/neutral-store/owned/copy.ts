@@ -1,4 +1,6 @@
 import type { LocaleCopy } from '../shared/locales.ts';
+import type { CopyKey } from '../shared/copy-keys.ts';
+export type { CopyKey } from '../shared/copy-keys.ts';
 
 /** Application copy; every configured locale supplies the same keys. */
 const en = {
@@ -448,9 +450,8 @@ const en = {
     purchase_mode_unavailable: "A selected product does not allow this purchase mode.",
     cadence_unavailable: "Choose an available subscription frequency.",
     amount_overflow: "The amount cannot be represented safely.",
-};
+} satisfies Record<CopyKey, string>;
 
-export type CopyKey = keyof typeof en;
 export const copy = {
   en,
   pl: {

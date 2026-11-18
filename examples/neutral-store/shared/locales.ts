@@ -37,22 +37,12 @@ export function assertLocalized(value: unknown, locales: readonly Locale[], path
   }
 }
 
-/** Check every string leaf across translations, including nested email copy. */
-export function assertLocaleCopy(copy: unknown, locales: readonly Locale[], path: string, requiredKeys: readonly string[] = []): void {
+/** Check declared string leaves, including nested email copy, for every configured locale. */
+export function assertLocaleCopy(copy: unknown, locales: readonly Locale[], path: string, requiredKeys: readonly string[]): void {
   const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const registry = record(copy);
-  const keys = new Set(requiredKeys);
-  function collect(value: unknown, prefix: string): void {
-    for (const [key, item] of Object.entries(record(value))) {
-      const next = prefix ? `${prefix}.${key}` : key;
-      if (item && typeof item === 'object') collect(item, next);
-      else keys.add(next);
-    }
-  }
-  for (const translation of Object.values(registry)) collect(translation, '');
   for (const locale of locales) {
-    if (!registry[locale] || !keys.size) throw new Error(`starter_locale_copy_missing: ${path} (${locale})`);
-    for (const key of keys) {
+    for (const key of requiredKeys) {
       const text = key.split('.').reduce<unknown>((value, part) => record(value)[part], registry[locale]);
       if (typeof text !== 'string' || !text.trim()) throw new Error(`starter_locale_copy_missing: ${path}.${key} (${locale})`);
     }

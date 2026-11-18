@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test as base, expect, type Locator } from '@playwright/test';
 import { readFileSync, existsSync } from 'node:fs';
 import { copy } from '../owned/copy.ts';
@@ -47,7 +48,7 @@ test('localized order controls and owned PDF in both languages', async ({ page, 
   await context.clearCookies();
   await signIn(true);
   const operatorCookies = await context.cookies();
-  for (const locale of ['en', 'pl'] as const) {
+  for (const locale of market.locales) {
     const submitRefused = async (form: Locator, operation: Operation, fields: Readonly<Record<string, string | boolean>>) => {
       for (const [name, value] of Object.entries(fields)) {
         if (typeof value === 'boolean') await form.locator(`[name=${name}]`).setChecked(value);
