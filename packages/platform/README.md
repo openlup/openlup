@@ -2746,6 +2746,8 @@ for the fingerprint dialect, transaction boundaries and recovery limits.
 
 Native editor previews expose experimental `editConsent` data with the complete agreed-to-proposed per-line comparison and accepted hash. `createPostgresLegacyEditConsentBridge` supplies this comparison around the original legacy bundle transaction. Compose it with one authenticated transaction connection; construction activates nothing. Missing agreement evidence refuses rather than substituting current catalogue prices. See [subscription contracts](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
 
+`createPostgresClassicBundleEditor` supplies a separate experimental bundle update and resize binding. Omitting add-ons retains the accepted set. A content-only edit shows the retained amounts and reports whether the live comparison differs. Use the trusted `readCatalogAdmission` port to attach the exact evidence checked by native acceptance for governed catalogue edits.
+
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor and the sized parcel lever value;
 `./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
