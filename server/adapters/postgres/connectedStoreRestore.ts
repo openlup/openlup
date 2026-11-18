@@ -373,6 +373,7 @@ export async function restoreConnectedNativeStore(input: {
         await restoreSettings(client, baseline.get(table)!, source.get(table)!);
       }
       let neutralized = 0;
+      const orderAcceptances: string[] = [];
       for (const table of order) {
         const rows = source.get(table)!;
         const b = packet.compatible.tables.find(value => value.table === table);
@@ -413,6 +414,13 @@ export async function restoreConnectedNativeStore(input: {
               '{current_document_revision_id}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
             await insert(client, rows, staged);
           }
+          else if (table === "commerce_orders" && (JSON.parse(row) as Record<string, unknown>).catalog_acceptance != null) {
+            // Install the retained acceptance through its normal guard after the item ledger.
+            const staged = (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set(
+              $1::jsonb,'{catalog_acceptance}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
+            await insert(client, rows, staged);
+            orderAcceptances.push(row);
+          }
           else {
             // This owner path must not depend on a trigger's actor exception.
             // Channel evidence has no retained transfer mapping in this profile.
@@ -420,6 +428,15 @@ export async function restoreConnectedNativeStore(input: {
               .includes(String((JSON.parse(row) as Record<string, unknown>).event_type))) fail("unsupported_table", table);
             await insert(client, rows, row);
           }
+        }
+        if (table === "commerce_order_items") for (const row of orderAcceptances) {
+          const updated = await client.query(`UPDATE public.commerce_orders o
+            SET catalog_acceptance=x.catalog_acceptance
+            FROM pg_catalog.jsonb_populate_record(NULL::public.commerce_orders,$1::jsonb) x
+            WHERE o.id=x.id AND o.catalog_acceptance IS NULL
+              AND (pg_catalog.to_jsonb(o)-'catalog_acceptance')=(pg_catalog.to_jsonb(x)-'catalog_acceptance')
+            RETURNING o.id`, [row]);
+          if (updated.rows.length !== 1) fail("target_conflict", "commerce_orders");
         }
         if (table === "payment_provider_attempts") for (const state of source.get("payment_provider_states")!.rows) {
           const updated = await client.query(`UPDATE public.payment_provider_states s

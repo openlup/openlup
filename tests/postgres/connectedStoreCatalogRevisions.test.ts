@@ -261,19 +261,29 @@ it("LC5-D-016 LC5-D-068 LC5-D-069 LC5-A-033 transfer governed facts, nullable bi
   const page = await sourceAuthority.readbackV3(history.first);
   if (page.outcome !== "page") throw new Error(JSON.stringify(page));
   expect(await sourceAuthority.readbackV2(history.first)).toMatchObject({ outcome: "unsupported", reason: "catalog_lifecycle_reader_required" });
-  const sku = page.items[0]!, legacySubscription = randomUUID(), order = randomUUID();
+  const sku = page.items[0]!, legacySubscription = randomUUID(), order = randomUUID(), line = randomUUID();
   const { customer, subscription, acceptance, codec, snapshot, claim, now } = lifecycleFrozen;
   await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,3,0,617,'XXX',$3)", [subscription,sku.facts.id,sku.reference.revisionId]);
   await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [legacySubscription,customer]);
   await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,3,0,617,'XXX')", [legacySubscription,sku.facts.id]);
   await held.owner.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [subscription,acceptance]);
-  await held.owner.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,catalog_acceptance) VALUES($1,$2,'XXX',0,$3::jsonb)", [order,customer,acceptance]);
-  await held.owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle','synthetic:accepted-edit','{}',$2::jsonb)", [subscription,acceptance]);
+  await held.owner.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',1851)", [order,customer]);
+  await held.owner.query("INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,$3,1,3,617,1851)", [line,order,sku.facts.id]);
+  await held.owner.query("UPDATE public.commerce_orders SET catalog_acceptance=$2::jsonb WHERE id=$1", [order,acceptance]);
+  const pricing = { action: "update_bundle", linePricing: [{ sku: sku.facts.code, quantity: 3, unitAmountMinor: 617, isAddon: false, quoteLine: {} }] };
+  await held.owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle','synthetic:accepted-edit',$2::jsonb,$3::jsonb)", [subscription,JSON.stringify(pricing),acceptance]);
   const captured = await captureStoreJourney(held.owner,"lifecycle-source"), before = await journeyCensus(held.owner);
   expect(await restore(target.owner,captured)).toMatchObject({ replayed: false });
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await publicationAuthority(target.owner).readbackV3(history.first)).toEqual(page);
   expect(await publicationAuthority(target.owner).readbackV3(history.second)).toMatchObject({ outcome: "page", head: history.second });
+  const reader = publicationAuthority(target.owner, true), scope = reader.authorizeReadScope(undefined);
+  const binding = { kind: "order" as const, sourceId: order, lineId: line, productId: history.productId,
+    skuId: sku.facts.id, skuRevisionId: sku.reference.revisionId, publicationId: history.first.publicationId,
+    documentRevisionId: page.product.document!.id };
+  expect(await reader.resolveRetained(binding,scope)).toEqual({
+    outcome: "found", head: history.first, product: page.product, sku: sku.facts, reference: sku.reference,
+  });
   const renewed = createPostgresRenewalStore(target.owner, codec);
   expect(await renewed.claimDue({ snapshot, workerId: "synthetic-transfer", now })).toMatchObject({ operationId: claim.operationId, replayed: true });
   expect((await target.owner.query("SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1", [claim.operationId])).rows)
@@ -307,10 +317,13 @@ it("LC5-D-016 LC5-D-068 LC5-D-069 LC5-A-033 transfer governed facts, nullable bi
   const malformed = { ...history.second, publicationId: publication, revision: history.second.revision+1 };
   await expect(target.owner.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [history.productId,publication,malformed.revision]))
     .rejects.toMatchObject({ code: "23514", message: "catalog_publication_sku_revision_invalid" });
-  const reader = publicationAuthority(target.owner, true);
   const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
   expect(await reader.readbackV3(malformed)).toEqual(refusal);
   expect(await reader.resolveRetained({ kind: "order", sourceId: order, lineId: randomUUID(), productId: history.productId,
     skuId: duplicateSku, skuRevisionId: revision, publicationId: publication, documentRevisionId: historyRow.document_revision_id }, reader.authorizeReadScope(undefined)))
     .toEqual(refusal);
+  const accepted = JSON.parse(acceptance).lines[0];
+  await expect(target.owner.query("SELECT public.catalog_accepted_reference_assert_v2($1::jsonb)", [
+    JSON.stringify({ ...accepted, publicationHead: malformed }),
+  ])).rejects.toMatchObject({ code: "22023", message: "catalog_accepted_reference_mismatch" });
 });
