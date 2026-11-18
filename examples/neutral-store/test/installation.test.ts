@@ -309,3 +309,66 @@ test('owned reminder schedule validates and installs independently of configurat
     }
   }
 });
+
+test('lifecycle up, serve-demo, checkout-recovery and CLI delegation preserve named refusals and exit codes', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  await mkdir(resolve(root, '.context'), { recursive: true });
+  const directory = await mkdtemp(resolve(root, '.context/lifecycle-diagnostics-'));
+  try {
+    for (const path of ['lifecycle.mjs', 'browser-groups.mjs', 'host', 'shared', 'owned', 'installation']) {
+      await cp(resolve(root, path), resolve(directory, path), { recursive: true });
+    }
+    await writeFile(resolve(directory, 'package.json'), '{"type":"module"}');
+    await mkdir(resolve(directory, 'node_modules/pg'), { recursive: true });
+    await writeFile(resolve(directory, 'node_modules/pg/package.json'), '{"type":"module","exports":"./index.js"}');
+    await writeFile(resolve(directory, 'node_modules/pg/index.js'), `export default { Client: class {
+      async connect() {} async end() {}
+      async query() { return { rows: [{ marker: ${JSON.stringify(demonstrationMarker)} }] }; }
+    }, Pool: class { async end() {} } };`);
+    async function invoke(argv: string[]) {
+      const child = spawn(process.execPath, ['--experimental-strip-types', 'lifecycle.mjs', ...argv], { cwd: directory, stdio: 'pipe' });
+      let stdout = '', stderr = '';
+      child.stdout.on('data', bytes => { stdout += String(bytes); });
+      child.stderr.on('data', bytes => { stderr += String(bytes); });
+      return { code: (await once(child, 'exit'))[0], stdout, stderr };
+    }
+    const usage = await invoke(['unknown-command']);
+    assert.equal(usage.code, 2);
+    assert.ok(usage.stderr.includes('checkout-recovery --configuration <id> --database-url <runtime-url>'));
+
+    for (const code of [
+      'starter_locale_copy_missing: copy.heroTitle (pl)',
+      'starter_locale_unsupported: de',
+      'inventory_renewal_protection_policy_invalid',
+      'checkout_recovery_reminder_schedule_invalid',
+      'saved_address_policy_invalid',
+    ]) {
+      await writeFile(resolve(directory, 'shared/config.ts'), `
+        export function assertConfig() { throw new Error(${JSON.stringify(code)}); }
+        export function parseHostArguments() { return { configuration: 'supplements', port: 4319, listen: '127.0.0.1', databaseUrl: 'postgresql://starter_runtime@database:5432/neutral_store' }; }
+      `);
+      await writeFile(resolve(directory, 'host/server.ts'), `import { assertConfig } from '../shared/config.ts'; assertConfig();`);
+      const up = await invoke(['up']);
+      assert.equal(up.code, 2);
+      assert.equal(up.stderr.trim(), code);
+      const serve = await invoke(['serve-demo', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store']);
+      assert.equal(serve.code, 2);
+      assert.equal(serve.stderr.trim(), code);
+    }
+
+    const recovery = await invoke(['checkout-recovery', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store']);
+    assert.notEqual(recovery.code, 0);
+    assert.ok(recovery.stderr.includes('saved_address_policy_invalid'));
+
+    await mkdir(resolve(directory, 'node_modules/.bin'), { recursive: true });
+    await writeFile(resolve(directory, 'node_modules/.bin/openlup'),
+      '#!/bin/sh\nprintf \'{"formatVersion":1,"command":"%s","exitCode":%s}\\n\' "$1" "$2"\nexit "$2"\n',
+      { mode: 0o755 });
+    for (const [subcommand, expectedCode] of [['verify', 2], ['verify', 74], ['upgrade', 1], ['upgrade', 64]] as const) {
+      const delegated = await invoke([subcommand, String(expectedCode)]);
+      assert.equal(delegated.code, expectedCode);
+      assert.equal(delegated.stderr, '');
+      assert.deepEqual(JSON.parse(delegated.stdout), { formatVersion: 1, command: subcommand, exitCode: expectedCode });
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

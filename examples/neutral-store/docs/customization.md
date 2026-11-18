@@ -31,7 +31,7 @@ remain separate restart/build operations.
 
 ## Subscription editor values
 
-For the current source candidate, `subscriptionOffers` in `owned/store.config.ts`
+In the 1.2.0 starter, `subscriptionOffers` in `owned/store.config.ts`
 is the commercial input for checkout and classic/sized servicing. The typed
 `shared/policy.ts` helper accepts `set(...)` and `range(min,max,step)`;
 ranges use `(value-min)%step === 0`. Global cadence and explicit per-SKU rules
