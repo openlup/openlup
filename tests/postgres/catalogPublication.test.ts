@@ -1571,41 +1571,80 @@ async function publishApproved(command: CatalogPublishCommand, target: ReturnTyp
   const result=await target.publish(command,actor);expect(result.outcome,JSON.stringify(result)).toBe("committed");
   if(result.outcome!=="committed") throw new Error("Expected real publication");return result.receipt;
 }
-it.each(["publication first","standalone first"])("catalog_price_publication_and_standalone_complete_without_deadlock: %s",async(order)=>inPriceDatabase(async()=>{
-  const data=await priceDraft(), initial=realPriceAuthority(), actor=(await initial.authorize(null))!;
-  const first=await commit(data.publication,initial,actor), payload=structuredClone(data.payload);
-  const previous=(await db.query("SELECT id,unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows[0];
-  const price={...payload.skus[0].priceOperations![0],commandKey:`race:${data.skuId}`,unitPriceMinor:1200,expected:{entryId:previous.id,unitPriceMinor:previous.unit_price_minor}};
-  payload.skus[0].priceOperations=[price];payload.product.sharedContent.catalogAction="revise";
-  payload.product.sharedContent.presentation={routePath:{en:`/raced-${data.productId}`}};
-  payload.publication.operations=[{op:"set_product_presentation",productSlug:payload.product.slug!,presentation:payload.product.sharedContent.presentation}];
-  const command=await save(payload,data.draftId,2,first.head);
-  let entered!:()=>void, resume!:()=>void, calls=0;
-  const ready=new Promise<void>(resolve=>{entered=resolve;}),released=new Promise<void>(resolve=>{resume=resolve;});
-  const publication=realPriceAuthority(undefined,async sql=>{
-    if(sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) calls++;
-    if(order==="publication first"&&sql.startsWith("SELECT public.catalog_price_setup_prelock")){entered();await released;}
-  }),publisher=(await publication.authorize(null))!;await approve(command,publication,publisher);
-  const standalone=await db.connect();
-  try {
-    await standalone.query("BEGIN");await standalone.query("SELECT set_config('request.jwt.claims',$1,true)",[JSON.stringify({sub:admin})]);
-    const bytes=canonicalCatalogDraftJson(price),fingerprint=createHash('sha256').update(bytes).digest('hex');
-    const apply=()=>standalone.query("SELECT public.catalog_price_setup_apply($1,$2) AS value",[bytes,fingerprint]);
-    let parent:ReturnType<typeof publication.publish>;let child:Awaited<ReturnType<typeof apply>>;
-    if(order==="publication first") {
-      parent=publication.publish(command,publisher);await ready;
-      expect((await standalone.query("SELECT pg_try_advisory_xact_lock(hashtextextended('catalog-price-setup:'||$1::text||':'||$2::text,0)) AS acquired",[priceList,data.skuId])).rows[0].acquired).toBe(false);
-      const competing=apply();resume();expect((await parent).outcome).toBe("committed");child=await competing;
-      expect(child.rows[0].value.outcome).toBe("replayed");await standalone.query("COMMIT");
-    } else {
-      child=await apply();expect(child.rows[0].value.outcome).toBe("committed");
-      parent=publication.publish(command,publisher);await standalone.query("COMMIT");expect((await parent).outcome).toBe("committed");
+it.each(["publication first", "standalone first"] as const)(
+  "catalog_price_publication_and_standalone_complete_without_deadlock: %s", async order => inPriceDatabase(async () => {
+    const data = await priceDraft(false), initial = realPriceAuthority(), actor = (await initial.authorize(null))!;
+    const first = await commit(data.publication, initial, actor), baseOperation = data.payload.skus[0].priceOperations![0];
+    const [before] = (await db.query("SELECT id,unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active", [data.skuId])).rows;
+    const base = { entryId: before.id as string, unitPriceMinor: before.unit_price_minor as number };
+    const standaloneKey = `standalone:${data.skuId}`, parentKey = `publication:${data.skuId}`;
+    const makeParent = async ({ entryId, unitPriceMinor }: typeof base, amount: number) => {
+      const payload = structuredClone(data.payload);
+      payload.skus[0].priceOperations = [{ ...baseOperation, commandKey: parentKey, unitPriceMinor: amount, expected: { entryId, unitPriceMinor } }];
+      payload.product.sharedContent.catalogAction = "revise";
+      payload.product.sharedContent.presentation = { routePath: { en: `/raced-${data.productId}` } };
+      payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+      const command = await save(payload, data.draftId, 2, first.head);
+      await approve(command, initial, actor);
+      return command;
+    };
+    const standalone = await db.connect();
+    let releaseParent = () => {}, receiveParent!: (value: typeof base) => void, parentPid!: (pid: number) => void;
+    const heldParent = new Promise<void>(resolve => { releaseParent = resolve; });
+    const parentPrice = new Promise<typeof base>(resolve => { receiveParent = resolve; });
+    const publisherPid = new Promise<number>(resolve => { parentPid = resolve; });
+    let parent: ReturnType<typeof initial.publish> | undefined;
+    const publication = realPriceAuthority(undefined, async (sql, executor, rows) => {
+      if (sql.startsWith("SET TRANSACTION"))
+        parentPid((await executor.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid as number);
+      if (order === "publication first" && sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) {
+        const result = rows[0]!.result as { results: { receipt: { current: typeof base } }[] };
+        receiveParent(result.results[0].receipt.current);
+        await heldParent;
+      }
+    });
+    const publisher = (await publication.authorize(null))!;
+    const observe = async (waiting: number, holding: number) => {
+      await expect.poll(async () => (await db.query("SELECT wait_event, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE pid=$1", [waiting])).rows[0])
+        .toEqual({ wait_event: "advisory", blockers: [holding] });
+    };
+    const apply = async ({ entryId, unitPriceMinor }: typeof base, amount: number) => {
+      const command = { ...baseOperation, commandKey: standaloneKey, unitPriceMinor: amount, expected: { entryId, unitPriceMinor } };
+      const bytes = canonicalCatalogDraftJson(command);
+      return (await standalone.query("SELECT public.catalog_price_setup_apply($1,$2) AS value", [bytes, createHash("sha256").update(bytes).digest("hex")])).rows[0].value;
+    };
+    try {
+      await standalone.query("BEGIN");
+      await standalone.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+      const standbyPid = (await standalone.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+      if (order === "publication first") {
+        const command = await makeParent(base, 1200);
+        parent = publication.publish(command, publisher);
+        const progressed = await Promise.race([parentPrice, parent.then(result => { throw new Error(JSON.stringify(result)); })]);
+        const child = apply(progressed, 1300);
+        try { await observe(standbyPid, await publisherPid); } finally { releaseParent(); }
+        expect(await parent).toMatchObject({ outcome: "committed" });
+        expect(await child).toMatchObject({ outcome: "committed", receipt: { current: { unitPriceMinor: 1300 } } });
+        await standalone.query("COMMIT");
+      } else {
+        const child = await apply(base, 1200);
+        expect(child).toMatchObject({ outcome: "committed" });
+        const command = await makeParent(child.receipt.current, 1300);
+        parent = publication.publish(command, publisher);
+        try { await observe(await publisherPid, standbyPid); } finally { await standalone.query("COMMIT"); }
+        expect(await parent).toMatchObject({ outcome: "committed" });
+      }
+      expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active", [data.skuId])).rows)
+        .toEqual([{ unit_price_minor: 1300 }]);
+      expect((await db.query("SELECT idempotency_key FROM public.catalog_price_setup_receipts WHERE idempotency_key=ANY($1::text[]) ORDER BY idempotency_key",
+        [[standaloneKey, parentKey]])).rows).toEqual([{ idempotency_key: parentKey }, { idempotency_key: standaloneKey }]);
+    } finally {
+      releaseParent();
+      await standalone.query("ROLLBACK");
+      standalone.release();
+      await parent;
     }
-    expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows).toEqual([{unit_price_minor:1200}]);
-    expect((await db.query("SELECT count(*)::integer AS n FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1",[price.commandKey])).rows[0].n).toBe(1);
-    const before=await snapshot(),count=calls;expect((await publication.publish(command,publisher)).outcome).toBe("replayed");expect(calls).toBe(count);expect(await snapshot()).toEqual(before);
-  } finally {resume();await standalone.query("ROLLBACK");standalone.release();}
-}));
+  }));
 
 it("catalog_publication_parent_replay_never_reruns_prices",async()=>inPriceDatabase(async()=>{
   let priceCalls=0;
