@@ -24,11 +24,13 @@ their original representation. Native stock-wait hosts opt into typed
 readback with `retainedContent: "v2"`, or supply the renewal codec when
 composing typed notices.
 
-Managed divergence design: add the nullable quantity columns with an exact
-gram compatibility check and allow the managed product-type-specific columns
-to be null when a different registered type supplies the required facts.
-The existing managed publication authority and its RLS and role grants remain
-the authority. A managed writer would maintain the new projection atomically
-with its selected head and membership. Historical order and stock-wait
-snapshots keep their existing bytes and gain a typed display fact only for new
-accepted lines. The managed rail does not supply this feature.
+The managed twin would add typed content and gross mass to `catalog_skus` and
+resolve the installed type through `catalog_products`. A governed writer would
+maintain the checked, nullable `net_weight_g` projection atomically with the
+selected head and membership. Legacy classification and per-unit energy columns
+could be null when a different type supplies its required facts. Keep the
+existing authenticated administrator check and the scoped `openlup_mcp_reader`
+grant. The writer remains behind its current publication role and RLS checks.
+Historical order and stock-wait snapshots keep their existing bytes. New
+accepted lines can carry typed display facts. The managed rail does not supply
+this feature.
