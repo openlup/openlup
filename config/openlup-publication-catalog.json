@@ -1482,6 +1482,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -3298,6 +3302,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/catalog/subscriptionProfile.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/company-identity/contracts.ts",
       "class": "public-output"
     },
@@ -4814,6 +4822,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124010000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5366,11 +5378,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/installedSubscriptionProfiles.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/lifecycleV2.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/catalog/mediaSourcePack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/observeProfileCadenceBound.ts",
       "class": "public-output"
     },
     {
@@ -9174,6 +9194,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/catalogProfileBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/classicPackageQuote.ts",
       "class": "public-output"
     },
@@ -9355,6 +9379,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/postgresWinback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/profileDemand.ts",
       "class": "public-output"
     },
     {
@@ -11690,6 +11718,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/catalogProfiles.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/classicPackageQuote.test.ts",
       "class": "public-output"
     },
@@ -11735,6 +11767,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/profile-witness-census.md",
       "class": "public-output"
     },
     {

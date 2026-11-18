@@ -99,3 +99,8 @@ export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuc
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
+
+export { createCatalogSubscriptionProfileBinding } from "./catalogProfileBinding.js";
+export type { CatalogProfileLine, CatalogSubscriptionProfileSelection, CatalogSubscriptionPolicyBinding,
+  CatalogAttachmentEvidenceV1, CatalogSubscriptionProfileDecision } from "./catalogProfileBinding.js";
+export { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, validateCatalogSubscriptionProfile } from "@openlup/core/catalog";

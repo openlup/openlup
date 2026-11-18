@@ -70,6 +70,13 @@ function governedSchema<T, K extends "definitionDigest" | "optionDigest">(base: 
   return z.object({ schemaVersion: z.literal(3), lifecycleState: z.enum(["draft", "active", "withdrawn", "archived"]) }).passthrough().superRefine((value, context) => {
     const { schemaVersion: _version, lifecycleState, ...old } = value;
     const selectedDigest = old[key]; delete old[key];
+    if (key === "definitionDigest" && ("subscriptionProfileRef" in old || "subscriptionProfileDigest" in old)) {
+      if (!catalogProductTypeRefSchema.safeParse(old.subscriptionProfileRef).success || !digest.safeParse(old.subscriptionProfileDigest).success) {
+        context.addIssue({ code: "custom", message: "invalid authoritative profile facts" });
+      }
+      delete old.subscriptionProfileRef;
+      delete old.subscriptionProfileDigest;
+    }
     if (!digest.safeParse(selectedDigest).success || !base.safeParse(old).success || old.status !== catalogLifecycleProjectionV2(lifecycleState)
       || lifecycleState !== "active" && (old.sellableStandalone === true || old.sellableInSubscription === true)) context.addIssue({ code: "custom", message: "invalid authoritative lifecycle facts" });
   }) as unknown as z.ZodType<T & { schemaVersion: 3; lifecycleState: import("./contracts/lifecycleV2.js").CatalogLifecycleStateV2 } & Record<K, string>>;

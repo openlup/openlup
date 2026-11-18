@@ -1193,13 +1193,14 @@ export declare function catalogDefinitionDigest(definition: CatalogProductTypeIn
 ## dist/catalog/catalogDefinitionReadiness.d.ts
 
 ```ts
+import type { CatalogSubscriptionProfileResolver } from "@openlup/core/catalog";
 import type { CatalogRegistryObservation } from "@openlup/core/readiness";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 /** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables.
  * @experimental
  */
-export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string): Promise<CatalogRegistryObservation>;
+export declare function observeCatalogDefinitionReadiness(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string, profiles?: CatalogSubscriptionProfileResolver): Promise<CatalogRegistryObservation>;
 /** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called.
  * @experimental
  */
@@ -1236,6 +1237,7 @@ export declare function createPostgresCatalogDraftStoreV5(client: PgQueryExecuto
 ## dist/catalog/catalogPackManifest.d.ts
 
 ```ts
+import { type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 /** @experimental */
 export interface CatalogPackManifest {
@@ -1254,6 +1256,8 @@ export interface CatalogPackManifest {
         readonly key: string;
         readonly version: number;
     }[];
+    /** @experimental */
+    readonly subscriptionProfileDefinitions?: readonly CatalogSubscriptionProfileV1[];
     readonly digest: string;
 }
 /** A derived in-memory projection; no manifest or digest is accepted from a client.
@@ -1901,7 +1905,7 @@ import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
-export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
+export type CatalogConformanceCode = "definition_invalid_shape" | "definition_unknown_field" | "definition_key_invalid" | "definition_version_invalid" | "definition_unit_invalid" | "definition_dimension_invalid" | "definition_net_content_invalid" | "definition_attribute_invalid" | "definition_axis_invalid" | "definition_validator_ref_invalid" | "definition_profile_ref_invalid" | "definition_tax_class_invalid" | "definition_callback_missing" | "definition_duplicate_identity" | "definition_duplicate_unit" | "definition_duplicate_dimension" | "definition_duplicate_net_content_unit" | "definition_unknown_net_content_unit" | "definition_duplicate_choice" | "definition_duplicate_dimension_unit" | "definition_dimension_unit_mismatch" | "definition_net_content_unit_mismatch" | "definition_multiple_net_content_dimensions" | "definition_unit_factor_invalid" | "definition_duplicate_attribute" | "definition_facetable_not_filterable" | "definition_unknown_attribute_unit" | "definition_duplicate_axis" | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value" | "definition_unknown_axis_dimension" | "definition_profile_invalid" | "profile_cadence_exceeds_platform_bound" | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch" | "attribute_projection_text_too_large" | "attribute_storage_too_large" | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict" | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing" | "attribute_reference_unresolved" | "attribute_publication_revision_invalid" | "conformance_subject_invalid" | "conformance_owner_unavailable" | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch" | "draft_input_invalid" | "draft_payload_invalid" | CatalogQuantityCode | CatalogCombinationCode;
 /** @experimental */
 export interface CatalogConformanceRule {
     severity: "error" | "warning";
@@ -1918,6 +1922,7 @@ export interface CatalogDefinitionIssue {
 ## dist/catalog/contracts/catalogPack.d.ts
 
 ```ts
+import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogDraftPayload } from "./draft.js";
 import type { CatalogDraftPayloadV2 } from "./draftV2.js";
 import type { CatalogAttributeValueType, CatalogAttributeScalarType } from "./attributes.js";
@@ -1938,6 +1943,8 @@ export interface CatalogPackInput {
         key: string;
         version: number;
     }[];
+    /** Full definitions of the explicitly selected profile versions. @experimental */
+    subscriptionProfileDefinitions?: readonly CatalogSubscriptionProfileV1[];
 }
 type Profile<P extends CatalogPackInput> = P extends {
     subscriptionProfiles: readonly (infer R)[];
@@ -2171,6 +2178,7 @@ export {};
 ## dist/catalog/contracts/definitionInstall.d.ts
 
 ```ts
+import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogProductTypeRef } from "./productTypes.js";
 /** Durable install evidence; installation does not publish catalogue data.
  * @experimental
@@ -2180,6 +2188,8 @@ export interface CatalogDefinitionInstallReceipt {
     readonly packVersion: number;
     readonly manifestDigest: string;
     readonly installedAt: string;
+    /** Immutable definitions included in this installation. @experimental */
+    readonly subscriptionProfileDefinitions?: readonly CatalogSubscriptionProfileV1[];
     readonly types: readonly (CatalogProductTypeRef & {
         readonly definitionDigest: string;
     })[];
@@ -2789,6 +2799,10 @@ export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
     schemaVersion: 3;
     lifecycleState: CatalogLifecycleStateV2;
     definitionDigest: string;
+    /** Installed and resolved together with the immutable type version. @experimental */
+    subscriptionProfileRef?: import("@openlup/core/catalog").CatalogSubscriptionProfileRef;
+    /** @experimental */
+    subscriptionProfileDigest?: string;
 }
 /** @experimental */
 export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
@@ -4284,6 +4298,7 @@ export { catalogDraftPayloadV5Schema, catalogDraftCommandV5Schema, catalogSucces
 export { createPostgresCatalogDraftStoreV5 } from "./catalogDraftStore.js";
 export { createCatalogDraftHandlerV5 } from "./draftHandler.js";
 export { createPostgresCatalogWithdrawalImpact } from "./withdrawalImpact.js";
+export { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4411,6 +4426,16 @@ export type CatalogMediaImportOutcome = {
     failedKey: string;
 };
 export declare function importCatalogMediaSourcePack(root: string, storage: BlobStoragePort): Promise<CatalogMediaImportOutcome>;
+```
+## dist/catalog/observeProfileCadenceBound.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+/** Read-only observation of the installed native edit guards on the selected database.
+ * An unknown or incomplete installation has no observed bound.
+ * @experimental
+ */
+export declare function observeCatalogSubscriptionCadenceBound(db: PgQueryExecutor): Promise<number | null>;
 ```
 ## dist/catalog/postgresBundleAdminWriteStore.d.ts
 
@@ -4697,6 +4722,7 @@ export {};
 ## dist/catalog/publicationPortsV2.d.ts
 
 ```ts
+import type { CatalogSubscriptionProfileResolver } from "@openlup/core/catalog";
 import type { CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogDraftPriceOperationV2 } from "./contracts/draftV2.js";
@@ -4732,6 +4758,8 @@ export interface CatalogPublicationDependencies<Context> {
     }>;
     attributeReferences?: CatalogAttributeReferencePort;
     prices?: CatalogPublicationPriceBoundary;
+    /** Resolves explicitly selected immutable profile versions and their bound policy. @experimental */
+    subscriptionProfiles?: CatalogSubscriptionProfileResolver;
     /** Runs in the publication transaction; no external I/O or commerce locks. Missing required evidence refuses. */
     readiness(db: PgQueryExecutor, state: {
         product: CatalogProductState;

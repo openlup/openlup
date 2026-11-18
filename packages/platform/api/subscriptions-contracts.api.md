@@ -432,6 +432,7 @@ export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, Subscri
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
 export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
 export type { LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
+export type { CatalogSubscriptionProfileV1, CatalogSubscriptionProfileRef, CatalogSubscriptionPolicyRef, CatalogSubscriptionDemandScope, CatalogSubscriptionProfileIssue, CatalogSubscriptionLineDemand, CatalogSubscriptionCoverage } from "@openlup/core/catalog";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 

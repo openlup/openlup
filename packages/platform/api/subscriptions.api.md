@@ -106,6 +106,104 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
     settlementIntentId: string;
 }, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
 ```
+## dist/subscriptions/catalogProfileBinding.d.ts
+
+```ts
+import { type CatalogAcceptedReferenceV2, type CatalogQuantity, type CatalogSubscriptionCoverage, type CatalogSubscriptionLineDemand, type CatalogSubscriptionPolicyRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+/** Server selection. The installed profile digest and exact publication reference bind the policy input.
+ * @experimental
+ */
+export interface CatalogProfileLine {
+    readonly id: string;
+    readonly typeRef: CatalogSubscriptionProfileRef;
+    readonly quantity: number;
+    readonly addon: boolean;
+    readonly sellable: boolean;
+    readonly allowedCadenceDays?: readonly number[];
+    readonly profileRef?: CatalogSubscriptionProfileRef;
+    readonly profileDigest?: string;
+    readonly swapGroupKey?: string;
+    readonly capacity?: CatalogQuantity;
+    readonly demand?: CatalogSubscriptionLineDemand;
+    readonly publication?: {
+        readonly reference: CatalogAcceptedReferenceV2;
+        readonly productId: string;
+        readonly documentRevisionId: string;
+    };
+}
+/** @experimental */
+export interface CatalogSubscriptionProfileSelection {
+    readonly cadenceDays: number;
+    readonly lineItems: readonly CatalogProfileLine[];
+    readonly storeCadenceDays?: readonly number[];
+    readonly commandCadenceDays?: readonly number[];
+    readonly installedCadenceBound?: number;
+    readonly prepaid?: boolean;
+    readonly swap?: {
+        readonly from: CatalogProfileLine;
+        readonly to: string;
+    };
+}
+/** A pinned callback is consulted only for the selected policy version.
+ * @experimental
+ */
+export type CatalogSubscriptionPolicyBinding = {
+    readonly ref: CatalogSubscriptionPolicyRef;
+    readonly kind: "units_per_day";
+    readonly coverage: "exact" | "allow_shortfall" | "allow_surplus";
+} | {
+    readonly ref: CatalogSubscriptionPolicyRef;
+    readonly kind: "host_policy";
+    readonly validate: (input: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileIssue | undefined;
+};
+/** Attachment for the exact accepted line roster, beside the strict renewal terms.
+ * @experimental
+ */
+export interface CatalogAttachmentEvidenceV1 {
+    readonly schemaVersion: 1;
+    readonly productId: string;
+    readonly variantId: string;
+    readonly publicationHead: CatalogAcceptedReferenceV2["publicationHead"];
+    readonly documentRevisionId: string;
+    readonly documentDigest: string;
+    readonly profileRef: CatalogSubscriptionProfileRef;
+    readonly profileDigest: string;
+    readonly policyRef?: CatalogSubscriptionPolicyRef;
+    readonly swapGroupKey?: string;
+    readonly demandUnit?: string;
+    readonly demandPerSellableUnit?: CatalogQuantity;
+    readonly demandPerDay?: CatalogQuantity;
+    readonly demandScope?: "per_line" | "pooled";
+    readonly poolKey?: string;
+}
+/** @experimental */
+export type CatalogSubscriptionProfileDecision = {
+    readonly kind: "legacy";
+} | {
+    readonly kind: "refused";
+    readonly issue: CatalogSubscriptionProfileIssue;
+} | {
+    readonly kind: "profiled";
+    readonly allowedDays: readonly number[];
+    readonly coverage: readonly CatalogSubscriptionCoverage[];
+    readonly proposalDays?: number;
+    readonly attachments: readonly CatalogAttachmentEvidenceV1[];
+};
+/** The same owner resolves definitions, prepares accepted evidence and narrows existing lane eligibility.
+ * @experimental
+ */
+export declare function createCatalogSubscriptionProfileBinding(input: {
+    readonly profiles: readonly CatalogSubscriptionProfileV1[];
+    readonly policies?: readonly CatalogSubscriptionPolicyBinding[];
+}): {
+    resolve: (ref: CatalogSubscriptionProfileRef) => {
+        profile: CatalogSubscriptionProfileV1;
+        digest: string;
+        bound: boolean;
+    } | undefined;
+    check: (selection: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileDecision;
+};
+```
 ## dist/subscriptions/classicPackageQuote.d.ts
 
 ```ts
@@ -1735,6 +1833,9 @@ export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuc
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
+export { createCatalogSubscriptionProfileBinding } from "./catalogProfileBinding.js";
+export type { CatalogProfileLine, CatalogSubscriptionProfileSelection, CatalogSubscriptionPolicyBinding, CatalogAttachmentEvidenceV1, CatalogSubscriptionProfileDecision } from "./catalogProfileBinding.js";
+export { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, validateCatalogSubscriptionProfile } from "@openlup/core/catalog";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 

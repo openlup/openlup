@@ -2140,6 +2140,19 @@ trigger, CHECK and identity-row changes. Sequence allocation during a later
 command may leave gaps; installation rollback removes a newly created sequence.
 Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
 
+### Catalogue subscription profile installation
+
+The native profile forward retains canonical declarations in
+`catalog_definition_installs.receipt` under the existing definition lock. Two
+installations can reference identical declaration bytes for the same version.
+A changed declaration needs a new profile version. Packs with no full profile
+declaration keep their existing receipt shape.
+
+The profile-aware assertion uses the established commerce lock order and
+authoritative current and retained publication references. An enrolled selection
+requires transactional policy evidence before an order or an edit can write.
+The native fence refuses enrolled purchases and edits until that evidence is bound.
+
 ### Closed native store forwards
 
 `nativeStoreForwardClass` in the [reviewed registry](../../config/reviewed-platform-forwards.json)

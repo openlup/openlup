@@ -80,6 +80,8 @@ export declare const variantIdSchema: z.ZodString;
 export * from "./identifiers.js";
 export * from "./quantities.js";
 export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "./acceptedReferences.js";
+export { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, validateCatalogSubscriptionProfile } from "./subscriptionProfile.js";
+export type { CatalogSubscriptionProfileV1, CatalogSubscriptionProfileRef, CatalogSubscriptionPolicyRef, CatalogSubscriptionDemandScope, CatalogSubscriptionProfileIssue, CatalogSubscriptionLineDemand, CatalogSubscriptionCoverage, CatalogSubscriptionProfileResolver } from "./subscriptionProfile.js";
 ```
 ## dist/catalog/quantities.d.ts
 
@@ -136,4 +138,95 @@ export declare function canonicalizeCatalogQuantity(input: CatalogQuantity, unit
 export declare function compareCatalogQuantities(left: CatalogQuantity, right: CatalogQuantity, units?: readonly CatalogQuantityUnit[]): -1 | 0 | 1;
 /** @experimental */
 export declare function convertCatalogQuantity(input: CatalogQuantity, target: string, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
+```
+## dist/catalog/subscriptionProfile.d.ts
+
+```ts
+import { type CatalogCanonicalUnit, type CatalogQuantity } from "./quantities.js";
+/** Outermost package-supported bound for explicitly profiled subscriptions.
+ * @experimental
+ */
+export declare const CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS = 120;
+/** @experimental */
+export interface CatalogSubscriptionProfileRef {
+    readonly key: string;
+    readonly version: number;
+}
+/** @experimental */
+export interface CatalogSubscriptionPolicyRef extends CatalogSubscriptionProfileRef {
+    readonly digest: string;
+}
+/** @experimental */
+export type CatalogSubscriptionDemandScope = {
+    readonly kind: "per_line";
+} | {
+    readonly kind: "pooled";
+    readonly poolKey: string;
+};
+/** @experimental */
+export interface CatalogSubscriptionProfileV1 extends CatalogSubscriptionProfileRef {
+    readonly allowedCadenceDays: readonly number[];
+    readonly quantities: {
+        readonly minBaseUnits: number;
+        readonly maxBaseUnits: number;
+        readonly maxUnitsPerLine: number;
+        readonly maxBaseLines: number;
+    };
+    readonly swapGroupKeys: readonly string[];
+    readonly addons: {
+        readonly allowedTypeRefs: readonly CatalogSubscriptionProfileRef[];
+        readonly maxLines: number;
+        readonly maxUnits: number;
+    };
+    readonly consumption: {
+        readonly kind: "fixed_units";
+    } | {
+        readonly kind: "units_per_day";
+        readonly demandUnit: CatalogCanonicalUnit | "per_line";
+        readonly policyRef: CatalogSubscriptionPolicyRef;
+        readonly demandScope: CatalogSubscriptionDemandScope;
+        readonly rounding?: "floor" | "ceil";
+    } | {
+        readonly kind: "host_policy";
+        readonly policyRef: CatalogSubscriptionPolicyRef;
+        readonly demandScope: CatalogSubscriptionDemandScope;
+    };
+    readonly prepaid: "unsupported";
+}
+/** @experimental */
+export type CatalogSubscriptionProfileIssue = {
+    readonly code: "profile_invalid" | "profile_cadence_exceeds_platform_bound" | "profile_missing" | "policy_binding_missing" | "cadence_not_allowed" | "prepaid_unsupported" | "profile_line_not_sellable" | "profile_line_quantity_invalid" | "profile_base_units_out_of_range" | "profile_base_line_limit_exceeded" | "profile_addon_type_not_allowed" | "profile_addon_line_limit_exceeded" | "profile_addon_unit_limit_exceeded" | "profile_swap_group_mismatch" | "profile_swap_capacity_mismatch" | "demand_unit_mismatch" | "demand_arithmetic_unsafe" | "line_coverage_mismatch" | "profile_attachment_invalid" | "profile_cadence_bound_unavailable";
+    readonly path: string;
+};
+/** Validate the declaration used by both runtime profile binding and offline conformance.
+ * @experimental
+ */
+export declare function validateCatalogSubscriptionProfile(value: unknown): {
+    profile: CatalogSubscriptionProfileV1;
+} | {
+    issue: CatalogSubscriptionProfileIssue;
+};
+/** Exact, canonical quantities supplied by the composition owner.
+ * @experimental
+ */
+export interface CatalogSubscriptionLineDemand {
+    readonly contentPerUnit: CatalogQuantity;
+    readonly perDay: CatalogQuantity;
+}
+/** @experimental */
+export interface CatalogSubscriptionCoverage {
+    readonly lineIds: readonly string[];
+    readonly wholeDays: number;
+    readonly exact: boolean;
+}
+/** Reuse the installed definition and pinned policy resolution for publication and readiness.
+ * @experimental
+ */
+export interface CatalogSubscriptionProfileResolver {
+    resolve(ref: CatalogSubscriptionProfileRef): {
+        profile: CatalogSubscriptionProfileV1;
+        digest: string;
+        bound: boolean;
+    } | undefined;
+}
 ```

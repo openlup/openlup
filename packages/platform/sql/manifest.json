@@ -626,6 +626,10 @@
       {
         "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
         "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+      },
+      {
+        "file": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+        "sha256": "bc030d7a6fe14ce27f384409babe2602129a210ed9c1e61d3023a7bbb5f9a513"
       }
     ],
     "objectInventorySha256": "dd5aadad6cf540625dc858ebb25325364384ab12ef17831cef46cfa0c7489cdf",
@@ -1274,6 +1278,10 @@
         {
           "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
           "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+        },
+        {
+          "file": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+          "sha256": "bc030d7a6fe14ce27f384409babe2602129a210ed9c1e61d3023a7bbb5f9a513"
         }
       ],
       "objectInventorySha256": {
@@ -1926,6 +1934,10 @@
         {
           "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
           "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+        },
+        {
+          "file": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+          "sha256": "bc030d7a6fe14ce27f384409babe2602129a210ed9c1e61d3023a7bbb5f9a513"
         }
       ],
       "objectInventorySha256": {
@@ -2714,6 +2726,11 @@
       "file": "20261123210000_catalog_successors.sql",
       "source": "db/platform/migrations/20261123210000_catalog_successors.sql",
       "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+    },
+    {
+      "file": "20261124010000_subscription_profiles.sql",
+      "source": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+      "sha256": "bc030d7a6fe14ce27f384409babe2602129a210ed9c1e61d3023a7bbb5f9a513"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

@@ -1,3 +1,4 @@
+import type { CatalogSubscriptionProfileResolver } from "@openlup/core/catalog";
 import type { CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogDraftPriceOperationV2 } from "./contracts/draftV2.js";
@@ -24,6 +25,8 @@ export interface CatalogPublicationDependencies<Context> {
   authorizeHuman(context: Context): Promise<{ ok: true; userId: string; role: string; isMachineActor: boolean } | { ok: false }>;
   attributeReferences?: CatalogAttributeReferencePort;
   prices?: CatalogPublicationPriceBoundary;
+  /** Resolves explicitly selected immutable profile versions and their bound policy. @experimental */
+  subscriptionProfiles?: CatalogSubscriptionProfileResolver;
   /** Runs in the publication transaction; no external I/O or commerce locks. Missing required evidence refuses. */
   readiness(db: PgQueryExecutor, state: { product: CatalogProductState; skus: readonly CatalogSkuState[] }, requirePrice: boolean): Promise<{ ready: boolean; reasons: readonly string[] }>;
   globalReadiness?(db: PgQueryExecutor): Promise<{ ready: boolean; reasons: readonly string[] }>;

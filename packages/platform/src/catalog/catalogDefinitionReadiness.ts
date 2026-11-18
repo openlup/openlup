@@ -1,6 +1,9 @@
+import type { CatalogSubscriptionProfileResolver } from "@openlup/core/catalog";
+import { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
 import type { CatalogRegistryObservation } from "@openlup/core/readiness";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import { hasInstalledSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 
 /** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables.
@@ -8,6 +11,7 @@ import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
  */
 export async function observeCatalogDefinitionReadiness(
   readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string,
+  profiles?: CatalogSubscriptionProfileResolver,
 ): Promise<CatalogRegistryObservation> {
   const { rows } = await readExecutor.query(
     `SELECT row_security_active('public.catalog_products') OR row_security_active('public.catalog_type_versions') AS restricted,
@@ -19,10 +23,22 @@ export async function observeCatalogDefinitionReadiness(
        ) binding), '[]'::jsonb) AS bindings`,
   );
   const result = rows[0] as { restricted: boolean; bindings: { key: string; version: number; definitionDigest: string | null }[] };
-  return { database, complete: result.restricted === false, referencedVersions: result.bindings.map(row => {
+  let installedBound: number | null | undefined;
+  const referencedVersions = [];
+  for (const row of result.bindings) {
     const definition = registry.resolve(row);
-    return { ...row, registryDigest: definition ? catalogDefinitionDigest(definition) : null };
-  }) };
+    let registryDigest = definition ? catalogDefinitionDigest(definition) : null;
+    if (definition?.subscriptionProfileRef) {
+      const resolved = profiles?.resolve(definition.subscriptionProfileRef);
+      if (resolved?.bound && installedBound === undefined) installedBound = await observeCatalogSubscriptionCadenceBound(readExecutor);
+      if (!resolved?.bound || installedBound == null || Math.max(...resolved.profile.allowedCadenceDays) > installedBound
+        || !await hasInstalledSubscriptionProfile(readExecutor, definition.subscriptionProfileRef, resolved.profile)) {
+        registryDigest = null;
+      }
+    }
+    referencedVersions.push({ ...row, registryDigest });
+  }
+  return { database, complete: result.restricted === false, referencedVersions };
 }
 
 /** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called.

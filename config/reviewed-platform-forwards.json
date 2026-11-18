@@ -5977,6 +5977,25 @@
             "sha256": "0c0477be22a27a5fbdc779b61fa7ae73fe77c079f2f7ab4a05037c022cf87363"
           }
         ]
+      },
+      {
+        "row": "catalogue-sp1",
+        "path": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
+            "beforeSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_definition_install(text,integer,jsonb)",
+            "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8566,6 +8585,22 @@
           "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "3c7343f356bfcac6aa2439e142b3cda06f8616b07b6a72926e5b5bc534795f56"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+      "sha256": "bc030d7a6fe14ce27f384409babe2602129a210ed9c1e61d3023a7bbb5f9a513",
+      "functions": [
+        {
+          "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
+          "beforeSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402",
+          "afterSha256": "2b6ec0fcb9fb2b49cea9172e2f8f22d8dfc8fbf8123743e4ffb3e36bda7cb99b"
+        },
+        {
+          "signature": "public.catalog_definition_install(text,integer,jsonb)",
+          "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
+          "afterSha256": "21f3c6b27e8aea39a8546805cdc5ad6783c429e170123df7dd7dd4619222bde4"
         }
       ]
     }

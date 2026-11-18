@@ -16,6 +16,8 @@ import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
 import { catalogLifecycleValidationPayload as catalogDraftV3ValidationPayload, catalogLifecycleProjectionV2 } from "./lifecycleV2.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
+import { hasInstalledSubscriptionProfile } from "./installedSubscriptionProfiles.js";
+import { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { catalogProductTypeRefSchema } from "./productTypeSchemas.js";
 import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
@@ -313,6 +315,21 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const compilationRecord = (record: CatalogDraftPublicationStoredRecord) => record.payload.schemaVersion === 5 ? { ...record,payload: catalogSuccessorValidationPayload(record.payload) } : record as import("./contracts/lifecycleV2.js").CatalogLifecycleStoredRecord;
         const compiled = compileCatalogPublication({ ...prepared, payload: prepared.payload.schemaVersion === 5 ? catalogSuccessorValidationPayload(prepared.payload) : prepared.payload,
           record: compilationRecord(prepared.record), product: current.product, skus: current.skus, documents: current.documents, retainedSources: retainedSources.map(compilationRecord), rules: deps.rules });
+        const profileRef = prepared.definition.subscriptionProfileRef;
+        if (profileRef) {
+          const resolved = deps.subscriptionProfiles?.resolve(profileRef);
+          if (!resolved) return publicationRefuse("profile_missing");
+          if (!resolved.bound || !await hasInstalledSubscriptionProfile(db, profileRef, resolved.profile)) {
+            publicationRefuse("policy_binding_missing");
+          }
+          const installedBound = await observeCatalogSubscriptionCadenceBound(db);
+          if (installedBound === null || Math.max(...resolved.profile.allowedCadenceDays) > installedBound) {
+            publicationRefuse("profile_cadence_bound_unavailable");
+          }
+          if (!("schemaVersion" in compiled.product)) return publicationRefuse("profile_attachment_invalid");
+          compiled.product.subscriptionProfileRef = profileRef;
+          compiled.product.subscriptionProfileDigest = resolved.digest;
+        }
         for (const change of command.changes) require(compiled.skus.some(sku => sku.id === change.variantId
           && (change.state === "withdrawn" ? "lifecycleState" in sku ? sku.lifecycleState === "withdrawn" : sku.status === "archived" : "lifecycleState" in sku ? sku.lifecycleState === "active" : sku.status === "active")), "catalog_publication_variant_state_mismatch");
         const mediaSources = [prepared.record, ...retainedSources].filter((source): source is typeof source & { payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 } => source.payload.schemaVersion >= 3);

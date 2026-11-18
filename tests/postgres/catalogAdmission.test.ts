@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
-  createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
+  createPostgresCatalogAdmission, observeCatalogSubscriptionCadenceBound, type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
@@ -1415,4 +1415,57 @@ it("admission binding promoted", async () => {
     if (!result.ok) expect(result.error).toMatchObject({ message: orderRefused,code: "22023" });
     await e.query("ROLLBACK"); expect(await snapshot()).toEqual(before);
   } finally { await stop.release(); await publishing; await e.query("ROLLBACK"); await w.query("ROLLBACK"); h.release(); w.release(); e.release(); }
+});
+
+it.each(["order", "promoted-order", ...lanes] as const)(
+  "profile_attachment_continuity_matrix SP1-D-023 direct %s refuses without verified binding",
+  async lane => {
+    const f = await fixture("profile", { product: { subscriptionProfileRef: { key: "example:recurring", version: 1 } } });
+    const command = lane === "order" || lane === "promoted-order" ? null : await edit(f, lane);
+    const db = await session();
+    const before = await snapshot();
+    try {
+      if (command && lane === "legacy") {
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor, role: "authenticated" })]);
+      }
+      const write = command ? command.invoke(db) : rpc(db,
+        lane === "order" ? "commerce_create_order_draft_with_outbox" : "commerce_create_promoted_order_draft_with_outbox", purchaseInput(f).args);
+      await expect(write).rejects.toMatchObject({ code: "22023", message: "policy_binding_missing" });
+    } finally {
+      await db.query("ROLLBACK"); db.release();
+    }
+    expect(await snapshot()).toEqual(before);
+  },
+);
+
+
+it("cadence_bound_parity_matrix observes the installed constraint and both effective routines", async () => {
+  const observed = await observeCatalogSubscriptionCadenceBound(pool);
+  expect(observed).not.toBeNull();
+  const sql = await pool.query(`SELECT pg_get_expr(conbin,conrelid) AS expression FROM pg_constraint
+    WHERE conrelid='public.subscription_edit_quotes'::regclass AND conname='subscription_edit_quotes_cadence_check'`);
+  expect(sql.rows[0].expression).toContain(`proposed_cadence_days <= ${observed}`);
+});
+
+it("profile_attachment_continuity_matrix SP1-D-022 keeps immutable installed profile versions", async () => {
+  const profile = {
+    key: "example:retained", version: 1, allowedCadenceDays: [28],
+    quantities: { minBaseUnits: 1, maxBaseUnits: 1, maxBaseLines: 1, maxUnitsPerLine: 1 },
+    swapGroupKeys: [], addons: { allowedTypeRefs: [], maxLines: 0, maxUnits: 0 },
+    consumption: { kind: "fixed_units" }, prepaid: "unsupported",
+  } as const;
+  const pack = { id: "example:profile", namespace: "example", openlupRange: "1.x", capabilities: {}, types: [], taxClasses: [] };
+  const install = (version: number, input: { readonly key: string; readonly version: number; readonly allowedCadenceDays: readonly number[] }) =>
+    installCatalogDefinitions(pool, { ...pack, version, subscriptionProfiles: [{ key: input.key, version: input.version }],
+      subscriptionProfileDefinitions: [{ ...profile, ...input }] });
+  const first = await install(1, profile);
+  expect(first.subscriptionProfileDefinitions).toEqual([profile]);
+  expect(await install(1, profile)).toEqual(first);
+  await expect(install(2, { ...profile, allowedCadenceDays: [30] })).rejects.toMatchObject({
+    code: "23505", message: "catalog_profile_install_refuses_redefinition",
+  });
+  expect(await install(2, { ...profile, version: 2, allowedCadenceDays: [30] })).toMatchObject({
+    subscriptionProfileDefinitions: [{ key: profile.key, version: 2, allowedCadenceDays: [30] }],
+  });
+  expect(await install(1, profile)).toEqual(first);
 });
