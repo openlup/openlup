@@ -111,13 +111,22 @@ RETURNS public.price_entries LANGUAGE sql STABLE SET search_path = pg_catalog, p
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_legacy_price(uuid,uuid,integer,timestamptz) FROM PUBLIC;
 
+-- The sized quote owner keeps an exact agreement on explicit opt-in. Fresh
+-- eligibility still uses the target offer and the current publication head.
+CREATE FUNCTION public.catalog_admission_keeps_price(p_subscription_id uuid,p_sku_id uuid,p_quantity integer,p_addon boolean)
+RETURNS boolean LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=p_subscription_id
+  AND l.variant_id=p_sku_id AND l.quantity=p_quantity AND l.is_addon=p_addon)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_keeps_price(uuid,uuid,integer,boolean) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_admission_assert_current(
  p_heads jsonb,p_sku_revisions jsonb,p_mode text,p_offer_evidence jsonb,p_price_context_versions jsonb,p_purpose text
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE selection jsonb; reference jsonb; expected jsonb; price_context jsonb;
  sku public.catalog_skus; product public.catalog_products; publication public.catalog_publications;
  subscription public.subscriptions; retained jsonb; baseline jsonb; scope_demand jsonb; demand jsonb;
- fresh boolean; product_id uuid; fresh_ids uuid[] := '{}'; retained_ids uuid[] := '{}';
+ fresh boolean; product_id uuid; fresh_ids uuid[] := '{}'; retained_ids uuid[] := '{}'; agreed_price_ids uuid[] := '{}';
  retained_prices jsonb; prices jsonb; scoped_skus uuid[]; price_key record;
  consulted uuid[]; manifest jsonb; document_digest text; actual_heads jsonb:='{}';
  moved text; missing text; refused text;
@@ -299,13 +308,21 @@ BEGIN
     RAISE EXCEPTION '%',refused USING ERRCODE='55000'; END IF;
   END IF;
  END LOOP;
+ IF p_purpose='account' AND p_offer_evidence->>'lane'='sized' AND p_offer_evidence->'optIn'='true'::jsonb THEN
+  SELECT coalesce(array_agg((l#>>'{reference,skuId}')::uuid),'{}') INTO agreed_price_ids
+  FROM jsonb_array_elements(p_sku_revisions) l
+  WHERE public.catalog_admission_keeps_price(subscription.id,(l#>>'{reference,skuId}')::uuid,(l->>'quantity')::integer,
+   EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_offer_evidence->'scopeDemand')='array'
+    THEN p_offer_evidence->'scopeDemand' ELSE '[]'::jsonb END) d
+    WHERE d->>'skuId'=l#>>'{reference,skuId}' AND d->'isAddon'='true'::jsonb));
+ END IF;
  retained_prices:=coalesce(p_offer_evidence->'retainedPriceContextVersions','[]'::jsonb);
  IF jsonb_typeof(retained_prices) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'catalog_admission_price_context_required' USING ERRCODE='22023'; END IF;
  prices:=p_price_context_versions||retained_prices;
  IF jsonb_array_length(prices)>100
-  OR EXISTS(SELECT 1 FROM unnest(fresh_ids) id WHERE
-   (SELECT count(*) FROM jsonb_array_elements(p_price_context_versions) p WHERE p->>'skuId'=id::text)<>1)
+  OR EXISTS(SELECT 1 FROM unnest(fresh_ids) id WHERE id<>ALL(agreed_price_ids)
+   AND (SELECT count(*) FROM jsonb_array_elements(p_price_context_versions) p WHERE p->>'skuId'=id::text)<>1)
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_price_context_versions) p
    WHERE NOT coalesce((CASE WHEN pg_input_is_valid(p->>'skuId','uuid') THEN (p->>'skuId')::uuid END)=ANY(fresh_ids),false))
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(retained_prices) p
@@ -365,7 +382,7 @@ DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]
  page_limit constant integer:=100; maximum_members integer;
  seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
- retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text;
+ retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean;
 BEGIN
  IF p_purpose NOT IN ('order','account') OR p_purpose IS NULL OR jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
@@ -432,6 +449,9 @@ BEGIN
  FOR line IN SELECT value FROM jsonb_array_elements(desired) LOOP
   requested:=coalesce(line#>'{quoteLine,catalogFacts}',line->'catalogFacts');
   sku_id:=(line->>'skuId')::uuid;
+  keep_price:=p_purpose='account' AND p_binding->>'lane'='sized' AND p_binding->'optIn'='true'::jsonb
+   AND public.catalog_admission_keeps_price((p_binding->>'subscriptionId')::uuid,sku_id,
+    coalesce(line->>'qty',line->>'quantity')::integer,coalesce((line->>'isAddon')::boolean,false));
   IF sku_id=ANY(scope) THEN
   member:=members->(line->>'skuId');
   SELECT r.full_facts::jsonb,b.canonical_state::jsonb->'product' INTO sku_facts,product_facts
@@ -443,7 +463,7 @@ BEGIN
    OR member->'document' IS DISTINCT FROM product_facts->'document'
    OR member#>>'{head,documentDigest}' IS DISTINCT FROM product_facts#>>'{document,digest}' THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-  IF requested IS NOT NULL AND (requested->>'skuId' IS DISTINCT FROM line->>'skuId'
+  IF requested IS NOT NULL AND keep_price IS NOT TRUE AND (requested->>'skuId' IS DISTINCT FROM line->>'skuId'
     OR requested->>'documentRevisionId' IS DISTINCT FROM member#>>'{document,id}'
    OR requested->>'documentDigest' IS DISTINCT FROM member#>>'{head,documentDigest}') THEN
    RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
@@ -459,6 +479,7 @@ BEGIN
   END IF;
   PERFORM public.catalog_accepted_reference_assert_v2(reference);
   selections:=selections||jsonb_build_array(jsonb_build_object('reference',reference,'quantity',coalesce(line->'qty',line->'quantity')));
+  IF keep_price THEN CONTINUE; END IF;
   price_id:=coalesce(requested->>'resolvedPriceEntryId',requested->>'basePriceEntryId',line->>'priceEntryId');
   IF NOT (sku_id=ANY(scope)) AND EXISTS(SELECT 1 FROM jsonb_array_elements(baseline) a
     WHERE a->>'variantId'=line->>'skuId' AND a->'isAddon'=coalesce(line->'isAddon','false'::jsonb)

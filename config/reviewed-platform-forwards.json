@@ -5840,6 +5840,10 @@
           {
             "signature": "public.catalog_admission_edit_lane(text,text,boolean)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_keeps_price(uuid,uuid,integer,boolean)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8210,7 +8214,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "08e1ab448332a96a83119f50a30c20bc80648ac4f130e6dce18b35a8e426c33f",
+      "sha256": "e27ecf011e49baa51f61e6dafb746533be08ee254dcdddf59f77c3d469ea44c8",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8285,12 +8289,12 @@
         {
           "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "2766b013457d125d3ff92cf2473467c71e5077dc1b253374718820a111ab1765"
+          "afterSha256": "ab177cada0ac08ea7aca9bbee9fde6bd9897f925596e3070f474bdbb0807881e"
         },
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "29db5d2937977768ecc047b751c6f474eb64d7fa32b071518840095c65dbf92a"
+          "afterSha256": "72a074ce106d0ab4d7e337beff545eca0d2d59322e05d46f32407c8587190721"
         },
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
@@ -8326,6 +8330,11 @@
           "signature": "public.catalog_admission_edit_lane(text,text,boolean)",
           "beforeSha256": null,
           "afterSha256": "7572213f74b19179507b50af95b4188d2fd1d9daa1964a76e9dd7c9aec1bccfe"
+        },
+        {
+          "signature": "public.catalog_admission_keeps_price(uuid,uuid,integer,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "5e19c76891ac47098b288f8224cc2a050658f70375dc3e3fe393ee277627bd34"
         }
       ]
     }

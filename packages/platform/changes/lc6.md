@@ -7,7 +7,9 @@ context records any price the existing quote owner consulted for a retained
 selection. Mixed carts and edits prove the exact governed subset.
 Sized edits share the configured-offer binding and numbered-cycle evidence
 between preview and apply. The graduation baseline retains the current add-on
-agreement. Governed legacy edits require owned renewal terms for the accepted
+agreement. Explicit opt-in checks the current offer membership for every
+selection and keeps the agreed price where the SKU, quantity and role match.
+Governed legacy edits require owned renewal terms for the accepted
 selection before saving the template.
 
 Migration: apply the complete native catalogue, including the membership-page,

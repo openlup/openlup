@@ -1198,8 +1198,13 @@ const exactRows: NativeRow[] = [...standardRows("exact"),
 it.each(exactRows)("native exact $name", row => nativeCase("exact",row));
 async function introFixture(db: PoolClient, f: Fixture, paid: number, basis: number) {
   const order = randomUUID();
-  await db.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'paid','XXX',617)", [order,f.client]);
-  const quoteLine = { sku: f.code,quantity: 4,unitPriceGross: money(617),lineSubtotalGross: money(2468) };
+  await db.query(`WITH purchased AS (
+    INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'paid','XXX',617) RETURNING id
+  ) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+    SELECT id,$3,1,1,617,617 FROM purchased`, [order,f.client,f.sku]);
+  const amount = money(2468);
+  const quoteLine = { sku: f.code,productSlug: f.value.product.slug,quantity: 4,unitPriceGross: money(617),lineSubtotalGross: amount,
+    tax: { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax",netAmount: amount,vatAmount: money(0),grossAmount: amount } };
   await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3,$4)", [order,f.subscription,
     { templateId: "introductory",shippingAmountMinor: 0,renewalTerms: { version: "native.renewal-terms.v1",minimumPayableMinor: 1,normalCadenceDays: [28],starterPack: { schemaVersion: "1",starterIntervalDays: 28,basisTemplateVersion: basis,
       delivery2: { discountBps: 0,discountMinor: 0,basisSubtotalMinor: 617 },graduation: { cadenceDays: 28,sizeConstraint: { kind: "unit_count",value: 4,dailyNeed: 1 },lines: [{ sku: f.code,qty: 4,sortOrder: 0,isAddon: false,quoteLine }] } } } },f.at]);
@@ -1528,6 +1533,16 @@ it.each(lanes.flatMap(lane => (["subscription_renewal_terms","subscription_event
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
+async function numberedCycle(db: PoolClient, f: Fixture, cycle: number, status: "planned" | "cancelled") {
+  const operation = randomUUID(), identity = `subscription:${f.subscription}:cycle:${cycle}`, fingerprint = digest(identity);
+  await db.query(`INSERT INTO public.subscription_renewal_operations(id,subscription_id,scheduled_at,cycle_number,
+    identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at)
+    VALUES($1,$2,$3::timestamptz+make_interval(days=>$4::integer),$4,$5,$6,'{}','reserved',$1,'fixture',clock_timestamp(),clock_timestamp()+interval '1 hour')`,
+    [operation,f.subscription,f.at,cycle,identity,fingerprint]);
+  await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+    VALUES($1,$2::timestamptz+make_interval(days=>$3::integer),$4,$5,$6)`, [f.subscription,f.at,cycle,status,operation,fingerprint]);
+}
+
 it.each(["first open ordinal","next after closed ordinal","different marker basis"] as const)(
   "LC6-D-059, LC6-D-060 and LC6-D-143 sized retention uses %s", async basis => {
     const f = await fixture(packs[0]), db = await session();
@@ -1537,17 +1552,8 @@ it.each(["first open ordinal","next after closed ordinal","different marker basi
       await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
       const number = basis === "next after closed ordinal" ? 1 : 2;
       const status = basis === "next after closed ordinal" ? "cancelled" : "planned";
-      const renewal = async (cycle: number,status: string) => {
-        const operation = randomUUID(), identity = `subscription:${f.subscription}:cycle:${cycle}`, fingerprint = digest(identity);
-        await db.query(`INSERT INTO public.subscription_renewal_operations(id,subscription_id,scheduled_at,cycle_number,
-          identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at)
-          VALUES($1,$2,$3::timestamptz+make_interval(days=>$4::integer),$4,$5,$6,'{}','reserved',$1,'fixture',clock_timestamp(),clock_timestamp()+interval '1 hour')`,
-          [operation,f.subscription,f.at,cycle,identity,fingerprint]);
-        await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
-          VALUES($1,$2::timestamptz+make_interval(days=>$3::integer),$4,$5,$6)`, [f.subscription,f.at,cycle,status,operation,fingerprint]);
-      };
-      await renewal(number,status);
-      if (basis === "first open ordinal") await renewal(4,"cancelled");
+      await numberedCycle(db,f,number,status);
+      if (basis === "first open ordinal") await numberedCycle(db,f,4,"cancelled");
       const context = await rpc(db,"subscription_sized_edit_context",[f.client,f.subscription,false]);
       expect(context).toMatchObject({ logicalUpcomingCycle: 3,paidCycleCount: 0 });
       const input: CatalogAdmissionInput = { ...f.admission,heads: [],priceContextVersions: [],
@@ -1561,13 +1567,19 @@ it.each(["first open ordinal","next after closed ordinal","different marker basi
   },
 );
 
-it.each(["add_addon","remove_addon","update_addon_quantity"] as const)(
-  "LC6-D-132 shipped sized add-on preview and exact apply agree on retained core: %s", async action => {
+it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation"] as const)(
+  "LC6-D-067 and LC6-D-132 shipped sized preview and apply keep the owned price: %s", async (action,test) => {
+    const optIn = action === "opt in unchanged" || action === "opt in with historical entry";
+    const graduation = action === "numbered graduation";
+    if (optIn && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
+      test.skip("Membership page comes from the predecessor installation"); return;
+    }
     const f = await fixture(packs[0]), setup = await pool.connect();
     const product = randomUUID(), variantId = randomUUID(), code = `LEGACY-${variantId}`;
-    const actor = { actorId: f.actor,clientId: f.client }, constraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
+    const actor = { actorId: f.actor,clientId: f.client }, coreQuantity = optIn ? 1 : 2;
+    const constraint = { kind: "unit_count",value: coreQuantity,dailyNeed: 1 };
     try {
-      expect(await (await edit(f,"sized")).invoke(setup)).toMatchObject({ status: "applied" });
+      if (!optIn) expect(await (await edit(f,"sized")).invoke(setup)).toMatchObject({ status: "applied" });
       await setup.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,'Legacy article','active')", [product,`legacy-${product}`]);
       await setup.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g) VALUES($1,$2,$3,'Legacy article','active',true,true,true,100)", [variantId,product,code]);
       const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
