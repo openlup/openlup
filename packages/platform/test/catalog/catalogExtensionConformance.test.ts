@@ -146,6 +146,14 @@ describe("catalogue_required_owner_matrix", () => {
     }
   });
 
+  it("RP2-D-006 a thrown validator error stays operational even when its message matches an owner code", async () => {
+    const entry = transportEntry(), error = new Error("quantity_invalid");
+    const projection = projectCatalogExtensionConformance({ packs: [{ ...entry, pack: { ...entry.pack, types: [{
+      ...entry.pack.types[0], validateContent: () => { throw error; },
+    }] } }] });
+    await expect(projection.check(projection.subject)).rejects.toBe(error);
+  });
+
   it.each(["taxonomy", "tax-application", "promotions"] as const)("RP2-D-009 %s is unavailable", async owner => {
     const result = await checkSubject({ packs: [{ pack: pack() }], requiredChecks: [owner] });
     expect(result).toMatchObject({ exitCode: 2, findings: [{ code: "conformance_owner_unavailable", path: "/requiredChecks/0" }] });

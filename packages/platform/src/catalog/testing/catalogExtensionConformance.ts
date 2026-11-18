@@ -176,7 +176,8 @@ async function checkSubject(jsonText: string, owners?: readonly TrustedOwners[])
       const version = object(draft) ? draft.schemaVersion : undefined;
       const schema = version === 5 ? catalogDraftPayloadV5Schema : version === 4 ? catalogDraftPayloadV4Schema
         : version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
-      const admitted = await owner(path, () => schema.safeParse(draft));
+      const parse = () => schema.safeParse(draft);
+      const admitted = schema === catalogDraftPayloadSchema ? await owner(path, parse) : parse();
       if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
       const payload = admitted.data;
@@ -187,9 +188,10 @@ async function checkSubject(jsonText: string, owners?: readonly TrustedOwners[])
           add("conformance_owner_unavailable", `${path}/product/documentRevision`, "", true);
         }
       }
-      const validation = await owner(path, () => payload.schemaVersion === 1 ? validateCatalogDraft(payload, registry)
+      const validate = () => payload.schemaVersion === 1 ? validateCatalogDraft(payload, registry)
         : validateCatalogDraftV2(payload.schemaVersion === 2 ? payload : catalogLifecycleValidationPayload(
-          payload.schemaVersion === 5 ? catalogSuccessorValidationPayload(payload) : payload), registry));
+          payload.schemaVersion === 5 ? catalogSuccessorValidationPayload(payload) : payload), registry);
+      const validation = payload.schemaVersion === 1 && !owners ? await owner(path, validate) : await validate();
       if (!validation) continue;
       const draftIssues = !validation.valid ? validation.issues
         : requireCheck("draft-content") && payload.schemaVersion >= 3 ? validation.readiness.publication.issues : [];
