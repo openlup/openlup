@@ -212,7 +212,7 @@ console.log(answer.value ?? "");
     expect(result.summary).toBe("");
     const flags = ["--registry=https://registry.npmjs.org", "--fetch-retries=0", "--fetch-timeout=10000"];
     const version = (spec: string) => ["view", spec, "version", ...flags];
-    const probe = (spec: string) => [version(spec), ["view", spec, "dist.tarball", ...flags], ["-sSIL", "--max-time", "10", "-o", "/dev/null", "-w", "%{http_code}", "--", tarball]];
+    const probe = (spec: string) => [version(spec), ["view", spec, "dist.tarball", ...flags], ["-sSIL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "10", "-o", "/dev/null", "-w", "%{http_code}", "--", tarball]];
     const set = packages.flatMap(probe), latest = version("@openlup/core");
     expect(result.requests).toEqual([version(packages[0]), version(packages[0]), ...probe(packages[0]), ...probe(packages[0]), ...set, latest, ...set, latest]);
   });
