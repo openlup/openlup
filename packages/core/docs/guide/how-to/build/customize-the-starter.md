@@ -150,7 +150,7 @@ return or hold label for a configured locale, which refuses with
 `starter_locale_copy_missing`. A control being absent from a
 page does not make its configuration optional.
 
-In the current source candidate, set `market.locales` and `market.defaultLocale`
+In the 1.2.0 starter, set `market.locales` and `market.defaultLocale`
 in `owned/market.config.ts`, composed by `owned/store.config.ts`; the starter
 derives its `Locale` type and required copy locales from this registry. The list
 must be nonempty and unique (`starter_locales_invalid`), use only platform-supported
@@ -164,7 +164,7 @@ Adding a platform language requires a separate audit of durable SQL constraints.
 
 ## Keep business configuration owned
 
-In the current source candidate for the next release after 1.1.0, set
+In the 1.2.0 starter, set
 `subscriptionCreation: { editWindowHours: 72 }` in `owned/store.config.ts` to
 choose the edit cutoff for newly activated subscriptions. Startup requires an
 integer from 1 through 720 and refuses with
@@ -182,7 +182,7 @@ checkout recovery defaults to `first` at 1h and `last` at 20h. The explicit
 installation step installs this schedule; startup reads it and refuses
 `starter_installed_policy_drift` on revision, stage or hour differences. After
 editing, deliberately reinstall before starting. See [reminder stages and
-hours](checkout-recovery.md#install-reminder-stages-and-hours) for the unreleased
+hours](checkout-recovery.md#install-reminder-stages-and-hours) for the 1.2.0
 migration, runtime grant and independent checkout-window limits.
 
 In the current source candidate, keep one owned configuration entry per domain,
@@ -200,7 +200,7 @@ imported by the host, outside `StoreConfig`. Each domain assertion runs once
 from `assertConfig` at startup and refuses invalid data or unsupported database
 bounds with a named error code.
 
-For saved-address formats in the current source candidate, edit
+For saved-address formats in the 1.2.0 starter, edit
 `savedAddressValidation` in `owned/acquisition-policy.ts`, already imported by
 the host. Its `local` callbacks accept fictional postal codes with two letters
 followed by four digits and phones with eight digits for the configured country
@@ -231,7 +231,7 @@ and native command authorization keep their existing meaning.
 
 ## Configure account actions and pauses
 
-In the unreleased source candidate, `renewal.subscriptionCare` is composed from
+In the 1.2.0 starter, `renewal.subscriptionCare` is composed from
 `owned/renewal.config.ts`. Its `actions.active`, `actions.paused` and
 `actions.cancelled` lists choose account controls; `whilePaymentBlocked` and
 `whilePaymentExpired` narrow those choices during payment recovery. Use only
@@ -697,7 +697,7 @@ a configured `publicOrigin` takes precedence. Care links also use that configure
 origin when present. Keep the [retention and consent limits](../../reference/limits.md#subscription-care)
 in view when selecting care behavior.
 
-For the next minor source candidate, own `inventory.renewalProtection` in
+In the 1.2.0 starter, own `inventory.renewalProtection` in
 `owned/store.config.ts` (`{ revision: 'starter-1', renewalProtectionDays: 14 }`
 in each demo configuration). Its explicit installation step installs that policy;
 application startup only reads it and refuses with `starter_installed_policy_drift`
@@ -705,5 +705,4 @@ when either the revision or days differ. Change the owned value, deliberately ru
 the installation step with installation authority, then restart. An absent database
 key has revision `default`, so it does not match `starter-1` until installed.
 See [native stock priority](../../concepts/checkout.md#native-stock-priority) for
-validation, privileges and the request horizon contract. This candidate addition
-does not alter the historical 0.43.0 recipe above.
+validation, privileges and the request horizon contract.

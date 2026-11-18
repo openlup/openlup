@@ -5,6 +5,18 @@ Status: historical record, 2026-11-09.
 Status: qualification evidence for the one supported stable 1.x installation
 composition: the npm starter, PostgreSQL and the qualified image.
 
+On 2026-11-18, [publish run 44322984904](https://github.com/openlup/openlup/actions/runs/44322984904)
+published the 1.2.0 npm set from `openlup-core-v1.2.0` (`c6419ad88`). In
+[qualification run 44325169458](https://github.com/openlup/openlup/actions/runs/44325169458),
+the 1.1.0→1.2.0 upgrade, schema and canary passed on attempt 2 after npm
+returned E404 for the Core tarball despite visible version metadata on attempt 1
+and only the failed jobs were rerun. 1.2.0 is the current qualified stable set.
+The starter image `ghcr.io/openlup/neutral-store-starter:1.2.0` is at
+`sha256:05c01e28d5a4df9acc6f9edfa9940461d28ef63a33d10d849c736b9c61ad17e8`.
+Its evidence image, `ghcr.io/openlup/neutral-store-starter:1.2.0-evidence`, is at
+`sha256:8e507a0944d0443d53a475abb34c781e5138e15ce6cbc800ebd5544a275f211a`.
+Both are attested by `registry-tutorial.yml` on `main`.
+
 On 2026-11-18, [run 44263843134](https://github.com/openlup/openlup/actions/runs/44263843134)
 qualified `openlup-core-v1.1.0` (`ec24f180`): 1.0.0→1.1.0 upgrade,
 schema and canary passed. 1.1.0 is the first qualified stable set, including

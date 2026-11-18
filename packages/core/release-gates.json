@@ -279,10 +279,10 @@
       "maxPackedBytes": 282000,
       "maxFiles": 80
     },
-    "maxPackedBytes": 486000,
-    "maxUnpackedBytes": 1851000,
+    "maxPackedBytes": 544500,
+    "maxUnpackedBytes": 2115000,
     "maxFiles": 440,
-    "capReason": "Measured on merged main 90c2d2ee0 plus the pause-after-exhaustion recipe (Node 24.22.2, npm 11.19.1): total 422588 B packed / 1609791 B unpacked / 375 files; code 187556 B packed / 300 files; docs 20669 B / root files; guide 207013 B packed / 63 files. Owner 2026-11-17: these Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 486000 B packed / 1851000 B unpacked / 440 files; guide 238000 B / 80 files; code 276480 B / 400 files and docs 49152 B / 20 files already exceed 15% and stay. The 1.2.0 generated upgrade guide brought the guide pack to 245226 B (Node 24.22.2, npm 11.19.1). Reset only the guide byte cap to 282000 B, about 15% headroom. This activates no capability.",
+    "capReason": "Measured on merged main 90c2d2ee0 plus the pause-after-exhaustion recipe (Node 24.22.2, npm 11.19.1): total 422588 B packed / 1609791 B unpacked / 375 files; code 187556 B packed / 300 files; docs 20669 B / root files; guide 207013 B packed / 63 files. Owner 2026-11-17: these Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 486000 B packed / 1851000 B unpacked / 440 files; guide 238000 B / 80 files; code 276480 B / 400 files and docs 49152 B / 20 files already exceed 15% and stay. The 1.2.0 generated upgrade guide brought the guide pack to 245226 B (Node 24.22.2, npm 11.19.1). Reset only the guide byte cap to 282000 B, about 15% headroom. This activates no capability. The 1.2.0 cold pack measured 473415 B packed and 1839430 B unpacked (Node 24.21.0, npm 11.19.0), so the two total byte caps were reset to about 15% headroom for routine growth.",
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",

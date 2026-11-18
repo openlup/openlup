@@ -72,7 +72,7 @@ The platform schema keeps these fixed bounds as private
 configurable package exports. The starter also retains its **100-unit cart**
 bound (`MAX_STARTER_OFFER_UNITS`). Owned business limits may be lower.
 
-In the current source candidate, startup refuses unsupported owned configuration:
+In the 1.2.0 starter, startup refuses unsupported owned configuration:
 
 | Configuration above the representation bound | Startup code |
 | --- | --- |

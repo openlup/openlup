@@ -27,7 +27,7 @@ below, owns arrival and persisted schedule alignment.
 
 ## Freeze the edit window at activation
 
-In the current source candidate for the next release after 1.1.0,
+In 1.2.0,
 `activateNativePurchaseWithRenewal` accepts the optional trusted host input
 `editWindowHours`: an integer from 1 through 720. Invalid input throws
 `subscription_activation_edit_window_invalid` before any database query.
@@ -113,7 +113,7 @@ The public package and exact editors use separate writers.
 
 ## Admit account commands
 
-In the unreleased source candidate for the next minor, compose optional
+In 1.2.0, compose optional
 `admitSubscriptionCommand: SubscriptionCommandAdmission` on
 `NativeSubscriptionCommandBinding`, used by `createPostgresSubscriptionCommands`
 and `createPostgresSubscriptionCommandStore`. This additive API belongs to the
