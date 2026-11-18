@@ -231,8 +231,11 @@ A callback throw refuses the affected field with its configured policy message.
 `test/renewal.test.ts` expects the demonstration account action lists, allowed
 pause presets and both pause defaults. `test/address-outcomes.test.ts` matches
 the demonstration wording for a change that applies from the next parcel.
-`test/acquisition-quote.test.ts` requires each quote refusal translation to
-exceed 20 characters, although startup accepts any nonblank translation.
+`test/acquisition-quote.test.ts` requires the translations of three price
+refusal codes to exceed 20 characters, although startup accepts any nonblank
+translation. `browser/acquisition.spec.ts` ages a checkout by 21 hours and
+expects two recovery reminder emails; a customized reminder schedule needs its
+timing fixture and expected reminder count adapted.
 `browser/acquisition.spec.ts` also uses the demonstration saved-address formats,
 account actions and pause defaults. The browser specs (`browser/*.spec.ts`,
 including `editor-components.spec.ts`, `e4.spec.ts`, `journey.spec.ts` and
