@@ -31,7 +31,9 @@ BEGIN
  RETURN days::integer;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM anon;
+REVOKE ALL ON FUNCTION public.inventory_renewal_protection_days() FROM authenticated;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO service_role;'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.inventory_available_to_promise(

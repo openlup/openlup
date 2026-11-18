@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresStockAvailability, installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
-import { sqlStatements } from "../../scripts/reviewed-platform-forward.js";
+import { assertNativeStoreForward, readReviewedForwardRegistry, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { composeNativeBindings } from "../../examples/neutral-store/host/native-composition.ts";
@@ -56,6 +56,15 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 beforeEach(async () => { await db.query("DELETE FROM public.commerce_settings WHERE key='inventory_renewal_protection'"); });
 afterAll(async () => { await closePostgres(resource, db); }, postgresTeardownTimeoutMs);
+
+it("admits the exact K7 forward against its complete native prefix", () => {
+  const path = "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql";
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  const prefix = [manifest.baseline, ...manifest.forward.filter((unit: { file: string }) => unit.file < path)]
+    .map((unit: { file: string }) => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+  const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
+  expect(() => assertNativeStoreForward(registry, path, readFileSync(path), prefix)).not.toThrow();
+});
 
 it("D: absence and the adopter 14-day literal equal the historical ATP body; 7/21 change only soft priority", async () => {
   const attributes = await shape(), baseline = await atp(false, "public.inventory_policy_before_k7");
