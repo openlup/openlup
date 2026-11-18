@@ -573,7 +573,7 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
           publicationHead: head, draftRef: { draftId: record.draftId, revision } };
       }),
     };
-    return { revision, id: head.publicationId, result: receipt, scope_id: productId,
+    return { revision, id: head.publicationId, result: receipt, kind: "publish", scope_id: productId,
       command_key: receipt.commandKey, fingerprint: receipt.fingerprint, actor_id: actorId, publication_id: head.publicationId };
   });
   const terminal = mode.startsWith("terminal");
@@ -605,7 +605,8 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
         const { result } = stored;
         return { rows: [{ revision: result.head.revision, digest: result.publicationDigest, document_digest: documentDigest,
           previous_id: result.previousHead?.publicationId ?? null, previous_revision: result.previousHead?.revision ?? null,
-          previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt }] };
+          previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt,
+          command_key: result.commandKey, actor_id: result.actorId, receipt_count: 1 }] };
       }
       throw new Error("Unexpected history query");
     } }) },

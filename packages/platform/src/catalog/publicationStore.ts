@@ -145,24 +145,48 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`catalog-command:${productId}:${commandKey}`]);
     return referenceDigest;
   }
+  async function requireNoPublicationCommand(db: PgQueryExecutor, productId: string, commandKey: string) {
+    const { found } = observedRow(await tuple(db, `SELECT EXISTS(
+      SELECT 1 FROM public.catalog_publications WHERE product_id=$1::uuid AND command_key=$2) AS found`, [productId, commandKey]));
+    require(found === false, "catalog_publication_receipt_invalid", "dependency_unavailable");
+  }
   async function receipt(db: PgQueryExecutor, productId: string, commandKey: string, kind: string, fingerprint: string, actorId: string) {
     const rows = await tuple(db, `SELECT ${receiptColumns} FROM public.catalog_operator_receipts WHERE scope_id=$1::uuid AND command_key=$2`, [productId, commandKey]);
+    if (kind === "publish" && (!rows.length || rows[0]!.kind !== "publish"))
+      await requireNoPublicationCommand(db, productId, commandKey);
     if (!rows.length) return null;
-    require(rows.length === 1 && rows[0]!.actor_id === actorId, "catalog_publication_operator_mismatch", "unauthorized");
-    require(rows[0]!.kind === kind && rows[0]!.fingerprint === fingerprint, "catalog_publication_command_key_reused", "conflict");
-    if (kind === "publish") return storedPublishReceipt(db, rows[0]!);
+    require(rows.length === 1, "catalog_publication_receipt_invalid", "dependency_unavailable");
+    const original = rows[0]!;
+    if (kind === "publish" && original.kind === kind && original.fingerprint === fingerprint) {
+      const result = await storedPublishReceipt(db, original);
+      require(result.actorId === actorId, "catalog_publication_operator_mismatch", "unauthorized");
+      return result;
+    }
+    require(original.actor_id === actorId, "catalog_publication_operator_mismatch", "unauthorized");
+    require(original.kind === kind && original.fingerprint === fingerprint, "catalog_publication_command_key_reused", "conflict");
     const result = checkedDecisionReceipt(rows[0]!.result);
     const { fingerprint: _fingerprint, actorId: _actorId, decidedAt: _decidedAt, ...originalCommand } = result;
     require(publicationDigest([originalCommand, actorId]) === fingerprint, "catalog_publication_receipt_invalid", "dependency_unavailable");
     require(result.productId === productId && result.commandKey === commandKey && result.fingerprint === fingerprint && result.actorId === actorId
-      && result.action === kind, "catalog_publication_receipt_invalid", "dependency_unavailable");
+      && result.action === kind && original.publication_id === null, "catalog_publication_receipt_invalid", "dependency_unavailable");
+    const decision = await tuple(db, `SELECT candidate_ref,candidate_digest,candidate_reference_digest,action,actor_id,fingerprint,reason,
+      to_char(decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS decided_at
+      FROM public.catalog_publication_decisions WHERE product_id=$1::uuid AND command_key=$2`, [productId, commandKey]);
+    const recorded = decision[0];
+    require(decision.length === 1 && recorded?.candidate_ref === result.candidateRef && recorded.candidate_digest === result.candidateDigest
+      && recorded.candidate_reference_digest === publicationDigest([result.candidateRef, result.candidateDigest])
+      && recorded.action === result.action && recorded.actor_id === result.actorId && recorded.fingerprint === result.fingerprint
+      && recorded.reason === result.reason && recorded.decided_at === result.decidedAt,
+    "catalog_publication_receipt_invalid", "dependency_unavailable");
     return result;
   }
   async function storedPublishReceipt(db: PgQueryExecutor, row: Record<string, unknown>) {
+    require(row.kind === "publish", "catalog_publication_receipt_invalid", "dependency_unavailable");
     const result = checkedReceipt(row.result);
     require(result.productId === row.scope_id && result.commandKey === row.command_key && result.fingerprint === row.fingerprint
       && result.actorId === row.actor_id && result.head.publicationId === row.publication_id, "catalog_publication_receipt_invalid", "dependency_unavailable");
     const publications = await tuple(db, `SELECT p.revision,p.digest,d.digest AS document_digest,p.previous_id,previous.revision AS previous_revision,previous_document.digest AS previous_document_digest,
+      p.command_key,p.actor_id,(SELECT count(*)::integer FROM public.catalog_operator_receipts WHERE publication_id=p.id) AS receipt_count,
       to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at
       FROM public.catalog_publications p JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
       LEFT JOIN public.catalog_publications previous ON previous.id=p.previous_id AND previous.product_id=p.product_id
@@ -170,6 +194,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       WHERE p.id=$1::uuid AND p.product_id=$2::uuid`, [result.head.publicationId, result.productId]);
     require(publications.length === 1 && result.head.revision === publications[0]!.revision && result.head.documentDigest === publications[0]!.document_digest
       && result.publicationDigest === publications[0]!.digest && result.committedAt === publications[0]!.committed_at
+      && result.commandKey === publications[0]!.command_key && result.actorId === publications[0]!.actor_id && publications[0]!.receipt_count === 1
       && equal(result.previousHead, publications[0]!.previous_id === null ? null : { publicationId: publications[0]!.previous_id, revision: publications[0]!.previous_revision, documentDigest: publications[0]!.previous_document_digest }),
     "catalog_publication_receipt_invalid", "dependency_unavailable");
     publicationJson({ outcome: "found", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
@@ -409,9 +434,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(instant.safeParse(committedAt).success, readInvalid, "dependency_unavailable");
         // Verify the complete projection before making a durable head or receipt visible.
         await assertProjection(db, compiled);
-        await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::timestamptz)`, [publicationId, command.productId, next, current.head?.publicationId ?? null,
-          prepared.record.draftId, prepared.record.revision, command.candidateRef, command.candidateDigest, compiled.product.document!.id, canonicalState, publicationDigestValue, actorId, committedAt]);
+        await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at,command_key)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::timestamptz,$14)`, [publicationId, command.productId, next, current.head?.publicationId ?? null,
+          prepared.record.draftId, prepared.record.revision, command.candidateRef, command.candidateDigest, compiled.product.document!.id, canonicalState, publicationDigestValue, actorId, committedAt, command.commandKey]);
         for (const reference of references) if (!current.references.some(prior => prior.revisionId === reference.revisionId)) {
           const sku = compiled.skus.find(sku => sku.id === reference.skuId)!;
           await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,$4,$5,$6,$7)",
@@ -638,9 +663,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           const { unknown } = observedRow(lineage);
           require(typeof unknown === "boolean", readInvalid, "dependency_unavailable");
           require(!unknown, "catalog_publication_lineage_unknown", "unsupported");
-          const rows = await tuple(db, `SELECT p.revision,p.id,r.result::jsonb AS result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id AND r.kind='publish'
+          const rows = await tuple(db, `SELECT p.revision,p.id,r.result::jsonb AS result,r.kind,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
+            FROM public.catalog_publications p LEFT JOIN public.catalog_operator_receipts r ON r.scope_id=p.product_id AND r.command_key=p.command_key
             WHERE p.product_id=$1::uuid AND p.revision <= coalesce($2::integer,(SELECT max(revision) FROM public.catalog_publications WHERE product_id=$1::uuid))
             AND ($3::integer IS NULL OR p.revision < $3) ORDER BY p.revision DESC LIMIT 101`, [productId, pointer?.highWater ?? null, pointer?.before ?? null]);
+          require(rows.every(row => row.kind === "publish" && row.scope_id === productId && row.publication_id === row.id),
+            "catalog_publication_receipt_invalid", "dependency_unavailable");
           const highWater = pointer?.highWater ?? rows[0]?.revision as number | undefined;
           const receipts: CatalogPublicationReceipt[] = [];
           for (const [index, row] of rows.slice(0, 100).entries()) {
@@ -666,7 +694,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         await actor(db, capability);
         const rows = await tuple(db, `SELECT ${receiptColumns} FROM public.catalog_operator_receipts WHERE kind='publish' AND scope_id=$1 AND command_key=$2`, [scope.productId, scope.commandKey]);
-        if (!rows.length) return { outcome: "absent" as const };
+        if (!rows.length) {
+          await requireNoPublicationCommand(db, scope.productId, scope.commandKey);
+          return { outcome: "absent" as const };
+        }
         require(rows.length === 1, "catalog_publication_receipt_invalid", "dependency_unavailable");
         const receipt = await storedPublishReceipt(db, rows[0]!);
         require(receipt.productId === scope.productId && receipt.commandKey === scope.commandKey, "catalog_publication_receipt_invalid", "dependency_unavailable");
@@ -821,6 +852,8 @@ function checkedReceipt(value: unknown): CatalogPublicationReceiptV2 {
 const instant = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u);
 function checkedDecisionReceipt(value: unknown): CatalogDecisionReceiptV2 {
   publicationJson(value, CATALOG_PUBLICATION_LIMITS.receiptBytes);
-  return decisionSchema.extend({ fingerprint: digest, actorId: id, decidedAt: instant }).strict().parse(value);
+  const parsed = decisionSchema.extend({ fingerprint: digest, actorId: id, decidedAt: instant }).strict().safeParse(value);
+  if (!parsed.success) return publicationRefuse("catalog_publication_receipt_invalid", "dependency_unavailable");
+  return parsed.data;
 }
 function equalHead(a: CatalogHeadRef | null, b: CatalogHeadRef): boolean { return a !== null && publicationJson(a) === publicationJson(b); }

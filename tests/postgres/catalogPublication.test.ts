@@ -1794,8 +1794,8 @@ it("cycle1 native reader grammar keeps revision key and cursor boundaries", asyn
     expect(await authority.readbackV2({ publicationId, revision, documentDigest })).toEqual({ outcome: "unsupported", reason: "catalog_publication_absent" });
   for (const revision of [0, -1, 1.5, 2_147_483_648])
     expect(await authority.readbackV2({ publicationId, revision, documentDigest })).toEqual({ outcome: "validation_issue", reason: "catalog_publication_query_invalid" });
-  for (const commandKey of ["x", "x".repeat(240)]) expect(await authority.receipt({ productId, commandKey }, actor)).toEqual({ outcome: "absent" });
-  for (const commandKey of ["", " ", " x", "x ", "x".repeat(241)])
+  for (const commandKey of ["x", " ", " x", "x ", "é".repeat(100)]) expect(await authority.receipt({ productId, commandKey }, actor)).toEqual({ outcome: "absent" });
+  for (const commandKey of ["", "é".repeat(100) + "x"])
     expect(await authority.receipt({ productId, commandKey }, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_query_invalid" });
   for (const [highWater, before, valid] of [[1, 0, true], [2_147_483_647, 2_147_483_647, true], [0, 0, false],
     [2_147_483_648, 0, false], [1, -1, false], [2_147_483_647, 2_147_483_648, false], [1, 2, false]] as const) {
@@ -1809,16 +1809,16 @@ it("cycle1 native command grammar keeps candidate reason and change boundaries",
   const decision = { schemaVersion: 2 as const, action: "approve" as const, productId: data.productId, commandKey: "decision:bounds",
     candidateRef: "?", candidateDigest: data.publication.candidateDigest, reason: "x" };
   for (const length of [0, 1, 200, 201]) {
-    const candidateRef = "?".repeat(length), reason = length >= 1 && length <= 200 ? "candidate_invalid" : "catalog_publication_command_invalid";
+    const candidateRef = "?".repeat(length), reason = "catalog_publication_command_invalid";
     expect(await authority.publish({ ...data.publication, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason });
     expect(await authority.decision({ ...decision, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason });
   }
   for (const candidateRef of [`v1:${"-".repeat(36)}@1/unpublished`, `v1:${data.draftId}@2147483648/unpublished`]) {
-    expect(await authority.publish({ ...data.publication, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
-    expect(await authority.decision({ ...decision, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+    expect(await authority.publish({ ...data.publication, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
+    expect(await authority.decision({ ...decision, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_command_invalid" });
   }
   for (const length of [0, 1, 1000, 1001])
-    expect(await authority.decision({ ...decision, reason: "x".repeat(length) }, actor)).toEqual({ outcome: "validation_issue",
+    expect(await authority.decision({ ...decision, productId: randomUUID(), candidateRef: data.publication.candidateRef, reason: "x".repeat(length) }, actor)).toEqual({ outcome: "validation_issue",
       reason: length >= 1 && length <= 1000 ? "candidate_invalid" : "catalog_publication_command_invalid" });
   for (const expectedRevision of [-1, 0, 2_147_483_646, 2_147_483_647])
     expect(await authority.publish({ ...data.publication, changes: [{ variantId: data.skuId, expectedRevision, state: "active" }] }, actor))
@@ -2068,9 +2068,9 @@ it("cycle1 native publication replay refuses another real human and malformed re
       if (mode === "fingerprint") rows[0].fingerprint = "c".repeat(64);
     }));
     const capability = (await target.authorize(null))!;
-    expect(await target.publish(data.publication, capability)).toEqual(mode === "extra row"
-      ? { outcome: "unauthorized", reason: "catalog_publication_operator_mismatch" }
-      : { outcome: "conflict", reason: "catalog_publication_command_key_reused" });
+    expect(await target.publish(data.publication, capability)).toEqual(mode === "fingerprint"
+      ? { outcome: "conflict", reason: "catalog_publication_command_key_reused" }
+      : { outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
   }
   expect(await snapshot()).toEqual(before);
 });
@@ -2522,8 +2522,8 @@ it.each(["reference", "assets"] as const)("cycle1 native activation binds verifi
 it.each([2_147_483_646, 2_147_483_647])("cycle1 native publication revision boundary from %i", async revision => {
   const data = await draft(), first = await commit(data.publication), publicationId = randomUUID();
   // Seed an admitted native edge directly; do not manufacture billions of events.
-  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at)
-    SELECT $1,product_id,$2,id,draft_id,draft_revision,$3,candidate_digest,document_revision_id,canonical_state,digest,actor_id,clock_timestamp()
+  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at,command_key)
+    SELECT $1,product_id,$2,id,draft_id,draft_revision,$3,candidate_digest,document_revision_id,canonical_state,digest,actor_id,clock_timestamp(),$3
     FROM public.catalog_publications WHERE id=$4`, [publicationId, revision, `fixture:revision:${publicationId}`, first.head.publicationId]);
   await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [data.productId, publicationId, revision]);
   const head = { ...first.head, publicationId, revision };
@@ -3230,7 +3230,7 @@ async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const command = await save(payload, data.draftId, revision, foreignPublished.head); await approve(command);
   const row = (await db.query("SELECT to_jsonb(p) AS value FROM public.catalog_publications p WHERE id=$1", [foreignPublished.head.publicationId])).rows[0].value as Record<string, unknown>;
   return { ...row, id: randomUUID(), revision: 2, previous_id: row.id, draft_revision: revision + 1, candidate_ref: command.candidateRef,
-    candidate_digest: command.candidateDigest, committed_at: (await db.query("SELECT clock_timestamp()::text AS value")).rows[0].value };
+    candidate_digest: command.candidateDigest, command_key: `fixture:publication:${randomUUID()}`, committed_at: (await db.query("SELECT clock_timestamp()::text AS value")).rows[0].value };
 }
 
 it.each(["zero revision", "max revision", "zero draft revision", "max absent draft revision", "short candidate digest", "nonhex candidate digest", "manifest bound", "manifest overflow", "manifest digest", "manifest object", "manifest schema", "manifest product", "manifest roster"] as const)("cycle1 native publication SQL admission: %s", async mode => {
@@ -3460,7 +3460,7 @@ it("refuses a well-formed legacy head with no retained publication", async () =>
 });
 
 it("refuses a publication history receipt bound to a different product", async () => {
-  const rows = (await db.query(`SELECT p.revision,p.id,r.result::jsonb AS result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
+  const rows = (await db.query(`SELECT p.revision,p.id,r.result::jsonb AS result,r.kind,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
     FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id
     WHERE p.id=$1 AND r.kind='publish'`, [foreignPublished.head.publicationId])).rows;
   expect(rows).toHaveLength(1);
@@ -3477,6 +3477,74 @@ it("returns absence when publication recovery finds an approval under the same s
     .toEqual([{ kind: "approve" }]);
   expect(await authority.receipt(scope, actor)).toEqual({ outcome: "absent" });
   expect(await authority.readPort(actor).receipt(scope)).toEqual({ outcome: "absent" });
+});
+
+it.each([
+  "first missing", "middle missing", "last missing", "duplicate", "wrong kind", "wrong actor", "wrong scope",
+  "decision missing", "healthy",
+] as const)("publication receipt reads verify the authoritative companion: %s", async mode => {
+  const data = await draft();
+  const decision = await approve(data.publication);
+  const result = await authority.publish(data.publication, actor);
+  if (result.outcome !== "committed") throw new Error(JSON.stringify(result));
+  const first = result.receipt;
+  const second = await commit(await incrementalSku(data, first.head, 1));
+  const third = await commit(await incrementalSku(data, second.head, 2));
+  const expected = mode === "first missing" ? third : mode === "middle missing" ? second : first;
+  const scope = { productId: data.productId, commandKey: expected.commandKey };
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // Model an independently imported ledger with a missing or inconsistent companion.
+    if (mode === "decision missing") {
+      await client.query("ALTER TABLE public.catalog_publication_decisions DISABLE TRIGGER catalog_publication_decisions_immutable");
+      await client.query("DELETE FROM public.catalog_publication_decisions WHERE product_id=$1 AND command_key=$2", [data.productId, decision.commandKey]);
+    } else if (mode !== "healthy") {
+      await client.query("ALTER TABLE public.catalog_operator_receipts DISABLE TRIGGER catalog_operator_receipts_immutable");
+      if (mode.endsWith("missing")) {
+        await client.query("DELETE FROM public.catalog_operator_receipts WHERE publication_id=$1", [expected.head.publicationId]);
+      } else if (mode === "duplicate") {
+        await client.query(`INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,publication_id,result)
+          SELECT kind,scope_id,command_key||':duplicate',fingerprint,actor_id,publication_id,
+            jsonb_set(result::jsonb,'{commandKey}',to_jsonb(command_key||':duplicate'))::text
+          FROM public.catalog_operator_receipts WHERE publication_id=$1`, [expected.head.publicationId]);
+      } else if (mode === "wrong kind") {
+        await client.query("UPDATE public.catalog_operator_receipts SET kind='approve' WHERE publication_id=$1", [expected.head.publicationId]);
+      } else if (mode === "wrong scope") {
+        await client.query(`UPDATE public.catalog_operator_receipts SET scope_id=$2,
+          result=jsonb_set(result::jsonb,'{productId}',to_jsonb($2::uuid))::text WHERE publication_id=$1`,
+        [expected.head.publicationId, randomUUID()]);
+      } else {
+        const secondActor = randomUUID();
+        await client.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [secondActor, `${secondActor}@example.invalid`]);
+        await client.query(`UPDATE public.catalog_operator_receipts SET actor_id=$2,
+          result=jsonb_set(result::jsonb,'{actorId}',to_jsonb($2::uuid))::text WHERE publication_id=$1`,
+        [expected.head.publicationId, secondActor]);
+      }
+    }
+    const target = createPostgresCatalogPublication({ ...dependencies(), transactions: {
+      run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION") ? Promise.resolve({ rows: [] }) : client.query(sql, values) }),
+    } });
+    const capability = (await target.authorize(null))!;
+    const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" };
+    if (mode === "decision missing") {
+      expect(await target.decision(decision, capability)).toEqual(refusal);
+      return;
+    }
+    const history = await target.reads.history(data.productId, null);
+    if (mode === "healthy") {
+      expect(history).toMatchObject({ outcome: "page", nextCursor: null, receipts: [{ head: third.head }, { head: second.head }, { head: first.head }] });
+      expect(await target.receipt(scope, capability)).toEqual({ outcome: "found", receipt: expected });
+      expect(await target.receipt({ ...scope, commandKey: "never submitted" }, capability)).toEqual({ outcome: "absent" });
+    } else {
+      expect(history).toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+      expect(await target.receipt(scope, capability)).toEqual(refusal);
+      if (expected === first) expect(await target.publish(data.publication, capability)).toEqual(refusal);
+    }
+  } finally {
+    await client.query("ROLLBACK");
+    client.release();
+  }
 });
 
 it("refuses a full-fact head with the correct revision and a different document digest", async () => {

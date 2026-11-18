@@ -25,6 +25,7 @@ CREATE TABLE public.catalog_publications (
  previous_id uuid,
  draft_id uuid NOT NULL,
  draft_revision integer NOT NULL CHECK (draft_revision BETWEEN 1 AND 2147483647),
+ command_key text NOT NULL CHECK (octet_length(command_key) BETWEEN 1 AND 200),
  candidate_ref text NOT NULL UNIQUE,
  candidate_digest text NOT NULL CHECK (length(candidate_digest) = 64 AND translate(candidate_digest,'abcdef0123456789','') = ''),
  document_revision_id uuid NOT NULL,
@@ -32,7 +33,7 @@ CREATE TABLE public.catalog_publications (
  digest text NOT NULL CHECK (length(digest) = 64 AND translate(digest,'abcdef0123456789','') = ''),
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  committed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- UNIQUE(product_id,revision), UNIQUE(product_id,id), UNIQUE(product_id,id,revision),
+ UNIQUE(product_id,revision), UNIQUE(product_id,id), UNIQUE(product_id,id,revision), UNIQUE(product_id,command_key),
  FOREIGN KEY(product_id,previous_id) REFERENCES public.catalog_publications(product_id,id),
  FOREIGN KEY(product_id,draft_id,draft_revision) REFERENCES public.catalog_draft_revisions(product_id,draft_id,revision),
  FOREIGN KEY(product_id,document_revision_id) REFERENCES public.catalog_product_document_revisions(product_id,id)
@@ -92,6 +93,7 @@ CREATE TABLE public.catalog_publication_pointer_capabilities (
 );
 CREATE INDEX catalog_publications_product_revision_idx ON public.catalog_publications(product_id,revision DESC);
 CREATE INDEX catalog_sku_revisions_sku_revision_idx ON public.catalog_sku_revisions(sku_id,revision DESC);
+CREATE INDEX catalog_operator_receipts_publication_idx ON public.catalog_operator_receipts(publication_id);
 CREATE INDEX catalog_publication_decisions_reference_idx ON public.catalog_publication_decisions(candidate_reference_digest,decided_at,id);
 CREATE FUNCTION public.catalog_publication_immutable() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$

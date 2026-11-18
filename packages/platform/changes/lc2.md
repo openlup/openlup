@@ -27,7 +27,9 @@ document. An explicit null presentation clears an existing presentation, and
 moving to an off-head document requires its matching registration. Publication
 and decision command keys preserve whitespace and accept up to 200 UTF-8 bytes.
 A decision reason may be null. A supplied reason preserves whitespace, requires
-text beyond ASCII spaces, and accepts up to 1,000 UTF-8 bytes.
+text beyond ASCII spaces, and accepts up to 1,000 UTF-8 bytes. History,
+replay and recovery verify the kinded receipt against its immutable publication
+or decision. A ledger row with an inconsistent or missing companion fails closed.
 
 Migration: install the native forward and upgrade readers before composing the
 new version 2 publication API. Existing publication ports retain their version 1
