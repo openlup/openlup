@@ -267,8 +267,10 @@ it("LC5-D-016 LC5-D-068 LC5-D-069 LC5-A-033 transfer governed facts, nullable bi
   await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [legacySubscription,customer]);
   await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,3,0,617,'XXX')", [legacySubscription,sku.facts.id]);
   await held.owner.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [subscription,acceptance]);
-  await held.owner.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',1851)", [order,customer]);
-  await held.owner.query("INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,$3,1,3,617,1851)", [line,order,sku.facts.id]);
+  await held.owner.query(`WITH created AS (
+    INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',1851) RETURNING id
+  ) INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+    SELECT $3,id,$4,1,3,617,1851 FROM created`, [order,customer,line,sku.facts.id]);
   await held.owner.query("UPDATE public.commerce_orders SET catalog_acceptance=$2::jsonb WHERE id=$1", [order,acceptance]);
   const pricing = { action: "update_bundle", linePricing: [{ sku: sku.facts.code, quantity: 3, unitAmountMinor: 617, isAddon: false, quoteLine: {} }] };
   await held.owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle','synthetic:accepted-edit',$2::jsonb,$3::jsonb)", [subscription,JSON.stringify(pricing),acceptance]);
