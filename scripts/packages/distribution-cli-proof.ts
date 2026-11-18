@@ -86,6 +86,7 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
     const created = "owned/market.config.ts";
     assert(!Object.hasOwn(from.files, created) && !Object.hasOwn(to.files, created), "migration_owned_snapshot_overlap");
     to.files[created] = readFileSync(join(target, created), "utf8");
+    // The exact store.config.ts replacement includes the checkout recovery reminder schedule.
     for (const path of ["AGENTS.md", "owned/renewal.config.ts", "owned/store.config.ts", "owned/acquisition-policy.ts",
       "owned/copy.ts", "owned/editor-copy.ts", "owned/quote-copy.ts", "owned/renewal-copy.ts", "owned/demo-seed.ts"]) {
       writeFileSync(join(app, path), readFileSync(join(target, path)));

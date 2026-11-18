@@ -185,12 +185,34 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
   // The full upgraded-starter suite runs in the pre-publication proof (#783);
   // here, run only the owned-contract tests so the root shard stays bounded.
-  const contracts = ["test/locales.test.ts", "test/renewal.test.ts", "test/policy.test.ts", "test/subscription-creation.test.ts"];
+  const contracts = [
+    "test/locales.test.ts",
+    "test/renewal.test.ts",
+    "test/policy.test.ts",
+    "test/subscription-creation.test.ts",
+    "test/installation.test.ts",
+  ];
   const check = spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...contracts], { cwd: app, encoding: "utf8", timeout: 60_000 });
   expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
-  const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval",
-    'const { createApplication } = await import("./host/server.ts"); const server = createApplication(); server.listen(0, "127.0.0.1", () => server.close());'],
-  { cwd: app, encoding: "utf8", timeout: 10_000 });
+  const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import { configurations } from "./owned/store.config.ts";
+    import { createApplication } from "./host/server.ts";
+
+    for (const config of Object.values(configurations)) {
+      assert.deepEqual(config.checkoutRecoveryReminders, {
+        revision: "starter-1",
+        abandonedCart: [
+          { stage: "first", afterHours: 1 },
+          { stage: "gentle", afterHours: 24 },
+          { stage: "last", afterHours: 72 },
+        ],
+        checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }],
+      }, config.id);
+    }
+    const server = createApplication();
+    server.listen(0, "127.0.0.1", () => server.close());
+  `], { cwd: app, encoding: "utf8", timeout: 10_000 });
   expect(startup.status, startup.error?.message ?? startup.stdout + startup.stderr).toBe(0);
   // A later owned edit also survives replay of the same snapshots.
   edit("owned/store.config.ts", customized ? "#663d57" : "#3d6657", "#123456");

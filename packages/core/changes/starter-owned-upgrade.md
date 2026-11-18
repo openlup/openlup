@@ -18,7 +18,7 @@ with the demonstration defaults.
 | --- | --- |
 | `AGENTS.md` | Merge the target's task routes, representation bounds and explicit inventory-policy installation guidance into local contributor instructions. |
 | `owned/renewal.config.ts` | Add account actions and pause choices; use the configured default locale for notices. |
-| `owned/store.config.ts` | Add subscription creation and installed inventory policy to every configuration; compose the locale registry. |
+| `owned/store.config.ts` | Add subscription creation, the installed inventory policy and the checkout recovery reminder schedule to every configuration. Compose the locale registry. |
 | `owned/acquisition-policy.ts` | Optionally adopt the local address callbacks; the existing callback-free policy remains valid. |
 | `owned/copy.ts` | Keep all required application copy keys for each configured locale. |
 | `owned/editor-copy.ts` | Keep all editor keys for each configured locale. |
@@ -112,6 +112,51 @@ the owned policy. Editing a file or applying file snapshots installs no policy.
 For later changes, deliberately install the selected revision and days again
 with installation authority, verify the readback, then restart.
 
+#### Install the checkout recovery reminder schedule explicitly
+
+In every configuration in a customized `owned/store.config.ts`, preserve local
+values and add `checkoutRecoveryReminders` with exactly `revision`,
+`abandonedCart` and `checkoutRecovery`. The target uses the historical waves.
+
+```text
+checkoutRecoveryReminders: {
+  revision: 'starter-1',
+  abandonedCart: [
+    { stage: 'first', afterHours: 1 },
+    { stage: 'gentle', afterHours: 24 },
+    { stage: 'last', afterHours: 72 },
+  ],
+  checkoutRecovery: [
+    { stage: 'first', afterHours: 1 },
+    { stage: 'last', afterHours: 20 },
+  ],
+}
+```
+
+Use a nonblank revision and a nonempty array for each reminder kind. Each wave
+has exactly `stage` and `afterHours`. Use strictly increasing integer hours
+from 1 through 2147483647, with unique stages and `last` as the final stage in
+each array. `abandonedCart` allows `first`, `gentle` and `last`.
+`checkoutRecovery` allows `first` and `last`. Startup and installation refuse
+a missing or invalid schedule with `checkout_recovery_reminder_schedule_invalid`.
+
+Apply the target platform package's complete native catalogue, including
+`20261123140000_checkout_recovery_reminder_schedule.sql`. Then run the
+explicit installation step for the selected configuration. On a dedicated
+write-capable installation connection, call
+`installCheckoutRecoveryReminderSchedule(connection, config.checkoutRecoveryReminders)`
+from `@openlup/platform/commerce/server`. Use
+`readCheckoutRecoveryReminderSchedule(connection)` to confirm the revision and
+both wave arrays before restarting. In the disposable demonstration,
+`./lifecycle up` runs the installer before starting the HTTP host.
+
+Database-backed startup reads the installed schedule and refuses with
+`starter_installed_policy_drift` if the revision, stages or hours differ from
+the owned configuration. An absent setting uses revision `default`, which
+differs from `starter-1` even when the waves match. The managed
+`host/paid-mail.ts` selects the recovery subject by stage and retains the
+hour-based rule for legacy payloads that have no stage.
+
 #### Locale registry and copy
 
 The new `owned/market.config.ts` exports `market` with
@@ -188,6 +233,11 @@ tests. If you keep the callback-free policy, narrow action lists, omit
 `retention.pausePreset` or rewrite copy, adapt or replace the affected fixtures
 and assertions in your application. Startup validation defines the configuration
 contract.
+
+`test/installation.test.ts` checks that installation writes the schedule from
+the owned configuration and accepts valid customized waves.
+`test/checkout-recovery-stage.test.ts` checks subject selection for explicit
+stages and the historical hour rule for legacy payloads.
 
 After reconciliation, apply the managed snapshots, install the target's exact
 dependencies and run typechecking, build, application tests and startup checks.
