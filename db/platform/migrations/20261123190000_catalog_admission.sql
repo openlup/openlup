@@ -388,8 +388,7 @@ BEGIN
  IF scope='[]'::jsonb AND NOT previously_governed THEN RETURN NULL; END IF;
  offer:=p_binding-'quoteSnapshot'||jsonb_build_object('scopeSkuIds',scope,'scopeDemand',governed,'retainedPriceContextVersions',coalesce(p_evidence->'retainedPriceContextVersions','[]'::jsonb));
  IF p_purpose='order' THEN
-  offer:=offer||jsonb_build_object('offerVersion',public.catalog_price_setup_order_offer_version(p_binding->'quoteSnapshot'),
-    'currency',p_binding#>>'{quoteSnapshot,quote,currency}');
+  offer:=offer||jsonb_build_object('offerVersion',public.catalog_price_setup_order_offer_version(p_binding->'quoteSnapshot'));
  END IF;
  PERFORM public.catalog_admission_assert_current(p_evidence->'heads',p_evidence->'skuRevisions',p_mode,
   offer||jsonb_build_object('clearSelection',scope='[]'::jsonb),p_evidence->'priceContextVersions',p_purpose);
@@ -499,7 +498,7 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog
 AS $$
 DECLARE
-  v_catalog_evidence jsonb; v_catalog_acceptance jsonb; v_catalog_price_entry uuid;
+  v_catalog_evidence jsonb; v_catalog_acceptance jsonb; v_catalog_price_entry uuid; v_public_quote jsonb;
   v_existing public.commerce_order_draft_receipts%ROWTYPE;
   v_fingerprint text;
   v_order_id uuid;
@@ -559,8 +558,15 @@ BEGIN
 
   v_catalog_evidence:=p_quote_snapshot->'catalogAdmission';
   v_catalog_acceptance:=public.catalog_admission_accept(p_order_draft_snapshot->'lines',v_catalog_evidence,
-    coalesce(p_order_draft_snapshot#>>'{context,mode}','one_time'),jsonb_build_object('quoteSnapshot',p_quote_snapshot),'order');
-  IF v_catalog_acceptance IS NULL THEN v_catalog_evidence:=NULL; END IF;
+    coalesce(p_order_draft_snapshot#>>'{context,mode}','one_time'),jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
+  v_public_quote:=p_quote_snapshot;
+  IF v_catalog_acceptance IS NULL THEN
+   v_catalog_evidence:=NULL;
+  ELSE
+   v_public_quote:=jsonb_set(p_quote_snapshot-'catalogAdmission','{quote,lines}',
+     (SELECT jsonb_agg(l-'catalogFacts' ORDER BY ord)
+      FROM jsonb_array_elements(p_quote_snapshot#>'{quote,lines}') WITH ORDINALITY x(l,ord)));
+  END IF;
   FOR v_line IN
     SELECT value FROM jsonb_array_elements(p_order_draft_snapshot->'lines')
   LOOP
@@ -647,7 +653,7 @@ BEGIN
       'status', 'draft',
       'paymentStatus', 'not_started',
       'idempotencyKey', p_idempotency_key,
-      'quoteSnapshot', CASE WHEN v_catalog_acceptance IS NULL THEN p_quote_snapshot ELSE p_quote_snapshot-'catalogAdmission' END,
+      'quoteSnapshot', v_public_quote,
       'replayed', false
     )
   );
@@ -659,7 +665,7 @@ BEGIN
     jsonb_build_object(
       'orderId', 'order_' || v_order_id::text,
       'orderUuid', v_order_id,
-      'quoteSnapshot', CASE WHEN v_catalog_acceptance IS NULL THEN p_quote_snapshot ELSE p_quote_snapshot-'catalogAdmission' END,
+      'quoteSnapshot', v_public_quote,
       'orderDraftSnapshot', p_order_draft_snapshot
     ),
     jsonb_build_object('boundary', 'commerce_create_order_draft_with_outbox')
@@ -776,7 +782,7 @@ BEGIN
 
   IF v_receipt.idempotency_key IS NULL THEN
     PERFORM public.catalog_admission_accept(p_order_draft_snapshot->'lines',p_quote_snapshot->'catalogAdmission',
-      coalesce(p_order_draft_snapshot#>>'{context,mode}','one_time'),jsonb_build_object('quoteSnapshot',p_quote_snapshot),'order');
+      coalesce(p_order_draft_snapshot#>>'{context,mode}','one_time'),jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
   END IF;
   v_response := public.commerce_create_order_draft_with_outbox(
     p_idempotency_key, p_quote_snapshot, p_order_draft_snapshot, p_client_id

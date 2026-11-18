@@ -1470,7 +1470,7 @@ it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path 
   expect(await snapshot()).toEqual(before);
 });
 
-it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "unpaid", "abandoned"] as const)
+it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned"] as const)
   .map(result => ({ offerVersion,result }))))("LC6-D-041 and LC6-D-146 $offerVersion $result through native acquisition", async ({ offerVersion,result }) => {
   const f = await fixture(packs[0]), key = randomUUID(), amount = money(1234), sizeConstraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
   const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
@@ -1504,7 +1504,7 @@ it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "m
   const writer = createPostgresPurchaseRenewalWriter(pool);
   await writer.register(order,{ settlementChannelKey: "sandbox",authorizationRef: "synthetic",unattendedChargeAuthorizedAt: f.at,payerAccountRef: null,
     methodRef: "synthetic",methodEvidenceRef: "synthetic",stockSourceKey: "synthetic",templateId: "synthetic",cadenceDays: 28,currency: "XXX",
-    lines: [{ lineOrdinal: 1,sku: f.code,quantity: 2,unitAmountMinor: 617 }],shippingAmountMinor: 0,acquisitionRef: null });
+    lines: [{ lineOrdinal: 1,sku: f.code,quantity: result === "attachment mismatch" ? 3 : 2,unitAmountMinor: 617 }],shippingAmountMinor: 0,acquisitionRef: null });
   if (result === "missing" || result === "mismatch") {
     await pool.query(`UPDATE public.commerce_orders SET metadata=${result === "missing" ? "metadata-'catalogAcquisition'" : "jsonb_set(metadata,'{catalogAcquisition,offerVersion}',to_jsonb('mismatched'::text))"} WHERE id=$1`, [order]);
     const before = await snapshot();
@@ -1515,6 +1515,12 @@ it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "m
   const next = await changedDocument(f), publisher = await pool.connect();
   try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
   const activated = await activate();
+  if (result === "attachment mismatch") {
+    const before = await snapshot();
+    await expect(writer.complete(order)).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" });
+    expect(await snapshot()).toEqual(before);
+    return;
+  }
   expect(await writer.complete(order)).toEqual({ subscriptionId: activated.subscriptionId,replayed: false });
   expect((await pool.query("SELECT s.configured_offer_version,s.composition_constraint,t.catalog_acceptance FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1", [activated.subscriptionId])).rows)
     .toEqual([{ configured_offer_version: offerVersion,composition_constraint: offerVersion === "classic" ? null : sizeConstraint,catalog_acceptance: proof }]);
@@ -1618,6 +1624,7 @@ it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout 
   const evidence = await port.captureCatalogAdmission(quote);
   expect(evidence).toMatchObject({ heads: f.admission.heads,skuRevisions: f.admission.skuRevisions,priceContextVersions: f.admission.priceContextVersions,mode,purpose: "order" });
   const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence! });
+  expect(accepted.orderDraft.quoteSnapshot.quote.lines[0]).not.toHaveProperty("catalogFacts");
   const publisher = await pool.connect(), next = await changedDocument(f);
   try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
   expect(await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client }))
@@ -1644,5 +1651,64 @@ it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].map(
     expect(replay.orderDraft).toEqual({ ...accepted.orderDraft,replayed: true });
     expect((await pool.query("SELECT count(*)::integer AS count FROM public.commerce_order_draft_receipts WHERE order_id=$1", [orderId])).rows)
       .toEqual([{ count: 1 }]);
+  },
+);
+
+it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].flatMap(promoted =>
+  [false,true].map(control => ({ mode,promoted,control }))))(
+  "LC6-D-005 and LC6-D-148 guard before first-price classification in $mode, promoted=$promoted, control=$control",
+  async ({ mode,promoted,control }) => {
+    const f = await legacyFixture(), value = payload(randomUUID(),randomUUID(),packs[0]), sku = value.skus[0], code = sku.code!,
+      draft = randomUUID(), h = await pool.connect(), buyer = await session(), publisher = await pool.connect();
+    const stop = await gate(h), buyerPid = await pid(buyer), observerPid = await pid(h), p = purchaseInput(f);
+    let restore = async () => {}, restoreGuard = async () => {};
+    try {
+      const pending = await candidate(publisher,value,draft,0,null);
+      p.draft.context.mode = mode;
+      p.draft.lines = [{ ...p.draft.lines[0],sku: code }];
+      p.quote.quote.lines = p.draft.lines;
+      delete (p.quote as Partial<typeof p.quote>).catalogAdmission;
+      if (control) restoreGuard = await hook(writerAdmissionSignature,"INTO previously_governed;","",
+        body => body.replace(sharedBoundary,""));
+      restore = await hook("public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+        "v_public_quote:=p_quote_snapshot;",stop.sql);
+      const writing = tracked(rpc(buyer,promoted ? "commerce_create_promoted_order_draft_with_outbox" : "commerce_create_order_draft_with_outbox",p.args));
+      await blocker(h,buyerPid,observerPid);
+      const before = await snapshot();
+      const first = await pending.authority.publish(pending.publication,pending.actor);
+      if (control) {
+        expect(first.outcome).toBe("committed");
+        if (!("receipt" in first)) throw new Error("first publication did not commit");
+        await publisher.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+          SELECT price_list_id,$2,'any',617,statement_timestamp()-interval '1 minute' FROM public.subscriptions WHERE id=$1`, [f.subscription,sku.id]);
+        value.product.sharedContent.catalogAction = "revise";
+        value.product.sharedContent.requestedModes = [{ skuCode: code,modes: [mode] }];
+        value.product.sharedContent.offerMemberships = [{ skuCode: code,offerVersion: "classic",admitted: true }];
+        value.publication.operations = [
+          { op: "set_offer_membership",skuCode: code,offerVersion: "classic",admitted: true },
+          { op: "set_product_lifecycle",productSlug: value.product.slug!,expectedState: "draft",state: "active",children: [] },
+          { op: "set_sku_lifecycle",skuCode: code,expectedState: "draft",state: "active" },
+          { op: "set_eligibility",skuCode: code,sellableStandalone: mode === "one_time",sellableInSubscription: mode === "subscription" },
+        ];
+        const activation = await candidate(publisher,value,draft,1,first.receipt.head);
+        expect(await activation.authority.publish(activation.publication,activation.actor)).toMatchObject({ outcome: "committed" });
+        await stop.release();
+        const accepted = await writing;
+        if (!accepted.ok) throw accepted.error;
+        expect((await buyer.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [accepted.value.orderDraft.orderId.slice(6)])).rows)
+          .toEqual([{ catalog_acceptance: null }]);
+      } else {
+        expect(first).toMatchObject({ outcome: "conflict",reason: "catalog_publication_busy" });
+        expect(await snapshot()).toEqual(before);
+        await stop.release();
+        const refused = await writing;
+        expect(refused.ok).toBe(false);
+        if (!refused.ok) expect(refused.error).toMatchObject({ code: "22023",message: "commerce_order_draft_catalog_price_changed" });
+        await buyer.query("ROLLBACK");
+        expect(await snapshot()).toEqual(before);
+      }
+    } finally {
+      await stop.release(); await buyer.query("ROLLBACK"); await restore(); await restoreGuard(); buyer.release(); publisher.release(); h.release();
+    }
   },
 );
