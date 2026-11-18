@@ -44,9 +44,9 @@ renewal terms and frozen snapshots preserve **1 through 2147483647** integer
 representation. Completed editor, native draft and renewal receipts replay before
 current limits, with ownership and fingerprint checks intact. Checkout command
 execution and saga fallback can quote before replay, so stored cadence above
-3660 can still refuse on those paths. This affects unreleased development data
-only and remains a follow-up. Fresh native renewal creation or
-starter graduation above 3660 returns `NativeRenewalCadenceError` with reason
+3660 can still refuse on those paths. At the 1.1.0 release, this affected only
+unreleased development data. It remains a follow-up. Fresh native renewal
+creation or starter graduation above 3660 returns `NativeRenewalCadenceError` with reason
 `cadence_limit_exceeded` and `maximumCadenceDays`; choose an executable cadence
 before starting a new renewal. Reading or replaying a frozen operation does not
 apply this new-admission limit.
@@ -57,12 +57,12 @@ The adapter reads the fingerprint and completed response together and returns
 that snapshot without entering the writer; conflicting retries cannot reopen
 the key.
 
-The current source candidate widens native actor and command previews and the
+1.1.0 widened native actor and command previews and the
 edit-quote CHECK to **1..3660** through
 `20261122190000_subscription_cadence_bound.sql`. The starter uses the same bound.
-This forward is unreleased; apply the matching package's complete native
-catalogue before using longer cadences. The managed chain has no corresponding
-90-day cap and receives no migration in this change.
+Apply the matching package's complete native catalogue before using longer
+cadences. The managed chain has no corresponding
+90-day cap and received no migration in this change.
 
 ## Quantity and line representation
 

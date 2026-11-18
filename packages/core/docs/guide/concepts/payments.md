@@ -78,7 +78,7 @@ Keep only explicitly redacted diagnostics. See the
 [execution contract](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/src/payments/contracts/adapter.ts)
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.
 
-The 0.42.0 source candidate adds `createPostgresProviderPaymentRail` in
+0.42.0 added `createPostgresProviderPaymentRail` in
 `@openlup/platform/payments` and `createPostgresProviderRenewalBinding` in
 `@openlup/platform/subscriptions`. With the complete native catalogue, an
 explicit card provider host composition binds committed prepare/finalize, signed

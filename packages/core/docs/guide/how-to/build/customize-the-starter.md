@@ -185,7 +185,7 @@ editing, deliberately reinstall before starting. See [reminder stages and
 hours](checkout-recovery.md#install-reminder-stages-and-hours) for the 1.2.0
 migration, runtime grant and independent checkout-window limits.
 
-In the current source candidate, keep one owned configuration entry per domain,
+In starter releases from 1.1.0 onward, keep one owned configuration entry per domain,
 such as `owned/renewal.config.ts` or `owned/quote.config.ts`, and compose it in
 `owned/store.config.ts`. Browser and host read that same input. Managed policy
 helpers hold selection and validation mechanics, with business values in owned
@@ -211,7 +211,7 @@ refuse the affected field. See [saved-address policy and defaults](../../concept
 
 ## Configure cancellation offers
 
-In the current source candidate, edit `subscriptionCare.retention` in
+In starter releases from 1.1.0 onward, edit `subscriptionCare.retention` in
 `owned/renewal.config.ts`, composed through `renewal` in `owned/store.config.ts`:
 
 ```ts
@@ -265,10 +265,10 @@ limit is introduced.
 
 ## Configure subscription offers
 
-In the current source candidate, edit `subscriptionOffers` in
+In starter releases from 1.0.0 onward, edit `subscriptionOffers` in
 `owned/store.config.ts`. The released archive above retains its original behavior;
-these additions need the matching source candidate and admission ports.
-The managed `shared/policy.ts` helper accepts sets and stepped ranges:
+these additions need the matching starter release and admission ports.
+Since 1.1.0, the managed `shared/policy.ts` helper accepts sets and stepped ranges:
 
 ```text
 { days: set(28, 56), defaultDays: 28, minimumBaseUnits: 6,
@@ -304,17 +304,17 @@ commands still require current rules, authentication, locks and quote/fact guard
 Graduation retains its own cadence and must admit the purchased lines separately.
 
 Reapply the demonstration installation and restart after changing the servicing
-minimum; runtime admission refuses installed-minimum drift. The current source
+minimum; runtime admission refuses installed-minimum drift. Since 1.1.0, the
 starter admits whole-day cadences from 1 through `MAX_CADENCE_DAYS` (3660).
 Apply the complete native catalogue, including
 `20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
-This forward is unreleased; use the matching installed package's migration guide.
+Use the matching installed package's migration guide.
 
 ## Compose shipping quotes
 
-In the current source candidate, `owned/quote-shipping.ts` owns shipping quote
+Since 1.0.0, `owned/quote-shipping.ts` owns shipping quote
 composition. The released 0.43.0 archive above retains its original managed
-composition; use the matching candidate for this hook. `host/quote-composition.ts`
+composition. Use the matching starter release for this hook. `host/quote-composition.ts`
 calls the typed factory and stays managed, as does `shared/config.ts`.
 
 The default factory wires `createQuoteShippingPromotions` to the host's promotion
@@ -349,11 +349,11 @@ does not establish zero database reads for the whole checkout request.
 
 ## Compose post-renewal policy
 
-In the current source candidate, `owned/renewal-policy.ts` is the second and last
+Since 1.0.0, `owned/renewal-policy.ts` is the second and last
 owned composition hook, beside shipping. Edit its exported `renewalPolicy`
 callback to select application policy after native renewal and retry work.
-The released 0.43.0 archive retains its original managed composition; use a
-matching candidate for this hook. `host/renewal-job.ts` and
+The released 0.43.0 archive retains its original managed composition. Use a
+matching starter release for this hook. `host/renewal-job.ts` and
 `host/scheduled-renewal.ts` stay managed.
 
 The default callback does nothing: it adds no query, pause or other business

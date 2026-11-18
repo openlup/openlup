@@ -104,11 +104,11 @@ Fresh quotes, drafts and editor results admit whole-day cadences from 1 through
 Historical transport, stored data and frozen receipts retain integer representation.
 The admission limit leaves room for date arithmetic; applications own their
 offered periods.
-Hosts must check the resulting dates for the selected operation. In the current
-source candidate, native actor and command previews and the edit-quote CHECK
-admit 1..3660 after the complete catalogue includes
-`20261122190000_subscription_cadence_bound.sql`. This forward is unreleased;
-apply the matching package's complete catalogue before using longer periods.
+Hosts must check the resulting dates for the selected operation. Since 1.1.0,
+native actor and command previews and the edit-quote CHECK admit 1..3660 after
+the complete catalogue includes
+`20261122190000_subscription_cadence_bound.sql`. Apply the matching package's
+complete catalogue before using longer periods.
 The public package and exact editors use separate writers.
 
 ## Admit account commands
@@ -220,7 +220,7 @@ requires a pause after failed renewal retries are exhausted, compose
 it does not implement this policy. A missing automatic setting is not a missing
 public command.
 
-In a source candidate containing the owned hook, replace
+In starter releases from 1.0.0 onward, replace
 `owned/renewal-policy.ts` with this complete example. Replace the synthetic
 subject IDs only after authorizing that subject through trusted application
 evidence; actor IDs alone grant no authority. The bounded selection follows the
