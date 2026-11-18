@@ -86,12 +86,13 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       : id.safeParse(previousId).success && previousRevision === Number(revisionNo) - 1), readInvalid, "dependency_unavailable");
   }
   async function retainedSkuIndex(db: PgQueryExecutor, productId: string, at: number, references: readonly CatalogSkuRevisionRef[]) {
-    const rows = await tuple(db, `SELECT id,sku_id,revision,digest,octet_length(full_facts) AS bytes,sku_code,
-      EXISTS(SELECT 1 FROM public.catalog_publications issued WHERE issued.product_id=r.product_id AND issued.id=r.publication_id AND issued.revision<=$3) AS visible,
-      EXISTS(SELECT 1 FROM public.catalog_sku_revisions changed JOIN public.catalog_publications issued
-        ON issued.product_id=changed.product_id AND issued.id=changed.publication_id
-        WHERE changed.product_id=r.product_id AND changed.sku_id=r.sku_id AND changed.revision>r.revision AND issued.revision<=$3) AS superseded
-      FROM public.catalog_sku_revisions r WHERE product_id=$1::uuid AND id=ANY($2::uuid[])`, [productId, references.map(ref => ref.revisionId), at]);
+    const rows = await tuple(db, `SELECT r.id,r.sku_id,r.revision,r.digest,octet_length(r.full_facts) AS bytes,r.sku_code,
+      issued.revision<=$3 AS visible,
+      EXISTS(SELECT 1 FROM public.catalog_sku_revisions changed JOIN public.catalog_publications newer
+        ON newer.product_id=changed.product_id AND newer.id=changed.publication_id
+        WHERE changed.product_id=r.product_id AND changed.sku_id=r.sku_id AND newer.revision>issued.revision AND newer.revision<=$3) AS superseded
+      FROM public.catalog_sku_revisions r JOIN public.catalog_publications issued ON issued.product_id=r.product_id AND issued.id=r.publication_id
+      WHERE r.product_id=$1::uuid AND r.id=ANY($2::uuid[])`, [productId, references.map(ref => ref.revisionId), at]);
     const byId = new Map(rows.map(row => [row.id, row])), codes = new Set<string>();
     require(rows.length === references.length && byId.size === rows.length, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
     for (const reference of references) {
@@ -243,7 +244,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           EXCEPT SELECT value FROM jsonb_array_elements(previous.canonical_state::jsonb->'skus')) changed
         LEFT JOIN public.catalog_sku_revisions r ON r.id=(entry->>'revisionId')::uuid AND r.publication_id=p.id AND r.product_id=p.product_id
           AND r.sku_id=(entry->>'skuId')::uuid AND r.revision=(entry->>'revision')::integer AND r.digest=entry->>'digest') AS recorded_changes,
-      to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at
+      to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at,p.canonical_state
       FROM public.catalog_publications p JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
       LEFT JOIN public.catalog_publications previous ON previous.id=p.previous_id AND previous.product_id=p.product_id
       LEFT JOIN public.catalog_product_document_revisions previous_document ON previous_document.id=previous.document_revision_id AND previous_document.product_id=previous.product_id
@@ -255,6 +256,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       && equal(result.previousHead, publications[0]!.previous_id === null ? null : { publicationId: publications[0]!.previous_id, revision: publications[0]!.previous_revision, documentDigest: publications[0]!.previous_document_digest }),
     "catalog_publication_receipt_invalid", "dependency_unavailable");
     verifyPredecessor(result.head.revision, publications[0]!.previous_id, publications[0]!.previous_revision);
+    const canonicalState = publications[0]!.canonical_state;
+    require(typeof canonicalState === "string", "catalog_publication_receipt_invalid", "dependency_unavailable");
+    const manifest = catalogPublicationManifestSchema.safeParse(JSON.parse(canonicalState as string));
+    require(manifest.success && manifest.data.product.id === result.productId && publicationJson(manifest.data) === canonicalState
+      && publicationDigest(manifest.data) === result.publicationDigest, "catalog_publication_receipt_invalid", "dependency_unavailable");
+    await retainedSkuIndex(db, result.productId, result.head.revision, manifest.data!.skus);
     publicationJson({ outcome: "found", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
     return result;
   }

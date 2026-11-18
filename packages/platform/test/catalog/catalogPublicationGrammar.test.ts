@@ -6,7 +6,7 @@ import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, catalogPublishedProductSchema, compileCatalogPublication, publicationDigest } from "../../src/catalog/publicationValidation.js";
+import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, catalogPublishedProductSchema, compileCatalogPublication, publicationDigest, publicationJson } from "../../src/catalog/publicationValidation.js";
 import { input, registry, rules } from "./fixtures/publicationInput.js";
 
 // Conservative aliases cover shared target grammar/identity predicates. Each
@@ -553,7 +553,7 @@ it("cycle1 primary identifier keeps independent scheme and packaging guards", ()
 });
 
 it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its exact null-cursor envelope"] as const)("%s", async mode => {
-  const { payload, record } = input();
+  const fixture = input(), { payload, record } = fixture;
   const productId = payload.product.id;
   const actorId = "70000000-0000-4000-8000-000000000001";
   const documentDigest = payload.product.documentRevision!.digest;
@@ -584,9 +584,26 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
       return receipt;
     });
     const size = Buffer.byteLength(JSON.stringify({ outcome: "page", receipts: legacy, limit: 100, nextCursor: null }));
-    const text = CATALOG_PUBLICATION_LIMITS.historyBytes - size;
-    history.at(-1)!.result.changes.at(-1)!.sku += "é".repeat(Math.floor(text / 2)) + "x".repeat(text % 2);
+    let text = CATALOG_PUBLICATION_LIMITS.historyBytes - size;
+    for (const change of history.at(-1)!.result.changes) {
+      const bytes = Math.min(text, 120);
+      change.sku += "é".repeat(Math.floor(bytes / 2)) + "x".repeat(bytes % 2);
+      text -= bytes;
+      if (text === 0) break;
+    }
+    expect(text).toBe(0);
   }
+  const product = { ...compileCatalogPublication(fixture).product, primarySkuId: history[0]!.result.changes[0]!.variantId };
+  const retained = new Map(history.map(({ id, revision, result }) => {
+    const skus = result.changes.map((change, index) => ({
+      skuId: change.variantId, revisionId: `80000000-0000-4000-8000-${suffix(revision * 2500 + index)}`, revision, digest: "c".repeat(64),
+    }));
+    const canonicalState = publicationJson({ schemaVersion: 2, product, skus });
+    result.publicationDigest = publicationDigest(JSON.parse(canonicalState));
+    const rows = skus.map((sku, index) => ({ id: sku.revisionId, sku_id: sku.skuId, revision, digest: sku.digest, bytes: 100,
+      sku_code: result.changes[index]!.sku, visible: true, superseded: false }));
+    return [id, { canonicalState, rows }] as const;
+  }));
   const historyQueries: unknown[][] = [];
   const target = createPostgresCatalogPublication({
     registry, rules, authorizeHuman: async () => ({ ok: false }),
@@ -606,8 +623,10 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
         return { rows: [{ revision: result.head.revision, digest: result.publicationDigest, document_digest: documentDigest,
           previous_id: result.previousHead?.publicationId ?? null, previous_revision: result.previousHead?.revision ?? null,
           previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt,
-          command_key: result.commandKey, actor_id: result.actorId, receipt_count: 1, recorded_changes: result.changes }] };
+          command_key: result.commandKey, actor_id: result.actorId, receipt_count: 1, recorded_changes: result.changes,
+          canonical_state: retained.get(stored.id)!.canonicalState }] };
       }
+      if (sql.includes("AS superseded")) return { rows: retained.get(headAt(Number(params?.[2])).publicationId)!.rows };
       throw new Error("Unexpected history query");
     } }) },
     readiness: async () => { throw new Error("Unexpected readiness call"); },

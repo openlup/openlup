@@ -1026,11 +1026,11 @@ it.each([
   for (const changed of [{ canonical_state: "{}" }, { digest: "a".repeat(64) }, { product_id: randomUUID() }, { document_id: randomUUID() },
     { document_digest: "a".repeat(64) }, { canonical_text: "{}" }, { revision: 0 }])
     faults.push({ match: manifestQuery, mutate: rows => Object.assign(rows[0], changed) });
-  for (const match of ["SELECT id,sku_id,revision,digest,octet_length", "SELECT id,full_facts"]) {
+  for (const match of ["SELECT r.id,r.sku_id,r.revision,r.digest,octet_length", "SELECT id,full_facts"]) {
     faults.push({ match, mutate: rows => { rows.pop(); } }, { match, mutate: rows => { rows.push(rows[0]); } });
   }
   for (const changed of [{ bytes: 0 }, { bytes: 2_097_153 }, { sku_id: randomUUID() }, { digest: "b".repeat(64) }, { revision: 0 }])
-    faults.push({ match: "SELECT id,sku_id,revision,digest,octet_length", mutate: rows => Object.assign(rows[0], changed) });
+    faults.push({ match: "SELECT r.id,r.sku_id,r.revision,r.digest,octet_length", mutate: rows => Object.assign(rows[0], changed) });
   for (const full_facts of ["{}", "null", "{", "[]"])
     faults.push({ match: "SELECT id,full_facts", mutate: rows => { rows[0].full_facts = full_facts; } });
   for (const fault of faults) {
@@ -3815,14 +3815,22 @@ it.each(["fresh decision", "publish", "wrong receipt fingerprint", "wrong head o
     }
   });
 
-it.each(["stale head", "future SKU revision", "duplicate code outside page", "wrong observation status", "duplicate observation"] as const)(
+it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplicate code outside page",
+  "wrong observation status", "duplicate observation", "duplicate manifest SKU"] as const)(
   "publication retained reads distinguish an internally consistent but false state: %s", async mode => {
     const data = await draft(), first = await commit(data.publication);
     const payload = structuredClone(data.payload);
     payload.product.sharedContent.catalogAction = "revise";
     payload.publication.kind = "compensation";
     payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
-    const second = await commit(mode === "stale head" ? await save(payload, data.draftId, 1, first.head) : await incrementalSku(data, first.head, 1));
+    if (mode === "superseded SKU revision") {
+      const sku = payload.skus[0];
+      sku.logisticsRef = "example:new-logistics";
+      payload.publication.operations = [{ op: "set_sku_metadata", skuCode: sku.code!, logisticsRef: sku.logisticsRef }];
+    }
+    const command = mode === "stale head" || mode === "superseded SKU revision" ? await save(payload, data.draftId, 1, first.head)
+      : await incrementalSku(data, first.head, 1);
+    const second = await commit(command);
     const page = await authority.readbackV2(second.head);
     if (page.outcome !== "page") throw new Error(JSON.stringify(page));
     const client = await db.connect();
@@ -3832,10 +3840,27 @@ it.each(["stale head", "future SKU revision", "duplicate code outside page", "wr
         "SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [publicationId])).rows[0].canonical_state);
       const writeState = async (publicationId: string, state: unknown) => {
         const canonical = canonicalCatalogDraftJson(state);
+        const digest = createHash("sha256").update(canonical).digest("hex");
         await client.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
         await client.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
-          [publicationId, canonical, createHash("sha256").update(canonical).digest("hex")]);
+          [publicationId, canonical, digest]);
+        return digest;
       };
+      const writeReceipt = async (receipt: typeof first) => {
+        await client.query("ALTER TABLE public.catalog_operator_receipts DISABLE TRIGGER catalog_operator_receipts_immutable");
+        await client.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE publication_id=$1",
+          [receipt.head.publicationId, canonicalCatalogDraftJson(receipt)]);
+      };
+      let recordedChanges: typeof first.changes = [];
+      const target = createPostgresCatalogPublication({ ...dependencies(), acceptedSource: async (_db, _context, binding) => binding,
+        transactions: { run: work => work({ async query(sql, values) {
+          if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
+          const result = await client.query(sql, values);
+          if (sql.startsWith("SELECT p.revision,p.digest,d.digest"))
+            recordedChanges = result.rows[0]?.recorded_changes ?? [];
+          return result;
+        } }) },
+      });
       let bound = page.items[0];
       if (mode === "stale head") {
         await client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1",
@@ -3844,37 +3869,51 @@ it.each(["stale head", "future SKU revision", "duplicate code outside page", "wr
         const older = await stored(first.head.publicationId), newer = await stored(second.head.publicationId);
         bound = page.items.find(item => item.facts.id !== data.skuId)!;
         await writeState(first.head.publicationId, { ...older, skus: newer.skus });
+      } else if (mode === "superseded SKU revision") {
+        const older = await stored(first.head.publicationId), newer = await stored(second.head.publicationId);
+        const oldSku = older.skus[0];
+        await client.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+        await client.query("UPDATE public.catalog_sku_revisions SET revision=3 WHERE id=$1", [oldSku.revisionId]);
+        oldSku.revision = 3;
+        bound = { ...bound, reference: oldSku };
+        await writeState(first.head.publicationId, older);
+        const publicationDigest = await writeState(second.head.publicationId, { ...newer, skus: [oldSku] });
+        await writeReceipt({ ...second, publicationDigest, changes: [] });
       } else if (mode === "duplicate code outside page") {
-        const [outside, inside] = page.items;
+        const outside = page.items.find(item => item.facts.id !== data.skuId)!;
+        const inside = page.items.find(item => item.facts.id === data.skuId)!;
         bound = inside;
         const full = canonicalCatalogDraftJson({ ...outside.facts, code: inside.facts.code });
         const digest = createHash("sha256").update(full).digest("hex");
         await client.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
-        const row = (await client.query("SELECT to_jsonb(r) AS value FROM public.catalog_sku_revisions r WHERE id=$1",
-          [outside.reference.revisionId])).rows[0].value;
-        await client.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3 WHERE id=$1",
-          [outside.reference.revisionId, full, digest]);
-        if ("sku_code" in row) await client.query("UPDATE public.catalog_sku_revisions SET sku_code=$2 WHERE id=$1",
-          [outside.reference.revisionId, inside.facts.code]);
+        await client.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3,sku_code=$4 WHERE id=$1",
+          [outside.reference.revisionId, full, digest, inside.facts.code]);
         const state = await stored(second.head.publicationId);
-        state.skus[0].digest = digest;
-        await writeState(second.head.publicationId, state);
+        state.skus.find((sku: { skuId: string }) => sku.skuId === outside.facts.id).digest = digest;
+        const publicationDigest = await writeState(second.head.publicationId, state);
+        await writeReceipt({ ...second, publicationDigest, changes: second.changes.map(change => ({ ...change, sku: inside.facts.code })) });
+      } else if (mode === "duplicate manifest SKU") {
+        const state = await stored(first.head.publicationId), original = state.skus[0], duplicate = randomUUID();
+        await client.query(`INSERT INTO public.catalog_sku_revisions(id,sku_id,sku_code,product_id,revision,publication_id,digest,full_facts)
+          SELECT $1,sku_id,sku_code,product_id,2,publication_id,digest,full_facts FROM public.catalog_sku_revisions WHERE id=$2`,
+        [duplicate, original.revisionId]);
+        state.skus.push({ ...original, revisionId: duplicate, revision: 2 });
+        const publicationDigest = await writeState(first.head.publicationId, state);
+        const capability = (await target.authorize(null))!;
+        await target.receipt({ productId: data.productId, commandKey: first.commandKey }, capability);
+        expect(recordedChanges.map(change => change.variantRevision).sort()).toEqual([1, 2]);
+        await writeReceipt({ ...first, publicationDigest, changes: recordedChanges });
       } else {
         const receipt = { ...first, changes: mode === "wrong observation status" ? [{ ...first.changes[0], state: "active" }]
           : [...first.changes, first.changes[0]] };
-        await client.query("ALTER TABLE public.catalog_operator_receipts DISABLE TRIGGER catalog_operator_receipts_immutable");
-        await client.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE publication_id=$1",
-          [first.head.publicationId, canonicalCatalogDraftJson(receipt)]);
+        await writeReceipt(receipt);
       }
-      const target = createPostgresCatalogPublication({ ...dependencies(), acceptedSource: async (_db, _context, binding) => binding,
-        transactions: { run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION") ? Promise.resolve({ rows: [] }) : client.query(sql, values) }) },
-      });
       const legacy = { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
       if (mode === "stale head") {
         expect(await target.reads.current(data.productId)).toEqual(legacy);
-      } else if (mode === "future SKU revision" || mode === "duplicate code outside page") {
+      } else if (mode === "future SKU revision" || mode === "superseded SKU revision" || mode === "duplicate code outside page") {
         const head = mode === "future SKU revision" ? first.head : second.head;
-        const cursor = mode === "future SKU revision" ? null : Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts",
+        const cursor = mode !== "duplicate code outside page" ? null : Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts",
           productId: data.productId, highWater: head.revision, before: 1 })).toString("base64url");
         const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
         expect(await target.readbackV2(head, cursor)).toEqual(refusal);
@@ -3882,6 +3921,12 @@ it.each(["stale head", "future SKU revision", "duplicate code outside page", "wr
         const binding = { kind: "account", sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId, skuId: bound.facts.id,
           skuRevisionId: bound.reference.revisionId, publicationId: head.publicationId, documentRevisionId: page.product.document!.id } as const;
         expect(await target.resolveRetained(binding, target.authorizeReadScope(null))).toEqual(refusal);
+        if (mode !== "future SKU revision") {
+          const capability = (await target.authorize(null))!;
+          expect(await target.receipt({ productId: data.productId, commandKey: second.commandKey }, capability)).toEqual(refusal);
+          expect(await target.publish(command, capability)).toEqual(refusal);
+          expect(await target.reads.history(data.productId, null)).toEqual(legacy);
+        }
       } else {
         const capability = (await target.authorize(null))!;
         const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" };

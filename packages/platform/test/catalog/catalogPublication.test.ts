@@ -972,7 +972,7 @@ it.each(["continuation", "terminal"] as const)("returns a full-fact page at the 
         canonical_state: canonicalState, digest: digest(canonicalState), document_id: ref.id, document_digest: ref.digest,
         revision_no: ref.revisionNo, schema_id: ref.schemaId, document_ref: ref.documentRef, source_ref: ref.sourceRef, canonical_text: document.canonicalText }] };
       const ids = params?.[1] as string[];
-      if (sql.startsWith("SELECT id,sku_id,revision,digest,octet_length")) return { rows: stored.filter(row => ids.includes(row.id)) };
+      if (sql.startsWith("SELECT r.id,r.sku_id,r.revision,r.digest,octet_length")) return { rows: stored.filter(row => ids.includes(row.id)) };
       if (sql.startsWith("SELECT id,full_facts")) {
         fetched.push(ids);
         return { rows: stored.filter(row => ids.includes(row.id)) };
