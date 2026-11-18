@@ -1,3 +1,4 @@
+import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -130,4 +131,11 @@ test('reordering configured locales preserves explicit routes and uses the chose
   }
   assert.equal(resolveLocale('unknown', reordered), reordered.defaultLocale);
   assert.deepEqual(resolveRoute('/unknown', reordered), { key: 'notFound', locale: reordered.defaultLocale });
+});
+
+test('R: a recovery state removed from every translation refuses against the independent inventory', () => {
+  const config = structuredClone(original);
+  if (!config.recovery) config.recovery = structuredClone(demoRecoveryConfiguration);
+  Reflect.deleteProperty(config.recovery.states, 'support');
+  assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: recovery.states.support (${firstLocale})` });
 });

@@ -2,6 +2,10 @@ import { assertLocalized, configuredLocales, type Locale, type Localized } from 
 
 export type RecoveryState = 'login_required' | 'unavailable' | 'method_unavailable'
   | 'awaiting_confirmation' | 'authorized_retry' | 'recovered' | 'exhausted' | 'support';
+// Independent required-key inventory: validation never derives keys from a translation registry.
+const RECOVERY_STATES: readonly RecoveryState[] = ['login_required', 'unavailable', 'method_unavailable',
+  'awaiting_confirmation', 'authorized_retry', 'recovered', 'exhausted', 'support'];
+const RECOVERY_MESSAGE_KEYS = ['subject', 'body', 'expiryLabel'] as const;
 export interface RecoveryConfiguration {
   states: Record<RecoveryState, Localized>;
   message: { subject: Localized; body: Localized; expiryLabel: Localized };
@@ -24,15 +28,16 @@ export const demoRecoveryConfiguration: RecoveryConfiguration = {
   },
 };
 export function assertRecoveryConfiguration(config: RecoveryConfiguration | undefined, locales: readonly Locale[] = configuredLocales): void {
-  if (config === undefined) return;
-  if (!config?.states || !config.message) throw new Error('starter_recovery_configuration_invalid');
+  // The default recovery copy is validated against the same inventory.
+  const value = config ?? demoRecoveryConfiguration;
+  if (!value?.states || !value.message) throw new Error('starter_recovery_configuration_invalid');
+  const inventory = { states: RECOVERY_STATES, message: RECOVERY_MESSAGE_KEYS } as const;
   for (const section of ['states', 'message'] as const) {
-    for (const key of Object.keys(demoRecoveryConfiguration[section])) {
-      assertLocalized((config[section] as Record<string, Localized>)[key], locales, `recovery.${section}.${key}`);
+    for (const key of inventory[section]) {
+      assertLocalized((value[section] as Record<string, Localized>)[key], locales, `recovery.${section}.${key}`);
     }
-  }
-  if (Object.keys(config.states).sort().join() !== Object.keys(demoRecoveryConfiguration.states).sort().join()
-    || Object.keys(config.message).sort().join() !== Object.keys(demoRecoveryConfiguration.message).sort().join()) {
-    throw new Error('starter_recovery_configuration_invalid');
+    if (Object.keys(value[section]).sort().join() !== [...inventory[section]].sort().join()) {
+      throw new Error('starter_recovery_configuration_invalid');
+    }
   }
 }
