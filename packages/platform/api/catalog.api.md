@@ -1104,6 +1104,7 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
 
 ```ts
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
+import type { CatalogPublishedProduct } from "./contracts/publication.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
@@ -1136,6 +1137,11 @@ export interface CatalogCandidateDeps {
     publicationRules?: CatalogPublicationRules;
     /** @experimental Reads the exact retained snapshot at the requested head. */
     readPublicationState?: (head: CatalogHeadRef) => Promise<Pick<CatalogPublicationCompileInput, "product" | "skus" | "documents" | "retainedSources"> | null>;
+    /** @experimental Checks proposed routes against current, independently owned presentations. */
+    presentationReadiness?: (productId: string, presentation: NonNullable<CatalogPublishedProduct["presentation"]>) => Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    }>;
     /** @experimental Supplies current evidence for an explicit enabling phase. */
     assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef) => Promise<{
         ready: boolean;
@@ -4438,6 +4444,11 @@ export interface CatalogPublicationDependencies<Context> {
         reasons: readonly string[];
     }>;
     globalReadiness?(db: PgQueryExecutor): Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    }>;
+    /** @experimental Transaction-local route admission immediately before each presentation write. */
+    presentationReadiness?(db: PgQueryExecutor, productId: string, presentation: NonNullable<CatalogPublishedProduct["presentation"]>): Promise<{
         ready: boolean;
         reasons: readonly string[];
     }>;

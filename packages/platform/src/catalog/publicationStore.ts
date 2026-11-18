@@ -257,6 +257,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     await db.query("SELECT id FROM public.catalog_skus WHERE product_id=$1::uuid ORDER BY id FOR NO KEY UPDATE", [prepared.record.productId]);
     return { retained, activationCodes };
   }
+  function checkReadinessVerdict(result: unknown, reason: string) {
+    const verdict = publicationReadinessVerdict.safeParse(result);
+    require(verdict.success, "catalog_publication_readiness_invalid", "dependency_unavailable");
+    require(verdict.data?.ready === true, reason);
+  }
   async function checkReadiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[] }, payload: CatalogDraftPayloadV3, activation: boolean) {
     const operations = payload.publication.operations;
     const hasPresentation = operations.some(operation => operation.op === "set_product_presentation");
@@ -267,10 +272,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const priced = state.skus.filter(sku => operations.some(operation => operation.op === "set_eligibility" && operation.skuCode === sku.code
       && (operation.sellableStandalone || operation.sellableInSubscription)) || structural.includes(sku) && sku.status === "active"
       && (sku.sellableStandalone || sku.sellableInSubscription) && sku.memberships.some(row => row.admitted));
-    const check = (result: { ready: boolean; reasons: readonly string[] }, reason: string) => {
-      require(publicationReadinessVerdict.safeParse(result).success, "catalog_publication_readiness_invalid", "dependency_unavailable");
-      require(result.ready, reason);
-    };
+
     for (const [skus, requirePrice] of [[structural, false], [priced, true]] as const) {
       const reason = requirePrice ? "catalog_publication_v3_activation_readiness_failed" : "catalog_publication_v3_structural_readiness_failed";
       for (const sku of skus) {
@@ -279,11 +281,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(rows.length === 1 && reasons.success, "catalog_publication_readiness_invalid", "dependency_unavailable");
         require(reasons.data?.length === 0, reason);
       }
-      if (skus.length || !requirePrice && hasPresentation) check(await deps.readiness(db, { product: state.product, skus: [...skus] }, requirePrice), reason);
+      if (skus.length || !requirePrice && hasPresentation) checkReadinessVerdict(await deps.readiness(db, { product: state.product, skus: [...skus] }, requirePrice), reason);
     }
     if (activation) {
       require(deps.globalReadiness, "catalog_publication_readiness_unavailable", "dependency_unavailable");
-      check(await deps.globalReadiness!(db), "catalog_publication_v3_activation_readiness_failed");
+      checkReadinessVerdict(await deps.globalReadiness!(db), "catalog_publication_v3_activation_readiness_failed");
     }
   }
   async function decision(input: CatalogDecisionCommandV2, capability: VerifiedCatalogPublisher) {
@@ -493,7 +495,13 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const sku = state.skus.find(sku => sku.code === operation.skuCode)!;
         await db.query("UPDATE public.catalog_products SET primary_sku_id=$2::uuid,publication_facts=jsonb_set(publication_facts,'{primarySkuId}',to_jsonb($2::text)) WHERE id=$1", [product.id, sku.id]);
       } else if (operation.op === "set_product_status") await db.query("UPDATE public.catalog_products SET status=$2,updated_at=transaction_timestamp(),publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE id=$1", [product.id, operation.status]);
-      else if (operation.op === "set_product_presentation") await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{presentation}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(operation.presentation)]);
+      else if (operation.op === "set_product_presentation") {
+        if (operation.presentation !== null) {
+          require(deps.presentationReadiness, "catalog_publication_presentation_unavailable", "dependency_unavailable");
+          checkReadinessVerdict(await deps.presentationReadiness!(db, product.id, operation.presentation), "catalog_publication_v3_structural_readiness_failed");
+        }
+        await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{presentation}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(operation.presentation)]);
+      }
       else if (operation.op === "set_sku_status") await db.query(`UPDATE public.catalog_skus SET status=$2,updated_at=transaction_timestamp(),
         publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE product_id=$1 AND sku=$3`, [product.id, operation.status, operation.skuCode]);
       else if (operation.op === "set_eligibility") await db.query(`UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3,updated_at=transaction_timestamp(),

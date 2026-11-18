@@ -159,6 +159,7 @@ function publicationAuthority(owner: Pool) {
     rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
       return document as ReturnType<import("@openlup/platform/catalog").CatalogPublicationRules["identifyDocument"]>;
     }, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
+    presentationReadiness: async () => ({ ready: true, reasons: [] }),
     readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false });
 }
 async function seedPublicationHistory(owner: Pool) {

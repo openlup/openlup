@@ -35,6 +35,9 @@ export interface CatalogPublicationDependencies<Context> {
    */
   readiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: readonly CatalogPublishedSku[] }, requirePrice: boolean): Promise<{ ready: boolean; reasons: readonly string[] }>;
   globalReadiness?(db: PgQueryExecutor): Promise<{ ready: boolean; reasons: readonly string[] }>;
+  /** @experimental Transaction-local route admission immediately before each presentation write. */
+  presentationReadiness?(db: PgQueryExecutor, productId: string, presentation: NonNullable<CatalogPublishedProduct["presentation"]>):
+    Promise<{ ready: boolean; reasons: readonly string[] }>;
   /** External proof is prepared before locks; transaction-local admission verifies this immutable claim again. */
   verifyMedia(db: PgQueryExecutor, claim: { skuCode: string; mediaRef: string; assetRefs: readonly string[]; revisionDigest: string }): Promise<boolean>;
   /** Host owns accepted-source persistence and ownership/order/fulfilment authorization. Legacy absence is null, never current-state inference. */

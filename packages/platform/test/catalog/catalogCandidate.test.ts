@@ -176,6 +176,7 @@ it.each([
     resolveHead: async () => head,
     ...(mode.includes("unavailable") ? {} : { publicationRules: fixture.rules }),
     readPublicationState: async () => prior && { ...prior, retainedSources: [] },
+    presentationReadiness: async () => ({ ready: true, reasons: [] }),
     assessActivation: async () => mode === "activation unknown" ? null
       : mode === "activation blocked" ? { ready: false, reasons: ["installed_business_block"] } : { ready: true, reasons: [] },
   };

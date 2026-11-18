@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
+import { createCatalogCandidateService, createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
@@ -46,6 +46,7 @@ function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows
           return Array.isArray(after.attributes.details) && after.attributes.details.includes("unknown") ? "inconclusive" : "material";
         return "compatible";
       } },
+    presentationReadiness: async () => ({ ready: true, reasons: [] }),
     readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false };
 }
 beforeAll(async () => {
@@ -3002,6 +3003,70 @@ it.each([
   }
   expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
 });
+
+it.each([
+  ["create", "en", false],
+  ["create", "en", true],
+  ["revise", "pl", true],
+  ["compensation", "en", true],
+  ["preview", "pl", false],
+] as const)("route ownership is checked before later publication work for %s/%s: child price %s", async (kind, locale, price) => inPriceDatabase(async () => {
+  const other = await draft(), otherPayload = structuredClone(other.payload), path = `/occupied-${other.productId}`;
+  otherPayload.product.sharedContent.presentation = { routePath: { [locale]: path } };
+  const presentation = otherPayload.publication.operations.find(op => op.op === "set_product_presentation")!;
+  if (presentation.op === "set_product_presentation") presentation.presentation = otherPayload.product.sharedContent.presentation;
+  await commit(await save(otherPayload, other.draftId, 1));
+  const data = await priceDraft(false), payload = structuredClone(data.payload);
+  const existing = kind === "revise" || kind === "compensation", initial = existing ? await commit(data.publication) : null;
+  const content = payload.product.sharedContent;
+  content.presentation = { routePath: { [locale]: path } };
+  if (existing) {
+    content.catalogAction = "revise";
+    payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation }];
+  } else {
+    const op = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
+    if (op.op === "set_product_presentation") op.presentation = content.presentation;
+  }
+  if (kind === "compensation") payload.publication.kind = "compensation";
+  if (price) {
+    const operation = payload.skus[0].priceOperations![0];
+    operation.commandKey = `stale:${data.skuId}`;
+    operation.expected = { entryId: randomUUID(), unitPriceMinor: 1000 };
+  } else delete payload.skus[0].priceOperations;
+  const command = await save(payload, data.draftId, 2, initial?.head ?? null);
+  const check = async (executor: PgQueryExecutor, productId: string) => {
+    const rows = (await executor.query(`SELECT EXISTS(SELECT 1 FROM public.catalog_products WHERE id<>$1
+      AND publication_facts #>> ARRAY['presentation','routePath',$2::text]=$3) AS conflict`, [productId, locale, path])).rows;
+    const ready = !rows[0]!.conflict;
+    return { ready, reasons: ready ? [] : ["duplicate_route"] };
+  };
+  const deps = dependencies();
+  if (kind === "preview") {
+    const service = createCatalogCandidateService({ registry, publicationRules: deps.rules,
+      readDraft: async (draftId, revision) => (await db.query("SELECT public.catalog_draft_record($1,$2) AS record", [draftId, revision ?? 3])).rows[0].record,
+      installedDefinitionDigest: async () => catalogDefinitionDigest(definition), resolveHead: async () => null,
+      currentHead: async () => ({ outcome: "unpublished" }),
+      presentationReadiness: productId => check(db, productId),
+    });
+    const query = { draftId: data.draftId, draftRevision: 3, expectedHead: null };
+    const first = await service.prepareCandidate(query);
+    expect(first.preparation?.structural).toMatchObject({ outcome: "blocked-input", issues: [{ code: "duplicate_route" }] });
+    expect(await service.validate(first.candidateRef)).toEqual(first);
+    expect(await service.compareCandidate({ ...first, expectedHead: null })).toEqual(first);
+    return;
+  }
+  let childApply = 0, checks = 0;
+  const target = createPostgresCatalogPublication({ ...dependencies(sql => {
+    if (sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) childApply++;
+  }), presentationReadiness: async (executor, productId) => { checks++; return check(executor, productId); } });
+  const capability = (await target.authorize(null))!;
+  await approve(command);
+  const stable = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+  expect(checks).toBe(1);
+  expect(childApply).toBe(0);
+  expect(await snapshot()).toEqual(stable);
+}));
 
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);

@@ -399,7 +399,10 @@ revocation leaves the publication and its original replay receipt intact.
 The candidate facade reconstructs sealed v3 inputs at the requested head. Its
 structural report distinguishes staged input, a confirmed refusal and unknown
 evidence. The activation report carries per-channel pending issues and uses
-current installed evidence before marking an enabling candidate ready. A matching
+current installed evidence before marking an enabling candidate ready. The host's
+presentation adapter checks route ownership during preparation and immediately
+before each presentation write. A route conflict refuses before any later
+catalogue effect or child price application. A matching
 sealed registration can stage a new document before it exists in the live rows.
 
 The writer revalidates immutable v3 inputs, applies their ordered effects and

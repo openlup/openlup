@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
+import type { CatalogPublishedProduct } from "./contracts/publication.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
@@ -43,6 +44,9 @@ export interface CatalogCandidateDeps {
   /** @experimental Reads the exact retained snapshot at the requested head. */
   readPublicationState?: (head: CatalogHeadRef) => Promise<Pick<CatalogPublicationCompileInput,
     "product" | "skus" | "documents" | "retainedSources"> | null>;
+  /** @experimental Checks proposed routes against current, independently owned presentations. */
+  presentationReadiness?: (productId: string, presentation: NonNullable<CatalogPublishedProduct["presentation"]>) =>
+    Promise<{ ready: boolean; reasons: readonly string[] }>;
   /** @experimental Supplies current evidence for an explicit enabling phase. */
   assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef) =>
     Promise<{ ready: boolean; reasons: readonly string[] } | null>;
@@ -70,6 +74,14 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     }
     if (!payload.product.documentRevision) hard.push({ path: "product.documentRevision", code: "document_reference_missing" });
     if (!rules || head && !deps.readPublicationState) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
+    for (const op of payload.publication.operations) {
+      if (op.op !== "set_product_presentation" || op.presentation === null) continue;
+      let result: unknown;
+      try { result = await deps.presentationReadiness?.(record.productId, op.presentation); } catch { /* Evidence is unknown. */ }
+      const verdict = publicationReadinessVerdict.safeParse(result), path = "product.sharedContent.presentation";
+      if (!verdict.success) unknown.push({ path, code: "catalog_publication_presentation_unavailable" });
+      else hard.push(...verdict.data.reasons.map(code => ({ path, code })));
+    }
     let compiled: ReturnType<typeof compileCatalogPublication> | undefined;
     if (hard.length === 0 && unknown.length === 0 && rules) {
       try {
