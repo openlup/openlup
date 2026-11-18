@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
-import { createClassicPackageRepricer } from "./classicPackageQuote.js";
+import { createClassicPackageRepricer, hasBoundPackageEditQuote, recordedPackageEditQuoteHash } from "./classicPackageQuote.js";
 import { createPostgresPackageEditReadPort } from "./packageEditRead.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { PackageEditActor, PackageEditApplyResult, PackageEditBlockedReason, PackageEditPreview,
@@ -106,13 +106,14 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
           ...(quote.portionModes ? { portionModes: quote.portionModes } : {}) }
           : { baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
         const totals = exact ? {} : { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta };
-        await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)`,
+        const recorded = await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz)`,
           [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,
             ledgerRequest, snapshot, totals, options.now()]);
-        if (exact) return { ...preview, quoteHash: quote.quoteHash, quoteExpiresAt: expires };
-        return { ...preview, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
+        const quoteHash = recordedPackageEditQuoteHash(recorded.rows[0], quote.quoteHash);
+        if (exact) return { ...preview, quoteHash, quoteExpiresAt: expires };
+        return { ...preview, quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,
           newTotal: quote.newRecurringPrice, delta: quote.delta, packageEdit: { currentRecurringPrice: quote.currentRecurringPrice,
-            newRecurringPrice: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash,
+            newRecurringPrice: quote.newRecurringPrice, delta: quote.delta, quoteHash,
             effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" } };
       });
     },
@@ -128,7 +129,10 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [subscriptionId, actor.clientId]);
         assertRequestLimits(request);
         const quote = await quoteFor(db, request);
-        if (quote && request.acceptedQuoteHash !== quote.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
+        if (quote && request.acceptedQuoteHash !== quote.quoteHash &&
+          !await hasBoundPackageEditQuote(db, actor, subscriptionId, action, quote.expectedTemplateVersion, request.acceptedQuoteHash)) {
+          throw new Error("subscription_reprice_quote_not_accepted");
+        }
         const enriched = { ...raw, request: raw, ...(quote ? evidence(request, quote) : {}) };
         const value = subscriptionRecord((await (action === "update_package_template"
           ? db.query("SELECT public.subscription_package_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::jsonb,$6::timestamptz) AS response",

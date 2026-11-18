@@ -21,6 +21,8 @@ Hosts admitting governed sized checkout supply their existing availability port
 and the accepted server quote's offer binding. The trusted quote reader also
 supplies the product heads observed in its quote snapshot. Editors on older installed
 contexts can still read the paid-cycle count for phase selection.
+Governed edit previews return a token for their recorded evidence. Repeating a
+preview records a separate token, including when the quoted totals stay equal.
 The publisher retains its nonblocking busy refusal.
 
 The order entrypoints keep their signatures and legacy results. A purchased

@@ -109,10 +109,15 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
 ## dist/subscriptions/classicPackageQuote.d.ts
 
 ```ts
-import type { PackageEditQuote, PackageEditQuotePorts, PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+import type { PackageEditActor, PackageEditQuote, PackageEditQuotePorts, PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 type Quote = Awaited<ReturnType<PackageEditQuotePorts["quotePort"]["createServerAuthoritativeQuote"]>>["quote"];
 /** Content identity deliberately excludes observation time and all presentation facts. */
 export declare function hashPackageEditQuote(quote: Quote): string;
+/** @experimental */
+export declare function recordedPackageEditQuoteHash(row: Record<string, unknown> | undefined, priorHash: string): string;
+/** @experimental */
+export declare function hasBoundPackageEditQuote(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, action: string, expectedTemplateVersion: number, acceptedQuoteHash?: string): Promise<boolean>;
 /** The entire desired set is quoted verbatim. Cadence changes never resize quantities. */
 export declare function createClassicPackageRepricer(deps: PackageEditQuotePorts & {
     readPort: PackageEditReadPort;

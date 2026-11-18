@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { BundleLineRef } from "@openlup/core/bundle";
-import type { PackageEditCurrentLine, PackageEditLine, PackageEditMoney, PackageEditQuote, PackageEditQuotePorts,
+import type { PackageEditActor, PackageEditCurrentLine, PackageEditLine, PackageEditMoney, PackageEditQuote, PackageEditQuotePorts,
   PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 type Quote = Awaited<ReturnType<PackageEditQuotePorts["quotePort"]["createServerAuthoritativeQuote"]>>["quote"];
 /** Content identity deliberately excludes observation time and all presentation facts. */
@@ -9,6 +10,24 @@ export function hashPackageEditQuote(quote: Quote): string {
   return createHash("sha256").update(JSON.stringify({ totalGross: quote.totalGross, subtotalGross: quote.subtotalGross,
     discountTotalGross: quote.discountTotalGross, lines: quote.lines.map(line => ({ sku: line.sku, quantity: line.quantity,
       unitPriceGross: line.unitPriceGross, lineSubtotalGross: line.lineSubtotalGross, pricingComponents: line.pricingComponents ?? [] })) })).digest("hex");
+}
+/** @experimental */
+export function recordedPackageEditQuoteHash(row: Record<string, unknown> | undefined, priorHash: string): string {
+  const ledger = row?.subscription_quote_preview_record;
+  return ledger && typeof ledger === "object" && "quote_hash" in ledger && typeof ledger.quote_hash === "string" ? ledger.quote_hash : priorHash;
+}
+/** @experimental */
+export async function hasBoundPackageEditQuote(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string,
+  action: string, expectedTemplateVersion: number, acceptedQuoteHash?: string): Promise<boolean> {
+  if (acceptedQuoteHash === undefined) return false;
+  try {
+    const result = await db.query("SELECT public.catalog_admission_preview_bound($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer) AS bound",
+      [actor.actorId, actor.clientId, subscriptionId, action, acceptedQuoteHash, expectedTemplateVersion]);
+    return result.rows[0]?.bound === true;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "42883") return false;
+    throw error;
+  }
 }
 function value<T>(result: PromiseSettledResult<T>): T { if (result.status === "rejected") throw result.reason; return result.value; }
 function sanitize(lines: PackageEditLine[], code: string): PackageEditLine[] {

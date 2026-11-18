@@ -617,10 +617,10 @@
       },
       {
         "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-        "sha256": "c65c761c1f001ced09dec3d28a736d3617c72c5dc94b2e020b6c6e4eb38cc9e8"
+        "sha256": "e2d8665e4a68eb7692cbe9b938afc1728e9763be31aa4c7bb390e1f7ad721ee0"
       }
     ],
-    "objectInventorySha256": "25af156f36fa53338926e955a9afafab1b02c78ef312ef6ba6297a4535d92c22",
+    "objectInventorySha256": "9d7387767e1e7c7331e0b6bc115a405ac4d931c6c80b7dce40145a8ae0469bab",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1257,15 +1257,15 @@
         },
         {
           "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-          "sha256": "c65c761c1f001ced09dec3d28a736d3617c72c5dc94b2e020b6c6e4eb38cc9e8"
+          "sha256": "e2d8665e4a68eb7692cbe9b938afc1728e9763be31aa4c7bb390e1f7ad721ee0"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "464756350daa99341a5da5074d47fba3c1c72a334be2ded4770899a2dd64fdc6"
+          "withRestore": "ac3199022b2dadfa7bd878af45a4537467c1dd9424c9f0a0564e0e9d4d6fce98"
         },
         "separateMigrator": {
-          "withRestore": "8f187d9ce843e3bdffb9365dbdf4261a1cf300e2b7e58b291a889f9abe33d663"
+          "withRestore": "3aa389dea81fd4f101d17d6672188c2c2e7fd87943e5dc606fecbdefbe2ffe9d"
         }
       }
     },
@@ -1901,12 +1901,12 @@
         },
         {
           "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-          "sha256": "c65c761c1f001ced09dec3d28a736d3617c72c5dc94b2e020b6c6e4eb38cc9e8"
+          "sha256": "e2d8665e4a68eb7692cbe9b938afc1728e9763be31aa4c7bb390e1f7ad721ee0"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "beb29b51df0e4c9310c1e3fcfc35377b63630263158b8c0a658e93e6951e472e",
-        "operatorProvisioned": "4cf63410b8fef26e460dceca72063ff269bff7457dfdf48ae3b8e2b7a4760c51"
+        "installerManaged": "4ead39b1a4092ad6e2fd90e31b73bed6b36ef1e87105cfb74dae6565fb716fbd",
+        "operatorProvisioned": "1dd4f5d2c9ab24af07c3ad6df36e28a580ae1290033e7961ebdee70f2d45ae28"
       }
     }
   },
@@ -2679,7 +2679,7 @@
     {
       "file": "20261123190000_catalog_admission.sql",
       "source": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "c65c761c1f001ced09dec3d28a736d3617c72c5dc94b2e020b6c6e4eb38cc9e8"
+      "sha256": "e2d8665e4a68eb7692cbe9b938afc1728e9763be31aa4c7bb390e1f7ad721ee0"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

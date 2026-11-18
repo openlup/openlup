@@ -1070,11 +1070,23 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_edit_lane(text,text,boolean) FROM PUBLIC;
 
+-- Only runtime callers can check a token against its owned preview. The check
+-- takes no preview row lock; the writer still owns lock order and acceptance.
+CREATE FUNCTION public.catalog_admission_preview_bound(p_actor_id uuid,p_client_id uuid,p_subscription_id uuid,
+ p_action text,p_hash text,p_version integer) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.subscription_quote_previews q WHERE q.actor_id=p_actor_id AND q.client_id=p_client_id
+  AND q.subscription_id=p_subscription_id AND q.action=p_action AND q.quote_hash=p_hash AND q.template_version=p_version
+  AND q.quote_snapshot->'catalogQuoteBound'='true'::jsonb)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION public.subscription_quote_preview_record(
  p_actor_id uuid,p_client_id uuid,p_subscription_id uuid,p_action text,p_hash text,p_version integer,
  p_expires_at timestamptz,p_request jsonb,p_snapshot jsonb,p_totals jsonb,p_now timestamptz
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s public.subscriptions%ROWTYPE; q public.subscription_quote_previews%ROWTYPE; evidence jsonb; lines jsonb; lane text; opt_in boolean;
+ accepted_hash text; fresh_hash text;
 BEGIN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now) THEN
   RAISE EXCEPTION 'subscription_command_invalid_input' USING ERRCODE='22023'; END IF;
@@ -1091,10 +1103,13 @@ BEGIN
  IF s.template_version<>p_version THEN RAISE EXCEPTION 'subscription_edit_stale_template' USING ERRCODE='22023'; END IF;
  DELETE FROM public.subscription_quote_previews WHERE id IN (SELECT id FROM public.subscription_quote_previews
   WHERE status='previewed' AND expires_at<p_now-interval '7 days' ORDER BY expires_at,id LIMIT 500);
- -- The preview upsert may touch an existing row. Hold it before the
- -- catalogue read, and retain the existing subscription-before-preview order.
+ -- A governed preview gets a fresh token for its exact captured evidence.
+ -- Reserve both possible upsert keys before entering the catalogue fence.
+ accepted_hash:=p_hash;
+ fresh_hash:=encode(sha256(convert_to(p_hash||':'||gen_random_uuid()::text,'UTF8')),'hex');
  PERFORM 1 FROM public.subscription_quote_previews WHERE subscription_id=s.id AND client_id=p_client_id
-  AND action=p_action AND quote_hash=p_hash AND template_version=p_version AND status='previewed' FOR UPDATE;
+  AND action=p_action AND quote_hash IN (p_hash,fresh_hash) AND template_version=p_version AND status='previewed'
+  ORDER BY quote_hash,id FOR UPDATE;
  IF NOT p_snapshot ? 'catalogAdmission' THEN
   opt_in:=p_action='resize_bundle' AND p_request#>>'{resizeLever,kind}'='subscription.sized.parcel'
    AND p_request#>'{resizeLever,value,optInToSized}'='true'::jsonb;
@@ -1104,12 +1119,15 @@ BEGIN
    evidence:=public.catalog_admission_build_evidence(lines,'subscription',
     jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN opt_in THEN 'sized.v1' ELSE s.configured_offer_version END,
     'lane',lane,'optIn',coalesce(opt_in,false)),'account');
-   IF evidence IS NOT NULL THEN p_snapshot:=p_snapshot||jsonb_build_object('catalogAdmission',evidence); END IF;
+   IF evidence IS NOT NULL THEN
+    accepted_hash:=fresh_hash;
+    p_snapshot:=p_snapshot||jsonb_build_object('catalogAdmission',evidence,'catalogQuoteBound',true);
+   END IF;
   END IF;
  END IF;
  INSERT INTO public.subscription_quote_previews(subscription_id,client_id,actor_id,action,quote_hash,template_version,
   expires_at,request_payload,quote_snapshot,totals,created_at,updated_at)
- VALUES(s.id,p_client_id,p_actor_id,p_action,p_hash,p_version,p_expires_at,p_request,p_snapshot,p_totals,p_now,p_now)
+ VALUES(s.id,p_client_id,p_actor_id,p_action,accepted_hash,p_version,p_expires_at,p_request,p_snapshot,p_totals,p_now,p_now)
  ON CONFLICT (subscription_id,client_id,action,quote_hash,template_version) WHERE status='previewed' DO UPDATE SET
   actor_id=EXCLUDED.actor_id,expires_at=EXCLUDED.expires_at,request_payload=EXCLUDED.request_payload,
   quote_snapshot=EXCLUDED.quote_snapshot,totals=EXCLUDED.totals,created_at=EXCLUDED.created_at,updated_at=EXCLUDED.updated_at
@@ -2292,4 +2310,4 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text) FROM authenticated'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;

@@ -8,6 +8,7 @@ import { assertSizedPolicy } from "./sizedComposition.js";
 import { assertSizedSubjectFacts, quoteSizedEdit, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { mapPackageEditError } from "./packageEditErrors.js";
+import { hasBoundPackageEditQuote, recordedPackageEditQuoteHash } from "./classicPackageQuote.js";
 
 /** The host composes this alongside its existing classic binding. One callback owns one connection through commit. */
 export function createPostgresSizedEditor(options: SizedEditorOptions) {
@@ -107,13 +108,14 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         if (!preview.preview.canApply) return preview;
         const priced = await quote(db, context, request, "preview"), { subscriptionId: _id, ...raw } = request;
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
-        await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
+        const recorded = await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
           [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
             { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
             { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
-        return { ...preview, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
+        const quoteHash = recordedPackageEditQuoteHash(recorded.rows[0], priced.quoteHash);
+        return { ...preview, quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
           newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
-            newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,
+            newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash,
             effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
       });
     },
@@ -129,7 +131,10 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         assertRequestLimits(parsed);
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
         const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply");
-        if (request.acceptedQuoteHash !== priced.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
+        if (request.acceptedQuoteHash !== priced.quoteHash &&
+          !await hasBoundPackageEditQuote(db, actor, request.subscriptionId, request.action, priced.expectedTemplateVersion, request.acceptedQuoteHash)) {
+          throw new Error("subscription_reprice_quote_not_accepted");
+        }
         const addon = ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action);
         if (!addon) await options.assertCurrentFacts(db, context, priced.subjectFacts, priced.optInFacts, priced.catalogFacts);
         const { subscriptionId: _id, ...raw } = request;

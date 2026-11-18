@@ -151,8 +151,9 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 async function edit(f: Fixture, lane: Lane = "classic", deriveEvidence = false) {
-  const key = randomUUID(), hash = digest(key), line = { variantId: f.sku,qty: 2,isAddon: false,
+  const key = randomUUID(), line = { variantId: f.sku,qty: 2,isAddon: false,
     quoteLine: { sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234) } };
+  let hash = digest(key);
   const core = [{ variantId: f.sku,qty: 2 }];
   if (lane === "legacy") {
     if (deriveEvidence) {
@@ -204,9 +205,11 @@ async function edit(f: Fixture, lane: Lane = "classic", deriveEvidence = false) 
     }
   }
   const totals = { currentRecurringPrice: money(617),newRecurringPrice: money(1234),delta: money(617) };
-  await rpc(pool,"subscription_quote_preview_record",[f.actor,f.client,f.subscription,action,hash,1,
+  const recorded = await rpc(pool,"subscription_quote_preview_record",[f.actor,f.client,f.subscription,action,hash,1,
     (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at", [f.at])).rows[0].at,
     lane === "classic" ? { planDays: 28,base: core,addons: [] } : Object.fromEntries(Object.entries(request).filter(([key]) => !["expectedTemplateVersion","acceptedQuoteHash"].includes(key))),evidence,totals,f.at]);
+  hash = recorded.quote_hash;
+  request.acceptedQuoteHash = hash;
   const payload = { ...request,request,expectedTemplateVersion: 1,acceptedQuoteHash: hash,
     ...(lane === "classic" ? { planDays: 28,base: core,addons: [],...evidence,...totals } : { ...evidence,cadenceDays }) };
   const args: unknown[] = [f.actor,f.client,key,f.subscription,...(lane === "exact" ? [action] : []),payload,f.at];
@@ -1592,9 +1595,9 @@ it.each(["first open ordinal","next after closed ordinal","different marker basi
   },
 );
 
-it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation"] as const)(
+it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","repeat after same-money publication"] as const)(
   "LC6-D-067 and LC6-D-132 shipped sized preview and apply keep the owned price: %s", async (action,test) => {
-    const optIn = action === "opt in unchanged" || action === "opt in with historical entry";
+    const optIn = action === "opt in unchanged" || action === "opt in with historical entry" || action === "repeat after same-money publication";
     const graduation = action === "numbered graduation";
     if (optIn && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
       test.skip("Membership page comes from the predecessor installation"); return;
@@ -1626,16 +1629,35 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
         resolveAutomaticQuotePromotions: async () => ({ discounts: [],codeRejections: [] }),
         applyPromotionCodesV2: async () => ({ discounts: [],codeRejections: [],codeRejectionDetails: [] }),
         lineContext: () => ({}),quoteContext: input => () => ({ mode: input.mode,cadenceDays: input.cadenceDays,promoCodes: input.promoCodes }) });
-      const hasAddon = action !== "add_addon";
+      const hasAddon = !optIn && action !== "add_addon";
       const initial = await engine.createServerAuthoritativeQuote({ mode: "subscription",cadenceDays: 28,promoCodes: [],lines: [
-        { sku: f.code,quantity: 2,modeAtLine: "subscription",isAddon: false },
+        { sku: f.code,quantity: coreQuantity,modeAtLine: "subscription",isAddon: false },
         ...(hasAddon ? [{ sku: code,quantity: 1,modeAtLine: "subscription" as const,isAddon: true }] : []),
       ] });
       if (hasAddon) {
         await setup.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,is_addon,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,true,1,411,'XXX')", [f.subscription,variantId]);
         await setup.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2,$2,1,411)", [f.subscription,code]);
       }
-      await setup.query("UPDATE public.subscription_events SET payload=jsonb_set(payload,'{linePricing}',$2::jsonb) WHERE subscription_id=$1", [f.subscription,JSON.stringify(initial.quote.lines.map(line => ({ sku: line.sku,quantity: line.quantity,unitAmountMinor: line.unitPriceGross.amountMinor,isAddon: line.sku === code,quoteLine: line })))]);
+      if (action === "opt in with historical entry") {
+        const historical = randomUUID();
+        await setup.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,active,valid_from,valid_to) VALUES($1,$2,$3,'subscription',617,false,$4::timestamptz-interval '2 days',$4::timestamptz-interval '1 day')", [historical,priceList,f.sku,f.at]);
+        Object.assign(initial.quote.lines[0],{ catalogFacts: { ...governedCheckoutQuote(f,"subscription").quote.lines[0].catalogFacts,
+          basePriceEntryId: historical,resolvedPriceEntryId: historical,resolvedLineAmountMinor: 617 } });
+      }
+      const linePricing = initial.quote.lines.map(line => ({ sku: line.sku,quantity: line.quantity,unitAmountMinor: line.unitPriceGross.amountMinor,isAddon: line.sku === code,quoteLine: line }));
+      if (optIn) await setup.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at) VALUES($1,'subscription.starter_graduated',$2,$3,$4)", [f.subscription,randomUUID(),{ linePricing },f.at]);
+      else await setup.query("UPDATE public.subscription_events SET payload=jsonb_set(payload,'{linePricing}',$2::jsonb) WHERE subscription_id=$1", [f.subscription,JSON.stringify(linePricing)]);
+      if (graduation) {
+        await introFixture(setup,f,0,2);
+        const addOn = initial.quote.lines.find(line => line.sku === code)!;
+        const amount = money(822), quoteLine = { ...addOn,quantity: 2,lineSubtotalGross: amount,
+          tax: { ...addOn.tax,netAmount: amount,grossAmount: amount } };
+        await setup.query(`UPDATE public.subscription_renewal_attachments SET purchase_facts=jsonb_set(purchase_facts,
+          '{renewalTerms,starterPack,graduation,lines}',purchase_facts#>'{renewalTerms,starterPack,graduation,lines}'||$2::jsonb)
+          WHERE subscription_id=$1`, [f.subscription,JSON.stringify([{ sku: code,qty: 2,sortOrder: 1,isAddon: true,quoteLine }])]);
+        await numberedCycle(setup,f,2,"planned");
+        await setup.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+      }
       repriced.length = 0;
       const editor = createPostgresSizedEditor({ quotePort: engine,now: () => f.at,
         async withTransaction(work) {
@@ -1647,31 +1669,63 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           portionModes: { full: { mode: "full",factor: 1 },reduced: { mode: "reduced",factor: 0.5 } } },
         async readFacts(db,context) {
           const row = (await db.query("SELECT composition_constraint FROM public.subscriptions WHERE id=$1 AND client_id=$2", [context.subscriptionId,context.clientId])).rows[0];
-          return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: context.subscriptionId,exclusions: [],snapshot: row.composition_constraint as Record<string, unknown> };
+          return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: context.subscriptionId,exclusions: [],snapshot: (row.composition_constraint ?? {}) as Record<string, unknown> };
         },
         async readCatalog(db) {
           return (await db.query("SELECT * FROM public.catalog_skus WHERE id=ANY($1::uuid[])", [[f.sku,variantId]])).rows.map(row => ({ variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
             sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: 100,demandPerUnit: 28,documentRevisionId: String(row.id),documentDigest: digest(String(row.id)),verified: true,exclusions: [],sellableNow: 100 }));
         },
-        async resolveOptInNeed() { throw new Error("Unexpected opt-in"); },
-        async assertCurrentFacts() { throw new Error("Unexpected sized resize"); },
+        async resolveOptInNeed() { expect(optIn).toBe(true); return { dailyNeed: 1,snapshot: { dailyNeed: 1 } }; },
+        async assertCurrentFacts(db,context,expected,need,catalog) {
+          expect(optIn || graduation).toBe(true);
+          const row = (await db.query("SELECT client_id,configured_offer_version FROM public.subscriptions WHERE id=$1", [context.subscriptionId])).rows[0];
+          expect(row).toEqual({ client_id: expected.clientId,configured_offer_version: optIn ? "classic" : "sized.v1" });
+          expect(need).toEqual(optIn ? { dailyNeed: 1 } : null);
+          expect(catalog.map(fact => fact.variantId)).toEqual(optIn ? [f.sku] : [f.sku,variantId].sort());
+        },
         proposePortion: async ({ current }) => current.map(({ variantId,qty }) => ({ variantId,qty })),
       });
-      const request = action === "remove_addon" ? { subscriptionId: f.subscription,action,variantId }
-        : { subscriptionId: f.subscription,action,variantId,qty: 2 };
+      const request: Parameters<typeof editor.preview>[1] = optIn ? {
+        subscriptionId: f.subscription,action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,
+        resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: 1 }],optInToSized: true } },
+      } : graduation ? { subscriptionId: f.subscription,action: "update_bundle",coreLines: [{ variantId: f.sku,qty: 4 }],compositionConstraint: { ...constraint,value: 4 } }
+        : action === "remove_addon" ? { subscriptionId: f.subscription,action,variantId } : { subscriptionId: f.subscription,action,variantId,qty: 2 };
       const preview = await editor.preview(actor,request);
       expect(preview.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
-      const evidence = (await setup.query("SELECT quote_snapshot->'catalogAdmission' AS evidence FROM public.subscription_quote_previews WHERE subscription_id=$1 AND action=$2", [f.subscription,action])).rows[0].evidence;
-      expect(evidence).toMatchObject({ heads: [],skuRevisions: [{ reference: f.reference,quantity: 2 }],priceContextVersions: [] });
-      const accepted = { ...request,expectedTemplateVersion: 2,acceptedQuoteHash: preview.quoteHash };
-      expect(await editor.apply(actor,randomUUID(),accepted)).toMatchObject({ status: "applied",templateVersion: 3 });
+      const version = optIn ? 1 : 2, quantity = graduation ? 4 : coreQuantity;
+      const evidence = (await setup.query("SELECT quote_snapshot->'catalogAdmission' AS evidence FROM public.subscription_quote_previews WHERE subscription_id=$1 AND action=$2 AND template_version=$3", [f.subscription,graduation ? "resize_bundle" : request.action,version])).rows[0].evidence;
+      expect(evidence).toMatchObject({ heads: optIn ? f.admission.heads : [],skuRevisions: [{ reference: f.reference,quantity }],priceContextVersions: [] });
+      if (action === "repeat after same-money publication") {
+        const next = await changedDocument(f);
+        const published = await publishOn(setup,next.publication);
+        expect(published.outcome).toBe("committed");
+        if (!("receipt" in published)) throw new Error(JSON.stringify(published));
+        const current = await editor.preview(actor,request);
+        expect(current.quoteHash).not.toBe(preview.quoteHash);
+        expect(current.newTotal).toEqual(preview.newTotal);
+        const previews = (await setup.query(`SELECT quote_hash,quote_snapshot->'catalogAdmission' AS evidence
+          FROM public.subscription_quote_previews WHERE subscription_id=$1 AND action=$2 AND template_version=$3`,
+          [f.subscription,request.action,version])).rows;
+        expect(previews).toHaveLength(2);
+        expect(previews.find(previewRow => previewRow.quote_hash === preview.quoteHash)?.evidence).toEqual(evidence);
+        expect(previews.find(previewRow => previewRow.quote_hash === current.quoteHash)?.evidence.heads)
+          .toEqual([{ productId: f.product,head: published.receipt.head }]);
+        await expect(editor.apply(actor,randomUUID(),{ ...request,expectedTemplateVersion: version,acceptedQuoteHash: preview.quoteHash }))
+          .rejects.toMatchObject({ code: "40001",message: "customer_self_service_stale_edit_catalog_head" });
+        expect(await editor.apply(actor,randomUUID(),{ ...request,expectedTemplateVersion: version,acceptedQuoteHash: current.quoteHash }))
+          .toMatchObject({ status: "applied",templateVersion: version+1 });
+        return;
+      }
+
+      const accepted = { ...request,expectedTemplateVersion: version,acceptedQuoteHash: preview.quoteHash };
+      expect(await editor.apply(actor,randomUUID(),accepted)).toMatchObject({ status: "applied",templateVersion: version+1 });
       expect(repriced).not.toContain(f.sku);
       expect((await setup.query(`SELECT variant_id,quantity,unit_price_minor,catalog_sku_revision_id FROM public.subscription_lines
         WHERE subscription_id=$1 ORDER BY is_addon`, [f.subscription])).rows).toEqual([
-        { variant_id: f.sku,quantity: 2,unit_price_minor: "617",catalog_sku_revision_id: f.reference.skuRevisionId },
-        ...(action === "remove_addon" ? [] : [{ variant_id: variantId,quantity: 2,unit_price_minor: "411",catalog_sku_revision_id: null }]),
+        { variant_id: f.sku,quantity,unit_price_minor: "617",catalog_sku_revision_id: f.reference.skuRevisionId },
+        ...(optIn || action === "remove_addon" ? [] : [{ variant_id: variantId,quantity: graduation ? 1 : 2,unit_price_minor: "411",catalog_sku_revision_id: null }]),
       ]);
-      expect((await setup.query("SELECT composition_constraint FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].composition_constraint).toEqual(constraint);
+      expect((await setup.query("SELECT composition_constraint FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].composition_constraint).toEqual({ ...constraint,value: quantity });
     } finally { setup.release(); }
   },
 );
