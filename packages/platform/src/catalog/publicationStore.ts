@@ -6,7 +6,8 @@ import { z } from "./validation.js";
 import type { VerifiedCatalogPublisher, CatalogPublicationPort, CatalogPublicationReadPort } from "./publicationPorts.js";
 import type { CatalogPublicationDependencies, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
 import type { CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2,
-  CatalogPublicationManifestV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./contracts/publication.js";
+  CatalogPublicationManifestV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure,
+  CatalogMembershipPage, CatalogMembershipQuery, CatalogActivationReadiness } from "./contracts/publication.js";
 import type { CatalogHeadRef, CatalogPublishCommand, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import type { CatalogDraftPublicationStoredRecord, CatalogDraftPayloadV3 } from "./contracts/draftV3.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
@@ -14,10 +15,12 @@ import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayl
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
-import { catalogProductTypeRefSchema } from "./productTypeSchemas.js";
+import { catalogProductTypeRefSchema, catalogQuantitySchema } from "./productTypeSchemas.js";
+import { catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
-import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
+import { catalogPublishedProductSchema, catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -36,6 +39,91 @@ const bindingSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]
 const equal = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
 const require = (value: unknown, code: string, outcome?: CatalogPublicationError["outcome"]) => { if (!value) publicationRefuse(code, outcome); };
 const tuple = (db: PgQueryExecutor, sql: string, values: unknown[] = []) => db.query(sql, values).then(result => result.rows);
+const membershipQuery = z.object({
+  offerVersion: z.string().trim().min(1).max(80),
+  cursor: z.object({ skuId: z.guid().transform(value => value.toLowerCase()), headDigest: digest }).strict().nullable(),
+  limit: z.number().int().min(1).max(100),
+  mode: z.enum(["one_time", "subscription"]).nullish(),
+}).strict();
+const logistics = z.string().min(1).max(500).refine(value => value === value.trim()).nullable();
+const memberRow = z.object({
+  skuId: id, skuCode: z.string().min(1).max(160), productId: id, productSlug: z.string().min(1).max(80),
+  productType: catalogProductTypeRefSchema, netContent: catalogQuantitySchema, netWeightG: z.number().int().min(1).max(9_999_999),
+  sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
+  presentation: z.record(z.string(), z.json()).nullable(), logisticsRef: logistics, head: headSchema,
+  skuRevisionId: id, document: catalogDocumentRevisionRefSchema,
+}).strict();
+const membershipRow = z.discriminatedUnion("protocol", [
+  z.object({ protocol: z.literal("legacy"), headDigest: z.null(), items: z.tuple([]), nextCursor: z.null() }).strict(),
+  z.object({ protocol: z.literal("governed"), headDigest: digest, items: z.array(memberRow).max(100), nextCursor: id.nullable() }).strict(),
+]);
+const readinessSkuCode = z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,79}$/u);
+const readinessCodes = z.array(readinessSkuCode).min(1).max(100).refine(codes => new Set(codes).size === codes.length);
+const readinessReasons = z.array(z.string().regex(/^[a-z][a-z0-9_]{1,119}$/u)).max(32);
+const readinessVerdict = z.object({ ready: z.boolean(), reasons: readinessReasons }).strict()
+  .refine(item => item.ready === (item.reasons.length === 0));
+const readinessRow = z.object({
+  protocol: z.literal("governed"),
+  headDigest: digest,
+  items: z.array(z.object({
+    skuCode: readinessSkuCode, skuId: id.nullable(), logisticsRef: logistics, ...readinessVerdict.shape,
+    evidence: z.object({ product: catalogPublishedProductSchema, sku: catalogPublishedSkuSchema }).strict().nullable(),
+  }).strict().refine(item => item.ready === (item.reasons.length === 0)
+    && (!item.ready || item.skuId !== null && item.logisticsRef !== null))).max(100),
+}).strict();
+const invalidRead = "catalog_publication_read_invalid";
+function singletonRead<T>(rows: Record<string, unknown>[], schema: z.ZodType<T>): T {
+  const value = schema.safeParse(rows.length === 1 ? rows[0]!.result : undefined);
+  return value.success ? value.data : publicationRefuse(invalidRead, "dependency_unavailable");
+}
+function scopedReadFailure(error: unknown): CatalogPublicationFailure {
+  if (error instanceof CatalogPublicationError) return failure(error);
+  if (error instanceof Error && "code" in error) {
+    if (error.code === "40001") return { outcome: "conflict", reason: error.message === "catalog_publication_live_drift"
+      ? error.message : "catalog_publication_head_moved" };
+    if (error.code === "55000" && error.message === "catalog_publication_not_adopted") return { outcome: "unsupported", reason: error.message };
+    if (error.code === "22023" && error.message === "catalog_offer_memberships_page_input_invalid")
+      return { outcome: "validation_issue", reason: error.message };
+    if (error.code === "42501") return { outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" };
+  }
+  return failure(error);
+}
+
+/** On a trusted server executor, resolve the page inside the caller's catalogue snapshot.
+ * @experimental
+ */
+export async function readPostgresCatalogMembershipPage(db: PgQueryExecutor, registry: CatalogProductTypeRegistry,
+  input: CatalogMembershipQuery): Promise<CatalogMembershipPage | CatalogPublicationFailure> {
+  try {
+    const query = membershipQuery.safeParse(input);
+    if (!query.success) return publicationRefuse("catalog_offer_memberships_page_input_invalid");
+    const { offerVersion, cursor, limit, mode } = query.data;
+    const page = singletonRead(await tuple(db, "SELECT public.catalog_offer_memberships_page($1,$2,$3,$4,$5) AS result",
+      [offerVersion, cursor?.skuId ?? null, limit, mode ?? null, cursor?.headDigest ?? null]), membershipRow);
+    require(!cursor || page.headDigest === cursor.headDigest, "catalog_publication_head_moved", "conflict");
+    if (page.protocol === "legacy") return page;
+
+    const ids = page.items.map(item => item.skuId);
+    require(page.items.length <= limit && new Set(ids).size === ids.length
+      && new Set(page.items.map(item => item.skuCode)).size === ids.length
+      && ids.every((value, index) => index === 0 || ids[index - 1]! <= value)
+      && (!cursor || ids.every(value => cursor.skuId < value))
+      && (page.nextCursor === null || ids.length === limit && page.nextCursor === ids.at(-1)), invalidRead, "dependency_unavailable");
+    const items = page.items.map(({ productType, netContent, ...item }) => {
+      const eligible = mode === "one_time" ? item.sellableStandalone : mode === "subscription"
+        ? item.sellableInSubscription : item.sellableStandalone || item.sellableInSubscription;
+      require(eligible && item.document.productId === item.productId && item.document.digest === item.head.documentDigest,
+        invalidRead, "dependency_unavailable");
+      const definition = registry.resolve(productType);
+      if (!definition) return publicationRefuse("catalog_publication_readiness_unavailable", "dependency_unavailable");
+      require(catalogPublicationIntegralGrams(netContent, definition) === String(item.netWeightG),
+        "catalog_publication_live_drift", "conflict");
+      return item;
+    });
+    return { ...page, items, nextCursor: page.nextCursor === null ? null : { skuId: page.nextCursor, headDigest: page.headDigest } };
+  } catch (error) { return scopedReadFailure(error); }
+}
+
 function failure(error: unknown): CatalogPublicationFailure {
   if (error instanceof CatalogPriceSetupTransactionError) return error.refusal;
   if (error instanceof CatalogPublicationError) return { outcome: error.outcome, reason: error.code };
@@ -741,8 +829,50 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       });
     } catch (error) { return failure(error); }
   }
+  /** @experimental */
+  async function membershipPage(input: CatalogMembershipQuery): Promise<CatalogMembershipPage | CatalogPublicationFailure> {
+    try { return await deps.transactions.run(db => readPostgresCatalogMembershipPage(db, deps.registry, input)); }
+    catch (error) { return scopedReadFailure(error); }
+  }
+
+  /** @experimental */
+  async function activationReadiness(skuCodes: readonly string[], expectedHeadDigest: string): Promise<CatalogActivationReadiness | CatalogPublicationFailure> {
+    try {
+      const codes = readinessCodes.safeParse(skuCodes);
+      if (!codes.success || !digest.safeParse(expectedHeadDigest).success)
+        return publicationRefuse("catalog_publication_readiness_query_invalid");
+      return await deps.transactions.run(async db => {
+        await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        const batch = singletonRead(await tuple(db, "SELECT public.catalog_publication_activation_readiness($1,$2) AS result",
+          [codes.data, expectedHeadDigest]), readinessRow);
+        require(batch.headDigest === expectedHeadDigest && batch.items.length === codes.data.length
+          && batch.items.every((item, index) => item.skuCode === codes.data[index]),
+        "catalog_publication_readiness_authority_changed", "conflict");
+
+        const items: CatalogActivationReadiness["items"] = [];
+        for (const { evidence, ...item } of batch.items) {
+          if (!evidence) {
+            require(item.skuId === null && item.logisticsRef === null && equal(item.reasons, ["sku_not_materialized"]),
+              "catalog_publication_readiness_evidence_invalid", "dependency_unavailable");
+            items.push(item);
+            continue;
+          }
+          const { product, sku } = evidence;
+          require(sku.id === item.skuId && sku.code === item.skuCode && sku.productId === product.id
+            && sku.logisticsRef === item.logisticsRef, "catalog_publication_readiness_evidence_invalid", "dependency_unavailable");
+          const installed = readinessVerdict.safeParse(await deps.readiness(db, { product, skus: [sku] }, true));
+          if (!installed.success) return publicationRefuse("catalog_publication_readiness_invalid", "dependency_unavailable");
+          const reasons = readinessReasons.safeParse([...new Set([...item.reasons, ...installed.data.reasons])]);
+          if (!reasons.success) return publicationRefuse("catalog_publication_readiness_invalid", "dependency_unavailable");
+          items.push({ ...item, reasons: reasons.data, ready: reasons.data.length === 0 });
+        }
+        return { ...batch, items };
+      });
+    } catch (error) { return scopedReadFailure(error); }
+  }
+
   return { authorize, authorizeReadScope(context: Context): VerifiedCatalogReadScope { const scope = Object.freeze({}); readers.set(scope, context); return scope as VerifiedCatalogReadScope; },
-    publication, reads, readPort, publish, decision, receipt: recoverReceipt, readbackV2, resolveRetained };
+    publication, reads, readPort, publish, decision, receipt: recoverReceipt, readbackV2, resolveRetained, membershipPage, activationReadiness };
 }
 function encodeCursor(value: { kind: "history" | "facts"; productId: string; highWater: number; before: number }): string {
   return Buffer.from(publicationJson({ schemaVersion: 1, ...value })).toString("base64url");

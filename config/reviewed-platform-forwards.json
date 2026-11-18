@@ -5735,6 +5735,31 @@
             "sha256": "9fa24f3f4d45568256de379358c76d2d8f751492c06cfcc177767bf5e5453bea"
           }
         ]
+      },
+      {
+        "row": "catalogue-lc2-r",
+        "path": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_read_head()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_read_member(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_offer_memberships_page(text,uuid,integer,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_activation_readiness(text[],text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8105,6 +8130,32 @@
           "signature": "public.subscription_price_policy_revisions_guard_insert()",
           "beforeSha256": null,
           "afterSha256": "e1c913dd167e61e420b0b8630608063891ab8a882fc75eacc962653f676fd0ce"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+      "sha256": "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_read_head()",
+          "beforeSha256": null,
+          "afterSha256": "881661908d41dfa15896a4b427aed72ae560a4e39295c90d371cc6def923e8e0"
+        },
+        {
+          "signature": "public.catalog_publication_read_member(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "7372d5748680615ec691897cb63bb8bce06a177b9cc4871960e093e749f7e794"
+        },
+        {
+          "signature": "public.catalog_offer_memberships_page(text,uuid,integer,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "d0b2ac887f5032b653d74b1219f8eae4ad029ac329825e90e3a374c54f64b31d"
+        },
+        {
+          "signature": "public.catalog_publication_activation_readiness(text[],text)",
+          "beforeSha256": null,
+          "afterSha256": "5ae3d4ed64dbcd4e47aeca40b62bb797279a1165883c2d0d2463c0e0d839d96a"
         }
       ]
     }

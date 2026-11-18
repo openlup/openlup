@@ -85,6 +85,15 @@ in your own complete chain or the catalogue that already defines the routines.
 Applying both paths fails when the latter attempts to create existing functions.
 Importing `@openlup/platform/job-ledger` applies no SQL.
 
+### Enable governed catalogue reads
+
+Apply the catalogue publication reads forward before binding the experimental
+membership and activation-readiness methods. The forward adds read functions
+over the existing publication data and requires no backfill. Earlier readers
+can remain active during the upgrade. Use a trusted server connection with
+permission to execute the new routines, then start new paging sequences with a
+null cursor. The managed rail does not supply these reads.
+
 ## Inspect and apply
 
 1. Call `status()` to inspect the applied and pending canonical paths. It

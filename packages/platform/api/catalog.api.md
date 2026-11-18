@@ -2578,6 +2578,7 @@ export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateCo
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
 export { CATALOG_PUBLICATION_LIMITS } from "./publication.js";
 export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogPublicationManifestV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogDecisionReceiptV2, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./publication.js";
+export type { CatalogMembershipCursor, CatalogMembershipQuery, CatalogPublicationMember, CatalogMembershipPage, CatalogActivationReadiness } from "./publication.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -2976,6 +2977,57 @@ export interface CatalogRetainedSourceBinding {
 export interface CatalogPublicationFailure {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: string;
+}
+/** @experimental */
+export type CatalogMembershipCursor = {
+    skuId: string;
+    headDigest: string;
+};
+/** @experimental */
+export interface CatalogMembershipQuery {
+    offerVersion: string;
+    cursor: CatalogMembershipCursor | null;
+    limit: number;
+    mode?: "one_time" | "subscription" | null;
+}
+/** @experimental */
+export interface CatalogPublicationMember {
+    skuId: string;
+    skuCode: string;
+    productId: string;
+    productSlug: string;
+    netWeightG: number;
+    sellableStandalone: boolean;
+    sellableInSubscription: boolean;
+    presentation: CatalogPublicationFacts | null;
+    logisticsRef: string | null;
+    head: CatalogHeadRef;
+    skuRevisionId: string;
+    document: CatalogDocumentRevisionRef;
+}
+/** @experimental */
+export type CatalogMembershipPage = {
+    protocol: "legacy";
+    headDigest: null;
+    items: [];
+    nextCursor: null;
+} | {
+    protocol: "governed";
+    headDigest: string;
+    items: CatalogPublicationMember[];
+    nextCursor: CatalogMembershipCursor | null;
+};
+/** @experimental */
+export interface CatalogActivationReadiness {
+    protocol: "governed";
+    headDigest: string;
+    items: {
+        skuCode: string;
+        skuId: string | null;
+        ready: boolean;
+        reasons: string[];
+        logisticsRef: string | null;
+    }[];
 }
 ```
 ## dist/catalog/contracts/resolveProductMedia.d.ts
@@ -4005,7 +4057,7 @@ export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
-export { createPostgresCatalogPublication } from "./publicationStore.js";
+export { createPostgresCatalogPublication, readPostgresCatalogMembershipPage } from "./publicationStore.js";
 export { compileCatalogPublication, CatalogPublicationError, assertCatalogPublicationPreparation, assertCatalogPublicationGrossMass } from "./publicationValidation.js";
 export type { CatalogPublicationRules, CatalogPublicationCompileInput, CatalogPublicationDocument } from "./publicationValidation.js";
 export type { CatalogPublicationDependencies, CatalogPublicationTransactions, CatalogPublicationPriceBoundary, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
@@ -4433,10 +4485,16 @@ export {};
 ## dist/catalog/publicationStore.d.ts
 
 ```ts
+import type { PgQueryExecutor } from "../data/index.js";
 import type { VerifiedCatalogPublisher, CatalogPublicationPort, CatalogPublicationReadPort } from "./publicationPorts.js";
 import type { CatalogPublicationDependencies, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
-import type { CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./contracts/publication.js";
+import type { CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure, CatalogMembershipPage, CatalogMembershipQuery, CatalogActivationReadiness } from "./contracts/publication.js";
 import type { CatalogHeadRef, CatalogPublishCommand } from "./contracts/lifecycle.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+/** On a trusted server executor, resolve the page inside the caller's catalogue snapshot.
+ * @experimental
+ */
+export declare function readPostgresCatalogMembershipPage(db: PgQueryExecutor, registry: CatalogProductTypeRegistry, input: CatalogMembershipQuery): Promise<CatalogMembershipPage | CatalogPublicationFailure>;
 /** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters.
  * @experimental
  */
@@ -4481,6 +4539,8 @@ export declare function createPostgresCatalogPublication<Context>(deps: CatalogP
         reference: CatalogSkuRevisionRef;
         sku: CatalogPublishedSku;
     }>;
+    membershipPage: (input: CatalogMembershipQuery) => Promise<CatalogMembershipPage | CatalogPublicationFailure>;
+    activationReadiness: (skuCodes: readonly string[], expectedHeadDigest: string) => Promise<CatalogActivationReadiness | CatalogPublicationFailure>;
 };
 ```
 ## dist/catalog/publicationValidation.d.ts
@@ -4975,6 +5035,14 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly catalogPath: "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql";
         readonly position: 156;
         readonly sha256: "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261123170000_catalog_publication_reads";
+        readonly catalogPath: "db/platform/migrations/20261123170000_catalog_publication_reads.sql";
+        readonly position: 157;
+        readonly sha256: "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be";
         readonly url: URL;
     }
 ];

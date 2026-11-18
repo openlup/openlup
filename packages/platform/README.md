@@ -1429,6 +1429,21 @@ account, order and fulfilment reads use an authorized persisted line binding.
 See the [native catalogue publication contract](../../docs/platform/DATA_AND_MIGRATIONS.md#native-catalogue-publication)
 for the write order, refusal boundaries, read methods and limits.
 
+The experimental `membershipPage({ offerVersion, cursor, limit, mode })`
+reads the active, admitted SKUs for a published offer. Start with `cursor: null`
+and pass `nextCursor` unchanged on the next call. The head digest binds the
+continuation to the same publication roster. Each member includes its exact
+publication, SKU revision and document reference. Use
+`readPostgresCatalogMembershipPage` on a trusted server executor when composing
+the read inside an existing catalogue snapshot.
+
+The experimental `activationReadiness(skuCodes, expectedHeadDigest)` checks 1
+through 100 distinct SKU codes in request order. Supply the digest from a
+governed membership page. This read combines native checks with the installed
+transaction-local readiness adapter. A missing SKU receives a blocking reason.
+A changed head requires a fresh read. Keep both methods behind the application's
+server authorization boundary.
+
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,
 unit codes, type versions, tax-class keys and profile references retain literal

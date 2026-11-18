@@ -427,6 +427,16 @@ refuses as `retained_revision_unavailable`; current facts cannot repair it. This
 read grants no fresh-sale admission. Hosts still own accepted-source persistence
 and the later acceptance fence.
 
+The additive `20261123170000_catalog_publication_reads` forward installs
+governed offer paging and an activation-readiness batch. It adds functions
+over existing publication rows and introduces no transfer relations. The
+readers share the publisher's lineage guard. Paging applies offer, active
+status and purchase-mode filters before the UUID limit and resolves immutable
+SKU and document evidence for the selected page. A continuation is valid only
+for the returned roster digest. Legacy rows without a governed head supply no
+membership evidence. The readiness batch requires a governed head and includes
+only requested SKUs. Installed readiness checks run in the same transaction.
+
 Publication preserves omitted SKU revisions unless an explicit compatible derived
 operation changes them. Material or inconclusive changes require successor SKU
 identity. A document change revalidates affected omitted siblings. Nonmass or

@@ -1412,6 +1412,7 @@ export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateCo
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
 export { CATALOG_PUBLICATION_LIMITS } from "./publication.js";
 export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku, CatalogSkuRevisionRef, CatalogPublicationManifestV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogDecisionReceiptV2, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./publication.js";
+export type { CatalogMembershipCursor, CatalogMembershipQuery, CatalogPublicationMember, CatalogMembershipPage, CatalogActivationReadiness } from "./publication.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -1810,6 +1811,57 @@ export interface CatalogRetainedSourceBinding {
 export interface CatalogPublicationFailure {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: string;
+}
+/** @experimental */
+export type CatalogMembershipCursor = {
+    skuId: string;
+    headDigest: string;
+};
+/** @experimental */
+export interface CatalogMembershipQuery {
+    offerVersion: string;
+    cursor: CatalogMembershipCursor | null;
+    limit: number;
+    mode?: "one_time" | "subscription" | null;
+}
+/** @experimental */
+export interface CatalogPublicationMember {
+    skuId: string;
+    skuCode: string;
+    productId: string;
+    productSlug: string;
+    netWeightG: number;
+    sellableStandalone: boolean;
+    sellableInSubscription: boolean;
+    presentation: CatalogPublicationFacts | null;
+    logisticsRef: string | null;
+    head: CatalogHeadRef;
+    skuRevisionId: string;
+    document: CatalogDocumentRevisionRef;
+}
+/** @experimental */
+export type CatalogMembershipPage = {
+    protocol: "legacy";
+    headDigest: null;
+    items: [];
+    nextCursor: null;
+} | {
+    protocol: "governed";
+    headDigest: string;
+    items: CatalogPublicationMember[];
+    nextCursor: CatalogMembershipCursor | null;
+};
+/** @experimental */
+export interface CatalogActivationReadiness {
+    protocol: "governed";
+    headDigest: string;
+    items: {
+        skuCode: string;
+        skuId: string | null;
+        ready: boolean;
+        reasons: string[];
+        logisticsRef: string | null;
+    }[];
 }
 ```
 ## dist/catalog/contracts/resolveProductMedia.d.ts

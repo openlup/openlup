@@ -5,7 +5,7 @@ import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation,
 import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 
-import { createPostgresCatalogPublication } from "../../src/catalog/publicationStore.js";
+import { createPostgresCatalogPublication, readPostgresCatalogMembershipPage } from "../../src/catalog/publicationStore.js";
 import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/contracts/publication.js";
 import { input, definition, registry, rules } from "./fixtures/publicationInput.js";
 it("W32_V5-0597_predicate_precedence_boundary", () => {
@@ -863,4 +863,116 @@ it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the 
   expect(first.nextCursor).toBe(nextCursor);
   expect(await target.readbackV2(head, first.nextCursor)).toEqual({ ...expected, items: items.slice(4), nextCursor: null });
   expect(fetched).toEqual([stored.slice(0, 4).map(row => row.id), [stored[4].id]]);
+});
+
+describe("governed read response admission", () => {
+  const digest = "c".repeat(64);
+  const invalid = { outcome: "dependency_unavailable", reason: "catalog_publication_read_invalid" };
+  const changed = { outcome: "conflict", reason: "catalog_publication_readiness_authority_changed" };
+  const compiled = compileCatalogPublication(input());
+  const sku = { ...compiled.skus[0]!, logisticsRef: "example:dispatch" }, product = compiled.product;
+  const item = { skuCode: sku.code, skuId: sku.id, ready: true, reasons: [], logisticsRef: sku.logisticsRef, evidence: { sku, product } };
+  const blocked = { skuCode: "SECOND", skuId: null, ready: false, reasons: ["sku_not_materialized"], logisticsRef: null, evidence: null };
+  const response = (items: unknown[] = [item], headDigest = digest) => ({ protocol: "governed", headDigest, items });
+  const query = { offerVersion: "example:offer", limit: 2, cursor: null };
+  const member = { skuId: sku.id, skuCode: sku.code, productId: product.id, productSlug: product.slug, productType: product.type,
+    netContent: sku.netContent, netWeightG: 100, sellableStandalone: true, sellableInSubscription: false, presentation: product.presentation,
+    logisticsRef: sku.logisticsRef, head: { publicationId: product.id, revision: 1, documentDigest: product.document!.digest },
+    document: product.document, skuRevisionId: sku.id };
+  const member2 = { ...member, skuId: "30000000-0000-4000-8000-000000000002", skuCode: "SECOND" };
+  const page = (items: unknown[] = [member], nextCursor: string | null = null) => ({ protocol: "governed", headDigest: digest, items, nextCursor });
+
+  function readBatch(data: unknown, rowCount = 1) {
+    return createPostgresCatalogPublication({
+      registry, rules,
+      authorizeHuman: async () => ({ ok: false }), verifyMedia: async () => false,
+      readiness: async () => ({ ready: true, reasons: [] }),
+      transactions: { run: work => work({ async query(sql) {
+        return { rows: sql.startsWith("SET TRANSACTION") ? [] : Array.from({ length: rowCount }, () => ({ result: data })) };
+      } }) },
+    });
+  }
+
+  it.each([
+    ["D-215.shape-extra", { extra: true }], ["D-215.shape-id", { skuId: "bad" }],
+    ["D-215.shape-boolean", { ready: "true" }], ["D-215.reasons-cap", { ready: false, reasons: Array(33).fill("blocked") }],
+    ["D-215.reason-format", { ready: false, reasons: ["contains spaces"] }],
+    ["D-215.reason-length", { ready: false, reasons: ["x".repeat(121)] }],
+    ["D-215.logistics-empty", { logisticsRef: "" }], ["D-215.logistics-size", { logisticsRef: "x".repeat(501) }],
+    ["D-215.logistics-trim", { logisticsRef: " padded " }], ["D-215.verdict", { ready: true, reasons: ["blocked"] }],
+    ["D-215.verdict-empty", { ready: false }], ["D-215.ready-id", { skuId: null }], ["D-215.ready-logistics", { logisticsRef: null }],
+  ])("%s", async (_rule, patch) => {
+    expect(await readBatch(response([{ ...item, ...patch }])).activationReadiness([sku.code], digest)).toEqual(invalid);
+  });
+
+  it.each([
+    ["D-215.shape-protocol", { ...response(), protocol: "legacy" }, [sku.code], 1, invalid],
+    ["D-216.head", response([item], "f".repeat(64)), [sku.code], 1, changed],
+    ["D-216.count", response(), [sku.code, blocked.skuCode], 1, changed],
+    ["D-216.index", response([blocked, item]), [sku.code, blocked.skuCode], 1, changed],
+    ["D-216.singleton-zero", response(), [sku.code], 0, invalid],
+    ["D-216.singleton-two", response(), [sku.code], 2, invalid],
+  ] as const)("%s", async (_rule, data, codes, count, expected) => {
+    expect(await readBatch(data, count).activationReadiness(codes, digest)).toEqual(expected);
+  });
+
+  it.each([
+    ["D-216.query-empty", [], digest], ["D-216.query-max", Array.from({ length: 101 }, (_, index) => `SKU-${index}`), digest],
+    ["D-216.query-duplicate", [sku.code, sku.code], digest], ["D-216.query-code", ["bad"], digest],
+    ["D-216.query-head", [sku.code], "bad"],
+  ] as const)("%s", async (_rule, codes, head) => {
+    expect(await readBatch(response()).activationReadiness(codes, head))
+      .toEqual({ outcome: "validation_issue", reason: "catalog_publication_readiness_query_invalid" });
+  });
+
+  it.each([
+    ["LC6-D-080.query-extra", { extra: true }], ["LC6-D-080.query-offer-min", { offerVersion: " " }],
+    ["LC6-D-080.query-offer-max", { offerVersion: "a".repeat(81) }], ["LC6-D-080.query-limit-min", { limit: 0 }],
+    ["LC6-D-080.query-limit-max", { limit: 101 }], ["LC6-D-080.query-limit-int", { limit: 1.5 }],
+    ["LC6-D-080.query-mode", { mode: "invalid" }], ["LC6-D-080.query-cursor", { cursor: { skuId: "invalid", headDigest: digest } }],
+    ["LC6-D-080.query-head", { cursor: { skuId: sku.id, headDigest: "invalid" } }],
+  ])("%s", async (_rule, patch) => {
+    const db = { async query() { throw new Error("Invalid input reached the database"); } };
+    const result = await readPostgresCatalogMembershipPage(db, registry, { ...query, ...patch } as typeof query);
+    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_offer_memberships_page_input_invalid" });
+  });
+
+  it("LC6-D-080.query-normalized", async () => {
+    const cursorId = "A0000000-0000-4000-8000-000000000001";
+    const db = { async query(_sql: string, values?: unknown[]) {
+      expect(values).toEqual([query.offerVersion, cursorId.toLowerCase(), query.limit, null, digest]);
+      return { rows: [{ result: page([]) }] };
+    } };
+    expect(await readPostgresCatalogMembershipPage(db, registry, { ...query, offerVersion: ` ${query.offerVersion} `, cursor: { skuId: cursorId, headDigest: digest } }))
+      .toEqual(page([]));
+  });
+
+  it.each([
+    ["LC6-D-087.shape-extra", query, page([{ ...member, extra: true }])],
+    ["LC6-D-087.shape-presentation", query, page([{ ...member, presentation: "invalid" }])],
+    ["LC6-D-087.shape-logistics", query, page([{ ...member, logisticsRef: " padded " }])],
+    ["LC6-D-087.shape-mass-min", query, page([{ ...member, netWeightG: 0 }])],
+    ["LC6-D-087.shape-mass-max", query, page([{ ...member, netWeightG: 10_000_000 }])],
+    ["LC6-D-087.shape-mass-int", query, page([{ ...member, netWeightG: 9.5 }])],
+    ["LC6-D-091.count", { ...query, limit: 1 }, page([member, member2])],
+    ["LC6-D-091.duplicate-id", query, page([member, { ...member2, skuId: member.skuId }])],
+    ["LC6-D-091.duplicate-code", query, page([member, { ...member2, skuCode: member.skuCode }])],
+    ["LC6-D-091.order", query, page([member2, member])],
+    ["LC6-D-091.seek", { ...query, cursor: { skuId: member.skuId, headDigest: digest } }, page([member])],
+    ["LC6-D-091.cursor-id", query, page([member, member2], member.skuId)],
+    ["LC6-D-091.cursor-count", query, page([member], member.skuId)],
+    ["LC6-D-085.mode-one-time", { ...query, mode: "one_time" }, page([{ ...member, sellableStandalone: false, sellableInSubscription: true }])],
+    ["LC6-D-085.mode-subscription", { ...query, mode: "subscription" }, page([member])],
+    ["LC6-D-085.mode-any", query, page([{ ...member, sellableStandalone: false }])],
+    ["LC6-D-094.document-owner", query, page([{ ...member, document: { ...member.document, productId: member2.skuId } }])],
+    ["LC6-D-094.document-head", query, page([{ ...member, document: { ...member.document, digest: "d".repeat(64) } }])],
+  ] as const)("%s", async (_rule, requested, result) => {
+    expect(await readPostgresCatalogMembershipPage({ async query() { return { rows: [{ result }] }; } }, registry, requested)).toEqual(invalid);
+  });
+
+  it("LC6-D-090.outage", async () => {
+    const db = { async query() { throw new Error("Store is unreachable"); } };
+    expect(await readPostgresCatalogMembershipPage(db, registry, query))
+      .toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+  });
 });

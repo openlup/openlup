@@ -630,9 +630,13 @@
       {
         "file": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
         "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
+      },
+      {
+        "file": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+        "sha256": "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be"
       }
     ],
-    "objectInventorySha256": "71bdde3e9a1a395fd91e9e7a7cfb86a044feab18a2a926183bd3abb674b39c73",
+    "objectInventorySha256": "82c694cae23f898f2a5cf99897dd7da50c1f3d6eccfdac1b1c7e509c545f49bd",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1282,14 +1286,18 @@
         {
           "file": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
           "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
+        },
+        {
+          "file": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+          "sha256": "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "6b6aaf6e0214010c7d7a5a6b999f1a915a8f2d45fc69e0d3c7ccb85936235cc1"
+          "withRestore": "7318bfba84b7e970dd83171321103fdc80ad22dd61709051b7d16182eedd0c4b"
         },
         "separateMigrator": {
-          "withRestore": "dd0a74176f50fd4dbcb3e28749f2f1acb15c347bbd3fe0f1b6c3e03293ca8ff7"
+          "withRestore": "c20e184ba5e915a3df212645739492ac6bd52f4a9e8fd6e601dee40e12d42ad3"
         }
       }
     },
@@ -1938,11 +1946,15 @@
         {
           "file": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
           "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
+        },
+        {
+          "file": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+          "sha256": "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "1b01acb483c19a0ba3a15d14d5ded75eaef36a68fa14b288c20b15a1fc6c2744",
-        "operatorProvisioned": "21149545bcebc79b71875c175c019e61873f68428fc0fa5c5544ed3d15c393f8"
+        "installerManaged": "d667140567124d82b46941581ba90a3048ba0153d5b8cd7c3af813c200464ed6",
+        "operatorProvisioned": "64ff1d94accca729479d1537e3749084e095dd0e1e4938c37d03f8506df7d049"
       }
     }
   },
@@ -2731,6 +2743,11 @@
       "file": "20261123160000_subscription_price_policy_close_provenance.sql",
       "source": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
       "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
+    },
+    {
+      "file": "20261123170000_catalog_publication_reads.sql",
+      "source": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+      "sha256": "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

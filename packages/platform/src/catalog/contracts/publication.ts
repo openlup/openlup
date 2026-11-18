@@ -61,3 +61,38 @@ export interface CatalogPublicationFailure {
   outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
   reason: string;
 }
+
+/** @experimental */
+export type CatalogMembershipCursor = { skuId: string; headDigest: string };
+/** @experimental */
+export interface CatalogMembershipQuery {
+  offerVersion: string;
+  cursor: CatalogMembershipCursor | null;
+  limit: number;
+  mode?: "one_time" | "subscription" | null;
+}
+/** @experimental */
+export interface CatalogPublicationMember {
+  skuId: string;
+  skuCode: string;
+  productId: string;
+  productSlug: string;
+  netWeightG: number;
+  sellableStandalone: boolean;
+  sellableInSubscription: boolean;
+  presentation: CatalogPublicationFacts | null;
+  logisticsRef: string | null;
+  head: CatalogHeadRef;
+  skuRevisionId: string;
+  document: CatalogDocumentRevisionRef;
+}
+/** @experimental */
+export type CatalogMembershipPage =
+  | { protocol: "legacy"; headDigest: null; items: []; nextCursor: null }
+  | { protocol: "governed"; headDigest: string; items: CatalogPublicationMember[]; nextCursor: CatalogMembershipCursor | null };
+/** @experimental */
+export interface CatalogActivationReadiness {
+  protocol: "governed";
+  headDigest: string;
+  items: { skuCode: string; skuId: string | null; ready: boolean; reasons: string[]; logisticsRef: string | null }[];
+}

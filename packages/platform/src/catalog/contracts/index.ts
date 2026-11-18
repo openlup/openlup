@@ -32,3 +32,5 @@ export { CATALOG_PUBLICATION_LIMITS } from "./publication.js";
 export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku,
   CatalogSkuRevisionRef, CatalogPublicationManifestV2, CatalogFullPublicationV2, CatalogPublicationReceiptV2,
   CatalogDecisionReceiptV2, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./publication.js";
+export type { CatalogMembershipCursor, CatalogMembershipQuery, CatalogPublicationMember, CatalogMembershipPage,
+  CatalogActivationReadiness } from "./publication.js";
