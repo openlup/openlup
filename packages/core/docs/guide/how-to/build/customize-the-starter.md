@@ -705,4 +705,5 @@ when either the revision or days differ. Change the owned value, deliberately ru
 the installation step with installation authority, then restart. An absent database
 key has revision `default`, so it does not match `starter-1` until installed.
 See [native stock priority](../../concepts/checkout.md#native-stock-priority) for
-validation, privileges and the request horizon contract.
+validation, privileges and the request horizon contract. This 1.2.0 addition
+does not alter the historical 0.43.0 recipe above.
