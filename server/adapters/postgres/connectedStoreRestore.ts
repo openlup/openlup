@@ -633,6 +633,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // These guards verify retained canonical bytes and identity without rewriting them.
     catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
+    catalog_skus: ["catalog_skus_publication_identity_fence"],
+    catalog_sku_identifiers: ["catalog_identifiers_publication_identity_fence"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],

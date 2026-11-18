@@ -95,6 +95,31 @@ CREATE INDEX catalog_publications_product_revision_idx ON public.catalog_publica
 CREATE INDEX catalog_sku_revisions_sku_revision_idx ON public.catalog_sku_revisions(sku_id,revision DESC);
 CREATE INDEX catalog_operator_receipts_publication_idx ON public.catalog_operator_receipts(publication_id);
 CREATE INDEX catalog_publication_decisions_reference_idx ON public.catalog_publication_decisions(candidate_reference_digest,decided_at,id);
+-- Keep legacy-to-legacy admission. An identity owned by publication cannot
+-- also be written through the older identifier or SKU representation.
+CREATE FUNCTION public.catalog_publication_identity_fence() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ IF TG_TABLE_NAME = 'catalog_skus' THEN
+  IF NEW.combination_digest IS NOT NULL AND EXISTS (
+   SELECT 1 FROM public.catalog_skus s WHERE s.id <> NEW.id AND s.product_id = NEW.product_id
+    AND s.combination_digest = NEW.combination_digest
+    AND (NEW.publication_facts IS NOT NULL OR s.publication_facts IS NOT NULL)) THEN
+   RAISE EXCEPTION 'catalog_publication_identity_conflict' USING ERRCODE='23505',CONSTRAINT='catalog_skus_publication_combination_key';
+  END IF;
+ ELSIF NEW.identifier_kind = 'gtin' AND EXISTS (
+  SELECT 1 FROM public.catalog_sku_identifiers g WHERE g.id <> NEW.id AND g.identifier_kind = 'gtin'
+   AND ltrim(g.normalized_value,'0') = ltrim(NEW.normalized_value,'0')
+   AND (NEW.scheme = 'gs1:gtin' OR g.scheme = 'gs1:gtin')) THEN
+  RAISE EXCEPTION 'catalog_publication_identity_conflict' USING ERRCODE='23505',CONSTRAINT='catalog_sku_identifiers_global_gtin_key';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_identity_fence() FROM PUBLIC;
+CREATE TRIGGER catalog_skus_publication_identity_fence BEFORE INSERT OR UPDATE OF product_id,combination_digest,publication_facts ON public.catalog_skus FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_identity_fence();
+CREATE TRIGGER catalog_identifiers_publication_identity_fence BEFORE INSERT OR UPDATE OF identifier_kind,normalized_value,scheme ON public.catalog_sku_identifiers FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_identity_fence();
+
 CREATE FUNCTION public.catalog_publication_immutable() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 BEGIN RAISE EXCEPTION 'catalog_publication_record_immutable' USING ERRCODE='55000'; END;

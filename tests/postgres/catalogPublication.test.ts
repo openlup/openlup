@@ -2842,9 +2842,14 @@ it.each([
   await approve(command);
   let stable = phase === "before compilation" ? await insert() : undefined;
   let snapshots = 0;
-  const target = createPostgresCatalogPublication(dependencies(async sql => {
-    if (phase === "after compilation snapshot" && sql.includes("AS live_product") && ++snapshots === 2)
-      stable = await insert();
+  const target = createPostgresCatalogPublication(dependencies(async (sql, _executor, rows) => {
+    if (phase !== "after compilation snapshot") return;
+    if (sql.includes("pg_try_advisory_xact_lock")) stable = await insert();
+    if (sql.includes("AS live_product") && ++snapshots === 2) {
+      // Hold the earlier snapshot's document roster while the other
+      // transaction's insert is already visible to the final SQL admission.
+      rows[0].documents = (rows[0].documents as { id: string }[]).filter(row => row.id !== document.id);
+    }
   }));
   const capability = (await target.authorize(null))!;
   const result = await target.publish(command, capability);
@@ -3478,6 +3483,65 @@ it("returns absence when publication recovery finds an approval under the same s
   expect(await authority.receipt(scope, actor)).toEqual({ outcome: "absent" });
   expect(await authority.readPort(actor).receipt(scope)).toEqual({ outcome: "absent" });
 });
+
+it.each(["legacy GTIN first", "row locker first", "publisher first with colliding GTIN", "publisher first with distinct identifier", "publisher first with colliding SKU"] as const)(
+  "publication serializes with independent native catalogue writers: %s", async mode => {
+    const data = await draft();
+    const existing = mode === "row locker first" ? await commit(data.publication) : null;
+    const command = existing ? await revise(data, existing.head) : data.publication;
+    await approve(command);
+    const competing = await db.connect();
+    const gtin = data.payload.skus[0].identifiers![0].value;
+    const otherSku = foreignPublished.data.skuId;
+    const table = mode.endsWith("SKU") ? "catalog_skus" : "catalog_sku_identifiers";
+    const writeIdentifier = (kind: "gtin" | "other") => competing.query(`INSERT INTO public.catalog_sku_identifiers
+      (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity) VALUES($1,$2,$3,$4,'unit',1)`,
+    [otherSku, `legacy:${randomUUID()}`, kind, kind === "gtin" ? gtin : randomUUID()]);
+    const writeLegacySku = () => competing.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,min_order_qty,is_addon,
+      sellable_standalone,sellable_in_subscription,net_weight_g,combination_digest)
+      SELECT $1,product_id,$2,title,'draft',min_order_qty,is_addon,false,false,net_weight_g,combination_digest
+      FROM public.catalog_skus WHERE id=$3`, [randomUUID(), `SKU-${randomUUID()}`, data.skuId]);
+    let guarded: boolean | undefined;
+    let done = false;
+    const target = createPostgresCatalogPublication(dependencies(async sql => {
+      if (!mode.startsWith("publisher first") || !sql.startsWith("SELECT count(*)::integer AS remaining")) return;
+      await competing.query("SAVEPOINT lock_probe");
+      try {
+        await competing.query(`LOCK TABLE public.${table} IN ROW EXCLUSIVE MODE NOWAIT`);
+        guarded = false;
+        if (mode.endsWith("distinct identifier")) await writeIdentifier("other");
+      } catch (error) {
+        expect(error).toMatchObject({ code: "55P03" });
+        guarded = true;
+        await competing.query("ROLLBACK TO SAVEPOINT lock_probe");
+      }
+      await competing.query("RELEASE SAVEPOINT lock_probe");
+    }));
+    const capability = (await target.authorize(null))!;
+    try {
+      await competing.query("BEGIN");
+      if (mode === "legacy GTIN first") await writeIdentifier("gtin");
+      if (mode === "row locker first") await competing.query("SELECT id FROM public.catalog_products WHERE id=$1 FOR NO KEY UPDATE", [data.productId]);
+      const result = target.publish(command, capability).then(value => { done = true; return value; });
+      if (mode === "row locker first") {
+        const wait = async () => (await db.query(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+          WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id FROM public.catalog_products WHERE id=%') AS value`)).rows[0].value;
+        await expect.poll(async () => done || await wait()).toBe(true);
+        if (!done) await competing.query("ROLLBACK");
+      }
+      if (mode.endsWith(" first")) {
+        expect(await result).toEqual({ outcome: "conflict", reason: "catalog_publication_busy" });
+        return;
+      }
+      expect(await result).toMatchObject({ outcome: "committed" });
+      expect(guarded).toBe(true);
+      if (mode.endsWith("distinct identifier")) expect((await writeIdentifier("other")).rowCount).toBe(1);
+      else await expect(mode.endsWith("SKU") ? writeLegacySku() : writeIdentifier("gtin")).rejects.toMatchObject({ code: "23505" });
+    } finally {
+      await competing.query("ROLLBACK");
+      competing.release();
+    }
+  });
 
 it.each([
   "first missing", "middle missing", "last missing", "duplicate", "wrong kind", "wrong actor", "wrong scope",

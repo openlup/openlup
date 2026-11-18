@@ -39,7 +39,9 @@ history. Managed-to-native ingress defaults only absent product/SKU publication
 projections to NULL and never creates publication history. New uniqueness indexes
 scope to published projections. Existing draft combinations and identifiers keep
 their original admission rules, and publication checks new GTINs against legacy
-and published identifiers. Keep the new reader
+and published identifiers. The native write fence serializes legacy catalogue
+writes with publication and checks cross-format identity collisions. The managed
+equivalent can use the same row triggers and transaction-local relation guards. Keep the new reader
 while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 The price boundary uses the existing version 2 command through the price owner's

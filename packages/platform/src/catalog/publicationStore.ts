@@ -278,9 +278,13 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(typeof allowed === "boolean", readInvalid, "dependency_unavailable");
     require(allowed, "catalog_publication_busy", "conflict");
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`catalog-lineage:${prepared.record.productId}`]);
-    await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid FOR NO KEY UPDATE", [prepared.record.productId]);
-    await db.query("SELECT id FROM public.catalog_products WHERE id=$1::uuid ORDER BY id FOR NO KEY UPDATE", [prepared.record.productId]);
-    await db.query("SELECT id FROM public.catalog_skus WHERE product_id=$1::uuid ORDER BY id FOR NO KEY UPDATE", [prepared.record.productId]);
+    // Legacy catalogue writes do not take the publication advisory guard. These
+    // relation locks stop their writes while allowing foreign-key readers.
+    await db.query(`LOCK TABLE public.catalog_products,public.catalog_skus,public.catalog_sku_identifiers,public.catalog_product_document_revisions
+      IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
+    await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid FOR NO KEY UPDATE NOWAIT", [prepared.record.productId]);
+    await db.query("SELECT id FROM public.catalog_products WHERE id=$1::uuid ORDER BY id FOR NO KEY UPDATE NOWAIT", [prepared.record.productId]);
+    await db.query("SELECT id FROM public.catalog_skus WHERE product_id=$1::uuid ORDER BY id FOR NO KEY UPDATE NOWAIT", [prepared.record.productId]);
     return { retained, activationCodes };
   }
   function checkReadinessVerdict(result: unknown, reason: string) {
