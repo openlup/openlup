@@ -157,11 +157,11 @@ The shared released-input consumer proof checks both extracted applications,
 including the target application that supplies the installed upgrade CLI.
 
 Managed snapshots are derived from each extracted `ownership.json`, excluding
-generated and owned paths. A release that changes an owned file or its contract adds its own packaged
-starter migration (for the successor of
-1.1.0, `packages/core/changes/starter-owned-upgrade.md`, including the target-only
-`owned/market.config.ts`); the per-release procedure in the reader upgrade guide
-is authoritative. For 0.43.0→1.0.0 or 1.1.0 it first follows the packaged
+generated and owned paths. A release that changes an owned file or its contract
+adds its own packaged starter migration. The
+[1.1.0 to 1.2.0 procedure](../../packages/core/docs/guide/upgrade/v1-2-0.md#starter-applications-from-110)
+includes the target-only `owned/market.config.ts`. For 0.43.0→1.0.0 or 1.1.0
+the proof first follows the packaged
 starter migration: the three new owned files are target-only snapshot entries;
 the four required existing owned contracts take the target extraction's bytes
 while pristine. For a 1.1.0 target, starters from either 0.43.0 or 1.0.0 also
