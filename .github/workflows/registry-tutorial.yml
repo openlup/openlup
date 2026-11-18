@@ -260,6 +260,13 @@ jobs:
         with:
           name: qualified-image
           path: ${{ runner.temp }}/qualified-image
+      - name: Enable OCI export with the bundled Docker builder
+        run: |
+          sudo mkdir -p /etc/docker
+          sudo sh -c 'test -f /etc/docker/daemon.json || echo "{}" > /etc/docker/daemon.json'
+          sudo cat /etc/docker/daemon.json | jq '.features["containerd-snapshotter"] = true' > "$RUNNER_TEMP/docker.json"
+          sudo cp "$RUNNER_TEMP/docker.json" /etc/docker/daemon.json
+          sudo systemctl restart docker
       - name: Verify and publish the qualified archive
         id: publish
         env:
