@@ -552,7 +552,7 @@ it("cycle1 primary identifier keeps independent scheme and packaging guards", ()
   expect(catalogPublishedSkuSchema.safeParse(primaryCase).success).toBe(false);
 });
 
-it("W39_V5-1794_predicate_precedence_boundary", async () => {
+it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its exact null-cursor envelope"] as const)("%s", async mode => {
   const { payload, record } = input();
   const productId = payload.product.id;
   const actorId = "70000000-0000-4000-8000-000000000001";
@@ -576,6 +576,17 @@ it("W39_V5-1794_predicate_precedence_boundary", async () => {
     return { revision, id: head.publicationId, result: receipt, scope_id: productId,
       command_key: receipt.commandKey, fingerprint: receipt.fingerprint, actor_id: actorId, publication_id: head.publicationId };
   });
+  const terminal = mode.startsWith("terminal");
+  if (terminal) {
+    history.splice(16);
+    const legacy = history.map(row => {
+      const { schemaVersion: _version, productId: _product, publicationDigest: _digest, committedAt: _at, ...receipt } = row.result;
+      return receipt;
+    });
+    const size = Buffer.byteLength(JSON.stringify({ outcome: "page", receipts: legacy, limit: 100, nextCursor: null }));
+    const text = CATALOG_PUBLICATION_LIMITS.historyBytes - size;
+    history.at(-1)!.result.changes.at(-1)!.sku += "é".repeat(Math.floor(text / 2)) + "x".repeat(text % 2);
+  }
   const historyQueries: unknown[][] = [];
   const target = createPostgresCatalogPublication({
     registry, rules, authorizeHuman: async () => ({ ok: false }),
@@ -604,7 +615,14 @@ it("W39_V5-1794_predicate_precedence_boundary", async () => {
 
   const first = await target.reads.history(productId, null);
   expect(first.outcome).toBe("page");
-  if (first.outcome !== "page" || first.nextCursor === null) throw new Error("Missing history continuation");
+  if (first.outcome !== "page") throw new Error("Missing history page");
+  if (terminal) {
+    expect(first.receipts).toHaveLength(16);
+    expect(first.nextCursor).toBeNull();
+    expect(Buffer.byteLength(JSON.stringify(first))).toBe(CATALOG_PUBLICATION_LIMITS.historyBytes);
+    return;
+  }
+  if (first.nextCursor === null) throw new Error("Missing history continuation");
   expect(first.receipts.map(receipt => receipt.head.revision)).toEqual([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5]);
   expect(JSON.parse(Buffer.from(first.nextCursor, "base64url").toString("utf8"))).toEqual({
     schemaVersion: 1, kind: "history", productId, highWater: 20, before: 5,

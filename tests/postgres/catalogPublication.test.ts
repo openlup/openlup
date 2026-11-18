@@ -1029,7 +1029,7 @@ it.each([
     { commandKey: "forged" }, { publicationDigest: "a".repeat(64) }, { committedAt: "invalid" },
     { previousHead: { publicationId: randomUUID(), revision: 1, documentDigest: "b".repeat(64) } }]) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-      if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts") && rows[0]) Object.assign(rows[0].result as object, changed);
+      if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,") && rows[0]) Object.assign(rows[0].result as object, changed);
     }));
     const capability = (await target.authorize(null))!;
     expect((await target.receipt({ productId: paged.data.productId, commandKey: "publish:1" }, capability)).outcome).not.toBe("found");
@@ -1226,7 +1226,7 @@ it("rejects a decision replay body whose candidate or reason does not match its 
   const data = await draft(), command = await approve(data.publication), before = await snapshot();
   for (const changed of [{ candidateRef: `v1:${randomUUID()}@1/unpublished` }, { candidateDigest: "b".repeat(64) }, { reason: "Altered acknowledgement" }]) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-      if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) rows[0].result = { ...rows[0].result as object, ...changed };
+      if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,")) rows[0].result = { ...rows[0].result as object, ...changed };
     }));
     const capability = (await target.authorize(null))!;
     expect(await target.decision(command, capability)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
@@ -1834,7 +1834,7 @@ it("cycle1 native receipt observation accepts a one-character SKU and rejects em
   expect(receipt.changes[0].sku).toBe("X");
   expect(await authority.receipt({ productId: data.productId, commandKey: data.publication.commandKey }, actor)).toEqual({ outcome: "found", receipt });
   const damaged = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-    if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) for (const row of rows) {
+    if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,")) for (const row of rows) {
       const result = row.result as typeof receipt;
       row.result = { ...result, changes: result.changes.map(change => ({ ...change, sku: "" })) };
     }
@@ -2062,7 +2062,7 @@ it("cycle1 native publication replay refuses another real human and malformed re
   expect(await otherAuthority.publish(data.publication, otherActor)).toEqual({ outcome: "unauthorized", reason: "catalog_publication_operator_mismatch" });
   for (const mode of ["extra row", "kind", "fingerprint"]) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-      if (!sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) return;
+      if (!sql.includes("FROM public.catalog_operator_receipts WHERE") || !sql.startsWith("SELECT kind,")) return;
       if (mode === "extra row") rows.push(structuredClone(rows[0]));
       if (mode === "kind") rows[0].kind = "approve";
       if (mode === "fingerprint") rows[0].fingerprint = "c".repeat(64);
@@ -2079,7 +2079,7 @@ it("cycle1 native decision replay binds every receipt identity field", async () 
   for (const changed of [{ productId: randomUUID() }, { commandKey: "other:decision" }, { fingerprint: "c".repeat(64) },
     { actorId: randomUUID() }, { action: "revoke" }, { candidateRef: "other" }, { candidateDigest: "c".repeat(64) }, { reason: "Other reason" }]) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-      if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts") && rows[0]) Object.assign(rows[0].result as object, changed);
+      if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,") && rows[0]) Object.assign(rows[0].result as object, changed);
     }));
     const capability = (await target.authorize(null))!;
     expect(await target.decision(decision, capability)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
@@ -2090,7 +2090,7 @@ it("cycle1 native decision replay binds every receipt identity field", async () 
 it("cycle1 native receipt recovery never substitutes a later real publication body", async () => {
   const data = await draft(), first = await commit(data.publication), second = await commit(await revise(data, first.head)), before = await snapshot();
   const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-    if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts") && rows[0]?.command_key === first.commandKey)
+    if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,") && rows[0]?.command_key === first.commandKey)
       rows[0].result = { ...second, commandKey: first.commandKey, fingerprint: first.fingerprint };
   }));
   const capability = (await target.authorize(null))!;
@@ -2119,7 +2119,7 @@ it("cycle1 native B receipt metadata stays bound to its real publication and pre
     expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
   }
   const scoped = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-    if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) rows[0].scope_id = randomUUID();
+    if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,")) rows[0].scope_id = randomUUID();
   }));
   expect(await scoped.receipt({ productId: data.productId, commandKey: second.commandKey }, (await scoped.authorize(null))!))
     .toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
@@ -2936,7 +2936,7 @@ it.each([
     remaining: /^SELECT count.*AS remaining FROM public.catalog_publication_pointer_capabilities/u,
     "product projection": /^SELECT p.publication_facts=/u, "SKU projection": /^SELECT s.publication_facts=/u,
     history: /^SELECT EXISTS\(SELECT 1 FROM public.catalog_products/u, facts: /^SELECT p.product_id,p.revision,p.canonical_state/u,
-    "legacy readback": /^SELECT product_id FROM public.catalog_publications/u, recovery: /^SELECT \* FROM public.catalog_operator_receipts WHERE kind='publish'/u,
+    "legacy readback": /^SELECT product_id FROM public.catalog_publications/u, recovery: /FROM public.catalog_operator_receipts WHERE kind='publish'/u,
     retained: /^SELECT p.revision,p.canonical_state,p.digest AS manifest_digest/u, price: /^SELECT public.catalog_price_setup_apply_in_transaction/u,
   };
   let hits = 0;
@@ -3274,13 +3274,16 @@ it.each(["one kind", "max kind", "empty kind", "padded kind", "long kind", "one 
     if (["empty key", "padded key", "long key"].includes(mode)) rejection = { code: "23514", constraint: "catalog_operator_receipts_command_key_check" };
   }
   if (mode === "short fingerprint" || mode === "nonhex fingerprint") { row.fingerprint = mode === "short fingerprint" ? "a".repeat(63) : "g".repeat(64); rejection = { code: "23514", constraint: "catalog_operator_receipts_fingerprint_check" }; }
-  if (mode === "empty object") row.result = {};
-  if (mode === "primitive result") { row.result = false; rejection = { code: "23514", constraint: "catalog_operator_receipts_result_check" }; }
+  if (mode === "empty object") row.result = "{}";
+  if (mode === "primitive result") { row.result = "false"; rejection = { code: "23514", constraint: "catalog_operator_receipts_result_check" }; }
   if (mode === "result bound" || mode === "result overflow") {
-    const result = { zzPadding: "" }, bytes = 8_388_608 + (mode === "result overflow" ? 1 : 0);
-    const base = (await db.query("SELECT octet_length($1::jsonb::text) AS bytes", [JSON.stringify(result)])).rows[0].bytes;
-    result.zzPadding = "x".repeat(bytes - base); row.result = result;
-    expect((await db.query("SELECT octet_length($1::jsonb::text) AS bytes", [JSON.stringify(result)])).rows[0].bytes).toBe(bytes);
+    const receipt = { items: Array.from({ length: 100 }, () => false), zzPadding: "" };
+    const bytes = 8_388_608 + (mode === "result overflow" ? 1 : 0);
+    const missing = bytes - Buffer.byteLength(JSON.stringify({ outcome: "committed", receipt }));
+    receipt.zzPadding = "é".repeat(Math.floor(missing / 2)) + "x".repeat(missing % 2);
+    row.result = JSON.stringify(receipt);
+    expect(Buffer.byteLength(JSON.stringify({ outcome: "committed", receipt }))).toBe(bytes);
+    expect((await db.query("SELECT octet_length($1::jsonb::text) AS bytes", [row.result])).rows[0].bytes).toBeGreaterThan(8_388_608);
     if (mode === "result overflow") rejection = { code: "23514", constraint: "catalog_operator_receipts_result_check" };
   }
   const client = await db.connect();
@@ -3398,7 +3401,7 @@ it("refuses a well-formed legacy head with no retained publication", async () =>
 });
 
 it("refuses a publication history receipt bound to a different product", async () => {
-  const rows = (await db.query(`SELECT p.revision,p.id,r.result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
+  const rows = (await db.query(`SELECT p.revision,p.id,r.result::jsonb AS result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
     FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id
     WHERE p.id=$1 AND r.kind='publish'`, [foreignPublished.head.publicationId])).rows;
   expect(rows).toHaveLength(1);

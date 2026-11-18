@@ -20,6 +20,7 @@ import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected, type CatalogPublicationDocument } from "./publicationValidation.js";
 
+const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publication_id,result::jsonb AS result";
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -143,7 +144,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     return referenceDigest;
   }
   async function receipt(db: PgQueryExecutor, productId: string, commandKey: string, kind: string, fingerprint: string, actorId: string) {
-    const rows = await tuple(db, "SELECT * FROM public.catalog_operator_receipts WHERE scope_id=$1::uuid AND command_key=$2", [productId, commandKey]);
+    const rows = await tuple(db, `SELECT ${receiptColumns} FROM public.catalog_operator_receipts WHERE scope_id=$1::uuid AND command_key=$2`, [productId, commandKey]);
     if (!rows.length) return null;
     require(rows.length === 1 && rows[0]!.actor_id === actorId, "catalog_publication_operator_mismatch", "unauthorized");
     require(rows[0]!.kind === kind && rows[0]!.fingerprint === fingerprint, "catalog_publication_command_key_reused", "conflict");
@@ -301,7 +302,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(instant.safeParse(time).success, readInvalid, "dependency_unavailable");
         const result: CatalogDecisionReceiptV2 = { ...command, fingerprint, actorId, decidedAt: time };
         publicationJson({ outcome: "committed", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
-        await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,result) VALUES($1,$2,$3,$4,$5,$6::jsonb)", [command.action, command.productId, command.commandKey, fingerprint, actorId, publicationJson(result)]);
+        await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,result) VALUES($1,$2,$3,$4,$5,$6)", [command.action, command.productId, command.commandKey, fingerprint, actorId, publicationJson(result)]);
         await db.query(`INSERT INTO public.catalog_publication_decisions(id,product_id,candidate_ref,candidate_digest,candidate_reference_digest,action,actor_id,command_key,fingerprint,reason,decided_at)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz)`, [randomUUID(), command.productId, command.candidateRef, command.candidateDigest, referenceDigest, command.action, actorId, command.commandKey, fingerprint, command.reason, time]);
         return { outcome: "committed" as const, receipt: result };
@@ -423,7 +424,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         publicationJson({ outcome: "committed", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
         await db.query(`INSERT INTO public.catalog_publication_heads(product_id,publication_id,revision) VALUES($1,$2,$3)
           ON CONFLICT(product_id) DO UPDATE SET publication_id=EXCLUDED.publication_id,revision=EXCLUDED.revision`, [command.productId, publicationId, next]);
-        await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,publication_id,result) VALUES('publish',$1,$2,$3,$4,$5,$6::jsonb)", [command.productId, command.commandKey, fingerprint, actorId, publicationId, publicationJson(result)]);
+        await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,publication_id,result) VALUES('publish',$1,$2,$3,$4,$5,$6)", [command.productId, command.commandKey, fingerprint, actorId, publicationId, publicationJson(result)]);
         await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
           VALUES('catalog_product',$1,'catalog.publication.committed',$2,$3::jsonb)`, [command.productId, `catalog-publication:${publicationId}`, publicationJson({ schemaVersion: 2, productId: command.productId, head, digest: publicationDigestValue })]);
         const { remaining } = observedRow(await tuple(db, "SELECT count(*)::integer AS remaining FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=pg_current_xact_id()"));
@@ -635,16 +636,16 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           const { unknown } = observedRow(lineage);
           require(typeof unknown === "boolean", readInvalid, "dependency_unavailable");
           require(!unknown, "catalog_publication_lineage_unknown", "unsupported");
-          const rows = await tuple(db, `SELECT p.revision,p.id,r.result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id AND r.kind='publish'
+          const rows = await tuple(db, `SELECT p.revision,p.id,r.result::jsonb AS result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id AND r.kind='publish'
             WHERE p.product_id=$1::uuid AND p.revision <= coalesce($2::integer,(SELECT max(revision) FROM public.catalog_publications WHERE product_id=$1::uuid))
             AND ($3::integer IS NULL OR p.revision < $3) ORDER BY p.revision DESC LIMIT 101`, [productId, pointer?.highWater ?? null, pointer?.before ?? null]);
           const highWater = pointer?.highWater ?? rows[0]?.revision as number | undefined;
           const receipts: CatalogPublicationReceipt[] = [];
-          for (const row of rows.slice(0, 100)) {
+          for (const [index, row] of rows.slice(0, 100).entries()) {
             const receipt = await storedPublishReceipt(db, row);
             require(receipt.productId === productId && receipt.schemaVersion === 2, "catalog_publication_receipt_invalid", "dependency_unavailable");
             const result = legacyReceipt(receipt), test = { outcome: "page", receipts: [...receipts, result], limit: 100,
-              nextCursor: encodeCursor({ kind: "history", productId, highWater: highWater!, before: row.revision as number }) };
+              nextCursor: index + 1 < rows.length ? encodeCursor({ kind: "history", productId, highWater: highWater!, before: row.revision as number }) : null };
             try { publicationJson(test, CATALOG_PUBLICATION_LIMITS.historyBytes); } catch { if (!receipts.length) throw new CatalogPublicationError("catalog_publication_history_item_too_large"); break; }
             receipts.push(result);
           }
@@ -662,7 +663,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       return await deps.transactions.run(async db => {
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         await actor(db, capability);
-        const rows = await tuple(db, "SELECT * FROM public.catalog_operator_receipts WHERE kind='publish' AND scope_id=$1 AND command_key=$2", [scope.productId, scope.commandKey]);
+        const rows = await tuple(db, `SELECT ${receiptColumns} FROM public.catalog_operator_receipts WHERE kind='publish' AND scope_id=$1 AND command_key=$2`, [scope.productId, scope.commandKey]);
         if (!rows.length) return { outcome: "absent" as const };
         require(rows.length === 1, "catalog_publication_receipt_invalid", "dependency_unavailable");
         const receipt = await storedPublishReceipt(db, rows[0]!);
@@ -720,7 +721,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           require(stored && stored.sku_id === reference.skuId && stored.revision === reference.revision && stored.digest === reference.digest
             && typeof stored.bytes === "number" && stored.bytes > 0 && stored.bytes <= CATALOG_PUBLICATION_LIMITS.skuBytes,
           "catalog_publication_sku_revision_invalid", "dependency_unavailable");
-          const count = selected.length + 1, nextCursor = encodeCursor({ kind: "facts", productId, highWater: head.revision, before: offset + count });
+          const count = selected.length + 1;
+          const nextCursor = offset + count < manifest.skus.length
+            ? encodeCursor({ kind: "facts", productId, highWater: head.revision, before: offset + count }) : null;
           const base = Buffer.byteLength(publicationJson({ outcome: "page", schemaVersion: 2, head, product: manifest.product, items: [], nextCursor }));
           const bytes = Buffer.byteLength(publicationJson({ reference, facts: {} })) - 2 + (stored!.bytes as number);
           if (base + itemBytes + bytes + count - 1 > CATALOG_PUBLICATION_LIMITS.pageBytes) {

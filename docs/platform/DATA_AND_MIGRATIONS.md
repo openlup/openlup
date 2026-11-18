@@ -436,8 +436,10 @@ publication port. `reads.current` checks projection drift. `reads.readback` and
 `readbackV2` read exact retained heads after subsequent publications. Full facts
 are paged with a product-bound high-water cursor. `receipt(scope, publisher)` and
 the publisher-bound `readPort` recover a lost response without republishing.
-History is bounded to 100 receipts per page. The unbound `reads.receipt` refuses
-because it has no human authority.
+History is bounded to 100 receipts per page. The byte budgets count the
+canonical UTF-8 response, including its actual continuation cursor. The native
+receipt table stores canonical text with room for the longest result wrapper.
+The unbound `reads.receipt` refuses because it has no human authority.
 
 `resolveRetained` requires both an opaque read scope and a host accepted-source
 authorizer. In one consistent read, that authorizer verifies the caller's account,

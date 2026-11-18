@@ -62,7 +62,9 @@ CREATE TABLE public.catalog_operator_receipts (
  fingerprint text NOT NULL CHECK (length(fingerprint) = 64 AND translate(fingerprint,'abcdef0123456789','') = ''),
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  publication_id uuid REFERENCES public.catalog_publications(id),
- result jsonb NOT NULL CHECK (jsonb_typeof(result) = 'object' AND octet_length(CAST(result AS text)) BETWEEN 2 AND 8388608),
+ -- Store the writer's canonical receipt body. The longest response wrapper is committed.
+ result text NOT NULL CHECK (jsonb_typeof(CAST(result AS jsonb)) = 'object'
+   AND octet_length(result) BETWEEN 2 AND 8388574),
  PRIMARY KEY(kind,scope_id,command_key), UNIQUE(scope_id,command_key)
 );
 CREATE TABLE public.catalog_publication_decisions (

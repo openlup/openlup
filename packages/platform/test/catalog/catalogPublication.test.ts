@@ -803,19 +803,19 @@ it("keeps the legacy publication refusal for an unrecognized publisher", async (
     .toEqual({ outcome: "unauthorized", reason: "publisher_not_authorized" });
 });
 
-it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the remaining SKU", async () => {
+it.each(["continuation", "terminal"] as const)("returns a full-fact page at the exact UTF-8 byte limit: %s", async mode => {
   const { product, skus, documents } = compileCatalogPublication(input());
   const [document] = documents;
   const head = { publicationId: "50000000-0000-4000-8000-000000000001", revision: 2, documentDigest: document.reference.digest };
   const { skuBytes, pageBytes } = CATALOG_PUBLICATION_LIMITS;
   const digest = (text: string) => createHash("sha256").update(text).digest("hex");
-  const items = Array.from({ length: 5 }, (_, index) => {
+  const items = Array.from({ length: mode === "terminal" ? 4 : 5 }, (_, index) => {
     const suffix = String(index + 1).padStart(12, "0");
     const facts = { ...skus[0], id: `20000000-0000-4000-8000-${suffix}`, code: `ARTICLE-${suffix}`, facts: { padding: "" } };
     const reference = { skuId: facts.id, revisionId: `60000000-0000-4000-8000-${suffix}`, revision: 1, digest: "0".repeat(64) };
     return { reference, facts };
   });
-  const nextCursor = Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts", productId: product.id, highWater: head.revision, before: 4 })).toString("base64url");
+  const nextCursor = mode === "terminal" ? null : Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts", productId: product.id, highWater: head.revision, before: 4 })).toString("base64url");
   const expected = { outcome: "page", schemaVersion: 2, head, product, items: items.slice(0, 4), nextCursor };
   const setPadding = (item: typeof items[number], bytes: number) => {
     item.facts.facts.padding = "é".repeat(Math.floor(bytes / 2)) + "x".repeat(bytes % 2);
@@ -823,7 +823,7 @@ it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the 
   };
   for (const item of items.slice(0, 3)) setPadding(item, skuBytes - Buffer.byteLength(publicationJson(item.facts)));
   setPadding(items[3], pageBytes - Buffer.byteLength(publicationJson(expected)));
-  setPadding(items[4], 0);
+  if (mode === "continuation") setPadding(items[4], 0);
   const canonicalState = publicationJson({ schemaVersion: 2, product, skus: items.map(({ reference }) => reference) });
   const stored = items.map(({ reference, facts }) => {
     const text = publicationJson(facts);
@@ -855,8 +855,11 @@ it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the 
   expect(Buffer.byteLength(publicationJson(first))).toBe(pageBytes);
   expect(first.items.map(item => item.reference)).toEqual(expected.items.map(item => item.reference));
   expect(first.nextCursor).toBe(nextCursor);
-  expect(await target.readbackV2(head, first.nextCursor)).toEqual({ ...expected, items: items.slice(4), nextCursor: null });
-  expect(fetched).toEqual([stored.slice(0, 4).map(row => row.id), [stored[4].id]]);
+  if (mode === "terminal") expect(fetched).toEqual([stored.map(row => row.id)]);
+  else {
+    expect(await target.readbackV2(head, first.nextCursor)).toEqual({ ...expected, items: items.slice(4), nextCursor: null });
+    expect(fetched).toEqual([stored.slice(0, 4).map(row => row.id), [stored[4].id]]);
+  }
 });
 
 it.each([
