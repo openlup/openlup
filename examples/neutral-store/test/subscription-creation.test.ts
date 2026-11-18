@@ -22,7 +22,7 @@ for (const original of Object.values(configurations)) {
   });
 }
 
-test('both ordinary and acquisition activation carry the host creation input', async () => {
+for (const editWindowHours of [24, 72]) test(`ordinary and acquisition activation opt in with ${editWindowHours} hours`, async () => {
   const seen: { sql: string; values: unknown[] | undefined }[] = [];
   const db = { async query(sql: string, values?: unknown[]) {
     seen.push({ sql, values });
@@ -36,10 +36,10 @@ test('both ordinary and acquisition activation carry the host creation input', a
   } });
   const input = { orderId: '00000000-0000-4000-8000-000000000001', capturedReference: 'fixture', currency: 'XXX',
     methodFacts: { authorizationRef: 'fixture', unattendedChargeAuthorizedAt: new Date(0).toISOString(), payerAccountRef: null,
-      methodRef: 'fixture', methodEvidenceRef: 'fixture' }, stockSourceKey: 'fixture', templateId: 'fixture', editWindowHours: 24 };
+      methodRef: 'fixture', methodEvidenceRef: 'fixture' }, stockSourceKey: 'fixture', templateId: 'fixture', editWindowHours };
   const quote = { quote: { context: {}, currency: 'XXX', lines: [] } } as unknown as CreateQuoteResponse;
   await activation.activate({ ...input, acceptedQuote: quote });
-  assert.equal(seen.find(call => call.sql.includes('captured_payment_with_edit_window'))?.values?.[3], 24);
+  assert.equal(seen.find(call => call.sql.includes('captured_payment_with_edit_window'))?.values?.[3], editWindowHours);
   await activation.activate({ ...input, acceptedQuote: { quote: { context: { acquisitionTerms: {} } } } as unknown as CreateQuoteResponse });
-  assert.equal(acquisitionHours, 24);
+  assert.equal(acquisitionHours, editWindowHours);
 });

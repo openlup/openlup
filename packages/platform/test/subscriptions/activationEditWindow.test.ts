@@ -21,7 +21,9 @@ it.each([undefined, 1, 24, 72, 720])("passes valid edit window %s only to activa
   await activateNativePurchaseWithRenewal({ query }, { ...purchase, editWindowHours });
   const calls = query.mock.calls;
   const activation = calls.find(([sql]) => sql.includes("subscription_activate_from_captured_payment"))!;
-  expect(activation[0]).toContain(editWindowHours === undefined ? "captured_payment(" : "captured_payment_with_edit_window(");
+  expect(activation[0]).toBe(editWindowHours === undefined
+    ? "SELECT public.subscription_activate_from_captured_payment($1::text,$2::uuid,$3::text) AS response"
+    : "SELECT public.subscription_activate_from_captured_payment_with_edit_window($1::text,$2::uuid,$3::text,$4::integer) AS response");
   expect(activation[1]).toHaveLength(editWindowHours === undefined ? 3 : 4);
   if (editWindowHours !== undefined) expect(activation[1]?.[3]).toBe(editWindowHours);
 });

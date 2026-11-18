@@ -4,14 +4,18 @@
   retains the installed 72-hour default. The value freezes on the created
   subscription; configuration changes and completed replay preserve existing rows.
 - Existing native activation/repair signatures and ACLs remain unchanged. New
-  separately named invoker SQL functions avoid ambiguous defaulted overloads and
-  copy each installed predecessor's security mode, search path, owner and ACL,
-  including PUBLIC defaults, custom grants and grant options. Legacy wrappers
-  delegate with NULL. Managed checkout activation remains
-  a separate unchanged boundary.
+  separately named invoker SQL functions contain their predecessor bodies with
+  the new input and pinned `public, pg_catalog` search paths. The forward never
+  redefines or changes privileges on the predecessors. New functions revoke
+  PUBLIC/anon/authenticated and grant EXECUTE to service_role where present.
+  Managed checkout activation remains a separate unchanged boundary.
 
 Migration: Apply the complete packaged native chain including
 `20261123120000_subscription_edit_window_activation.sql` before supplying the new
-input. Old callers that omit it keep their existing behavior. The starter owns
+input. Opting in requires EXECUTE on both new functions (granted to service_role
+where present; owner-run self-host installations have it as owner). Old callers
+that omit it call the unchanged predecessor with its existing privileges.
+The starter owns
 `subscriptionCreation.editWindowHours` (default 72) and validates it at startup
-with `starter_subscription_creation_invalid`; all initial activation routes pass it.
+with `starter_subscription_creation_invalid`; all initial activation routes pass
+it, including 72, and therefore opt in.

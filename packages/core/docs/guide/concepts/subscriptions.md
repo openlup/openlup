@@ -33,7 +33,11 @@ In the current source candidate for the next release after 1.1.0,
 `subscription_activation_edit_window_invalid` before any database query.
 Omission preserves the installed default of 72 hours. Apply the packaged native
 `20261123120000_subscription_edit_window_activation.sql` forward before supplying
-this input; an older installation continues to support calls that omit it.
+this input. Opting in requires EXECUTE on both new `_with_edit_window` functions:
+the forward grants it to `service_role` where that role exists, and owner-run
+self-host installations have it as owner. When the input is omitted, the binding
+calls the unchanged predecessor with its existing privileges; an older
+installation continues to support those calls.
 
 The value is stored in `subscriptions.edit_window_hours` when the subscription
 is created. Existing edit fences read that row. Changing host configuration or
@@ -44,8 +48,8 @@ delivery alignment or renewal admission.
 
 Direct native SQL callers can use
 `subscription_activate_from_captured_payment_with_edit_window` with a trailing
-integer argument; omission or SQL `NULL` uses the column default. Existing
-activation and repair signatures retain their behavior, including the 72-hour
+integer argument; omission or SQL `NULL` explicitly uses 72, matching the column
+default. Existing activation and repair signatures retain their behavior, including the 72-hour
 default. The managed checkout activation path is separate and does not expose
 this native input.
 

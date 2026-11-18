@@ -1,7 +1,7 @@
 -- Freeze the host edit window only when a native subscription is created.
--- Legacy activation and repair functions retain their identities and ACLs.
--- New functions inherit each installed predecessor's owner and execution ACL.
--- NULL omits the column, retaining its installed DEFAULT (72).
+-- Legacy activation and repair functions are untouched.
+-- Opt-in functions retain the predecessor bodies and invoker security mode.
+-- NULL explicitly uses 72, matching the subscriptions column default.
 
 CREATE FUNCTION public.subscription_activation_commit_with_edit_window(
   p_activation public.subscription_activations,
@@ -27,17 +27,11 @@ BEGIN
   END IF;
   v_next_cycle_at := p_paid_at + (p_activation.cadence_days * interval '1 day');
 
-  IF p_edit_window_hours IS NULL THEN
   INSERT INTO public.subscriptions
-    (client_id, status, cadence_days, next_cycle_at, started_at)
-  VALUES (p_activation.client_id, 'active', p_activation.cadence_days, v_next_cycle_at, p_paid_at)
+    (client_id, status, cadence_days, next_cycle_at, started_at, edit_window_hours)
+  VALUES (p_activation.client_id, 'active', p_activation.cadence_days, v_next_cycle_at, p_paid_at,
+    COALESCE(p_edit_window_hours, 72))
   RETURNING id INTO v_subscription_id;
-  ELSE
-    INSERT INTO public.subscriptions
-      (client_id, status, cadence_days, next_cycle_at, started_at, edit_window_hours)
-    VALUES (p_activation.client_id, 'active', p_activation.cadence_days, v_next_cycle_at, p_paid_at, p_edit_window_hours)
-    RETURNING id INTO v_subscription_id;
-  END IF;
 
   -- The cycle the captured payment paid for. It is written as paid because the
   -- money rail already said so; writing it as planned would make the first
@@ -153,81 +147,8 @@ BEGIN
 END;
 $$;
 
--- Retain incumbent headers and ACLs; delegate with the installed column default.
-CREATE OR REPLACE FUNCTION public.subscription_activation_commit(
-  p_activation public.subscription_activations,
-  p_idempotency_key text,
-  p_payment_fingerprint text,
-  p_paid_at timestamptz,
-  p_repaired boolean
-)
-RETURNS public.subscription_activations
-LANGUAGE plpgsql
-SET search_path = public, pg_catalog
-AS $$
-BEGIN
-  RETURN public.subscription_activation_commit_with_edit_window(
-    p_activation, p_idempotency_key, p_payment_fingerprint, p_paid_at, p_repaired, NULL);
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.subscription_activate_from_captured_payment(
-  p_idempotency_key text,
-  p_order_id uuid,
-  p_payment_fingerprint text
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SET search_path = public, pg_catalog
-AS $$
-BEGIN
-  RETURN public.subscription_activate_from_captured_payment_with_edit_window(
-    p_idempotency_key, p_order_id, p_payment_fingerprint, NULL);
-END;
-$$;
-
 REVOKE ALL ON FUNCTION public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer) FROM PUBLIC;
-
--- Preserve installed execution capabilities, including PUBLIC defaults, custom
--- grants and grant options. Clear installer default grants before copying.
-DO $$
-DECLARE
-  predecessor record;
-  privilege record;
-BEGIN
-  FOR predecessor IN
-    SELECT p.proowner, p.proacl, pair.target
-    FROM (VALUES
-      ('public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)',
-       'public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)'),
-      ('public.subscription_activate_from_captured_payment(text,uuid,text)',
-       'public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)')
-    ) AS pair(source, target)
-    JOIN pg_catalog.pg_proc p ON p.oid = pair.source::pg_catalog.regprocedure
-  LOOP
-    EXECUTE pg_catalog.format('ALTER FUNCTION %s OWNER TO %I',
-      predecessor.target, pg_catalog.pg_get_userbyid(predecessor.proowner));
-    FOR privilege IN
-      SELECT DISTINCT a.grantee
-      FROM pg_catalog.pg_proc p,
-        pg_catalog.aclexplode(COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))) a
-      WHERE p.oid = predecessor.target::pg_catalog.regprocedure
-    LOOP
-      EXECUTE pg_catalog.format('REVOKE ALL ON FUNCTION %s FROM %s', predecessor.target,
-        CASE WHEN privilege.grantee = 0 THEN 'PUBLIC'
-          ELSE pg_catalog.quote_ident(pg_catalog.pg_get_userbyid(privilege.grantee)) END);
-    END LOOP;
-    FOR privilege IN
-      SELECT a.* FROM pg_catalog.aclexplode(COALESCE(predecessor.proacl,
-        pg_catalog.acldefault('f', predecessor.proowner))) a
-    LOOP
-      EXECUTE pg_catalog.format('GRANT %s ON FUNCTION %s TO %s%s',
-        privilege.privilege_type, predecessor.target,
-        CASE WHEN privilege.grantee = 0 THEN 'PUBLIC'
-          ELSE pg_catalog.quote_ident(pg_catalog.pg_get_userbyid(privilege.grantee)) END,
-        CASE WHEN privilege.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
-    END LOOP;
-  END LOOP;
-END;
-$$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer),public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer) FROM anon'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer),public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer) FROM authenticated'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer),public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer) TO service_role'; END IF; END; $$;
