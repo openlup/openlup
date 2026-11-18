@@ -139,7 +139,11 @@ it.each(witnesses)("%s", () => {
       data.payload.product.documentRevision!.digest = digest; mutate(data, "register_document_revision", { canonicalText: text, digest });
     }],
     ["catalog_publication_document_revision_sequence", data => {
-      data.payload.product.documentRevision!.revisionNo = 2; mutate(data, "register_document_revision", { revisionNo: 2 });
+      const document = { ...data.payload.product.sharedContent.document, revisionNo: 2 };
+      const text = JSON.stringify(document, Object.keys(document).sort()), digest = createHash("sha256").update(text).digest("hex");
+      data.payload.product.sharedContent.document = document;
+      Object.assign(data.payload.product.documentRevision!, { revisionNo: 2, digest });
+      mutate(data, "register_document_revision", { revisionNo: 2, canonicalText: text, digest });
       mutate(data, "move_document_pointer", { documentRevisionNo: 2 }); mutate(data, "create_sku", { documentRevisionNo: 2 });
     }],
     ["catalog_publication_v3_compile_document_stale", data => { mutate(data, "create_sku", { documentRevisionNo: 2 }); }],

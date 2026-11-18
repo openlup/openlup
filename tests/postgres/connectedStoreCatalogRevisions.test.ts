@@ -156,7 +156,9 @@ function publicationAuthority(owner: Pool) {
     transactions: { async run(work) { const client = await owner.connect(); try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
       catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true as const, userId: publicationAdmin, role: "admin", isMachineActor: false }),
-    rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
+    rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
+      return document as ReturnType<import("@openlup/platform/catalog").CatalogPublicationRules["identifyDocument"]>;
+    }, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
     readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false });
 }
 async function seedPublicationHistory(owner: Pool) {
@@ -164,8 +166,9 @@ async function seedPublicationHistory(owner: Pool) {
   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'transfer-publication@example.invalid')", [publicationAdmin]);
   await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [publicationAdmin]);
   const authority = publicationAuthority(owner), actor = (await authority.authorize(undefined))!, productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), documentId = randomUUID();
-  const canonicalText = canonicalCatalogDraftJson({ name: "Retained article", label: "Retained transfer article" }), digest = createHash("sha256").update(canonicalText).digest("hex");
   const skuCode = `TRANSFER-${skuId}`, slug = `retained-${productId}`, facts = { skuCode, title: "Retained article", minQuantity: 1, isAddon: false, facts: {} };
+  const canonicalText = canonicalCatalogDraftJson({ name: "Retained article", schemaId: "example:transfer.v1", documentRef: "example:transfer",
+    productSlug: slug, revisionNo: 1 }), digest = createHash("sha256").update(canonicalText).digest("hex");
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, slug, type: { key: publicationDefinition.key, version: 1 }, dimensions: [], primarySkuId: skuId,
     documentRevision: { id: documentId, productId, revisionNo: 1, schemaId: "example:transfer.v1", documentRef: "example:transfer", sourceRef: "example:source", digest },
     sharedContent: { schemaVersion: 1, catalogAction: "create", document: JSON.parse(canonicalText), presentation: {}, publicationSkus: [facts], offerMemberships: [], requestedModes: [{ skuCode, modes: [] }] } },

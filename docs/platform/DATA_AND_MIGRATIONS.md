@@ -398,8 +398,12 @@ revocation leaves the publication and its original replay receipt intact.
 
 The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
-On creation, the persisted product name must match the sealed document's string
-`name`. An explicit null presentation effect clears an existing presentation.
+The installed document binding supplies the document's schema, reference,
+product slug and revision. The writer checks them against the sealed reference
+and canonical bytes. Moving to an off-head document requires a matching
+registration before the move. On creation, the persisted product name must
+match the sealed document's string `name`. An explicit null presentation effect
+clears an existing presentation.
 Creation and explicit product activation still require a presentation. Hosts may
 validate each membership effect against the ordered SKU state, including repeats
 against a frozen roster.

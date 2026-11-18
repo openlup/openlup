@@ -10,10 +10,14 @@ export const registry = createCatalogProductTypeRegistry([{ key: "example:articl
   units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] }]);
 export const definition = registry.resolve({ key: "example:article", version: 1 })!;
-export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }),
+export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson,
+  identifyDocument(document) {
+    const { schemaVersion, id, productSlug, revisionNo } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number };
+    return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo };
+  }, deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }),
   validateProduct: () => [], classifySkuChange: () => "compatible" };
 export function input(): CatalogPublicationCompileInput {
-  const document = { schemaVersion: 1, name: "Synthetic article", derived: 12 }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
+  const document = { schemaVersion: 1, id: "example:document", productSlug: "article", revisionNo: 1, name: "Synthetic article", derived: 12 }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
   const facts = { skuCode: "ARTICLE", title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, type: { key: definition.key, version: 1 }, dimensions: [], slug: "article", primarySkuId: skuId,
     documentRevision: { id: documentId, productId, revisionNo: 1, schemaId: "example:document.v1", documentRef: "example:document", sourceRef: "example:source", digest },

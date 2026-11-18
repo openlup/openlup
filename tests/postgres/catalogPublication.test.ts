@@ -34,7 +34,10 @@ function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows
     try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows, values); return result; } }); await client.query("COMMIT"); return result; }
     catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true, userId: admin, role: "admin", isMachineActor: false }),
-    rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: (document) => ({ derived: (document as { derived: number }).derived }),
+    rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
+      const { schemaVersion, id, productSlug, revisionNo } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number };
+      return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo };
+    }, deriveSkuFacts: (document) => ({ derived: (document as { derived: number }).derived }),
       validateProduct: () => [], classifySkuChange: (before, after, context) => {
         if (!context.beforeDocument) return "inconclusive";
         if (canonicalCatalogDraftJson(before.netContent) !== canonicalCatalogDraftJson(after.netContent)
@@ -2393,7 +2396,7 @@ it("cycle1 native candidate validation refuses invalid fields and unrelated miss
   expect(await snapshot()).toEqual(before);
 });
 
-it("cycle1 native document pointer can return to an intermediate immutable revision", async () => {
+it("native publication refuses a bare move to an intermediate immutable revision", async () => {
   const data = await draft(); let head = (await commit(data.publication)).head;
   let second: CatalogDraftPayloadV3 | undefined;
   for (const revisionNo of [2, 3]) {
@@ -2408,9 +2411,10 @@ it("cycle1 native document pointer can return to an intermediate immutable revis
     if (revisionNo === 2) second = structuredClone(payload);
   }
   const payload = second!; payload.publication.operations = [{ op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
-  const receipt = await commit(await save(payload, data.draftId, 3, head));
-  expect(receipt.head).toMatchObject({ revision: 4, documentDigest: payload.product.documentRevision!.digest });
-  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { document: payload.product.documentRevision } });
+  const command = await save(payload, data.draftId, 3, head); await approve(command);
+  const stable = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" });
+  expect(await snapshot()).toEqual(stable);
 });
 
 it("cycle1 native explicit inactive media refuses an advanced recorded SKU source", async () => {

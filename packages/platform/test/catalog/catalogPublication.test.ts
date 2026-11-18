@@ -109,7 +109,7 @@ it("classifies published physical identity with both immutable document contexts
   const data = input(), first = compileCatalogPublication(data);
   data.product = first.product; data.skus = first.skus; data.documents = first.documents;
   data.payload.product.sharedContent.catalogAction = "revise";
-  const document = { ...data.payload.product.sharedContent.document, specification: "Changed physical material" };
+  const document = { ...data.payload.product.sharedContent.document, revisionNo: 2, specification: "Changed physical material" };
   const canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
   const reference = { ...data.payload.product.documentRevision!, id: "40000000-0000-4000-8000-000000000002", revisionNo: 2, digest };
   data.payload.product.documentRevision = reference; data.payload.product.sharedContent.document = document;
@@ -361,7 +361,7 @@ it.each(["absent reference", "wrong digest", "different authored document"])("cy
   if (kind === "absent reference") delete data.payload.product.documentRevision;
   if (kind === "wrong digest") { data.payload.product.documentRevision!.digest = "c".repeat(64); operation.digest = "c".repeat(64); }
   if (kind === "different authored document") data.payload.product.sharedContent.document = { ...data.payload.product.sharedContent.document, derived: 13 };
-  expect(() => compileCatalogPublication(data)).toThrow(kind === "absent reference" ? "catalog_publication_document_source_mismatch" : "catalog_publication_v3_document_invalid");
+  expect(() => compileCatalogPublication(data)).toThrow(kind === "absent reference" ? "document_reference_missing" : "catalog_publication_v3_document_invalid");
 });
 
 it("cycle1 pointer source mismatch precedes the next operation refusal", () => {
@@ -546,9 +546,11 @@ it.each(["omitted", "unmoved"])("cycle1 authored document reference is checked w
   if (kind === "omitted") {
     delete data.payload.product.documentRevision;
     data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
-    expect(compileCatalogPublication(data).changed).toBe(false);
+    expect(() => compileCatalogPublication(data)).toThrow("document_reference_missing");
   } else {
-    const reference = { ...data.payload.product.documentRevision!, id: "40000000-0000-4000-8000-000000000002", revisionNo: 2 };
+    data.payload.product.sharedContent.document = { ...data.payload.product.sharedContent.document, revisionNo: 2 };
+    const digest = createHash("sha256").update(canonicalCatalogDraftJson(data.payload.product.sharedContent.document)).digest("hex");
+    const reference = { ...data.payload.product.documentRevision!, digest, id: "40000000-0000-4000-8000-000000000002", revisionNo: 2 };
     data.payload.product.documentRevision = reference;
     data.payload.publication.operations = [{ op: "register_document_revision", productSlug: "article", revisionId: reference.id, revisionNo: 2,
       documentRef: reference.documentRef, sourceRef: reference.sourceRef, canonicalText: canonicalCatalogDraftJson(data.payload.product.sharedContent.document), digest: reference.digest, provenance: { source: "current_draft" } }];
@@ -606,7 +608,7 @@ it.each(["primary", "document", "presentation"])("cycle1 final completeness inde
     data.payload.publication.kind = "compensation";
     data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
   } else data.payload.publication.operations = data.payload.publication.operations.filter(operation => operation.op !== (kind === "primary" ? "set_primary_sku" : "set_product_presentation"));
-  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_structural_readiness_failed");
+  expect(() => compileCatalogPublication(data)).toThrow(kind === "document" ? "document_reference_missing" : "catalog_publication_v3_structural_readiness_failed");
 });
 it("cycle1 configured capacity includes its exact boundary", () => {
   const data = publicationWithSecondary(); data.capacity = 2; data.payload.publication.kind = "compensation";
@@ -943,4 +945,61 @@ it.each([
   if (target === "offerMemberships" || target === "requestedModes" || target === "publicationSkus")
     expect(() => compileCatalogPublication(data)).toThrow("intent_sku_absent");
   else expect(compileCatalogPublication(data).product.primarySkuId).toBe(data.skus[0].id);
+});
+
+it.each([
+  ["missing reference", "document_reference_missing"],
+  ["wrong document slug", "catalog_publication_v3_document_invalid"],
+  ["wrong document id", "catalog_publication_v3_document_invalid"],
+  ["wrong document schema", "catalog_publication_v3_document_invalid"],
+  ["wrong document revision", "catalog_publication_v3_document_invalid"],
+  ["unused bad document", "catalog_publication_v3_document_invalid"],
+  ["old prefix with equal derived facts", "catalog_publication_v3_compile_document_stale"],
+  ["bare older move", "catalog_publication_v3_document_reference_stale"],
+  ["matched older registration", null],
+] as const)("publication binds the exact authored and installed document tuple: %s", (mode, reason) => {
+  const data = mode === "old prefix with equal derived facts" ? publicationWithSecondary() : retainedPublicationInput();
+  const content = data.payload.product.sharedContent;
+  const current = data.documents[0]!;
+  const newerContent = { ...content.document, revisionNo: 2 };
+  const canonicalText = canonicalCatalogDraftJson(newerContent);
+  const newer = { ...current, canonicalText, reference: { ...current.reference, id: "40000000-0000-4000-8000-000000000002",
+    revisionNo: 2, digest: createHash("sha256").update(canonicalText).digest("hex") } };
+  data.payload.publication.kind = "compensation";
+  data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: content.presentation }];
+  if (mode === "missing reference") delete data.payload.product.documentRevision;
+  else if (mode === "unused bad document") data.documents = [...data.documents, { ...newer, reference: { ...newer.reference, digest: "c".repeat(64) } }];
+  else if (mode === "old prefix with equal derived facts") {
+    const secondary = data.skus.pop()!, sku = data.payload.skus[0];
+    content.document = newerContent; data.payload.product.documentRevision = newer.reference;
+    const register = { op: "register_document_revision" as const, productSlug: "article", revisionId: newer.reference.id,
+      revisionNo: 2, documentRef: newer.reference.documentRef, sourceRef: newer.reference.sourceRef, canonicalText,
+      digest: newer.reference.digest, provenance: { source: "current_draft" as const } };
+    data.payload.publication.operations = [
+      { op: "create_sku", productSlug: "article", skuId: secondary.id, documentRevisionNo: 1, ...content.publicationSkus[0] },
+      { op: "create_identifier", skuCode: sku.code!, scheme: "gs1:gtin", issuer: "example", value: "4006381333931",
+        quantity: 1, packagingLevel: "unit", isPrimary: true, label: null, sourceRef: null },
+      register, { op: "move_document_pointer", productSlug: "article", documentRevisionNo: 2 },
+    ];
+  } else if (mode === "bare older move" || mode === "matched older registration") {
+    data.documents = [...data.documents, newer];
+    data.product!.document = newer.reference;
+    data.payload.publication.operations = [{ op: "move_document_pointer", productSlug: "article", documentRevisionNo: 1 }];
+    if (mode === "matched older registration")
+      data.payload.publication.operations.unshift(input().payload.publication.operations.find(op => op.op === "register_document_revision")!);
+  } else {
+    const document = { ...content.document };
+    if (mode === "wrong document slug") document.productSlug = "other";
+    if (mode === "wrong document id") document.id = "example:other";
+    if (mode === "wrong document schema") document.schemaVersion = 2;
+    if (mode === "wrong document revision") document.revisionNo = 3;
+    const canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
+    content.document = document;
+    const tuple = { ...current, canonicalText, reference: { ...current.reference, digest } };
+    data.documents = [tuple];
+    data.product!.document = tuple.reference;
+    data.payload.product.documentRevision = tuple.reference;
+  }
+  if (reason) expect(() => compileCatalogPublication(data)).toThrow(reason);
+  else expect(compileCatalogPublication(data).product.document).toEqual(current.reference);
 });

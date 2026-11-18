@@ -4526,6 +4526,13 @@ export interface CatalogPublicationRules {
         admitted: boolean;
     }): boolean;
     canonicalizeDocument(document: unknown): string;
+    /** Reads identity using the installed document's schema. */
+    identifyDocument(document: unknown): {
+        schemaId: string;
+        documentRef: string;
+        productSlug: string;
+        revisionNo: number;
+    };
     deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
     classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
         beforeProduct: CatalogPublishedProduct;
