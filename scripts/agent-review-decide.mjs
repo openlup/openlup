@@ -305,7 +305,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
                   : null,
                 openMaterial.length > 0 ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
               ].filter(Boolean).join(' and ') + '.'
-            : 'Run node scripts/agent-review-session.mjs verify to confirm Git objects, review rules, coverage edges and merge preflight.';
+            : 'Run node scripts/agent-review-session.mjs verify to confirm the local review evidence.';
   return {
     version: session.version,
     status,
@@ -339,8 +339,8 @@ export function explainSession(session, observed = session?.candidate, now = Dat
       'committed Git diff and tree against session.candidate',
       ...(session.version === 3 ? ['review rules snapshot against base and head (captureReviewRules)'] : []),
       ...(session.version === 3 && session.candidate.coverage ? ['recorded coverage edge replay and integration/derived proof (validateEconomySession)'] : []),
-      'clean merge preflight against origin/main (assertMergePreflight)',
     ],
+    mergePreflight: { status: 'not_checked', checkedBy: 'receipt' },
   };
 }
 export function receiptSummary(session, pr, now) {
