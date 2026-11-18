@@ -10,7 +10,7 @@ import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 export function selectSizedAgreements(context: SizedEditContext, policy: SizedEditPolicy): SizedAgreedLine[] {
   return sizedEditPhase(context, policy) === "graduation_pending"
-    ? [...context.graduationLines, ...context.lines.filter(line => line.isAddon)] : context.lines;
+    ? [...context.graduationLines.filter(line => !line.isAddon), ...context.lines.filter(line => line.isAddon)] : context.lines;
 }
 export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; context: SizedEditContext; request: SizedEditRequest;
   policy: SizedEditPolicy; host: SizedHostPorts; point: "preview" | "apply" }) {

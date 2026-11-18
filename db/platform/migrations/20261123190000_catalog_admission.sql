@@ -1,6 +1,83 @@
 -- Native, unbound acceptance. Catalogue writers and existing pricing rules stay unchanged.
--- The native delivery schedule exposes renewal ordinals from their owning
--- operations. The acquisition cycle is ordinal zero on this rail.
+-- The native delivery schedule exposes renewal ordinals from its owner.
+CREATE FUNCTION public.catalog_admission_logical_cycle(p_subscription_id uuid)
+RETURNS integer LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT coalesce(min(cycle_number+1) FILTER (WHERE status IN ('planned','payment_pending','payment_failed','retry_scheduled')),
+  max(cycle_number)+2,(SELECT count(*)::integer+1 FROM public.subscription_cycles
+   WHERE subscription_id=p_subscription_id AND status='paid'))
+ FROM public.subscription_delivery_alignment_cycles WHERE subscription_id=p_subscription_id
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_logical_cycle(uuid) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION public.subscription_sized_edit_context(p_client_id uuid,p_subscription_id uuid,p_opt_in boolean)
+ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE s public.subscriptions%ROWTYPE; terms jsonb; prices jsonb; initial_quote jsonb; marker jsonb;
+ lines jsonb:='[]'::jsonb; graduation jsonb:='[]'::jsonb; row_line record; price jsonb; quoted jsonb; entry jsonb;
+ count_matches integer; paid integer;
+BEGIN
+ SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
+ IF s.configured_offer_version<>'sized.v1' AND NOT (s.configured_offer_version='classic' AND p_opt_in IS TRUE) THEN
+  RAISE EXCEPTION 'subscription_edit_invalid_offer_binding' USING ERRCODE='22023'; END IF;
+ terms:=public.subscription_renewal_purchase_terms(s.id)->'renewalTerms';
+ SELECT e.payload->'linePricing' INTO prices FROM public.subscription_events e WHERE e.subscription_id=s.id
+  AND e.event_type IN ('subscription.starter_graduated','subscription.customer_self_service.update_package_template',
+   'subscription.customer_self_service.swap_base_line','subscription.customer_self_service.add_addon',
+   'subscription.customer_self_service.remove_addon','subscription.customer_self_service.update_addon_quantity',
+   'subscription.customer_self_service.update_plan_length','subscription.customer_self_service.update_base_mix',
+   'subscription.customer_self_service.update_portion','subscription.customer_self_service.resize_bundle',
+   'subscription.customer_self_service.update_bundle') ORDER BY e.occurred_at DESC,e.id DESC LIMIT 1;
+ prices:=COALESCE(prices,terms->'linePricing');
+ IF prices IS NULL THEN
+  SELECT o.metadata#>'{quoteSnapshot,quote,lines}' INTO initial_quote FROM public.subscription_activations a
+   JOIN public.commerce_orders o ON o.id=a.order_id WHERE a.subscription_id=s.id;
+  IF jsonb_typeof(initial_quote) IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+  SELECT jsonb_agg(jsonb_build_object('sku',v->>'sku','quantity',v->'quantity',
+   'unitAmountMinor',v#>'{unitPriceGross,amountMinor}','quoteLine',v)) INTO prices FROM jsonb_array_elements(initial_quote) v;
+ END IF;
+ IF jsonb_typeof(prices) IS DISTINCT FROM 'array' THEN
+  RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+ FOR row_line IN SELECT l.*,sku.sku,sku.product_id FROM public.subscription_lines l
+  JOIN public.catalog_skus sku ON sku.id=l.variant_id WHERE l.subscription_id=s.id ORDER BY l.sort_order,l.variant_id LOOP
+  SELECT count(*) INTO count_matches FROM jsonb_array_elements(prices) v WHERE v->>'sku'=row_line.sku;
+  IF count_matches<>1 THEN RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+  SELECT v INTO price FROM jsonb_array_elements(prices) v WHERE v->>'sku'=row_line.sku;
+  quoted:=price->'quoteLine';
+  IF NOT EXISTS(SELECT 1 FROM public.subscription_renewal_term_lines t WHERE t.subscription_id=s.id AND t.sku=row_line.sku
+   AND t.quantity=row_line.quantity AND t.unit_amount_minor=row_line.unit_price_minor) THEN
+   RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+  IF price->'quantity' IS DISTINCT FROM to_jsonb(row_line.quantity) OR price->'unitAmountMinor' IS DISTINCT FROM to_jsonb(row_line.unit_price_minor)
+   OR quoted->>'sku' IS DISTINCT FROM row_line.sku OR quoted->'quantity' IS DISTINCT FROM to_jsonb(row_line.quantity)
+   OR quoted#>'{unitPriceGross,amountMinor}' IS DISTINCT FROM to_jsonb(row_line.unit_price_minor)
+   OR quoted#>>'{unitPriceGross,currency}' IS DISTINCT FROM row_line.currency_code
+   OR quoted#>>'{lineSubtotalGross,currency}' IS DISTINCT FROM row_line.currency_code
+   OR quoted#>'{lineSubtotalGross,amountMinor}' IS DISTINCT FROM to_jsonb(row_line.quantity*row_line.unit_price_minor)
+   OR (price ? 'isAddon' AND price->'isAddon' IS DISTINCT FROM to_jsonb(row_line.is_addon)) THEN
+   RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+  lines:=lines||jsonb_build_array(jsonb_build_object('lineId',row_line.id,'variantId',row_line.variant_id,
+   'sku',row_line.sku,'groupId',row_line.product_id,'qty',row_line.quantity,'isAddon',row_line.is_addon,'quoteLine',quoted));
+ END LOOP;
+ IF jsonb_array_length(lines)=0 THEN RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+ marker:=terms->'starterPack';
+ IF marker IS NOT NULL THEN
+  IF jsonb_typeof(marker) IS DISTINCT FROM 'object' OR jsonb_typeof(marker#>'{graduation,lines}') IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION 'subscription_edit_invalid_intro_marker' USING ERRCODE='22023'; END IF;
+  FOR entry IN SELECT v FROM jsonb_array_elements(marker#>'{graduation,lines}') v LOOP
+   SELECT id,product_id INTO row_line FROM public.catalog_skus WHERE sku=entry->>'sku';
+   IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_invalid_agreed_price' USING ERRCODE='22023'; END IF;
+   graduation:=graduation||jsonb_build_array(jsonb_build_object('lineId',NULL,'variantId',row_line.id,
+    'sku',entry->>'sku','groupId',row_line.product_id,'qty',entry->'qty','isAddon',entry->'isAddon','quoteLine',entry->'quoteLine'));
+  END LOOP;
+ END IF;
+ SELECT count(*)::integer INTO paid FROM public.subscription_cycles WHERE subscription_id=s.id AND status='paid';
+ RETURN jsonb_build_object('subscriptionId',s.id,'clientId',s.client_id,'binding',s.configured_offer_version,
+  'templateVersion',s.template_version,'cadenceDays',s.cadence_days,'compositionConstraint',s.composition_constraint,
+  'nextCycleAt',s.next_cycle_at,'paidCycleCount',paid,'logicalUpcomingCycle',public.catalog_admission_logical_cycle(s.id),
+  'marker',marker,'lines',lines,'graduationLines',graduation);
+END;
+$$;
+
 CREATE FUNCTION public.catalog_admission_sized_baseline(p_subscription_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE s public.subscriptions; context jsonb; phase jsonb; upcoming integer;
@@ -10,9 +87,7 @@ BEGIN
  IF context->'marker' IS NOT NULL AND context->'marker'<>'null'::jsonb THEN
   SELECT value_text::jsonb INTO phase FROM public.commerce_settings WHERE key='subscription_sized_intro_phase';
   IF phase IS NULL THEN RAISE EXCEPTION 'subscription_edit_invalid_sized_configuration' USING ERRCODE='22023'; END IF;
-  SELECT coalesce(min(cycle_number+1) FILTER (WHERE status IN ('planned','payment_pending','payment_failed','retry_scheduled')),
-    max(cycle_number)+2,(context->>'paidCycleCount')::integer+1) INTO upcoming
-   FROM public.subscription_delivery_alignment_cycles WHERE subscription_id=s.id;
+  upcoming:=(context->>'logicalUpcomingCycle')::integer;
   IF upcoming=(phase->>'graduationCycle')::integer
    AND s.template_version=(context#>>'{marker,basisTemplateVersion}')::integer THEN
    RETURN (SELECT coalesce(jsonb_agg(l),'[]') FROM jsonb_array_elements(context->'graduationLines') l WHERE l->'isAddon'='false'::jsonb)
@@ -951,6 +1026,14 @@ BEGIN
 END;
 $$;
 
+-- Preview and apply derive the same admission lane from the owned offer.
+CREATE FUNCTION public.catalog_admission_edit_lane(p_action text,p_binding text,p_opt_in boolean)
+RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT CASE WHEN p_action='update_package_template' THEN 'classic'
+  WHEN p_binding='sized.v1' OR p_opt_in IS TRUE THEN 'sized' ELSE 'exact' END
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_edit_lane(text,text,boolean) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION public.subscription_quote_preview_record(
  p_actor_id uuid,p_client_id uuid,p_subscription_id uuid,p_action text,p_hash text,p_version integer,
  p_expires_at timestamptz,p_request jsonb,p_snapshot jsonb,p_totals jsonb,p_now timestamptz
@@ -977,9 +1060,9 @@ BEGIN
  PERFORM 1 FROM public.subscription_quote_previews WHERE subscription_id=s.id AND client_id=p_client_id
   AND action=p_action AND quote_hash=p_hash AND template_version=p_version AND status='previewed' FOR UPDATE;
  IF NOT p_snapshot ? 'catalogAdmission' THEN
-  lane:=CASE WHEN p_snapshot ? 'subjectFacts' THEN 'sized' WHEN p_action='update_package_template' THEN 'classic' ELSE 'exact' END;
-  opt_in:=lane='sized' AND p_request#>>'{resizeLever,kind}'='subscription.sized.parcel'
+  opt_in:=p_action='resize_bundle' AND p_request#>>'{resizeLever,kind}'='subscription.sized.parcel'
    AND p_request#>'{resizeLever,value,optInToSized}'='true'::jsonb;
+  lane:=public.catalog_admission_edit_lane(p_action,s.configured_offer_version,opt_in);
   lines:=CASE WHEN lane='classic' THEN coalesce(p_snapshot->'baseLines','[]')||coalesce(p_snapshot->'addonLines','[]') ELSE p_snapshot->'lines' END;
   IF jsonb_typeof(lines)='array' THEN
    evidence:=public.catalog_admission_build_evidence(lines,'subscription',
@@ -1279,6 +1362,7 @@ SET search_path = pg_catalog
 AS $$
 DECLARE
   v_catalog_acceptance jsonb;
+  v_terms_present boolean;
   v_principal_id uuid;
   v_client_id uuid;
   v_command_key text;
@@ -1421,9 +1505,13 @@ BEGIN
   -- LC6: all existing rows this edit can mutate precede its first catalogue guard.
   PERFORM 1 FROM public.subscription_lines WHERE subscription_id=v_subscription.id ORDER BY id FOR UPDATE;
   PERFORM 1 FROM public.subscription_renewal_terms WHERE subscription_id=v_subscription.id FOR UPDATE;
+  v_terms_present:=FOUND;
   PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=v_subscription.id ORDER BY line_ordinal FOR UPDATE;
   v_catalog_acceptance:=public.catalog_admission_accept(v_quote.proposed_lines,v_quote.proposed_lines#>'{0,catalogAdmission}','subscription',
     jsonb_build_object('subscriptionId',v_subscription.id,'offerVersion',v_subscription.configured_offer_version,'lane','legacy','optIn',false),'account');
+  IF NOT v_terms_present AND NULLIF(v_catalog_acceptance,'null'::jsonb) IS NOT NULL THEN
+    RAISE EXCEPTION 'subscription_command_renewal_terms_missing' USING ERRCODE='22023';
+  END IF;
   DELETE FROM public.subscription_lines WHERE subscription_id = v_subscription.id;
   FOR v_line IN SELECT value FROM jsonb_array_elements(v_quote.proposed_lines)
   LOOP
@@ -1738,7 +1826,8 @@ BEGIN
   PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
   PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
   v_catalog_acceptance:=public.catalog_admission_accept(lines,q#>'{quote_snapshot,catalogAdmission}','subscription',
-    jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,'lane','exact','optIn',false),'account');
+    jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,
+     'lane',public.catalog_admission_edit_lane(p_action,s.configured_offer_version,false),'optIn',false),'account');
   plan:=s.cadence_days; constraint_value:=s.composition_constraint;
   IF p_action='swap_base_line' THEN
    IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id AND variant_id=(p_payload#>>'{request,toVariantId}')::uuid) THEN
@@ -1839,7 +1928,7 @@ DECLARE v_catalog_acceptance jsonb;
  s public.subscriptions%ROWTYPE; r public.subscription_command_receipts%ROWTYPE;
  action text; request jsonb; command jsonb; fingerprint text; answer jsonb; q jsonb; lines jsonb; line jsonb;
  event_id uuid; event_key text; line_pricing jsonb:='[]'::jsonb; version integer; plan integer; ordinal integer:=0;
- constraint_value jsonb; opt_in boolean; intro jsonb; phase_config jsonb; paid integer;
+ constraint_value jsonb; opt_in boolean; intro jsonb; phase_config jsonb; upcoming integer;
  current_core jsonb; desired_core jsonb; outcome text:='applied'; rewrites_addons boolean;
 BEGIN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
@@ -1874,11 +1963,11 @@ BEGIN
   IF phase_config IS NULL OR COALESCE(phase_config->>'fixedThroughCycle','') !~ '^[1-9][0-9]*$'
    OR COALESCE(phase_config->>'graduationCycle','') !~ '^[1-9][0-9]*$' THEN
    RAISE EXCEPTION 'subscription_edit_invalid_sized_configuration' USING ERRCODE='22023'; END IF;
-  SELECT count(*)::integer INTO paid FROM public.subscription_cycles WHERE subscription_id=s.id AND status='paid';
-  IF paid+1<=(phase_config->>'fixedThroughCycle')::integer THEN
+  upcoming:=public.catalog_admission_logical_cycle(s.id);
+  IF upcoming<=(phase_config->>'fixedThroughCycle')::integer THEN
    RAISE EXCEPTION 'subscription_edit_invalid_intro_fixed' USING ERRCODE='22023'; END IF;
   IF COALESCE(opt_in,false) AND s.template_version=(intro->>'basisTemplateVersion')::integer
-   AND paid<(phase_config->>'graduationCycle')::integer THEN
+   AND upcoming<=(phase_config->>'graduationCycle')::integer THEN
    RAISE EXCEPTION 'subscription_edit_invalid_intro_fixed' USING ERRCODE='22023'; END IF;
  END IF;
  IF s.status<>'active' OR s.next_cycle_at IS NULL OR p_now>s.next_cycle_at-make_interval(hours=>s.edit_window_hours) THEN

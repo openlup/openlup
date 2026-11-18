@@ -10,7 +10,8 @@ const line = z.object({ lineId: z.uuid().nullable(), variantId: z.uuid(), sku: z
   qty: z.number().int().positive(), isAddon: z.boolean(), quoteLine: object });
 const contextSchema = z.object({ subscriptionId: z.uuid(), clientId: z.uuid(), binding: z.enum(["classic", "sized.v1"]),
   templateVersion: z.number().int().positive(), cadenceDays: z.number().int().positive(), compositionConstraint: object.nullable(),
-  nextCycleAt: z.string().nullable(), paidCycleCount: z.number().int().nonnegative(), marker: object.nullable(),
+  nextCycleAt: z.string().nullable(), paidCycleCount: z.number().int().nonnegative(),
+  logicalUpcomingCycle: z.number().int().positive().optional(), marker: object.nullable(),
   lines: z.array(line).min(1), graduationLines: z.array(line) });
 export async function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn = false): Promise<SizedEditContext> {
   const raw = (await db.query("SELECT public.subscription_sized_edit_context($1::uuid,$2::uuid,$3::boolean) AS context", [clientId, id, optIn])).rows[0]?.context;
@@ -42,9 +43,9 @@ export function createSizedEditContextScope(read: (id: string, optIn: boolean) =
     return value.then(context => structuredClone(context));
   };
 }
-export function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount">, policy: SizedEditPolicy): SizedEditPhase {
+export function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount" | "logicalUpcomingCycle">, policy: SizedEditPolicy): SizedEditPhase {
   if (!context.marker) return "none";
-  const upcoming = context.paidCycleCount + 1;
+  const upcoming = context.logicalUpcomingCycle ?? context.paidCycleCount + 1;
   if (upcoming <= policy.fixedThroughCycle) return "fixed";
   if (upcoming === policy.graduationCycle && context.templateVersion === context.marker.basisTemplateVersion) return "graduation_pending";
   return "none";

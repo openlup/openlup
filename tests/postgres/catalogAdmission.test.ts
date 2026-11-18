@@ -1172,6 +1172,30 @@ const legacyRows: NativeRow[] = [
 ];
 it.each(legacyRows)("native legacy $name", row => nativeCase("legacy",row));
 
+it.each(["missing","present"] as const)("LC6-D-067 legacy governed edit renewal terms: %s", async terms => {
+  const f = await fixture(packs[0]), command = await edit(f,"legacy"), db = await pool.connect();
+  try {
+    if (terms === "missing") await db.query("DELETE FROM public.subscription_renewal_terms WHERE subscription_id=$1", [f.subscription]);
+    const before = terms === "missing" ? await snapshot() : undefined;
+    await db.query("BEGIN");
+    await db.query("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)",
+      [f.actor,JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+    if (terms === "missing") {
+      await expect(command.invoke(db)).rejects.toMatchObject({ message: "subscription_command_renewal_terms_missing",code: "22023" });
+      await db.query("ROLLBACK");
+      expect(await snapshot()).toEqual(before);
+    } else {
+      expect((await command.invoke(db)).subscriptionAction.status).toBe("applied");
+      await db.query("COMMIT");
+      expect((await db.query(`SELECT t.catalog_acceptance,l.sku,l.quantity,l.unit_amount_minor
+        FROM public.subscription_renewal_terms t JOIN public.subscription_renewal_term_lines l USING(subscription_id)
+        WHERE t.subscription_id=$1`, [f.subscription])).rows).toEqual([{
+        catalog_acceptance: { schemaVersion: 2,lines: [f.reference] },sku: f.code,quantity: 2,unit_amount_minor: "617",
+      }]);
+    }
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
 it.each<AdmissionRow>([
   { name: "subscription-required",message: accountAnchor,account: true,change: (_d,_f,i) => { i.offerEvidence.subscriptionId = randomUUID(); } },
   { name: "account-mode",message: accountAnchor,account: true,change: (_d,_f,i) => { i.mode = "one_time"; } },
@@ -1414,6 +1438,117 @@ it.each(lanes.flatMap(lane => (["subscription_renewal_terms","subscription_event
       .toEqual([{ catalog_acceptance: { schemaVersion: 2,lines: [f.reference] } }]);
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
+
+it.each(["first open ordinal","next after closed ordinal","different marker basis"] as const)(
+  "LC6-D-059, LC6-D-060 and LC6-D-143 sized retention uses %s", async basis => {
+    const f = await fixture(packs[0]), db = await session();
+    try {
+      expect(await (await edit(f,"sized")).invoke(db)).toMatchObject({ status: "applied" });
+      await introFixture(db,f,0,basis === "different marker basis" ? 1 : 2);
+      await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+      const number = basis === "next after closed ordinal" ? 1 : 2;
+      const status = basis === "next after closed ordinal" ? "cancelled" : "planned";
+      const renewal = async (cycle: number,status: string) => {
+        const operation = randomUUID(), identity = `subscription:${f.subscription}:cycle:${cycle}`, fingerprint = digest(identity);
+        await db.query(`INSERT INTO public.subscription_renewal_operations(id,subscription_id,scheduled_at,cycle_number,
+          identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at)
+          VALUES($1,$2,$3::timestamptz+make_interval(days=>$4::integer),$4,$5,$6,'{}','reserved',$1,'fixture',clock_timestamp(),clock_timestamp()+interval '1 hour')`,
+          [operation,f.subscription,f.at,cycle,identity,fingerprint]);
+        await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+          VALUES($1,$2::timestamptz+make_interval(days=>$3::integer),$4,$5,$6)`, [f.subscription,f.at,cycle,status,operation,fingerprint]);
+      };
+      await renewal(number,status);
+      if (basis === "first open ordinal") await renewal(4,"cancelled");
+      const context = await rpc(db,"subscription_sized_edit_context",[f.client,f.subscription,false]);
+      expect(context).toMatchObject({ logicalUpcomingCycle: 3,paidCycleCount: 0 });
+      const input: CatalogAdmissionInput = { ...f.admission,heads: [],priceContextVersions: [],
+        skuRevisions: [{ reference: f.reference,quantity: 3 }],offerEvidence: { offerVersion: "sized.v1",subscriptionId: f.subscription,lane: "sized",optIn: false } };
+      if (basis === "different marker basis") {
+        await expect(createPostgresCatalogAdmission().assertCurrent(db,input)).rejects.toMatchObject({ message: accountAnchor,code: "22023" });
+      } else {
+        await expect(createPostgresCatalogAdmission().assertCurrent(db,input)).resolves.toBeUndefined();
+      }
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  },
+);
+
+it.each(["add_addon","remove_addon","update_addon_quantity"] as const)(
+  "LC6-D-132 shipped sized add-on preview and exact apply agree on retained core: %s", async action => {
+    const f = await fixture(packs[0]), setup = await pool.connect();
+    const product = randomUUID(), variantId = randomUUID(), code = `LEGACY-${variantId}`;
+    const actor = { actorId: f.actor,clientId: f.client }, constraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
+    try {
+      expect(await (await edit(f,"sized")).invoke(setup)).toMatchObject({ status: "applied" });
+      await setup.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,'Legacy article','active')", [product,`legacy-${product}`]);
+      await setup.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g) VALUES($1,$2,$3,'Legacy article','active',true,true,true,100)", [variantId,product,code]);
+      const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
+      const catalog = { async listQuoteCatalogItems() {
+        return (await setup.query("SELECT s.*,p.slug FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY($1::uuid[])", [[f.sku,variantId]])).rows.map(row => ({
+          variantId: String(row.id),skuId: String(row.id),skuCode: String(row.sku),productSlug: String(row.slug),netWeightG: Number(row.net_weight_g),isAddon: row.is_addon === true,
+          sellability: { oneTime: true,subscription: true },documentRevision: { id: null,digest: null },
+        }));
+      } };
+      const priceList = f.admission.priceContextVersions[0].priceListId, entry = randomUUID();
+      await setup.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'any',411,$4::timestamptz-interval '1 day')", [entry,priceList,variantId,f.at]);
+      const repriced: string[] = [];
+      const engine = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: catalog,isStrictD1Quote: false,
+        pricingResolverPort: { async resolvePrice(input) {
+          repriced.push(input.variantId);
+          const row = (await setup.query("SELECT * FROM public.price_entries WHERE variant_id=$1 AND price_list_id=$2 AND active", [input.variantId,priceList])).rows[0];
+          return { variantId: input.variantId,mode: input.mode,unitPriceMinor: Number(row.unit_price_minor),matchedMinQty: Number(row.min_qty),amountKind: "gross",priceListId: String(row.price_list_id),priceEntryId: String(row.id),resolvedAt: f.at };
+        } }, taxProfile: tax,supportedTaxProfiles: [tax],regionCode: "ZZ",currency: "XXX",now: () => f.at,hasPromotionCodePort: false,
+        resolveAutomaticQuotePromotions: async () => ({ discounts: [],codeRejections: [] }),
+        applyPromotionCodesV2: async () => ({ discounts: [],codeRejections: [],codeRejectionDetails: [] }),
+        lineContext: () => ({}),quoteContext: input => () => ({ mode: input.mode,cadenceDays: input.cadenceDays,promoCodes: input.promoCodes }) });
+      const hasAddon = action !== "add_addon";
+      const initial = await engine.createServerAuthoritativeQuote({ mode: "subscription",cadenceDays: 28,promoCodes: [],lines: [
+        { sku: f.code,quantity: 2,modeAtLine: "subscription",isAddon: false },
+        ...(hasAddon ? [{ sku: code,quantity: 1,modeAtLine: "subscription" as const,isAddon: true }] : []),
+      ] });
+      if (hasAddon) {
+        await setup.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,is_addon,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,true,1,411,'XXX')", [f.subscription,variantId]);
+        await setup.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2,$2,1,411)", [f.subscription,code]);
+      }
+      await setup.query("UPDATE public.subscription_events SET payload=jsonb_set(payload,'{linePricing}',$2::jsonb) WHERE subscription_id=$1", [f.subscription,JSON.stringify(initial.quote.lines.map(line => ({ sku: line.sku,quantity: line.quantity,unitAmountMinor: line.unitPriceGross.amountMinor,isAddon: line.sku === code,quoteLine: line })))]);
+      repriced.length = 0;
+      const editor = createPostgresSizedEditor({ quotePort: engine,now: () => f.at,
+        async withTransaction(work) {
+          const db = await runtime.connect();
+          try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
+          catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+        },
+        policy: { minimumCoreUnits: 1,maximumCoreLines: 3,maximumAddonLines: 3,maximumQuantity: 99,allowedCadences: [28],maximumExclusions: 8,maximumCatalogExclusions: 16,fixedThroughCycle: 2,graduationCycle: 3,
+          portionModes: { full: { mode: "full",factor: 1 },reduced: { mode: "reduced",factor: 0.5 } } },
+        async readFacts(db,context) {
+          const row = (await db.query("SELECT composition_constraint FROM public.subscriptions WHERE id=$1 AND client_id=$2", [context.subscriptionId,context.clientId])).rows[0];
+          return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: context.subscriptionId,exclusions: [],snapshot: row.composition_constraint as Record<string, unknown> };
+        },
+        async readCatalog(db) {
+          return (await db.query("SELECT * FROM public.catalog_skus WHERE id=ANY($1::uuid[])", [[f.sku,variantId]])).rows.map(row => ({ variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
+            sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: 100,demandPerUnit: 28,documentRevisionId: String(row.id),documentDigest: digest(String(row.id)),verified: true,exclusions: [],sellableNow: 100 }));
+        },
+        async resolveOptInNeed() { throw new Error("Unexpected opt-in"); },
+        async assertCurrentFacts() { throw new Error("Unexpected sized resize"); },
+        proposePortion: async ({ current }) => current.map(({ variantId,qty }) => ({ variantId,qty })),
+      });
+      const request = action === "remove_addon" ? { subscriptionId: f.subscription,action,variantId }
+        : { subscriptionId: f.subscription,action,variantId,qty: 2 };
+      const preview = await editor.preview(actor,request);
+      expect(preview.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
+      const evidence = (await setup.query("SELECT quote_snapshot->'catalogAdmission' AS evidence FROM public.subscription_quote_previews WHERE subscription_id=$1 AND action=$2", [f.subscription,action])).rows[0].evidence;
+      expect(evidence).toMatchObject({ heads: [],skuRevisions: [{ reference: f.reference,quantity: 2 }],priceContextVersions: [] });
+      const accepted = { ...request,expectedTemplateVersion: 2,acceptedQuoteHash: preview.quoteHash };
+      expect(await editor.apply(actor,randomUUID(),accepted)).toMatchObject({ status: "applied",templateVersion: 3 });
+      expect(repriced).not.toContain(f.sku);
+      expect((await setup.query(`SELECT variant_id,quantity,unit_price_minor,catalog_sku_revision_id FROM public.subscription_lines
+        WHERE subscription_id=$1 ORDER BY is_addon`, [f.subscription])).rows).toEqual([
+        { variant_id: f.sku,quantity: 2,unit_price_minor: "617",catalog_sku_revision_id: f.reference.skuRevisionId },
+        ...(action === "remove_addon" ? [] : [{ variant_id: variantId,quantity: 2,unit_price_minor: "411",catalog_sku_revision_id: null }]),
+      ]);
+      expect((await setup.query("SELECT composition_constraint FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].composition_constraint).toEqual(constraint);
+    } finally { setup.release(); }
+  },
+);
 
 it.each(["package","sized"] as const)("LC6-host-prelock-%s", async lane => {
   const f = await legacyFixture(), h = await pool.connect(), e = await pool.connect(), p = await session();

@@ -73,9 +73,15 @@ describe("request scope and derived phase", () => {
   });
   it("uses frozen graduation core and current add-on agreements", () => {
     const current = context(); current.paidCycleCount = 2;
-    current.marker = { basisTemplateVersion: 1, graduation: { cadenceDays: 30, lines: [] } }; current.graduationLines = [agreed(ids.b, 4)];
+    current.marker = { basisTemplateVersion: 1, graduation: { cadenceDays: 30, lines: [] } };
+    current.graduationLines = [agreed(ids.b, 4), { ...current.lines[1], qty: 2 }];
     expect(selectSizedAgreements(current, policy)).toEqual([current.graduationLines[0], current.lines[1]]);
     expect(sizedEditPhase(current, policy)).toBe("graduation_pending"); current.templateVersion = 2; expect(sizedEditPhase(current, policy)).toBe("none");
+  });
+  it.each([2,3,4] as const)("uses the owned cycle ordinal %s when the paid count differs", logicalUpcomingCycle => {
+    const current = Object.assign(context(),{ paidCycleCount: 1,logicalUpcomingCycle });
+    current.marker = { basisTemplateVersion: 1, graduation: { cadenceDays: 30, lines: [] } };
+    expect(sizedEditPhase(current,policy)).toBe(({ 2: "fixed",3: "graduation_pending",4: "none" } as const)[logicalUpcomingCycle]);
   });
   it("refuses opt-in in either introductory phase and normalizes frozen mix and portion actions", () => {
     const current = context(); current.binding = "classic"; current.marker = { basisTemplateVersion: 1, graduation: { cadenceDays: 30, lines: [] } };

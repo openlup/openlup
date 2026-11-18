@@ -1367,6 +1367,8 @@ export interface SizedEditContext {
     compositionConstraint: Record<string, unknown> | null;
     nextCycleAt: string | null;
     paidCycleCount: number;
+    /** Next logical cycle from the native delivery schedule. @experimental */
+    logicalUpcomingCycle?: number;
     marker: {
         basisTemplateVersion: number;
         graduation: {
@@ -2826,7 +2828,7 @@ import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export declare function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn?: boolean): Promise<SizedEditContext>;
 /** Construct once per authenticated request; do not share across preview/apply. */
 export declare function createSizedEditContextScope(read: (id: string, optIn: boolean) => Promise<SizedEditContext>): (id: string, optIn?: boolean) => Promise<SizedEditContext>;
-export declare function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount">, policy: SizedEditPolicy): SizedEditPhase;
+export declare function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount" | "logicalUpcomingCycle">, policy: SizedEditPolicy): SizedEditPhase;
 export declare function isSizedOptIn(request: {
     action: string;
     resizeLever?: unknown;

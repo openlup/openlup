@@ -1256,6 +1256,8 @@ export interface SizedEditContext {
     compositionConstraint: Record<string, unknown> | null;
     nextCycleAt: string | null;
     paidCycleCount: number;
+    /** Next logical cycle from the native delivery schedule. @experimental */
+    logicalUpcomingCycle?: number;
     marker: {
         basisTemplateVersion: number;
         graduation: {

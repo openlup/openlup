@@ -5,12 +5,18 @@ unreadable authority, invalid anchors, stale heads and invalid membership.
 Sized unchanged or reduced selections retain immutable identities. A separate
 context records any price the existing quote owner consulted for a retained
 selection. Mixed carts and edits prove the exact governed subset.
+Sized edits share the configured-offer binding and numbered-cycle evidence
+between preview and apply. The graduation baseline retains the current add-on
+agreement. Governed legacy edits require owned renewal terms for the accepted
+selection before saving the template.
 
 Migration: apply the complete native catalogue, including the membership-page,
 lifecycle and admission forwards. Capture evidence using the native checkout
 wrapper alongside the original trusted quote. The existing edit previews record
 their own private evidence in the ledgers. Historical formats keep their
 existing reader and new acceptance uses the lifecycle-aware reference reader.
+Editors on older installed contexts can still read the paid-cycle count for
+phase selection.
 The publisher retains its nonblocking busy refusal.
 
 The order entrypoints keep their signatures and legacy results. A purchased
