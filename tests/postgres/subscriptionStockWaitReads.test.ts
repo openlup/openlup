@@ -81,7 +81,7 @@ const cases = [
   }],
   ["LC10-D-292 payment failure propagates", async () => {
     await seed();
-    const port = readers(instrument((sql, args) => {
+    const port = readers(instrument(async (sql, args) => {
       if (sql.includes("commerce_settlement_intents")) throw new Error("payment unavailable");
       return db.query(sql, args);
     }));
@@ -98,7 +98,8 @@ const cases = [
     expect(rows[1]?.notices).toEqual([]);
   }],
   ["LC10-D-293 managed delivery template and case filters use persisted delivery evidence", async () => {
-    await seed();
+    const deficits = [{ ...line(2), skuId: uuid(90), productName: "Item", sizeG: null }];
+    await seed({ [caseA]: { deficits }, [caseC]: { deficits }, [caseD]: { deficits } });
     await db.query(`CREATE TABLE public.communication_email_deliveries(
       id uuid, aggregate_id text, template_slug text, status text, last_error_code text, updated_at timestamptz
     );
@@ -108,9 +109,6 @@ const cases = [
       ($5,$1,'subscription-stock-wait-started','failed','connection_failed',$3::timestamptz - interval '1 min'),
       ($6,$1,'subscription-renewal-upcoming','sent',NULL,$3::timestamptz + interval '1 min'),
       ($7,$2,'subscription-stock-wait-started','sent',NULL,$3)`, [caseA, caseC, now, uuid(71), uuid(72), uuid(73), uuid(74)]);
-    await db.query(`UPDATE public.subscription_stock_wait_cases SET deficits=$1`, [
-      JSON.stringify([{ ...line(2), skuId: uuid(90), productName: "Item", sizeG: null }]),
-    ]);
     const result = await readers({ graph: "managed" }).listAdmin(page("waiting", 1, 1));
     expect(ids(result.cases)).toEqual([["legacy", caseA]]);
     expect(result.cases[0]?.notices.map(row => ({ ...row, updatedAt: Date.parse(row.updatedAt) }))).toEqual([
@@ -179,8 +177,7 @@ const cases = [
     expect(result).toMatchObject({ page: 2, pageSize: 1, totalCount: 4, productTotals: total(8, 3) });
   }],
   ["LC10-D-297 opened time sorts before ID", async () => {
-    await seed();
-    await db.query("UPDATE public.subscription_stock_wait_cases SET opened_at=opened_at-interval '10 min' WHERE id=$1", [caseC]);
+    await seed({ [caseC]: { openedMinutes: -8 } });
     expect(ids((await readers().listAdmin(page())).cases)).toEqual([["legacy", caseC], ["legacy", caseA]]);
   }],
   ["LC10-D-297 exact state filter applies to the page and complete totals", async () => {
@@ -218,15 +215,12 @@ const cases = [
     await expect(port.listAdmin(page())).rejects.toThrow("stock_wait_summary_count_mismatch");
   }],
   ["LC10-D-298 missing summary facts are visible even beyond the last page", async () => {
-    await seed();
-    await db.query("UPDATE public.subscription_stock_wait_cases SET deficits=$2 WHERE id=$1", [
-      caseA, JSON.stringify([{ sku: "UNRESOLVED", missingUnits: 2 }]),
-    ]);
+    await seed({ [caseA]: { deficits: [{ sku: "UNRESOLVED", missingUnits: 2 }] } });
     await expect(readers().listAdmin(page("waiting", 99, 1))).rejects.toThrow("stock_wait_summary_evidence_invalid");
   }],
   ["LC10-D-298 notice failure is visible to each listing", async () => {
     await seed();
-    const port = readers(instrument((sql, args) => {
+    const port = readers(instrument(async (sql, args) => {
       if (sql.includes("transactional_delivery_receipts")) throw new Error("notices unavailable");
       return db.query(sql, args);
     }));
@@ -242,8 +236,7 @@ const cases = [
     for (const row of cases) expect(row).not.toHaveProperty("paymentStatus");
   }],
   ["LC10-D-299 explicit subscription list excludes other open cases on the same account", async () => {
-    await seed();
-    await db.query("UPDATE public.subscription_stock_wait_cases SET state='stock_secured' WHERE id=$1", [caseD]);
+    await seed({ [caseD]: { state: "stock_secured" } });
     expect(ids(await readers().listCustomer())).toEqual([["legacy", caseA], ["successor", caseB]]);
   }],
   ["LC10-D-299 only open even when the closed subscription is in scope", async () => {
@@ -318,7 +311,11 @@ function failedCases(graph: "native" | "managed", code: string, message: string)
 
 // Seed persisted read facts directly. Producer behavior is covered by the stock-wait
 // and successor command suites. Restore trigger execution before invoking any reader.
-async function seed() {
+async function seed(overrides: Record<string, {
+  state?: StockWaitReadProjection["state"];
+  openedMinutes?: number;
+  deficits?: Record<string, unknown>[];
+}> = {}) {
   await db.query("SET LOCAL session_replication_role = replica");
   await db.query(`INSERT INTO public.clients (id,email,principal_id) VALUES
     ($1,'one@example.invalid',$3),($2,'two@example.invalid',NULL)`, [client, other, principal]);
@@ -334,9 +331,11 @@ async function seed() {
     [caseB, subscription, client, "stock_secured", 1, 5, uuid(51), uuid(32)],
   ] as const;
   for (const [id, sub, owner, state, openedMinutes, checkedMinutes, orderId, operation] of data) {
-    const deficits = JSON.stringify(id === caseC
-      ? [line(1), line(1)] : [line(id === caseB ? 0 : id === caseD ? 4 : 2)]);
-    const coordinates = [id, sub, owner, state, now, deficits, openedMinutes, checkedMinutes, orderId, operation];
+    const override = overrides[id];
+    const deficits = JSON.stringify(override?.deficits ?? (id === caseC
+      ? [line(1), line(1)] : [line(id === caseB ? 0 : id === caseD ? 4 : 2)]));
+    const coordinates = [id, sub, owner, override?.state ?? state, now, deficits, override?.openedMinutes ?? openedMinutes,
+      checkedMinutes, orderId, operation];
     const table = id === caseB ? "subscription_successor_wait_cases_v2" : "subscription_stock_wait_cases";
     const lineage = id === caseB ? "operation_id, root_case_id" : "renewal_operation_id";
     const links = id === caseB ? "$10,$11" : "$10";
