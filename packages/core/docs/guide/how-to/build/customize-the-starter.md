@@ -168,6 +168,15 @@ imported by the host, outside `StoreConfig`. Each domain assertion runs once
 from `assertConfig` at startup and refuses invalid data or unsupported database
 bounds with a named error code.
 
+For saved-address formats in the current source candidate, edit
+`savedAddressValidation` in `owned/acquisition-policy.ts`, already imported by
+the host. Its `local` callbacks accept fictional postal codes with two letters
+followed by four digits and phones with eight digits for the configured country
+(`ZZ` in the demonstration).
+Keep those algorithms outside `StoreConfig`; the platform retains country
+aliases, length bounds, foreign formats and field messages. Callback throws
+refuse the affected field. See [saved-address policy and defaults](../../concepts/starter-ownership.md#saved-addresses-billing-and-preferences).
+
 ## Configure cancellation offers
 
 In the current source candidate, edit `subscriptionCare.retention` in
