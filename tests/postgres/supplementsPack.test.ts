@@ -7,6 +7,7 @@ import {
 } from '@openlup/platform/catalog';
 import { upgrade as extractedUpgrade } from '../../examples/neutral-store/owned/catalog-packs/supplements/fixtures.ts';
 import type { CatalogDecisionCommandV2, CatalogDraftPayloadV3, CatalogPublishCommand } from '@openlup/platform/catalog/contracts';
+import type { PgQueryExecutor } from '@openlup/platform/data';
 import { supplementsCatalogueRegistration } from '../../examples/neutral-store/owned/catalogue.ts';
 import { initialDrafts } from '../../examples/catalog-packs/supplements/catalogue.ts';
 import { upgrade } from '../../examples/catalog-packs/supplements/fixtures.ts';
@@ -105,7 +106,7 @@ it.each([
 describe('human publication boundary on the powder fixture', () => {
   const otherActor = randomUUID();
   const powder = initialDrafts[1];
-  const target = createPostgresCatalogPublication({
+  const publisher = (mutate?: (sql: string, rows: Record<string, unknown>[]) => void) => createPostgresCatalogPublication({
     registry,
     rules: {
       canonicalizeDocument: canonicalCatalogDraftJson,
@@ -121,7 +122,12 @@ describe('human publication boundary on the powder fixture', () => {
       const connection = await owner.connect();
       try {
         await connection.query('BEGIN');
-        const result = await work(connection);
+        const executor: PgQueryExecutor = { async query(sql, values) {
+          const result = await connection.query(sql, values);
+          mutate?.(sql, result.rows);
+          return result;
+        } };
+        const result = await work(executor);
         await connection.query('COMMIT');
         return result;
       } catch (error) {
@@ -130,6 +136,7 @@ describe('human publication boundary on the powder fixture', () => {
       } finally { connection.release(); }
     } },
   });
+  const target = publisher();
   let approval: CatalogDecisionCommandV2, publication: CatalogPublishCommand;
   beforeAll(async () => {
     await installCatalogDefinitions(owner, pack);
@@ -146,17 +153,12 @@ describe('human publication boundary on the powder fixture', () => {
     payload.skus[0]!.priceOperations = [];
     payload.publication.operations = payload.publication.operations.filter(operation =>
       operation.op !== 'set_eligibility' && operation.op !== 'set_sku_status' && operation.op !== 'set_product_status');
-    const stored = await draftHandler().execute({ schemaVersion: 3, action: 'create', draftId: powder.draftId,
-      commandKey: 'supplements:operator:dark-draft', expectedRevision: 0, payload }, true);
-    // If the ordinary dark draft witness already ran, revise its existing draft.
-    const record = 'record' in stored ? stored : await draftHandler().execute({
-      schemaVersion: 3, action: 'revise', draftId: powder.draftId, commandKey: 'supplements:operator:dark-draft',
-      expectedRevision: 1, payload,
-    }, true).then(result => {
-      if (!('record' in result)) throw new Error(JSON.stringify(result));
-      return result;
-    });
-    const candidateRef = `v1:${powder.draftId}@${record.record.revision}/unpublished`;
+    const prior = await owner.query('SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1', [powder.draftId]);
+    const expectedRevision = Number(prior.rows[0]?.revision ?? 0);
+    const stored = await draftHandler().execute({ schemaVersion: 3, action: expectedRevision ? 'revise' : 'create',
+      draftId: powder.draftId, commandKey: 'supplements:operator:dark-draft', expectedRevision, payload }, true);
+    if (!('record' in stored)) throw new Error(JSON.stringify(stored));
+    const candidateRef = `v1:${powder.draftId}@${stored.record.revision}/unpublished`;
     const definitions = [{ ...payload.product.type, definitionDigest: catalogDefinitionDigest(pack.types[0]) }];
     const candidateDigest = createHash('sha256').update(canonicalCatalogDraftJson(['catalog-candidate', 1, payload, definitions, null])).digest('hex');
     publication = { productId: payload.product.id, commandKey: 'supplements:publish:powder',
@@ -165,6 +167,13 @@ describe('human publication boundary on the powder fixture', () => {
       candidateRef, candidateDigest, commandKey: 'supplements:approve:powder', reason: 'Synthetic approval for the exact dark fixture' };
     expect(await target.decision(approval, (await target.authorize(actorId))!)).toMatchObject({ outcome: 'committed' });
   });
+
+  async function publishDark() {
+    const capability = (await target.authorize(actorId))!;
+    const result = await target.publish(publication, capability);
+    if (!('receipt' in result)) throw new Error(JSON.stringify(result));
+    return result;
+  }
 
   it.each([
     ['RP1-D-011a', async () => {
@@ -194,6 +203,24 @@ describe('human publication boundary on the powder fixture', () => {
       expect(before).toMatchObject({ publications: 1, products: 1, skus: 1, prices: 0 });
       expect(await target.readbackV2(first.receipt.head)).toMatchObject({ outcome: 'page',
         product: { document: powder.payload.product.documentRevision }, items: [{ facts: { code: 'G1-POWDER-140' } }] });
+    }],
+    ['RP1-D-001a', async () => {
+      const { receipt } = await publishDark();
+      const failing = publisher((sql, rows) => {
+        if (sql.includes('d.id AS document_id')) rows[0]!.document_id = randomUUID();
+      });
+      expect(await failing.readbackV2(receipt.head)).toEqual({
+        outcome: 'dependency_unavailable', reason: 'catalog_publication_manifest_invalid',
+      });
+    }],
+    ['RP1-D-001b', async () => {
+      const { receipt } = await publishDark();
+      const failing = publisher((sql, rows) => {
+        if (sql.includes('octet_length(full_facts)')) rows[0]!.sku_id = randomUUID();
+      });
+      expect(await failing.readbackV2(receipt.head)).toEqual({
+        outcome: 'dependency_unavailable', reason: 'catalog_publication_sku_revision_invalid',
+      });
     }],
   ] as const)('supplements_draft_transition_matrix %s', async (_rule, verify) => { await verify(); });
 });

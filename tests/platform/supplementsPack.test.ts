@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 import { canonicalizeCatalogQuantity, convertCatalogQuantity } from '@openlup/core/catalog';
 import {
   catalogDefinitionDigest, catalogDraftPayloadV3Schema, catalogDraftPayloadV4Schema, catalogDraftPayloadV5Schema,
-  catalogPackIssues, createCatalogProductTypeRegistry, prepareCatalogAttributeProjection, validateCatalogAttributes,
+  catalogPackIssues, createCatalogProductTypeRegistry, prepareCatalogAttributeProjection, validateCatalogAttributes, type CatalogAttributeProjectionRow,
 } from '@openlup/platform/catalog';
 import { applyAppUpgrade } from '@openlup/platform/lifecycle';
 import { deriveSubscriptionUnitPrice } from '@openlup/platform/pricing';
@@ -50,7 +50,7 @@ it.each<[string, () => unknown]>([
   }],
   ['RP1-D-002c filterable public format', async () => {
     expect(formatAttribute).toMatchObject({ key: 'format', filterable: true, public: true });
-    const rows = [];
+    const rows: Readonly<CatalogAttributeProjectionRow>[] = [];
     for (const fixture of fixtures.attributes.slice(0, 2)) {
       const prepared = prepareCatalogAttributeProjection(await validateCatalogAttributes(definition, fixture.input), '1');
       if (!prepared.prepared) throw new Error('Expected a ready attribute projection');
@@ -75,7 +75,7 @@ it.each<[string, () => unknown]>([
   ['RP1-D-004b canonical mass', () => {
     expect(canonicalizeCatalogQuantity(powder.netContent, units)).toEqual({ dimension: 'mass', unit: 'openlup:g', unscaled: '140', scale: 0 });
   }],
-  ['RP1-D-004c declared servings and scoop', () => {
+  ['RP1-D-004c supplements_count_and_consumption_are_distinct', () => {
     expect(capsule.payload.product.sharedContent.document?.serving).toEqual({ perContainer: 28, unit: 'capsule_pair' });
     expect(powder.payload.product.sharedContent.document?.serving).toEqual({ perContainer: 28, unit: 'scoop' });
     expect(scoopMass).toEqual({ dimension: 'mass', unit: 'openlup:g', unscaled: '5', scale: 0 });
@@ -119,7 +119,7 @@ it.each<[string, () => unknown]>([
       }
     } finally { rmSync(target, { recursive: true, force: true }); }
   }],
-  ['RP1-D-010b next file upgrade preserves edited pack', async () => {
+  ['RP1-D-010b starter_upgrade_preserves_owned_pack', async () => {
     const target = realpathSync(mkdtempSync(join(tmpdir(), 'supplements-upgrade-')));
     try {
       execFileSync(process.execPath, [join(root, 'neutral-store/extract.mjs'), target]);
@@ -212,7 +212,7 @@ it.each<[string, () => unknown]>([
   ['RP1-D-007c authored prices through existing sandbox price owner', () => {
     const amounts = [capsule, powder, successor].map(({ payload }) => deriveSubscriptionUnitPrice(
       payload.skus[0]!.priceOperations![0]!.unitPriceMinor, {
-        discountBps: agreedTerms.discountBps, roundingQuantumMinor: 10, roundingRule: 'FLOOR_TO_QUANTUM',
+        discountBps: agreedTerms.discountBps, roundingQuantumMinor: agreedTerms.roundingQuantumMinor, roundingRule: 'FLOOR_TO_QUANTUM',
       }));
     expect(amounts).toEqual([2800, 4200, 3080]);
     expect(agreedTerms.purchase).toEqual(agreedTerms.renewal);

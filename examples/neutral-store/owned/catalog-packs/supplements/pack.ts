@@ -10,7 +10,7 @@ export const pack = defineCatalogPack({
   id: 'supplements',
   namespace: 'supplements',
   version: 1,
-  openlupRange: '^1.2.0',
+  openlupRange: '^1.3.0',
   capabilities: { quantities: true, attributes: true, combinations: true, sharedContent: true, profiles: true, prepaid: false },
   taxClasses: [{ key: taxClass }],
   subscriptionProfiles: [profileRef],
@@ -25,7 +25,7 @@ export const pack = defineCatalogPack({
   }],
   types: [{
     ...itemType,
-    validatorRef: 'sha256:d60a9eefc346e4c9526dba12c98b0483ed6295a3ecbb38f49e2ab36de80b98c5',
+    validatorRef: 'sha256:65073277f001b184be7afa5873795c934b43cc2dce291bdd11ac3ded9aac7f0b',
     validateContent,
     units,
     netContentUnits: ['supplements:capsule', 'openlup:g'],

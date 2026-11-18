@@ -1,6 +1,6 @@
 import type { CatalogConformanceSubject } from '@openlup/platform/catalog/testing';
 import {
-  initialDrafts, initialPublications, successor, withdrawal,
+  initialDrafts, initialPublications, priceListId, successor, withdrawal,
 } from './catalogue.ts';
 import { itemType, pack } from './pack.ts';
 import { cadenceDays, demandFor, policy } from './policy.ts';
@@ -32,9 +32,12 @@ export const agreedTerms = {
   currency: 'XTS',
   currencyExponent: 2,
   effectiveAt: '2026-11-19T12:00:00.000Z',
+  priceListId,
   pricePhase: 'base',
+  purchaseMode: 'subscription',
   minimumQuantity: 1,
   discountBps: 0,
+  roundingQuantumMinor: 10,
   shippingMinor: 0,
   taxMinor: 0,
   firstCycleAnchor: '2026-11-19T12:00:00.000Z',

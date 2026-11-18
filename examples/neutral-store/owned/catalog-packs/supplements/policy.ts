@@ -18,7 +18,7 @@ const dose = {
   powder: { dimension: 'mass', unit: 'openlup:g', unscaled: '5', scale: 0 },
 } as const satisfies Record<Format, CatalogQuantity>;
 
-export const scoopMass = dose.powder;
+export const scoopMass = { dimension: 'mass', unit: 'openlup:g', unscaled: '5', scale: 0 } as const satisfies CatalogQuantity;
 export const cadenceDays = 28;
 
 export const policy = {

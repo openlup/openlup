@@ -26,13 +26,13 @@ agreement rows against the composed installation with installed packages.
 
 | Witness | Rule | Isolating input | Expected owner result or observation |
 | --- | --- | --- | --- |
-| `supplements_draft_transition_matrix` | RP1-D-001a | Published item with wrong document identity | `catalog_authority_changed`, no partial items |
-| | RP1-D-001b | Published item with wrong SKU identity | `catalog_authority_changed`, no partial items |
+| `supplements_draft_transition_matrix` | RP1-D-001a | Published item with wrong document identity | `catalog_publication_manifest_invalid` at the native reader, no partial items. Integrated serving refuses the changed authority. |
+| | RP1-D-001b | Published item with wrong SKU identity | `catalog_publication_sku_revision_invalid` at the native reader, no partial items. Integrated serving refuses the changed authority. |
 | | RP1-D-005a | Two v3 draft creates and exact retry | Two immutable drafts; identical retry replays, zero public visibility |
 | | RP1-D-005b | Withdraw capsule with v4 and valid approval | New purchase refused; old agreement and historical SKU retained |
 | | RP1-D-005c | Approve v5 successor with new immutable SKU and identifier | Explicit predecessor and successor, 2,800 → 3,080 minor, no automatic substitution |
 | | RP1-D-011a | Decision using the wrong human actor | `catalog_publication_operator_mismatch`, zero publication writes |
-| | RP1-D-011b | Expired human verification | Refusal before candidate publication |
+| | RP1-D-011b | Expired human verification | `publisher_not_authorized`, zero publication writes |
 | | RP1-D-011c | Repeat an approved publish with identical command and actor | Same receipt and one publication |
 
 | Witness | Rule | Isolating input | Expected owner result or observation |
@@ -50,6 +50,7 @@ agreement rows against the composed installation with installed packages.
 
 ## Frozen bookends
 
+- Compatible package range `^1.3.0` targets the first minor after 1.2.0.
 - Effective instant and first cycle anchor 2026-11-19T12:00:00.000Z.
   Next anchors 2026-12-17T12:00:00.000Z and 2027-01-14T12:00:00.000Z.
 - XTS exponent 2, active subscription gross prices at minimum quantity 1,
