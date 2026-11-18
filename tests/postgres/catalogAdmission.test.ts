@@ -1354,7 +1354,7 @@ it.each(["package","sized"] as const)("LC6-host-prelock-%s", async lane => {
       invoke = () => editor.apply(actor,randomUUID(),{ ...request,expectedTemplateVersion: 1,acceptedQuoteHash: preview.quoteHash });
     }
     expect(preview.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
-    const paid = await payment(f); armed = true;
+    const paid = await payment(f,lane === "sized"); armed = true;
     const editing = tracked(invoke()); await blocker(h,ep,hp);
     await p.query("SAVEPOINT host_prelock");
     const held = await tracked(p.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR SHARE NOWAIT", [f.subscription]));
