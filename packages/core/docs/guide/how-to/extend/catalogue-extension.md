@@ -1,230 +1,142 @@
 # Catalogue extension recipes
 
-Development preview. Use matching installed `@openlup/*` versions and Node 24.
-The offline checker covers definitions, references, exact quantities and draft
-inputs through v5. For native authoring and accepted references, see the
-catalogue section of the installed Platform README.
+Development preview for matching `@openlup/*` versions on Node 24. PASS covers
+only the supplied offline checks and grants no activation authority.
 
-The JSON API `runCatalogExtensionConformance(jsonText)` resolves to a
-`CatalogConformanceReport`. Non-strings give `conformance_subject_invalid` (1)
-without inspection. Invalid JSON rejects with `SyntaxError`.
+## Check a registered pack
 
-From the installed application, run:
+From the installed application, run the starter’s `catalogue:check:source` script
+or the installed command it wraps.
 
 ```sh
 npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue.ts --json
 ```
 
-The starter's `catalogue:check:source` npm script runs the same command.
-Use it only with your trusted module. It executes the module and its supplied
-validators with the current process's permissions. Export an object named
-`catalogueConformance` of type `CatalogConformanceSource` from the same
-registry you use for runtime composition. Keep fixture imports and validators
-deterministic and free of filesystem writes, network calls and database access.
+Export `catalogueConformance` as a `CatalogConformanceSource` using the runtime
+pack objects. The command trusts the module and runs its callbacks with the
+process’s permissions. Keep them deterministic, side-effect free and silent.
 
-Projection writes canonical JSON to a private scratch file outside the app and
-calls the checker once on those bytes. The `transport` report carries the
-scratch path, SHA-256, projection and checker timings, invocation count and
-commands. Run `transport.recheck` from an independently prepared copy to replay
-the trust-bearing check. Run `transport.replay` for the JSON-only check of that
-scratch file. Content and host-policy callbacks require the trust-bearing
-check and may give exit 2 in the static replay. Keep the scratch file only as
-long as you need the evidence.
+`transport` records the canonical scratch file outside the app, its SHA-256,
+timings and one checker invocation. Use `transport.recheck` from a clean copy
+or `transport.replay` for inert JSON. Compare the bytes independently with
+the registry and source fixtures.
 
-Each `packs` entry contains `pack` and optional `drafts`, `quantities`, `attributes`,
-`combinations`, `profileChecks`, `profilePolicies` and `refusals`. The JSON subject
-preserves data and artifact references and omits executable callbacks. A
-supplied `validateContent` field in JSON refuses with
-`definition_unknown_field`. Drafts requesting application content validation
-return `conformance_owner_unavailable` (2) from the inert command. The trusted
-command runs the registered callback on the same draft bytes.
-Quantity fixtures use `{type, value, targetUnit?}` and explicit conversion
-factors. Values require string `dimension`, `unit` and `unscaled` fields plus
-an integer `scale`. The shared owner checks exactness and bounds.
+```sh
+npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json
+```
 
-Use `requiredChecks` to require coverage in each pack. Available keys are
-`quantities`, `attribute-values`, `variant-combinations`, `draft-content`,
-`profiles` and `owner-refusals`. Draft content requires a current v3–v5 fixture
-and the registered validator. Publication operations and price commands use
-their installed payload schemas. Retained state, live publication and price
-execution have separate runtime gates. Taxonomy, tax coverage and application,
-and promotions return required evidence unavailable (2). Unknown subject fields
-refuse. Attributes and combinations stay separate from strict v1 drafts.
+Try the [static sample](catalogue-pack-skeleton/catalogue.json). The JSON command
+and `runCatalogExtensionConformance(jsonText)` read data only. Non-strings give
+`conformance_subject_invalid`, malformed JSON throws `SyntaxError`, and
+executable fields refuse. Application content and host callbacks require trusted evidence.
 
-Reference rows and retained options are fixture observations. Installed identity,
-cadence, capacity, historical state, price execution and publication require
-runtime evidence. The checker grants no activation authority.
+Entries contain `pack` and optional `drafts`, `quantities`, `attributes`,
+`combinations`, `profileChecks`, `profilePolicies` and `refusals`. Require
+coverage per pack with `quantities`, `attribute-values`, `variant-combinations`,
+`draft-content`, `profiles` or `owner-refusals` in `requiredChecks`.
+`draft-content` requires a v3–v5 fixture and its actual validator. The installed
+schemas admit publication operations and price commands.
 
 | Exit | Result |
 | --- | --- |
-| 0 | Checks satisfied within scope |
+| 0 | Supplied checks satisfied |
 | 1 | Owner or input violation |
 | 2 | Required evidence unavailable |
-| 64 | Invalid CLI syntax or malformed JSON |
-| 74 | File, loading, integrity or unexpected owner error; raw errors withheld |
+| 64 | Invalid CLI invocation or malformed JSON |
+| 74 | File, loading, integrity or unexpected failure |
 
-Violations take precedence over unavailable evidence. JSON stdout is one
-`formatVersion: 1` object. Findings sort by pointer, code and fixture and carry
-cause, fix, recipe, evidence and the exact recheck command. Deliberate owner
-input errors retain their codes. Combination digest collisions are integrity
-failures (74).
+Violations take precedence over unavailable evidence. JSON stdout contains one
+`formatVersion: 1` object. Findings sort by JSON pointer, code and fixture, and
+carry cause, fix, recipe, evidence and the exact recheck command. For the full
+code inventory, see [refusal codes](../../reference/refusal-codes.md).
 
 ## New vertical
 
-Copy the installed [pack](catalogue-pack-skeleton/pack.ts) and
-[fixtures](catalogue-pack-skeleton/fixtures.ts) into
-`owned/catalog-packs/<namespace>/`. Rename the namespace, edit the definitions
-and fixture data, then add one pack-and-fixture entry to the runtime registry
-in `owned/catalogue.ts`. Use the [registration example](catalogue-pack-skeleton/catalogue.ts)
-as a template for that entry. Typecheck and run the starter’s `catalogue:check:source` script.
+1. Copy [pack.ts](catalogue-pack-skeleton/pack.ts) and
+   [fixtures.ts](catalogue-pack-skeleton/fixtures.ts) to
+   `owned/catalog-packs/<namespace>/`.
+2. Rename the namespace.
+3. Edit the definitions and fixture data.
+4. Register one entry in `owned/catalogue.ts` using the
+   [registration example](catalogue-pack-skeleton/catalogue.ts). Keep older
+   registrations composed.
+5. Typecheck with `--erasableSyntaxOnly` and run `catalogue:check:source`.
 
-Use Node 24 with erasable TypeScript, relative imports ending in `.ts` and
-`import type` for types. Pass `--erasableSyntaxOnly` to the starter’s `typecheck` script. For an existing app, preserve its current registry entries.
-Compare the projection with the runtime registry, direct fixture source and
-owner outcomes. Use the [static JSON example](catalogue-pack-skeleton/catalogue.json)
-for the JSON-only command.
-
-Each false capability needs a named expected refusal. With `owner-refusals`,
-the checker independently runs the installed profiled prepaid refusal for
-`capabilities: { prepaid: false }` and compares the code and absence of an
-acceptance. Missing or unsupported owner evidence gives exit 2. The older
-JSON declarations without `owner-refusals` still check record consistency.
-Usual codes: `pack_type_namespace_mismatch`, `definition_key_invalid`,
-`definition_unknown_field`, `draft_input_invalid`, `draft_payload_invalid`,
-`conformance_subject_invalid`, `conformance_owner_unavailable`,
-`conformance_refusal_fixture_missing`, `conformance_refusal_fixture_invalid`,
-`conformance_refusal_fixture_mismatch`. Custom attribute kinds, quantity dimensions
-and promotion benefit/target kinds require upstream changes to the closed grammar.
+Use explicit `.ts` paths and `import type`. Declare one named refusal per false
+capability. `owner-refusals` checks the prepaid owner’s code and absence of
+acceptance. Other owners return 2. Legacy JSON checks declaration consistency.
+Usual codes include `pack_type_namespace_mismatch` and
+`conformance_refusal_fixture_mismatch`.
 
 ## Add attribute
 
-Edit the pack’s `pack.ts` and add witnesses in `fixtures.ts`. Metadata example: `attributes: [{key: "finish",
-scope: "variant", valueType: {kind: "boolean"}, required: false, cardinality:
-{min: 0, max: 1}, filterable: true, facetable: true, public: true, displayOrder: 0,
-labels: {en: "Finish"}}]`. Separate `attributes` fixtures call `validateCatalogAttributes` and
-`prepareCatalogAttributeProjection` with `{type, input, publicationRevision,
-references?}`. `input` contains `productAttributes` and `skus: [{id, attributes?}]`.
-Reference fixtures use `{namespace, id, status}`. One resolved row supplies
-evidence. A unique dangling or private row gives exit 1. Absent, ambiguous or
-unavailable evidence gives exit 2. Both retain the owner’s code and pointer.
-New attribute kinds require upstream work.
-Usual owner codes:
-`attribute_projection_text_too_large`, `attribute_storage_too_large`,
-`attribute_values_invalid`, `attribute_value_invalid`, `attribute_unknown_key`,
-`attribute_scope_conflict`, `attribute_cardinality_invalid`, `attribute_required_missing`,
-`attribute_required_locale_missing`, `attribute_reference_unresolved`,
-`attribute_publication_revision_invalid`.
-Usual metadata codes:
-`definition_attribute_invalid`, `definition_duplicate_attribute`,
-`definition_facetable_not_filterable`, `definition_unknown_attribute_unit`,
-`definition_duplicate_enum_value`. Run the starter’s `catalogue:check:source` script.
+In `pack.ts`, declare the attribute on its type. The skeleton uses
+`{key: "lined", scope: "variant", valueType: {kind: "boolean"}}` with cardinality
+and filter flags. In `fixtures.ts`, use `{type, input, publicationRevision}` where
+`input` supplies `productAttributes` or `skus: [{id, attributes}]` as applicable.
+Attribute references use `{namespace, id, status}`. One resolved observation
+supports fixture validation. Missing or ambiguous evidence gives 2 and a unique
+dangling or private result gives 1, both with `attribute_reference_unresolved`.
+Run `catalogue:check:source`. Other usual codes include `attribute_scope_conflict`
+and `definition_facetable_not_filterable`. New value kinds require upstream work.
 
 ## Add unit
 
-Edit the pack’s `pack.ts`: `units: [{code: "stationery:each", dimension:
-"count", integral: true, factor: {canonicalUnit: "openlup:piece", unscaled: "1",
-scale: 0}}]`. Add `{type: {key: pack.types[0].key, version: pack.types[0].version},
-value: {dimension: "count", unit:
-"stationery:each", unscaled: "2", scale: 0}}` to quantity fixtures.
-Exact conversion is available; new dimensions require upstream grammar changes.
-Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,
-`definition_duplicate_unit`, `definition_net_content_invalid`,
-`definition_unknown_net_content_unit`, `definition_duplicate_net_content_unit`,
-`quantity_invalid`, `quantity_cross_dimension`, `quantity_fractional_count`,
-`quantity_unknown_unit`, `quantity_overflow`, `quantity_not_exactly_representable`.
-Combination quantities additionally refuse `unit_factor_missing` until their
-installed definition declares an explicit exact factor.
-Run the starter’s `catalogue:check:source` script.
+In `pack.ts`, declare `{code, dimension, integral, factor}` with an explicit
+decimal factor to a canonical unit. In `fixtures.ts`, use
+`{type, value: {dimension, unit, unscaled: "2", scale: 0}, targetUnit}`.
+Run `catalogue:check:source`. Usual codes include `definition_unit_factor_invalid`,
+`quantity_cross_dimension` and `quantity_not_exactly_representable`. New
+dimensions require upstream work.
 
 ## Add axis
 
-Edit the pack’s `pack.ts`: `dimensions: [{key: "finish", kind:
-"boolean"}], axes: [{key: "finish", attributeKey: "finish"}]`, referencing a
-variant attribute in the same type. Separate `combinations` fixtures call `canonicalizeCatalogCombinationV2` and
-`validateCatalogCombinationChangesV2` with `{type, input}`. Input contains
-`axes`, `typed`, `retained`, `incoming` and optional `capacity`. Each row has a
-nonempty string `skuId`, `state: "draft" | "active" | "withdrawn"` and
-`optionValues` (object or null). Incoming options may be omitted to preserve a
-retained fixture's values; retained options are required. Rows are closed and
-admitted before the typed owner; malformed rows report `conformance_subject_invalid`
-at the row pointer. Retained JSON never contains identity bytes: identities are
-derived from options internally. No Cartesian product is enumerated. Fixture PASS
-does not validate stored identity bytes or history. With supplied fixtures,
-`requiredChecks: ["variant-combinations"]` checks this owner offline.
-New attribute kinds/dimensions are upstream work. Usual codes:
-`definition_dimension_invalid`, `definition_axis_invalid`, `definition_duplicate_axis`,
-`definition_unknown_axis_attribute`, `definition_axis_scope_invalid`,
-`definition_unknown_axis_dimension`, `definition_duplicate_dimension`,
-`definition_duplicate_choice`, `definition_duplicate_dimension_unit`,
-`definition_dimension_unit_mismatch`, `definition_net_content_unit_mismatch`,
-`definition_multiple_net_content_dimensions`.
-Usual owner codes include `axis_not_installed`, `option_invalid`,
-`duplicate_combination` and `sku_identity_change_requires_new_sku`. Use
-complete options and stable enum IDs. A changed identity needs a new SKU.
-`sku_payload_limit` controls the 10,000-SKU payload bound independently of
-`product_capacity_exceeded` for the retained set. Run the starter’s
-`catalogue:check:source` script.
+In `pack.ts`, pair a dimension with an axis, such as
+`{key: "lined", attributeKey: "lined"}`. In `fixtures.ts`, supply
+`{type, input: {axes, typed, retained, incoming}}` with `skuId`, `state` and
+`optionValues` per row. Run `catalogue:check:source`. Usual codes include
+`definition_unknown_axis_attribute` and `duplicate_combination`.
+Changed identity needs a new SKU. New option kinds need upstream work.
 
 ## Add tax class
 
-Edit the pack’s `pack.ts`: `taxClasses: [{key: "standard"}]` and
-`taxClass: "standard"` on the type. Default class references are checked now;
-market-owned dated rates in `owned/market-packs/<market>/tax-table.ts`, coverage,
-gaps/overlaps and tax publication await their owners. No fake rate data belongs
-in this skeleton. New attribute/dimension/promotion kinds remain upstream work.
-Usual codes: `definition_tax_class_invalid`, `definition_unknown_tax_class`.
-Run the starter’s `catalogue:check:source` script to check references.
-Requesting `requiredChecks: ["tax-coverage"]` returns 2 until its owner is available.
+In `pack.ts`, add `taxClasses: [{key: "standard"}]` and `taxClass: "standard"`
+on the applicable type. Run `catalogue:check:source` to check the reference.
+A missing key reports `definition_unknown_tax_class`. Market rate application
+and coverage are unavailable. Requesting `"tax-coverage"` or `"tax-application"`
+in `owned/catalogue.ts` under `requiredChecks` gives 2.
 
 ## Add category or collection
 
-Request this owner in `owned/catalogue.ts`. Example request: `requiredChecks:
-["taxonomy"]`. Graph/depth and collection-reference validation and publishing are
-pending; there is no admitted category field to paste into current pack metadata.
-Usual current code: `conformance_owner_unavailable`; future codes belong to the
-taxonomy owner. New closed grammar kinds require upstream work.
-Run the starter’s `catalogue:check:source` script to check availability.
+Request `requiredChecks: ["taxonomy"]` in `owned/catalogue.ts`. Run
+`catalogue:check:source` to see the availability result. Graph, depth and
+collection reference checks are unavailable and give `conformance_owner_unavailable`
+(2). Taxonomy fields need the upstream schema.
 
 ## Promotion with existing grammar
 
-In `owned/catalogue.ts`, request `requiredChecks:
-["promotions"]`. Target/currency validation and publishing are pending, including
-per-currency money maps; do not invent a campaign field here. New benefit/target
-kinds require upstream work. Usual current code: `conformance_owner_unavailable`.
-Run the starter’s `catalogue:check:source` script to check availability.
+Request `requiredChecks: ["promotions"]` in `owned/catalogue.ts`. Run
+`catalogue:check:source` to see `conformance_owner_unavailable` (2).
+Target, currency and publishing owners are pending. New benefit and target
+kinds require upstream work.
 
 ## Subscription profile
 
-In `pack.ts`, declare a key and version in `subscriptionProfiles` and use the same
-`subscriptionProfileRef` on the product type. Put the full, versioned
-declaration in `subscriptionProfileDefinitions`. The experiment includes
-`validateCatalogSubscriptionProfile` in `@openlup/core/catalog`
-and a server-side policy binding in `@openlup/platform/subscriptions`.
-
-Use `fixed_units` for independently chosen quantities, `units_per_day` for
-declared canonical content and daily demand, or `host_policy` to bind an existing
-adopter policy. Set `demandScope` to `per_line` when each product must cover the
-interval independently. An exact policy can accept 56 pieces at 2/day and 140 g
-at 5 g/day on the same 28-day cadence. Add `profileChecks` in `fixtures.ts` with `cadenceDays` and typed lines
-containing `id`, `type`, `quantity` and any applicable demand. Pass
-`profilePolicies` from the same bindings you compose at runtime. A missing
-declaration gives `profile_missing` and an unmatched policy gives
-`policy_binding_missing`. Use the native edit-bound probe against the candidate
-database to observe installed limits.
-For a live quote or edit, compose `bindAcceptance` with verified facts and
-the observed installed edit bound. The existing accepted catalogue reference
-carries the profile key, version and digest through payment and renewal.
-Activate each lane only after its host bindings are installed and verified. Typical declaration codes include `definition_profile_invalid`,
-`definition_unknown_profile_ref` and `profile_cadence_exceeds_platform_bound`.
-Run the starter’s `catalogue:check:source` script.
+In `pack.ts`, declare `subscriptionProfiles`, `subscriptionProfileDefinitions`
+and the matching type `subscriptionProfileRef`. The skeleton uses `fixed_units`.
+For daily demand, use `units_per_day` and the matching `profilePolicies` binding.
+For a pinned `host_policy`, supply the actual callback through trusted source.
+In `fixtures.ts`, add `profileChecks: [{cadenceDays, lines}]` with each
+line’s `id`, `type`, `quantity` and any applicable demand.
+Run `catalogue:check:source`. Usual codes are `profile_missing`,
+`policy_binding_missing` and `profile_cadence_exceeds_platform_bound`.
+Use the database bound separately for native quote or edit readiness.
 
 ## Upgrade a definition
 
-Edit the pack’s `pack.ts`, keeping the old version composed. Example:
-`key: "stationery:notebook", version: 2`. Every digest-covered change gets a new
-version; see the installed [canonical agreements](../../concepts/architecture-and-ownership.md).
-The offline checker finds duplicates and invalid metadata; it cannot compare an
-installed digest or authorize replacement, migration or publication. Those remain
-with the installer and later writers. New kinds/dimensions/benefits require upstream
-work. Usual codes: `definition_version_invalid`, `definition_duplicate_identity`,
-`definition_validator_ref_invalid`. Run the starter’s `catalogue:check:source` script.
+In `pack.ts`, keep the prior version composed and add the new version of the
+same key. Update `fixtures.ts` for the new definition. Run
+`catalogue:check:source`. Usual codes include `definition_version_invalid`,
+`definition_duplicate_identity` and `definition_validator_ref_invalid`.
+Compare with the actual installed digests at upgrade time. New closed grammar
+kinds require upstream work.
