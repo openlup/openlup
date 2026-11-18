@@ -8061,7 +8061,7 @@
     },
     {
       "path": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-      "sha256": "cb71342ae33bafd845a25dc6b9f408257b95ae7fd28cbf1f72520911c156fc89",
+      "sha256": "dd89678abf0d59bc8f852d1308d2f26cfbefa016951906b5ed14b13d42153de1",
       "functions": [
         {
           "signature": "public.catalog_draft_apply(text,text,text)",
@@ -8081,7 +8081,7 @@
         {
           "signature": "public.catalog_bound_obligations_v2(uuid)",
           "beforeSha256": null,
-          "afterSha256": "3e057c88cc325fb92a95b4edfb4caa197c4749d076c04798cbcb27ae8cc60550"
+          "afterSha256": "2db1c37eb6dca1073466933a0cc264bd2d3cc9680f1ad8db368dbd0e80556654"
         },
         {
           "signature": "public.catalog_accepted_reference_assert_v2(jsonb)",

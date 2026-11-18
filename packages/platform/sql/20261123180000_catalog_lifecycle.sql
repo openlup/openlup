@@ -270,7 +270,7 @@ REVOKE ALL ON FUNCTION public.catalog_frozen_basket_codes_v2(jsonb) FROM PUBLIC;
 CREATE FUNCTION public.catalog_bound_obligations_v2(p_sku_id uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE sku public.catalog_skus%ROWTYPE; obligations jsonb := '[]'; item record;
- marker jsonb; basis integer; codes text[]; manifest jsonb; unknown boolean := false;
+ marker jsonb; delivery jsonb; graduation jsonb; line jsonb; basis integer; codes text[]; manifest jsonb; unknown boolean := false;
 BEGIN
  -- A filtered or non-owner read cannot prove absence.
  IF EXISTS(SELECT 1 FROM pg_class c WHERE c.oid=ANY(ARRAY[
@@ -404,21 +404,53 @@ BEGIN
   JOIN public.subscriptions s ON s.id=a.subscription_id WHERE s.status IN ('active','paused') AND a.purchase_facts#>'{renewalTerms,starterPack}' IS NOT NULL
  LOOP
   marker:=item.purchase_facts#>'{renewalTerms,starterPack}';
-  codes:=public.catalog_retained_basket_codes_v2(marker#>'{graduation,lines}');
+  delivery:=marker->'delivery2'; graduation:=marker->'graduation';
+  codes:=public.catalog_retained_basket_codes_v2(graduation->'lines');
   IF jsonb_typeof(marker) IS DISTINCT FROM 'object' OR marker->'schemaVersion' IS DISTINCT FROM '"1"'::jsonb
+   OR marker - ARRAY['schemaVersion','basisTemplateVersion','starterIntervalDays','delivery2','graduation'] <> '{}'::jsonb
    OR jsonb_typeof(marker->'basisTemplateVersion') IS DISTINCT FROM 'number' OR marker->>'basisTemplateVersion' !~ '^[1-9][0-9]{0,9}$'
-   OR jsonb_typeof(marker->'starterIntervalDays') IS DISTINCT FROM 'number'
-   OR jsonb_typeof(marker->'delivery2') IS DISTINCT FROM 'object' OR jsonb_typeof(marker#>'{graduation,cadenceDays}') IS DISTINCT FROM 'number'
+   OR jsonb_typeof(marker->'starterIntervalDays') IS DISTINCT FROM 'number' OR marker->>'starterIntervalDays' !~ '^[1-9][0-9]{0,9}$'
+   OR jsonb_typeof(delivery) IS DISTINCT FROM 'object' OR delivery - ARRAY['discountBps','discountMinor','basisSubtotalMinor'] <> '{}'::jsonb
+   OR jsonb_typeof(delivery->'discountBps') IS DISTINCT FROM 'number' OR delivery->>'discountBps' !~ '^(0|[1-9][0-9]{0,4})$'
+   OR jsonb_typeof(delivery->'discountMinor') IS DISTINCT FROM 'number' OR delivery->>'discountMinor' !~ '^(0|[1-9][0-9]{0,15})$'
+   OR jsonb_typeof(delivery->'basisSubtotalMinor') IS DISTINCT FROM 'number' OR delivery->>'basisSubtotalMinor' !~ '^(0|[1-9][0-9]{0,15})$'
+   OR jsonb_typeof(graduation) IS DISTINCT FROM 'object' OR graduation - ARRAY['cadenceDays','sizeConstraint','lines'] <> '{}'::jsonb
+   OR jsonb_typeof(graduation->'cadenceDays') IS DISTINCT FROM 'number' OR graduation->>'cadenceDays' !~ '^[1-9][0-9]{0,9}$'
+   OR (graduation ? 'sizeConstraint' AND jsonb_typeof(graduation->'sizeConstraint') IS DISTINCT FROM 'object')
+   OR jsonb_typeof(item.purchase_facts#>'{renewalTerms,minimumPayableMinor}') IS DISTINCT FROM 'number'
+   OR item.purchase_facts#>>'{renewalTerms,minimumPayableMinor}' !~ '^[1-9][0-9]{0,15}$'
+   OR jsonb_typeof(item.purchase_facts#>'{renewalTerms,normalCadenceDays}') IS DISTINCT FROM 'array'
    OR codes IS NULL OR EXISTS(SELECT FROM unnest(codes) code WHERE NOT EXISTS(SELECT FROM public.catalog_skus k WHERE k.sku=code)) THEN unknown:=true; CONTINUE; END IF;
-  IF (marker->>'basisTemplateVersion')::bigint>2147483647 THEN unknown:=true; CONTINUE; END IF;
+  IF (marker->>'basisTemplateVersion')::bigint>2147483647 OR (marker->>'starterIntervalDays')::bigint>2147483647
+   OR (graduation->>'cadenceDays')::bigint>2147483647 OR (delivery->>'discountBps')::integer>10000
+   OR (delivery->>'basisSubtotalMinor')::bigint>9007199254740991 OR (delivery->>'discountMinor')::bigint>9007199254740991
+   OR (delivery->>'basisSubtotalMinor')::bigint-(delivery->>'discountMinor')::bigint<(item.purchase_facts#>>'{renewalTerms,minimumPayableMinor}')::bigint
+   OR NOT (item.purchase_facts#>'{renewalTerms,normalCadenceDays}' @> jsonb_build_array(graduation->'cadenceDays')) THEN unknown:=true; CONTINUE; END IF;
+  FOR line IN SELECT value FROM jsonb_array_elements(graduation->'lines') LOOP
+   IF line - ARRAY['sku','qty','sortOrder','isAddon','quoteLine'] <> '{}'::jsonb
+    OR jsonb_typeof(line->'sku') IS DISTINCT FROM 'string' OR jsonb_typeof(line->'qty') IS DISTINCT FROM 'number'
+    OR line->>'qty' !~ '^[1-9][0-9]?$'
+    OR jsonb_typeof(line->'sortOrder') IS DISTINCT FROM 'number' OR line->>'sortOrder' !~ '^(0|[1-9][0-9]{0,15})$'
+    OR jsonb_typeof(line->'isAddon') IS DISTINCT FROM 'boolean' OR jsonb_typeof(line->'quoteLine') IS DISTINCT FROM 'object'
+    OR jsonb_typeof(line#>'{quoteLine,unitPriceGross,amountMinor}') IS DISTINCT FROM 'number'
+    OR line#>>'{quoteLine,unitPriceGross,amountMinor}' !~ '^(0|[1-9][0-9]{0,15})$'
+    OR jsonb_typeof(line#>'{quoteLine,lineSubtotalGross,amountMinor}') IS DISTINCT FROM 'number'
+    OR line#>>'{quoteLine,lineSubtotalGross,amountMinor}' !~ '^(0|[1-9][0-9]{0,15})$' THEN unknown:=true; EXIT; END IF;
+   IF (line->>'sortOrder')::bigint>9007199254740991 OR (line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint>9007199254740991
+    OR (line#>>'{quoteLine,lineSubtotalGross,amountMinor}')::bigint>9007199254740991
+    OR (line#>>'{quoteLine,unitPriceGross,amountMinor}')::bigint*(line->>'qty')::integer
+        <>(line#>>'{quoteLine,lineSubtotalGross,amountMinor}')::bigint
+    OR ((line->'quoteLine') ? 'sku' AND line#>'{quoteLine,sku}' IS DISTINCT FROM line->'sku')
+    OR ((line->'quoteLine') ? 'quantity' AND line#>'{quoteLine,quantity}' IS DISTINCT FROM line->'qty') THEN unknown:=true; EXIT; END IF;
+  END LOOP;
+  IF unknown THEN CONTINUE; END IF;
   basis:=(marker->>'basisTemplateVersion')::integer;
   IF basis<>item.template_version THEN
    IF basis<item.template_version AND EXISTS(SELECT 1 FROM public.subscription_events e
     WHERE e.subscription_id=item.subscription_id AND e.payload->'templateVersion'=to_jsonb(basis::bigint+1)
     AND ((e.event_type='subscription.starter_graduated' AND e.payload->'mode'='"full"'::jsonb
      AND e.payload->'basisTemplateVersion'=to_jsonb(basis) AND e.payload->'cadenceDays'=marker#>'{graduation,cadenceDays}'
-     AND right(e.idempotency_key,length('starter-graduation:'||item.subscription_id::text||':'||basis::text))=
-       'starter-graduation:'||item.subscription_id::text||':'||basis::text
+     AND e.idempotency_key ~ ('^(system:)*starter-graduation:'||item.subscription_id::text||':'||basis::text||'$')
      AND public.catalog_retained_basket_codes_v2(e.payload->'lines') @> codes)
     OR (e.event_type='subscription.customer_self_service.update_bundle' AND EXISTS(
      SELECT 1 FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=e.id AND q.subscription_id=item.subscription_id

@@ -312,15 +312,16 @@ function graduationFacts(basis: number, sku: string) {
       graduation: { cadenceDays: 28, lines: [{ sku, qty: 3, sortOrder: 0, isAddon: false,
         quoteLine: { unitPriceGross: { amountMinor: 617 }, lineSubtotalGross: { amountMinor: 1851 } } }] } } } };
 }
-it.each(["accepted edit", "historical graduation", "malformed marker", "contradictory edit"] as const)(
+it.each(["accepted edit", "historical graduation", "malformed marker", "partial delivery receipt", "foreign graduation key", "contradictory edit"] as const)(
   "LC5-A-022 LC5-A-023 graduation obligation verifies %s", async path => {
   const f = await seed(), id = randomUUID();
   await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [id,f.client]);
   const basis = (await db.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].template_version;
   const facts = graduationFacts(basis, f.code);
   if (path === "malformed marker") Object.assign(facts.renewalTerms.starterPack, { delivery2: undefined });
+  if (path === "partial delivery receipt") Object.assign(facts.renewalTerms.starterPack.delivery2, { discountMinor: undefined });
   await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,clock_timestamp())", [id,f.subscription,JSON.stringify(facts)]);
-  if (path === "malformed marker") {
+  if (path === "malformed marker" || path === "partial delivery receipt") {
     expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown", reason: "catalog_obligation_evidence_unknown" });
     expect(await archive(f)).toMatchObject({ reason: "catalog_obligation_evidence_unknown" });
     return;
@@ -330,11 +331,13 @@ it.each(["accepted edit", "historical graduation", "malformed marker", "contradi
   await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
   expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
   const event = randomUUID();
-  if (path === "historical graduation") {
-    await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.starter_graduated',$3,$4::jsonb)", [event,f.subscription,`starter-graduation:${f.subscription}:${basis}`,
+  if (path === "historical graduation" || path === "foreign graduation key") {
+    const key = `${path === "foreign graduation key" ? "external:" : ""}starter-graduation:${f.subscription}:${basis}`;
+    await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.starter_graduated',$3,$4::jsonb)", [event,f.subscription,key,
       JSON.stringify({ mode: "full", basisTemplateVersion: basis, templateVersion: basis+1, cadenceDays: 28, lines: [{ sku: f.code, quantity: 3 }] })]);
     await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
-    expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
+    if (path === "foreign graduation key") expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
+    else expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
     return;
   }
   await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.customer_self_service.update_bundle',$3,$4::jsonb)", [event,f.subscription,`edit:${event}`,
