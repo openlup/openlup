@@ -3,7 +3,7 @@ import { qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createPostgresCatalogPublication,createCatalogProductTypeRegistry,installCatalogDefinitions,catalogDefinitionDigest,canonicalCatalogDraftJson,catalogAcceptedReferenceV2Schema,createPostgresCatalogWithdrawalImpact } from "@openlup/platform/catalog";
 import type { CatalogDraftPayloadV4,CatalogDraftPayloadV5,CatalogHeadRef,CatalogProductTypeDefinition,CatalogOptionValue } from "@openlup/platform/catalog/contracts";
-import { createNativeCatalogRenewalCodecV2,createPostgresSuccessorStore,createPostgresSuccessorNotices,successorNoticeSources,createPostgresPackageEditor } from "@openlup/platform/subscriptions";
+import { createNativeCatalogRenewalCodecV2,createPostgresSuccessorStore,createPostgresSuccessorNotices,successorNoticeSources,createPostgresPackageEditor,createPostgresStockWaitStore } from "@openlup/platform/subscriptions";
 import { readOutboxDispatchConfig } from "@openlup/outbox";
 import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
 import type { SubscriptionEditConsent } from "@openlup/platform/subscriptions/contracts";
@@ -30,14 +30,228 @@ beforeAll(async () => {
   connectionString=container.connectionString;
   pool = new Pool({ connectionString: container.connectionString }); pools.push(pool);
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-  for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
-  if (!manifest.forward.some((unit: { file: string }) => unit.file === migration)) await pool.query(readFileSync(migration, "utf8"));
+  for (const unit of [manifest.baseline, ...manifest.forward]) {
+    if (unit.file === migration) {
+      // A host default grant makes each explicit PUBLIC revoke observable.
+      await pool.query("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO PUBLIC");
+    }
+    await pool.query(readFileSync(unit.file, "utf8"));
+    if (unit.file === migration) {
+      await pool.query("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT ON TABLES FROM PUBLIC");
+    }
+  }
   transferSource=await transferResources.installation("successor-source");
   transferTarget=await transferResources.installation("successor-target");
 }, postgresSetupTimeoutMs);
 afterAll(async()=>{try{await transferResources.close();}finally{await closePostgres(containers,pools);}}, postgresTeardownTimeoutMs);
 beforeEach(async () => { db = await pool.connect(); await db.query("BEGIN"); });
 afterEach(async () => { await db.query("ROLLBACK"); db.release(); });
+
+it("lc10_storage_shape_exact", async () => {
+  await db.query("SET LOCAL search_path = pg_catalog");
+  const tables = [
+    "catalog_sku_successors",
+    "subscription_successor_proposals",
+    "subscription_successor_operations_v2",
+    "subscription_successor_wait_cases_v2",
+    "subscription_successor_reservations_v2",
+  ];
+  const { rows } = await db.query<{ table_name: string; protection: string }>(`
+    WITH relations AS (
+      SELECT c.oid, c.relname, c.relrowsecurity, c.relacl, c.relowner
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = ANY($1::text[])
+    )
+    SELECT relname AS table_name, protection
+    FROM relations r CROSS JOIN LATERAL (
+      SELECT 'TABLE' AS protection
+      UNION ALL SELECT 'ROW LEVEL SECURITY' WHERE r.relrowsecurity
+      UNION ALL SELECT 'PUBLIC ' || acl.privilege_type
+        FROM aclexplode(coalesce(r.relacl, acldefault('r', r.relowner))) acl WHERE acl.grantee = 0
+      UNION ALL SELECT 'NOT NULL ' || a.attname
+        FROM pg_attribute a WHERE a.attrelid = r.oid AND a.attnum > 0 AND NOT a.attisdropped AND a.attnotnull
+      UNION ALL SELECT 'DEFAULT ' || a.attname || ' ' || pg_get_expr(d.adbin, d.adrelid)
+        FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+        WHERE d.adrelid = r.oid
+      UNION ALL SELECT pg_get_constraintdef(c.oid) || CASE WHEN c.convalidated THEN '' ELSE ' [UNVALIDATED]' END
+        FROM pg_constraint c WHERE c.conrelid = r.oid
+      UNION ALL SELECT pg_get_indexdef(i.indexrelid)
+        FROM pg_index i WHERE i.indrelid = r.oid
+          AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid AND c.conrelid = r.oid)
+    ) AS shape
+  `, [tables]);
+  const shape = tables.map(table => [
+    table, ...rows.filter(row => row.table_name === table).map(row => row.protection).sort(),
+  ].join("\n")).join("\n\n");
+  expect(shape).toBe(`catalog_sku_successors
+CHECK ((predecessor_sku_id <> successor_sku_id))
+FOREIGN KEY (predecessor_sku_id) REFERENCES public.catalog_skus(id) ON DELETE RESTRICT
+FOREIGN KEY (publication_id) REFERENCES public.catalog_publications(id) ON DELETE RESTRICT
+FOREIGN KEY (successor_sku_id) REFERENCES public.catalog_skus(id) ON DELETE RESTRICT
+NOT NULL predecessor_sku_id
+NOT NULL publication_id
+NOT NULL successor_sku_id
+PRIMARY KEY (predecessor_sku_id, successor_sku_id)
+ROW LEVEL SECURITY
+TABLE
+
+subscription_successor_proposals
+CHECK (((length(btrim(action)) >= 1) AND (length(btrim(action)) <= 80)))
+CHECK (((length(btrim(lane)) >= 1) AND (length(btrim(lane)) <= 80)))
+CHECK (((length(quote_hash) = 64) AND (translate(quote_hash, 'abcdef0123456789'::text, ''::text) = ''::text)))
+CHECK (((template_version >= 1) AND (template_version <= 2147483647)))
+CHECK ((jsonb_typeof(preview) = 'object'::text))
+CHECK ((jsonb_typeof(request) = 'object'::text))
+CHECK ((jsonb_typeof(source_binding) = 'object'::text))
+CHECK ((state = ANY (ARRAY['offered'::text, 'accepted'::text, 'declined'::text, 'expired'::text])))
+DEFAULT created_at now()
+DEFAULT state 'offered'::text
+FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE RESTRICT
+FOREIGN KEY (original_case_id) REFERENCES public.subscription_stock_wait_cases(id) ON DELETE RESTRICT
+FOREIGN KEY (original_operation_id) REFERENCES public.subscription_renewal_operations(id) ON DELETE RESTRICT
+FOREIGN KEY (predecessor_sku_id) REFERENCES public.catalog_skus(id) ON DELETE RESTRICT
+FOREIGN KEY (publication_id) REFERENCES public.catalog_publications(id) ON DELETE RESTRICT
+FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id) ON DELETE RESTRICT
+FOREIGN KEY (successor_sku_id) REFERENCES public.catalog_skus(id) ON DELETE RESTRICT
+NOT NULL action
+NOT NULL client_id
+NOT NULL created_at
+NOT NULL expires_at
+NOT NULL id
+NOT NULL lane
+NOT NULL predecessor_sku_id
+NOT NULL preview
+NOT NULL publication_id
+NOT NULL quote_hash
+NOT NULL request
+NOT NULL source_binding
+NOT NULL state
+NOT NULL subscription_id
+NOT NULL successor_sku_id
+NOT NULL template_version
+PRIMARY KEY (id)
+ROW LEVEL SECURITY
+TABLE
+
+subscription_successor_operations_v2
+CHECK (((claim_generation >= 1) AND (claim_generation <= '9223372036854775807'::bigint)))
+CHECK (((cycle_number >= 1) AND (cycle_number <= 2147483647)))
+CHECK (((length(btrim(claimed_by)) >= 1) AND (length(btrim(claimed_by)) <= 240)))
+CHECK (((length(identity_key) >= 48) AND (length(identity_key) <= 240)))
+CHECK (((length(operation_fingerprint) = 64) AND (translate(operation_fingerprint, 'abcdef0123456789'::text, ''::text) = ''::text)))
+CHECK ((jsonb_typeof(cycle_snapshot) = 'object'::text))
+CHECK ((jsonb_typeof(due_snapshot) = 'object'::text))
+CHECK ((jsonb_typeof(outcomes) = 'array'::text))
+CHECK ((state = ANY (ARRAY['claimed'::text, 'reserved'::text, 'attempt_prepared'::text, 'succeeded'::text, 'refused'::text])))
+CREATE INDEX subscription_successor_operations_v2_due_idx ON public.subscription_successor_operations_v2 USING btree (state, lease_expires_at, scheduled_at)
+CREATE UNIQUE INDEX subscription_successor_operations_v2_live_root_key ON public.subscription_successor_operations_v2 USING btree (root_operation_id) WHERE (superseded_by_proposal_id IS NULL)
+DEFAULT claim_generation 1
+DEFAULT created_at now()
+DEFAULT outcomes '[]'::jsonb
+DEFAULT updated_at now()
+FOREIGN KEY (cycle_id) REFERENCES public.subscription_cycles(id) ON DELETE RESTRICT
+FOREIGN KEY (fulfillment_id) REFERENCES public.fulfillment_shipments(id) ON DELETE RESTRICT
+FOREIGN KEY (order_id) REFERENCES public.commerce_orders(id) ON DELETE RESTRICT
+FOREIGN KEY (predecessor_generation_id) REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT
+FOREIGN KEY (proposal_id) REFERENCES public.subscription_successor_proposals(id) ON DELETE RESTRICT
+FOREIGN KEY (root_operation_id) REFERENCES public.subscription_renewal_operations(id) ON DELETE RESTRICT
+FOREIGN KEY (settlement_intent_id) REFERENCES public.commerce_settlement_intents(id) ON DELETE RESTRICT
+FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id) ON DELETE RESTRICT
+FOREIGN KEY (superseded_by_proposal_id) REFERENCES public.subscription_successor_proposals(id) ON DELETE RESTRICT
+NOT NULL claim_generation
+NOT NULL claim_token
+NOT NULL claimed_at
+NOT NULL claimed_by
+NOT NULL created_at
+NOT NULL cycle_number
+NOT NULL cycle_snapshot
+NOT NULL due_snapshot
+NOT NULL id
+NOT NULL identity_key
+NOT NULL lease_expires_at
+NOT NULL operation_fingerprint
+NOT NULL outcomes
+NOT NULL proposal_id
+NOT NULL root_operation_id
+NOT NULL scheduled_at
+NOT NULL state
+NOT NULL subscription_id
+NOT NULL updated_at
+PRIMARY KEY (id)
+ROW LEVEL SECURITY
+TABLE
+UNIQUE (cycle_id)
+UNIQUE (fulfillment_id)
+UNIQUE (identity_key)
+UNIQUE (order_id)
+UNIQUE (proposal_id)
+UNIQUE (settlement_intent_id)
+
+subscription_successor_wait_cases_v2
+CHECK (((cycle_number >= 1) AND (cycle_number <= 2147483647)))
+CHECK (((length(fingerprint) = 64) AND (translate(fingerprint, 'abcdef0123456789'::text, ''::text) = ''::text)))
+CHECK ((jsonb_typeof(cycle_snapshot) = 'object'::text))
+CHECK ((jsonb_typeof(deficits) = 'array'::text))
+CHECK ((jsonb_typeof(due_snapshot) = 'object'::text))
+CHECK ((state = ANY (ARRAY['waiting'::text, 'stock_secured'::text, 'resumed'::text, 'closed'::text])))
+CREATE INDEX subscription_successor_wait_cases_v2_candidates_idx ON public.subscription_successor_wait_cases_v2 USING btree (state, last_selected_at, id)
+DEFAULT last_checked_at now()
+DEFAULT notice_messages '{}'::jsonb
+DEFAULT opened_at now()
+DEFAULT refusal_observations '[]'::jsonb
+FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE RESTRICT
+FOREIGN KEY (cycle_id) REFERENCES public.subscription_cycles(id) ON DELETE RESTRICT
+FOREIGN KEY (fulfillment_id) REFERENCES public.fulfillment_shipments(id) ON DELETE RESTRICT
+FOREIGN KEY (operation_id) REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT
+FOREIGN KEY (order_id) REFERENCES public.commerce_orders(id) ON DELETE RESTRICT
+FOREIGN KEY (root_case_id) REFERENCES public.subscription_stock_wait_cases(id) ON DELETE RESTRICT
+FOREIGN KEY (subscription_id) REFERENCES public.subscriptions(id) ON DELETE RESTRICT
+FOREIGN KEY (superseded_by_proposal_id) REFERENCES public.subscription_successor_proposals(id) ON DELETE RESTRICT
+NOT NULL client_id
+NOT NULL cycle_number
+NOT NULL cycle_snapshot
+NOT NULL deficits
+NOT NULL due_snapshot
+NOT NULL fingerprint
+NOT NULL id
+NOT NULL identity_key
+NOT NULL last_checked_at
+NOT NULL notice_messages
+NOT NULL opened_at
+NOT NULL operation_id
+NOT NULL refusal_observations
+NOT NULL root_case_id
+NOT NULL scheduled_at
+NOT NULL state
+NOT NULL subscription_id
+PRIMARY KEY (id)
+ROW LEVEL SECURITY
+TABLE
+UNIQUE (operation_id)
+
+subscription_successor_reservations_v2
+CHECK (((length(btrim(source_key)) >= 1) AND (length(btrim(source_key)) <= 120)))
+CHECK (((length(operation_fingerprint) = 64) AND (translate(operation_fingerprint, 'abcdef0123456789'::text, ''::text) = ''::text)))
+CHECK ((jsonb_typeof(lines) = 'array'::text))
+CHECK ((status = ANY (ARRAY['held'::text, 'committed'::text, 'consumed'::text, 'released'::text, 'expired'::text])))
+CREATE INDEX subscription_successor_reservations_v2_stock_idx ON public.subscription_successor_reservations_v2 USING btree (source_key, status, expires_at)
+DEFAULT created_at now()
+DEFAULT updated_at now()
+FOREIGN KEY (operation_id) REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT
+NOT NULL created_at
+NOT NULL id
+NOT NULL lines
+NOT NULL operation_fingerprint
+NOT NULL operation_id
+NOT NULL source_key
+NOT NULL status
+NOT NULL updated_at
+PRIMARY KEY (id)
+ROW LEVEL SECURITY
+TABLE
+UNIQUE (operation_id)`);
+});
+
 async function legacy() {
   const client = randomUUID(), subscription = randomUUID(), operation = randomUUID(), caseId = randomUUID();
   const instant = (await db.query("SELECT now()-interval '1 day' AS at")).rows[0].at;
@@ -216,6 +430,119 @@ it("lc10_resolution_stock_missing_is_atomic",async()=>{
   const before=await state();
   await expect(transaction(db=>db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6)",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at]))).rejects.toMatchObject({code:"22023",message:"stock_wait_stock_missing"});
   expect(await state()).toEqual(before);
+});
+
+it.each(["snapshot", "identity", "missing", "recovery_binding"] as const)("lc10_stock_wait_admit_refuses_%s", async mismatch => {
+  const f = await createSuccessorJourney(pool);
+  const fingerprint = f.codec.fingerprint(f.frozen), identityKey = f.codec.identity(f.frozen);
+  const input = { operationId: f.operationId, claimToken: f.claimToken, snapshot: f.wire,
+    operationFingerprint: fingerprint, identityKey, worker: "fixture" };
+  const due = mismatch === "recovery_binding" ? { stockWaitRecovery: { caseId: randomUUID() } } : {};
+  if (mismatch === "snapshot") input.snapshot = { ...f.wire, cycleNumber: f.header.next_cycle_number + 1 };
+  if (mismatch === "identity") input.identityKey = `${identityKey}:wrong`;
+  if (mismatch === "missing") {
+    await db.query("UPDATE public.subscriptions SET next_cycle_at=next_cycle_at+interval '1 day' WHERE id=$1", [f.subscription]);
+    expect((await db.query("SELECT public.subscription_stock_wait_frozen($1,$2) AS result", [f.subscription, f.anchor])).rows)
+      .toEqual([{ result: null }]);
+  }
+  // Omit all three compared fields when the authoritative frozen read is NULL.
+  const missing = { operationId: input.operationId, claimToken: input.claimToken, worker: input.worker };
+  await expect(db.query("SELECT public.subscription_stock_wait_admit($1::jsonb,$2::jsonb,$3::timestamptz)",
+    [mismatch === "missing" ? missing : input, due, f.at]))
+    .rejects.toMatchObject({ code: "23505", message: "stock_wait_frozen_binding_changed" });
+});
+
+it("lc10_stock_wait_admit_guard_refuses_contention", async () => {
+  const f = await createSuccessorJourney(pool);
+  const holder = await pool.connect();
+  try {
+    await holder.query("BEGIN");
+    await holder.query("SELECT pg_advisory_xact_lock(846832106,1)");
+    const input = { operationId: f.operationId, claimToken: f.claimToken, snapshot: { ...f.wire, cycleNumber: 0 },
+      operationFingerprint: f.codec.fingerprint(f.frozen), identityKey: f.codec.identity(f.frozen), worker: "fixture" };
+    await expect(db.query("SELECT public.subscription_stock_wait_admit($1::jsonb,'{}',$2::timestamptz)", [input, f.at]))
+      .rejects.toMatchObject({ code: "55P03", message: "inventory_admission_busy", where: expect.stringContaining("subscription_stock_wait_admit") });
+  } finally {
+    await holder.query("ROLLBACK");
+    holder.release();
+  }
+});
+
+it("lc10_stock_wait_admit_full_stock_does_not_open_wait", async () => {
+  const f = await createSuccessorJourney(pool, { ordinary: true });
+  const stock = createPostgresFulfillmentStockSyncPort(db, { sourceKey: f.source, readLocalInventoryStock: async () => [] });
+  const until = (await db.query("SELECT $1::timestamptz+interval '1 day' AS at", [f.anchor])).rows[0].at.toISOString();
+  await stock.recordProviderStockCurrent({ requestKey: `admit:${f.subscription}`, snapshot: {
+    providerRef: "synthetic", collectedAt: f.anchor, sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot",
+    skuRef: f.predecessor.code, totalQuantity: 100, forSaleQuantity: 100, reservedOrUnavailableQuantity: 0, syncRunId: f.subscription,
+  }, inventoryClass: "sellable", lastSyncedAt: f.anchor, staleAfter: until });
+  const identityKey = f.codec.identity(f.frozen), operationFingerprint = f.codec.fingerprint(f.frozen);
+  const op = (await db.query("SELECT public.subscription_claim_due_renewal($1,$2,$3,'fixture',300,$4) AS result",
+    [identityKey, operationFingerprint, f.wire, f.anchor])).rows[0].result;
+  const input = { operationId: op.operationId, claimToken: op.claimToken, snapshot: f.wire, operationFingerprint, identityKey, worker: "fixture" };
+  const admit = async () => (await db.query("SELECT public.subscription_stock_wait_admit($1::jsonb,'{}',$2::timestamptz) AS result",
+    [input, f.anchor])).rows[0].result;
+  expect(await admit()).toMatchObject({ waiting: false, reserved: true });
+  expect(await admit()).toMatchObject({ reason: "stock_secured", state: "reserved", replayed: true });
+  expect((await db.query("SELECT id FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=$1", [op.operationId])).rows)
+    .toEqual([]);
+});
+
+it.each(["same_lines", "changed_quantity"] as const)("lc10_stock_wait_rehold_%s", async variant => {
+  const f = await createSuccessorJourney(pool, { creator: "recover", recoveryStock: 100 });
+  const held = (await db.query(`SELECT r.id,to_char((greatest(r.expires_at,op.lease_expires_at)+interval '1 second')
+      AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at
+    FROM public.fulfillment_inventory_reservations r JOIN public.subscription_renewal_operations op ON op.id=r.renewal_operation_id
+    WHERE op.id=$1`, [f.operationId])).rows[0];
+  const lines = () => db.query("SELECT sku,quantity FROM public.fulfillment_inventory_reservation_lines WHERE reservation_id=$1", [held.id]);
+  const recover = () => db.query("SELECT public.subscription_stock_wait_recover_refusal($1,$2,'fixture',$3) AS result",
+    [f.operationId, f.codec.fingerprint(f.frozen), held.at]);
+  const before = (await lines()).rows;
+  expect(before).toEqual([{ sku: f.predecessor.code, quantity: 1 }]);
+  if (variant === "changed_quantity") {
+    await db.query("UPDATE public.fulfillment_inventory_reservation_lines SET quantity=2 WHERE reservation_id=$1", [held.id]);
+    await expect(recover()).rejects.toMatchObject({ code: "P0001", message: "stock_wait_reservation_snapshot_mismatch" });
+  } else {
+    expect((await recover()).rows[0].result).toMatchObject({ waiting: false, caseId: f.caseId, reason: "stock_secured" });
+    expect((await db.query(`SELECT status,expires_at=$2::timestamptz+interval '15 minutes' AS renewed
+      FROM public.fulfillment_inventory_reservations WHERE id=$1`, [held.id, held.at])).rows).toEqual([{ status: "held", renewed: true }]);
+    expect((await lines()).rows).toEqual(before);
+  }
+});
+
+it.each(["shortage", "unrelated_check"] as const)("lc10_stock_wait_recovery_%s_is_atomic", async failure => {
+  const f = await createSuccessorJourney(pool);
+  const stock = createPostgresFulfillmentStockSyncPort(pool, { sourceKey: f.source, readLocalInventoryStock: async () => [] });
+  const now = (await pool.query("SELECT clock_timestamp() AS at")).rows[0].at.toISOString();
+  const until = (await pool.query("SELECT $1::timestamptz+interval '1 day' AS at", [now])).rows[0].at.toISOString();
+  await stock.recordProviderStockCurrent({ requestKey: `recheck:${f.subscription}`, snapshot: {
+    providerRef: "synthetic", collectedAt: now, sourceRevision: null, revisionSource: "collection", quantityKind: "snapshot",
+    skuRef: f.predecessor.code, totalQuantity: 100, forSaleQuantity: 100, reservedOrUnavailableQuantity: 0, syncRunId: f.subscription,
+  }, inventoryClass: "sellable", lastSyncedAt: now, staleAfter: until });
+  expect((await pool.query("SELECT public.subscription_stock_wait_deficits($1::jsonb,$2,$3) AS result", [f.wire, f.operationId, now])).rows)
+    .toEqual([{ result: [] }]);
+  const readOperation = () => pool.query("SELECT to_jsonb(op) AS row FROM public.subscription_renewal_operations op WHERE id=$1", [f.operationId]);
+  const readOutcomes = () => pool.query("SELECT to_jsonb(o) AS row FROM public.subscription_renewal_outcomes o WHERE renewal_operation_id=$1", [f.operationId]);
+  const before = await readOperation(), outcomes = await readOutcomes();
+  const seam = "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)";
+  const restore = await hook(seam, "  v_available integer;\nBEGIN\n", failure === "shortage"
+    ? " RETURN jsonb_build_object('reserved',false);\n"
+    : " RAISE EXCEPTION 'fixture_unrelated_check' USING ERRCODE='23514';\n");
+  try {
+    const recover = pool.query("SELECT public.subscription_stock_wait_recover_refusal($1,$2,'fixture',$3) AS result",
+      [f.operationId, f.codec.fingerprint(f.frozen), now]);
+    if (failure === "shortage") {
+      expect((await recover).rows).toEqual([{ result: { waiting: true, caseId: f.caseId } }]);
+    } else {
+      await expect(recover).rejects.toMatchObject({ code: "23514", message: "fixture_unrelated_check" });
+    }
+    expect((await readOperation()).rows).toEqual(before.rows);
+    expect((await readOutcomes()).rows).toEqual(outcomes.rows);
+    expect((await pool.query("SELECT id FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1", [f.operationId])).rows)
+      .toEqual([]);
+  } finally {
+    await restore();
+  }
 });
 
 it("lc10_D6_successor_paid_fact_direct_trigger", async () => {
@@ -408,6 +735,41 @@ it.each(["publisher_first","acceptance_first"])("lc10_publication_acceptance_con
       expect((await pool.query("SELECT next_cycle_at=$2::timestamptz AS same FROM public.subscriptions WHERE id=$1",[f.subscription,f.anchor])).rows).toEqual([{same:true}]);
     }
   } finally {await pause.release();await resolver.query("ROLLBACK");await resolving;await publishing;await restore();resolver.release();observer.release();}
+});
+
+it("lc10_catalogue_reread_refuses_before_effects", async () => {
+  const f = await createSuccessorJourney(pool);
+  const resolver = await pool.connect(), observer = await pool.connect(), pause = await gate(observer);
+  const withdrawal = structuredClone(f.successor.value);
+  withdrawal.product.sharedContent.catalogAction = "revise";
+  withdrawal.publication.operations = [{ op: "set_product_lifecycle", productSlug: withdrawal.product.slug!,
+    expectedState: "active", state: "withdrawn", children: [{ skuCode: f.successor.code, expectedState: "active" }] }];
+  const signature = "public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)";
+  const restoreGate = await hook(signature, " admission:=q.quote_snapshot->'catalogAdmission';", pause.sql);
+  let restoreEffects: (() => Promise<unknown>) | undefined;
+  let resolving: ReturnType<typeof tracked> | undefined;
+  try {
+    // A later lane can reject the same stale head. Observe whether effects were reached first.
+    restoreEffects = await hook(signature, " -- Effects start only after ownership, frozen identity, quote and current admission.\n",
+      " RAISE EXCEPTION 'fixture_successor_effects_reached';\n");
+    const resolverPid = await pid(resolver), observerPid = await pid(observer);
+    resolving = tracked(resolver.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6)",
+      [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, f.at]));
+    await blocked(observer, resolverPid, observerPid);
+    const head = await f.publish(withdrawal, f.successor.draft, 1, f.successor.head);
+    expect(head.publicationId).not.toBe(f.successor.head.publicationId);
+    const published = await state();
+    await pause.release();
+    expect(await resolving).toMatchObject({ ok: false, error: { code: "40001", message: "customer_self_service_stale_edit_catalog_head" } });
+    expect(await state()).toEqual(published);
+  } finally {
+    await pause.release();
+    await resolving;
+    await restoreEffects?.();
+    await restoreGate();
+    resolver.release();
+    observer.release();
+  }
 });
 
 it("lc10_real_payment_aggregate_contention",async()=>{
@@ -973,6 +1335,89 @@ it("lc10_D6_one_native_realization_and_benefit",async()=>{
   expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_delivery_alignment_arrivals WHERE shipment_id=(SELECT fulfillment_id FROM public.subscription_successor_operations_v2 WHERE id=$1)",[g.id])).rows).toEqual([{count:0}]);
 });
 
+it.each([
+  ["lc10_successor_proposal_immutable", "proposal", "subscription_successor_proposals", "id", "created_at"],
+  ["lc10_successor_operation_immutable", "operation", "subscription_successor_operations_v2", "id", "created_at"],
+  ["lc10_successor_wait_immutable", "wait", "subscription_successor_wait_cases_v2", "operation_id", "opened_at"],
+  ["lc10_successor_reservation_immutable", "reservation", "subscription_successor_reservations_v2", "operation_id", "created_at"],
+] as const)("%s", async (_name, kind, table, key, column) => {
+  const f = await createSuccessorJourney(pool);
+  const id = kind === "proposal" ? f.proposalId : (await db.query(
+    "SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+    [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, f.at],
+  )).rows[0].result.operationId;
+  const before = (await db.query(`SELECT ${column} FROM public.${table} WHERE ${key}=$1`, [id])).rows;
+  expect(before).toHaveLength(1);
+  await db.query("SAVEPOINT immutable_field");
+  await expect(db.query(`UPDATE public.${table} SET ${column}=${column}-interval '1 second' WHERE ${key}=$1`, [id]))
+    .rejects.toMatchObject({ code: "23514", message: `successor_${kind}_immutable` });
+  await db.query("ROLLBACK TO SAVEPOINT immutable_field");
+  expect((await db.query(`SELECT ${column} FROM public.${table} WHERE ${key}=$1`, [id])).rows).toEqual(before);
+});
+
+it("lc10_successor_history_delete_refused", async () => {
+  const f = await createSuccessorJourney(pool);
+  await db.query("SAVEPOINT history_delete");
+  await expect(db.query("DELETE FROM public.catalog_sku_successors WHERE predecessor_sku_id=$1 AND successor_sku_id=$2",
+    [f.predecessor.sku, f.successor.sku])).rejects.toMatchObject({ code: "23514", message: "successor_history_immutable" });
+  await db.query("ROLLBACK TO SAVEPOINT history_delete");
+  expect((await db.query("SELECT publication_id FROM public.catalog_sku_successors WHERE predecessor_sku_id=$1 AND successor_sku_id=$2",
+    [f.predecessor.sku, f.successor.sku])).rows).toEqual([{ publication_id: f.successor.declared.publicationId }]);
+});
+
+it("lc10_successor_native_graph_refuses_wrong_cycle", async () => {
+  const f = await createSuccessorJourney(pool);
+  const generation = (await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+    [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, f.at])).rows[0].result.operationId;
+  // An existing same-subscription cycle passes the FK, but its instant is wrong for this generation.
+  await db.query("SAVEPOINT graph_cycle");
+  await expect(db.query("UPDATE public.subscription_successor_operations_v2 SET cycle_id=$2 WHERE id=$1",
+    [generation, f.header.activation_cycle_id])).rejects.toMatchObject({ code: "23514", message: "successor_native_graph_mismatch" });
+  await db.query("ROLLBACK TO SAVEPOINT graph_cycle");
+  expect((await db.query("SELECT cycle_id FROM public.subscription_successor_operations_v2 WHERE id=$1", [generation])).rows)
+    .toEqual([{ cycle_id: null }]);
+});
+
+it("lc10_successor_generation_rejects_foreign_lineage", async () => {
+  const f = await createSuccessorJourney(pool), other = await createSuccessorJourney(pool);
+  const predecessor = (await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+    [other.caseId, other.proposalId, other.quoteHash, randomUUID(), other.client, other.at])).rows[0].result.operationId;
+  const id = randomUUID();
+  await db.query("SAVEPOINT foreign_lineage");
+  await expect(db.query(`
+    INSERT INTO public.subscription_successor_operations_v2(id, root_operation_id, proposal_id, predecessor_generation_id,
+      subscription_id, scheduled_at, cycle_number, identity_key, operation_fingerprint, due_snapshot, cycle_snapshot,
+      state, claim_token, claimed_by, claimed_at, lease_expires_at)
+    SELECT $1, root.id, $2, $3, root.subscription_id, root.scheduled_at, root.cycle_number,
+      root.identity_key || ':successor:' || $2::uuid::text, root.operation_fingerprint, root.cycle_snapshot, root.cycle_snapshot,
+      'claimed', $1, 'synthetic', $4::timestamptz, $4::timestamptz + interval '5 minutes'
+    FROM public.subscription_renewal_operations root WHERE root.id=$5
+  `, [id, f.proposalId, predecessor, f.at, f.operationId]))
+    .rejects.toMatchObject({ code: "23514", message: "successor_generation_lineage_changed" });
+  await db.query("ROLLBACK TO SAVEPOINT foreign_lineage");
+  expect((await db.query("SELECT id FROM public.subscription_successor_operations_v2 WHERE id=$1", [id])).rows).toEqual([]);
+});
+
+it("lc10_successor_outcomes_append_after_recovery", async () => {
+  const f = await createSuccessorJourney(pool);
+  const resolved = (await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",
+    [f.caseId, f.proposalId, f.quoteHash, randomUUID(), f.client, f.at])).rows[0].result;
+  const id = resolved.operationId;
+  const at = (await db.query("SELECT expires_at + interval '1 second' AS at FROM public.subscription_successor_reservations_v2 WHERE operation_id=$1", [id])).rows[0].at;
+  await db.query("SELECT public.fulfillment_expire_successor_renewals_v2(1000,$1)", [at]);
+  const read = async () => (await db.query("SELECT operation_fingerprint, claim_token, outcomes FROM public.subscription_successor_operations_v2 WHERE id=$1", [id])).rows[0];
+  const first = await read();
+  expect(first.outcomes).toEqual([expect.objectContaining({ outcome: "refused", reason: "reservation_expired" })]);
+  await db.query("SELECT public.subscription_stock_wait_recover_refusal_v2($1,$2,'fixture',$3)", [id, first.operation_fingerprint, at]);
+  const recovered = await read();
+  expect(recovered.outcomes).toEqual(first.outcomes);
+  await db.query("SELECT public.commerce_prepare_successor_renewal_v2($1,$2,$3)", [id, recovered.claim_token, at]);
+  const eventKey = randomUUID();
+  await db.query("SELECT public.commerce_settle_successor_renewal_v2($1,$2,$3,$4)", [id, eventKey,
+    { operationFingerprint: first.operation_fingerprint, outcome: "succeeded", externalRef: `synthetic:${id}` }, at]);
+  expect((await read()).outcomes).toEqual([...first.outcomes, expect.objectContaining({ eventKey, outcome: "succeeded" })]);
+});
+
 it("lc10_D6_paid_fact_generation_binding",async()=>{
   const f=await createSuccessorJourney(pool);
   const resolved=(await db.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,randomUUID(),f.client,f.at])).rows[0].result;
@@ -1174,6 +1619,18 @@ it.each(["started","resumed","resumed_empty","resumed_omitted"] as const)("lc10_
   }finally{await receipts.close();}
 });
 
+it("lc10_stock_wait_catalogue_projection", async () => {
+  const f = await createSuccessorJourney(pool);
+  const stockWait = createPostgresStockWaitStore({ executor: db, withTransaction: work => work(db), codec: f.codec, workerId: "fixture" });
+  const read = () => stockWait.readFrozenCase({ caseId: f.caseId, cycleId: null, orderId: null, paymentId: null,
+    engineIdempotencyKey: f.codec.identity(f.frozen) });
+  expect((await read())?.deficits).toEqual([{ skuId: f.predecessor.sku, sku: f.predecessor.code, displayName: "Synthetic article",
+    size: null, required: 1, reserved: 0, available: 0, missing: 1 }]);
+  await db.query(`UPDATE public.subscription_stock_wait_cases
+    SET deficits = jsonb_set(deficits, '{0,sku}', '"missing-sku"') WHERE id=$1`, [f.caseId]);
+  await expect(read()).rejects.toThrow("stock_wait_catalog_sku_missing");
+});
+
 it("lc10_notice_started_uses_current_deficits_not_queued_empty_observation",async()=>{
   const f=await createSuccessorJourney(pool,{creator:"recover",recoveryStock:100});
   await pool.query("SELECT public.subscription_stock_wait_enqueue(c,'started') FROM public.subscription_stock_wait_cases c WHERE id=$1",[f.caseId]);
@@ -1187,7 +1644,8 @@ it("lc10_notice_started_uses_current_deficits_not_queued_empty_observation",asyn
   const notices=createPostgresSuccessorNotices({withTransaction:transaction,impact:createPostgresCatalogWithdrawalImpact(pool),recipient:async()=>({recipientRef:f.client,locale:"en"}),delivery:{enqueue:async descriptor=>{
     delivered.push(descriptor);return {notificationId:randomUUID(),replayed:false};
   }}});
-  expect(await notices.handle(row)).toEqual({kind:"processed"});expect(delivered[0]!.fact).toMatchObject({kind:"stock_wait_started",deficits:[{sku:f.predecessor.code,missing:1}]});
+  expect(await notices.handle(row)).toEqual({kind:"processed"});
+  expect(delivered).toMatchObject([{fact:{kind:"stock_wait_started",deficits:[{sku:f.predecessor.code,missing:1}]}}]);
 });
 
 it.each(["opened_first","publication_first"])("lc10_N3_shared_completion",async order=>{
