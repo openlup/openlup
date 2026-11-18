@@ -60,18 +60,18 @@ export function createPostgresSuccessorNotices(options: {
         await persisted(db,row);
         const receipt=(await db.query("SELECT state FROM public.transactional_delivery_read_receipt($1::text)",[row.idempotency_key])).rows[0];
         if(receipt?.state==="accepted")return {kind:"accepted"} as const;
-        const read=(await db.query(`SELECT public.subscription_stock_wait_read_v2(id,'legacy') AS result, cycle_snapshot
-          FROM public.subscription_stock_wait_cases WHERE id=$1::uuid`,[payload.caseId])).rows[0];
-        if(read?.result==null)throw new Error("stock_wait_notice_case_mismatch");
-        const envelope=subscriptionRecord(read.result);
+        const value=(await db.query("SELECT public.subscription_stock_wait_read_v2($1::uuid,'legacy') AS result",[payload.caseId])).rows[0]?.result;
+        if(value==null)throw new Error("stock_wait_notice_case_mismatch");
+        const envelope=subscriptionRecord(value);
         const current=subscriptionRecord(envelope.case);
         if(row.aggregate_type!=="subscription_stock_wait"||row.aggregate_id!==payload.caseId||current.id!==payload.caseId||current.client_id!==payload.clientId||current.subscription_id!==payload.subscriptionId)throw new Error("stock_wait_notice_case_mismatch");
         if(!started&&current.state!=="resumed")throw new Error("stock_wait_resume_milestone_missing");
         if(started&&(current.state!=="waiting"||current.waitingNoticeRelevant!==true))return {kind:"obsolete"} as const;
-        const wire=read.cycle_snapshot;
-        const typed=wire && subscriptionRecord(wire).frozenRevision==="native.purchase-renewal.v3";
-        if(typed&&!options.renewalCodec)throw new Error("stock_wait_catalog_acceptance_unavailable");
-        const snapshot=typed?options.renewalCodec!.decode(subscriptionRecord(wire)):undefined;
+        const wire=options.renewalCodec
+          ? (await db.query("SELECT cycle_snapshot FROM public.subscription_stock_wait_cases WHERE id=$1::uuid",[payload.caseId])).rows[0]?.cycle_snapshot
+          : null;
+        const snapshot=wire&&subscriptionRecord(wire).frozenRevision==="native.purchase-renewal.v3"
+          ? options.renewalCodec!.decode(subscriptionRecord(wire)):undefined;
         const deficits=(await nativeStockWaitDeficits(db,started?current.deficits:payload.deficits,snapshot)).filter(value=>value.missing>0);
         if(started&&deficits.length===0)return {kind:"empty"} as const;
         return {kind:"ready",current,deficits} as const;

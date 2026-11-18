@@ -80,9 +80,11 @@ export function requirePostgresCatalogSkuEnvelopeRow(
   ) {
     throw new CatalogSkuAuthorityError(refusal);
   }
-  if (row.net_content_unscaled === null) {
-    throw new CatalogSkuAuthorityError(row.typed_net_content_dimension ? "quantity_requires_v2" : refusal);
+  if (row.typed_net_content_dimension
+    && (row.typed_net_content_dimension !== "mass" || row.net_content_unscaled === null || row.net_content_unscaled <= 0)) {
+    throw new CatalogSkuAuthorityError("quantity_requires_v2");
   }
+  if (row.net_content_unscaled === null) throw new CatalogSkuAuthorityError(refusal);
 }
 
 export async function readPostgresCatalogSkuIdentifiers(

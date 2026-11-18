@@ -8,6 +8,8 @@ export interface NativeStockWaitBinding {
   withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   codec: NativeRenewalCodec;
   workerId: string;
+  /** Opt in to the typed retained display on stock-wait readback. @experimental */
+  retainedContent?: "v2";
 }
 export interface NativeStockWaitAdmission {
   waiting: boolean; caseId: string | null; response: Record<string, unknown>;
@@ -73,7 +75,7 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       frozenSnapshot: snapshot, frozenFingerprint: String(r.fingerprint),
       binding: { caseId: canonicalCaseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
         paymentId: nullable(rows[0].payment_id), engineIdempotencyKey: String(rows[0].identity_key) },
-      deficits: await nativeStockWaitDeficits(db, r.deficits, snapshot), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
+      deficits: await nativeStockWaitDeficits(db, r.deficits, options.retainedContent === "v2" ? snapshot : undefined), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
       openedAt: String(r.opened_at), checkedAt: nullable(r.last_checked_at), selectedAt: nullable(r.last_selected_at),
       securedAt: nullable(r.stock_secured_at), resumedAt: nullable(r.resumed_at), closedAt: nullable(r.closed_at),
       startedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:started`, resumedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:resumed`,
@@ -173,7 +175,8 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       return result.rows.map(row => codec.due(row));
     },
     async deficits(input: { snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; operationId: string; now: string }) {
-      return options.withTransaction(async db => nativeStockWaitDeficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now]), input.snapshot));
+      return options.withTransaction(async db => nativeStockWaitDeficits(db, await invoke(db, "subscription_stock_wait_deficits", [codec.encode(input.snapshot), input.operationId, input.now]),
+        options.retainedContent === "v2" ? input.snapshot : undefined));
     },
     async admit(input: { operationId: string; claimToken: string; snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot; recovery?: StockWaitRecoveryBinding; now: string }): Promise<NativeStockWaitAdmission> {
       const request = { operationId: input.operationId, claimToken: input.claimToken, snapshot: codec.encode(input.snapshot),

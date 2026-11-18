@@ -2628,6 +2628,8 @@ export interface NativeStockWaitBinding {
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     codec: NativeRenewalCodec;
     workerId: string;
+    /** Opt in to the typed retained display on stock-wait readback. @experimental */
+    retainedContent?: "v2";
 }
 export interface NativeStockWaitAdmission {
     waiting: boolean;

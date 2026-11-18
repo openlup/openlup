@@ -12,7 +12,7 @@ import type { CatalogQuantity } from "../../src/catalog/contracts/productTypes.j
 import { createPostgresBundleCatalogStore } from "../../src/catalog/bundleCatalogStore.js";
 import { createCatalogServingReader } from "../../src/catalog/servingRead.js";
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
-import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
+import { CatalogPublicationError, compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
 import { input, registry, definition, rules } from "./fixtures/publicationInput.js";
 import type { PgQueryExecutor } from "../../src/data/index.js";
 
@@ -77,6 +77,16 @@ function reader(change: string, observed?: { revision: number; title: string; un
   if (change === "unadopted") row.publication_id = null;
   if (change === "overflow") row.sku_count++;
   if (change === "cardinality") row.sku_count++;
+  if (change === "duplicate ID" || change === "duplicate code") {
+    row.sku_count++;
+    const duplicate = structuredClone(source);
+    if (change === "duplicate ID") duplicate.code = "ARTICLE-SECOND";
+    else duplicate.id = "20000000-0000-4000-8000-000000000004";
+    state.skus.push(duplicate);
+  }
+  if (change === "wrong owner") source.productId = "20000000-0000-4000-8000-000000000004";
+  if (change === "wrong type") state.product.type = { ...state.product.type, version: 2 };
+  if (change === "wrong option digest") Object.assign(source, { optionDigest: "b".repeat(64) });
   if (change === "missing document") state.documents.length = 0;
   if (change === "missing primary") state.product.primarySkuId = "20000000-0000-4000-8000-000000000004";
   if (change === "missing GTIN") source.identifiers.length = 0;
@@ -87,7 +97,8 @@ function reader(change: string, observed?: { revision: number; title: string; un
       if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
       if (sql.includes("row_security_active")) {
         if (change === "outage" || observed?.unavailable) throw new Error("synthetic read failure");
-        return { rows: [{ complete: change !== "restricted", definitions: [[definition.key, definition.version, catalogDefinitionDigest(definition)]] }] };
+        const installedDigest = change === "wrong installed digest" ? "b".repeat(64) : catalogDefinitionDigest(definition);
+        return { rows: [{ complete: change !== "restricted", definitions: [[definition.key, definition.version, installedDigest]] }] };
       }
       return { rows: change === "empty" ? [] : [observed ? { ...row, revision: observed.revision } : row] };
     },
@@ -97,8 +108,9 @@ function reader(change: string, observed?: { revision: number; title: string; un
     authorizeHuman: async () => ({ ok: false }), readiness: async () => ({ ready: false, reasons: [] }),
     verifyMedia: async () => false,
   }, async () => {
+    if (change === "wrong document digest") throw new CatalogPublicationError("catalog_publication_document_invalid");
     if (observed) { head.revision = observed.revision; source.title = observed.title; }
-    return { ...state, head, references: [reference] };
+    return { ...state, head, references: state.skus.map(sku => ({...reference, skuId: sku.id })) };
   }, {
     ...scope, ...(change === "overflow" ? { maxItems: 1 } : {}),
   });
@@ -115,6 +127,13 @@ function readPath(path: typeof servingPaths[number], port: ReturnType<typeof rea
 const readFailures = [
   ["MC5-D-005", "head", "catalog_authority_changed"],
   ["MC5-D-020", "cardinality", "catalog_authority_changed"],
+  ["MC5-D-020", "wrong owner", "catalog_authority_changed"],
+  ["MC5-D-020", "wrong option digest", "catalog_authority_changed"],
+  ["MC5-D-006", "duplicate code", "catalog_authority_changed"],
+  ["MC5-D-046", "duplicate ID", "catalog_authority_changed"],
+  ["MC5-D-007", "wrong document digest", "catalog_document_digest_mismatch"],
+  ["MC5-D-021", "wrong type", "catalog_authority_changed"],
+  ["C-READY", "wrong installed digest", "catalog_authority_unavailable"],
   ["MC5-D-007", "missing document", "catalog_document_schema_invalid"],
   ["MC5-D-046", "missing primary", "catalog_primary_trade_item_invalid"],
   ["MC5-D-047", "missing GTIN", "catalog_primary_trade_item_invalid"],
