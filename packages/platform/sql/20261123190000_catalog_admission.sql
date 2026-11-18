@@ -93,7 +93,11 @@ BEGIN
  PERFORM h.product_id FROM public.catalog_publication_heads h WHERE h.product_id=ANY(consulted)
   ORDER BY h.product_id FOR SHARE;
  PERFORM p.id FROM public.catalog_products p WHERE p.id=ANY(consulted) ORDER BY p.id FOR SHARE;
- PERFORM s.id FROM public.catalog_skus s WHERE s.product_id=ANY(consulted) ORDER BY s.id FOR SHARE;
+ -- Mixed sized edits retain the existing sellability read for legacy lines.
+ -- Acquire those SKU rows in the same order, before any price guard.
+ PERFORM s.id FROM public.catalog_skus s WHERE s.product_id=ANY(consulted) OR
+  (p_offer_evidence->>'lane'='sized' AND (p_offer_evidence->'legacySkuIds') ? s.id::text)
+  ORDER BY s.id FOR SHARE;
  FOREACH product_id IN ARRAY consulted LOOP
   SELECT * INTO product FROM public.catalog_products WHERE id=product_id;
   SELECT p.* INTO publication FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id
@@ -368,15 +372,18 @@ REVOKE ALL ON FUNCTION public.catalog_admission_build_evidence(jsonb,text,jsonb,
 CREATE FUNCTION public.catalog_admission_accept(
  p_lines jsonb,p_evidence jsonb,p_mode text,p_binding jsonb,p_purpose text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE governed jsonb; selected jsonb; scope jsonb; offer jsonb; source_rows integer; resolved_rows integer;
+DECLARE governed jsonb; selected jsonb; scope jsonb; legacy_skus jsonb; offer jsonb; source_rows integer; resolved_rows integer;
  distinct_rows integer; previously_governed boolean; binding_refusal text;
 BEGIN
  PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0));
  SELECT count(*),count(s.id),count(DISTINCT s.id),
   coalesce(jsonb_agg(jsonb_build_object('skuId',s.id,'quantity',coalesce(l->'qty',l->'quantity'),'isAddon',coalesce(l->'isAddon','false'::jsonb)) ORDER BY s.id)
     FILTER(WHERE s.publication_facts->'schemaVersion'='3'::jsonb OR p.publication_facts->'schemaVersion'='3'::jsonb),'[]'),
-  coalesce(jsonb_agg(s.id ORDER BY s.id) FILTER(WHERE s.publication_facts->'schemaVersion'='3'::jsonb OR p.publication_facts->'schemaVersion'='3'::jsonb),'[]')
- INTO source_rows,resolved_rows,distinct_rows,governed,scope
+  coalesce(jsonb_agg(s.id ORDER BY s.id) FILTER(WHERE s.publication_facts->'schemaVersion'='3'::jsonb OR p.publication_facts->'schemaVersion'='3'::jsonb),'[]'),
+  coalesce(jsonb_agg(s.id ORDER BY s.id) FILTER(WHERE s.id IS NOT NULL
+    AND s.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
+    AND p.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb),'[]')
+ INTO source_rows,resolved_rows,distinct_rows,governed,scope,legacy_skus
  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_lines)='array' THEN p_lines ELSE '[]'::jsonb END) l
  LEFT JOIN public.catalog_skus s ON CASE WHEN p_purpose='order' THEN s.sku=l->>'sku'
   ELSE s.id=CASE WHEN pg_input_is_valid(l->>'variantId','uuid') THEN (l->>'variantId')::uuid END END
@@ -386,7 +393,7 @@ BEGIN
     AND (sl.catalog_sku_revision_id IS NOT NULL OR s.publication_facts->'schemaVersion'='3'::jsonb OR p.publication_facts->'schemaVersion'='3'::jsonb))
   INTO previously_governed;
  IF scope='[]'::jsonb AND NOT previously_governed THEN RETURN NULL; END IF;
- offer:=p_binding-'quoteSnapshot'||jsonb_build_object('scopeSkuIds',scope,'scopeDemand',governed,'retainedPriceContextVersions',coalesce(p_evidence->'retainedPriceContextVersions','[]'::jsonb));
+ offer:=p_binding-'quoteSnapshot'||jsonb_build_object('scopeSkuIds',scope,'scopeDemand',governed,'legacySkuIds',legacy_skus,'retainedPriceContextVersions',coalesce(p_evidence->'retainedPriceContextVersions','[]'::jsonb));
  IF p_purpose='order' THEN
   offer:=offer||jsonb_build_object('offerVersion',public.catalog_price_setup_order_offer_version(p_binding->'quoteSnapshot'));
  END IF;
