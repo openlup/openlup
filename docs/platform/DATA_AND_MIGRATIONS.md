@@ -394,7 +394,11 @@ nonempty capabilities refuse capture. Restore authorizes each document pointer
 inside its existing transaction and consumes the authorization, keeping ordinary
 direct pointer changes refused. Existing readers ignore nullable publication
 facts; exact retained readers require the new history rather than inferring it
-from a legacy current row. The managed rail does not supply this feature. See
+from a legacy current row. The new uniqueness indexes only cover identities
+projected by publication. Legacy draft combination digests and issuer-scoped GTIN
+rows keep their existing rules. Publication still checks an incoming normalized
+GTIN against legacy and published identifiers in its transaction. The managed
+rail does not supply this feature. See
 [the package catalogue contract](../../packages/platform/README.md#catalog) for
 host composition, mass admission and the separately bound price writer.
 

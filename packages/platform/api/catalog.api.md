@@ -4402,7 +4402,11 @@ export interface CatalogPublicationDependencies<Context> {
     }>;
     attributeReferences?: CatalogAttributeReferencePort;
     prices?: CatalogPublicationPriceBoundary;
-    /** Runs in the publication transaction; no external I/O or commerce locks. Missing required evidence refuses. */
+    /**
+     * Runs in the publication transaction; no external I/O or commerce locks.
+     * A structural check can carry only product facts (for example, a presentation revision).
+     * Missing required evidence refuses.
+     */
     readiness(db: PgQueryExecutor, state: {
         product: CatalogPublishedProduct;
         skus: readonly CatalogPublishedSku[];
@@ -4962,7 +4966,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6";
+        readonly sha256: "76ea5098ca8e9f66515f5d6b5c34aaad6071d976a8b5250f48ef0e3a30ecb54a";
         readonly url: URL;
     }
 ];

@@ -5648,7 +5648,7 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_price_setup_apply_prelocked(jsonb)",
+            "signature": "public.catalog_price_setup_apply_prelocked(jsonb,boolean)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
@@ -8028,12 +8028,12 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6",
+      "sha256": "76ea5098ca8e9f66515f5d6b5c34aaad6071d976a8b5250f48ef0e3a30ecb54a",
       "functions": [
         {
           "signature": "public.catalog_price_setup_apply(text,text)",
           "beforeSha256": "49e8cce6b3212d7200be5d57abb3a6e602affcf79f47e5a4c2cc6c1dd16048be",
-          "afterSha256": "211ba1f236248693a08e3d4d31fc39afed26455ef1add0e5c5aaea9adf7053ad"
+          "afterSha256": "c2593bc32320ca6a28b8640f039a910f2b2969570820f1de330bf683f7ed789c"
         },
         {
           "signature": "public.catalog_publication_immutable()",
@@ -8061,19 +8061,19 @@
           "afterSha256": "102ec2a2d272064222c34b4123ebafdeeecd17976d12d6a1b381380697eebea7"
         },
         {
-          "signature": "public.catalog_price_setup_apply_prelocked(jsonb)",
+          "signature": "public.catalog_price_setup_apply_prelocked(jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "92a691a50ee3b02ff0a21673a9defb318a78d1ad6d5e4bdc71d32471ad175d47"
+          "afterSha256": "4a617a3b9075dd05f0685a5984ccd5696a686e42dcceea3c0c34e5824617eca9"
         },
         {
           "signature": "public.catalog_price_setup_prelock(uuid,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "ed36ea8e952154d8ca2263f949e39ad89d88c969867083a17bcbf2932dda98f6"
+          "afterSha256": "c051ef3a9e47cafc8e2d256e1537f6e6899cbb7748a0758764ad8006bb5279c8"
         },
         {
           "signature": "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "42d9fd800b6c88134c548603302843f06856f1b34b93da76bcd23ffa93c21bb3"
+          "afterSha256": "155c3590a85ef6d29d508beec5bf4173eb28ca6a9a139d42edd0e8088b469ac4"
         }
       ]
     }

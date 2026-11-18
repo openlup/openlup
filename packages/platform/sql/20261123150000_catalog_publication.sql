@@ -11,8 +11,12 @@ ALTER TABLE public.catalog_sku_identifiers ADD COLUMN scheme text;
 ALTER TABLE public.catalog_sku_identifiers ADD COLUMN original_value text;
 ALTER TABLE public.catalog_sku_identifiers ADD COLUMN display_label text;
 ALTER TABLE public.catalog_sku_identifiers ADD COLUMN source_ref text;
-CREATE UNIQUE INDEX catalog_sku_identifiers_global_gtin_key ON public.catalog_sku_identifiers((CAST(normalized_value AS numeric))) WHERE identifier_kind = 'gtin';
-CREATE UNIQUE INDEX catalog_skus_publication_combination_key ON public.catalog_skus(product_id,combination_digest) WHERE combination_digest IS NOT NULL;
+-- Existing rows have no publication projection. Keep their original admission
+-- rules while enforcing uniqueness on the facts introduced by publication.
+CREATE UNIQUE INDEX catalog_sku_identifiers_global_gtin_key ON public.catalog_sku_identifiers((CAST(normalized_value AS numeric)))
+ WHERE identifier_kind = 'gtin' AND scheme = 'gs1:gtin';
+CREATE UNIQUE INDEX catalog_skus_publication_combination_key ON public.catalog_skus(product_id,combination_digest)
+ WHERE publication_facts IS NOT NULL AND combination_digest IS NOT NULL;
 CREATE UNIQUE INDEX catalog_draft_revisions_product_revision_key ON public.catalog_draft_revisions(product_id,draft_id,revision);
 CREATE TABLE public.catalog_publications (
  id uuid PRIMARY KEY,
@@ -312,7 +316,7 @@ BEGIN
     'command',v_command,'actorId',v_actor);
 END;
 $$;
-CREATE FUNCTION public.catalog_price_setup_apply_prelocked(p_prepared jsonb) RETURNS jsonb
+CREATE FUNCTION public.catalog_price_setup_apply_prelocked(p_prepared jsonb, p_check_target boolean) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_now timestamptz := statement_timestamp();
@@ -339,7 +343,8 @@ DECLARE
   v_added jsonb;
   v_response jsonb;
 BEGIN
-  v_actor := public.catalog_price_setup_require_human_admin();
+  v_actor := CASE WHEN p_check_target THEN public.catalog_price_setup_require_human_admin()
+    ELSE (p_prepared->>'actorId')::uuid END;
   v_command := p_prepared->'command';
   v_key := v_command->>'commandKey';
   v_variant_id := (v_command->>'variantId')::uuid;
@@ -356,19 +361,21 @@ BEGIN
   IF v_existing.status='completed' THEN
     RETURN v_existing.response_payload || jsonb_build_object('outcome','replayed');
   END IF;
-  -- 5. The target: a SKU that is not archived, and the active list of the
-  -- settlement region and currency.
-  SELECT * INTO v_sku FROM public.catalog_skus WHERE id = v_variant_id;
-  SELECT * INTO v_list FROM public.price_lists WHERE id = v_list_id;
-  v_refusal := CASE
-    WHEN v_sku.id IS NULL THEN 'sku_not_found'
-    WHEN v_sku.status = 'archived' THEN 'sku_archived'
-    WHEN v_list.id IS NULL THEN 'price_list_not_found'
-    WHEN v_list.status <> 'active' OR v_list.region_code <> public.catalog_price_setup_region_code()
-      OR v_list.currency <> public.catalog_price_setup_settlement_currency()
-      OR v_list.valid_from > v_now OR (v_list.valid_to IS NOT NULL AND v_list.valid_to <= v_now)
-      THEN 'price_list_not_active'
-  END;
+  -- Publication may materialize the target after prelock. Standalone already
+  -- admitted its target before the context lock.
+  IF p_check_target THEN
+    SELECT * INTO v_sku FROM public.catalog_skus WHERE id = v_variant_id;
+    SELECT * INTO v_list FROM public.price_lists WHERE id = v_list_id;
+    v_refusal := CASE
+      WHEN v_sku.id IS NULL THEN 'sku_not_found'
+      WHEN v_sku.status = 'archived' THEN 'sku_archived'
+      WHEN v_list.id IS NULL THEN 'price_list_not_found'
+      WHEN v_list.status <> 'active' OR v_list.region_code <> public.catalog_price_setup_region_code()
+        OR v_list.currency <> public.catalog_price_setup_settlement_currency()
+        OR v_list.valid_from > v_now OR (v_list.valid_to IS NOT NULL AND v_list.valid_to <= v_now)
+        THEN 'price_list_not_active'
+    END;
+  END IF;
 
   IF v_refusal IS NULL THEN
     -- 7. The state: at most one effective base, and none starting now or later.
@@ -447,19 +454,26 @@ DECLARE item jsonb; prepared jsonb; commands jsonb := '[]'; created text[] := AR
   command_key text; parent uuid; actual_parent uuid; row_record record; failure jsonb; actor uuid; sorted_batch jsonb := '[]';
   target_sku public.catalog_skus%ROWTYPE; target_list public.price_lists%ROWTYPE; target_refusal text;
 BEGIN
-  actor := public.catalog_price_setup_require_human_admin();
-  IF actor IS DISTINCT FROM p_actor OR jsonb_typeof(p_batch) IS DISTINCT FROM 'array'
+  IF p_parent IS NOT NULL THEN actor := public.catalog_price_setup_require_human_admin(); END IF;
+  IF (p_parent IS NULL AND p_actor IS NOT NULL)
+    OR (p_parent IS NOT NULL AND actor IS DISTINCT FROM p_actor)
+    OR jsonb_typeof(p_batch) IS DISTINCT FROM 'array'
     OR jsonb_array_length(p_batch) NOT BETWEEN 1 AND 10000
     OR (p_parent IS NULL AND jsonb_array_length(p_batch)<>1) THEN
     RAISE EXCEPTION 'catalog_price_setup_prelock_invalid' USING ERRCODE='22023';
   END IF;
-  -- Receipt keys first, in sorted order, including absent-key insertion locks.
-  FOR item IN SELECT value FROM jsonb_array_elements(p_batch) LOOP
-    command_key := NULL;
-    BEGIN command_key := ((item->>'canonicalCommand')::jsonb)->>'commandKey';
-    EXCEPTION WHEN invalid_text_representation OR untranslatable_character THEN NULL; END;
-    sorted_batch := sorted_batch || jsonb_build_array(item || jsonb_build_object('key',command_key));
-  END LOOP;
+  -- Standalone validates the fingerprint before inspecting the raw JSON.
+  IF p_parent IS NULL THEN
+    sorted_batch := p_batch;
+  ELSE
+    -- Receipt keys first, in sorted order, including absent-key insertion locks.
+    FOR item IN SELECT value FROM jsonb_array_elements(p_batch) LOOP
+      command_key := NULL;
+      BEGIN command_key := ((item->>'canonicalCommand')::jsonb)->>'commandKey';
+      EXCEPTION WHEN invalid_text_representation OR untranslatable_character THEN NULL; END;
+      sorted_batch := sorted_batch || jsonb_build_array(item || jsonb_build_object('key',command_key));
+    END LOOP;
+  END IF;
   FOR item IN SELECT value FROM jsonb_array_elements(sorted_batch) ORDER BY value->>'key',value->>'canonicalCommand' LOOP
     command_key := item->>'key';
     prepared := (SELECT value FROM jsonb_array_elements(commands) WHERE value#>>'{command,commandKey}'=command_key LIMIT 1);
@@ -471,6 +485,10 @@ BEGIN
       CONTINUE;
     END IF;
     prepared := public.catalog_price_setup_prepare(item->>'canonicalCommand',item->>'fingerprint');
+    IF p_parent IS NULL THEN
+      IF prepared ? 'outcome' THEN RETURN prepared; END IF;
+      actor := (prepared->>'actorId')::uuid;
+    END IF;
     IF prepared ? 'outcome' AND prepared->>'outcome'<>'replayed' THEN failure := prepared; EXIT; END IF;
     IF prepared->>'outcome'='replayed' THEN
       prepared := item || jsonb_build_object('command',(item->>'canonicalCommand')::jsonb,'replayed',prepared);
@@ -533,8 +551,12 @@ CREATE FUNCTION public.catalog_price_setup_apply_in_transaction(p_actor uuid,p_p
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE item jsonb; prepared jsonb; result jsonb; results jsonb := '[]'; actual_parent uuid;
 BEGIN
-  IF public.catalog_price_setup_require_human_admin() IS DISTINCT FROM p_actor
-    OR p_prelocked->>'actorId' IS DISTINCT FROM p_actor::text
+  -- Standalone has already admitted its actor. Publication still verifies the
+  -- live actor on this phase. Both paths bind the same transaction and actor.
+  IF p_parent IS NOT NULL AND public.catalog_price_setup_require_human_admin() IS DISTINCT FROM p_actor THEN
+    RAISE EXCEPTION 'catalog_price_setup_prelock_invalid' USING ERRCODE='22023';
+  END IF;
+  IF p_prelocked->>'actorId' IS DISTINCT FROM p_actor::text
     OR p_prelocked->>'parentProductId' IS DISTINCT FROM p_parent::text
     OR p_prelocked->>'transactionId' IS DISTINCT FROM pg_current_xact_id()::text THEN
     RAISE EXCEPTION 'catalog_price_setup_prelock_invalid' USING ERRCODE='22023';
@@ -546,7 +568,7 @@ BEGIN
       IF actual_parent IS DISTINCT FROM p_parent THEN RAISE EXCEPTION 'catalog_price_parent_mismatch' USING ERRCODE='22023'; END IF;
     END IF;
     result := CASE WHEN prepared ? 'replayed' THEN prepared->'replayed'
-      ELSE public.catalog_price_setup_apply_prelocked(prepared) END;
+      ELSE public.catalog_price_setup_apply_prelocked(prepared,p_parent IS NOT NULL) END;
     results := results || jsonb_build_array(result);
     IF result->>'outcome' NOT IN ('committed','replayed') THEN RETURN result; END IF;
   END LOOP;
@@ -557,16 +579,15 @@ CREATE OR REPLACE FUNCTION public.catalog_price_setup_apply(p_canonical_command 
     LANGUAGE plpgsql VOLATILE SECURITY DEFINER
     SET search_path = pg_catalog, pg_temp
     AS $$
-DECLARE actor uuid; prepared jsonb; result jsonb;
+DECLARE prepared jsonb; result jsonb;
 BEGIN
-  actor := public.catalog_price_setup_require_human_admin();
-  prepared := public.catalog_price_setup_prelock(actor,NULL,jsonb_build_array(jsonb_build_object('canonicalCommand',p_canonical_command,'fingerprint',p_fingerprint)));
+  prepared := public.catalog_price_setup_prelock(NULL,NULL,jsonb_build_array(jsonb_build_object('canonicalCommand',p_canonical_command,'fingerprint',p_fingerprint)));
   IF prepared ? 'outcome' THEN RETURN prepared; END IF;
-  result := public.catalog_price_setup_apply_in_transaction(actor,NULL,prepared);
+  result := public.catalog_price_setup_apply_in_transaction((prepared->>'actorId')::uuid,NULL,prepared);
   RETURN CASE WHEN result->>'outcome'='applied' THEN result#>'{results,0}' ELSE result END;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_price_setup_prepare(text,text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.catalog_price_setup_apply_prelocked(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_price_setup_apply_prelocked(jsonb,boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_price_setup_prelock(uuid,uuid,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb) FROM PUBLIC;

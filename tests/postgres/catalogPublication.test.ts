@@ -436,7 +436,7 @@ it.each([
   const data = await draft(); await commit(data.publication);
   for (const table of ["catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions"])
     await expect(db.query(`UPDATE public.${table} SET ${table === "catalog_publications" || table === "catalog_publication_decisions" ? "id=id" : table === "catalog_sku_revisions" ? "id=id" : "command_key=command_key"}`)).rejects.toMatchObject({ code: "55000" });
-  for (const signature of ["public.catalog_price_setup_prepare(text,text)", "public.catalog_price_setup_apply_prelocked(jsonb)",
+  for (const signature of ["public.catalog_price_setup_prepare(text,text)", "public.catalog_price_setup_apply_prelocked(jsonb,boolean)",
     "public.catalog_price_setup_prelock(uuid,uuid,jsonb)", "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)"])
     expect((await db.query("SELECT has_function_privilege('authenticated',$1,'EXECUTE') AS allowed", [signature])).rows).toEqual([{ allowed: false }]);
   const role = `publication_reader_${process.pid}`, client = await db.connect();
@@ -3008,5 +3008,88 @@ it("rolls back when a resolved attribute reference becomes unavailable at projec
   const before = await snapshot();
   expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_attribute_projection_invalid" });
   expect(projecting).toBe(true);
+  expect(await snapshot()).toEqual(before);
+});
+
+it.each([["revision", "release"], ["compensation", "compensation"]] as const)(
+  "W09 rejects a cross-product route collision on a presentation-only %s", async (_path, kind) => {
+    const data = await draft(), initial = await commit(data.publication), payload = structuredClone(data.payload);
+    const route = (foreignPublished.data.payload.product.sharedContent.presentation.routePath as { en: string }).en;
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.publication.kind = kind;
+    payload.product.sharedContent.presentation = { routePath: { en: route } };
+    payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+    const command = await save(payload, data.draftId, 1, initial.head);
+    await approve(command);
+    const before = await snapshot();
+    const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async (executor, state, requirePrice) => {
+      expect(requirePrice).toBe(false);
+      expect(state.skus).toEqual([]);
+      const { rows } = await executor.query("SELECT id FROM public.catalog_products WHERE id<>$1 AND publication_facts->'presentation'->'routePath'->>'en'=$2", [state.product.id, route]);
+      expect(rows).toEqual([{ id: foreignPublished.data.productId }]);
+      return { ready: false, reasons: ["localized_route_duplicate"] };
+    } });
+    expect(await target.publish(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+    expect(await snapshot()).toEqual(before);
+  });
+
+describe("LC2 forward compatibility with legacy catalogue rows", () => {
+  let legacy: Pool;
+  const publicationPath = "db/platform/migrations/20261123150000_catalog_publication.sql";
+  beforeAll(async () => {
+    const container = await runPostgresContainer({ name: `catalog-publication-legacy-${process.pid}`, password: "synthetic-catalog-publication" });
+    containers.push(container);
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Legacy catalogue witnesses require real PostgreSQL");
+    legacy = new Pool({ connectionString: container.connectionString });
+    pools.push(legacy);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+    for (const unit of [manifest.baseline, ...manifest.forward]) {
+      if (unit.file === publicationPath) break;
+      await legacy.query(readFileSync(unit.file, "utf8"));
+    }
+  }, postgresSetupTimeoutMs);
+
+  it.each(["duplicate GTIN under different issuers", "duplicate draft combination", "opaque legacy GTIN"] as const)("installs over %s", async kind => {
+    const client = await legacy.connect();
+    const productId = randomUUID(), firstSku = randomUUID(), secondSku = randomUUID();
+    const combination = Buffer.alloc(32, 1);
+    const gtin = nextGtin();
+    try {
+      await client.query("BEGIN");
+      await client.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Legacy product')", [productId, `legacy-${productId}`]);
+      await client.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,combination_digest)
+        VALUES($1,$3,$1::uuid::text,'First legacy SKU','draft',$4),($2,$3,$2::uuid::text,'Second legacy SKU','draft',$4)`,
+      [firstSku, secondSku, productId, kind === "duplicate draft combination" ? combination : null]);
+      if (kind === "duplicate GTIN under different issuers") {
+        await client.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+          VALUES ($1,'legacy:first','gtin',$3,'unit',1),($2,'legacy:second','gtin',$3,'unit',1)`, [firstSku, secondSku, gtin]);
+      } else if (kind === "opaque legacy GTIN") {
+        await client.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+          VALUES ($1,'legacy:first','gtin','opaque','unit',1)`, [firstSku]);
+      }
+      await client.query(readFileSync(publicationPath, "utf8"));
+      const skus = await client.query("SELECT publication_facts,combination_digest FROM public.catalog_skus WHERE product_id=$1", [productId]);
+      expect(skus.rows).toEqual(Array.from({ length: 2 }, () => ({ publication_facts: null, combination_digest: kind === "duplicate draft combination" ? combination : null })));
+      const identifiers = await client.query("SELECT issuer,scheme,normalized_value FROM public.catalog_sku_identifiers ORDER BY issuer");
+      expect(identifiers.rows).toEqual(kind === "duplicate draft combination" ? [] : kind === "opaque legacy GTIN"
+        ? [{ issuer: "legacy:first", scheme: null, normalized_value: "opaque" }]
+        : [{ issuer: "legacy:first", scheme: null, normalized_value: gtin }, { issuer: "legacy:second", scheme: null, normalized_value: gtin }]);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
+});
+
+it("publication refuses a GTIN held by a different legacy issuer", async () => {
+  const data = await draft(), identifier = data.payload.skus[0]!.identifiers![0]!;
+  const legacy = randomUUID();
+  await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Legacy product')", [legacy, `legacy-${legacy}`]);
+  await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Legacy SKU')", [legacy, `legacy-${legacy}`]);
+  await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+    VALUES ($1,'legacy:issuer','gtin',$2,'unit',1)`, [legacy, identifier.value]);
+  await approve(data.publication);
+  const before = await snapshot();
+  expect(await authority.publish(data.publication, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_identity_conflict" });
   expect(await snapshot()).toEqual(before);
 });

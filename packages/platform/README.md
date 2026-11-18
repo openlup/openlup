@@ -1463,14 +1463,17 @@ requires a valid unit GTIN even for dark facts. Activation source admission chec
 gross mass against net content with exact arithmetic.
 
 Setting a product status to active requires an active primary SKU with at least one
-eligibility flag enabled. Physical combinations remain unique across all SKU
-statuses. Document moves, product activation and membership admission recheck the
+eligibility flag enabled. Publication enforces physical combination uniqueness
+across all statuses within its SKU roster. The forward preserves legacy draft
+combinations and issuer-scoped identifiers. Publication checks an incoming
+normalized GTIN against every live GTIN regardless of issuer. Document moves, product activation and membership admission recheck the
 current open source of each affected active, eligible SKU, including omitted rows.
 Explicit media evidence also requires a current open authored source, even without
 activation. Every explicit draft claim binds its stored command and fingerprint,
 including a claim naming the current draft.
-Readiness checks use the operation's affected set; withdrawal-only publication can
-succeed while an untouched sibling's price is expired or the global gate is red.
+Structural readiness includes a transaction-local product check for presentation
+changes, even when the affected SKU set is empty. Price readiness uses the
+affected SKU set. Withdrawal-only publication can succeed while an untouched sibling's price is expired or the global gate is red.
 The global readiness gate runs when an eligibility operation enables a flag.
 An expected-head conflict precedes live-projection drift.
 Draft input retains its 1 MiB ceiling. Publication validation shares scalar and

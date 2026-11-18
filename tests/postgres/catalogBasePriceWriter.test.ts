@@ -1280,3 +1280,97 @@ it("writer_refuses_two_finite_effective_bases", async () => transaction(async db
   await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from,valid_to) VALUES($1,$2,'one_time',1001,statement_timestamp()-interval '2 hours',statement_timestamp()+interval '1 hour')", [genuine.list, genuine.sku]);
   expect(await apply(db, c)).toEqual({ outcome: "validation_issue", reason: "base_price_ambiguous" });
 }));
+
+async function installOriginalApply(db: PoolClient) {
+  const original = readFileSync(writerPath, "utf8").match(/CREATE FUNCTION public\.catalog_price_setup_apply\([\s\S]*?\$\$;/u)?.[0];
+  if (!original) throw new Error("Original LC3 apply definition is missing");
+  await db.query(original.replace("public.catalog_price_setup_apply(", "pg_temp.catalog_price_setup_original("));
+}
+
+it("standalone LC3 matches the original raw command and target refusals", async () => transaction(async db => {
+  await installOriginalApply(db);
+  const valid = await command(db);
+  const hash = (bytes: string) => createHash("sha256").update(bytes).digest("hex");
+  const encoded = canonicalCatalogPriceSetupCommand(valid);
+  const malformed = '{"schemaVersion":';
+  const overflow = encoded.replace('"unitPriceMinor":1200', '"unitPriceMinor":1e1000000');
+  expect(overflow).not.toBe(encoded);
+  const expectedStateMismatch = canonicalCatalogPriceSetupCommand({ ...valid, expected: { entryId: randomUUID(), unitPriceMinor: 900 } });
+  const readinessRegression = canonicalCatalogPriceSetupCommand({ ...valid, unitPriceMinor: 5 });
+  const cases = [
+    { name: "malformed JSON", bytes: malformed, expected: { outcome: "validation_issue", reason: "command_invalid" } },
+    { name: "out-of-range JSON number", bytes: overflow, expected: { code: "22003" } },
+    { name: "bad fingerprint", bytes: encoded, fingerprint: "0".repeat(64), expected: { outcome: "validation_issue", reason: "command_fingerprint_invalid" } },
+    { name: "out-of-range JSON with bad fingerprint", bytes: overflow, fingerprint: "0".repeat(64), expected: { outcome: "validation_issue", reason: "command_fingerprint_invalid" } },
+    { name: "draft list", bytes: encoded, status: "draft", expected: { outcome: "validation_issue", reason: "price_list_not_active" } },
+    { name: "archived list", bytes: encoded, status: "archived", expected: { outcome: "validation_issue", reason: "price_list_not_active" } },
+    { name: "stale base", bytes: expectedStateMismatch, expected: { code: "40001", message: "catalog_price_setup_expected_state_mismatch" } },
+    { name: "readiness delta", bytes: readinessRegression, expected: { code: "55000", message: "catalog_price_setup_readiness_would_fail" } },
+    { name: "valid commit", bytes: encoded, expected: { outcome: "committed", commandKey: valid.commandKey, unitPriceMinor: 1200 } },
+  ];
+  for (const { name, bytes, fingerprint, status, expected } of cases) {
+    const results: unknown[] = [];
+    for (const entry of ["pg_temp.catalog_price_setup_original", "public.catalog_price_setup_apply"]) {
+      await db.query("SAVEPOINT compare_apply");
+      try {
+        if (status) await db.query("UPDATE public.price_lists SET status=$2 WHERE id=$1", [genuine.list, status]);
+        const { value } = (await db.query(`SELECT ${entry}($1,$2) AS value`, [bytes, fingerprint ?? hash(bytes)])).rows[0];
+        if (value.outcome === "committed") {
+          const stored = await current(db);
+          expect(stored).toEqual({ id: value.receipt.current.entryId, unit_price_minor: 1200 });
+          results.push({ outcome: value.outcome, commandKey: value.receipt.commandKey, unitPriceMinor: value.receipt.current.unitPriceMinor });
+        } else {
+          results.push(value);
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error)) throw error;
+        results.push({ code: error.code, message: error.message });
+      } finally {
+        await db.query("ROLLBACK TO SAVEPOINT compare_apply");
+        await db.query("RELEASE SAVEPOINT compare_apply");
+      }
+    }
+    expect(results[0], name).toMatchObject(expected);
+    expect(results[1], name).toEqual(results[0]);
+  }
+}));
+
+it.each(["list archive", "administrator role change"] as const)(
+  "standalone LC3 admitted before the context lock commits after a concurrent %s", async change => {
+    for (const entry of ["pg_temp.catalog_price_setup_original", "public.catalog_price_setup_apply"]) {
+      const blocker = await owner.connect();
+      let writing: Promise<unknown> | undefined;
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query("SELECT pg_advisory_xact_lock(hashtextextended('catalog-price-setup:' || $1 || ':' || $2,0))", [genuine.list, genuine.sku]);
+        const blockerPid = (await blocker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+        await transaction(async db => {
+          if (entry.startsWith("pg_temp.")) await installOriginalApply(db);
+          const pid = (await db.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+          const plan = await command(db), bytes = canonicalCatalogPriceSetupCommand(plan);
+          const result = db.query(`SELECT ${entry}($1,$2) AS value`, [bytes, createHash("sha256").update(bytes).digest("hex")]);
+          writing = result.catch(() => undefined);
+          try {
+            await expect.poll(async () => (await blocker.query("SELECT pg_blocking_pids($1) AS pids", [pid])).rows[0].pids).toEqual([blockerPid]);
+            if (change === "list archive") {
+              await blocker.query("UPDATE public.price_lists SET status='archived' WHERE id=$1", [genuine.list]);
+            } else {
+              await blocker.query("UPDATE public.platform_human_memberships SET role='distributor' WHERE principal_id=$1", [actor]);
+            }
+            await blocker.query("COMMIT");
+            expect((await result).rows[0].value, entry).toMatchObject({ outcome: "committed", receipt: { commandKey: plan.commandKey, current: { unitPriceMinor: 1200 } } });
+          } finally {
+            await blocker.query("ROLLBACK");
+            await writing;
+          }
+        });
+      } finally {
+        blocker.release();
+        if (change === "list archive") {
+          await owner.query("UPDATE public.price_lists SET status='active' WHERE id=$1", [genuine.list]);
+        } else {
+          await owner.query("UPDATE public.platform_human_memberships SET role='admin' WHERE principal_id=$1", [actor]);
+        }
+      }
+    }
+  });
