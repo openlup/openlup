@@ -203,8 +203,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     if (!rows.length) return null;
     require(rows.length === 1, "catalog_publication_receipt_invalid", "dependency_unavailable");
     const original = rows[0]!;
-    require(original.kind === kind && original.fingerprint === fingerprint, "catalog_publication_command_key_reused", "conflict");
     require(original.scope_id === productId && original.command_key === commandKey, "catalog_publication_receipt_invalid", "dependency_unavailable");
+    require(original.kind === kind && original.fingerprint === fingerprint, "catalog_publication_command_key_reused", "conflict");
     if (kind === "publish") {
       const result = await storedPublishReceipt(db, original);
       require(result.actorId === actorId, "catalog_publication_operator_mismatch", "unauthorized");
