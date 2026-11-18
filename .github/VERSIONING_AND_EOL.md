@@ -606,6 +606,8 @@ of its caps. Exceeding a class or aggregate byte/file cap refuses with the
 package, measured value, cap and “raise the cap in a reviewed PR”. Raising a
 limit means editing that one value in a reviewed change. Core's standalone
 `release:pack` also retains its existing class and aggregate checks.
+For each class or aggregate cap met with less than 5% headroom,
+`packages:check` warns and keeps the exit status determined by its findings.
 
 The npm developer-experience change enables declaration maps without JavaScript
 source maps. Core and Outbox remain inside their existing caps. On the merged

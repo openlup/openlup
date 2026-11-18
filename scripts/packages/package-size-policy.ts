@@ -38,10 +38,11 @@ export function readPackBudget(root: string, entry: PackageEntry): PackBudget {
   return pack;
 }
 
-export function checkPackBudget(entry: PackageEntry, budget: PackBudget, measured: PackMeasurement, releaseSet?: string, changelog = "", releaseNotes?: string): Finding[] {
+export function checkPackBudget(entry: PackageEntry, budget: PackBudget, measured: PackMeasurement, releaseSet?: string, changelog = "", releaseNotes?: string, warn?: (message: string) => void): Finding[] {
   const findings: Finding[] = [];
   const cap = (label: string, value: number, limit: number): void => {
     if (value > limit) findings.push({ subject: entry.name, rule: "package-size-cap", detail: `${label} ${value} exceeds cap ${limit}; raise the cap in a reviewed PR` });
+    else if ((limit - value) / limit < 0.05) warn?.(`WARN ${entry.name}: ${label} cap ${limit} has ${((limit - value) / limit * 100).toFixed(2)}% headroom`);
   };
   for (const kind of ["code", "docs"] as const) {
     cap(`${kind} packed bytes`, measured[kind].packedBytes, budget[kind].maxPackedBytes);

@@ -1740,6 +1740,9 @@ Optional references from prior work:
 - Check typed public declarations with the compiler, alongside runtime tests.
 - Exercise cleanup through actual subprocess interruption and resource absence.
 - Keep canonical contract owners and link related guidance rather than copying it.
+- State every exclusion and definition the lead already knows in the review criteria,
+  including which released history stays byte-identical, how measurements are defined,
+  and which artifacts are required. Omissions have caused avoidable failed reviews.
 
 ## Developer Certificate of Origin
 
