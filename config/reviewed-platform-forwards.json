@@ -5559,7 +5559,18 @@
       {
         "row": "K6",
         "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
-        "replacedFunctions": [],
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+            "beforeSha256": "b5e7804607aa537887f3c62ff4bee84370d9c250417a9d476c07d4de07c773b4",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
+            "beforeSha256": "9495fd44c1c64d34706ec0a105d667c9a3db2d85b9433782460e1b71001876d0",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
         "createdFunctions": [
           {
             "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
@@ -7832,8 +7843,18 @@
     },
     {
       "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
-      "sha256": "a9e247d5920fcb9d99d6c26064c4a0f8eb49fe42acabef5214b57214979801c6",
+      "sha256": "03fcf1b7a78750cdd56a1a35a93ec1367a4ece70c52fb9b91f274bc9799e6c0e",
       "functions": [
+        {
+          "signature": "public.subscription_activation_commit(public.subscription_activations,text,text,timestamptz,boolean)",
+          "beforeSha256": "b5e7804607aa537887f3c62ff4bee84370d9c250417a9d476c07d4de07c773b4",
+          "afterSha256": "d5b06fdd78a5229a539b9ff4688453ec7466528bc0014600c8bdce1be31c2b07"
+        },
+        {
+          "signature": "public.subscription_activate_from_captured_payment(text,uuid,text)",
+          "beforeSha256": "9495fd44c1c64d34706ec0a105d667c9a3db2d85b9433782460e1b71001876d0",
+          "afterSha256": "1a722b695e21356efea369d64370893faf15f5cb70d0ba5b8cefeefc9aa41a9f"
+        },
         {
           "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
           "beforeSha256": null,

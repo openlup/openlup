@@ -113,3 +113,56 @@ it("admits the exact forward and approval pins through the existing native valid
   const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
   expect(() => assertNativeStoreForward(registry, path, readFileSync(path), preceding)).not.toThrow();
 });
+
+it("delegates both legacy signatures for the selected runtime before writes", async () => {
+  const signature = "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)";
+  const original = String((await admin.query("SELECT pg_get_functiondef($1::regprocedure) AS definition", [signature])).rows[0].definition);
+  const entry = "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)";
+  const entryOriginal = String((await admin.query("SELECT pg_get_functiondef($1::regprocedure) AS definition", [entry])).rows[0].definition);
+  const p = await purchase(), before = await writes();
+  try {
+    await admin.query(entryOriginal.replace("\nBEGIN\n", "\nBEGIN\n  RAISE EXCEPTION 'k6_entry_delegation_probe';\n"));
+    await admin.query(original.replace("\nBEGIN\n", "\nBEGIN\n  RAISE EXCEPTION 'k6_delegation_probe';\n"));
+    await expect(rpc("subscription_activate_from_captured_payment", [p.idempotencyKey, p.orderId, fingerprint(p.capturedReference)]))
+      .rejects.toThrow("k6_entry_delegation_probe");
+    await expect(executor.query(`SELECT public.subscription_activation_commit(a,$2,$3,$4::timestamptz,false)
+      FROM public.subscription_activations a WHERE order_id=$1`, [p.orderId, p.idempotencyKey, fingerprint(p.capturedReference), at]))
+      .rejects.toThrow("k6_delegation_probe");
+    expect(await writes()).toEqual(before);
+  } finally { await admin.query(original); await admin.query(entryOriginal); }
+});
+
+it("preserves permitted legacy callers lacking either new execution capability", async () => {
+  const role = "k6_legacy_caller";
+  const helper = "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)";
+  const entry = "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)";
+  const tables = ["commerce_orders", "commerce_settlement_intents", "subscription_activations", "subscriptions", "subscription_cycles", "subscription_events"];
+  const policies: string[] = [];
+  await admin.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS`);
+  try {
+    await admin.query(`GRANT USAGE ON SCHEMA public TO ${role}; GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${role};
+      GRANT INSERT,UPDATE ON ${tables.map(table => `public.${table}`).join(",")} TO ${role};
+      GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO ${role};
+      REVOKE EXECUTE ON FUNCTION ${helper},${entry} FROM ${role}`);
+    for (const table of tables) {
+      await admin.query(`CREATE POLICY k6_legacy_probe ON public.${table} FOR ALL TO ${role} USING (true) WITH CHECK (true)`);
+      policies.push(table);
+    }
+    for (const entryOnly of [false, true]) {
+      if (entryOnly) await admin.query(`GRANT EXECUTE ON FUNCTION ${entry} TO ${role}`);
+      const p = await purchase(), db = await admin.connect();
+      try {
+        await db.query("BEGIN"); await db.query(`SET LOCAL ROLE ${role}`);
+        expect((await db.query("SELECT has_function_privilege(current_user,$1,'EXECUTE') helper,has_function_privilege(current_user,$2,'EXECUTE') entry", [helper, entry])).rows[0])
+          .toEqual({ helper: false, entry: entryOnly });
+        await db.query("SELECT public.subscription_activate_from_captured_payment($1,$2,$3)", [p.idempotencyKey, p.orderId, fingerprint(p.capturedReference)]);
+        await db.query("COMMIT");
+      } catch (error) { await db.query("ROLLBACK"); throw error; }
+      finally { db.release(); }
+      expect(await row(p.orderId)).toMatchObject({ edit_window_hours: 72 });
+    }
+  } finally {
+    for (const table of policies) await admin.query(`DROP POLICY k6_legacy_probe ON public.${table}`);
+    await admin.query(`DROP OWNED BY ${role}; DROP ROLE ${role}`);
+  }
+});
