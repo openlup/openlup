@@ -78,6 +78,8 @@ fails its own workflow run; PR `install-proof` remains unchanged. A maintainer c
 use `workflow_dispatch` on the default branch with an existing
 `openlup-core-vMAJOR.MINOR.PATCH` tag; historical qualification does not require
 that version to remain npm's `latest`.
+The visibility check requires the expected version metadata and a successful
+HTTP HEAD request to the resolved tarball URL for each exact package version.
 
 The trusted default-branch [entry point](../../scripts/packages/exact-set-qualification.mjs)
 archives the validated tag as data and calls the trusted starter extractor.

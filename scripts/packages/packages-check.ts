@@ -71,7 +71,7 @@ function packAndCheck(root: string, entry: PackageEntry, packages: readonly Pack
     if (entry.publish) {
       const budget = readPackBudget(root, entry);
       const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-      findings.push(...checkPackBudget(entry, budget, measurePack(entries, readFileSync(join(scratch, packed.filename)).length), releaseSet, releaseSet === undefined ? "" : readFileSync(join(directory, "CHANGELOG.md"), "utf8"), releaseNotes));
+      findings.push(...checkPackBudget(entry, budget, measurePack(entries, readFileSync(join(scratch, packed.filename)).length), releaseSet, releaseSet === undefined ? "" : readFileSync(join(directory, "CHANGELOG.md"), "utf8"), releaseNotes, console.warn));
       for (const [subpath, cap] of Object.entries(budget.browserEntries)) {
         const target = manifest.exports?.[subpath]?.import;
         if (typeof target !== "string") finding("browser-entry-policy", `${subpath} has no runtime import export`);

@@ -44,6 +44,15 @@ describe("package artifact limits", () => {
       expect(check({ ...measurement, [kind]: { ...measurement[kind], [field]: limit + 1 } })).toContainEqual({ subject: entry.name, rule: "package-size-cap", detail: expect.stringContaining(`${kind} ${field === "files" ? "files" : "packed bytes"} ${limit + 1} exceeds cap ${limit}`) });
     }
   });
+  it("warns below 5% headroom and preserves the overflow finding", () => {
+    const warnings: string[] = [];
+    const measure = (packedBytes: number) => checkPackBudget(entry, budget, { ...measurement, packedBytes }, undefined, "", undefined, warning => warnings.push(warning));
+    expect(measure(1900)).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(measure(1920)).toEqual([]);
+    expect(measure(2020)).toEqual([{ subject: entry.name, rule: "package-size-cap", detail: "tarball packed bytes 2020 exceeds cap 2000; raise the cap in a reviewed PR" }]);
+    expect(warnings).toEqual(["WARN @openlup/example: tarball packed bytes cap 2000 has 4.00% headroom"]);
+  });
   it("measures guide files in path order separately from code, root docs and other files", () => {
     const entries = [
       { path: "docs/guide/nested/page.md", bytes: Buffer.from("nested") },

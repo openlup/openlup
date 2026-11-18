@@ -163,25 +163,27 @@ describe("the blocking registry tutorial after publication", () => {
     expect(candidateWorkflow).not.toContain("Guide tutorial against the packed candidate (advisory)");
   });
 
-  function registryWait(answers: Array<{ version?: string; fail?: boolean }>, expire = false, event = "workflow_run") {
+  const tarball = "https://registry.example.test/package.tgz";
+  const available = [{ value: "0.13.1" }, { value: tarball }, {}];
+  function registryWait(answers: Array<{ value?: string; fail?: boolean }>, expire = false, event = "workflow_run") {
     const directory = mkdtempSync(join(tmpdir(), "openlup-registry-wait-"));
     try {
       const bin = join(directory, "bin"), log = join(directory, "requests"), output = join(directory, "output"), summary = join(directory, "summary");
       mkdirSync(bin);
       // The real node command still reads the repository's package inventory. Only network and time are fixtures.
       writeFileSync(log, ""); writeFileSync(output, ""); writeFileSync(summary, "");
-      writeFileSync(join(bin, "npm"), `#!${process.execPath}
+      for (const name of ["npm", "curl"]) writeFileSync(join(bin, name), `#!${process.execPath}
 const { appendFileSync, readFileSync } = require("node:fs");
 const log = ${JSON.stringify(log)}, answers = ${JSON.stringify(answers)};
 const index = readFileSync(log, "utf8").split("\\n").filter(Boolean).length;
 appendFileSync(log, JSON.stringify(Reflect.get(process, "argv").slice(2)) + "\\n");
 const answer = answers[index] ?? { fail: true };
 if (answer.fail) process.exit(1);
-console.log(answer.version);
+console.log(answer.value ?? "");
 `);
       writeFileSync(join(bin, "sleep"), "#!/bin/sh\nexit 0\n");
       writeFileSync(join(bin, "timeout"), '#!/bin/sh\nshift\nexec "$@"\n');
-      for (const name of ["npm", "sleep", "timeout"]) chmodSync(join(bin, name), 0o755);
+      for (const name of ["npm", "curl", "sleep", "timeout"]) chmodSync(join(bin, name), 0o755);
       const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
       const source = expire ? wait.replace("SECONDS + visibility_seconds", "SECONDS + 0") : wait;
       const result = spawnSync("bash", ["--noprofile", "--norc", "-euo", "pipefail", "-c", source], {
@@ -191,7 +193,7 @@ console.log(answer.version);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }
 
-  it("retries registry errors and stale versions, waiting for the full set and core's latest value", () => {
+  it("retries registry errors, stale versions and unavailable exact tarballs before reporting readiness", () => {
     expect(step(tutorial, REGISTRY_WAIT)).toContain("RELEASE_TAG: ${{ inputs.release_tag || github.event.workflow_run.head_branch }}");
     expect(wait).toContain('version="${RELEASE_TAG##*-v}"');
     expect(wait).toContain("visibility_seconds=1800\ndeadline=$((SECONDS + visibility_seconds))");
@@ -199,21 +201,24 @@ console.log(answer.version);
     expect(wait).toContain('timeout "$remaining" npm view "$spec" version');
     expect(wait).toContain("if (( delay < 30 )); then delay=$((delay + 5)); fi");
     const packages = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { name: string }) => `${entry.name}@0.13.1`);
-    const green = packages.map(() => ({ version: "0.13.1" }));
-    const result = registryWait([{ fail: true }, { version: "0.12.0" }, ...green, { version: "0.12.0" }, ...green, { version: "0.13.1" }]);
+    const green = packages.flatMap(() => available);
+    const result = registryWait([{ fail: true }, { value: "0.12.0" }, ...available.slice(0, 2), { fail: true }, ...green, { value: "0.12.0" }, ...green, { value: "0.13.1" }]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe("ready=true\n");
     expect(result.summary).toBe("");
-    expect(result.requests.map(args => args.slice(0, 3))).toEqual([packages[0], packages[0], ...packages, "@openlup/core", ...packages, "@openlup/core"].map(spec => ["view", spec, "version"]));
-    for (const args of result.requests) expect(args.slice(3)).toEqual(["--registry=https://registry.npmjs.org", "--fetch-retries=0", "--fetch-timeout=10000"]);
+    const flags = ["--registry=https://registry.npmjs.org", "--fetch-retries=0", "--fetch-timeout=10000"];
+    const version = (spec: string) => ["view", spec, "version", ...flags];
+    const probe = (spec: string) => [version(spec), ["view", spec, "dist.tarball", ...flags], ["-fsSI", "--max-time", "10", "--", tarball]];
+    const set = packages.flatMap(probe), latest = version("@openlup/core");
+    expect(result.requests).toEqual([version(packages[0]), version(packages[0]), ...probe(packages[0]), ...set, latest, ...set, latest]);
   });
 
   it("qualifies historical dispatch versions without waiting for latest", () => {
     const count = JSON.parse(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8")).packages.filter((entry: { publish: boolean }) => entry.publish).length;
-    const result = registryWait(Array.from({ length: count }, () => ({ version: "0.13.1" })), false, "workflow_dispatch");
+    const result = registryWait(Array.from({ length: count }, () => available).flat(), false, "workflow_dispatch");
     expect(result.status, result.stderr).toBe(0);
     expect(result.output).toBe("ready=true\n");
-    expect(result.requests).toHaveLength(count);
+    expect(result.requests).toHaveLength(3 * count);
   });
 
   it("warns and defers without running the tutorial when the bounded propagation wait expires", () => {

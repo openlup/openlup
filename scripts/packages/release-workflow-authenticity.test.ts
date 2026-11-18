@@ -133,7 +133,14 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     return [".immutable == true", ".release.draft == false", "(.release.assets | length) == 0", "(.assets | length) == 0", ".release.prerelease == false"].every((clause) => event.includes(clause))
       && step(producer, "Verify the annotated tag and GitHub release attestation").includes('gh release verify "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"')
       && count(release, 'test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true') === 2
-      && inOrder(release, ["--method PATCH", "package-release.ts verify", 'gh release verify "openlup-$PACKAGE-v$VERSION"']);
+      && inOrder(release, ["--method PATCH", "package-release.ts verify", 'gh release verify "openlup-$PACKAGE-v$VERSION"'])
+      && script(step(release, "Verify GitHub's release attestation of the published tag")) === [
+        "for attempt in 1 2 3; do",
+        '  if gh release verify "openlup-$PACKAGE-v$VERSION" --repo "$GITHUB_REPOSITORY"; then exit 0; fi',
+        '  [ "$attempt" -lt 3 ] || exit 1',
+        "  sleep 10",
+        "done\n",
+      ].join("\n");
   },
   "annotated tag bound to the release commit": ({ producer }) => {
     const tag = step(producer, "Verify the annotated tag and GitHub release attestation");
@@ -251,7 +258,8 @@ const DEFECTS: Defect[] = [
   { control: "release immutable, attested and assetless", plant: "mutable live release", in: "producer", from: ".immutable == true and ", to: "" },
   { control: "release immutable, attested and assetless", plant: "no attestation check", in: "producer", from: '          gh release verify "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"\n', to: "" },
   { control: "release immutable, attested and assetless", plant: "no immutability check before publication", in: "dispatch", from: '          test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)" = true\n          printf', to: "          printf" },
-  { control: "release immutable, attested and assetless", plant: "no release attestation after publication", in: "dispatch", from: 'run: gh release verify "openlup-$PACKAGE-v$VERSION"', to: "run: true" },
+  { control: "release immutable, attested and assetless", plant: "no release attestation after publication", in: "dispatch", from: 'gh release verify "openlup-$PACKAGE-v$VERSION" --repo "$GITHUB_REPOSITORY"', to: "true" },
+  { control: "release immutable, attested and assetless", plant: "attestation failure passes after retries", in: "dispatch", from: '[ "$attempt" -lt 3 ] || exit 1', to: '[ "$attempt" -lt 3 ] || exit 0' },
   { control: "release immutable, attested and assetless", plant: "assets admitted", in: "producer", from: " and (.release.assets | length) == 0", to: "" },
   { control: "annotated tag bound to the release commit", plant: "lightweight tag admitted", in: "producer", from: '          test "$(git cat-file -t "$tag_ref")" = tag\n', to: "" },
   { control: "annotated tag bound to the release commit", plant: "tag message unchecked", in: "producer", from: '= "OpenLup package @openlup/$package $version."', to: '!= ""' },
