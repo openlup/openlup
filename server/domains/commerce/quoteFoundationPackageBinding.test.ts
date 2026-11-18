@@ -5,11 +5,13 @@ import { createCommerceQuoteSchemas, createCommerceQuotePrimitives, CommerceQuot
 import { CommerceQuoteError as localError } from "../../../src/domains/commerce/ports.js";
 import { CommerceQuoteCatalogReadError as localCatalogError } from "./commerceQuoteCatalogReadPort.js";
 import { commerceCurrencySchema, commerceMoneySchema, commerceProductSlugSchema } from "../../../src/domains/commerce/contractPrimitives.js";
-import { quoteContextSchema, commerceQuoteSchema, createQuoteRequestSchema, quoteDiscountSchema } from "../../../src/domains/commerce/quoteContracts.js";
+import { quoteContextSchema, commerceQuoteSchema, createQuoteRequestSchema, publicCreateQuoteResponseSchema, quoteDiscountSchema } from "../../../src/domains/commerce/quoteContracts.js";
 import { catalogFactsProvenanceSchema } from "../../../src/domains/commerce/catalogFactsProvenance.js";
+import { z } from "../../../src/lib/validation/zod.js";
 import { quoteCodeRejectionDetailSchema } from "../../../src/domains/commerce/quoteCodeRejectionDetails.js";
 
 import { readSettlementProfile } from "../../../src/lib/currency/platformCurrency.js";
+import { COMMERCE_CONTRACT_VERSION } from "../../../src/domains/commerce/types.js";
 
 const CURRENCY = readSettlementProfile({}).defaultCurrency;
 const bound = createCommerceQuoteSchemas({ currencySchema: commerceCurrencySchema,
@@ -20,11 +22,28 @@ describe("quote foundation reference bindings", () => {
   it("preserves error identity and browser/server evidence and money refusals", () => {
     expect(localError).toBe(CommerceQuoteError);
     expect(localCatalogError).toBe(CommerceQuoteCatalogReadError);
+    const offerFacts = {
+      version: "catalog_facts_v3", mode: "one_time", offerPriceReference: "offer-a",
+      skuId: "00000000-0000-4000-8000-000000000001",
+      documentRevisionId: "00000000-0000-4000-8000-000000000002", documentDigest: "c".repeat(64),
+      basePriceEntryId: "retail-a", atTime: "2040-01-01T00:00:00Z", currency: CURRENCY,
+      resolvedUnitAmountMinor: 50, resolvedLineAmountMinor: 100, baseUnitAmountMinor: 60,
+    };
+    const offerResult = catalogFactsProvenanceSchema.safeParse(offerFacts);
+    expect(offerResult).toEqual({ success: true, data: offerFacts });
+    expect(offerResult).toEqual(packageFacts.safeParse(offerFacts));
+    const malformedOffer = { ...offerFacts, offerPriceReference: "" };
+    expect(catalogFactsProvenanceSchema.safeParse(malformedOffer).success).toBe(false);
+    expect(packageFacts.safeParse(malformedOffer).success).toBe(false);
+    // The reference host preserves its existing v1/v2 diagnostics. Platform's
+    // exported union also lists the new v3 alternative on a malformed input.
+    const [authoredFacts, policyFacts] = packageFacts.options;
+    const legacyFacts = z.union([authoredFacts, policyFacts]);
     for (const [browser, server, values] of [
       [commerceMoneySchema, createCommerceQuotePrimitives(commerceCurrencySchema).commerceMoneySchema,
         [{ amountMinor: 1, currency: CURRENCY }, { amountMinor: 1, currency: "EUR" }, { amountMinor: -1, currency: CURRENCY }]],
       [quoteDiscountSchema, packageDiscount, [{ promotionId: "offer", appliesTo: "shipping", amountOffMinor: 1, reasonCode: "offer" }, { promotionEngineVersion: "promotion-engine.v2" }]],
-      [catalogFactsProvenanceSchema, packageFacts, [{ version: "catalog_facts_v2", mode: "one_time" }]],
+      [catalogFactsProvenanceSchema, legacyFacts, [{ version: "catalog_facts_v2", mode: "one_time" }]],
       [quoteCodeRejectionDetailSchema, packageDetail, [{ code: "CODE", reason: "minimum_not_met", minimumReferenceMinor: 12 }, { code: "CODE", reason: "minimum_not_met", minimumReferenceMinor: -1 }]],
     ] as const) for (const value of values) expect(outcome(browser, value)).toEqual(outcome(server, value));
   });
@@ -44,6 +63,23 @@ describe("quote foundation reference bindings", () => {
     for (const value of [quote, { ...quote, totalGross: money(109) }, { ...quote, context: { ...quote.context, unknown: true } }]) {
       expect(outcome(commerceQuoteSchema, value)).toEqual(outcome(bound.commerceQuoteSchema, value));
     }
+
+    const malformedFacts = {
+      version: "catalog_facts_v1", mode: "one_time",
+      skuId: "00000000-0000-4000-8000-000000000001",
+      documentRevisionId: "00000000-0000-4000-8000-000000000002", documentDigest: "c".repeat(64),
+      basePriceEntryId: "", resolvedPriceEntryId: "retail-a", atTime: "2040-01-01T00:00:00Z", currency: CURRENCY,
+      resolvedUnitAmountMinor: 108, resolvedLineAmountMinor: 108, baseUnitAmountMinor: 108,
+    };
+    const result = publicCreateQuoteResponseSchema.safeParse({
+      contractVersion: COMMERCE_CONTRACT_VERSION,
+      quote: { ...quote, lines: [{ ...quote.lines[0], quantity: 2, catalogFacts: malformedFacts }] },
+    });
+    expect(result.error?.issues.map(({ code, message, path }) => ({ code, message, path }))).toEqual([
+      { code: "too_small", message: "Too small: expected string to have >=1 characters", path: ["quote", "lines", 0, "catalogFacts", "basePriceEntryId"] },
+      { code: "custom", message: "quote line subtotal must match unit price and quantity", path: ["quote", "lines", 0, "lineSubtotalGross"] },
+      { code: "custom", message: "catalog facts are server-only", path: ["quote", "lines", 0, "catalogFacts"] },
+    ]);
   });
 });
 

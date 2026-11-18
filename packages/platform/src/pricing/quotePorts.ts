@@ -1,5 +1,6 @@
 import type { CreateQuoteRequest, CreateQuoteResponse } from "./contracts/quote.js";
 import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+import type { OneTimeOfferPricing } from "./oneTimeOfferPricing.js";
 
 /**
  * Server-resolved options for promo evaluation. Passed OUT-OF-BAND by the caller
@@ -9,6 +10,8 @@ import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
 export interface CreateQuoteOptions {
   clientId?: string | null;
   pricingPolicy?: PricingPolicySnapshot;
+  /** Resolved and authorized by the host, outside the public quote request. */
+  oneTimeOfferPricing?: OneTimeOfferPricing;
 }
 
 export interface CommerceQuotePort<Request = CreateQuoteRequest, Response = CreateQuoteResponse> {

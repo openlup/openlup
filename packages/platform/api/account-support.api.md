@@ -3922,6 +3922,7 @@ export interface CommercePackageSizingPort<Input, Result> {
 export type CheckoutOfferResolution = {
     kind: "bound";
     offerVersion: string;
+    requireQuoteAcceptance?: boolean;
 } | {
     kind: "refused";
     reason: string;
@@ -3937,6 +3938,17 @@ export interface CheckoutOfferPolicyPort<Intent, Quote> {
         offerVersion: string;
         quote: Quote;
     }): Promise<Record<string, unknown>>;
+    /** Required when the bound result opts in. Verifies the scoped review over the authoritative offer. */
+    verifyQuoteAcceptance?(input: {
+        token: string;
+        intent: Intent;
+        offerVersion: string;
+        quote: Quote;
+        expectedTotal: {
+            amountMinor: number;
+            currency: string;
+        };
+    }): boolean;
 }
 /** Shared journey projection; pricing and host metadata types are supplied by composition. */
 export interface CheckoutJourney<Request, Policy> {

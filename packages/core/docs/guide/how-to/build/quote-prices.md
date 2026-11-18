@@ -57,7 +57,7 @@ The read port exposes `listPriceLists`, `listExactBaseEntries`,
 `listExactLegacySubscriptionEntries` and `listSubscriptionPolicyHistory`.
 The PostgreSQL implementation reads active lists and active entries with an
 exact base-quantity constraint, retaining their validity intervals. Consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
 for the selection constraint. Policies
 are scoped by list, region, currency and channel.
 
@@ -69,8 +69,40 @@ with no effective revision does not fall back to legacy pricing.
 
 Use this authority for current quote money. Keep frozen renewal obligations
 on the subscription path; do not replace their saved money with a new quote.
-See the [pricing reference](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/README.md#pricing)
+See the [pricing reference](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/README.md#pricing)
 for the surrounding contract.
+
+## Price a fixed one-time offer
+
+Resolve the authorized offer and its exact physical lines on the server. Use
+Core's `allocateBundleTargetPrice` when the offer has a target total. Pass the
+allocated unit amounts in the strict quote port's second argument, under
+`oneTimeOfferPricing` with `priceReference`, `currency` and `lines`. Each
+allocation line carries `sku`, `quantity` and `unitGrossMinor`. The reference
+identifies the price revision in your own authority. Quote the full set of
+unique SKUs in one currency, at uniform exact unit money for each SKU. An
+allocation whose unit groups differ for the same SKU requires a separate,
+compatible downstream representation. Never use a rounded average. The
+server refuses invalid, incomplete and above-retail allocations. The existing
+catalog still controls sellability and retail reference amounts, including for
+promotion eligibility. The authoritative snapshot keeps offer price provenance
+private and the public quote projects it out.
+
+For explicit confirmation even without an adjustment, compose
+`createPromotionQuoteAcceptance` from `@openlup/platform/promotions` with
+`purpose: "offer-review"`. Give the issuer and verifier the same canonical
+projection of server-resolved offer revision, any separate price revision,
+checkout journey and delivery choice. The token already binds actual SKU quantities, line money, discounts,
+tax and shipping. Set `requireQuoteAcceptance: true` when the host offer
+policy binds the offer. Implement its `verifyQuoteAcceptance` method with the
+offer-review verifier, using the authoritative offer version passed to it.
+Offer-review tokens have their own signing domain. Keep the token transient
+and apply existing checkout and recovery admission. Re-resolve the offer before
+taking a new payment. The application owns offer eligibility and recovery UX.
+Any standalone snapshot verification or expired recovery for this offer needs
+the same server-bound re-quote. Standard checkout skips generic cross-order
+matching for an offer that requires review. Use the accepted order's own
+journey for payment continuation.
 
 ## Handle refusals
 

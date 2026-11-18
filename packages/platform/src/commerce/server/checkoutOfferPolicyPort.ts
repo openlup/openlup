@@ -14,7 +14,11 @@ export class CheckoutOfferRefusedError extends Error {
   }
 }
 
-export type CheckoutOfferBinding<Intent, Quote> = { port: CheckoutOfferPolicyPort<Intent, Quote>; offerVersion: string };
+export type CheckoutOfferBinding<Intent, Quote> = {
+  port: CheckoutOfferPolicyPort<Intent, Quote>;
+  offerVersion: string;
+  requireQuoteAcceptance?: boolean;
+};
 
 /**
  * Null, without a port call, for an intent that carries neither `offerVersion`
@@ -31,7 +35,11 @@ export async function resolveCheckoutOffer<Intent extends { offerVersion?: strin
   if (!port) throw new CheckoutOfferRefusedError(CHECKOUT_OFFER_VERSION_UNSUPPORTED);
   const resolution = await port.resolve({ intent, checkoutKind });
   if (resolution.kind === "refused") throw new CheckoutOfferRefusedError(resolution.reason);
-  return { port, offerVersion: resolution.offerVersion };
+  return {
+    port,
+    offerVersion: resolution.offerVersion,
+    ...(resolution.requireQuoteAcceptance === true ? { requireQuoteAcceptance: true } : {}),
+  };
 }
 
 /**
