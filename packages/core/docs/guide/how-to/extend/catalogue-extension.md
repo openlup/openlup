@@ -1,22 +1,13 @@
 # Catalogue extension recipes
 
-Development preview, targeting the next package set. Use matching installed
-`@openlup/*` versions and Node 24. This offline tool checks definitions,
-references, exact quantities and supplied draft facts through v5. It grants no installation,
-migration, publication or activation authority. The minimal skeleton is a fictional
-stationery pack; full reference packs and installed commerce journeys remain pending.
+Development preview. Use matching installed `@openlup/*` versions and Node 24.
+The offline checker covers definitions, references, exact quantities and draft
+inputs through v5. For native authoring and accepted references, see the
+catalogue section of the installed Platform README.
 
-Native lifecycle authoring and immutable accepted references have separate
-platform contracts. In an installed application, read the catalogue section of
-`node_modules/@openlup/platform/README.md` with the matching package declarations.
-The offline checker supplies no lifecycle, obligation-query or acceptance-barrier
-qualification; its fixture observations do not infer historical subscriber bindings.
-
-The inert JSON entry `runCatalogExtensionConformance(jsonText: string)` returns
-`Promise<CatalogConformanceReport>`. Supply JSON text, parsed without a reviver.
-Non-string direct arguments report `conformance_subject_invalid` (1) without
-inspection or coercion; invalid JSON rejects with `SyntaxError`. The CLI reads
-UTF-8 text and never imports the supplied file.
+The JSON API `runCatalogExtensionConformance(jsonText)` resolves to a
+`CatalogConformanceReport`. Non-strings give `conformance_subject_invalid` (1)
+without inspection. Invalid JSON rejects with `SyntaxError`.
 
 From the installed application, run:
 
@@ -47,11 +38,9 @@ supplied `validateContent` field in JSON refuses with
 `definition_unknown_field`. Drafts requesting application content validation
 return `conformance_owner_unavailable` (2) from the inert command. The trusted
 command runs the registered callback on the same draft bytes.
-Quantity fixtures contain `{type, value, targetUnit?}` and require explicit
-conversion factors. Type references use a namespaced string key and positive
-integer version; malformed references refuse before registry lookup. Quantity values have only
-`dimension`, `unit`, `unscaled` and `scale`: the first three are strings and scale
-is an integer. The shared owner retains domain, numeric and conversion bounds.
+Quantity fixtures use `{type, value, targetUnit?}` and explicit conversion
+factors. Values require string `dimension`, `unit` and `unscaled` fields plus
+an integer `scale`. The shared owner checks exactness and bounds.
 
 Use `requiredChecks` to require coverage in each pack. Available keys are
 `quantities`, `attribute-values`, `variant-combinations`, `draft-content`,
@@ -62,24 +51,23 @@ execution have separate runtime gates. Taxonomy, tax coverage and application,
 and promotions return required evidence unavailable (2). Unknown subject fields
 refuse. Attributes and combinations stay separate from strict v1 drafts.
 
-Reference rows and retained options are fixture observations. A PASS does not
-validate persisted identity bytes, history or database state. Installed versions,
-database references/cadence, listing capacity, publication races and legal
-rate correctness remain runtime facts. No database, network, seed or publish
-path is supplied. Exit codes: 0 satisfied within scope, 1 violated, 2 required
-evidence unavailable, 64 invalid invocation or JSON syntax, 74 filesystem or
-unexpected operation failure. Only explicitly allowlisted, deliberate owner input
-errors become exit 1 at the input path, retaining their stable codes. Other owner
-exceptions propagate unchanged: the direct promise rejects and the CLI returns
-74 with raw errors withheld. Default checker failure is 74; only an error tagged
-at its `JSON.parse` site gives 64, and only owner input-denial codes give 1.
-Integrity failures, including `combination_identity_integrity_failed` and legacy
-`combination_digest_collision`, give 74. Closed primitive
-admission prevents malformed quantity types from reaching owner coercion.
-Violations take precedence over unavailable evidence.
-JSON stdout is one `formatVersion: 1` object. Findings retain exact owner codes
-and paths, sort by JSON pointer, code and fixture, and include cause, fix, recipe,
-identical recheck command and evidence.
+Reference rows and retained options are fixture observations. Installed identity,
+cadence, capacity, historical state, price execution and publication require
+runtime evidence. The checker grants no activation authority.
+
+| Exit | Result |
+| --- | --- |
+| 0 | Checks satisfied within scope |
+| 1 | Owner or input violation |
+| 2 | Required evidence unavailable |
+| 64 | Invalid CLI syntax or malformed JSON |
+| 74 | File, loading, integrity or unexpected owner error; raw errors withheld |
+
+Violations take precedence over unavailable evidence. JSON stdout is one
+`formatVersion: 1` object. Findings sort by pointer, code and fixture and carry
+cause, fix, recipe, evidence and the exact recheck command. Deliberate owner
+input errors retain their codes. Combination digest collisions are integrity
+failures (74).
 
 ## New vertical
 
@@ -92,10 +80,9 @@ as a template for that entry. Typecheck and run the starter’s `catalogue:check
 
 Use Node 24 with erasable TypeScript, relative imports ending in `.ts` and
 `import type` for types. Pass `--erasableSyntaxOnly` to the starter’s `typecheck` script. For an existing app, preserve its current registry entries.
-Compose consumers from the same pack objects. Compare the projected subject
-against the installed registry, direct fixture source and owner outcomes
-independently. The [static JSON example](catalogue-pack-skeleton/catalogue.json)
-is available for the JSON-only command.
+Compare the projection with the runtime registry, direct fixture source and
+owner outcomes. Use the [static JSON example](catalogue-pack-skeleton/catalogue.json)
+for the JSON-only command.
 
 Each false capability needs a named expected refusal. With `owner-refusals`,
 the checker independently runs the installed profiled prepaid refusal for
@@ -117,15 +104,11 @@ scope: "variant", valueType: {kind: "boolean"}, required: false, cardinality:
 labels: {en: "Finish"}}]`. Separate `attributes` fixtures call `validateCatalogAttributes` and
 `prepareCatalogAttributeProjection` with `{type, input, publicationRevision,
 references?}`. `input` contains `productAttributes` and `skus: [{id, attributes?}]`.
-Missing required values/locales, scope, unknown keys, storage and projection-text
-bounds retain exact owner diagnostics. Successful rows preserve the owner's exact
-projection values; no projection is written. Attribute values stay outside v1 drafts.
-`references` is an optional array of `{namespace, id, status}` observations.
-One unique `resolved` row supports fixture PASS; absent, omitted, duplicate or
-`unavailable` evidence yields 2. Unique `dangling` or `private` yields 1.
-All unresolved references retain `attribute_reference_unresolved` and its owner
-path. Actual publication and generation serving remain pending. A new attribute
-kind requires upstream work. Usual owner codes:
+Reference fixtures use `{namespace, id, status}`. One resolved row supplies
+evidence. A unique dangling or private row gives exit 1. Absent, ambiguous or
+unavailable evidence gives exit 2. Both retain the owner’s code and pointer.
+New attribute kinds require upstream work.
+Usual owner codes:
 `attribute_projection_text_too_large`, `attribute_storage_too_large`,
 `attribute_values_invalid`, `attribute_value_invalid`, `attribute_unknown_key`,
 `attribute_scope_conflict`, `attribute_cardinality_invalid`, `attribute_required_missing`,
@@ -175,21 +158,12 @@ New attribute kinds/dimensions are upstream work. Usual codes:
 `definition_duplicate_choice`, `definition_duplicate_dimension_unit`,
 `definition_dimension_unit_mismatch`, `definition_net_content_unit_mismatch`,
 `definition_multiple_net_content_dimensions`.
-The combination owner also reports `axis_not_installed`, `duplicate_axis`,
-`option_not_selected`, `option_missing`, `option_invalid`,
-`sku_identity_change_requires_new_sku`, `duplicate_combination`,
-`combination_identity_integrity_failed` and `duplicate_sku_id`. Use stable enum IDs and
-complete options; a changed canonical identity requires a new SKU. Compare bytes
-on a digest conflict and refuse both duplicates and collisions without merging.
-Inconsistent authoritative bytes/digests and digest collisions are integrity
-failures: investigate them without changing retained identities. The earlier
-`combination_digest_collision` code remains in the exported union and guidance
-record for compatibility; the owner now emits `combination_identity_integrity_failed`.
-`sku_payload_limit` bounds one incoming payload at 10,000 SKUs, separately from
-configured retained product capacity (default 50,000), reported by
-`product_capacity_exceeded` or `product_capacity_invalid`. Persisted incremental
-publication and its authority/races remain with the publisher.
-Run the starter’s `catalogue:check:source` script.
+Usual owner codes include `axis_not_installed`, `option_invalid`,
+`duplicate_combination` and `sku_identity_change_requires_new_sku`. Use
+complete options and stable enum IDs. A changed identity needs a new SKU.
+`sku_payload_limit` controls the 10,000-SKU payload bound independently of
+`product_capacity_exceeded` for the retained set. Run the starter’s
+`catalogue:check:source` script.
 
 ## Add tax class
 
