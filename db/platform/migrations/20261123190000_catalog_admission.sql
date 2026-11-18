@@ -446,7 +446,7 @@ BEGIN
  quote:=o.metadata->'quoteSnapshot';
  draft:=o.metadata->'orderDraftSnapshot';
  evidence:=quote->'catalogAdmission';
- IF o.catalog_acceptance IS NULL AND frozen IS NULL AND evidence IS NULL THEN RETURN NULL; END IF;
+ IF o.catalog_acceptance IS NULL AND frozen IS NULL THEN RETURN NULL; END IF;
  IF o.catalog_acceptance IS NULL OR jsonb_typeof(frozen) IS DISTINCT FROM 'object'
   OR jsonb_typeof(evidence) IS DISTINCT FROM 'object' OR quote#>>'{quote,context,mode}' IS DISTINCT FROM 'subscription'
   OR frozen IS DISTINCT FROM jsonb_build_object('offerVersion',public.catalog_price_setup_order_offer_version(quote),

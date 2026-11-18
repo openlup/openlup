@@ -1568,11 +1568,16 @@ const authorityCases = [
   { rule: "LC6-D-015 invalid SKU UUID", change: "invalid-sku", code: "22023" },
   { rule: "LC6-D-016 fractional quantity", change: "fractional-quantity", code: "22023" },
   { rule: "LC6-D-019 duplicate memberships", change: "duplicate-memberships", code: "55000" },
+  { rule: "LC6-D-020 a different offer cannot grant admission", change: "other-offer", code: "55000" },
+  { rule: "LC6-D-021 the selected membership must admit", change: "not-admitted", code: "55000" },
   { rule: "LC6-D-141 surplus head", change: "surplus", code: "22023" },
 ] as const;
 async function authorityCase({ path,change,code }: (typeof authorityCases)[number] & { path: (typeof authorityPaths)[number] }) {
-  const memberships = ["classic","classic","sized.v1","sized.v1"].map(offerVersion => ({ offerVersion,admitted: true }));
-  const f = await fixture(packs[0],change === "duplicate-memberships" ? { sku: { memberships } } : {}), input = structuredClone(f.admission);
+  const actualOffer = path === "sized" ? "sized.v1" : "classic", otherOffer = path === "sized" ? "classic" : "sized.v1";
+  const memberships = change === "duplicate-memberships" ? [actualOffer,actualOffer] : change === "other-offer" ? [otherOffer] : [actualOffer];
+  const membershipRefusal = change === "duplicate-memberships" || change === "other-offer" || change === "not-admitted";
+  const standing = membershipRefusal ? { sku: { memberships: memberships.map(offerVersion => ({ offerVersion,admitted: change !== "not-admitted" })) } } : {};
+  const f = await fixture(packs[0],standing), input = structuredClone(f.admission);
   const purchase = path.startsWith("plain") || path.startsWith("promoted"), account = !purchase && path !== "assertion" && path !== "port";
   if (!account) input.purpose = "order";
   const missing = account ? accountAnchor : orderAnchor;
@@ -1592,7 +1597,7 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
   if (change === "null-selection") { Object.assign(input,{ skuRevisions: null }); message = refused; }
   if (change === "invalid-sku") { input.skuRevisions[0].reference.skuId = "unknown"; message = refused; }
   if (change === "fractional-quantity") { input.skuRevisions[0].quantity = 1.5; message = refused; }
-  if (change === "duplicate-memberships") message = refused;
+  if (membershipRefusal) message = refused;
   if (change === "surplus") input.heads = [...input.heads,{ productId: randomUUID(),head: f.head }];
   const command = account ? await edit({ ...f,admission: input },path as Lane) : undefined;
   const before = await snapshot(), db = await session();
@@ -1625,6 +1630,12 @@ it.each([
   { change: "extra-anchor-key",predicate: "OR (h->'head')-ARRAY['publicationId','revision','documentDigest']<>'{}'::jsonb",replacement: "" },
   { change: "invalid-digest",predicate: "OR NOT coalesce(h#>>'{head,documentDigest}' ~ '^[0-9a-f]{64}$',false)",replacement: "" },
   { change: "duplicate-memberships",predicate: "AND m->'admitted'='true'::jsonb)<>1",replacement: "AND m->'admitted'='true'::jsonb)<1" },
+  { change: "other-offer",predicate: "m->>'offerVersion'=p_offer_evidence->>'offerVersion' AND ",replacement: "" },
+  { change: "not-admitted",predicate: "AND m->'admitted'='true'::jsonb)<>1",replacement: ")<>1" },
+  { change: "stale",predicate: "IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_heads) h WHERE h->'head' IS DISTINCT FROM actual_heads->(h->>'productId')) THEN\n  RAISE EXCEPTION '%',moved USING ERRCODE='40001'; END IF;",replacement: "" },
+  { change: "null-selection",predicate: "IF jsonb_typeof(p_sku_revisions) IS DISTINCT FROM 'array' THEN\n  RAISE EXCEPTION '%',refused USING ERRCODE='22023'; END IF;",replacement: "" },
+  { change: "invalid-sku",predicate: "OR NOT coalesce(pg_input_is_valid(s#>>'{reference,skuId}','uuid'),false)",replacement: "" },
+  { change: "fractional-quantity",predicate: "OR NOT coalesce(s->>'quantity' ~ '^[1-9][0-9]*$' AND pg_input_is_valid(s->>'quantity','integer'),false)",replacement: "" },
 ] as const)("authority control $change fails its precise witness", async ({ change,predicate,replacement }) => {
   const row = authorityCases.find(value => value.change === change)!;
   let restore = async () => {};
@@ -1638,9 +1649,10 @@ it.each([
 });
 
 async function acquisitionCase({ offerVersion,result }: {
-  offerVersion: "classic" | "sized.v1"; result: "bound" | "missing" | "mismatch" | "attachment mismatch" | "unpaid" | "abandoned";
+  offerVersion: "classic" | "sized.v1"; result: "bound" | "missing" | "mismatch" | "attachment mismatch" | "unpaid" | "abandoned" | "legacy opaque evidence";
 }) {
-  const f = await fixture(packs[0]), key = randomUUID(), amount = money(1234), sizeConstraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
+  const legacy = result === "legacy opaque evidence", f = await (legacy ? legacyFixture() : fixture(packs[0]));
+  const key = randomUUID(), amount = money(1234), sizeConstraint = { kind: "unit_count",value: 2,dailyNeed: 1 };
   const quote = { contractVersion: "commerce.v0" as const,quote: { currency: "XXX",taxIncluded: true as const,
     lines: [{ sku: f.code,productSlug: f.value.product.slug!,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: amount,
       tax: { included: true as const,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax",
@@ -1650,14 +1662,34 @@ async function acquisitionCase({ offerVersion,result }: {
   const port = createPostgresAcquisitionCheckoutPersistence(pool,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
     financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
   const beforeCount = (await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count;
-  const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: { ...f.admission,purpose: "order" } });
-  const order = accepted.orderDraft.orderId.replace(/^order_/u,"");
-  const proof = { schemaVersion: 2,lines: [f.reference] };
+  let order: string;
+  if (legacy) {
+    const purchase = purchaseInput(f), opaqueEvidence = { legacy: "opaque" };
+    purchase.args[0] = key;
+    Object.assign(purchase.quote,{ catalogAdmission: opaqueEvidence });
+    const accepted = await rpc(pool,"commerce_create_order_draft_with_outbox",purchase.args);
+    expect(accepted.orderDraft.quoteSnapshot.catalogAdmission).toEqual(opaqueEvidence);
+    order = accepted.orderDraft.orderId.replace(/^order_/u,"");
+  } else {
+    const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: { ...f.admission,purpose: "order" } });
+    expect(accepted.orderDraft.quoteSnapshot).toEqual(quote);
+    order = accepted.orderDraft.orderId.replace(/^order_/u,"");
+  }
+  const proof = legacy ? null : { schemaVersion: 2,lines: [f.reference] };
   expect((await pool.query("SELECT status,catalog_acceptance,metadata->'catalogAcquisition' AS frozen FROM public.commerce_orders WHERE id=$1", [order])).rows)
-    .toEqual([{ status: "pending_payment",catalog_acceptance: proof,frozen: { offerVersion,sizeConstraint,heads: f.admission.heads,selections: f.admission.skuRevisions,proof } }]);
-  expect(accepted.orderDraft.quoteSnapshot).toEqual(quote);
+    .toEqual([{ status: "pending_payment",catalog_acceptance: proof,frozen: legacy ? null : { offerVersion,sizeConstraint,heads: f.admission.heads,selections: f.admission.skuRevisions,proof } }]);
   expect((await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count).toBe(beforeCount);
-  if (result === "abandoned") return;
+  if (result === "abandoned") {
+    await rpc(pool,"subscription_declare_provisional_activation",[`declare:${key}`,order,28,f.at]);
+    expect(await rpc(pool,"commerce_cancel_abandoned_purchase_checkout",[`abandon:${key}`,order,"synthetic payment window elapsed",f.at]))
+      .toMatchObject({ cancelled: true,orderStatus: "cancelled" });
+    expect((await pool.query("SELECT state,subscription_id FROM public.subscription_activations WHERE order_id=$1", [order])).rows)
+      .toEqual([{ state: "compensated",subscription_id: null }]);
+    await expect(rpc(pool,"subscription_activate_from_captured_payment",[`activate:${key}`,order,digest("synthetic-abandoned")]))
+      .rejects.toMatchObject({ code: "22023",message: "subscription_activation_order_compensated" });
+    expect((await pool.query("SELECT count(*) FROM public.subscriptions WHERE client_id=$1", [f.client])).rows[0].count).toBe(beforeCount);
+    return;
+  }
   const intent = await rpc(pool,"commerce_open_settlement_intent",[`open:${key}`,order,"sandbox",1234,"XXX",{},f.at]);
   await rpc(pool,"subscription_declare_provisional_activation",[`declare:${key}`,order,28,f.at]);
   const fingerprint = async () => (await pool.query("SELECT coalesce(external_ref,id::text) AS ref FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0].ref as string;
@@ -1680,13 +1712,15 @@ async function acquisitionCase({ offerVersion,result }: {
     expect(await snapshot()).toEqual(before);
     return;
   }
-  const next = await changedDocument(f), publisher = await pool.connect();
-  try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
+  if (!legacy) {
+    const next = await changedDocument(f), publisher = await pool.connect();
+    try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
+  }
   const activated = await activate();
   const activeTerms = () => pool.query(`SELECT s.configured_offer_version,s.composition_constraint,t.catalog_acceptance
     FROM public.subscriptions s LEFT JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1`, [activated.subscriptionId]);
   const binding = { configured_offer_version: offerVersion,composition_constraint: offerVersion === "classic" ? null : sizeConstraint };
-  if (result === "bound") expect((await activeTerms()).rows).toEqual([{ ...binding,catalog_acceptance: null }]);
+  if (result === "bound" || legacy) expect((await activeTerms()).rows).toEqual([{ ...binding,catalog_acceptance: null }]);
   if (result === "attachment mismatch") {
     const before = await snapshot();
     await expect(writer.complete(order)).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" });
@@ -1698,12 +1732,25 @@ async function acquisitionCase({ offerVersion,result }: {
   expect((await pool.query(`SELECT line.catalog_sku_revision_id,terms.quantity,terms.unit_amount_minor
     FROM public.subscription_lines line JOIN public.subscription_renewal_term_lines terms ON terms.subscription_id=line.subscription_id
     WHERE line.subscription_id=$1 ORDER BY terms.line_ordinal`, [activated.subscriptionId])).rows)
-    .toEqual([{ catalog_sku_revision_id: f.reference.skuRevisionId,quantity: 2,unit_amount_minor: "617" }]);
+    .toEqual([{ catalog_sku_revision_id: legacy ? null : f.reference.skuRevisionId,quantity: 2,unit_amount_minor: "617" }]);
+  expect(await activate()).toEqual({ ...activated,replayed: true });
   expect(await writer.complete(order)).toEqual({ subscriptionId: activated.subscriptionId,replayed: true });
 }
 
 it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned"] as const)
   .map(result => ({ offerVersion,result }))))("LC6-D-041 and LC6-D-146 $offerVersion $result through native acquisition", acquisitionCase);
+
+it.each([false,true])("CD-CAT-23 legacy opaque quote field during acquisition, control=%s", async control => {
+  const run = () => acquisitionCase({ offerVersion: "classic",result: "legacy opaque evidence" });
+  if (!control) { await run(); return; }
+  const restore = await hook("public.catalog_admission_frozen_order(uuid)","BEGIN","",body => {
+    const predicate = "IF o.catalog_acceptance IS NULL AND frozen IS NULL THEN RETURN NULL; END IF;";
+    expect(body.split(predicate)).toHaveLength(2);
+    return body.replace(predicate,predicate.replace("THEN","AND evidence IS NULL THEN"));
+  });
+  try { await expect(run()).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" }); }
+  finally { await restore(); }
+});
 
 it.each([
   {
