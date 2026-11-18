@@ -164,7 +164,7 @@ async function seedPublicationHistory(owner: Pool) {
   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'transfer-publication@example.invalid')", [publicationAdmin]);
   await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [publicationAdmin]);
   const authority = publicationAuthority(owner), actor = (await authority.authorize(undefined))!, productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), documentId = randomUUID();
-  const canonicalText = canonicalCatalogDraftJson({ label: "Retained transfer article" }), digest = createHash("sha256").update(canonicalText).digest("hex");
+  const canonicalText = canonicalCatalogDraftJson({ name: "Retained article", label: "Retained transfer article" }), digest = createHash("sha256").update(canonicalText).digest("hex");
   const skuCode = `TRANSFER-${skuId}`, slug = `retained-${productId}`, facts = { skuCode, title: "Retained article", minQuantity: 1, isAddon: false, facts: {} };
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, slug, type: { key: publicationDefinition.key, version: 1 }, dimensions: [], primarySkuId: skuId,
     documentRevision: { id: documentId, productId, revisionNo: 1, schemaId: "example:transfer.v1", documentRef: "example:transfer", sourceRef: "example:source", digest },

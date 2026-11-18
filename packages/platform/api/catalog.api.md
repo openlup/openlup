@@ -4501,6 +4501,7 @@ export declare class CatalogPublicationError extends Error {
 export declare const publicationRefuse: (code: string, outcome?: CatalogPublicationError["outcome"]) => never;
 export declare const publicationJson: (input: unknown, maxBytes?: number) => string;
 export declare const publicationDigest: (input: unknown, maxBytes?: number) => string;
+export declare const comparePublicationText: (left: string, right: string) => number;
 export declare const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku>;
 export declare const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct>;
 export declare const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2>;
@@ -4519,6 +4520,11 @@ export interface CatalogPublicationDocument {
 export interface CatalogPublicationRules {
     /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
     validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
+    /** Rejects a membership effect against the SKU's ordered prefix, including a no-op on a frozen roster. */
+    validateMembershipChange?(sku: Readonly<CatalogPublishedSku>, change: {
+        offerVersion: string;
+        admitted: boolean;
+    }): boolean;
     canonicalizeDocument(document: unknown): string;
     deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
     classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {

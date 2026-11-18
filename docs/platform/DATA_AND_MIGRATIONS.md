@@ -398,6 +398,11 @@ revocation leaves the publication and its original replay receipt intact.
 
 The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
+On creation, the persisted product name must match the sealed document's string
+`name`. An explicit null presentation effect clears an existing presentation.
+Creation and explicit product activation still require a presentation. Hosts may
+validate each membership effect against the ordered SKU state, including repeats
+against a frozen roster.
 Compensation reapplies explicit effects even when their retained values are
 unchanged. It preserves unaddressed facts; remaining projection drift rolls back
 the publication rather than silently refreshing those facts.

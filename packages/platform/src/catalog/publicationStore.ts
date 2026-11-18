@@ -385,11 +385,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           require(source, "catalog_publication_operation_source_missing");
           const authored = source!.payload.skus.find(value => value.code === sku.code)!;
           assertCatalogPublicationGrossMass(authored.netContent!, authored.grossMass ?? null, prepared.definition);
-          const content = compiled.product.presentation!;
-          const hasMedia = sku.assetRefs.length > 0 || typeof content.mediaRef === "string";
+          const mediaRef = compiled.product.presentation?.mediaRef;
+          const hasMedia = sku.assetRefs.length > 0 || typeof mediaRef === "string";
           if (!hasMedia) continue;
           const claim = source!.payload.publication.evidence.media?.find(claim => claim.skuCode === sku.code);
-          require(claim && claim.mediaRef === content.mediaRef && equal(claim.assetRefs, [...sku.assetRefs].sort(comparePublicationText)), "catalog_publication_media_readiness_unproven");
+          require(claim && claim.mediaRef === mediaRef && equal(claim.assetRefs, [...sku.assetRefs].sort(comparePublicationText)), "catalog_publication_media_readiness_unproven");
           const verdict = await deps.verifyMedia(db, claim!);
           require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
           require(verdict, "catalog_publication_media_readiness_unproven");

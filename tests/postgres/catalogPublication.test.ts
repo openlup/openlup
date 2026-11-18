@@ -102,7 +102,7 @@ async function commit(publication: CatalogPublishCommand, target = authority, ca
 }
 async function draft(requestedSlug?: string, requestedCode?: string) {
   const productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), revisionId = randomUUID(), slug = requestedSlug ?? `article-${productId}`;
-  const document = { schemaVersion: 1, id: "example:document", revisionNo: 1, productSlug: slug, derived: 12 }, canonicalText = canonicalCatalogDraftJson(document);
+  const document = { schemaVersion: 1, id: "example:document", revisionNo: 1, productSlug: slug, name: "Synthetic article", derived: 12 }, canonicalText = canonicalCatalogDraftJson(document);
   const digest = createHash("sha256").update(canonicalText).digest("hex");
   const facts = { skuCode: requestedCode ?? `SKU-${skuId}`, title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
   const gtin = nextGtin();
@@ -2345,7 +2345,7 @@ it("cycle1 native membership admission rechecks the eligible SKU price without e
 
 it("cycle1 native readiness shape refusals precede business red and keep inclusive bounds", async () => {
   const data = await draft(); await approve(data.publication); const before = await snapshot();
-  const invalid: unknown[] = [{ ready: "true", reasons: [] }, { reasons: [] }, { ready: false, reasons: "a" },
+  const invalid: unknown[] = [{ ready: "true", reasons: [] }, { reasons: [] }, { ready: false, reasons: "a" }, { ready: false, reasons: [] },
     { ready: false, reasons: Array.from({ length: 101 }, (_, index) => `r${index}`) }, { ready: false, reasons: ["a", "a"] },
     { ready: false, reasons: [false] }, { ready: false, reasons: ["private detail"] }, { ready: false, reasons: ["a".repeat(161)] }];
   for (const result of invalid) {
@@ -2353,7 +2353,7 @@ it("cycle1 native readiness shape refusals precede business red and keep inclusi
     expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_readiness_invalid" });
     expect(await snapshot()).toEqual(before);
   }
-  for (const reasons of [[], ["a"], ["a".repeat(160)], Array.from({ length: 100 }, (_, index) => `r${index}`)]) {
+  for (const reasons of [["a"], ["a".repeat(160)], Array.from({ length: 100 }, (_, index) => `r${index}`)]) {
     const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async () => ({ ready: false, reasons }) });
     expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
     expect(await snapshot()).toEqual(before);
@@ -2370,7 +2370,9 @@ it("cycle1 native structural readiness refuses missing duplicate and red SQL res
       else if (mode === "duplicate") rows.push(structuredClone(rows[0]));
       else rows[0].reasons = ["document_revision_missing"];
     }));
-    expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+    expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual(mode === "red"
+      ? { outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" }
+      : { outcome: "dependency_unavailable", reason: "catalog_publication_readiness_invalid" });
     expect(await snapshot()).toEqual(before);
   }
 });
@@ -2927,6 +2929,68 @@ it.each([
     expect(await snapshot()).toEqual(stable);
   }
 }));
+
+it.each([
+  ["sealed name", "committed"],
+  ["missing name", "catalog_publication_product_name_source_mismatch"],
+  ["different name", "catalog_publication_product_name_source_mismatch"],
+  ["clear on create", "catalog_publication_v3_structural_readiness_failed"],
+  ["clear on revision", "committed"],
+  ["repeat allowed membership", "committed"],
+  ["repeat frozen membership", "catalog_publication_membership_change_not_allowed"],
+  ["compensate frozen membership", "catalog_publication_membership_change_not_allowed"],
+] as const)("publication enforces the authored capability for %s", async (mode, expected) => {
+  const data = await draft(), payload = structuredClone(data.payload), content = payload.product.sharedContent;
+  const existing = mode === "clear on revision" || mode.endsWith("membership");
+  const first = existing ? await commit(data.publication) : null;
+  if (mode.endsWith("name") && mode !== "sealed name") {
+    const document = content.document!;
+    if (mode === "missing name") delete document.name;
+    else document.name = "Other authored name";
+    const canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
+    payload.product.documentRevision!.digest = digest;
+    const op = payload.publication.operations.find(op => op.op === "register_document_revision")!;
+    Object.assign(op, { canonicalText, digest });
+  }
+  if (first) content.catalogAction = "revise";
+  if (mode === "clear on create" || mode === "clear on revision") {
+    const clear = { op: "set_product_presentation" as const, productSlug: payload.product.slug!, presentation: null };
+    if (first) payload.publication.operations = [clear];
+    else payload.publication.operations.splice(payload.publication.operations.findIndex(op => op.op === clear.op), 1, clear);
+  }
+  if (mode.endsWith("membership")) {
+    content.presentation = { headline: "Changed catalogue presentation" };
+    payload.publication.operations = [
+      { op: "set_offer_membership", ...content.offerMemberships[0] },
+      { op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation },
+    ];
+    if (mode.startsWith("compensate")) payload.publication.kind = "compensation";
+  }
+  const command = await save(payload, data.draftId, 1, first?.head ?? null);
+  const deps = dependencies();
+  const checks: string[] = [];
+  const target = createPostgresCatalogPublication({ ...deps, rules: { ...deps.rules,
+    ...(mode.endsWith("membership") ? { validateMembershipChange(sku: { memberships: readonly { offerVersion: string; admitted: boolean }[] }, change: { offerVersion: string; admitted: boolean }) {
+      checks.push(change.offerVersion);
+      expect(sku.memberships).toContainEqual({ offerVersion: change.offerVersion, admitted: change.admitted });
+      return mode === "repeat allowed membership";
+    } } : {}),
+  } });
+  const capability = (await target.authorize(null))!;
+  await approve(command);
+  const stable = await snapshot(), result = await target.publish(command, capability);
+  if (expected === "committed") {
+    expect(result).toMatchObject({ outcome: "committed" });
+    if (result.outcome !== "committed") throw new Error("Missing publication receipt");
+    expect(await target.readbackV2(result.receipt.head)).toMatchObject({ outcome: "page", product: {
+      name: "Synthetic article", presentation: mode === "clear on revision" ? null : content.presentation,
+    } });
+  } else {
+    expect(result).toEqual({ outcome: "validation_issue", reason: expected });
+    expect(await snapshot()).toEqual(stable);
+  }
+  expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
+});
 
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);

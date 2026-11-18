@@ -13,7 +13,7 @@ export const definition = registry.resolve({ key: "example:article", version: 1 
 export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }),
   validateProduct: () => [], classifySkuChange: () => "compatible" };
 export function input(): CatalogPublicationCompileInput {
-  const document = { schemaVersion: 1, derived: 12 }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
+  const document = { schemaVersion: 1, name: "Synthetic article", derived: 12 }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");
   const facts = { skuCode: "ARTICLE", title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, type: { key: definition.key, version: 1 }, dimensions: [], slug: "article", primarySkuId: skuId,
     documentRevision: { id: documentId, productId, revisionNo: 1, schemaId: "example:document.v1", documentRef: "example:document", sourceRef: "example:source", digest },

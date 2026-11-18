@@ -360,7 +360,7 @@ it.each(["absent reference", "wrong digest", "different authored document"])("cy
   if (operation.op !== "register_document_revision") throw new Error("Missing document fixture");
   if (kind === "absent reference") delete data.payload.product.documentRevision;
   if (kind === "wrong digest") { data.payload.product.documentRevision!.digest = "c".repeat(64); operation.digest = "c".repeat(64); }
-  if (kind === "different authored document") data.payload.product.sharedContent.document = { schemaVersion: 1, derived: 13 };
+  if (kind === "different authored document") data.payload.product.sharedContent.document = { ...data.payload.product.sharedContent.document, derived: 13 };
   expect(() => compileCatalogPublication(data)).toThrow(kind === "absent reference" ? "catalog_publication_document_source_mismatch" : "catalog_publication_v3_document_invalid");
 });
 

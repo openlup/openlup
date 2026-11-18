@@ -75,6 +75,8 @@ export interface CatalogPublicationDocument {
 export interface CatalogPublicationRules {
   /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
   validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
+  /** Rejects a membership effect against the SKU's ordered prefix, including a no-op on a frozen roster. */
+  validateMembershipChange?(sku: Readonly<CatalogPublishedSku>, change: { offerVersion: string; admitted: boolean }): boolean;
   canonicalizeDocument(document: unknown): string;
   deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
   classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
@@ -201,6 +203,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     if ("productSlug" in operation) need(operation.productSlug === slug, "catalog_publication_scope_expansion");
     if (operation.op === "create_product") {
       need(product === null && operation.productId === payload.product.id, "catalog_publication_v3_compile_product_conflict");
+      need(payload.product.sharedContent.document?.name === operation.name, "catalog_publication_product_name_source_mismatch");
       product = { id: operation.productId, slug, name: operation.name, status: "draft", type: payload.product.type,
         axes: [...payload.product.dimensions], attributes: payload.product.attributes ?? {}, primarySkuId: null, document: null,
         presentation: null, source: claim, content: payload.product.sharedContent };
@@ -285,10 +288,13 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       need(source.payload.product.sharedContent.offerMemberships.some(row => equal(row, { skuCode: sku.code, offerVersion: operation.offerVersion, admitted: operation.admitted })), "catalog_publication_membership_source_mismatch");
       const index = sku.memberships.findIndex(value => value.offerVersion === operation.offerVersion);
       const row = { offerVersion: operation.offerVersion, admitted: operation.admitted };
+      if (input.rules.validateMembershipChange)
+        need(input.rules.validateMembershipChange(sku, row) === true, "catalog_publication_membership_change_not_allowed");
       if (index < 0) sku.memberships.push(row); else sku.memberships[index] = row;
       sku.memberships.sort((a, b) => comparePublicationText(a.offerVersion, b.offerVersion));
     } else if (operation.op === "set_product_presentation") {
-      need(equal(operation.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_source_mismatch");
+      if (operation.presentation !== null)
+        need(equal(operation.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_source_mismatch");
       knownProduct().presentation = operation.presentation;
     } else if (operation.op === "set_sku_metadata") {
       const sku = knownSku(operation.skuCode), source = sourceSku(sku.code);
@@ -343,11 +349,13 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     publicationJson(catalogPublishedSkuSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
   }
   need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
-  need(result.primarySkuId && result.document && result.presentation, "catalog_publication_v3_structural_readiness_failed");
+  need(result.primarySkuId && result.document && (input.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
   const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
   need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
-  if (payload.publication.operations.some(operation => operation.op === "set_product_status" && operation.status === "active"))
+  if (payload.publication.operations.some(operation => operation.op === "set_product_status" && operation.status === "active")) {
     need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
+    need(result.presentation, "catalog_publication_v3_presentation_required");
+  }
   const issues = input.rules.validateProduct(result, [...skus.values()], documents);
   need(issues.length === 0, "catalog_publication_adopter_validation_failed");
   const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
