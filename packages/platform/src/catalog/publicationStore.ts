@@ -40,6 +40,12 @@ const readinessVerdict = z.object({ ready: z.boolean(), reasons: readinessReason
 const equal = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
 const require = (value: unknown, code: string, outcome?: CatalogPublicationError["outcome"]) => { if (!value) publicationRefuse(code, outcome); };
 const tuple = (db: PgQueryExecutor, sql: string, values: unknown[] = []) => db.query(sql, values).then(result => result.rows);
+const readInvalid = "catalog_publication_read_invalid";
+const observedRow = (rows: Record<string, unknown>[]) => {
+  require(rows.length === 1, readInvalid, "dependency_unavailable");
+  return rows[0]!;
+};
+
 function failure(error: unknown): CatalogPublicationFailure {
   if (error instanceof CatalogPriceSetupTransactionError) return error.refusal;
   if (error instanceof CatalogPublicationError) return { outcome: error.outcome, reason: error.code };
@@ -129,7 +135,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     }
     if (!historical && !allowDrift) {
       try { await assertProjection(db, { product: manifest.product, skus }); }
-      catch (error) { if (error instanceof CatalogPublicationError) publicationRefuse("catalog_publication_live_drift", "conflict"); throw error; }
+      catch (error) { if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") publicationRefuse("catalog_publication_live_drift", "conflict"); throw error; }
     }
     return { head, publication, product: manifest.product, skus, references: manifest.skus, documents };
   }
@@ -180,12 +186,14 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       expectedHead = headSchema.parse({ publicationId: rows[0]!.id, revision: rows[0]!.revision, documentDigest: rows[0]!.digest });
     }
     const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [match![1], Number(match![2])]);
-    const header = z.object({ payload: z.object({ product: z.object({ type: catalogProductTypeRefSchema }) }) }).safeParse(rows[0]?.record);
+    const raw = observedRow(rows).record;
+    const header = z.object({ payload: z.object({ product: z.object({ type: catalogProductTypeRefSchema }) }) }).safeParse(raw);
     if (header.success) {
       const definition = deps.registry.resolve(header.data.payload.product.type);
-      if (definition) assertCatalogPublicationMassInputs((rows[0]!.record as { payload: unknown }).payload, definition);
+      if (definition) assertCatalogPublicationMassInputs((raw as { payload: unknown }).payload, definition);
     }
-    const record = catalogDraftPublicationStoredRecordSchema.parse(rows[0]?.record);
+    const record = catalogDraftPublicationStoredRecordSchema.parse(raw);
+    require(record.draftId === match![1] && record.revision === Number(match![2]), readInvalid, "dependency_unavailable");
     require(record.productId === productId && record.payload.schemaVersion === 3, "candidate_invalid");
     const payload = record.payload as CatalogDraftPayloadV3, definition = deps.registry.resolve(payload.product.type);
     require(definition && definition.validatorRef, "catalog_definition_drift");
@@ -220,7 +228,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(claim.commandKey === prepared.record.commandKey && claim.fingerprint === prepared.record.fingerprint, "catalog_publication_source_mismatch");
       if (distinct.has(key) || key === `${prepared.record.draftId}@${prepared.record.revision}`) continue; distinct.add(key);
       const rows = await tuple(db, "SELECT public.catalog_draft_record($1::uuid,$2::integer) AS record", [claim.draftId, claim.revision]);
-      const source = catalogDraftPublicationStoredRecordSchema.parse(rows[0]?.record);
+      const source = catalogDraftPublicationStoredRecordSchema.parse(observedRow(rows).record);
+      require(source.draftId === claim.draftId && source.revision === claim.revision, readInvalid, "dependency_unavailable");
       require(source.productId === prepared.record.productId && source.commandKey === claim.commandKey && source.fingerprint === claim.fingerprint, "catalog_publication_source_mismatch");
       retained.push(source);
     }
@@ -243,7 +252,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       require(heads.some(head => head.draft_id === source!.draftId && head.revision === source!.revision && head.status === "open"), "catalog_publication_draft_advanced", "conflict");
     }
     const guard = await tuple(db, "SELECT pg_try_advisory_xact_lock(hashtextextended('catalog-publication-global',0)) AS allowed");
-    require(guard[0]?.allowed === true, "catalog_publication_busy", "conflict");
+    const { allowed } = observedRow(guard);
+    require(typeof allowed === "boolean", readInvalid, "dependency_unavailable");
+    require(allowed, "catalog_publication_busy", "conflict");
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`catalog-lineage:${prepared.record.productId}`]);
     await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1::uuid FOR NO KEY UPDATE", [prepared.record.productId]);
     await db.query("SELECT id FROM public.catalog_products WHERE id=$1::uuid ORDER BY id FOR NO KEY UPDATE", [prepared.record.productId]);
@@ -293,8 +304,11 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const original = await receipt(db, command.productId, command.commandKey, command.action, fingerprint, actorId);
         if (original) return { outcome: "replayed" as const, receipt: checkedDecisionReceipt(original) };
         const balance = await tuple(db, "SELECT coalesce(sum(CASE action WHEN 'approve' THEN 1 ELSE -1 END),0)::integer AS balance FROM public.catalog_publication_decisions WHERE candidate_reference_digest=$1", [referenceDigest]);
-        require(balance[0]?.balance === (command.action === "approve" ? 0 : 1), "catalog_publication_decision_balance_invalid", "conflict");
-        const time = (await tuple(db, "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value"))[0]!.value as string;
+        const count = observedRow(balance).balance;
+        require(Number.isInteger(count), readInvalid, "dependency_unavailable");
+        require(count === (command.action === "approve" ? 0 : 1), "catalog_publication_decision_balance_invalid", "conflict");
+        const time = observedRow(await tuple(db, "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).value as string;
+        require(instant.safeParse(time).success, readInvalid, "dependency_unavailable");
         const result: CatalogDecisionReceiptV2 = { ...command, fingerprint, actorId, decidedAt: time };
         publicationJson({ outcome: "committed", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
         await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,result) VALUES($1,$2,$3,$4,$5,$6::jsonb)", [command.action, command.productId, command.commandKey, fingerprint, actorId, publicationJson(result)]);
@@ -318,7 +332,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         if (original) return { outcome: "replayed" as const, receipt: checkedReceipt(original) };
         const prepared = await candidate(db, command.candidateRef, command.candidateDigest, command.productId);
         const approval = await tuple(db, "SELECT coalesce(sum(CASE action WHEN 'approve' THEN 1 ELSE -1 END),0)::integer AS balance FROM public.catalog_publication_decisions WHERE candidate_reference_digest=$1", [referenceDigest]);
-        require(approval[0]?.balance === 1, "catalog_publication_approval_required");
+        const count = observedRow(approval).balance;
+        require(Number.isInteger(count), readInvalid, "dependency_unavailable");
+        require(count === 1, "catalog_publication_approval_required");
         require((await tuple(db, "SELECT id FROM public.catalog_publications WHERE candidate_ref=$1", [command.candidateRef])).length === 0, "catalog_publication_candidate_already_published", "conflict");
         const documentRevisions = prepared.payload.publication.operations.flatMap(operation => operation.op === "register_document_revision" ? [operation.revisionNo] : []);
         if (prepared.payload.product.documentRevision) documentRevisions.push(prepared.payload.product.documentRevision.revisionNo);
@@ -396,7 +412,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const manifest: CatalogPublicationManifestV2 = { schemaVersion: 2, product: compiled.product, skus: references };
         const canonicalState = publicationJson(manifest), publicationDigestValue = publicationDigest(manifest);
         const head = { publicationId, revision: next, documentDigest: compiled.product.document!.digest };
-        const committedAt = (await tuple(db, "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value"))[0]!.value as string;
+        const committedAt = observedRow(await tuple(db, "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).value as string;
+        require(instant.safeParse(committedAt).success, readInvalid, "dependency_unavailable");
         // Verify the complete projection before making a durable head or receipt visible.
         await assertProjection(db, compiled);
         await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at)
@@ -419,7 +436,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,publication_id,result) VALUES('publish',$1,$2,$3,$4,$5,$6::jsonb)", [command.productId, command.commandKey, fingerprint, actorId, publicationId, publicationJson(result)]);
         await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
           VALUES('catalog_product',$1,'catalog.publication.committed',$2,$3::jsonb)`, [command.productId, `catalog-publication:${publicationId}`, publicationJson({ schemaVersion: 2, productId: command.productId, head, digest: publicationDigestValue })]);
-        require((await tuple(db, "SELECT count(*)::integer AS remaining FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=pg_current_xact_id()"))[0]?.remaining === 0, "catalog_publication_pointer_capability_unconsumed");
+        const { remaining } = observedRow(await tuple(db, "SELECT count(*)::integer AS remaining FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=pg_current_xact_id()"));
+        require(Number.isInteger(remaining), readInvalid, "dependency_unavailable");
+        require(remaining === 0, "catalog_publication_pointer_capability_unconsumed");
         await load(db, command.productId);
         return { outcome: "committed" as const, receipt: result };
       });
@@ -529,7 +548,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       (SELECT count(*)::integer FROM public.catalog_skus s WHERE s.product_id=p.id) AS sku_count FROM public.catalog_products p WHERE p.id=$1`,
     [state.product.id, publicationJson(state.product), state.product.slug, state.product.name, state.product.status, state.product.primarySkuId,
       state.product.document?.id, state.product.type.key, state.product.type.version, state.product.axes, publicationJson(state.product.attributes)]);
-    require(rows[0]?.valid === true && rows[0]?.sku_count === state.skus.length, "catalog_publication_post_state_mismatch");
+    const row = observedRow(rows);
+    require(Number.isInteger(row.sku_count) && (row.valid === null || typeof row.valid === "boolean"), readInvalid, "dependency_unavailable");
+    require(row.valid === true && row.sku_count === state.skus.length, "catalog_publication_post_state_mismatch");
     const definition = deps.registry.resolve(state.product.type);
     require(definition, "catalog_definition_drift");
     for (const sku of state.skus) {
@@ -548,7 +569,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         sku.grossMass?.unscaled ?? null, sku.grossMass?.scale ?? null, sku.grossMass?.unit ?? null,
         identity.canonicalOptionBytes, identity.combinationDigest, sku.assetRefs[0] ?? null,
         catalogPublicationIntegralGrams(sku.netContent, definition!)]);
-      require(rows[0]?.valid === true, "catalog_publication_post_state_mismatch");
+      const { valid } = observedRow(rows);
+      require(valid === null || typeof valid === "boolean", readInvalid, "dependency_unavailable");
+      require(valid === true, "catalog_publication_post_state_mismatch");
       const identifiers = await tuple(db, `SELECT scheme,issuer,original_value AS value,normalized_value AS normalized,identifier_kind AS kind,CASE pack_kind WHEN 'unit' THEN 'unit' ELSE 'case' END AS "packagingLevel",
         quantity,is_primary AS "isPrimary",display_label AS label,source_ref AS "sourceRef" FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1 ORDER BY normalized_value,issuer`, [sku.id]);
       const sort = (values: unknown[]) => values.map(value => publicationJson(value)).sort();
@@ -584,7 +607,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       if (head) {
         require(headSchema.safeParse(head).success, "catalog_publication_query_invalid");
         const rows = await tuple(db, "SELECT product_id FROM public.catalog_publications WHERE id=$1::uuid", [head.publicationId]);
-        require(rows.length === 1, "catalog_publication_absent", "unsupported"); productId = rows[0]!.product_id as string;
+        require(rows.length > 0, "catalog_publication_absent", "unsupported");
+        productId = observedRow(rows).product_id as string;
+        require(id.safeParse(productId).success, readInvalid, "dependency_unavailable");
       }
       require(id.safeParse(productId).success, "catalog_publication_query_invalid");
       return load(db, productId!, head ?? undefined);
@@ -611,7 +636,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
           const lineage = await tuple(db, `SELECT EXISTS(SELECT 1 FROM public.catalog_products WHERE id=$1::uuid)
             AND NOT EXISTS(SELECT 1 FROM public.catalog_publications WHERE product_id=$1::uuid) AS unknown`, [productId]);
-          require(lineage[0]?.unknown === false, "catalog_publication_lineage_unknown", "unsupported");
+          const { unknown } = observedRow(lineage);
+          require(typeof unknown === "boolean", readInvalid, "dependency_unavailable");
+          require(!unknown, "catalog_publication_lineage_unknown", "unsupported");
           const rows = await tuple(db, `SELECT p.revision,p.id,r.result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id AND r.kind='publish'
             WHERE p.product_id=$1::uuid AND p.revision <= coalesce($2::integer,(SELECT max(revision) FROM public.catalog_publications WHERE product_id=$1::uuid))
             AND ($3::integer IS NULL OR p.revision < $3) ORDER BY p.revision DESC LIMIT 101`, [productId, pointer?.highWater ?? null, pointer?.before ?? null]);
@@ -641,6 +668,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         await actor(db, capability);
         const rows = await tuple(db, "SELECT * FROM public.catalog_operator_receipts WHERE kind='publish' AND scope_id=$1 AND command_key=$2", [scope.productId, scope.commandKey]);
         if (!rows.length) return { outcome: "absent" as const };
+        require(rows.length === 1, "catalog_publication_receipt_invalid", "dependency_unavailable");
         const receipt = await storedPublishReceipt(db, rows[0]!);
         require(receipt.productId === scope.productId && receipt.commandKey === scope.commandKey, "catalog_publication_receipt_invalid", "dependency_unavailable");
         const result = { outcome: "found" as const, receipt };
@@ -670,10 +698,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       return await deps.transactions.run(async db => {
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         const rows = await tuple(db, `SELECT p.product_id,p.revision,p.canonical_state,p.digest,d.id AS document_id,d.digest AS document_digest,
-          d.revision_no,d.schema_id,d.document_ref,d.source_ref,d.canonical_text FROM public.catalog_publications p JOIN public.catalog_product_document_revisions d
-          ON d.id=p.document_revision_id AND d.product_id=p.product_id WHERE p.id=$1::uuid`, [head.publicationId]);
-        require(rows.length === 1, "catalog_publication_absent", "unsupported");
-        const row = rows[0]!, manifest = catalogPublicationManifestSchema.parse(JSON.parse(row.canonical_state as string));
+          d.revision_no,d.schema_id,d.document_ref,d.source_ref,d.canonical_text,p.id AS publication_id FROM public.catalog_publications p
+          LEFT JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id WHERE p.id=$1::uuid`, [head.publicationId]);
+        require(rows.length > 0, "catalog_publication_absent", "unsupported");
+        const row = observedRow(rows);
+        require(row.publication_id === head.publicationId && row.document_id !== null, readInvalid, "dependency_unavailable");
+        const manifest = catalogPublicationManifestSchema.parse(JSON.parse(row.canonical_state as string));
         require(row.revision === head.revision && row.document_digest === head.documentDigest, "head_conflict", "conflict");
         require(publicationJson(manifest) === row.canonical_state && publicationDigest(manifest) === row.digest
           && manifest.product.id === row.product_id && equal(manifest.product.document, { id: row.document_id, productId: row.product_id,
@@ -733,22 +763,25 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         require(accepted !== null, "retained_revision_unavailable", "unsupported");
         require(equal(accepted, input), "retained_source_mismatch", "unauthorized");
         const rows = await tuple(db, `SELECT p.revision,p.canonical_state,p.digest AS manifest_digest,d.digest,d.canonical_text,
-          d.revision_no,d.schema_id,d.document_ref,d.source_ref,r.full_facts,r.digest AS sku_digest,r.revision AS sku_revision
+          d.revision_no,d.schema_id,d.document_ref,d.source_ref,r.full_facts,r.digest AS sku_digest,r.revision AS sku_revision,d.id AS document_id
           FROM public.catalog_publications p
-          JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
-          JOIN public.catalog_sku_revisions r ON r.id=$4 AND r.sku_id=$5 AND r.product_id=p.product_id
-          WHERE p.id=$1 AND p.product_id=$2 AND d.id=$3`, [input.publicationId, input.productId, input.documentRevisionId, input.skuRevisionId, input.skuId]);
-        require(rows.length === 1, "retained_revision_unavailable", "unsupported");
-        const row = rows[0]!, head = { publicationId: input.publicationId, revision: row.revision as number, documentDigest: row.digest as string };
+          LEFT JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
+          LEFT JOIN public.catalog_sku_revisions r ON r.id=$3 AND r.sku_id=$4 AND r.product_id=p.product_id
+          WHERE p.id=$1 AND p.product_id=$2`, [input.publicationId, input.productId, input.skuRevisionId, input.skuId]);
+        require(rows.length > 0, "retained_revision_unavailable", "unsupported");
+        const row = observedRow(rows);
+        require(id.safeParse(row.document_id).success, readInvalid, "dependency_unavailable");
+        require(row.document_id === input.documentRevisionId, "retained_revision_unavailable", "unsupported");
+        const head = { publicationId: input.publicationId, revision: row.revision as number, documentDigest: row.digest as string };
         const manifest = catalogPublicationManifestSchema.parse(JSON.parse(row.canonical_state as string));
         require(publicationJson(manifest) === row.canonical_state && publicationDigest(manifest) === row.manifest_digest
           && manifest.product.id === input.productId && equal(manifest.product.document, { id: input.documentRevisionId, productId: input.productId,
             revisionNo: row.revision_no, schemaId: row.schema_id, documentRef: row.document_ref, sourceRef: row.source_ref, digest: row.digest })
           && typeof row.canonical_text === "string" && createHash("sha256").update(row.canonical_text).digest("hex") === row.digest,
         "catalog_publication_manifest_invalid", "dependency_unavailable");
-        const reference = manifest.skus.find(reference => reference.skuId === input.skuId && reference.revisionId === input.skuRevisionId
-          && reference.digest === row.sku_digest && reference.revision === row.sku_revision);
+        const reference = manifest.skus.find(reference => reference.skuId === input.skuId && reference.revisionId === input.skuRevisionId);
         require(reference, "retained_revision_unavailable", "unsupported");
+        require(reference!.digest === row.sku_digest && reference!.revision === row.sku_revision && typeof row.full_facts === "string", readInvalid, "dependency_unavailable");
         const sku = catalogPublishedSkuSchema.parse(JSON.parse(row.full_facts as string));
         require(sku.id === input.skuId && sku.productId === input.productId && publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes) === row.full_facts
           && publicationDigest(sku, CATALOG_PUBLICATION_LIMITS.skuBytes) === reference!.digest, "catalog_publication_sku_revision_invalid", "dependency_unavailable");

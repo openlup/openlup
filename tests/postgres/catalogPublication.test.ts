@@ -2853,6 +2853,81 @@ it.each([
   expect(after.outcome === "page" && after.items).toEqual(before.outcome === "page" && before.items);
 });
 
+it.each([
+  ["candidate", "missing"],
+  ["candidate", "duplicate"],
+  ["candidate", "conflicting"],
+  ["candidate", "wrong key"],
+  ["balance", "missing"],
+  ["balance", "duplicate"],
+  ["clock", "duplicate"],
+  ["remaining", "duplicate"],
+  ["product projection", "duplicate"],
+  ["SKU projection", "duplicate"],
+  ["history", "duplicate"],
+  ["facts", "duplicate"],
+  ["facts", "wrong key"],
+  ["legacy readback", "duplicate"],
+  ["recovery", "duplicate"],
+  ["retained", "duplicate"],
+  ["retained", "missing companion"],
+  ["price", "missing outcome"],
+  ["price", "healthy"],
+] as const)("publication validates the %s singleton boundary: %s", async (boundary, variation) => inPriceDatabase(async () => {
+  const existing = boundary === "facts" || boundary === "legacy readback" || boundary === "recovery" || boundary === "retained" || boundary === "history";
+  const data = boundary === "price" ? await priceDraft(false) : await draft();
+  const first = existing ? await commit(data.publication) : null;
+  const full = existing ? await authority.readbackV2(first!.head) : null;
+  const predicates = {
+    candidate: /^SELECT public.catalog_draft_record/u, balance: /^SELECT coalesce\(sum/u, clock: /^SELECT to_char\(clock_timestamp/u,
+    remaining: /^SELECT count.*AS remaining FROM public.catalog_publication_pointer_capabilities/u,
+    "product projection": /^SELECT p.publication_facts=/u, "SKU projection": /^SELECT s.publication_facts=/u,
+    history: /^SELECT EXISTS\(SELECT 1 FROM public.catalog_products/u, facts: /^SELECT p.product_id,p.revision,p.canonical_state/u,
+    "legacy readback": /^SELECT product_id FROM public.catalog_publications/u, recovery: /^SELECT \* FROM public.catalog_operator_receipts WHERE kind='publish'/u,
+    retained: /^SELECT p.revision,p.canonical_state,p.digest AS manifest_digest/u, price: /^SELECT public.catalog_price_setup_apply_in_transaction/u,
+  };
+  let hits = 0;
+  const target = createPostgresCatalogPublication({ ...dependencies((sql, _executor, rows) => {
+    if (!predicates[boundary].test(sql)) return;
+    hits++;
+    expect(rows).toHaveLength(1);
+    if (variation === "missing") rows.splice(0);
+    else if (variation === "duplicate") rows.push({ ...rows[0] });
+    else if (variation === "conflicting") rows.push({ record: null });
+    else if (variation === "wrong key") {
+      if (boundary === "candidate") (rows[0]!.record as Record<string, unknown>).draftId = randomUUID();
+      else rows[0]!.publication_id = randomUUID();
+    } else if (variation === "missing companion") rows[0]!.full_facts = null;
+    else if (variation === "missing outcome") delete (rows[0]!.result as Record<string, unknown>).outcome;
+  }), acceptedSource: async (_executor, _context, binding) => binding });
+  const capability = (await target.authorize(null))!;
+  if (!existing) await approve(data.publication);
+  const stable = await snapshot();
+  const run = async () => {
+    if (boundary === "history") return target.reads.history(data.productId, null);
+    if (boundary === "facts") return target.readbackV2(first!.head);
+    if (boundary === "legacy readback") return target.reads.readback(first!.head);
+    if (boundary === "recovery") return target.receipt({ productId: data.productId, commandKey: data.publication.commandKey }, capability);
+    if (boundary === "retained") {
+      if (full?.outcome !== "page") throw new Error("Missing retained fixture");
+      return target.resolveRetained({ kind: "account", sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId,
+        skuId: data.skuId, skuRevisionId: full.items[0].reference.revisionId, publicationId: first!.head.publicationId,
+        documentRevisionId: full.product.document!.id }, target.authorizeReadScope(null));
+    }
+    return target.publish(data.publication, capability);
+  };
+  const result = await run();
+  expect(hits).toBeGreaterThan(0);
+  if (variation === "healthy") expect(result).toMatchObject({ outcome: "committed" });
+  else {
+    const reason = boundary === "price" ? "invalid_store_response"
+      : boundary === "legacy readback" || boundary === "history" ? "publication_authority_unavailable"
+      : boundary === "recovery" ? "catalog_publication_receipt_invalid" : "catalog_publication_read_invalid";
+    expect(result).toEqual({ outcome: "dependency_unavailable", reason });
+    expect(await snapshot()).toEqual(stable);
+  }
+}));
+
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);
   payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation"; payload.skus = []; delete payload.product.primarySkuId;

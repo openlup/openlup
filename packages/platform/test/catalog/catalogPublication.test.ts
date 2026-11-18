@@ -831,7 +831,7 @@ it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the 
     registry, rules, authorizeHuman: async () => ({ ok: false }),
     transactions: { run: work => work({ async query(sql, params) {
       if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
-      if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) return { rows: [{ product_id: product.id,
+      if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) return { rows: [{ product_id: product.id, publication_id: head.publicationId,
         revision: head.revision, canonical_state: canonicalState, digest: digest(canonicalState), document_id: ref.id, document_digest: ref.digest,
         revision_no: ref.revisionNo, schema_id: ref.schemaId, document_ref: ref.documentRef, source_ref: ref.sourceRef, canonical_text: document.canonicalText }] };
       const ids = params?.[1] as string[];

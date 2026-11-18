@@ -112,7 +112,7 @@ export function createCatalogPriceSetupTransactionWriter<Actor extends object>(r
       if (!handle || handle.db !== db || handle.actor !== resolveActor(verifiedActor) || handle.parent !== parentProductId) return refuse("price_prelock_invalid");
       batches.delete(prelockedBatch as object);
       const value = await query(db, "SELECT public.catalog_price_setup_apply_in_transaction($1::uuid,$2::uuid,$3::jsonb) AS result", [handle.actor,parentProductId,JSON.stringify(handle.value)]);
-      if (!Array.isArray(value.results) || value.results.length !== handle.commands.length) return refuse("invalid_store_response");
+      if (value.outcome !== "applied" || !Array.isArray(value.results) || value.results.length !== handle.commands.length) return refuse("invalid_store_response");
       for (const [index, result] of value.results.entries()) {
         const parsed = catalogPriceSetupApplyResultSchema.safeParse(result), command = handle.commands[index]!;
         if (!parsed.success || (parsed.data.outcome !== "committed" && parsed.data.outcome !== "replayed")) return refuse("invalid_store_response");
