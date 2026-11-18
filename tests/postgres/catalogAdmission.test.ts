@@ -1527,7 +1527,7 @@ const authorityCases = [
   { rule: "LC6-D-019 duplicate memberships", change: "duplicate-memberships", code: "55000" },
   { rule: "LC6-D-141 surplus head", change: "surplus", code: "22023" },
 ] as const;
-it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path }))))("$rule via $path", async ({ path,change,code }) => {
+async function authorityCase({ path,change,code }: (typeof authorityCases)[number] & { path: (typeof authorityPaths)[number] }) {
   const memberships = ["classic","classic","sized.v1","sized.v1"].map(offerVersion => ({ offerVersion,admitted: true }));
   const f = await fixture(packs[0],change === "duplicate-memberships" ? { sku: { memberships } } : {}), input = structuredClone(f.admission);
   const purchase = path.startsWith("plain") || path.startsWith("promoted"), account = !purchase && path !== "assertion" && path !== "port";
@@ -1573,6 +1573,25 @@ it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path 
     }
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect(await snapshot()).toEqual(before);
+}
+
+it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path }))))("$rule via $path", authorityCase);
+
+it.each([
+  { change: "sku-drift",predicate: "OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb",replacement: "" },
+  { change: "extra-anchor-key",predicate: "OR (h->'head')-ARRAY['publicationId','revision','documentDigest']<>'{}'::jsonb",replacement: "" },
+  { change: "invalid-digest",predicate: "OR NOT coalesce(h#>>'{head,documentDigest}' ~ '^[0-9a-f]{64}$',false)",replacement: "" },
+  { change: "duplicate-memberships",predicate: "AND m->'admitted'='true'::jsonb)<>1",replacement: "AND m->'admitted'='true'::jsonb)<1" },
+] as const)("authority control $change fails its precise witness", async ({ change,predicate,replacement }) => {
+  const row = authorityCases.find(value => value.change === change)!;
+  let restore = async () => {};
+  try {
+    restore = await hook(admissionSignature,sharedBoundary,"",body => {
+      expect(body.split(predicate)).toHaveLength(2);
+      return body.replace(predicate,replacement);
+    });
+    await expect(authorityCase({ ...row,path: "plain-subscription" })).rejects.toMatchObject({ name: "AssertionError" });
+  } finally { await restore(); }
 });
 
 it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned"] as const)
