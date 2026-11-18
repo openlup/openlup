@@ -701,6 +701,16 @@ it.each((["frozen", "admit", "reserve", "recover"] as const).flatMap(path =>
   if (fact === "competing_cycle") {
     await db.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'planned')", [f.subscription, f.anchor]);
   }
+  if (fact === "different_client" && path === "frozen") {
+    // Skew just the loaded proposal. Changing the subscription would also invalidate the receipt and wait case.
+    const restore = await hook("public.subscription_stock_wait_frozen_v2(uuid)",
+      " SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=g.proposal_id;", " p.client_id:=gen_random_uuid();");
+    try {
+      await expect(db.query("SELECT public.subscription_stock_wait_frozen_v2($1) AS result", [g.id]))
+        .resolves.toMatchObject({ rows: [{ result: null }] });
+    } finally { await restore(); }
+    return;
+  }
   if (fact === "different_client") {
     const client = randomUUID();
     await db.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)", [client, `${client}@example.invalid`, randomUUID()]);
@@ -1133,7 +1143,7 @@ it.each(["never_selected", "oldest_check", "stable_case_id", "busy_successor"] a
     try {
       await holder.query("BEGIN");
       await holder.query("SELECT id FROM public.subscription_successor_wait_cases_v2 WHERE id=$1 FOR UPDATE", [next.caseId]);
-      expect(await run()).toEqual([legacy.caseId]);
+      await expect(run()).resolves.toEqual([legacy.caseId]);
     } finally { await holder.query("ROLLBACK"); holder.release(); }
     expect((await db.query("SELECT last_selected_at FROM public.subscription_successor_wait_cases_v2 WHERE id=$1", [next.caseId])).rows)
       .toEqual([{ last_selected_at: null }]);
