@@ -4434,6 +4434,38 @@ new raw-table grants. Their [package composition](../../packages/core/docs/guide
 binds client ownership and separates expired inspection from payment authority.
 This forward contains no recreation writer or historical backfill.
 
+### Installed checkout reminder schedule
+
+The native `20261123140000_checkout_recovery_reminder_schedule.sql` forward
+replaces `commerce_enqueue_abandoned_cart_reminders(integer)` (current preimage:
+`20260818120000_checkout_recovery_lifecycle.sql`) and
+`commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)` (current
+preimage: `20261110100000_checkout_recovery_waves.sql`). Signatures, security,
+search paths, owners and ACLs are preserved; the integer-only checkout wrapper
+is unchanged. The new restricted SECURITY DEFINER
+`commerce_checkout_recovery_reminder_schedule()` validates the installed
+`checkout_recovery_reminders` setting with `search_path = pg_catalog, pg_temp`.
+Absence returns the historical 1/24/72 and 1/20 waves; malformed data raises
+`checkout_recovery_reminder_schedule_invalid` before writes. No policy is seeded
+and no pending event is rewritten. See the [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
+for stage routes, timing precedence, predecessor gates and hour-derived keys.
+The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderSchedule.test.ts)
+compares both current preimages, payloads (apart from the new stage and random
+tokens), metadata, dedup keys, replay, function attributes and restricted access.
+
+Separate runtime roles retain their existing producer EXECUTE and relation
+privileges. Add this one EXECUTE grant before resuming the invoker abandoned-cart
+producer; the qualified service-role binding already receives it:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() TO runtime_role;
+```
+
+The validator requires no caller settings SELECT. Missing EXECUTE raises `42501`
+even with an absent key. The TypeScript read helper separately needs settings
+SELECT to return the revision and full schedule. Installer-only writes and
+read-only starter drift checks follow the installed inventory policy pattern.
+
 ### Expired checkout preparation
 
 Evidence: historical record, 2026-11-13. Not reader guidance.

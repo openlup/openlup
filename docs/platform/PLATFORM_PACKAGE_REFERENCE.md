@@ -850,8 +850,9 @@ execution; only selected entry points grant service-role execution. The scoped
 automatic-reminder ACL without admitting operator/buyer flows. No raw table grant
 is added.
 
-Existing payload wave labels `1` and `20` identify first/final content; offsets
-remain separate scheduling inputs.
+With no installed `checkout_recovery_reminders` setting, payload wave labels `1`
+and `20` identify first/final content and offsets remain separate scheduling
+inputs; an installed schedule sets custom hours and explicit `stage` values.
 
 Evidence (historical record, 2026-11-13):
 
