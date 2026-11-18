@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, validateArchiveHistory, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -72,6 +72,8 @@ async function integrationParents(cwd, head) {
 const PORTABLE_REVIEW = 'openlup-portable-review-20261103';
 const DERIVED_REVIEW = 'openlup-derived-review-20261110';
 const SESSION_PATH = 'scripts/agent-review-session.mjs';
+const REVIEW_RULES_PATH = 'scripts/agent-review-decide.mjs';
+const REVIEW_RULES_DIFFER = 'recorded policy or base rules differ';
 
 // Review evidence binds to the candidate's own change: a clean merge onto a later base keeps it.
 export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
@@ -84,9 +86,6 @@ export async function carryOverSourceReview(cwd, candidate, group, runGit = git)
 }
 // Source objects are parsed, never imported as candidate modules.
 export async function captureReviewRules(cwd, candidate, runGit = git) {
-  let source;
-  try { source = await runGit(cwd, 'show', `${candidate.base}:scripts/agent-review-decide.mjs`); } catch { return undefined; }
-  if (!/^export const REVIEW_RULES_VERSION = 3;$/mu.test(source)) return undefined;
   const snapshot = async revision => {
     const rows = (await runGit(cwd, 'ls-tree', '-rz', '--full-tree', revision)).split('\0').filter(Boolean);
     return digest(rows.filter(row => {
@@ -94,7 +93,15 @@ export async function captureReviewRules(cwd, candidate, runGit = git) {
       return protectedCoveragePath(path) && !REGISTRY_PATHS.includes(path);
     }).sort());
   };
-  return { version: 3, base: await snapshot(candidate.base), head: await snapshot(candidate.head) };
+  try {
+    const entry = await runGit(cwd, 'ls-tree', '-z', '--full-tree', candidate.base, '--', REVIEW_RULES_PATH);
+    if (!entry) return undefined;
+    const source = await runGit(cwd, 'show', `${candidate.base}:${REVIEW_RULES_PATH}`);
+    if (!/^export const REVIEW_RULES_VERSION = 3;$/mu.test(source)) return undefined;
+    return { version: 3, base: await snapshot(candidate.base), head: await snapshot(candidate.head) };
+  } catch (error) {
+    throw new Error(`invalid: ${REVIEW_RULES_DIFFER}. Could not read review rules from Git.`, { cause: error });
+  }
 }
 export async function objectInput(cwd, args, input) {
   return new Promise((resolve, reject) => {
@@ -254,37 +261,43 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
 }
 class ReviewRulesMismatchError extends Error {
   constructor() {
-    super('invalid: recorded policy or base rules differ. Review rules may have changed on main since this session was prepared. Run prepare --new to archive this session and obtain a fresh full review.');
+    super(`invalid: ${REVIEW_RULES_DIFFER}. Review rules may have changed on main since this session was prepared. Run prepare --new to archive this session and obtain a fresh full review.`);
   }
 }
-// Trusted admission and local verify rederive every recorded exceptional edge.
 export async function validateEconomySession(cwd, session, runGit = git) {
   if (session.version !== 3) return;
+  const prepares = session.history.filter(event => event.type === 'prepare');
+  for (const { candidate } of prepares) {
+    const actual = await captureCommittedReviewCandidate(cwd, candidate.base, candidate.head, runGit);
+    for (const key of ['base', 'head', 'tree', 'changedPaths', 'modeChanged']) demand(digest(actual[key]) === digest(candidate[key]), 'recorded candidate diff differs');
+  }
+
   let rulesMismatch = false;
+  for (const { candidate } of prepares) {
+    const rules = await captureReviewRules(cwd, candidate, runGit);
+    const recorded = candidate.rules;
+    if (rules === undefined && recorded === undefined) continue;
+    demand(rules?.version === 3 && recorded?.version === 3 &&
+      Object.keys(recorded).join(',') === 'version,base,head' &&
+      [recorded.base, recorded.head].every(value => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value)), REVIEW_RULES_DIFFER);
+    rulesMismatch ||= digest(rules) !== digest(recorded);
+  }
+  if (rulesMismatch) throw new ReviewRulesMismatchError();
+
+  // Historical edges can be replayed only under matching rules.
   for (let index = 0; index < session.history.length; index++) {
     const event = session.history[index];
-    if (event.type === 'prepare') {
-      const actual = await captureCommittedReviewCandidate(cwd, event.candidate.base, event.candidate.head, runGit);
-      for (const key of ['base', 'head', 'tree', 'changedPaths', 'modeChanged']) demand(digest(actual[key]) === digest(event.candidate[key]), 'recorded candidate diff differs');
-      const rules = await captureReviewRules(cwd, actual, runGit);
-      const recordedRules = event.candidate.rules;
-      rulesMismatch ||= rules === undefined ? recordedRules !== undefined :
-        recordedRules === undefined || digest(rules) !== digest(recordedRules);
-      if (event.candidate.coverage) {
-        const prefix = session.history.slice(0, session.history[index - 1]?.type === 'rules' ? index - 1 : index); const prior = prefix.findLast(item => item.type === 'prepare');
-        const version = prefix.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
-        const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
-        const observed = { ...actual, rules, intent: event.intent, authorSessionId: event.authorSessionId };
-        const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
-        const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, { allowDerived: event.candidate.coverage.proof?.derived === true });
-        // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
-        const legacy = edge && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
-        demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
-      }
-    }
+    if (event.type !== 'prepare' || !event.candidate.coverage) continue;
+    const prefix = session.history.slice(0, session.history[index - 1]?.type === 'rules' ? index - 1 : index); const prior = prefix.findLast(item => item.type === 'prepare');
+    const version = prefix.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
+    const before = { ...session, version, candidate: prior.candidate, history: prefix, preparedAt: prior.at };
+    const observed = { ...event.candidate, intent: event.intent, authorSessionId: event.authorSessionId };
+    const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
+    const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, { allowDerived: event.candidate.coverage.proof?.derived === true });
+    // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
+    const legacy = edge && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
+    demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
   }
-  // Other Git validation failures take precedence over the recoverable mismatch.
-  if (rulesMismatch) throw new ReviewRulesMismatchError();
 }
 export async function assertMergePreflight(cwd, candidate, { runGit = git, env = processEnvironment } = {}) {
   const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
@@ -400,8 +413,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         try { await validateEconomySession(cwd, session); }
         catch (error) {
           if (!(error instanceof ReviewRulesMismatchError)) throw error;
-          const decision = verdict(session, session.candidate, now);
-          demand(decision.ok || decision.code === 'needs_agent_review', decision.reason, decision.code);
+          validateArchiveHistory(session, now);
           const timestamp = new Date(now).toISOString().replaceAll(':', '-');
           archive = join(directory, `session.archived-${timestamp}-${randomUUID()}.json`);
           session = undefined;

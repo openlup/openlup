@@ -222,6 +222,21 @@ function validateSessionReports(session, now) {
   demand(session.history.every((event, index) => Number.isFinite(event.at) && event.at <= now && (index === 0 || event.at >= session.history[index - 1].at)), 'history time is invalid');
   if (session.version === 3) validateHistory(session);
 }
+// Guard the archive with recorded history bindings, independent of today's reviewer floor.
+export function validateArchiveHistory(session, now) {
+  candidateValid(session.candidate);
+  demand(session.candidate.clean, 'commit source changes before verification', 'dirty');
+  validateSessionReports(session, now);
+  demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
+  let coverage;
+  for (const event of session.history) {
+    if (event.type === 'prepare') coverage = event.candidate.coverage;
+    if (event.type === 'report' && event.report.verdict === 'PASS' && event.report.ordinary === true &&
+        (coverage?.proof?.paths || coverage?.proof?.resolution)) {
+      demand(event.report.delta === coverage.delta, 'recorded coverage proof differs');
+    }
+  }
+}
 export function verdict(session, observed, now) {
   try {
     stateValid(session); candidateValid(observed); demand(Number.isFinite(now), 'verification time is invalid');

@@ -527,14 +527,20 @@ describe('real Git coverage histories', () => {
 });
 
 describe('preparing after the protected path list changes', () => {
+  const hardRulesMismatch = /^invalid: recorded policy or base rules differ$/u;
   const rulesMismatch = /recorded policy or base rules differ.*prepare --new to archive this session and obtain a fresh full review/u;
 
   async function driftedRules() {
     const addedControl = 'fixture-guard.ts';
     const f = await fixture();
     expect(protectedCoveragePath(addedControl)).toBe(false);
+    const spec = JSON.parse(await readFile(f.request, 'utf8'));
+    spec.intent.risk = 'routine';
+    await writeFile(f.request, JSON.stringify(spec));
     await f.write(addedControl, 'export const guard = true;\n'); f.commit();
-    await f.review();
+    await f.cli('prepare', f.request);
+    await f.report();
+    const first = await f.state();
     await rm(join(f.cwd, addedControl));
     await f.write('tests/demo.test.ts', 'repair fixture\n'); f.commit();
     await f.cli('prepare', f.request);
@@ -545,9 +551,42 @@ describe('preparing after the protected path list changes', () => {
 
     const includes = NATIVE_CATALOG_CONTROLS.includes.bind(NATIVE_CATALOG_CONTROLS);
     vi.spyOn(NATIVE_CATALOG_CONTROLS, 'includes').mockImplementation(path => path === addedControl || includes(path));
+    expect(verdict(first, first.candidate, Date.now()).reason).toContain('2 independent PASS reports required');
     const directory = join(f.scratch, 'agent-review');
     return { ...f, directory, path: join(directory, 'session.json') };
   }
+
+  it('refuses a Git error reading a historical policy without archiving the active session', async () => {
+    const f = await fixture();
+    await f.review();
+    const policy = 'scripts/agent-review-decide.mjs';
+    const main = await f.mainMove(() => f.write(policy, 'export const REVIEW_RULES_VERSION = 3;\n\n'));
+    f.git('merge', '--no-ff', '-qm', 'integrate policy edit', main);
+    await f.cli('prepare', '--new', f.request);
+    const session = await f.state();
+    expect(session.candidate).not.toHaveProperty('coverage');
+    const directory = join(f.scratch, 'agent-review');
+    const path = join(directory, 'session.json');
+    const original = await readFile(path, 'utf8');
+    const readError = new Error('transient Git read failure');
+    const runGit = async (cwd: string, ...args: string[]) => {
+      if (args[0] === 'show' && args[1] === `${f.base}:${policy}`) throw readError;
+      return sourceGit(cwd, ...args);
+    };
+    await expect(validateEconomySession(f.cwd, session, runGit)).rejects.toMatchObject({
+      message: 'invalid: recorded policy or base rules differ. Could not read review rules from Git.',
+      cause: readError,
+    });
+
+    const blob = f.git('rev-parse', `${f.base}:${policy}`);
+    await rm(join(f.cwd, '.git', 'objects', blob.slice(0, 2), blob.slice(2)));
+    await expect(captureReviewRules(f.cwd, session.candidate)).resolves.toEqual(session.candidate.rules);
+    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(
+      /^invalid: recorded policy or base rules differ\. Could not read review rules from Git\.$/u,
+    );
+    expect(await readdir(directory)).toEqual(['session.json']);
+    expect(await readFile(path, 'utf8')).toBe(original);
+  });
 
   it('reports historical rules drift and keeps the session on plain prepare', async () => {
     const f = await driftedRules();
@@ -580,7 +619,26 @@ describe('preparing after the protected path list changes', () => {
     expect(next.candidate).not.toHaveProperty('coverage');
     expect(next).toMatchObject(JSON.parse(await readFile(f.request, 'utf8')));
     await expect(validateEconomySession(f.cwd, next)).resolves.toBeUndefined();
-    await expect(f.cli('verify')).rejects.toThrow('2 independent PASS reports required');
+    await expect(f.cli('verify')).rejects.toThrow('1 independent PASS reports required');
+  });
+
+  it.each([
+    ['Git facts', /recorded candidate diff differs/u],
+    ['missing rules', hardRulesMismatch],
+    ['malformed rules', hardRulesMismatch],
+  ])('refuses later invalid %s even when an earlier snapshot drifted', async (kind, error) => {
+    const f = await driftedRules();
+    const state = await f.state();
+    const last = state.history.findLast(event => event.type === 'prepare').candidate;
+    if (kind === 'Git facts') last.changedPaths = [];
+    else if (kind === 'missing rules') delete last.rules;
+    else last.rules.head = 'not-a-digest';
+    state.candidate = last;
+    const tampered = JSON.stringify(state);
+    await writeFile(f.path, tampered);
+    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(error);
+    expect(await readdir(f.directory)).toEqual(['session.json']);
+    expect(await readFile(f.path, 'utf8')).toBe(tampered);
   });
 
   it.each([

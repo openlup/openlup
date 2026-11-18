@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, carryOver, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
+import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
 
 const time = 1000;
 const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), risk: 'routine', reviewers: ['reviewer'], verdict: 'PASS', expires: time + 86400000, sessionDigest: 'd'.repeat(64) };
@@ -211,6 +212,7 @@ describe('hosted review decisions', () => {
     const f = handoffFixture(); const original = f.runGit.getMockImplementation()!;
     f.runGit.mockImplementation(async (cwd, ...args) => {
       if (args[0] === 'diff') return `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0scripts/documentation-routing.ts\0`;
+      if (args[0] === 'ls-tree' && args.includes('--')) return '100644 blob fixture\tscripts/agent-review-decide.mjs\0';
       if (args[0] === 'show') return legacy ? 'export const REVIEW_RULES_VERSION = 2;\n' : 'export const REVIEW_RULES_VERSION = 3;\n';
       return original(cwd, ...args);
     });
@@ -324,6 +326,40 @@ describe('hosted review decisions', () => {
         expect(runGit.mock.calls).toContainEqual([expect.any(String), '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', receipt.base, receipt.head, ...(group ? [groupHead] : [])]);
       }
     } finally { log.mockRestore(); }
+  });
+  it.each(['writer', 'reader', 'valid fallback'])('diagnoses a same-head receipt after a reviewer floor increase: %s', async scenario => {
+    const f = handoffFixture();
+    const path = 'fixture-guard.ts';
+    const { base, head, tree } = receipt;
+    const candidate = { base, head, tree, clean: true, modeChanged: false, changedPaths: [path],
+      intent: { risk: 'routine', criteria: 'Review the fixture' }, authorSessionId: 'author',
+      rules: { version: 3, base: 'a'.repeat(64), head: 'b'.repeat(64) } };
+    const session = recordReport(prepareCandidate(undefined, candidate, time), {
+      reviewer: 'cold-reviewer', tree, cold: true, verdict: 'PASS', documentation: 'Checked fixture docs', findings: [], closes: [],
+    }, time);
+    const summary = receiptSummary(session, receipt.pr, time);
+    f.state.comments = [comment({ id: 2, body: `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\`` })];
+    if (scenario === 'valid fallback') f.state.comments.push(comment());
+    if (scenario === 'reader') f.state.permission = 'read';
+    const includes = NATIVE_CATALOG_CONTROLS.includes.bind(NATIVE_CATALOG_CONTROLS);
+    const protectedPaths = vi.spyOn(NATIVE_CATALOG_CONTROLS, 'includes').mockImplementation(value => value === path || includes(value));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    let clock = time;
+    try {
+      const wait = waitNativeAdmission({
+        event: { number: receipt.pr, repository: f.event.repository, pull_request: { head: f.pr.head } },
+        env: { ...f.env, GITHUB_EVENT_NAME: 'pull_request' },
+        api: f.api, runGit: f.runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 15000,
+      });
+      if (scenario === 'valid fallback') {
+        await expect(wait).resolves.toEqual(receipt);
+      } else {
+        await expect(wait).rejects.toThrow(scenario === 'writer'
+          ? /2 independent PASS reports required.*protected review-path change on main.*prepare --new to archive the session and obtain a fresh full review/u
+          : 'post a current receipt comment from a user with write, maintain or admin permission');
+        expect(f.runGit).not.toHaveBeenCalled();
+      }
+    } finally { protectedPaths.mockRestore(); log.mockRestore(); }
   });
   it.each(['read', 'lookup failure'])('refuses across wait polls, caching only a real permission: %s', async permission => {
     let clock = time;

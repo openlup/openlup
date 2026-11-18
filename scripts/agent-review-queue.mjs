@@ -29,7 +29,18 @@ export function parseReceipt(body) {
     return receipt;
   } catch { return null; }
 }
-export async function readReceipts(api, root, pr, head, now, permissions = new Map()) {
+async function hasWritePermission(api, root, login, permissions) {
+  const key = login.toLowerCase();
+  if (!permissions.has(key)) {
+    try {
+      const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
+      // The base permission covers custom roles; use role_name only when absent.
+      permissions.set(key, ['admin', 'maintain', 'write'].includes(access?.permission ?? access?.role_name));
+    } catch { /* A failed lookup never establishes trust; the next poll asks again. */ }
+  }
+  return permissions.get(key);
+}
+export async function readReceipts(api, root, pr, head, now, permissions = new Map(), onRefusal = undefined) {
   const comments = [];
   for (let page = 1; ; page += 1) {
     const batch = await api.get(`${root}/issues/${pr}/comments?per_page=100&page=${page}`);
@@ -40,16 +51,10 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   comments.sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || b.id - a.id);
   for (const comment of comments) {
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
-    if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
-    const key = login.toLowerCase();
-    if (!permissions.has(key)) {
-      try {
-        const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
-        // The base permission covers custom roles; use role_name only when absent.
-        permissions.set(key, ['admin', 'maintain', 'write'].includes(access?.permission ?? access?.role_name));
-      } catch { /* A failed lookup never establishes trust; the next poll asks again. */ }
-    }
-    if (permissions.get(key)) receipts.push(receipt);
+    if (receipt?.pr !== pr || receipt.head !== head || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
+    const decision = admit({ receipt, observed: { ...receipt, baseValid: true }, now });
+    if (!decision.ok) onRefusal?.({ login, reason: decision.reason });
+    else if (await hasWritePermission(api, root, login, permissions)) receipts.push(receipt);
   }
   return receipts;
 }
@@ -62,12 +67,15 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
   demand(Number.isSafeInteger(prNumber) && prNumber > 0, 'event must name one PR on main');
   if (group) demand(event.action === 'checks_requested' && group.base_ref === 'refs/heads/main' && SHA.test(group.head_sha) && SHA.test(group.base_sha) && (!env.GITHUB_SHA || env.GITHUB_SHA === group.head_sha) && (!env.GITHUB_REF || env.GITHUB_REF === group.head_ref), 'merge group identity differs from the event');
   const permissions = new Map();
-  const start = now(); let reason = 'post a current receipt comment from a user with write, maintain or admin permission';
+  const missingReceipt = 'post a current receipt comment from a user with write, maintain or admin permission';
+  const start = now(); let reason = missingReceipt;
   while (now() - start < deadlineMs) {
     const pr = await api.get(`${root}/pulls/${prNumber}`);
     demand(pr.number === prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.ref === 'main' && SHA.test(pr.head?.sha), 'PR must be the live open main candidate');
     if (!group) demand(event.pull_request?.head?.sha === pr.head.sha, 'PR head changed; rerun CI for the current head', 'stale');
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions);
+    const refused = [];
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, refusal => refused.push(refusal));
+    let currentReason;
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main), 'main commit identity is invalid');
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
@@ -82,9 +90,9 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
         else legacyRules = await captureReviewRules(cwd, candidate, runGit) === undefined;
         const forks = (await runGit(cwd, 'merge-base', '--all', receipt.head, 'origin/main')).trim().split('\n');
         baseValid = forks.length === 1 && SHA.test(forks[0]) && receipt.base === forks[0];
-      } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
+      } catch (error) { currentReason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
-      if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
+      if (!decision.ok) { currentReason = `${decision.code}: ${decision.reason}`; continue; }
       const forwardApproval = needsForwardApproval(candidate.changedPaths);
       // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
       if (forwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head);
@@ -100,6 +108,15 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
+    // Diagnostic lookups must not affect which receipts can be admitted in later polls.
+    const diagnosticPermissions = new Map(permissions);
+    let refusalHint;
+    for (const receipt of refused) {
+      if (!await hasWritePermission(api, root, receipt.login, diagnosticPermissions)) continue;
+      refusalHint = `Same-head receipt refused: ${receipt.reason}. If a protected review-path change on main caused the refusal, update your checkout from main and run prepare --new to archive the session and obtain a fresh full review.`;
+      break;
+    }
+    reason = [currentReason, refusalHint].filter(Boolean).join(' ') || missingReceipt;
     console.log(`needs_agent_review: ${reason}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
   throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}`);

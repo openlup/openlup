@@ -1546,10 +1546,14 @@ that required CI and the change's own review would miss.
    candidate to have had its full floor of complete reviews; after a FAIL from
    delta reviews only, the next candidate takes a full review. Close every
    blocking finding explicitly and return to PASS when review succeeds.
-8. **When main moves.** With no conflict, do nothing: the review carries over and
-   does not expire. On a conflict, merge `origin/main`, resolve it and review only
-   the resolution; verified derived carriers retain coverage as described below. Post a receipt for the resulting head. Never force-push or
-   rebase a reviewed candidate.
+8. **When main moves.** If main can merge cleanly, leave the branch as it is
+   and carry over review without expiry unless a protected review-path list
+   change invalidates the session. In that case,
+   follow the fresh review procedure under [Native review and accountability](#native-review-and-accountability).
+   On a conflict, merge `origin/main`, resolve it and review only the resolution
+   unless the session requires a fresh full review. Verified derived carriers
+   retain coverage as described below. Post a receipt for the resulting head.
+   Never force-push or rebase a reviewed candidate.
 
 For a repository whose `origin` tracks OpenLup, ordinary worktree setup is:
 
@@ -1665,16 +1669,20 @@ changes. Delta reports identify `candidate.coverage.delta` and include
 `"ordinary": true`. That digest covers the diff with full object names, so it does
 not depend on how many objects the local repository holds. An edge recorded with
 abbreviated names before this rule still replays wherever those names reproduce.
-Every later preparation keeps the history, so if admission refuses such an edge,
-rebuild the session in a clone holding only main and the branch: keep the events
-before the refused preparation, repeat each later `prepare` at its recorded head and
-record the same reports, each delta report naming its new delta.
-State stays in `.context/scratch/agent-review/session.json`;
-unchanged preparation preserves evidence and history. If a protected-path list
-change causes `verify` to report that recorded policy or base rules differ, run
+Later preparations keep the history unless a protected review-path list change
+invalidates the session. If admission refuses an edge because its abbreviated
+names differ, rebuild the session in a clone holding only main and the branch.
+Keep the events before the refused preparation, repeat each later `prepare` at
+its recorded head and record the same reports, each delta report naming its new
+delta.
+
+State stays in `.context/scratch/agent-review/session.json`. If a protected
+review-path list change causes `verify` or hosted admission to refuse the
+session, fetch main and merge `origin/main` first if the checkout still uses
+the old list. Then run
 `node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json`.
-This archives the old session beside `session.json` and starts a fresh full review
-with no prior reports or inherited coverage. `verify` refuses dirty,
+This archives the old session beside `session.json` and starts a fresh full
+review with no prior reports or inherited coverage. `verify` refuses dirty,
 mismatched, partial or missing evidence and unclosed blockers. On the CI-only
 route no reviewer report is needed. Source admission checks the live head, tree
 and floor using trusted main's tooling.
