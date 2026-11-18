@@ -459,19 +459,8 @@ support access through the [operator roster](#provision-operator-rosters).
 
 ## Read the supplements reference pack
 
-The starter's `owned/catalog-packs/supplements/` folder is an editable
-synthetic reference. Its four files separate type definitions, proposed
-catalogue drafts, fixtures and policy. The individual pack entry in
-`owned/catalogue.ts` supplies definitions to the registry and evidence to the
-offline checker. The market fixture under `owned/market-packs/` supplies only
-fictional rate data. Extraction copies the exact paths from the source
-inventory. The starter retains the existing demonstration catalogue.
-
-Use the [catalogue extension guide](../extend/catalogue-extension.md) to
-validate a copy and work through the appropriate operator steps. Keep the
-prior type version available when adding required fields. The example's
-fixture upgrade shows an explicit label-language mapping while retaining
-the original type definition.
+The extracted `owned/catalog-packs/supplements/` folder contains fictional
+drafts and policy. See the [catalogue extension guide](../extend/catalogue-extension.md).
 
 ## Replace acquisition location choices
 
