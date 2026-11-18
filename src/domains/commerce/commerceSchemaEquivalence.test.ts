@@ -1,3 +1,4 @@
+import { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, createCatalogSubscriptionProfileBinding } from "@openlup/platform/subscriptions";
 import { expect, it } from "vitest";
 import { PAYMENT_EXECUTION_PROVIDERS } from "../payment/types.js";
 import { PLATFORM_ACCEPTED_CURRENCIES } from "../../lib/currency/platformCurrency.js";
@@ -105,3 +106,29 @@ function projectHostVocabulary(value: unknown): unknown {
     .map(([key, nested]) => [key, projectHostVocabulary(nested)]));
   return value;
 }
+
+
+it.each([[90,true],[91,true],[120,true],[121,false]] as const)(
+  "cadence_bound_parity_matrix managed intake applies the shared profile limit at %i days",
+  (days, admitted) => {
+    const accepted = intent.configuratorIntentSchema.parse({ ...baseIntent, mode: "subscription", cadenceDays: days });
+    expect(accepted.cadenceDays).toBe(days);
+    expect(intent.configuratorIntentSchema.safeParse({ ...accepted,
+      cadencePolicyVersion: intent.CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION,
+    }).success).toBe(false);
+    const profileRef = { key: "example:profile", version: 1 };
+    const profiles = createCatalogSubscriptionProfileBinding({ profiles: [{
+      ...profileRef, allowedCadenceDays: [90,91,120],
+      quantities: { minBaseUnits: 1, maxBaseUnits: 14, maxBaseLines: 1, maxUnitsPerLine: 14 },
+      addons: { allowedTypeRefs: [], maxLines: 0, maxUnits: 0 }, swapGroupKeys: [],
+      consumption: { kind: "fixed_units" }, prepaid: "unsupported",
+    }] });
+    const result = profiles.check({ cadenceDays: accepted.cadenceDays!, installedCadenceBound: CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS,
+      lineItems: [{ id: accepted.selectedVariants[0]!.variantId, typeRef: { key: "example:item", version: 1 },
+        quantity: accepted.selectedVariants[0]!.qty, addon: false, sellable: true, profileRef,
+        profileDigest: profiles.resolve(profileRef)?.digest }] });
+    expect(result.kind).toBe(admitted ? "profiled" : "refused");
+    if (result.kind === "refused") expect(result.issue.code).toBe("profile_cadence_exceeds_platform_bound");
+    expect(CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS).toBe(120);
+  },
+);

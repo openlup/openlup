@@ -109,7 +109,7 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
 ## dist/subscriptions/catalogProfileBinding.d.ts
 
 ```ts
-import { type CatalogAcceptedReferenceV2, type CatalogQuantity, type CatalogSubscriptionCoverage, type CatalogSubscriptionLineDemand, type CatalogSubscriptionPolicyRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+import { type CatalogAcceptanceV2, type CatalogAcceptedReferenceV2, type CatalogQuantity, type CatalogSubscriptionCoverage, type CatalogSubscriptionLineDemand, type CatalogSubscriptionPolicyRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 /** Server selection. The installed profile digest and exact publication reference bind the policy input.
  * @experimental
  */
@@ -202,6 +202,13 @@ export declare function createCatalogSubscriptionProfileBinding(input: {
         bound: boolean;
     } | undefined;
     check: (selection: CatalogSubscriptionProfileSelection) => CatalogSubscriptionProfileDecision;
+    bindAcceptance: (selection: CatalogSubscriptionProfileSelection) => Exclude<CatalogSubscriptionProfileDecision, {
+        kind: "profiled";
+    }> | (Extract<CatalogSubscriptionProfileDecision, {
+        kind: "profiled";
+    }> & {
+        acceptance: CatalogAcceptanceV2;
+    });
 };
 ```
 ## dist/subscriptions/classicPackageQuote.d.ts

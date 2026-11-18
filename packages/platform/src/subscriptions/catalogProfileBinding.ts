@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { evaluateProfileDemand } from "./profileDemand.js";
 import { canonicalizeCatalogQuantity, CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, validateCatalogSubscriptionProfile,
-  type CatalogAcceptedReferenceV2, type CatalogQuantity,
+  type CatalogAcceptanceV2, type CatalogAcceptedReferenceV2, type CatalogQuantity,
   type CatalogSubscriptionCoverage, type CatalogSubscriptionLineDemand, type CatalogSubscriptionPolicyRef,
   type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 
@@ -163,6 +163,9 @@ export function createCatalogSubscriptionProfileBinding(input: {
       if (value) attachments.push(value);
     }
     if (attachments.length > 0 && attachments.length !== selected.size) return refuse("profile_attachment_invalid", "/lineItems");
+    if (cadenceDays > CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS) {
+      return refuse("profile_cadence_exceeds_platform_bound", "/cadenceDays");
+    }
 
     let allowedDays = Array.from({ length: CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS }, (_, index) => index + 1);
     for (const days of [storeCadenceDays, commandCadenceDays, ...lines.map(line => line.allowedCadenceDays),
@@ -232,5 +235,35 @@ export function createCatalogSubscriptionProfileBinding(input: {
     return { kind: "profiled", allowedDays, attachments, ...demand };
   }
 
-  return { resolve, check };
+  /** Attach accepted identities only after the shared guard admits the whole selection. */
+  function bindAcceptance(selection: CatalogSubscriptionProfileSelection):
+    | Exclude<CatalogSubscriptionProfileDecision, { kind: "profiled" }>
+    | (Extract<CatalogSubscriptionProfileDecision, { kind: "profiled" }> & { acceptance: CatalogAcceptanceV2 }) {
+    const decision = check(selection);
+    if (decision.kind === "legacy" && selection.lineItems.some(line => line.publication?.reference.subscriptionProfile)) {
+      return { kind: "refused", issue: { code: "profile_attachment_invalid", path: "/lineItems" } };
+    }
+    if (decision.kind !== "profiled") return decision;
+    if (selection.installedCadenceBound === undefined) {
+      return { kind: "refused", issue: { code: "profile_cadence_bound_unavailable", path: "/cadenceDays" } };
+    }
+    const byVariant = new Map(decision.attachments.map(item => [item.variantId, item]));
+    const lines: CatalogAcceptedReferenceV2[] = [];
+    for (const [index, line] of selection.lineItems.entries()) {
+      const reference = line.publication?.reference;
+      const accepted = byVariant.get(line.id);
+      const profile = reference?.subscriptionProfile;
+      if (!reference || identity(reference.typeRef) !== identity(line.typeRef) || (line.profileRef && !accepted) ||
+        (profile && (!accepted || identity(profile) !== identity(accepted.profileRef) || profile.digest !== accepted.profileDigest))) {
+        return { kind: "refused", issue: { code: "profile_attachment_invalid", path: `/lineItems/${index}` } };
+      }
+      lines.push(accepted ? { ...reference, subscriptionProfile: {
+        ...accepted.profileRef, digest: accepted.profileDigest,
+      } } : reference);
+    }
+    lines.sort((a, b) => a.skuId < b.skuId ? -1 : a.skuId > b.skuId ? 1 : 0);
+    return { ...decision, acceptance: { schemaVersion: 2, lines } };
+  }
+
+  return { resolve, check, bindAcceptance };
 }

@@ -1,3 +1,4 @@
+import type { CatalogSubscriptionProfileRef } from "./subscriptionProfile.js";
 import type { CatalogQuantity } from "./quantities.js";
 /** Exact immutable catalogue identity captured by a commerce agreement.
  * @experimental
@@ -13,6 +14,8 @@ export interface CatalogAcceptedReferenceV2 {
   optionDigest: string;
   netContent: CatalogQuantity;
   demandPolicyRef?: string;
+  /** Immutable identity of the admitted subscription profile. @experimental */
+  subscriptionProfile?: CatalogSubscriptionProfileRef & { readonly digest: string };
 }
 /** @experimental */
 export interface CatalogAcceptanceV2 { schemaVersion: 2; lines: CatalogAcceptedReferenceV2[] }

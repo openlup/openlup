@@ -641,7 +641,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
-    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
+    commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit", "commerce_orders_subscription_profile_acceptance"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
@@ -650,7 +650,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
     commerce_offer_policy_rollout_baselines: ["commerce_offer_policy_baseline_insert_guard"],
-    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit"],
+    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit", "subscription_events_profile_acceptance"],
     commerce_order_operations: ["communication_refund_subject"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
     subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],

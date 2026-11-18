@@ -11,10 +11,16 @@ the installed edit bound on the same database. Definition validation and binding
 are available as unbound contracts. Verify transactional support for a profile
 before enabling a purchase or edit lane.
 
-Native installation retains the canonical profile declaration in the existing
-install receipt and refuses a change at the same profile version. The shared
-purchase and edit fence refuses a selected profile while transactional profile
-acceptance is unavailable. The managed rail does not supply this feature. A
-managed twin can retain definitions in its install ledger under RLS, give
-definition writes to its installer role, and verify profile admission under its
-existing order and edit authorities.
+Native installation retains the canonical declaration in the existing install
+receipt and refuses a change at the same version. The existing accepted
+catalogue reference can also carry the selected profile key, version and digest.
+Explicitly profiled subscription writes use the qualified shared admission
+binding, and the native purchase, edit and renewal transaction hooks compare
+that identity with the existing draft or retained evidence. The host must
+compose verified catalogue facts and enable each qualified lane explicitly.
+
+Native hosts use the existing wide legacy cadence forward and verify the
+effective installed bound. The package's explicitly profiled limit is 120 days.
+The managed rail does not supply the native acceptance hooks. The managed
+intake witness applies the same package limit after the managed parser. The
+host's fixed-cadence discriminator keeps its existing eligible days.

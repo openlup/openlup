@@ -1482,7 +1482,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+      "path": "db/platform/migrations/20261124000000_subscription_profiles.sql",
       "class": "public-output"
     },
     {
@@ -4822,7 +4822,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124010000_subscription_profiles.sql",
+      "path": "packages/platform/sql/20261124000000_subscription_profiles.sql",
       "class": "public-output"
     },
     {

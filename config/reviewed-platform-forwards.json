@@ -5980,22 +5980,48 @@
       },
       {
         "row": "catalogue-sp1",
-        "path": "db/platform/migrations/20261124010000_subscription_profiles.sql",
+        "path": "db/platform/migrations/20261124000000_subscription_profiles.sql",
         "replacedFunctions": [
           {
-            "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
-            "beforeSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402",
-            "searchPath": "pg_catalog, pg_temp"
+            "signature": "public.catalog_accepted_reference_assert_v2(jsonb)",
+            "beforeSha256": "f23775c133a054f334f956933a5b64a23cb56b2cf32bb87194cada5082b90dda",
+            "searchPath": "pg_catalog, public"
           },
           {
             "signature": "public.catalog_definition_install(text,integer,jsonb)",
             "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
             "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+            "beforeSha256": "b73637d95950ca72d32c1649b98ef774c2a2c9c2e377c2ae58fd051b3979660e",
+            "searchPath": "pg_catalog"
           }
         ],
-        "createdFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_subscription_profile_assert_acceptance(jsonb,uuid,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_subscription_profile_acceptance_guard()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
         "grantOnlyFunctions": [],
-        "dataStatements": []
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "commerce_orders_subscription_profile_acceptance",
+            "table": "public.commerce_orders",
+            "sha256": "ad511f6c6c25474cf50e8c1b8255a973e4213c31487dbb23849e8b49d6d536bf"
+          },
+          {
+            "name": "subscription_events_profile_acceptance",
+            "table": "public.subscription_events",
+            "sha256": "0c9e3bf4100f5e4bc73e16b9692b3302eb0b0dc2c450853902d8810ec689282b"
+          }
+        ]
       }
     ]
   },
@@ -8589,18 +8615,33 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261124010000_subscription_profiles.sql",
-      "sha256": "bc030d7a6fe14ce27f384409babe2602129a210ed9c1e61d3023a7bbb5f9a513",
+      "path": "db/platform/migrations/20261124000000_subscription_profiles.sql",
+      "sha256": "41ce455ae576505d2f48b37beefdf38612aa79a9d6ef89c65fd6f7d6cb039f90",
       "functions": [
         {
-          "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
-          "beforeSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402",
-          "afterSha256": "2b6ec0fcb9fb2b49cea9172e2f8f22d8dfc8fbf8123743e4ffb3e36bda7cb99b"
+          "signature": "public.catalog_accepted_reference_assert_v2(jsonb)",
+          "beforeSha256": "f23775c133a054f334f956933a5b64a23cb56b2cf32bb87194cada5082b90dda",
+          "afterSha256": "a74939f4afe326c54563ab7167fee2a8fe46113bc3428f31955cd924a11927c0"
         },
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
           "afterSha256": "21f3c6b27e8aea39a8546805cdc5ad6783c429e170123df7dd7dd4619222bde4"
+        },
+        {
+          "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
+          "beforeSha256": "b73637d95950ca72d32c1649b98ef774c2a2c9c2e377c2ae58fd051b3979660e",
+          "afterSha256": "ee482704d4051f9fea812087788d790b71a6074f9a09259be8cfe9d23d903de5"
+        },
+        {
+          "signature": "public.catalog_subscription_profile_assert_acceptance(jsonb,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "a680bb783e2ee79ebcd75a1c736a606028ba88708ea4aa3d338cbb2e60245156"
+        },
+        {
+          "signature": "public.catalog_subscription_profile_acceptance_guard()",
+          "beforeSha256": null,
+          "afterSha256": "5c181ae344c628aae2f77e1d1f2083f28b1c3084f114d1c233bcf450a3389493"
         }
       ]
     }

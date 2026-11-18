@@ -230,3 +230,35 @@ describe("cadence_bound_parity_matrix", () => {
     }).digest);
   });
 });
+
+describe("profile_attachment_continuity_matrix qualified quote and edit binding", () => {
+  it.each([
+    [ 28, 120, true, "profiled" ],
+    [ 28, undefined, true, "profile_cadence_bound_unavailable" ],
+    [ 28, 120, false, "profile_attachment_invalid" ],
+    [ 121, 3660, true, "profile_cadence_exceeds_platform_bound" ],
+  ] as const)("SP1-D-023 binds only admitted publication identities at %d days (%s, %s)", (cadenceDays, installedCadenceBound, anchored, expected) => {
+    const { base, binding } = fixture();
+    const result = binding.bindAcceptance({ cadenceDays, installedCadenceBound, lineItems: [anchored ? liveLine(base) : base] });
+    expect(result.kind === "refused" ? result.issue.code : result.kind).toBe(expected);
+    if (result.kind === "profiled") {
+      expect(result.acceptance.lines).toEqual([{ ...liveLine(base).publication!.reference,
+        subscriptionProfile: { ...profileRef, digest: base.profileDigest } }]);
+    }
+  });
+
+  it.each(["missing add-on anchor", "unselected attachment", "changed retained digest"] as const)(
+    "SP1-D-023 refuses %s before accepting the line roster",
+    scenario => {
+      const { base, addon, binding } = fixture();
+      const anchored = liveLine(base);
+      const { publication } = anchored;
+      const retained = { ...publication!, reference: { ...publication!.reference,
+        subscriptionProfile: { ...profileRef, digest: "f".repeat(64) } } };
+      const lineItems = scenario === "missing add-on anchor" ? [anchored, addon]
+        : [{ ...anchored, publication: retained, profileRef: scenario === "unselected attachment" ? undefined : profileRef }];
+      expect(binding.bindAcceptance({ cadenceDays: 28, installedCadenceBound: 120, lineItems }))
+        .toMatchObject({ kind: "refused", issue: { code: "profile_attachment_invalid" } });
+    },
+  );
+});

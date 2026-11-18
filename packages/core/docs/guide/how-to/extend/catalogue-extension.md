@@ -207,8 +207,10 @@ adopter policy. Set `demandScope` to `per_line` when each product must cover the
 interval independently. An exact policy can accept 56 pieces at 2/day and 140 g
 at 5 g/day on the same 28-day cadence. Working examples can check declaration
 shape offline and use the native edit-bound probe against the candidate database.
-A live acceptance also needs explicitly composed commerce ports and durable
-profile evidence. Typical declaration codes include `definition_profile_invalid`,
+For a live quote or edit, compose `bindAcceptance` with verified facts and
+the observed installed edit bound. The existing accepted catalogue reference
+carries the profile key, version and digest through payment and renewal.
+Activate each lane only after its host bindings are installed and verified. Typical declaration codes include `definition_profile_invalid`,
 `definition_unknown_profile_ref` and `profile_cadence_exceeds_platform_bound`.
 Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
 

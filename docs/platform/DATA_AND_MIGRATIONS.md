@@ -2151,7 +2151,13 @@ declaration keep their existing receipt shape.
 The profile-aware assertion uses the established commerce lock order and
 authoritative current and retained publication references. An enrolled selection
 requires transactional policy evidence before an order or an edit can write.
-The native fence refuses enrolled purchases and edits until that evidence is bound.
+The same optional profile identity travels in each existing V2 reference. The
+native hooks compare the frozen draft at settlement and the retained profile
+roster before a new renewal freeze. They run inside the commerce transaction
+and preserve the existing lock order. Use the existing wide legacy native
+cadence forward for installed edit capacity. The read-only profile assertion
+is available to the service role. A custom qualified runtime needs equivalent
+execute authority wherever it runs the governed transaction hooks.
 
 ### Closed native store forwards
 

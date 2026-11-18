@@ -1882,6 +1882,16 @@ mode checks each product's own canonical unit and daily rate. Pooled demand
 shares a declared unit and rate inside each pool. An allowed coverage proposal
 leaves the schedule with the accepted commerce command. Prepaid is unsupported.
 
+A host calls `bindAcceptance` on its verified, complete quote or edit
+selection with the installed cadence bound before constructing
+`catalogAdmission.skuRevisions`. Use the returned V2 references with the same
+line quantities and immutable publication anchors. A selected reference
+records the profile key, version and digest. The transaction compares them to
+the referenced publication, the accepted draft at payment and the retained
+agreement at renewal. Renewal reuses those frozen references after a catalogue
+change. The starter needs explicit composition before offering these lanes.
+
+
 
 The experimental native successor store separates immutable schedule lineage
 from generation execution. An explicit accepted proposal may replace an unpaid
