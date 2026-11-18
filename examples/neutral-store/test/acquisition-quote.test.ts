@@ -20,7 +20,7 @@ const config = Object.values(configurations)[0]!;
 const cart = { schemaVersion: 1, configuration: config.id, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays,
   lines: [{ sku: config.offer.products[0]!.sku, quantity: 1 }] };
 const context = { config, actor: { customerRef: null, operatorRef: null }, commandKey: 'fictional-command-0001' };
-const payload = { cart, configuration: config.id, country: config.market.country, locale: 'en',
+const payload = { cart, configuration: config.id, country: config.market.country, locale: config.market.defaultLocale,
   termsAccepted: true, termsRevision: config.legal.revision, email: 'buyer@example.test', firstName: 'Example',
   lastName: 'Buyer', phone: '00000', line1: '1 Example Lane', postalCode: '00000', city: 'Example' };
 const unavailable: AcquisitionPredecessors = {
@@ -31,7 +31,7 @@ test('quote failures preserve exact public reasons without exposing arbitrary de
   for (const reason of ['base_price_not_found', 'subscription_price_policy_not_effective', 'active_price_list_ambiguous']) {
     assert.equal(quoteFailure(new CommerceQuoteError('PRICE_NOT_CONFIGURED', 'private query', { reason, sql: 'private SQL' })), reason);
     assert.ok(isQuoteRefusalCode(reason));
-    for (const locale of ['en', 'pl'] as const) assert.ok(quoteRefusalCopy[locale][reason as keyof typeof quoteRefusalCopy.en].length > 20);
+    for (const locale of config.market.locales) assert.ok(quoteRefusalCopy[locale][reason as keyof typeof quoteRefusalCopy[typeof locale]].length > 20);
   }
   for (const error of [new Error('starter_private_query: secret'), new Error('base_price_private_payload'), new Error('catalog_private_payload'),
     new CommerceQuoteError('PRICE_NOT_CONFIGURED', 'private query', { reason: 'unknown: secret' }),

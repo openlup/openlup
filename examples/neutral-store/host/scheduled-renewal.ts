@@ -18,7 +18,7 @@ import { renewalPolicy } from '../owned/renewal-policy.ts';
 
 /** One invocation from the existing lifecycle command; construction starts no scheduler. */
 export async function runScheduledRenewal(connectionString: string, config: StoreConfig) {
-  assertRenewalConfig(config.renewal);
+  assertRenewalConfig(config.renewal, config.market.locales);
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const role = (await pool.query(`SELECT session_user AS login,current_user AS role,rolsuper,rolbypassrls

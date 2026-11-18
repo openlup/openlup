@@ -1,3 +1,5 @@
+import { market } from '../owned/market.config.ts';
+import { routes } from '../shared/routes.ts';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +14,7 @@ import { captureCompletionEntry, currentPurchase, rememberPurchase, visiblePurch
 test('recovery message values are typed configuration in both configurations and locales', async () => {
   for (const original of Object.values(configurations)) {
     const config = structuredClone(original);
-    for (const locale of ['en', 'pl'] as const) {
+    for (const locale of config.market.locales) {
       config.purchase.recoveryMessage = {
         subject: { en: 'Changed subject', pl: 'Zmieniony temat' }, body: { en: 'Changed body', pl: 'Zmieniona treść' },
         expiryLabel: { en: 'Until', pl: 'Do' }, orderLabel: { en: 'Reference', pl: 'Numer' },
@@ -33,9 +35,9 @@ test('recovery message values are typed configuration in both configurations and
       assert.equal(new URL(message.completionUrl).searchParams.get('token'), 'private-value');
     }
     Reflect.deleteProperty(config.purchase.recoveryMessage, 'expiryLabel');
-    assert.throws(() => assertConfig(config), /starter_recovery_message_invalid/);
-    config.purchase.recoveryMessage.expiryLabel = { en: '', pl: 'Do' };
-    assert.throws(() => assertConfig(config), /starter_recovery_message_invalid/);
+    assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: purchase.recoveryMessage.expiryLabel (${config.market.locales[0]})` });
+    config.purchase.recoveryMessage.expiryLabel = { ...original.purchase.recoveryMessage.expiryLabel, [config.market.locales[0]!]: '' };
+    assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: purchase.recoveryMessage.expiryLabel (${config.market.locales[0]})` });
   }
 });
 
@@ -44,7 +46,7 @@ test('captured checkout mail is separate and private', async () => {
   try {
     process.chdir(directory);
     await createCheckoutRecoveryDelivery('http://127.0.0.1:4319')({ email: 'buyer@example.test', rawToken: 'private-value',
-      orderRef: 'order-reference', expiresAt: '2030-01-01T00:00:00.000Z', locale: 'en',
+      orderRef: 'order-reference', expiresAt: '2030-01-01T00:00:00.000Z', locale: Object.values(configurations)[0]!.market.defaultLocale,
       context: { config: Object.values(configurations)[0]!, actor: { customerRef: null, operatorRef: null }, commandKey: 'test-command' } });
     const mailbox = join(directory, '.context/captured-messages');
     assert.equal((await stat(mailbox)).mode & 0o777, 0o700);
@@ -57,7 +59,7 @@ test('captured checkout mail is separate and private', async () => {
 test('entry removes URL token synchronously and retains a private reload convenience', () => {
   const saved = ['location', 'history', 'sessionStorage'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   const data = new Map<string, string>();
-  const location = { pathname: '/account/complete-payment', search: '?token=private-value&other=kept', hash: '#anchor' };
+  const location = { pathname: routes.completion[market.defaultLocale], search: '?token=private-value&other=kept', hash: '#anchor' };
   let replaced = '';
   try {
     Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
@@ -68,7 +70,7 @@ test('entry removes URL token synchronously and retains a private reload conveni
       getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value),
     } });
     captureCompletionEntry();
-    assert.equal(replaced, '/account/complete-payment?other=kept#anchor');
+    assert.equal(replaced, `${routes.completion[market.defaultLocale]}?other=kept#anchor`);
     // Rendering after bootstrap sees the redacted URL and must retain its entry.
     captureCompletionEntry();
     assert.deepEqual(currentPurchase('entry-test'), { token: 'private-value' });
@@ -120,7 +122,7 @@ test('continuation keeps same-order credentials across replay without transferri
 test('second submit continues through completion and a cold module reload without UI assets', async () => {
   const saved = ['location', 'history', 'sessionStorage'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   const data = new Map<string, string>();
-  const location = { pathname: '/account/complete-payment', search: '', hash: '' };
+  const location = { pathname: routes.completion[market.defaultLocale], search: '', hash: '' };
   try {
     Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
     Object.defineProperty(globalThis, 'history', { configurable: true, value: { replaceState: () => { location.search = ''; } } });

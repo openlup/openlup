@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -27,7 +28,7 @@ test('native public intake, operator authority, quotas and restart persistence',
     });
     return { status: response.status(), body: await response.json() };
   };
-  const signIn = async (kind: 'operator' | 'customer', email: string, locale: 'en' | 'pl' = 'en') => {
+  const signIn = async (kind: 'operator' | 'customer', email: string, locale: typeof market.locales[number] = market.defaultLocale) => {
     const messages = () => {
       try { return compose('exec', '-T', '--user', 'node', 'application', 'cat',
         '/application/.context/captured-messages/identity.jsonl').trim().split('\n')
@@ -91,12 +92,12 @@ test('native public intake, operator authority, quotas and restart persistence',
       .toEqual({ ok: false, code: submitCode });
   }
 
-  await page.goto(routes.partners.en);
+  await page.goto(routes.partners[market.defaultLocale]);
   const form = page.locator('main form');
   const partnerEmail = `partner-${randomUUID()}@example.test`;
   await form.locator('[name=email]').fill(partnerEmail);
   const submission = page.waitForResponse(response => response.url().endsWith('/api/actions/partners.submit'));
-  await form.getByRole('button', { name: copy.en.sendInquiry, exact: true }).click();
+  await form.getByRole('button', { name: copy[market.defaultLocale].sendInquiry, exact: true }).click();
   const receipt = await (await submission).json();
   expect(receipt.ok).toBe(true);
   expect(Object.keys(receipt.value)).toEqual(['caseRef']);
@@ -104,7 +105,7 @@ test('native public intake, operator authority, quotas and restart persistence',
   const caseRef = receipt.value.caseRef;
   await expect(form.locator('.action-result')).toContainText(caseRef);
   const replay = page.waitForResponse(response => response.url().endsWith('/api/actions/partners.submit'));
-  await form.getByRole('button', { name: copy.en.sendInquiry, exact: true }).click();
+  await form.getByRole('button', { name: copy[market.defaultLocale].sendInquiry, exact: true }).click();
   expect((await (await replay).json()).replayed).toBe(true);
 
   const inquiry = { company: 'Fictional Studio', country: 'ZZ', firstName: 'Alex', lastName: 'Example', email: partnerEmail };
@@ -130,14 +131,14 @@ test('native public intake, operator authority, quotas and restart persistence',
   expect((await action('operator.partnerTransition', { id: caseRef, expectedVersion: 0, status: 'invalid' })).body.code)
     .toBe('starter_input_invalid');
 
-  await page.goto(routes.admin.en + '#partners');
+  await page.goto(routes.admin[market.defaultLocale] + '#partners');
   const panel = page.locator('#partners');
-  await panel.getByRole('button', { name: copy.en.readStatus, exact: true }).click();
+  await panel.getByRole('button', { name: copy[market.defaultLocale].readStatus, exact: true }).click();
   await expect(panel).toContainText(partnerEmail);
   const transition = panel.locator('form');
   await transition.locator('[name=id]').fill(caseRef);
   await transition.locator('[name=status]').selectOption('contacted');
-  await transition.getByRole('button', { name: copy.en.save, exact: true }).click();
+  await transition.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   await expect(transition.locator('.action-result')).toContainText('contacted');
   expect((await action('operator.partnerTransition', { id: caseRef, expectedVersion: 1, status: 'contacted' })).body.code)
     .toBe('partner_acquisition_conflict');
@@ -152,9 +153,9 @@ test('native public intake, operator authority, quotas and restart persistence',
   const delay = Math.max(0, signedInAt + 61000 - Date.now());
   await new Promise(resolve => setTimeout(resolve, delay));
   await context.clearCookies();
-  await signIn('operator', operatorEmail, 'pl');
-  await page.goto(routes.admin.pl + '#partners');
-  await page.locator('#partners').getByRole('button', { name: copy.pl.readStatus, exact: true }).click();
+  await signIn('operator', operatorEmail, market.locales.at(-1)!);
+  await page.goto(routes.admin[market.locales.at(-1)!] + '#partners');
+  await page.locator('#partners').getByRole('button', { name: copy[market.locales.at(-1)!].readStatus, exact: true }).click();
   await expect(page.locator('#partners')).toContainText(caseRef);
   const persisted = (await action('operator.partners')).body.value.cases.find((item: { caseRef: string }) => item.caseRef === caseRef);
   expect(persisted.status).toBe('contacted');

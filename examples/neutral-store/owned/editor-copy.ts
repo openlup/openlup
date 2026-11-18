@@ -1,4 +1,5 @@
-import type { Locale } from '../shared/config.ts';
+import type { Locale, LocaleCopy } from '../shared/locales.ts';
+import type { EditorCopyKey } from '../shared/copy-keys.ts';
 
 const en = {
   parcelItems: 'Items: {count} · {sizes}',
@@ -39,8 +40,7 @@ const en = {
   graduation: 'Upcoming package: {count} base units, every {days} days.',
   needUnavailable: 'The stored demonstration subject facts cannot be read. No need-entry form is available.',
   configuredLimit: 'Demand-driven plan and portion resizing is not configured in this demonstration.',
-};
-type EditorCopyKey = keyof typeof en;
+} satisfies Record<EditorCopyKey, string>;
 const pl: Record<EditorCopyKey,string> = {
   parcelItems: 'Produkty: {count} · {sizes}',
   classic: 'Edytuj pakiet', sized: 'Edytuj rozmiary i ilości', invitation: 'Wybierz rozmiary dla tej subskrypcji',
@@ -81,7 +81,7 @@ const pl: Record<EditorCopyKey,string> = {
   needUnavailable: 'Nie można odczytać zapisanych faktów demonstracyjnych. Formularz zapotrzebowania nie jest dostępny.',
   configuredLimit: 'Zmiana wielkości według zapotrzebowania przy zmianie okresu lub proporcji nie jest skonfigurowana w tej demonstracji.',
 };
-export const editorCopy = { en,pl };
+export const editorCopy = { en,pl } satisfies LocaleCopy<Record<EditorCopyKey, string>>;
 export function editorText(locale: Locale,key: EditorCopyKey,values: Record<string,string | number> = {}): string {
   let result: string = editorCopy[locale][key];
   for (const [name,value] of Object.entries(values)) result = result.replaceAll(`{${name}}`,String(value));

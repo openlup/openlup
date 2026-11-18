@@ -2574,6 +2574,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/market.config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote-copy.ts",
       "class": "public-output"
     },
@@ -2674,7 +2678,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/copy-keys.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/limits.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/locale-copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/locales.ts",
       "class": "public-output"
     },
     {
@@ -2779,6 +2795,10 @@
     },
     {
       "path": "examples/neutral-store/test/interim-pricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/locales.test.ts",
       "class": "public-output"
     },
     {

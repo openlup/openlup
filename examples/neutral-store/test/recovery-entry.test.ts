@@ -1,3 +1,5 @@
+import { market } from '../owned/market.config.ts';
+import { routes } from '../shared/routes.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { captureRecoveryEntry, currentRecoveryToken } from '../client/recovery-session.ts';
@@ -11,7 +13,7 @@ test('repair entry captures before requests and login, cleans history and surviv
   const storage = new Map<string, string>();
   const secret = 'A'.repeat(43);
   const order: string[] = [];
-  const location = { pathname: '/account/payment/recover', search: `?token=${secret}&other=kept`, hash: '' };
+  const location = { pathname: String(routes.repair[market.defaultLocale]), search: `?token=${secret}&other=kept`, hash: '' };
   try {
     Object.defineProperty(globalThis, 'location', { configurable: true, value: location });
     Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
@@ -26,9 +28,9 @@ test('repair entry captures before requests and login, cleans history and surviv
     captureRecoveryEntry();
     order.push('request');
     assert.deepEqual(order, ['capture', 'history', 'request']);
-    location.pathname = '/auth/sign-in';
+    location.pathname = routes.auth[market.defaultLocale];
     assert.equal(currentRecoveryToken() === secret, true);
-    location.pathname = '/pl/auth/sign-in';
+    location.pathname = routes.auth[market.locales.at(-1)!];
     captureRecoveryEntry();
     assert.equal(currentRecoveryToken() === secret, true);
   } finally {
@@ -42,9 +44,10 @@ test('recovery copy is typed and changeable in each demo configuration', () => {
   for (const original of Object.values(configurations)) {
     const config = structuredClone(original);
     config.recovery = structuredClone(demoRecoveryConfiguration);
-    config.recovery.states.authorized_retry.en = 'Changed pending retry copy';
+    const locale = config.market.locales[0]!;
+    config.recovery.states.authorized_retry[locale] = 'Changed pending retry copy';
     assertConfig(config);
-    config.recovery.message.subject.en = '';
-    assert.throws(() => assertConfig(config), /starter_recovery_configuration_invalid/);
+    config.recovery.message.subject[locale] = '';
+    assert.throws(() => assertConfig(config), { message: `starter_locale_copy_missing: recovery.message.subject (${locale})` });
   }
 });

@@ -132,12 +132,26 @@ required settings when adding a configuration:
 | Setting | Required content |
 | --- | --- |
 | `documents.sandbox` | An `enabled` boolean and a nonempty `providerRef` |
-| `returns.reasons` | Nonempty choices with unique codes and English and Polish labels |
-| `orderControls.holdReasons` | Nonempty choices with unique native hold reason codes and English and Polish labels |
+| `returns.reasons` | Nonempty choices with unique codes and labels for every configured locale |
+| `orderControls.holdReasons` | Nonempty choices with unique native hold reason codes and labels for every configured locale |
 
 Invalid document, return or hold settings refuse with
-`starter_order_controls_configuration_invalid`. A control being absent from a
+`starter_order_controls_configuration_invalid`, except a missing or blank
+return or hold label for a configured locale, which refuses with
+`starter_locale_copy_missing`. A control being absent from a
 page does not make its configuration optional.
+
+In the current source candidate, set `market.locales` and `market.defaultLocale`
+in `owned/market.config.ts`, composed by `owned/store.config.ts`; the starter
+derives its `Locale` type and required copy locales from this registry. The list
+must be nonempty and unique (`starter_locales_invalid`), use only platform-supported
+`en`/`pl` (`starter_locale_unsupported`), and contain the default
+(`starter_default_locale_invalid`). Supply every configured locale in UI, product,
+email and notice copy; startup refuses missing or blank text with
+`starter_locale_copy_missing`, naming the key and locale. A Polish-only registry
+`{ locales: ['pl'], defaultLocale: 'pl' }` works; requests fall back to the configured
+default, and notice preferences outside the list do too. Restart after editing.
+Adding a platform language requires a separate audit of durable SQL constraints.
 
 ## Keep business configuration owned
 

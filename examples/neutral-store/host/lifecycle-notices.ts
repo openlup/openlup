@@ -1,3 +1,4 @@
+import { resolveLocale } from '../shared/locales.ts';
 import { customerCauseForFailureClass } from '@openlup/core/payment';
 import { createHash } from 'node:crypto';
 import { generateCheckoutRecoveryToken } from '@openlup/platform/commerce/server';
@@ -24,7 +25,7 @@ export function createLifecycleNoticeHost(input: {
 }) {
   const { config } = input;
   const capture = createNoticeArtifacts(input.capture);
-  assertRenewalConfig(config.renewal);
+  assertRenewalConfig(config.renewal, config.market.locales);
   const origin = new URL(input.publicOrigin);
   if (origin.origin !== input.publicOrigin || origin.username || origin.password) throw new Error('starter_notice_origin_invalid');
 
@@ -121,8 +122,8 @@ export function createLifecycleNoticeHost(input: {
             expiresAt = String(issued.expires_at);
           } else { token = generateCheckoutRecoveryToken(); expiresAt = String(current?.expires_at); }
         }
-        const locale = (recipient.country ? config.renewal.notices.countryLocales?.[recipient.country.toUpperCase()] : undefined)
-          ?? config.renewal.notices.locale, copy = config.renewal.notices.copy[locale];
+        const locale = resolveLocale((recipient.country ? config.renewal.notices.countryLocales?.[recipient.country.toUpperCase()] : undefined)
+          ?? config.renewal.notices.locale, config.market), copy = config.renewal.notices.copy[locale];
         const selectedCopy = notice.kind in copy ? copy[notice.kind as keyof typeof copy] : null;
         const subjects: Record<string, string> = { 'subscription.paused': portalCopy[locale].carePaused,
           'subscription.resumed': portalCopy[locale].careResumed, 'subscription.renewal_upcoming': portalCopy[locale].careUpcoming,
@@ -239,9 +240,9 @@ export function createCareCapture(input: { config: StoreConfig; publicOrigin: st
       return { deliveryReference: `captured-care:${createHash('sha256').update(command.idempotencyKey).digest('hex')}` };
     },
   } });
-  const localeFor = (country: string | null) => (country ? input.config.renewal.notices.countryLocales?.[country.toUpperCase()] : undefined) ?? input.config.renewal.notices.locale;
+  const localeFor = (country: string | null) => resolveLocale((country ? input.config.renewal.notices.countryLocales?.[country.toUpperCase()] : undefined) ?? input.config.renewal.notices.locale, input.config.market);
   const bindOperator: NonNullable<NativeLifecycleMessagesOptions['bindOperator']> = async (notice, recipient) => {
-    const key = `subscription-notice:dunning:${notice.notificationId}`, locale = input.config.renewal.notices.locale;
+    const key = `subscription-notice:dunning:${notice.notificationId}`, locale = localeFor(null);
     const text = portalCopy[locale];
     return bind(key, { kind: 'operator_escalation', messageKey: key, notificationId: notice.notificationId,
       caseId: notice.caseId, subscriptionId: null, recipient: recipient.email, locale,

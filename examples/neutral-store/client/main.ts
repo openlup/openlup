@@ -75,7 +75,7 @@ async function start(): Promise<void> {
   function render(focus: boolean): void {
     captureCompletionEntry();
     captureRecoveryEntry();
-    const route = resolveRoute(location.pathname);
+    const route = resolveRoute(location.pathname, config.market);
     const locale = route.locale;
     const context: PageContext = {
       config, locale, route, query: new URLSearchParams(location.search), fragments,
@@ -131,15 +131,17 @@ function shellHeader(context: PageContext): HTMLElement {
     if (context.route.key === key) item.setAttribute('aria-current', 'page');
     append(nav, item);
   }
-  const alternate = context.locale === 'en' ? 'pl' : 'en';
-  const alternatePath = context.route.key === 'product'
-    ? productPath(context.route.slug ?? '', alternate)
-    : context.route.key === 'notFound' ? routes.home[alternate] : routes[context.route.key][alternate];
-  const language = link(copy[alternate][alternate === 'pl' ? 'languagePolish' : 'languageEnglish'], alternatePath + location.search);
-  language.hreflang = alternate;
-  language.lang = alternate;
+  const languages = context.config.market.locales.filter(locale => locale !== context.locale).map(alternate => {
+    const alternatePath = context.route.key === 'product'
+      ? productPath(context.route.slug ?? '', alternate)
+      : context.route.key === 'notFound' ? routes.home[alternate] : routes[context.route.key][alternate];
+    const language = link(copy[alternate][({ en: 'languageEnglish', pl: 'languagePolish' } as const)[alternate]], alternatePath + location.search);
+    language.hreflang = alternate;
+    language.lang = alternate;
+    return language;
+  });
   return el('header', { class: 'site-header' },
-    link(context.config.brand.name, routes.home[context.locale], 'wordmark'), nav, language);
+    link(context.config.brand.name, routes.home[context.locale], 'wordmark'), nav, ...languages);
 }
 
 function shellFooter(context: PageContext): HTMLElement {
