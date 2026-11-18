@@ -8634,12 +8634,12 @@
     },
     {
       "path": "db/platform/migrations/20261124010000_catalog_adoption.sql",
-      "sha256": "dee2ac9aae1602bef55d7b153b8add7f51f154777c6ef8659ec10b78f213597a",
+      "sha256": "f135b0e1e25c16bbc214c65b3a30e2cfc23f85e23ce9c43f32726474dc2db7da",
       "functions": [
         {
           "signature": "public.catalog_bound_obligations_v2(uuid)",
           "beforeSha256": "d67f2acd3cd0a7576e879de183dc89251a4d89b71650dbf5dd66047dbebfd09d",
-          "afterSha256": "64cdf284df6c566ae74c422aeb09fc68183af2ca8a5de893d0c9932a02e846de"
+          "afterSha256": "8fddfb0724a878cf079eece7f01a34520d2b4a268e459cd71974d7560ba73cfc"
         },
         {
           "signature": "public.catalog_publication_record_admit()",
@@ -8659,7 +8659,7 @@
         {
           "signature": "public.catalog_adoption_observe(uuid,text)",
           "beforeSha256": null,
-          "afterSha256": "f15882757d583f84631b097c1a2cd6b1411aea5e281f5c6875b9435d5c94b3ab"
+          "afterSha256": "146fbe75a8b9a733601b4a5d448fe4541420e826a746c40004c941dcca1b9949"
         },
         {
           "signature": "public.catalog_adoption_assert_initial(uuid)",

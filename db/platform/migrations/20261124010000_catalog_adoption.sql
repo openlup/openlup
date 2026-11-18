@@ -168,6 +168,10 @@ BEGIN
     AND publication_facts->'schemaVersion'='3'::jsonb AND publication_facts->>'code'=sku) THEN
   RETURN jsonb_build_object('schemaVersion',2,'outcome','unknown','reason','catalog_obligation_evidence_unknown');
  END IF;
+ -- Callers with a restricted census grant retain the established typed refusal.
+ IF NOT has_function_privilege('public.catalog_collect_bound_obligations_v2(uuid)','EXECUTE') THEN
+  RETURN jsonb_build_object('schemaVersion',2,'outcome','unavailable','reason','catalog_obligation_evidence_unavailable');
+ END IF;
  RETURN public.catalog_collect_bound_obligations_v2(p_sku_id);
 END;
 $$;
@@ -210,7 +214,7 @@ $$;
 -- The same verified observation is sealed during preflight and rebuilt during
 -- commit. This helper is private to the adoption authority.
 CREATE FUNCTION public.catalog_adoption_observe(p_product_id uuid,p_document_text text) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET timezone = 'UTC' SET search_path = pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
  product public.catalog_products%ROWTYPE;
  document public.catalog_product_document_revisions%ROWTYPE;
@@ -278,8 +282,9 @@ BEGIN
   END IF;
   obligations := obligations || (observed->'obligations');
   skus := skus || jsonb_build_array(jsonb_build_object('id',sku.id,'productId',product.id,'code',sku.sku,
-   'facts',to_jsonb(sku) || jsonb_build_object('net_content_unscaled',sku.net_content_unscaled::text,'gross_mass_unscaled',sku.gross_mass_unscaled::text),
-   'identifiers',coalesce((SELECT jsonb_agg(to_jsonb(identifier) ORDER BY identifier.id)
+   'facts',to_jsonb(sku) || jsonb_build_object('net_content_unscaled',sku.net_content_unscaled::text,'gross_mass_unscaled',sku.gross_mass_unscaled::text,
+    'created_at',sku.created_at AT TIME ZONE 'UTC','updated_at',sku.updated_at AT TIME ZONE 'UTC'),
+   'identifiers',coalesce((SELECT jsonb_agg((to_jsonb(identifier) || jsonb_build_object('created_at',identifier.created_at AT TIME ZONE 'UTC')) ORDER BY identifier.id)
     FROM public.catalog_sku_identifiers identifier WHERE identifier.catalog_sku_id=sku.id),'[]'::jsonb)));
  END LOOP;
  -- The pricing authority resolves separate lists, modes and quantity tiers
@@ -292,11 +297,18 @@ BEGIN
   WHERE s.product_id=product.id AND first_entry.active AND second_entry.active
    AND tstzrange(first_entry.valid_from,first_entry.valid_to,'[)') && tstzrange(second_entry.valid_from,second_entry.valid_to,'[)')
  ) THEN RAISE EXCEPTION 'catalog_adoption_price_overlap' USING ERRCODE='23514'; END IF;
- SELECT coalesce(jsonb_agg(jsonb_build_object('list',to_jsonb(list),'price',to_jsonb(entry)) ORDER BY entry.id),'[]'::jsonb) INTO prices
+ SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'list',to_jsonb(list) || jsonb_build_object('created_at',list.created_at AT TIME ZONE 'UTC','updated_at',list.updated_at AT TIME ZONE 'UTC',
+   'valid_from',list.valid_from AT TIME ZONE 'UTC','valid_to',list.valid_to AT TIME ZONE 'UTC'),
+  'price',to_jsonb(entry) || jsonb_build_object('created_at',entry.created_at AT TIME ZONE 'UTC','updated_at',entry.updated_at AT TIME ZONE 'UTC',
+   'valid_from',entry.valid_from AT TIME ZONE 'UTC','valid_to',entry.valid_to AT TIME ZONE 'UTC')) ORDER BY entry.id),'[]'::jsonb) INTO prices
  FROM public.price_entries entry JOIN public.price_lists list ON list.id=entry.price_list_id
  JOIN public.catalog_skus s ON s.id=entry.variant_id WHERE s.product_id=product.id;
- RETURN jsonb_build_object('product',to_jsonb(product),'definitionDigest',definition_digest,'document',
-  to_jsonb(document) || jsonb_build_object('canonical_text',canonical),'skus',skus,'prices',prices,'obligations',
+ RETURN jsonb_build_object('product',to_jsonb(product) || jsonb_build_object(
+   'created_at',product.created_at AT TIME ZONE 'UTC','updated_at',product.updated_at AT TIME ZONE 'UTC'),
+  'definitionDigest',definition_digest,'document',
+  to_jsonb(document) || jsonb_build_object('canonical_text',canonical,'created_at',document.created_at AT TIME ZONE 'UTC'),
+  'skus',skus,'prices',prices,'obligations',
   (SELECT coalesce(jsonb_agg(DISTINCT value ORDER BY value),'[]'::jsonb) FROM jsonb_array_elements(obligations)));
 END;
 $$;

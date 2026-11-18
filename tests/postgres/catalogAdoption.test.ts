@@ -327,3 +327,14 @@ it.each(["compatible", "material", "inconclusive"] as const)("catalog_legacy_bin
     outcome: "found", readback: { head: first.receipt.head, current: false },
   });
 });
+
+it("catalog_adoption_verified_fact_census LC8-D-010 independent session time zones seal the same source", async () => {
+  const { product } = await seed();
+  const utc = await preflight(product);
+  const other = await asActor(async client => {
+    await client.query("SET LOCAL TIME ZONE 'Pacific/Honolulu'");
+    return (await client.query("SELECT public.catalog_adoption_preflight($1,NULL) AS result", [product])).rows[0].result;
+  });
+  expect(other).toEqual(utc);
+  expect(await adopt(product, other.sourceDigest)).toMatchObject({ outcome: "committed", receipt: { sourceDigest: utc.sourceDigest } });
+});
