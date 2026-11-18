@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
-import type { CatalogWithdrawalImpactPort } from "../catalog/contracts/successors.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { subscriptionRecord } from "./postgresRenewalStore.js";
 import { createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
@@ -21,7 +20,10 @@ export const successorNoticeSources = Object.freeze([
  */
 export function createPostgresSuccessorNotices(options: {
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
-  impact: CatalogWithdrawalImpactPort;
+  /** Bind the catalogue owner's complete withdrawal-impact port. */
+  impact: { report(skuId:string): Promise<
+    { outcome:"complete"; obligations:readonly { family:string;sourceId:string;caseKind?:"legacy"|"successor" }[] }
+    | { outcome:"unknown"|"unavailable";reason:string }> };
   delivery: SubscriptionLifecycleMessagePort;
   recipient(clientId: string): Promise<{ recipientRef: string; locale: string } | null>;
 }) {

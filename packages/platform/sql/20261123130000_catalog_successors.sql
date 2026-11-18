@@ -1391,7 +1391,7 @@ BEGIN
   IF prior_case_v2.operation_id IS DISTINCT FROM prior_generation.id OR prior_case_v2.root_case_id IS DISTINCT FROM proposal.original_case_id OR prior_generation.id IS NULL THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
   prior_operation:=prior_generation.id; prior_fingerprint:=prior_generation.operation_fingerprint; prior_snapshot:=prior_generation.cycle_snapshot; prior_identity:=prior_generation.identity_key;
  END IF;
- IF root.id IS NULL OR s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM root.scheduled_at OR proposal.subscription_id IS DISTINCT FROM s.id OR proposal.client_id IS DISTINCT FROM p_client_id
+ IF root.id IS NULL OR proposal.subscription_id IS DISTINCT FROM s.id OR proposal.client_id IS DISTINCT FROM p_client_id
   OR proposal.state<>'offered' OR proposal.quote_hash IS DISTINCT FROM p_accepted_quote_hash OR proposal.expires_at<=p_now OR proposal.template_version<>s.template_version
   OR q.id IS NULL OR q.status<>'previewed' OR to_jsonb(q) IS DISTINCT FROM proposal.preview THEN RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
  IF (source_case_kind='legacy' AND (prior_case.state NOT IN ('waiting','stock_secured') OR prior_case.fingerprint IS DISTINCT FROM prior_fingerprint OR prior_case.cycle_snapshot IS DISTINCT FROM prior_snapshot OR prior_case.identity_key IS DISTINCT FROM prior_identity))
@@ -1407,6 +1407,7 @@ BEGIN
    (cycle_id IS NOT NULL OR order_id IS NOT NULL OR settlement_intent_id IS NOT NULL OR fulfillment_id IS NOT NULL OR attempt_prepared_at IS NOT NULL OR external_attempt_ref IS NOT NULL OR external_attempt_acknowledged_at IS NOT NULL
     OR EXISTS(SELECT 1 FROM jsonb_array_elements(outcomes) o WHERE o->>'outcome'<>'refused' OR coalesce(o->>'reason','') NOT IN ('inventory_unavailable','reservation_expired') OR o->>'externalRef' IS NOT NULL))) THEN
   RAISE EXCEPTION 'stock_wait_successor_provider_owned' USING ERRCODE='22023'; END IF;
+ IF s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM root.scheduled_at THEN RAISE EXCEPTION 'successor_proposal_binding_changed' USING ERRCODE='22023'; END IF;
  IF source_case_kind='legacy' AND root.lease_expires_at>p_now OR source_case_kind='successor' AND prior_generation.lease_expires_at>p_now THEN RAISE EXCEPTION 'stock_wait_successor_lease_active' USING ERRCODE='22023'; END IF;
  IF source_case_kind='legacy' AND NOT (root.state='refused' AND root.terminal_reason IN ('inventory_unavailable','reservation_expired') OR root.state='reserved' AND prior_case.state='stock_secured')
   OR source_case_kind='successor' AND NOT (prior_generation.state='refused' AND prior_generation.terminal_reason IN ('inventory_unavailable','reservation_expired') OR prior_generation.state='reserved' AND prior_case_v2.state='stock_secured') THEN RAISE EXCEPTION 'stock_wait_successor_not_stock_only' USING ERRCODE='22023'; END IF;
