@@ -124,7 +124,7 @@ the durable sweep marker together with compensated activation.
 
 ## Install reminder stages and hours
 
-The unreleased native reminder-schedule forward adds
+In 1.2.0, the native reminder-schedule forward adds
 `installCheckoutRecoveryReminderSchedule` and `readCheckoutRecoveryReminderSchedule`
 in `@openlup/platform/commerce/server`, with the
 `CheckoutRecoveryReminderSchedule` type in `@openlup/platform/commerce/contracts`.
