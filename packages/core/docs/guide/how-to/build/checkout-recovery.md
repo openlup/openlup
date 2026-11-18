@@ -158,9 +158,10 @@ counter names remain the legacy names, counted by stage.
 After the reminder guard migration, creating a wave consumes that stage for the
 order even if you later change its configured hour. Checkout waves written
 before stage labels were added use the historical first and last hour mapping.
-An unlabeled wave at any other hour consumes both stages. When retention
-compaction removes a checkout wave's payload, the order consumes both stages
-because its original stage is unknown. Abandoned-cart stages remain identifiable
+An unlabeled wave at any other hour consumes both stages. With an installed
+schedule, a compacted checkout wave consumes both stages because retention
+removed its stage label. With no installed schedule, compacted checkout waves
+use the historical hour mapping. Abandoned-cart stages remain identifiable
 through their event types after compaction.
 
 Use `READ COMMITTED` for reminder producers and schedule changes.
@@ -181,17 +182,18 @@ GRANT EXECUTE ON FUNCTION public.commerce_install_checkout_recovery_reminder_sch
 TO schedule_installer;
 ```
 
-`checkout_recovery_schedule_change_blocked_open_episodes` reports the number of
-blocking orders and the latest window end. For pending checkout orders with a
-wave, the guard uses the maximum window the host policy accepts, 2,147,483,647
-seconds (about 68 years) from order creation. A host can lengthen its checkout
-window after a wave is created. A pending abandoned cart with a wave and a
-valid draft receipt has an unbounded window until it gains a settlement intent
-or the draft or order closes.
+The installer reports `checkout_recovery_schedule_change_blocked_open_episodes
+(N blocking orders)` when a pending checkout order has any reminder wave,
+including a final or compacted wave. A pending abandoned cart with a wave blocks
+while it has a valid draft receipt and no settlement intent. The guard uses no
+age cutoff because the host controls the checkout window and the producer's
+reference time. Orders that have aged past their original reminder window can
+still block a change.
 
 If an active shop refuses the change, keep using its current schedule. If no
 schedule is stored, defer the first explicit install. Retry after the blocking
-orders close or the applicable windows end. Schedule changes during open
+orders are paid or cancelled, or, for abandoned carts, after the draft receipt
+is invalidated or a settlement intent exists. Schedule changes during open
 episodes require per-episode scheduling support.
 
 An installed schedule determines eligibility offsets and takes precedence over
@@ -201,9 +203,8 @@ checks its legacy offsets, including defaults; keep them inside `checkoutSeconds
 even when the installed schedule supplies timing. `checkoutSeconds`, payment/consent gates,
 expiry and token lifetimes retain their independent limits. For example, a
 48-hour final checkout reminder requires a checkout window longer than 48 hours.
-Changing a schedule never rewrites pending events or tokens; changing an hour
-creates a different dedup identity, so coordinate schedule changes with in-flight
-reminders.
+Existing events and tokens keep their recorded expiry. The hour remains in
+the event key, and the stage check prevents a second wave after an hour change.
 
 For a separate native runtime role, keep its existing producer and relation
 privileges and add `GRANT EXECUTE ON FUNCTION

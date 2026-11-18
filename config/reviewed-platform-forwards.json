@@ -5633,7 +5633,7 @@
         ],
         "createdFunctions": [
           {
-            "signature": "public.commerce_checkout_recovery_event_stage(public.outbox_events)",
+            "signature": "public.commerce_checkout_recovery_event_stage(public.outbox_events,boolean)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
@@ -7960,7 +7960,7 @@
     },
     {
       "path": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
-      "sha256": "86e98f16bf084c1d14d11dd5874a29413e966d183a11c8f3e095f3d3132e314b",
+      "sha256": "c62d5c0bc78852d98935bb5a4f04ab5561ca039775ed180233b9cd5510306f02",
       "functions": [
         {
           "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
@@ -7970,17 +7970,17 @@
         {
           "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)",
           "beforeSha256": "3681c465358f7d630313ac731e2c4332147f4781944f9223d5bb4916192adbb6",
-          "afterSha256": "62d60d2441320601c68a553343e1db6ebeb2745dec2abcc8d1c98812cf29b38a"
+          "afterSha256": "9204fdf57f6b2d91ecbe15e0da8129abe5f19c24e08fe4db5c85a2dbdf23cdc8"
         },
         {
-          "signature": "public.commerce_checkout_recovery_event_stage(public.outbox_events)",
+          "signature": "public.commerce_checkout_recovery_event_stage(public.outbox_events,boolean)",
           "beforeSha256": null,
-          "afterSha256": "a608ca3bacc75248f5b1e8276c5e91040528f38ed109d348a1498820bb3db5b7"
+          "afterSha256": "84b11454ee77fb072f914c428e9972b6dd3b666216efb4a115ec6402ab5d51b3"
         },
         {
           "signature": "public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "2b21a9c8df43c05c9d9f52f4218a23ca040c82840c731568b489f32e0a6d0eed"
+          "afterSha256": "37c44c6d486d2edb915eb1c9af672e666edfd14f1d201a3b9170a98a11e864d3"
         },
         {
           "signature": "public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb)",

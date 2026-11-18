@@ -4469,11 +4469,13 @@ SELECT to return the revision and full schedule. The reminder guard forward
 the installation role's permissions. It takes the same transaction
 advisory lock as the guard and both producers, before reading the installed
 schedule. Enqueued waves and the guard check therefore serialize at `READ COMMITTED`.
-The guard uses the checkout policy validator's maximum window of 2,147,483,647
-seconds from order creation. A pending abandoned cart with a valid draft receipt
-and no settlement intent has an unbounded window. A compacted checkout wave
-consumes both stages. Abandoned-cart stage identity survives compaction in the
-event type. Both producers apply stage deduplication after the candidate limit.
+Every pending checkout order with a wave blocks schedule changes regardless of
+age. A pending abandoned cart with a wave blocks while its draft receipt is
+valid and it has no settlement intent. A refusal reports the number of blocking
+orders. A compacted checkout wave consumes both stages with an installed
+schedule and follows the historical hour mapping when the row is absent.
+Abandoned-cart stage identity survives compaction in the event type. Both
+producers apply stage deduplication after the candidate limit.
 An identical install returns without a write at every isolation level. Changes
 and producers require a fresh statement snapshot after the lock, so
 `REPEATABLE READ` and `SERIALIZABLE` refuse. Follow the

@@ -1,11 +1,11 @@
 -- Keep each reminder stage final and serialize schedule installation with both wave producers.
-CREATE FUNCTION public.commerce_checkout_recovery_event_stage(p_event public.outbox_events)
+CREATE FUNCTION public.commerce_checkout_recovery_event_stage(p_event public.outbox_events, p_schedule_installed boolean)
 RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT CASE
     WHEN p_event.event_type <> 'commerce.checkout_recovery'
       OR p_event.idempotency_key LIKE 'checkout_recovery:operator:%'
       OR p_event.idempotency_key LIKE 'checkout_recovery:buyer:%' THEN NULL
-    WHEN p_event.metadata ? 'retentionCompactedAt' THEN 'both'
+    WHEN p_schedule_installed AND p_event.metadata ? 'retentionCompactedAt' THEN 'both'
     WHEN p_event.payload->>'stage' IS NOT NULL THEN p_event.payload->>'stage'
     WHEN p_event.idempotency_key LIKE 'checkout_recovery:1h:%' THEN 'first'
     WHEN p_event.idempotency_key LIKE 'checkout_recovery:20h:%' THEN 'last'
@@ -20,10 +20,6 @@ CREATE FUNCTION public.commerce_checkout_recovery_schedule_change_guard(p_before
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   blocking_orders bigint;
-  latest_window_end timestamptz;
-  checked_at timestamptz;
-  -- The policy validator accepts checkoutSeconds up to the maximum signed integer.
-  maximum_checkout_window constant interval := make_interval(secs => 2147483647);
 BEGIN
   IF p_before IS NOT DISTINCT FROM p_after THEN RETURN; END IF;
   -- A snapshot taken before the lock must be able to see the previous holder's commit.
@@ -31,10 +27,9 @@ BEGIN
     RAISE EXCEPTION 'checkout_recovery_schedule_isolation_unsupported' USING ERRCODE = '22023';
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('checkout_recovery_reminders', 0));
-  checked_at := clock_timestamp();
 
   WITH open_waves AS (
-    SELECT o.id, 'infinity'::timestamptz AS window_end
+    SELECT o.id
     FROM public.commerce_orders o
     WHERE o.status = 'pending_payment'
       AND EXISTS (
@@ -51,27 +46,22 @@ BEGIN
                                'commerce.order_draft.abandoned.72h')
       )
     UNION ALL
-    -- The host can lengthen its request window after a wave is created.
-    SELECT o.id, o.created_at + maximum_checkout_window AS window_end
+    SELECT o.id
     FROM public.commerce_orders o
     WHERE o.status = 'pending_payment'
-      AND o.created_at > checked_at - maximum_checkout_window
       AND EXISTS (
         SELECT 1 FROM public.outbox_events e
         WHERE e.aggregate_type = 'commerce_order' AND e.aggregate_id = o.id
           AND e.event_type = 'commerce.checkout_recovery'
-          AND public.commerce_checkout_recovery_event_stage(e) IS NOT NULL
+          -- A compacted checkout wave still blocks, regardless of schedule presence.
+          AND public.commerce_checkout_recovery_event_stage(e, true) IS NOT NULL
       )
   )
-  SELECT count(DISTINCT id), max(window_end)
-  INTO blocking_orders, latest_window_end
-  FROM open_waves WHERE window_end > checked_at;
+  SELECT count(DISTINCT id) INTO blocking_orders FROM open_waves;
 
   IF blocking_orders > 0 THEN
-    RAISE EXCEPTION 'checkout_recovery_schedule_change_blocked_open_episodes (% blocking orders, latest window end: %)',
-      blocking_orders, CASE WHEN latest_window_end = 'infinity'::timestamptz THEN 'unbounded'
-                            ELSE to_char(latest_window_end AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END
-      USING ERRCODE = '55000';
+    RAISE EXCEPTION 'checkout_recovery_schedule_change_blocked_open_episodes (% blocking orders)',
+      blocking_orders USING ERRCODE = '55000';
   END IF;
 END;
 $$;
@@ -106,10 +96,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM anon;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM authenticated;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM service_role;'; END IF; END; $$;
+REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events,boolean), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events,boolean), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events,boolean), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_checkout_recovery_event_stage(public.outbox_events,boolean), public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb), public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb) FROM service_role;'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.commerce_enqueue_abandoned_cart_reminders(p_limit integer DEFAULT 200)
 RETURNS jsonb
@@ -226,7 +216,7 @@ BEGIN
     SELECT 1 FROM public.outbox_events prior
     WHERE prior.aggregate_type = 'commerce_order' AND prior.aggregate_id = c.id
       AND prior.event_type = 'commerce.checkout_recovery'
-      AND public.commerce_checkout_recovery_event_stage(prior) IN (stage, 'both')
+      AND public.commerce_checkout_recovery_event_stage(prior, installed) IN (stage, 'both')
    )
    ON CONFLICT(event_type,idempotency_key) DO NOTHING RETURNING aggregate_id,payload
   ), tokens AS (
