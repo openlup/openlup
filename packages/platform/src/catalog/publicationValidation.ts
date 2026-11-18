@@ -122,6 +122,10 @@ export function assertCatalogPublicationMassInputs(payload: unknown, definition:
  */
 export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3): void {
   need(authoredSlug.safeParse(payload.product.slug).success, "commerce_product_slug_unsupported");
+  const codes = new Set(payload.skus.map(sku => sku.code));
+  const content = payload.product.sharedContent;
+  for (const intents of [content.publicationSkus, content.requestedModes, content.offerMemberships])
+    need(intents.every(intent => codes.has(intent.skuCode)), "intent_sku_absent");
   for (const sku of payload.skus) need(sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
     && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)), "unit_trade_identifier_missing");
 }
@@ -173,6 +177,8 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   need(input.record.productId === payload.product.id && input.record.status === "open" && input.record.payload.schemaVersion === 3, "catalog_publication_source_invalid");
   if (product) need(product.id === payload.product.id && product.slug === slug && equal(product.type, payload.product.type), "catalog_publication_product_identity_conflict");
   need((payload.product.sharedContent.catalogAction === "create") === (product === null), "catalog_action_conflict");
+  if (product && payload.product.primarySkuId)
+    need(product.primarySkuId === payload.product.primarySkuId, "current_primary_mismatch");
   function knownProduct(): CatalogPublishedProduct { return product ?? publicationRefuse("catalog_publication_v3_compile_product_absent"); }
   function knownSku(code: string): CatalogPublishedSku { return skus.get(code) ?? publicationRefuse("catalog_publication_v3_compile_sku_absent"); }
   function documentAt(no: number): CatalogPublicationDocument { return documents.find(document => document.reference.revisionNo === no) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }

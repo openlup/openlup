@@ -80,7 +80,7 @@ it("rejects an omitted sibling whose derived facts no longer match the document"
   const data = input(), first = compileCatalogPublication(data);
   data.product = first.product; data.skus = first.skus; data.documents = first.documents;
   data.payload.product.sharedContent.catalogAction = "revise"; data.payload.publication.kind = "compensation";
-  data.payload.skus = []; delete data.payload.product.primarySkuId;
+  data.payload.skus = []; delete data.payload.product.primarySkuId; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
   data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
   data.rules = { ...rules, deriveSkuFacts: () => ({ derived: 13 }) };
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_compile_derived_facts_mismatch");
@@ -277,7 +277,7 @@ it("cycle1 retained source must belong to the publication product", () => {
   foreign.payload.product.id = foreign.productId;
   foreign.payload.skus[0].productId = foreign.productId;
   data.skus[0].source = { draftId: foreign.draftId, revision: foreign.revision, commandKey: foreign.commandKey, fingerprint: foreign.fingerprint };
-  data.retainedSources = [foreign]; data.payload.skus = []; delete data.payload.product.primarySkuId;
+  data.retainedSources = [foreign]; data.payload.skus = []; delete data.payload.product.primarySkuId; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "ARTICLE", sellableStandalone: false, sellableInSubscription: false }];
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_operation_source_missing");
 });
@@ -292,7 +292,7 @@ it.each(["declared", "retained", "current draft id", "current revision", "v2 exc
     selected.fingerprint = "c".repeat(64);
     selected.payload.product.sharedContent.requestedModes = [{ skuCode: "ARTICLE", modes: ["one_time"] }];
     data.record = { ...data.record, draftId: kind === "current revision" ? older.draftId : data.record.draftId, revision: 3 };
-    data.payload.skus = []; delete data.payload.product.primarySkuId;
+    data.payload.skus = []; delete data.payload.product.primarySkuId; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
     data.skus[0].grossMass = data.skus[0].netContent; data.skus[0].logisticsRef = "example:logistics";
     data.skus[0].memberships = [{ offerVersion: "example:offer", admitted: true }];
     data.skus[0].source = claim(selected);
@@ -475,6 +475,7 @@ it("cycle1 an unrelated archived SKU does not prevent eligibility", () => {
   const data = publicationWithSecondary(), primary = data.skus[0]; data.skus[1].status = "archived";
   data.payload.skus = [{ ...data.payload.skus[0], id: primary.id, code: primary.code, netContent: primary.netContent, options: primary.options,
     grossMass: primary.grossMass!, identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: "5901234123457", packagingLevel: "unit" }] }];
+  data.payload.product.sharedContent.publicationSkus = [{ skuCode: primary.code, title: primary.title, minQuantity: primary.minQuantity, isAddon: primary.isAddon, facts: primary.facts }];
   data.payload.product.sharedContent.requestedModes = [{ skuCode: primary.code, modes: ["one_time"] }];
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: primary.code, sellableStandalone: true, sellableInSubscription: false }];
   const result = compileCatalogPublication(data);
@@ -600,7 +601,7 @@ it.each(["archived SKU", "archived product", "absent identifier", "nonprimary GT
 it.each(["primary", "document", "presentation"])("cycle1 final completeness independently requires %s", kind => {
   const data = kind === "document" ? retainedPublicationInput() : input();
   if (kind === "document") {
-    data.skus = []; data.payload.skus = []; data.product!.document = null;
+    data.skus = []; data.payload.skus = []; data.product!.document = null; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
     delete data.payload.product.primarySkuId; delete data.payload.product.documentRevision; delete data.payload.product.sharedContent.document;
     data.payload.publication.kind = "compensation";
     data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
@@ -662,7 +663,7 @@ it("cycle1 retained identity lookup preserves the first matching input fact", ()
 it.each(["missing", "archived"])("cycle1 final primary refuses a %s retained SKU", kind => {
   const data = retainedPublicationInput(); data.payload.publication.kind = "compensation";
   data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
-  if (kind === "missing") { data.skus = []; data.payload.skus = []; delete data.payload.product.primarySkuId; }
+  if (kind === "missing") { data.skus = []; data.payload.skus = []; delete data.payload.product.primarySkuId; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] }); }
   else data.skus[0].status = "archived";
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_compile_primary_foreign");
 });
@@ -711,7 +712,7 @@ it.each([
     Object.assign(data, retainedPublicationInput()); data.record = { ...data.record, revision: 2, commandKey: "draft:second", fingerprint: "c".repeat(64) };
     data.payload.publication.operations = [input().payload.publication.operations.find(operation => operation.op === "register_document_revision")!];
   }],
-  ["immutable primary", "catalog_publication_v3_compile_primary_immutable", (data: ReturnType<typeof input>) => {
+  ["mismatched authored primary", "current_primary_mismatch", (data: ReturnType<typeof input>) => {
     Object.assign(data, publicationWithSecondary()); data.payload.product.primarySkuId = data.skus[1].id;
     data.payload.publication.operations = [{ op: "set_primary_sku", productSlug: "article", skuCode: "SECOND" }];
   }],
@@ -733,7 +734,7 @@ it.each([
 });
 
 it("cycle1 a retained nonmass SKU keeps the named mass refusal", () => {
-  const data = retainedPublicationInput(); data.payload.skus = []; delete data.payload.product.primarySkuId;
+  const data = retainedPublicationInput(); data.payload.skus = []; delete data.payload.product.primarySkuId; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
   data.skus[0].netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 };
   data.payload.publication.kind = "compensation"; data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_mass_required_until_mc5");
@@ -749,9 +750,9 @@ it.each([
   ["mass after authored facts", "catalog_publication_operation_source_mismatch", () => { const data = input(); data.payload.skus[0].netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 }; Object.assign(data.payload.publication.operations.find(operation => operation.op === "create_sku")!, { title: "Other" }); return data; }],
   ["document prefix after mass", "catalog_publication_mass_required_until_mc5", () => { const data = input(); data.payload.skus[0].netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 }; Object.assign(data.payload.publication.operations.find(operation => operation.op === "create_sku")!, { documentRevisionNo: 2 }); return data; }],
   ["primary immutability after authored primary", "catalog_publication_v3_compile_primary_foreign", () => { const data = publicationWithSecondary(), primary = data.skus[0]; data.payload.skus.push({ ...input().payload.skus[0], options: primary.options }); data.payload.product.primarySkuId = primary.id; data.payload.publication.operations = [{ op: "set_primary_sku", productSlug: "article", skuCode: "SECOND" }]; return data; }],
-  ["archive after primary immutability", "catalog_publication_v3_compile_primary_immutable", () => { const data = publicationWithSecondary(); data.skus[1].status = "archived"; data.payload.product.primarySkuId = data.skus[1].id; data.payload.publication.operations = [{ op: "set_primary_sku", productSlug: "article", skuCode: "SECOND" }]; return data; }],
+  ["archive after authored primary", "current_primary_mismatch", () => { const data = publicationWithSecondary(); data.skus[1].status = "archived"; data.payload.product.primarySkuId = data.skus[1].id; data.payload.publication.operations = [{ op: "set_primary_sku", productSlug: "article", skuCode: "SECOND" }]; return data; }],
   ["derived facts after source", "catalog_publication_derived_source_mismatch", () => { const data = retainedPublicationInput(); data.payload.publication.operations = [{ op: "set_derived_sku_facts", skuCode: "ARTICLE", documentRevisionNo: 1, netContent: { ...data.skus[0].netContent, unscaled: "101" }, facts: { derived: 13 } }]; return data; }],
-  ["mass after physical classification", "sku_identity_change_requires_new_sku", () => { const data = retainedPublicationInput(); data.payload.skus = []; delete data.payload.product.primarySkuId; data.skus[0].netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 }; data.payload.product.attributes = { details: "Changed" }; data.rules = { ...rules, classifySkuChange: () => "inconclusive" }; data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }]; return data; }],
+  ["mass after physical classification", "sku_identity_change_requires_new_sku", () => { const data = retainedPublicationInput(); data.payload.skus = []; delete data.payload.product.primarySkuId; Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] }); data.skus[0].netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 }; data.payload.product.attributes = { details: "Changed" }; data.rules = { ...rules, classifySkuChange: () => "inconclusive" }; data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }]; return data; }],
   ["activation after derived facts", "catalog_publication_v3_compile_derived_facts_mismatch", () => { const data = retainedPublicationInput(); data.skus[0].facts = { derived: 13 }; data.skus[0].sellableStandalone = true; data.skus[0].grossMass = data.skus[0].netContent; data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }]; return data; }],
 ] as const)("cycle1 refusal order keeps %s", (_name, reason, prepare) => {
   expect(() => compileCatalogPublication(prepare())).toThrow(reason);
@@ -910,4 +911,36 @@ it.each([
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: sku.code, sellableStandalone: standalone, sellableInSubscription: subscription }];
   if (accepted) expect(compileCatalogPublication(data).skus[0]).toMatchObject({ sellableStandalone: standalone, sellableInSubscription: subscription });
   else expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_eligibility_source_mismatch");
+});
+
+it.each([
+  ["create", "publicationSkus"],
+  ["revise", "requestedModes"],
+  ["compensation", "offerMemberships"],
+  ["revise", "missing primary authoring"],
+  ["revise", "current primary"],
+  ["revise", "materialized secondary"],
+  ["compensation", "materialized secondary"],
+] as const)("publication binds %s authored intents to the submitted roster and current primary: %s", (kind, target) => {
+  const data = kind === "create" ? input() : publicationWithSecondary();
+  const product = data.payload.product, content = product.sharedContent;
+  if (kind !== "create") {
+    const authoredPrimary = input().payload.skus[0];
+    data.payload.skus.push({ ...authoredPrimary, options: data.skus[0].options });
+    content.presentation = { routePath: { en: "/revised" } };
+    data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: content.presentation }];
+  }
+  if (kind === "compensation") data.payload.publication.kind = kind;
+  if (target === "materialized secondary") {
+    product.primarySkuId = data.skus[1].id;
+    expect(() => compileCatalogPublication(data)).toThrow("current_primary_mismatch");
+    return;
+  }
+  if (target === "current primary") product.primarySkuId = data.skus[0].id;
+  if (target === "publicationSkus") content.publicationSkus.push({ ...content.publicationSkus[0], skuCode: "absent" });
+  if (target === "offerMemberships") content.offerMemberships.push({ skuCode: "absent", offerVersion: "example:offer", admitted: false });
+  if (target === "requestedModes") content.requestedModes.push({ skuCode: "absent", modes: [] });
+  if (target === "offerMemberships" || target === "requestedModes" || target === "publicationSkus")
+    expect(() => compileCatalogPublication(data)).toThrow("intent_sku_absent");
+  else expect(compileCatalogPublication(data).product.primarySkuId).toBe(data.skus[0].id);
 });

@@ -155,6 +155,7 @@ it.each(witnesses)("%s", () => {
   data.product = first.product; data.skus = first.skus; data.documents = first.documents; data.retainedSources = [old];
   data.record = { ...data.record, draftId: "30000000-0000-4000-8000-000000000002", fingerprint: "c".repeat(64), payload: data.payload };
   data.payload.product.sharedContent.catalogAction = "revise"; data.payload.skus = []; delete data.payload.product.primarySkuId;
+  Object.assign(data.payload.product.sharedContent, { publicationSkus: [], requestedModes: [], offerMemberships: [] });
   data.payload.publication.kind = "compensation";
   const operation = data.payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
   if (operation.op !== "register_document_revision") throw new Error("Fixture lacks document");

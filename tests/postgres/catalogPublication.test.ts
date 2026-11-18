@@ -2192,7 +2192,7 @@ it("cycle1 native retained source claims bind product command and fingerprint", 
 it.each(["eligibility", "membership"] as const)("cycle1 native omitted %s withdrawal preserves its source refusal before activation admission", async mode => inPriceDatabase(async () => {
   const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability);
   const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
-  payload.product.sharedContent.publicationSkus = [];
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
   payload.publication.operations = mode === "eligibility" ? [{ op: "set_eligibility", skuCode: data.payload.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }]
     : [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: false }];
   const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
