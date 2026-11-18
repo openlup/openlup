@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
+import { NATIVE_SUCCESSOR_TABLE_SQL, readReviewedForwardRegistry, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -110,6 +110,198 @@ const uniqueDefinition = (def: string) => {
   const match = /^UNIQUE( NULLS NOT DISTINCT)? \(([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)\)$/u.exec(def);
   return match ? { columns: match[2]!.split(", "), nullsNotDistinct: Boolean(match[1]) } : null;
 };
+// Independent installed-catalogue expectations; never derive these from candidate SQL.
+const SUCCESSOR_STORAGE_SHAPES: Record<string, {
+  columns: [string, string, boolean, string | null][];
+  constraints: string[];
+  references: [string, string][];
+}> = {
+  "public.subscription_successor_proposals": {
+    columns: [
+      ["id", "2950", true, null],
+      ["subscription_id", "2950", true, null],
+      ["client_id", "2950", true, null],
+      ["predecessor_sku_id", "2950", true, null],
+      ["successor_sku_id", "2950", true, null],
+      ["publication_id", "2950", true, null],
+      ["source_binding", "3802", true, null],
+      ["template_version", "23", true, null],
+      ["lane", "25", true, null],
+      ["action", "25", true, null],
+      ["request", "3802", true, null],
+      ["preview", "3802", true, null],
+      ["quote_hash", "25", true, null],
+      ["expires_at", "1184", true, null],
+      ["original_case_id", "2950", false, null],
+      ["original_operation_id", "2950", false, null],
+      ["state", "25", true, "'offered'::text"],
+      ["consent", "3802", false, null],
+      ["accepted_receipt", "3802", false, null],
+      ["terminal_at", "1184", false, null],
+      ["created_at", "1184", true, "now()"],
+    ],
+    constraints: [
+      "CHECK ((jsonb_typeof(preview) = 'object'::text))",
+      "CHECK ((jsonb_typeof(request) = 'object'::text))",
+      "CHECK ((jsonb_typeof(source_binding) = 'object'::text))",
+      "CHECK (((length(btrim(action)) >= 1) AND (length(btrim(action)) <= 80)))",
+      "CHECK (((length(btrim(lane)) >= 1) AND (length(btrim(lane)) <= 80)))",
+      "CHECK (((length(quote_hash) = 64) AND (translate(quote_hash, 'abcdef0123456789'::text, ''::text) = ''::text)))",
+      "CHECK ((state = ANY (ARRAY['offered'::text, 'accepted'::text, 'declined'::text, 'expired'::text])))",
+      "CHECK (((template_version >= 1) AND (template_version <= 2147483647)))",
+      "PRIMARY KEY (id)",
+    ],
+    references: [
+      ["subscription_id", "public.subscriptions"],
+      ["client_id", "public.clients"],
+      ["predecessor_sku_id", "public.catalog_skus"],
+      ["successor_sku_id", "public.catalog_skus"],
+      ["publication_id", "public.catalog_publications"],
+      ["original_case_id", "public.subscription_stock_wait_cases"],
+      ["original_operation_id", "public.subscription_renewal_operations"],
+    ],
+  },
+  "public.subscription_successor_operations_v2": {
+    columns: [
+      ["id", "2950", true, null],
+      ["root_operation_id", "2950", true, null],
+      ["proposal_id", "2950", true, null],
+      ["predecessor_generation_id", "2950", false, null],
+      ["subscription_id", "2950", true, null],
+      ["scheduled_at", "1184", true, null],
+      ["cycle_number", "23", true, null],
+      ["identity_key", "25", true, null],
+      ["operation_fingerprint", "25", true, null],
+      ["due_snapshot", "3802", true, null],
+      ["cycle_snapshot", "3802", true, null],
+      ["state", "25", true, null],
+      ["claim_token", "2950", true, null],
+      ["claim_generation", "20", true, "1"],
+      ["claimed_by", "25", true, null],
+      ["claimed_at", "1184", true, null],
+      ["lease_expires_at", "1184", true, null],
+      ["attempt_prepared_at", "1184", false, null],
+      ["external_attempt_ref", "25", false, null],
+      ["external_attempt_acknowledged_at", "1184", false, null],
+      ["terminal_outcome", "25", false, null],
+      ["terminal_reason", "25", false, null],
+      ["terminal_at", "1184", false, null],
+      ["outcomes", "3802", true, "'[]'::jsonb"],
+      ["superseded_by_proposal_id", "2950", false, null],
+      ["cycle_id", "2950", false, null],
+      ["order_id", "2950", false, null],
+      ["settlement_intent_id", "2950", false, null],
+      ["fulfillment_id", "2950", false, null],
+      ["created_at", "1184", true, "now()"],
+      ["updated_at", "1184", true, "now()"],
+    ],
+    constraints: [
+      "CHECK (((claim_generation >= 1) AND (claim_generation <= '9223372036854775807'::bigint)))",
+      "CHECK (((cycle_number >= 1) AND (cycle_number <= 2147483647)))",
+      "CHECK ((jsonb_typeof(cycle_snapshot) = 'object'::text))",
+      "CHECK ((jsonb_typeof(due_snapshot) = 'object'::text))",
+      "CHECK ((jsonb_typeof(outcomes) = 'array'::text))",
+      "CHECK (((length(btrim(claimed_by)) >= 1) AND (length(btrim(claimed_by)) <= 240)))",
+      "CHECK (((length(identity_key) >= 48) AND (length(identity_key) <= 240)))",
+      "CHECK (((length(operation_fingerprint) = 64) AND (translate(operation_fingerprint, 'abcdef0123456789'::text, ''::text) = ''::text)))",
+      "CHECK ((state = ANY (ARRAY['claimed'::text, 'reserved'::text, 'attempt_prepared'::text, 'succeeded'::text, 'refused'::text])))",
+      "PRIMARY KEY (id)",
+      "UNIQUE (cycle_id)",
+      "UNIQUE (fulfillment_id)",
+      "UNIQUE (identity_key)",
+      "UNIQUE (order_id)",
+      "UNIQUE (proposal_id)",
+      "UNIQUE (settlement_intent_id)",
+    ],
+    references: [
+      ["root_operation_id", "public.subscription_renewal_operations"],
+      ["proposal_id", "public.subscription_successor_proposals"],
+      ["predecessor_generation_id", "public.subscription_successor_operations_v2"],
+      ["subscription_id", "public.subscriptions"],
+      ["superseded_by_proposal_id", "public.subscription_successor_proposals"],
+      ["cycle_id", "public.subscription_cycles"],
+      ["order_id", "public.commerce_orders"],
+      ["settlement_intent_id", "public.commerce_settlement_intents"],
+      ["fulfillment_id", "public.fulfillment_shipments"],
+    ],
+  },
+  "public.subscription_successor_wait_cases_v2": {
+    columns: [
+      ["id", "2950", true, null],
+      ["root_case_id", "2950", true, null],
+      ["operation_id", "2950", true, null],
+      ["subscription_id", "2950", true, null],
+      ["client_id", "2950", true, null],
+      ["scheduled_at", "1184", true, null],
+      ["cycle_number", "23", true, null],
+      ["state", "25", true, null],
+      ["due_snapshot", "3802", true, null],
+      ["cycle_snapshot", "3802", true, null],
+      ["fingerprint", "25", true, null],
+      ["identity_key", "25", true, null],
+      ["deficits", "3802", true, null],
+      ["notice_messages", "3802", true, "'{}'::jsonb"],
+      ["refusal_observations", "3802", true, "'[]'::jsonb"],
+      ["cycle_id", "2950", false, null],
+      ["order_id", "2950", false, null],
+      ["fulfillment_id", "2950", false, null],
+      ["opened_at", "1184", true, "now()"],
+      ["last_checked_at", "1184", true, "now()"],
+      ["last_selected_at", "1184", false, null],
+      ["stock_secured_at", "1184", false, null],
+      ["resumed_at", "1184", false, null],
+      ["closed_at", "1184", false, null],
+      ["block_reason", "25", false, null],
+      ["superseded_by_proposal_id", "2950", false, null],
+    ],
+    constraints: [
+      "CHECK (((cycle_number >= 1) AND (cycle_number <= 2147483647)))",
+      "CHECK ((jsonb_typeof(cycle_snapshot) = 'object'::text))",
+      "CHECK ((jsonb_typeof(deficits) = 'array'::text))",
+      "CHECK ((jsonb_typeof(due_snapshot) = 'object'::text))",
+      "CHECK (((length(fingerprint) = 64) AND (translate(fingerprint, 'abcdef0123456789'::text, ''::text) = ''::text)))",
+      "CHECK ((state = ANY (ARRAY['waiting'::text, 'stock_secured'::text, 'resumed'::text, 'closed'::text])))",
+      "PRIMARY KEY (id)",
+      "UNIQUE (operation_id)",
+    ],
+    references: [
+      ["root_case_id", "public.subscription_stock_wait_cases"],
+      ["operation_id", "public.subscription_successor_operations_v2"],
+      ["subscription_id", "public.subscriptions"],
+      ["client_id", "public.clients"],
+      ["cycle_id", "public.subscription_cycles"],
+      ["order_id", "public.commerce_orders"],
+      ["fulfillment_id", "public.fulfillment_shipments"],
+      ["superseded_by_proposal_id", "public.subscription_successor_proposals"],
+    ],
+  },
+  "public.subscription_successor_reservations_v2": {
+    columns: [
+      ["id", "2950", true, null],
+      ["operation_id", "2950", true, null],
+      ["operation_fingerprint", "25", true, null],
+      ["source_key", "25", true, null],
+      ["lines", "3802", true, null],
+      ["status", "25", true, null],
+      ["expires_at", "1184", false, null],
+      ["terminal_reason", "25", false, null],
+      ["created_at", "1184", true, "now()"],
+      ["updated_at", "1184", true, "now()"],
+    ],
+    constraints: [
+      "CHECK ((jsonb_typeof(lines) = 'array'::text))",
+      "CHECK (((length(btrim(source_key)) >= 1) AND (length(btrim(source_key)) <= 120)))",
+      "CHECK (((length(operation_fingerprint) = 64) AND (translate(operation_fingerprint, 'abcdef0123456789'::text, ''::text) = ''::text)))",
+      "CHECK ((status = ANY (ARRAY['held'::text, 'committed'::text, 'consumed'::text, 'released'::text, 'expired'::text])))",
+      "PRIMARY KEY (id)",
+      "UNIQUE (operation_id)",
+    ],
+    references: [
+      ["operation_id", "public.subscription_successor_operations_v2"],
+    ],
+  },
+};
+
 const fail = (message: string): never => { throw new Error(`catalog: ${message}`); };
 
 /** Compare PostgreSQL's own before/after catalogs with one slot's closed lists. Throws on any difference. */
@@ -194,6 +386,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     const classification = clientReferences.has(row.oid)
       ? (await db.query("SELECT disposition FROM public.client_absorption_policy WHERE table_name=$1", [row.relation])).rows : [];
     if (clientReferences.has(row.oid) && classification.length === 0) fail(`new relation ${row.name} has no absorption classification`);
+    if (Object.hasOwn(SUCCESSOR_STORAGE_SHAPES, row.name) && SUCCESSOR_STORAGE_SHAPES[row.name]!.columns.some(([column]) => column === "client_id") && classification[0]?.disposition !== "block") fail("successor storage absorption must block");
     if (censusIdentity && slot.absorptionCensusTables?.includes(censusIdentity)) {
       const role = (await db.query("SELECT oid::int AS oid FROM pg_roles WHERE rolname='service_role'")).rows[0]?.oid as number | undefined;
       const policies = after.guards.policies!.filter(policy => Number(policy.polrelid) === row.oid);
@@ -306,8 +499,32 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     FROM pg_constraint c WHERE c.contype='f'`)).rows;
   // This is additive to every generic owner/ACL/catalogue guard above and below.
   // Read the installed keys independently of the statement classifier.
+  const storage = after.relations.filter(row => Object.hasOwn(SUCCESSOR_STORAGE_SHAPES, row.name) && !oldRelations.has(row.oid));
+  for (const row of storage) {
+    const shape = SUCCESSOR_STORAGE_SHAPES[row.name]!;
+    if (row.kind !== "r") fail("successor storage relation kind differs");
+    if (!row.rls || row.forceRls) fail("successor storage RLS differs");
+    if (!slot.absorptionCensusTables?.includes(row.name) && after.guards.policies!.some(policy => Number(policy.polrelid) === row.oid)) fail("successor storage policy is unlisted");
+    const columns = after.columns.filter(column => column.rel === row.name);
+    const actualColumns = columns.map(column => [column.name, column.attrs.atttypid, column.attrs.attnotnull, column.default, column.attrs.attisdropped, column.attrs.atttypmod, column.attrs.attndims, column.attrs.attidentity, column.attrs.attgenerated, column.attrs.attcollation]);
+    const expectedColumns = shape.columns.map(column => [...column, false, -1, 0, "", "", column[1] === "25" ? "100" : "0"]);
+    if (JSON.stringify(actualColumns) !== JSON.stringify(expectedColumns)) fail("successor storage columns differ");
+    const actualConstraints = after.constraints.filter(constraint => constraint.rel === row.name && !constraint.def.startsWith("FOREIGN KEY")).map(constraint => constraint.def).sort();
+    if (JSON.stringify(actualConstraints) !== JSON.stringify([...shape.constraints].sort())) fail("successor storage PK, UNIQUE or CHECK differs");
+    const actualKeys = installedKeys.filter(key => key.relation === row.oid).map(key => [key.columns, key.target, key.keys, key.deletion, key.update, key.match, key.validated, key.deferrable, key.deferred]);
+    const expectedKeys = shape.references.map(([column, reference]) => {
+      // Only the four bounded shapes may target one another in the same slot.
+      // Every other target and its key must already exist in the prefix.
+      const prefix = Object.hasOwn(SUCCESSOR_STORAGE_SHAPES, reference) ? after : before;
+      const target = prefix.relations.find(relation => relation.name === reference && relation.kind === "r");
+      const id = prefix.columns.find(column => column.rel === reference && column.name === "id");
+      return [[shape.columns.findIndex(entry => entry[0] === column) + 1], target?.oid ?? -1, [id?.attrs.attnum ?? -1], "r", "a", "s", true, false, false];
+    });
+    const ordered = (values: unknown[]) => JSON.stringify(values.map(value => JSON.stringify(value)).sort());
+    if (ordered(actualKeys) !== ordered(expectedKeys)) fail("successor storage FK differs");
+  }
   const successors = after.relations.find(row => row.name === "public.catalog_sku_successors" && !oldRelations.has(row.oid));
-  for (const key of installedKeys) if (!oldRelations.has(key.relation) && key.deletion === "r" && key.relation !== successors?.oid) fail("new-table RESTRICT FK is outside the successor shape");
+  for (const key of installedKeys) if (!oldRelations.has(key.relation) && key.deletion === "r" && key.relation !== successors?.oid && !storage.some(row => row.oid === key.relation)) fail("new-table RESTRICT FK is outside the successor shape");
   if (successors) {
     const columns = after.columns.filter(row => row.rel === successors.name);
     const names = ["predecessor_sku_id", "successor_sku_id", "publication_id"];
@@ -1111,6 +1328,129 @@ describe.each([{ serviceRole: true }, { serviceRole: false }])("native store for
     ["appended role smuggling", successorCreate + "CREATE ROLE cat_smuggled NOLOGIN;"],
   ])("refuses installed successor shape: %s", async (_label, statement, setup = successorBase) => {
     await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, statement), false, setup)).rejects.toThrow(/catalog:/u);
+  });
+  const storageSlot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] };
+  it("preserves generic admission for a temporary relation named __proto__", async () => {
+    await checkForward(pool, storageSlot, "CREATE TABLE pg_temp.__proto__ (id uuid);");
+  });
+  const storageEntries = Object.entries(NATIVE_SUCCESSOR_TABLE_SQL);
+  const storageBase = `ALTER TABLE public.subscriptions ALTER COLUMN id TYPE uuid USING NULL::uuid;
+    ${["catalog_skus", "catalog_publications", "subscription_stock_wait_cases", "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_settlement_intents", "fulfillment_shipments"].map(name => `CREATE TABLE public.${name}(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id));`).join("\n")}
+    INSERT INTO public.client_absorption_policy VALUES ('subscription_successor_proposals','block',NULL),('subscription_successor_wait_cases_v2','block',NULL);`;
+  const storageCreate = storageEntries.map(([name, statement]) => `${statement}\nALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;\nREVOKE ALL ON TABLE ${name} FROM PUBLIC;`).join("\n");
+  it("proves the four successor storage shapes, owner ACLs and every RESTRICT target", async () => {
+    await checkForward(pool, storageSlot, storageCreate, false, storageBase);
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN"); await db.query(storageBase + storageCreate);
+      const id = "00000000-0000-0000-0000-000000000001";
+      const targets = new Set(Object.values(SUCCESSOR_STORAGE_SHAPES).flatMap(shape => shape.references.map(([, target]) => target)));
+      for (const target of targets) if (!Object.hasOwn(SUCCESSOR_STORAGE_SHAPES, target)) await db.query(`INSERT INTO ${target}(id) VALUES ($1)`, [id]);
+      for (const [name, shape] of Object.entries(SUCCESSOR_STORAGE_SHAPES)) {
+        const columns = shape.columns.filter(([column, , required, defaultValue]) => (required && defaultValue === null) || shape.references.some(([source]) => source === column));
+        const expressions = columns.map(([column, type]) => {
+          if (type === "2950") return "$1";
+          if (type === "1184") return "now()";
+          if (["23", "20"].includes(type)) return "1";
+          if (type === "3802") return ["lines", "deficits"].includes(column) ? "'[]'::jsonb" : "'{}'::jsonb";
+          if (column === "state") return name.endsWith("operations_v2") ? "'claimed'" : "'waiting'";
+          if (column === "status") return "'held'";
+          return "'" + (column.includes("fingerprint") || column === "quote_hash" || column === "identity_key" ? "a".repeat(64) : "update") + "'";
+        });
+        await db.query(`INSERT INTO ${name}(${columns.map(([column]) => column).join(",")}) VALUES (${expressions.join(",")})`, [id]);
+      }
+      for (const target of targets) {
+        await db.query("SAVEPOINT restricted");
+        await expect(db.query(`DELETE FROM ${target} WHERE id=$1`, [id])).rejects.toMatchObject({ code: "23503" });
+        await db.query("ROLLBACK TO SAVEPOINT restricted");
+      }
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  });
+  it("proves successor storage keeps the listed absorption census exception", async () => {
+    const tables = ["public.subscription_successor_proposals", "public.subscription_successor_wait_cases_v2"];
+    const census = serviceRole ? tables.map(name => `GRANT SELECT(client_id) ON ${name} TO service_role; CREATE POLICY ${name.slice(7)}_absorption_census ON ${name} FOR SELECT TO service_role USING (true);`).join("\n") : "";
+    await checkForward(pool, { ...storageSlot, absorptionCensusTables: tables }, storageCreate + census, false, storageBase);
+  });
+  const storageRefusals: [string, string, string?][] = [];
+  for (const [name, create] of storageEntries) {
+    const shape = SUCCESSOR_STORAGE_SHAPES[name]!;
+    const timeColumn = name.endsWith("wait_cases_v2") ? "opened_at" : "created_at";
+    const alter = (suffix: string) => storageCreate + `\nALTER TABLE ${name} ${suffix};`;
+    storageRefusals.push(
+      [`${name}: relation kind`, storageCreate + `UPDATE pg_catalog.pg_class SET relkind='p' WHERE oid='${name}'::regclass;`],
+      [`${name}: RLS disabled`, alter("DISABLE ROW LEVEL SECURITY")],
+      [`${name}: RLS forced`, alter("FORCE ROW LEVEL SECURITY")],
+      [`${name}: policy`, storageCreate + `CREATE POLICY unlisted ON ${name} USING (true);`],
+      [`${name}: extra column`, alter("ADD COLUMN unlisted text")],
+      [`${name}: extra CHECK`, alter("ADD CHECK (true)")],
+      [`${name}: extra UNIQUE`, alter(`ADD UNIQUE (${timeColumn},id)`)],
+      [`${name}: owner`, alter("OWNER TO authenticated")],
+      [`${name}: table ACL`, storageCreate + `GRANT SELECT ON ${name} TO PUBLIC;`],
+      [`${name}: column ACL`, storageCreate + `GRANT SELECT(id) ON ${name} TO authenticated;`],
+      [`${name}: dropped column flag`, storageCreate + `UPDATE pg_catalog.pg_attribute SET attisdropped=true WHERE attrelid='${name}'::regclass AND attname='${timeColumn}';`],
+      [`${name}: type modifier`, storageCreate + `UPDATE pg_catalog.pg_attribute SET atttypmod=2 WHERE attrelid='${name}'::regclass AND attname='${timeColumn}';`],
+      [`${name}: array dimensions`, storageCreate + `UPDATE pg_catalog.pg_attribute SET attndims=1 WHERE attrelid='${name}'::regclass AND attname='${timeColumn}';`],
+      [`${name}: identity flag`, storageCreate + `UPDATE pg_catalog.pg_attribute SET attidentity='a' WHERE attrelid='${name}'::regclass AND attname='${timeColumn}';`],
+      [`${name}: generated flag`, storageCreate + `UPDATE pg_catalog.pg_attribute SET attgenerated='s' WHERE attrelid='${name}'::regclass AND attname='${timeColumn}';`],
+    );
+    for (const [column, type, required, defaultValue] of shape.columns) {
+      if (column !== "id") storageRefusals.push([`${name}: ${column} nullability`, alter(`ALTER COLUMN ${column} ${required ? "DROP" : "SET"} NOT NULL`)]);
+      const defaultExpression = type === "2950" ? "gen_random_uuid()" : type === "1184" ? "now()" : type === "3802" ? "'{}'::jsonb" : type === "25" ? "'unexpected'" : "1";
+      storageRefusals.push([`${name}: ${column} default`, alter(`ALTER COLUMN ${column} ${defaultValue === null ? "SET DEFAULT " + defaultExpression : "DROP DEFAULT"}`)]);
+      if (!shape.references.some(([source]) => source === column) && column !== "id") {
+        const line = create.split("\n").find(line => line.trim().startsWith(column + " "))!;
+        if (type === "1184") storageRefusals.push([`${name}: ${column} type`, storageCreate.replace(line, line.replace("timestamptz", "timestamp"))]);
+        if (["23", "20"].includes(type)) storageRefusals.push([`${name}: ${column} type`, storageCreate.replace(line, line.replace(type === "23" ? "integer" : "bigint", "numeric"))]);
+        if (line.includes("CHECK")) {
+          storageRefusals.push([`${name}: ${column} missing CHECK`, storageCreate.replace(line, line.replace(/ CHECK \(.*\)(,?)$/u, "$1"))]);
+          storageRefusals.push([`${name}: ${column} changed CHECK`, storageCreate.replace(line, line.replace(/ CHECK \(.*\)(,?)$/u, " CHECK (true)$1"))]);
+        }
+      }
+    }
+    for (const [column] of shape.references) {
+      const sourcePosition = shape.columns.findIndex(entry => entry[0] === column) + 1;
+      const line = create.split("\n").find(line => line.trim().startsWith(column + " "))!;
+      storageRefusals.push(
+        [`${name}: ${column} missing FK`, storageCreate.replace(line, line.replace(/ REFERENCES .*?(,?)$/u, "$1"))],
+        [`${name}: ${column} duplicate FK`, alter(`ADD FOREIGN KEY (${column}) REFERENCES ${shape.references.find(([source]) => source === column)![1]}(id) ON DELETE RESTRICT`)],
+        ...["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION"].map(action => [`${name}: ${column} delete ${action}`, storageCreate.replace(line, line.replace("DELETE RESTRICT", `DELETE ${action}`))] as [string, string]),
+        [`${name}: ${column} implicit delete`, storageCreate.replace(line, line.replace(" ON DELETE RESTRICT", ""))],
+        [`${name}: ${column} update`, storageCreate.replace(line, line.replace("DELETE RESTRICT", "DELETE RESTRICT ON UPDATE CASCADE"))],
+        [`${name}: ${column} match`, storageCreate.replace(line, line.replace(" ON DELETE", " MATCH FULL ON DELETE"))],
+        [`${name}: ${column} deferrable`, storageCreate.replace(line, line.replace("DELETE RESTRICT", "DELETE RESTRICT DEFERRABLE"))],
+        [`${name}: ${column} deferred flag`, storageCreate + `UPDATE pg_catalog.pg_constraint SET condeferred=true WHERE conrelid='${name}'::regclass AND contype='f' AND conkey=ARRAY[${sourcePosition}]::smallint[];`],
+        [`${name}: ${column} validation flag`, storageCreate + `UPDATE pg_catalog.pg_constraint SET convalidated=false WHERE conrelid='${name}'::regclass AND contype='f' AND conkey=ARRAY[${sourcePosition}]::smallint[];`],
+      );
+    }
+  }
+  const reservation = "public.subscription_successor_reservations_v2";
+  const reservationCreate = NATIVE_SUCCESSOR_TABLE_SQL[reservation]!;
+  const reservationStart = storageCreate.indexOf(reservationCreate);
+  const reservationPrefix = storageBase + storageCreate.slice(0, reservationStart) + "ALTER TABLE public.subscription_successor_operations_v2 ADD UNIQUE(id,proposal_id);";
+  storageRefusals.push(
+    ["storage collation", storageCreate + `ALTER TABLE ${reservation} ALTER COLUMN terminal_reason TYPE text COLLATE "C";`],
+    ["storage absorption proposals", storageCreate, storageBase.replace("'subscription_successor_proposals','block'", "'subscription_successor_proposals','retain'")],
+    ["storage absorption waits", storageCreate, storageBase.replace("'subscription_successor_wait_cases_v2','block'", "'subscription_successor_wait_cases_v2','retain'")],
+    ["storage UNIQUE order", storageCreate.replace(reservationCreate, reservationCreate.replace("operation_id uuid NOT NULL UNIQUE", "operation_id uuid NOT NULL").replace(/\);$/u, ", UNIQUE(id,operation_id));"))],
+    ["storage CHECK validation", storageCreate + `ALTER TABLE ${reservation} DROP CONSTRAINT subscription_successor_reservations_v2_lines_check; ALTER TABLE ${reservation} ADD CHECK (jsonb_typeof(lines) = 'array') NOT VALID;`],
+    ["storage table identity", storageCreate.replaceAll(reservation, "public.other_successor_reservations")],
+    ["storage column order", storageCreate.replace(reservationCreate, reservationCreate.replace("created_at", "swap_at").replace("updated_at", "created_at").replace("swap_at", "updated_at"))],
+    ["storage text and UUID types", storageCreate.replaceAll("uuid", "text"), "ALTER TABLE public.clients ALTER COLUMN id TYPE text USING NULL::text;" + storageBase.replaceAll("uuid", "text")],
+    ["storage PK missing", storageCreate.replace(/(CREATE TABLE public\.subscription_successor_reservations_v2 \(\n id uuid) PRIMARY KEY/u, "$1 NOT NULL")],
+    ["storage PK order", storageCreate.replace(/(CREATE TABLE public\.subscription_successor_reservations_v2 \(\n id uuid) PRIMARY KEY/u, "$1 NOT NULL").replace(/(CREATE TABLE public\.subscription_successor_reservations_v2[\s\S]*?)\n\);/u, "$1, PRIMARY KEY (source_key,id)\n);")],
+    ["storage UNIQUE missing", storageCreate.replace("proposal_id uuid NOT NULL UNIQUE", "proposal_id uuid NOT NULL")],
+    ["storage FK target", storageCreate.replace("root_operation_id uuid NOT NULL REFERENCES public.subscription_renewal_operations", "root_operation_id uuid NOT NULL REFERENCES public.subscription_stock_wait_cases")],
+    ["storage FK target key", storageCreate.replace("root_operation_id uuid NOT NULL REFERENCES public.subscription_renewal_operations(id)", "root_operation_id uuid NOT NULL REFERENCES public.subscription_renewal_operations(other_id)")],
+    ["storage FK source column", storageCreate + `UPDATE pg_catalog.pg_constraint SET conkey=ARRAY[1]::smallint[] WHERE conrelid='${reservation}'::regclass AND contype='f';`],
+    ["storage FK source and target arity", storageCreate.slice(reservationStart).replace("operation_id uuid NOT NULL UNIQUE REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT", "operation_id uuid NOT NULL UNIQUE, FOREIGN KEY(operation_id,id) REFERENCES public.subscription_successor_operations_v2(id,proposal_id) ON DELETE RESTRICT"), reservationPrefix],
+    ["storage external target in same slot", "CREATE TABLE public.subscription_renewal_operations(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id));" + storageCreate, storageBase.replace("CREATE TABLE public.subscription_renewal_operations(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id));", "")],
+    ["storage external target key in same slot", "ALTER TABLE public.subscription_renewal_operations ADD COLUMN id uuid UNIQUE;" + storageCreate, storageBase.replace("public.subscription_renewal_operations(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id))", "public.subscription_renewal_operations(other_id uuid PRIMARY KEY)")],
+    ["storage external target kind", storageCreate, storageBase.replace("public.subscription_renewal_operations(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id))", "public.subscription_renewal_operations(id uuid PRIMARY KEY, other_id uuid, UNIQUE(id,other_id)) PARTITION BY HASH (id)")],
+    ["storage appended role", storageCreate + "CREATE ROLE cat_storage_smuggled NOLOGIN;"],
+  );
+  it.each(storageRefusals)("refuses installed successor storage: %s", async (_label, statement, setup = storageBase) => {
+    expect(statement !== storageCreate || setup !== storageBase).toBe(true);
+    await expect(checkForward(pool, storageSlot, statement, false, setup)).rejects.toThrow(/catalog:/u);
   });
   const sameSkuColumn = "ALTER TABLE public.subscription_lines ADD COLUMN catalog_sku_revision_id uuid;";
   const sameSkuFk = "ALTER TABLE public.subscription_lines ADD CONSTRAINT subscription_lines_catalog_sku_revision_fkey FOREIGN KEY (variant_id, catalog_sku_revision_id) REFERENCES public.catalog_sku_revisions (sku_id, id) ON DELETE RESTRICT NOT VALID;";

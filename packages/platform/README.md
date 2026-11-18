@@ -39,12 +39,10 @@ this package's declarations and changelogs and source at the matching release
 tag. A current-`main` link establishes no compatibility or support guarantee.
 See [CHANGELOG.md](CHANGELOG.md) for release changes and migration precautions.
 
-The prepared `1.0.0` set is the first stable package set. It includes experimental
-catalogue definition, quantity, attribute, variant and versioned-draft tools,
-nine native SQL forwards, the immediate base-price writer, optional subscription
-admission and offline catalogue checks. Read [the set notes](CHANGELOG.md#100) and the
-[upgrade guide](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/core/docs/guide/upgrade/v1-0-0.md).
-Preparation establishes no publication, exact-set qualification or integration activation.
+The prepared `1.1.0` set supersedes published `1.0.0`, which failed exact-set
+qualification for starter upgrades. It documents the required owned-file
+migration and includes cadence widening with native forward 151. Qualification of
+1.1.0 is recorded after publication.
 
 The `subscriptions` entry also exposes `createPostgresSubscriptionAutoResume`:
 bind its `run(limit, now)` method to the host scheduler and job ledger after
@@ -2024,8 +2022,8 @@ The monorepo's package artifact checker enforces this package's
 `release-gates.json` caps and packed content allowlist. Only
 `--release-set <version>` checks compressed growth against the last released
 baseline, with explanations in the new set's changelog section and release body.
-For the prepared `1.0.0` set, comparison uses the published `0.43.0` tarball;
-releases before `0.42.0` remain in the source-only `CHANGELOG-HISTORY.md`. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
+For the prepared `1.1.0` set, comparison uses the published `1.0.0` tarball;
+releases before `0.43.0` remain in the source-only `CHANGELOG-HISTORY.md`. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
 [package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no

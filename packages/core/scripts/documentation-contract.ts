@@ -579,7 +579,7 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
     const resolved = resolve(repositoryRoot, decoded);
     if (!decoded || !resolved.startsWith(`${repositoryRoot}${sep}`) || !existsSync(resolved)) {
       violations.push(`${label}: repository link ${url} targets a path missing from the repository`);
-    } else if (resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) {
+    } else if ((resolved === guideRoot || resolved.startsWith(`${guideRoot}${sep}`)) && decoded.endsWith(".md")) {
       violations.push(`${label}: repository link ${url} points into the guide; use a relative link`);
     }
   }

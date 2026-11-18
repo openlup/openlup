@@ -1,7 +1,7 @@
 import { accountPreferencePolicy } from '../../owned/renewal.config.ts';
 import { rememberPurchase } from '../purchase.ts';
 import { act } from '../api.ts';
-import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PortalSubscription } from '../../shared/renewal-config.ts';
+import { careAvailability, saveOfferKind, saveRescheduleTarget, type CareAction, type PausePreset, type PortalSubscription } from '../../shared/renewal-config.ts';
 import { currentRecoveryToken } from '../recovery-session.ts';
 import type { PageContext } from '../context.ts';
 import type { CopyKey } from '../../owned/copy.ts';
@@ -162,6 +162,7 @@ export function callbackPage(context: PageContext): HTMLElement {
 const labels: Record<CareAction, CopyKey> = { skip: 'careSkip', slide: 'reschedule', pause: 'carePause', resume: 'careResume',
   cancel: 'cancelSubscription', order_now: 'careOrderNow', reactivate: 'careReactivate' };
 export function subscriptionPortal(context: PageContext): HTMLElement {
+  const care = context.config.renewal.subscriptionCare;
   const output = el('div', { 'aria-live': 'polite' });
   const section = el('section', { class: 'panel', id: 'subscriptions' }, el('h2', {}, context.t('subscriptions')),
     el('p', {}, context.t('subscriptionInvariant')));
@@ -186,11 +187,10 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
       }
       if (row.winback) append(card, el('section', { 'data-winback': row.winback.status }, el('h4', {}, context.t('careWinback')),
         renderValue(row.winback), el('p', {}, context.t('careConsent'))));
-      const choices: CareAction[] = row.status === 'active' ? ['skip', 'slide', 'order_now', 'pause', 'cancel']
-        : row.status === 'paused' ? ['resume', 'cancel'] : row.status === 'cancelled' ? ['reactivate'] : [];
+      const choices = Object.hasOwn(care.actions, row.status) ? care.actions[row.status as keyof typeof care.actions] : [];
       const actions = el('div', { class: 'actions' });
       for (const action of choices) {
-        const reason = action === 'cancel' && row.status === 'paused' ? null : careAvailability(row, action);
+        const reason = careAvailability(row, action, care);
         const control = button(context.t(labels[action]), () => openAction(row, action));
         if (reason) { control.disabled = true; control.title = `${context.t('careUnavailable')} ${reason}`; }
         append(actions, control);
@@ -202,12 +202,11 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
     }
     if (target && !found) append(output, el('p', { role: 'status' }, context.t('careNotFound')));
   }
-  function duration(value: string): FieldSpec {
-    const terms = context.config.renewal.subscriptionCare.terms;
-    return { name: 'pausePreset', label: 'careDuration', type: 'select', value, options: [
-      { value: '2_weeks', text: `${context.t('careTwoWeeks')} (${terms.pauseDays})` },
-      { value: '1_month', text: `${context.t('careMonth')} (${terms.pauseMonths})` },
-      { value: 'indefinite', text: context.t('careIndefinite') }] };
+  function duration(value: PausePreset = care.pausePresets.default): FieldSpec {
+    const text = { '2_weeks': `${context.t('careTwoWeeks')} (${care.terms.pauseDays})`,
+      '1_month': `${context.t('careMonth')} (${care.terms.pauseMonths})`, indefinite: context.t('careIndefinite') };
+    return { name: 'pausePreset', label: 'careDuration', type: 'select', value,
+      options: care.pausePresets.allowed.map(value => ({ value, text: text[value] })) };
   }
   function openAction(row: PortalSubscription, action: CareAction) {
     const dialog = el('dialog', { 'aria-label': context.t(labels[action]) }, el('h2', {}, context.t(labels[action])));
@@ -222,12 +221,12 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         : `${context.t('careTiming')} ${new Date(Date.now() + context.config.renewal.subscriptionCare.terms.reactivateDelayDays * 86400000).toLocaleDateString(context.locale)}`));
       fields.push({ name: 'confirmedChargeTiming', label: 'careConfirmed', type: 'checkbox' });
     }
-    if (action === 'pause') fields.push(duration('2_weeks'));
+    if (action === 'pause') fields.push(duration());
     if (action === 'slide') fields.push({ name: 'newNextCycleAt', label: 'nextDelivery', type: 'date' });
     if (action === 'cancel') {
       const reasonLabels: Record<string, CopyKey> = { too_much_product: 'careTooMuch', delivery_issue: 'careDelivery', too_expensive: 'carePrice', not_a_good_fit: 'careFit', other: 'careOther' };
       fields.push({ name: 'reasonCode', label: 'cancelReason', type: 'select', options: context.config.renewal.subscriptionCare.retentionReasons.map(value => ({ value, text: reasonLabels[value] ? context.t(reasonLabels[value]) : value.replaceAll('_', ' ') })) },
-        { name: 'comment', label: 'note', type: 'textarea', maxLength: 240, required: false }, duration('1_month'));
+        { name: 'comment', label: 'note', type: 'textarea', maxLength: 240, required: false }, duration(care.retention.pausePreset));
     }
     const offered = el('p', { 'data-save-offer': '' });
     const form = actionForm(context, { operation: 'subscription.command', submit: action === 'cancel' ? 'confirmCancel' : labels[action], fields,
@@ -258,7 +257,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
         const kind = saveOfferKind(chooser.value, context.config.renewal.subscriptionCare);
         offered.textContent = `${context.t('careOffer')}: ${context.t(kind === 'skip' ? 'careSkip' : kind === 'reschedule' ? 'reschedule' : 'carePause')}${kind === 'reschedule' ? ` — ${targetDate}` : ''}`;
         presets.parentElement!.hidden = kind !== 'pause';
-        const refusal = kind === 'skip' || kind === 'reschedule' ? careAvailability(row, kind === 'skip' ? 'skip' : 'slide') : careAvailability(row, 'pause');
+        const refusal = careAvailability(row, kind === 'skip' ? 'skip' : kind === 'reschedule' ? 'slide' : 'pause', care);
         offerButton.disabled = refusal !== null;
         if (refusal) offerButton.title = `${context.t('careUnavailable')} ${refusal}`;
       };

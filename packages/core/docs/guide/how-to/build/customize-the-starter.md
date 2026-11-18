@@ -18,7 +18,7 @@ they are ordinary public source files, not release assets. Keep the pair and
 source revision together. No author checkout, workspace install or package
 packing is needed.
 
-Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
+Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the download commands in `examples/neutral-store/README.md`, under “Start
 from an exact source archive”. Those commands download the exact source archive
 and both inputs at the commits above. In the download directory, after unpacking
@@ -77,7 +77,7 @@ node --experimental-strip-types host/server.ts
 ```
 
 This host does not compose the database-backed actions. Pass `--configuration`
-and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/server.ts)
+and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/server.ts)
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
@@ -184,6 +184,40 @@ from `assertConfig`, refuses unknown keys or kinds with
 `starter_retention_configuration_invalid`. The browser uses the same map for
 the displayed offer and its submitted kind. Reason codes, accepted-offer IDs
 and native command authorization keep their existing meaning.
+
+## Configure account actions and pauses
+
+In the unreleased source candidate, `renewal.subscriptionCare` is composed from
+`owned/renewal.config.ts`. Its `actions.active`, `actions.paused` and
+`actions.cancelled` lists choose account controls; `whilePaymentBlocked` and
+`whilePaymentExpired` narrow those choices during payment recovery. Use only
+`skip`, `slide`, `order_now`, `pause`, `cancel`, `resume` and `reactivate`.
+Empty lists disable choices. Unknown or duplicate actions and missing lists
+refuse startup with `starter_subscription_actions_invalid`.
+
+Set `pausePresets` with the starter-local `choice(default, ...allowed)` helper.
+The native preset vocabulary is `2_weeks`, `1_month` and `indefinite`; durations
+still come from owned lifecycle `terms`. `assertChoice` refuses an empty,
+duplicate or unknown selection, or a default outside it, with
+`starter_pause_presets_invalid`. Both pause forms offer `allowed`. The account
+pause form preselects `default` (`2_weeks` in the demonstration); the
+cancellation save offer preselects `retention.pausePreset` (`1_month`), which
+must be allowed and falls back to `default` when omitted.
+
+The managed host binds the same data through
+[command admission](../../concepts/subscriptions.md#admit-account-commands).
+Fresh disabled actions throw `starter_subscription_action_not_admitted` and
+unavailable presets throw `starter_pause_preset_not_admitted` before any write;
+the host returns these named refusals. Completed matching receipts replay even
+after you remove a choice. Restart after changing owned configuration; no
+installation write is needed. Keep managed host, shared and account-page files
+unchanged when customizing these values.
+
+Native state and payment fences still apply. Reactivation keeps its own payment
+and confirmation checks and remains available for a cancelled subscription
+despite historical account payment messages. The starter's saved-address
+selector is a separate port, outside this action vocabulary. No skip-count
+limit is introduced.
 
 ## Configure subscription offers
 
@@ -467,16 +501,16 @@ Unchanged copied bytes alone do not establish working behavior. See
 
 ## Protect local sessions and messages
 
-Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/sessions.ts)
+Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/sessions.ts)
 owns expiry and capacity; a full store refuses with
 `starter_session_capacity_exceeded`. Customer ownership and operator membership are rechecked against
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
 Read `identity.jsonl` through the application container's filesystem as its
-`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/native-composition.ts)
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/native-composition.ts)
 defines its private location.
-The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/host/native-composition.ts)
+The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/host/native-composition.ts)
 creates the file with owner-only permissions. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 

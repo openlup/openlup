@@ -5,6 +5,13 @@ Status: historical record, 2026-11-09.
 Status: qualification evidence for the one supported stable 1.x installation
 composition: the npm starter, PostgreSQL and the qualified image.
 
+The 1.0.0 set is published but failed exact-set qualification for starter
+upgrades in [run 44156615468](https://github.com/openlup/openlup/actions/runs/44156615468).
+The prepared 1.1.0 set supersedes it with the
+[required starter migration](../../packages/core/docs/guide/upgrade/v1-0-0.md#starter-applications-from-0430).
+It adds the cadence widening and native forward 151; qualification of 1.1.0 is
+recorded after publication, not inferred from local preparation.
+
 ## Released starter inputs
 
 The source-only pairs under `examples/neutral-store/release-inputs/<tag>/`
@@ -127,7 +134,13 @@ The shared released-input consumer proof checks both extracted applications,
 including the target application that supplies the installed upgrade CLI.
 
 Managed snapshots are derived from each extracted `ownership.json`, excluding
-generated and owned paths. The proof customizes owned theme and fragment files,
+generated and owned paths. For 0.43.0→1.0.0 or 1.1.0 it first follows the packaged
+starter migration: the three new owned files are target-only snapshot entries;
+the four required existing owned contracts take the target extraction's bytes
+while pristine. For a 1.1.0 target, starters from either 0.43.0 or 1.0.0 also
+take the target's pristine `owned/renewal.config.ts` retention contract, as
+documented in that set's upgrade page. The proof then customizes
+owned theme and fragment files,
 uses the target's installed public CLI for plan/apply, and checks the exact
 `current bytes match neither predecessor nor candidate` managed conflict before
 any writes. After reconciliation it SIGKILLs apply immediately after the first
@@ -140,6 +153,26 @@ shared consumer proof. It runs `npm ci`, typecheck, build, application tests and
 development-loop checks on the upgraded application, including package
 confinement, installed provenance and unchanged target-lock assertions.
 Owned customization bytes must remain identical.
+
+The local 2026-11-17 0.43.0→1.0.0 file/dependency proof passed with the
+updated migration harness and the published packages. Both extracted starters
+and the upgraded application passed the shared consumer checks. The owned
+migration, managed conflict refusal, interruption, incomplete-state refusal,
+resume, replay and owned-byte preservation all passed. This uses the migration
+now documented for 1.1.0; it does not replace the failed hosted 1.0.0 record or
+establish post-publication qualification of 1.1.0.
+
+The local 2026-11-17 1.0.0→1.1.0 published-to-candidate proof also passed
+through the same CLI pair harness and shared locked-input consumer checks.
+The 1.0.0 owned files matched the immutable source tag; its published package
+provenance was verified. The 1.1.0 target used verified local cold tarballs.
+Both baselines and the upgraded application passed application tests,
+typecheck, build and development-loop checks. The exact target lock moved
+unchanged; conflict refusal, interruption, incomplete-state refusal, resume,
+replay and owned customizations passed. The old store configuration imports
+remained in place, with the documented retention migration in
+`owned/renewal.config.ts`. This is local file/dependency evidence; 1.1.0 registry
+provenance and exact-set qualification remain post-publication obligations.
 
 For 0.40.0→0.41.0 the only changing managed file is the extracted
 `package.json` with exact package pins. The kill therefore interrupts the CLI

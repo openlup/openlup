@@ -626,8 +626,113 @@ function nativeCatalogSuccessorsCreation(sql: string): boolean {
   return parsed.complete && parsed.tokens.every(token => token.kind === "word" || token.kind === "symbol")
     && parsed.tokens.map(token => token.value.toUpperCase()).join(" ") === shape;
 }
+// Complete successor storage declarations; this control installs none of them.
+// Strings and numbers remain byte-exact; only unquoted SQL words fold case.
+export const NATIVE_SUCCESSOR_TABLE_SQL: Readonly<Record<string, string>> = {
+  "public.subscription_successor_proposals": `CREATE TABLE public.subscription_successor_proposals (
+ id uuid PRIMARY KEY,
+ subscription_id uuid NOT NULL REFERENCES public.subscriptions(id) ON DELETE RESTRICT,
+ client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE RESTRICT,
+ predecessor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,
+ successor_sku_id uuid NOT NULL REFERENCES public.catalog_skus(id) ON DELETE RESTRICT,
+ publication_id uuid NOT NULL REFERENCES public.catalog_publications(id) ON DELETE RESTRICT,
+ source_binding jsonb NOT NULL CHECK (jsonb_typeof(source_binding) = 'object'),
+ template_version integer NOT NULL CHECK (template_version BETWEEN 1 AND 2147483647),
+ lane text NOT NULL CHECK (length(btrim(lane)) BETWEEN 1 AND 80),
+ action text NOT NULL CHECK (length(btrim(action)) BETWEEN 1 AND 80),
+ request jsonb NOT NULL CHECK (jsonb_typeof(request) = 'object'),
+ preview jsonb NOT NULL CHECK (jsonb_typeof(preview) = 'object'),
+ quote_hash text NOT NULL CHECK (length(quote_hash) = 64 AND translate(quote_hash,'abcdef0123456789','') = ''),
+ expires_at timestamptz NOT NULL,
+ original_case_id uuid REFERENCES public.subscription_stock_wait_cases(id) ON DELETE RESTRICT,
+ original_operation_id uuid REFERENCES public.subscription_renewal_operations(id) ON DELETE RESTRICT,
+ state text NOT NULL DEFAULT 'offered' CHECK (state IN ('offered','accepted','declined','expired')),
+ consent jsonb,
+ accepted_receipt jsonb,
+ terminal_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now()
+);`,
+  "public.subscription_successor_operations_v2": `CREATE TABLE public.subscription_successor_operations_v2 (
+ id uuid PRIMARY KEY,
+ root_operation_id uuid NOT NULL REFERENCES public.subscription_renewal_operations(id) ON DELETE RESTRICT,
+ proposal_id uuid NOT NULL UNIQUE REFERENCES public.subscription_successor_proposals(id) ON DELETE RESTRICT,
+ predecessor_generation_id uuid REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT,
+ subscription_id uuid NOT NULL REFERENCES public.subscriptions(id) ON DELETE RESTRICT,
+ scheduled_at timestamptz NOT NULL,
+ cycle_number integer NOT NULL CHECK (cycle_number BETWEEN 1 AND 2147483647),
+ identity_key text NOT NULL UNIQUE CHECK (length(identity_key) BETWEEN 48 AND 240),
+ operation_fingerprint text NOT NULL CHECK (length(operation_fingerprint) = 64 AND translate(operation_fingerprint,'abcdef0123456789','') = ''),
+ due_snapshot jsonb NOT NULL CHECK (jsonb_typeof(due_snapshot) = 'object'),
+ cycle_snapshot jsonb NOT NULL CHECK (jsonb_typeof(cycle_snapshot) = 'object'),
+ state text NOT NULL CHECK (state IN ('claimed','reserved','attempt_prepared','succeeded','refused')),
+ claim_token uuid NOT NULL,
+ claim_generation bigint NOT NULL DEFAULT 1 CHECK (claim_generation BETWEEN 1 AND 9223372036854775807),
+ claimed_by text NOT NULL CHECK (length(btrim(claimed_by)) BETWEEN 1 AND 240),
+ claimed_at timestamptz NOT NULL,
+ lease_expires_at timestamptz NOT NULL,
+ attempt_prepared_at timestamptz,
+ external_attempt_ref text,
+ external_attempt_acknowledged_at timestamptz,
+ terminal_outcome text,
+ terminal_reason text,
+ terminal_at timestamptz,
+ outcomes jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(outcomes) = 'array'),
+ superseded_by_proposal_id uuid REFERENCES public.subscription_successor_proposals(id) ON DELETE RESTRICT,
+ cycle_id uuid UNIQUE REFERENCES public.subscription_cycles(id) ON DELETE RESTRICT,
+ order_id uuid UNIQUE REFERENCES public.commerce_orders(id) ON DELETE RESTRICT,
+ settlement_intent_id uuid UNIQUE REFERENCES public.commerce_settlement_intents(id) ON DELETE RESTRICT,
+ fulfillment_id uuid UNIQUE REFERENCES public.fulfillment_shipments(id) ON DELETE RESTRICT,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);`,
+  "public.subscription_successor_wait_cases_v2": `CREATE TABLE public.subscription_successor_wait_cases_v2 (
+ id uuid PRIMARY KEY,
+ root_case_id uuid NOT NULL REFERENCES public.subscription_stock_wait_cases(id) ON DELETE RESTRICT,
+ operation_id uuid NOT NULL UNIQUE REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT,
+ subscription_id uuid NOT NULL REFERENCES public.subscriptions(id) ON DELETE RESTRICT,
+ client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE RESTRICT,
+ scheduled_at timestamptz NOT NULL,
+ cycle_number integer NOT NULL CHECK (cycle_number BETWEEN 1 AND 2147483647),
+ state text NOT NULL CHECK (state IN ('waiting','stock_secured','resumed','closed')),
+ due_snapshot jsonb NOT NULL CHECK (jsonb_typeof(due_snapshot) = 'object'),
+ cycle_snapshot jsonb NOT NULL CHECK (jsonb_typeof(cycle_snapshot) = 'object'),
+ fingerprint text NOT NULL CHECK (length(fingerprint) = 64 AND translate(fingerprint,'abcdef0123456789','') = ''),
+ identity_key text NOT NULL,
+ deficits jsonb NOT NULL CHECK (jsonb_typeof(deficits) = 'array'),
+ notice_messages jsonb NOT NULL DEFAULT '{}',
+ refusal_observations jsonb NOT NULL DEFAULT '[]',
+ cycle_id uuid REFERENCES public.subscription_cycles(id) ON DELETE RESTRICT,
+ order_id uuid REFERENCES public.commerce_orders(id) ON DELETE RESTRICT,
+ fulfillment_id uuid REFERENCES public.fulfillment_shipments(id) ON DELETE RESTRICT,
+ opened_at timestamptz NOT NULL DEFAULT now(),
+ last_checked_at timestamptz NOT NULL DEFAULT now(),
+ last_selected_at timestamptz,
+ stock_secured_at timestamptz,
+ resumed_at timestamptz,
+ closed_at timestamptz,
+ block_reason text,
+ superseded_by_proposal_id uuid REFERENCES public.subscription_successor_proposals(id) ON DELETE RESTRICT
+);`,
+  "public.subscription_successor_reservations_v2": `CREATE TABLE public.subscription_successor_reservations_v2 (
+ id uuid PRIMARY KEY,
+ operation_id uuid NOT NULL UNIQUE REFERENCES public.subscription_successor_operations_v2(id) ON DELETE RESTRICT,
+ operation_fingerprint text NOT NULL CHECK (length(operation_fingerprint) = 64 AND translate(operation_fingerprint,'abcdef0123456789','') = ''),
+ source_key text NOT NULL CHECK (length(btrim(source_key)) BETWEEN 1 AND 120),
+ lines jsonb NOT NULL CHECK (jsonb_typeof(lines) = 'array'),
+ status text NOT NULL CHECK (status IN ('held','committed','consumed','released','expired')),
+ expires_at timestamptz,
+ terminal_reason text,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);`,
+};
+function nativeSuccessorStorageCreation(sql: string): boolean {
+  const parsed = platformSqlTokens(sql, false, true);
+  const canonicalTokens = (tokens: PlatformSqlToken[]) => JSON.stringify(tokens.map(token => [token.kind, token.kind === "word" ? token.value.toUpperCase() : token.value]));
+  return parsed.complete && Object.values(NATIVE_SUCCESSOR_TABLE_SQL).some(shape => canonicalTokens(parsed.tokens) === canonicalTokens(platformSqlTokens(shape, false, true).tokens));
+}
 function expandOnlyPlatformForward(sql: string, reviewedCreationTable: boolean, newTableForeignKeyActions: boolean): boolean {
-  const successors = newTableForeignKeyActions && nativeCatalogSuccessorsCreation(sql);
+  const successors = newTableForeignKeyActions && (nativeCatalogSuccessorsCreation(sql) || nativeSuccessorStorageCreation(sql));
   const parsed = platformSqlTokens(sql, reviewedCreationTable, successors);
   if (!parsed.complete) return false;
   const tokens = parsed.tokens.map(token => token.kind === "string" || token.kind === "number" ? "<literal>" : token.kind === "quoted" ? reviewedCreationTable ? token.value.toUpperCase() : `"${token.value.toUpperCase()}"` : token.value.toUpperCase());
@@ -2581,6 +2686,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const indexCreation = nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, nativeWord(tokens, 1, "UNIQUE") ? 2 : 1, "INDEX");
     const newTable = head?.verb === "CREATE" && head.kind === "TABLE" && head.table !== null && !tables.has(head.table) && nativeSymbol(tokens, head.next, "(") && Boolean(nativeQualified(tokens, 2));
     if (head?.verb === "CREATE" && head.table === "public.catalog_sku_successors" && (!newTable || !nativeCatalogSuccessorsCreation(statement))) throw new Error("reviewed native store successor table differs from its closed RESTRICT shape");
+    if (head?.verb === "CREATE" && head.table && Object.hasOwn(NATIVE_SUCCESSOR_TABLE_SQL, head.table) && (!newTable || !nativeSuccessorStorageCreation(statement))) throw new Error("reviewed native store successor storage table differs from its closed RESTRICT shape");
     if ((indexCreation || head?.kind === "TABLE") && expandOnlyPlatformForward(statement, false, newTable)) {
       if (head?.verb === "CREATE" && head.table && nativeSymbol(tokens, head.next, "(") && nativeQualified(tokens, 2)) tables.add(head.table);
       continue;
