@@ -1493,7 +1493,7 @@ async function preferencesCustomer(page: Page, locale: Locale) {
   return { principal, email, clientId: (await owner.query('SELECT id FROM public.clients WHERE principal_id=$1', [principal])).rows[0].id as string };
 }
 const savedAddressInput = (line1 = 'Saved Street 1') => ({ action: 'upsert', kind: 'shipping', label: 'Home', recipientName: null,
-  contactPhone: '123456789', line1, city: 'Example City', postalCode: '12345', country: 'ZZ', isDefault: false });
+  contactPhone: '12345678', line1, city: 'Example City', postalCode: 'AB1234', country: 'ZZ', isDefault: false });
 async function saveAddress(page: Page, input: Record<string, unknown> = savedAddressInput()) {
   const result = await call(page, 'account.addresses', input); expect(result.ok).toBe(true);
   const address = result.value.addresses.find((row: { line1: string }) => row.line1 === input.line1);
@@ -1504,8 +1504,8 @@ for (const locale of market.locales) {
     const f = await preferencesCustomer(page, locale); await page.goto(routes.account[locale]);
     const section = page.locator('#account-preferences'); await accessible(section);
     const form = section.locator('form').filter({ has: page.getByRole('heading', { name: copy[locale].addSavedAddress, exact: true }) });
-    await form.locator('[name=label]').fill('Home'); await form.locator('[name=contactPhone]').fill('123456789');
-    await form.locator('[name=line1]').fill('Saved Street 1'); await form.locator('[name=city]').fill('Example City'); await form.locator('[name=postalCode]').fill('12345');
+    await form.locator('[name=label]').fill('Home'); await form.locator('[name=contactPhone]').fill('1234 5678');
+    await form.locator('[name=line1]').fill('Saved Street 1'); await form.locator('[name=city]').fill('Example City'); await form.locator('[name=postalCode]').fill('ab 1234');
     await form.locator('[name=isDefault]').check();
     const request = page.waitForRequest(r => r.url().endsWith('/api/actions/account.addresses'));
     await form.getByRole('button', { name: copy[locale].save, exact: true }).click();
@@ -1513,7 +1513,7 @@ for (const locale of market.locales) {
     await expect(section.locator('[data-saved-address]')).toHaveCount(1);
     const book = await call(page, 'account.addresses', { action: 'read' }); expect(book.ok).toBe(true); expect(book.value.billingProfilesAvailable).toBe(true);
     expect(book.value.ordererProfiles).toEqual([]);
-    const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: '12-345', contactPhone: '+999123456789', isDefault: true });
+    const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: 'AB1234', contactPhone: '+99912345678', isDefault: true });
     expect((await call(page, 'account.addresses', { ...sent.postDataJSON(), line1: 'Changed replay input' }, key)).value.addresses[0].line1).toBe('Saved Street 1');
     const second = await saveAddress(page, { ...savedAddressInput('Other Street 2'), isDefault: true });
     const changed = await call(page, 'account.addresses', { action: 'read' });
@@ -1647,7 +1647,7 @@ for (const locale of market.locales) {
     const profile={fullName:'Example Billing Buyer',email:f.email,isDefault:true};
     const saved=await call(page,'account.billing',{action:'upsert',...profile});expect(saved.ok).toBe(true);
     const profileId=saved.value.ordererProfiles[0].profileId;
-    expect((await call(page,'account.addresses',{action:'upsert',kind:'billing',recipientName:'Example Billing Buyer',line1:'Billing Lane 1',line2:'Billing Unit 2',city:'Example',postalCode:'00000',country:configurations[material.id]!.market.country,isDefault:true})).ok).toBe(true);
+    expect((await call(page,'account.addresses',{action:'upsert',kind:'billing',recipientName:'Example Billing Buyer',line1:'Billing Lane 1',line2:'Billing Unit 2',city:'Example',postalCode:'AB1234',country:configurations[material.id]!.market.country,isDefault:true})).ok).toBe(true);
     const ordinary=await pendingCheckout(page,locale,'one_time',f.email);
     expect((await call(page,'payment.simulate',{orderRef:ordinary.orderRef,token:ordinary.token,outcome:'captured'})).ok).toBe(true);
     const ordinaryBuyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[ordinary.orderRef])).rows[0].buyer;

@@ -1,3 +1,4 @@
+import type { RenewalStockProtectionPolicy } from '@openlup/platform/inventory/contracts';
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
@@ -32,6 +33,7 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  inventory: { renewalProtection: RenewalStockProtectionPolicy };
   subscriptionCreation: { editWindowHours: number };
   subscriptionEditing: SubscriptionEditorConfig;
   subscriptionOffers: SubscriptionOffers;
@@ -114,6 +116,13 @@ export interface StoreConfig {
 
 export function assertConfig(config: StoreConfig): void {
   assertLocaleMarket(config.market);
+  const protection = config.inventory?.renewalProtection;
+  if (!protection || Object.keys(protection).sort().join(',') !== 'renewalProtectionDays,revision'
+    || typeof protection.revision !== 'string' || !protection.revision.trim()
+    || !Number.isInteger(protection.renewalProtectionDays)
+    || protection.renewalProtectionDays < 1 || protection.renewalProtectionDays > 3660) {
+    throw new Error('inventory_renewal_protection_policy_invalid');
+  }
   if (!Number.isInteger(config.subscriptionCreation?.editWindowHours)
     || config.subscriptionCreation.editWindowHours < 1 || config.subscriptionCreation.editWindowHours > 720) {
     throw new Error('starter_subscription_creation_invalid');

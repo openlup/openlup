@@ -2308,10 +2308,13 @@ fail the batch or add an error outcome. Other thrown errors still produce
 `status: "error"` with `reason: "renewal_processing_failed"`.
 
 `createPostgresStockAvailability` exposes read-only new-purchase ATP through the
-native seam. Its fixed 14-day soft priority and native hard holds are both
-protected; callers cannot request a renewal exemption, horizon change or excluded
-order. Only the fenced renewal allocator uses that exemption. Native safety and
-channel exposure are zero in this seam. This is no advance future-cycle hold or
+native seam. Its soft priority uses the native horizon installed via
+`inventory_renewal_protection` (default 14 days); native hard holds remain
+protected. Callers cannot request a renewal exemption, a horizon differing from
+the installed value or an excluded order. Only the fenced renewal allocator
+uses that exemption. The managed contract retains its fixed 14-day horizon.
+Native safety and channel exposure are zero in this seam. This is no advance
+future-cycle hold or
 one-time checkout mutation contract. Existing own commitments can remain admitted
 when observed stock drops below them, matching the donor limit. No physical
 coverage guarantee follows. The managed SQL surface has its own proof below.

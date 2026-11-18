@@ -103,6 +103,7 @@ export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInven
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
 export type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
 export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
+export type { RenewalStockProtectionPolicy } from "./renewalStockProtection.js";
 ```
 ## dist/inventory/contracts/inventory.d.ts
 
@@ -287,6 +288,15 @@ export interface NewPurchaseStockAvailabilityOptions {
     mode: NewPurchaseStockMode;
     lowStockThreshold?: number;
     horizonDays?: number;
+}
+```
+## dist/inventory/contracts/renewalStockProtection.d.ts
+
+```ts
+/** Installed native ATP priority; request callers cannot override it. */
+export interface RenewalStockProtectionPolicy {
+    revision: string;
+    renewalProtectionDays: number;
 }
 ```
 ## dist/inventory/contracts/reservation.d.ts

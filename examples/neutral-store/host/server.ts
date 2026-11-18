@@ -121,7 +121,7 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const bindings = options.databaseUrl
-    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, options.quoteAcceptanceKeyFile
+    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, config, options.quoteAcceptanceKeyFile
       ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined)
     : pendingBindings();
   const server = createApplication(bindings);

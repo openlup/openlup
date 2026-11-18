@@ -1010,8 +1010,9 @@ an atomic ordered item batch over finalized order items, per-reservation release
 and bounded expiry. The trusted host supplies its observed-stock source and
 server payment status, wires checkout compensation and schedules expiry. Item
 arrays are serialized as JSON for node-postgres. Existing native ATP counts its
-live holds together with renewal holds, while the fourteen-day subscription
-priority remains in force for purchase admission. Matching replay retains the
+live holds together with renewal holds, while the installed subscription
+priority horizon (`inventory_renewal_protection`, default 14 days) remains in
+force for purchase admission. Matching replay retains the
 reservation identity and current status; changed keyed input and elapsed initial
 expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
@@ -1045,7 +1046,7 @@ identifying strings, as can receipt metadata. Hosts should use opaque references
 and keep personal details out of those fields. There is no erasure path for
 these retained reservations, receipts or compensation history yet.
 
-`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand inside 14 days, clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
+`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand through the horizon installed via `inventory_renewal_protection` (default 14 days), clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a horizon differing from the installed value or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and their fixed 14-day horizon, refusing other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
@@ -2649,7 +2650,9 @@ at `./inventory`). Hosts supply transactions, clock, source and the existing
 wire codec. Candidate discovery preserves uncaptured frozen operations; shortage
 creates a durable wait, and elapsed stock-only refusals may reacquire on the same
 identity with a new claim generation. Resumed means paid realization admitted.
-The fixed 14-day soft priority is distinct from durable advance reservations.
+Native soft priority uses the horizon installed via `inventory_renewal_protection`
+(default 14 days) and is distinct from durable advance reservations. The managed
+contract retains its fixed 14-day horizon.
 The unbound descriptor keeps stock recovery unavailable. The opt-in native M10
 reference composition selects it after composed PostgreSQL proof; managed
 TypeScript recovery remains unavailable.
@@ -3181,9 +3184,11 @@ const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope,
 The local policy supplies an ISO country/default and aliases, calling prefix,
 tax normalization/validation and messages. The request mechanism retains fixed
 limits on field lengths and idempotency identifiers, trimming and whitespace
-collapse, local nine-digit phone normalization,
-local five-digit postal formatting, foreign-format behavior and shipping-only
-company/tax omission. Neutral demo values can use `ZZ` and calling prefix `99`.
+collapse, foreign-format behavior and shipping-only company/tax omission. When
+the policy omits the optional effect-free `local` callbacks, it also applies the
+default local nine-digit phone normalization and five-digit postal formatting;
+supply `local` (`normalizePostalCode`, `isValidPostalCode`, `normalizePhone`) to
+replace them for the local country only. Neutral demo values can use `ZZ` and calling prefix `99`.
 Bind `requests` and the host response validator into the existing customer address
 handler schemas and recognize
 `CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.

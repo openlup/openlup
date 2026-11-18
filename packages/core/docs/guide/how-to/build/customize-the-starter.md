@@ -182,6 +182,15 @@ imported by the host, outside `StoreConfig`. Each domain assertion runs once
 from `assertConfig` at startup and refuses invalid data or unsupported database
 bounds with a named error code.
 
+For saved-address formats in the current source candidate, edit
+`savedAddressValidation` in `owned/acquisition-policy.ts`, already imported by
+the host. Its `local` callbacks accept fictional postal codes with two letters
+followed by four digits and phones with eight digits for the configured country
+(`ZZ` in the demonstration).
+Keep those algorithms outside `StoreConfig`; the platform retains country
+aliases, length bounds, foreign formats and field messages. Callback throws
+refuse the affected field. See [saved-address policy and defaults](../../concepts/starter-ownership.md#saved-addresses-billing-and-preferences).
+
 ## Configure cancellation offers
 
 In the current source candidate, edit `subscriptionCare.retention` in
@@ -669,3 +678,14 @@ For recovery links, pass `--port` when the host uses a nondefault port;
 a configured `publicOrigin` takes precedence. Care links also use that configured
 origin when present. Keep the [retention and consent limits](../../reference/limits.md#subscription-care)
 in view when selecting care behavior.
+
+For the next minor source candidate, own `inventory.renewalProtection` in
+`owned/store.config.ts` (`{ revision: 'starter-1', renewalProtectionDays: 14 }`
+in each demo configuration). Its explicit installation step installs that policy;
+application startup only reads it and refuses with `starter_installed_policy_drift`
+when either the revision or days differ. Change the owned value, deliberately run
+the installation step with installation authority, then restart. An absent database
+key has revision `default`, so it does not match `starter-1` until installed.
+See [native stock priority](../../concepts/checkout.md#native-stock-priority) for
+validation, privileges and the request horizon contract. This candidate addition
+does not alter the historical 0.43.0 recipe above.

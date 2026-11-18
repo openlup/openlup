@@ -1470,6 +1470,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4842,6 +4846,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123130000_inventory_renewal_protection_policy.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -7626,6 +7634,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/renewalStockProtection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/contracts/reservation.ts",
       "class": "public-output"
     },
@@ -7635,6 +7647,10 @@
     },
     {
       "path": "packages/platform/src/inventory/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/installedPolicy.ts",
       "class": "public-output"
     },
     {
@@ -7663,6 +7679,10 @@
     },
     {
       "path": "packages/platform/src/inventory/renewalReservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/renewalStockProtection.ts",
       "class": "public-output"
     },
     {
@@ -10739,6 +10759,10 @@
     },
     {
       "path": "packages/platform/test/inventory/postgresStockAvailability.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/renewalStockProtection.test.ts",
       "class": "public-output"
     },
     {
@@ -30183,6 +30207,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/inventoryRenewalProtectionPolicy.test.ts",
       "class": "public-output"
     },
     {
