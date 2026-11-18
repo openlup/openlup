@@ -5984,7 +5984,7 @@
         "replacedFunctions": [],
         "createdFunctions": [
           {
-            "signature": "public.catalog_legacy_net_grams(uuid,text,pg_catalog.numeric,integer,text)",
+            "signature": "public.catalog_check_legacy_net_grams()",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -5992,8 +5992,15 @@
         "dataStatements": [],
         "existingTableStatements": [
           "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;",
-          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (\n  publication_facts IS NULL OR (net_content_dimension IS NOT NULL AND\n    net_weight_g IS NOT DISTINCT FROM public.catalog_legacy_net_grams(\n      product_id, net_content_dimension, net_content_unscaled, net_content_scale, net_content_unit))\n) NOT VALID;",
-          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_legacy_net_grams_check;"
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_publication_net_content_check\n  CHECK (publication_facts IS NULL OR net_content_dimension IS NOT NULL) NOT VALID;",
+          "ALTER TABLE public.catalog_skus VALIDATE CONSTRAINT catalog_skus_publication_net_content_check;"
+        ],
+        "createdTriggers": [
+          {
+            "name": "catalog_skus_legacy_net_grams_check",
+            "table": "public.catalog_skus",
+            "sha256": "6cd25c33e096c50e0e6db00cac827b5f5b8c000c47979700a34f3baf53f146db"
+          }
         ]
       }
     ]
@@ -8589,12 +8596,12 @@
     },
     {
       "path": "db/platform/migrations/20261123230000_catalog_quantity_serving.sql",
-      "sha256": "4537f2bcf6ed524dc3cb23658e1c4ef928abc580692251afb672726c1275a6ed",
+      "sha256": "a3c8686aa652318d6f72c3347469f16e98b6b3ca49f3b85e3fbaea8c85260dcd",
       "functions": [
         {
-          "signature": "public.catalog_legacy_net_grams(uuid,text,pg_catalog.numeric,integer,text)",
+          "signature": "public.catalog_check_legacy_net_grams()",
           "beforeSha256": null,
-          "afterSha256": "77cfbb7144fbd370700b2a05b5abbc79a209102a61cae9c28789d58e6e921aa5"
+          "afterSha256": "a37105370a179c4a4c680d2bb7a9c66208f5affcb2fe45e6056b2f4f1ffdd7c6"
         }
       ]
     }

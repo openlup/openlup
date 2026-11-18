@@ -429,7 +429,7 @@ stage. After migration, an explicit migration-owner call to
 ascending-ID batches. Only positive legacy grams with absent content convert;
 zero stays unknown, existing quantities and gross mass are never overwritten.
 The later native quantity-serving forward makes `net_weight_g` nullable for
-governed SKU writes. Its validated compatibility check uses the immutable
+governed SKU writes. Its write-time compatibility trigger uses the immutable
 bound type's exact unit factor for nonstandard mass units. The existing
 positive-gram backfill and unadopted legacy rows retain their previous behavior.
 Captures keep the existing column and restore position, including SQL NULL
