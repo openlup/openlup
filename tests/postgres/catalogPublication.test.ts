@@ -2109,12 +2109,15 @@ it("cycle1 native publication replay refuses another real human and malformed re
   }
   expect(await snapshot()).toEqual(before);
 });
-it("cycle1 native decision replay binds every receipt identity field", async () => {
+it.each(["body", "scope_id", "command_key"] as const)("native decision replay binds receipt identity in %s", async mode => {
   const data = await draft(), decision = await approve(data.publication), before = await snapshot();
-  for (const changed of [{ productId: randomUUID() }, { commandKey: "other:decision" }, { fingerprint: "c".repeat(64) },
-    { actorId: randomUUID() }, { action: "revoke" }, { candidateRef: "other" }, { candidateDigest: "c".repeat(64) }, { reason: "Other reason" }]) {
+  const changes = mode === "body" ? [{ productId: randomUUID() }, { commandKey: "other:decision" }, { fingerprint: "c".repeat(64) },
+    { actorId: randomUUID() }, { action: "revoke" }, { candidateRef: "other" }, { candidateDigest: "c".repeat(64) }, { reason: "Other reason" }]
+    : [{ [mode]: mode === "scope_id" ? randomUUID() : "other:decision" }];
+  for (const changed of changes) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-      if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,") && rows[0]) Object.assign(rows[0].result as object, changed);
+      if (sql.includes("FROM public.catalog_operator_receipts WHERE") && sql.startsWith("SELECT kind,") && rows[0])
+        Object.assign(mode === "body" ? rows[0].result as object : rows[0], changed);
     }));
     const capability = (await target.authorize(null))!;
     expect(await target.decision(decision, capability)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
