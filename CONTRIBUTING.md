@@ -1669,23 +1669,25 @@ changes. Delta reports identify `candidate.coverage.delta` and include
 `"ordinary": true`. That digest covers the diff with full object names, so it does
 not depend on how many objects the local repository holds. An edge recorded with
 abbreviated names before this rule still replays wherever those names reproduce.
-Later preparations keep the history unless a protected review-path list change
-invalidates the session. If admission refuses an edge because its abbreviated
-names differ, rebuild the session in a clone holding only main and the branch.
+Every later preparation keeps the history, including `prepare --new`. If
+admission refuses an edge because its abbreviated names differ, rebuild the
+session in a clone holding only main and the branch.
 Keep the events before the refused preparation, repeat each later `prepare` at
 its recorded head and record the same reports, each delta report naming its new
 delta.
 
-State stays in `.context/scratch/agent-review/session.json`. If a protected
-review-path list change causes `verify` or hosted admission to refuse the
-session, fetch main and merge `origin/main` first if the checkout still uses
-the old list. Then run
-`node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json`.
-This archives the old session beside `session.json` and starts a fresh full
-review with no prior reports or inherited coverage. `verify` refuses dirty,
-mismatched, partial or missing evidence and unclosed blockers. On the CI-only
-route no reviewer report is needed. Source admission checks the live head, tree
-and floor using trusted main's tooling.
+`verify` and hosted admission refuse a session invalidated by a protected
+review-path list change on main. To recover, fetch main and merge `origin/main`
+if the checkout still uses the old list. Move
+`.context/scratch/agent-review/session.json` aside, run `prepare` with the
+existing intent, and obtain a fresh full review. Give the new reviewers every
+open material finding from the old session. Re-raise those findings in the new
+review and resolve them before requesting admission. Reports from the old
+session cannot be reused in this procedure.
+
+`verify` refuses dirty, mismatched, partial or missing evidence and unclosed
+blockers. On the CI-only route no reviewer report is needed. Source admission
+checks the live head, tree and floor using trusted main's tooling.
 
 ```sh
 node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body-file -

@@ -113,7 +113,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     let refusalHint;
     for (const receipt of refused) {
       if (!await hasWritePermission(api, root, receipt.login, diagnosticPermissions)) continue;
-      refusalHint = `Same-head receipt refused: ${receipt.reason}. If a protected review-path change on main caused the refusal, update your checkout from main and run prepare --new to archive the session and obtain a fresh full review.`;
+      refusalHint = `Same-head receipt refused: ${receipt.reason}. If the protected review-path list changed on main, follow the fresh-session procedure in CONTRIBUTING.md#native-review-and-accountability and obtain a fresh full review.`;
       break;
     }
     reason = [currentReason, refusalHint].filter(Boolean).join(' ') || missingReceipt;

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, validateArchiveHistory, verdict } from './agent-review-decide.mjs';
+import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, REVIEW_RULES_MISMATCH, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -259,22 +259,15 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
   return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
     delta: digest(await git(cwd, 'diff', '--binary', ...index, '--no-renames', from, to)), proof };
 }
-class ReviewRulesMismatchError extends Error {
-  constructor() {
-    super(`invalid: ${REVIEW_RULES_DIFFER}. Review rules may have changed on main since this session was prepared. Run prepare --new to archive this session and obtain a fresh full review.`);
-  }
-}
-export async function validateEconomySession(cwd, session, runGit = git) {
-  if (session.version !== 3) return;
-  const prepares = session.history.filter(event => event.type === 'prepare');
-  for (const { candidate } of prepares) {
+// Shared by verification and the read-only status explanation.
+async function validateRecordedCandidates(cwd, session, runGit) {
+  let rulesMismatch = false;
+  for (const event of session.history) {
+    if (event.type !== 'prepare') continue;
+    const { candidate } = event;
     const actual = await captureCommittedReviewCandidate(cwd, candidate.base, candidate.head, runGit);
     for (const key of ['base', 'head', 'tree', 'changedPaths', 'modeChanged']) demand(digest(actual[key]) === digest(candidate[key]), 'recorded candidate diff differs');
-  }
-
-  let rulesMismatch = false;
-  for (const { candidate } of prepares) {
-    const rules = await captureReviewRules(cwd, candidate, runGit);
+    const rules = await captureReviewRules(cwd, actual, runGit);
     const recorded = candidate.rules;
     if (rules === undefined && recorded === undefined) continue;
     demand(rules?.version === 3 && recorded?.version === 3 &&
@@ -282,8 +275,12 @@ export async function validateEconomySession(cwd, session, runGit = git) {
       [recorded.base, recorded.head].every(value => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value)), REVIEW_RULES_DIFFER);
     rulesMismatch ||= digest(rules) !== digest(recorded);
   }
-  if (rulesMismatch) throw new ReviewRulesMismatchError();
+  if (rulesMismatch) throw new Error(REVIEW_RULES_MISMATCH);
+}
 
+export async function validateEconomySession(cwd, session, runGit = git) {
+  if (session.version !== 3) return;
+  await validateRecordedCandidates(cwd, session, runGit);
   // Historical edges can be replayed only under matching rules.
   for (let index = 0; index < session.history.length; index++) {
     const event = session.history[index];
@@ -323,20 +320,10 @@ async function boundedJson(path, limit = 1024 * 1024) {
     demand(bytesRead <= limit, 'JSON input exceeds size bound'); return JSON.parse(bytes.subarray(0, bytesRead).toString('utf8'));
   } finally { await handle.close(); }
 }
-async function saveState(path, state, archive) {
+async function saveState(path, state) {
   const bytes = `${JSON.stringify(state, null, 2)}\n`; demand(Buffer.byteLength(bytes) <= 8 * 1024 * 1024, 'session exceeds 8 MiB; previous state preserved');
   const temporary = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
-    if (archive) {
-      // Reserve the destination so rename cannot overwrite an existing archive.
-      await writeFile(archive, '', { flag: 'wx', mode: 0o600 });
-      try { await rename(path, archive); }
-      catch (error) { await rm(archive, { force: true }); throw error; }
-      console.error(`Archived native review session to ${archive}`);
-    }
-    await rename(temporary, path);
-  }
+  try { await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 }); await rename(temporary, path); }
   finally { await rm(temporary, { force: true }); }
 }
 export function runReviewCommand(command, args, cwd, env) {
@@ -408,17 +395,6 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       const now = Date.now();
       const rules = await captureReviewRules(cwd, observed);
       if (rules) observed.rules = rules;
-      let archive;
-      if (fresh && session) {
-        try { await validateEconomySession(cwd, session); }
-        catch (error) {
-          if (!(error instanceof ReviewRulesMismatchError)) throw error;
-          validateArchiveHistory(session, now);
-          const timestamp = new Date(now).toISOString().replaceAll(':', '-');
-          archive = join(directory, `session.archived-${timestamp}-${randomUUID()}.json`);
-          session = undefined;
-        }
-      }
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         const parents = await integrationParents(cwd, observed.head);
         const baseAncestor = await ancestor(git, cwd, session.candidate.base, observed.base) &&
@@ -437,20 +413,23 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         const coverage = await captureCoverageEdge(cwd, session, observed, now); if (coverage) observed.coverage = coverage;
       }
       const next = prepareCandidate(session, observed, now, fresh);
-      await saveState(path, next, archive);
+      await saveState(path, next);
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
     demand([2, 3].includes(session?.version), 'prepare a version-2 session before review');
     if (verb === 'status') {
       demand(args.length === 0 || (args.length === 1 && args[0] === '--explain'), 'use status [--explain]');
       if (!args.length) { console.log(JSON.stringify(session, null, 2)); return 0; }
+      const readGit = (root, ...gitArgs) => git(root, '--no-optional-locks', ...gitArgs);
       let observed;
-      try {
-        observed = await captureSessionCandidate(cwd, undefined, {
-          env, runGit: (root, ...gitArgs) => git(root, '--no-optional-locks', ...gitArgs),
-        });
-      } catch (error) { observed = { error: error.message }; }
-      console.log(JSON.stringify(explainSession(session, observed, Date.now()), null, 2));
+      try { observed = await captureSessionCandidate(cwd, undefined, { env, runGit: readGit }); }
+      catch (error) { observed = { error: error.message }; }
+      let recordedCandidateError;
+      if (session.version === 3 && observed.clean && ['base', 'head', 'tree'].every(key => session.candidate?.[key] === observed[key])) {
+        try { await validateRecordedCandidates(cwd, session, readGit); }
+        catch (error) { recordedCandidateError = error.message; }
+      }
+      console.log(JSON.stringify(explainSession(session, observed, Date.now(), { recordedCandidateError }), null, 2));
       return 0;
     }
     if (verb === 'verify-command') {

@@ -63,6 +63,9 @@ describe('native review decisions', () => {
     expect(explainSession(session, observed, time)).toMatchObject({
       status: 'invalid', verified: false, openFindings: null,
     });
+    const stale = explainSession(session, { ...observed, head: 'd'.repeat(40) }, time);
+    expect(stale.status).toBe('invalid');
+    expect(stale.nextAction).toMatch(/^Resolve the reported session error/u);
   });
   it.each([
     { reviewer: 'author' }, { reviewer: '' }, { cold: false }, { verdict: 'pass' },

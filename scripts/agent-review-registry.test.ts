@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
@@ -526,9 +526,8 @@ describe('real Git coverage histories', () => {
   });
 });
 
-describe('preparing after the protected path list changes', () => {
-  const hardRulesMismatch = /^invalid: recorded policy or base rules differ$/u;
-  const rulesMismatch = /recorded policy or base rules differ.*prepare --new to archive this session and obtain a fresh full review/u;
+describe('historical review rules', () => {
+  const rulesMismatch = /^recorded policy or base rules differ\. The protected review-path list may have changed on main\. Start a fresh session and obtain a fresh full review.*CONTRIBUTING\.md#native-review-and-accountability/u;
 
   async function driftedRules() {
     const addedControl = 'fixture-guard.ts';
@@ -552,11 +551,10 @@ describe('preparing after the protected path list changes', () => {
     const includes = NATIVE_CATALOG_CONTROLS.includes.bind(NATIVE_CATALOG_CONTROLS);
     vi.spyOn(NATIVE_CATALOG_CONTROLS, 'includes').mockImplementation(path => path === addedControl || includes(path));
     expect(verdict(first, first.candidate, Date.now()).reason).toContain('2 independent PASS reports required');
-    const directory = join(f.scratch, 'agent-review');
-    return { ...f, directory, path: join(directory, 'session.json') };
+    return { ...f, path: join(f.scratch, 'agent-review/session.json') };
   }
 
-  it('refuses a Git error reading a historical policy without archiving the active session', async () => {
+  it('refuses verification when Git cannot read a historical policy', async () => {
     const f = await fixture();
     await f.review();
     const policy = 'scripts/agent-review-decide.mjs';
@@ -565,8 +563,7 @@ describe('preparing after the protected path list changes', () => {
     await f.cli('prepare', '--new', f.request);
     const session = await f.state();
     expect(session.candidate).not.toHaveProperty('coverage');
-    const directory = join(f.scratch, 'agent-review');
-    const path = join(directory, 'session.json');
+    const path = join(f.scratch, 'agent-review/session.json');
     const original = await readFile(path, 'utf8');
     const readError = new Error('transient Git read failure');
     const runGit = async (cwd: string, ...args: string[]) => {
@@ -581,83 +578,36 @@ describe('preparing after the protected path list changes', () => {
     const blob = f.git('rev-parse', `${f.base}:${policy}`);
     await rm(join(f.cwd, '.git', 'objects', blob.slice(0, 2), blob.slice(2)));
     await expect(captureReviewRules(f.cwd, session.candidate)).resolves.toEqual(session.candidate.rules);
-    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(
+    await expect(f.cli('verify')).rejects.toThrow(
       /^invalid: recorded policy or base rules differ\. Could not read review rules from Git\.$/u,
     );
-    expect(await readdir(directory)).toEqual(['session.json']);
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toMatchObject({
+      status: 'invalid',
+      nextAction: expect.stringMatching(/^Resolve the reported session error .*Could not read review rules from Git/u),
+    });
     expect(await readFile(path, 'utf8')).toBe(original);
   });
 
-  it('reports historical rules drift and keeps the session on plain prepare', async () => {
+  it('reports historical rules drift and keeps the history through either preparation mode', async () => {
     const f = await driftedRules();
     const original = await readFile(f.path, 'utf8');
     const session = await f.state();
     expect(await captureReviewRules(f.cwd, session.candidate)).toEqual(session.candidate.rules);
     await expect(validateEconomySession(f.cwd, session)).rejects.toThrow(rulesMismatch);
     await expect(f.cli('verify')).rejects.toThrow(rulesMismatch);
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    expect(JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0])).toMatchObject({
+      status: 'invalid', reason: expect.stringMatching(rulesMismatch),
+      nextAction: expect.stringMatching(/^Start a fresh session.*CONTRIBUTING\.md#native-review-and-accountability/u),
+    });
     await expect(f.cli('prepare', f.request)).resolves.toBe(0);
-    expect(await readdir(f.directory)).toEqual(['session.json']);
     expect(await readFile(f.path, 'utf8')).toBe(original);
-  });
-
-  it('archives the original bytes and starts a full review from the intent with --new', async () => {
-    const f = await driftedRules();
-    const original = await readFile(f.path, 'utf8');
-    const existing = 'session.archived-existing.json';
-    await writeFile(join(f.directory, existing), 'earlier archive\n');
-    const logArchive = vi.spyOn(console, 'error').mockImplementation(() => {});
     await expect(f.cli('prepare', '--new', f.request)).resolves.toBe(0);
-
-    const files = await readdir(f.directory);
-    const archive = files.find(name => /^session\.archived-\d.+\.json$/u.test(name))!;
-    expect(files.sort()).toEqual([archive, existing, 'session.json'].sort());
-    expect(await readFile(join(f.directory, archive), 'utf8')).toBe(original);
-    expect(await readFile(join(f.directory, existing), 'utf8')).toBe('earlier archive\n');
-    expect(logArchive).toHaveBeenCalledExactlyOnceWith(`Archived native review session to ${join(f.directory, archive)}`);
     const next = await f.state();
-    expect(next.history.map(event => event.type)).toEqual(['rules', 'prepare']);
+    expect(next.history.slice(0, -1)).toEqual(session.history);
     expect(next.candidate).not.toHaveProperty('coverage');
-    expect(next).toMatchObject(JSON.parse(await readFile(f.request, 'utf8')));
-    await expect(validateEconomySession(f.cwd, next)).resolves.toBeUndefined();
-    await expect(f.cli('verify')).rejects.toThrow('1 independent PASS reports required');
-  });
-
-  it.each([
-    ['Git facts', /recorded candidate diff differs/u],
-    ['missing rules', hardRulesMismatch],
-    ['malformed rules', hardRulesMismatch],
-  ])('refuses later invalid %s even when an earlier snapshot drifted', async (kind, error) => {
-    const f = await driftedRules();
-    const state = await f.state();
-    const last = state.history.findLast(event => event.type === 'prepare').candidate;
-    if (kind === 'Git facts') last.changedPaths = [];
-    else if (kind === 'missing rules') delete last.rules;
-    else last.rules.head = 'not-a-digest';
-    state.candidate = last;
-    const tampered = JSON.stringify(state);
-    await writeFile(f.path, tampered);
-    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(error);
-    expect(await readdir(f.directory)).toEqual(['session.json']);
-    expect(await readFile(f.path, 'utf8')).toBe(tampered);
-  });
-
-  it.each([
-    ['report', 'report differs from its historical candidate'],
-    ['edge', 'recorded coverage proof differs'],
-  ])('preserves the active session when drift accompanies a tampered %s', async (kind, error) => {
-    const f = await driftedRules();
-    const state = await f.state();
-    if (kind === 'report') {
-      state.history.findLast(event => event.type === 'report').report.tree = 'a'.repeat(40);
-    } else {
-      state.candidate.coverage.delta = 'a'.repeat(64);
-      state.history.findLast(event => event.type === 'prepare').candidate.coverage.delta = 'a'.repeat(64);
-    }
-    const tampered = JSON.stringify(state);
-    await writeFile(f.path, tampered);
-    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(error);
-    expect(await readdir(f.directory)).toEqual(['session.json']);
-    expect(await readFile(f.path, 'utf8')).toBe(tampered);
+    await expect(f.cli('verify')).rejects.toThrow(rulesMismatch);
   });
 });
 

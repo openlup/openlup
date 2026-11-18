@@ -355,7 +355,7 @@ describe('hosted review decisions', () => {
         await expect(wait).resolves.toEqual(receipt);
       } else {
         await expect(wait).rejects.toThrow(scenario === 'writer'
-          ? /2 independent PASS reports required.*protected review-path change on main.*prepare --new to archive the session and obtain a fresh full review/u
+          ? /Same-head receipt refused: .*2 independent PASS reports required.*protected review-path list changed on main.*CONTRIBUTING\.md#native-review-and-accountability.*obtain a fresh full review/u
           : 'post a current receipt comment from a user with write, maintain or admin permission');
         expect(f.runGit).not.toHaveBeenCalled();
       }

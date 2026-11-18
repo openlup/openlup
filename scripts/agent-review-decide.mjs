@@ -5,6 +5,8 @@ import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
 export const REVIEW_RULES_VERSION = 3;
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
 export const RECEIPT_MARKER = '<!-- openlup-native-review-receipt v2 -->';
+const FRESH_REVIEW_GUIDANCE = 'Start a fresh session and obtain a fresh full review (see CONTRIBUTING.md#native-review-and-accountability).';
+export const REVIEW_RULES_MISMATCH = `recorded policy or base rules differ. The protected review-path list may have changed on main. ${FRESH_REVIEW_GUIDANCE}`;
 const SHA = /^[a-f0-9]{40}$/u;
 const RISKS = ['prose', 'routine', 'behavior', 'unknown'];
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -222,21 +224,6 @@ function validateSessionReports(session, now) {
   demand(session.history.every((event, index) => Number.isFinite(event.at) && event.at <= now && (index === 0 || event.at >= session.history[index - 1].at)), 'history time is invalid');
   if (session.version === 3) validateHistory(session);
 }
-// Guard the archive with recorded history bindings, independent of today's reviewer floor.
-export function validateArchiveHistory(session, now) {
-  candidateValid(session.candidate);
-  demand(session.candidate.clean, 'commit source changes before verification', 'dirty');
-  validateSessionReports(session, now);
-  demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
-  let coverage;
-  for (const event of session.history) {
-    if (event.type === 'prepare') coverage = event.candidate.coverage;
-    if (event.type === 'report' && event.report.verdict === 'PASS' && event.report.ordinary === true &&
-        (coverage?.proof?.paths || coverage?.proof?.resolution)) {
-      demand(event.report.delta === coverage.delta, 'recorded coverage proof differs');
-    }
-  }
-}
 export function verdict(session, observed, now) {
   try {
     stateValid(session); candidateValid(observed); demand(Number.isFinite(now), 'verification time is invalid');
@@ -256,7 +243,7 @@ export function verdict(session, observed, now) {
     return result(true, 'reviewed', 'reviewed');
   } catch (error) { return result(false, error.message.startsWith('needs_agent_review:') ? 'needs_agent_review' : 'invalid', error.message); }
 }
-export function explainSession(session, observed = session?.candidate, now = Date.now()) {
+export function explainSession(session, observed = session?.candidate, now = Date.now(), { recordedCandidateError } = {}) {
   stateValid(session); candidateValid(session.candidate); demand(Number.isFinite(now), 'verification time is invalid');
   const hasObserved = Boolean(observed && !observed.error && ['base', 'head', 'tree'].every(key => SHA.test(observed[key])) && Array.isArray(observed.changedPaths));
   const stale = hasObserved ? ['base', 'head', 'tree'].some(key => session.candidate[key] !== observed[key]) : null;
@@ -288,6 +275,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
   }
   let openMaterial = null;
   try { openMaterial = [...openFindings(session).values()]; } catch (error) { invalidReason ??= error.message; }
+  invalidReason = recordedCandidateError ?? invalidReason;
   const missingReports = Math.max(0, floor - reports.length);
   const edge = session.version === 3 ? session.candidate.coverage : undefined;
   const coverage = edge ? {
@@ -308,20 +296,22 @@ export function explainSession(session, observed = session?.candidate, now = Dat
         : missingReports > 0 || openMaterial?.length ? 'needs_agent_review' : 'verify_required';
   const nextAction = candidateStatus === 'unreadable'
     ? `Resolve the Git comparison or OPENLUP_STACK_BASE error (${observed?.error ?? 'candidate unreadable'}) before running prepare or verify.`
-    : candidateStatus === 'dirty'
-      ? 'Commit or discard working-tree changes before running prepare, record or verify.'
-      : candidateStatus === 'stale'
-        ? 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.'
-        : invalidReason
-          ? `Fix invalid session state (${invalidReason}) or run node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json.`
-          : missingReports > 0 || openMaterial?.length
-            ? [
-                missingReports > 0
-                  ? `Record ${missingReports} independent cold PASS report(s) (${coverage?.ordinaryAllowed ? `ordinary: true, delta: ${coverage.delta}` : `full tree ${session.candidate.tree}`}) with node scripts/agent-review-session.mjs record <report.json>`
-                  : null,
-                openMaterial?.length ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
-              ].filter(Boolean).join(' and ') + '.'
-            : 'Run node scripts/agent-review-session.mjs verify to confirm the local review evidence.';
+    : invalidReason === REVIEW_RULES_MISMATCH
+      ? FRESH_REVIEW_GUIDANCE
+      : invalidReason
+        ? `Resolve the reported session error (${invalidReason}) before running verify.`
+        : candidateStatus === 'dirty'
+          ? 'Commit or discard working-tree changes before running prepare, record or verify.'
+          : candidateStatus === 'stale'
+            ? 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.'
+            : missingReports > 0 || openMaterial?.length
+              ? [
+                  missingReports > 0
+                    ? `Record ${missingReports} independent cold PASS report(s) (${coverage?.ordinaryAllowed ? `ordinary: true, delta: ${coverage.delta}` : `full tree ${session.candidate.tree}`}) with node scripts/agent-review-session.mjs record <report.json>`
+                    : null,
+                  openMaterial?.length ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
+                ].filter(Boolean).join(' and ') + '.'
+              : 'Run node scripts/agent-review-session.mjs verify to confirm the local review evidence.';
   return {
     version: session.version,
     status,
