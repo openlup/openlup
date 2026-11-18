@@ -36,15 +36,20 @@ function acceptance(value: unknown, parse: CatalogRenewalReferenceParser | undef
   if (value === undefined || value === null) throw new Error("subscription_catalog_acceptance_required");
   const envelope = z.object({ schemaVersion: z.literal(2), lines: z.array(z.unknown()).min(1).max(100) }).strict().parse(value);
   const lines = envelope.lines.map(value => parse(value));
-  if (new Set(lines.map(line => line.skuId)).size !== lines.length || nativeRenewalCanonicalJson(lines) !== nativeRenewalCanonicalJson(envelope.lines)) throw new Error("subscription_catalog_acceptance_invalid");
+  if (new Set(lines.map(line => line.skuId)).size !== lines.length || new Set(lines.map(line => line.skuCode)).size !== lines.length
+    || nativeRenewalCanonicalJson(lines) !== nativeRenewalCanonicalJson(envelope.lines)) throw new Error("subscription_catalog_acceptance_invalid");
   return { schemaVersion: 2, lines };
 }
 function validate(snapshot: RenewalFrozenSnapshot, parse?: CatalogRenewalReferenceParser) {
   if (snapshot.frozenRevision === "native.purchase-renewal.v3") {
     const { catalogAcceptance, ...old } = snapshot as RenewalFrozenSnapshot & { catalogAcceptance: unknown };
     const captured = acceptance(catalogAcceptance, parse);
-    if (captured.lines.length !== snapshot.orderSnapshot.lines.length || snapshot.orderSnapshot.lines.some(line => !captured.lines.some(ref => ref.skuCode === line.sku))) throw new Error("subscription_catalog_acceptance_line_mismatch");
     snapshotSchema.parse({ ...old, frozenRevision: "native.purchase-renewal.v2" });
+    const acceptedCodes = new Set(captured.lines.map(line => line.skuCode));
+    const codes = snapshot.orderSnapshot.lines.map(line => line.sku);
+    if (new Set(codes).size !== codes.length || acceptedCodes.size !== codes.length || codes.some(code => !acceptedCodes.has(code))) {
+      throw new Error("subscription_catalog_acceptance_line_mismatch");
+    }
   } else snapshotSchema.parse(snapshot);
   const items = nativeRenewalCanonicalJson(snapshot.orderSnapshot.lines);
   const pricing = snapshot.pricingSnapshot;

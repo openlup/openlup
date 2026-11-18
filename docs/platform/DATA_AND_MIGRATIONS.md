@@ -321,6 +321,10 @@ events, retained terms and renewal operations verify complete immutable referenc
 restoring publications and SKU revisions before those commerce rows preserves the
 binding. Existing connected-store inventories carry these columns byte-exactly.
 The managed ingress projection supplies NULL for absent native carriers.
+Governed head admission checks the complete immutable SKU roster before
+advancing the pointer. The optional demand-policy reference belongs to the
+sealed SKU facts. Frozen v3 admission verifies that its acceptance envelope
+covers the same SKU set as all persisted basket copies.
 
 `catalog_lifecycle_write_capabilities` is transient, excluded from transfer and
 blocks capture when nonempty. Lifecycle-aware readers are required before

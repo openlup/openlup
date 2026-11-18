@@ -1465,6 +1465,16 @@ do not erase undelivered leaf replacements. Unknown evidence refuses. Archive
 continues to return `catalog_archive_barrier_unavailable` even with no observed
 obligation until every creation and handoff lane is qualified under the
 [catalogue lock order](../../docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order).
+Author each SKU activation or restoration with an enabling eligibility operation
+for the same SKU. Either order is supported within one issuance. Parent-only
+restoration keeps children withdrawn. Initial product activation and a parent
+restore that also enables fresh sales require an active, sellable primary after
+all effects. Withdrawal preserves physical and merchandising facts.
+
+An optional experimental `demandPolicyRef` in draft v4 is sealed into the SKU
+revision. Accepted references must match it exactly, including presence. A
+frozen renewal v3 carrier requires one reference for each distinct basket SKU.
+
 No agreement, quantity, price or cycle schedule is changed by a lifecycle write.
 
 Publication preserves omitted SKU revisions unless an explicit compatible derived

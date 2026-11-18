@@ -53,6 +53,17 @@ business authorization. Mandatory managed industry-specific columns still need
 their separately qualified relaxation before nonmass publication;
 the managed rail does not supply this feature.
 
+Draft v4 accepts explicit same-SKU enabling eligibility before or after
+activation or restoration. A parent-only restore keeps children withdrawn.
+Initial activation and a parent restore that also restores fresh sales require
+an active, sellable primary after the authored effects. A withdrawal preserves
+physical and merchandising facts and does not depend on unrelated sale readiness.
+
+The optional experimental `demandPolicyRef` is sealed into governed SKU facts.
+When the sealed revision includes the field, accepted references must carry the
+same value. Frozen renewal v3 requires exactly one reference per distinct line
+SKU and checks the persisted basket copies before accepting the carrier.
+
 New lifecycle and acceptance exports are `@experimental`; the existing catalogue
 readers retain their maturity. Future changes to lifecycle state,
 obligation-family and refusal unions are addition-only.

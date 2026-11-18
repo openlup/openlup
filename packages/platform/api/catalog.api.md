@@ -2696,8 +2696,14 @@ export type CatalogDraftPublicationOperationV4 = Exclude<CatalogDraftPublication
 /** Separate stored dialect: old payloads, command fingerprints and receipts remain exact.
  * @experimental
  */
-export interface CatalogDraftPayloadV4 extends Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> {
+export interface CatalogDraftPayloadV4 extends Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication" | "skus"> {
     schemaVersion: 4;
+    skus: (CatalogDraftPayloadV3["skus"][number] & {
+        /** Optional demand policy sealed into the SKU revision.
+         * @experimental
+         */
+        demandPolicyRef?: string;
+    })[];
     publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & {
         operations: CatalogDraftPublicationOperationV4[];
     };
@@ -2730,6 +2736,10 @@ export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
     schemaVersion: 3;
     lifecycleState: CatalogLifecycleStateV2;
     optionDigest: string;
+    /** The optional policy reference owned by this immutable revision.
+     * @experimental
+     */
+    demandPolicyRef?: string;
 }
 /** @experimental */
 export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3;
@@ -4692,6 +4702,10 @@ export declare const catalogPublicationStateSchema: z.ZodUnion<readonly [z.ZodTy
         digest: z.ZodString;
     }, z.core.$strict>>;
 }, z.core.$strict>]>;
+/** @experimental */
+export declare function catalogLifecycleWithdrawalOnly(payload: CatalogDraftPayloadV4): boolean;
+/** @experimental */
+export declare function assertGovernedSkuRoster(skus: readonly CatalogSkuState[]): void;
 export interface CatalogPublicationDocument {
     reference: z.infer<typeof catalogDocumentRevisionRefSchema>;
     canonicalText: string;
@@ -5126,7 +5140,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123180000_catalog_lifecycle";
     readonly catalogPath: "db/platform/migrations/20261123180000_catalog_lifecycle.sql";
     readonly position: 152;
-    readonly sha256: "f7aa19e913f42ab861375fd404b56fdb410211881f20ec62d1708c0b9d8fac50";
+    readonly sha256: "cb71342ae33bafd845a25dc6b9f408257b95ae7fd28cbf1f72520911c156fc89";
     readonly url: URL;
 }];
 ```

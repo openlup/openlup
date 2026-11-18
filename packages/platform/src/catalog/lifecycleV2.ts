@@ -37,7 +37,7 @@ export function catalogLifecycleTransitionV2(from: CatalogLifecycleStateV2, to: 
  */
 export const catalogDraftPayloadV4Schema: z.ZodType<CatalogDraftPayloadV4> = z.object({ schemaVersion: z.literal(4),
   product: catalogDraftProductV2Schema.extend({ sharedContent: catalogDraftSharedContentV3Schema }).strict(),
-  skus: z.array(catalogDraftSkuV2Schema).max(10_000),
+  skus: z.array(catalogDraftSkuV2Schema.extend({ demandPolicyRef: ref.optional() })).max(10_000),
   publication: z.object({ kind: z.enum(["release", "compensation"]), operations: z.array(z.unknown()), evidence: z.unknown() }).strict(),
 }).strict().superRefine((payload, context) => {
   const oldOperations: unknown[] = [];
@@ -45,7 +45,7 @@ export const catalogDraftPayloadV4Schema: z.ZodType<CatalogDraftPayloadV4> = z.o
     const parsed = catalogLifecycleOperationV2Schema.safeParse(operation);
     if (parsed.success) {
       const op = parsed.data;
-      if (op.op === "set_sku_lifecycle" && op.state === "active" && !payload.publication.operations.some(other => {
+      if ((op.op === "restore_sku" || op.op === "set_sku_lifecycle" && op.state === "active") && !payload.publication.operations.some(other => {
         const row = other as Record<string, unknown>;
         return row?.op === "set_eligibility" && row.skuCode === op.skuCode && (row.sellableStandalone === true || row.sellableInSubscription === true);
       })) context.addIssue({ code: "custom", path: ["publication", "operations", index], message: "activation requires explicit enabling eligibility" });
@@ -57,7 +57,8 @@ export const catalogDraftPayloadV4Schema: z.ZodType<CatalogDraftPayloadV4> = z.o
     }
     oldOperations.push(operation);
   }
-  const base = catalogDraftPayloadV3Schema.safeParse({ ...payload, schemaVersion: 3, publication: { ...payload.publication, operations: oldOperations } });
+  const base = catalogDraftPayloadV3Schema.safeParse({ ...payload, schemaVersion: 3,
+    skus: payload.skus.map(({ demandPolicyRef: _policy, ...sku }) => sku), publication: { ...payload.publication, operations: oldOperations } });
   if (!base.success) for (const issue of base.error.issues) context.addIssue({ code: "custom", path: issue.path, message: issue.message });
   try { canonicalCatalogDraftJson(payload); } catch { context.addIssue({ code: "custom", message: "payload must be bounded safe JSON" }); }
 }) as z.ZodType<CatalogDraftPayloadV4>;
@@ -90,7 +91,10 @@ export function catalogLifecycleValidationPayload(payload: CatalogLifecycleStore
   if (payload.schemaVersion === 1) return publicationRefuse("candidate_requires_payload_v2");
   if (payload.schemaVersion === 2) return payload;
   const { publication: _publication, ...base } = payload as import("./contracts/draftV3.js").CatalogDraftPayloadV3 | CatalogDraftPayloadV4;
-  return { ...base, schemaVersion: 2 as const };
+  return { ...base, schemaVersion: 2 as const, skus: base.skus.map(sku => {
+    const { demandPolicyRef: _policy, ...legacy } = sku as CatalogDraftPayloadV4["skus"][number];
+    return legacy;
+  }) };
 }
 
 /** @experimental */

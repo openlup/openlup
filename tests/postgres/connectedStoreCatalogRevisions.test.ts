@@ -2,8 +2,9 @@ import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions } from "@openlup/platform/catalog";
+import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions, catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
+import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -17,6 +18,7 @@ const products = [randomUUID(), randomUUID(), randomUUID()];
 const latest = [randomUUID(), randomUUID()];
 let source: JourneyInstallation, target: JourneyInstallation, lifecycleSource: JourneyInstallation;
 let lifecycleHistory: Awaited<ReturnType<typeof seedPublicationHistory>>;
+let lifecycleFrozen: Awaited<ReturnType<typeof seedFrozenTransfer>>;
 let packet: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 let retainedPublication: { first: CatalogHeadRef; second: CatalogHeadRef; productId: string; receipt: unknown };
@@ -154,13 +156,15 @@ it("refuses a changed staged product at the guarded pointer update and rolls bac
 const publicationAdmin = randomUUID();
 const publicationDefinition = { key: "example:transfer-article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: true }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
-function publicationAuthority(owner: Pool) {
+function publicationAuthority(owner: Pool, ownsRetained = false) {
   return createPostgresCatalogPublication({ registry: createCatalogProductTypeRegistry([publicationDefinition]),
     transactions: { async run(work) { const client = await owner.connect(); try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
       catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true as const, userId: publicationAdmin, role: "admin", isMachineActor: false }),
     rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
-    readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false });
+    readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false,
+    acceptedSource: async (_db, _context, binding) => ownsRetained ? binding : "unauthorized",
+  });
 }
 async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3) {
   await installCatalogDefinitions(owner, { id: "example:transfer", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [publicationDefinition], taxClasses: [] });
@@ -196,7 +200,10 @@ async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3) {
     const result = await authority.publish(publish, actor); expect(result.outcome, JSON.stringify(result)).toBe("committed");
     if (!("receipt" in result)) throw new Error("Missing publication receipt");
     head = result.receipt.head; first ??= head; receipt = result.receipt;
-    if (schemaVersion === 4 && expectedRevision === 0) (await owner.connect()).release(true);
+    if (schemaVersion === 4 && expectedRevision === 0) {
+      lifecycleFrozen = await seedFrozenTransfer(owner, head);
+      (await owner.connect()).release(true);
+    }
   }
   return { productId, first: first!, second: head!, receipt, firstCommand: firstCommand! };
 }
@@ -227,17 +234,35 @@ it("refuses nonempty transient lifecycle capabilities during capture", async () 
   finally { await source.owner.query("DELETE FROM public.catalog_lifecycle_write_capabilities WHERE product_id=$1", [product]); }
 });
 
-it("transfers governed lifecycle facts and nullable same-SKU accepted bindings without inference", async () => {
+async function seedFrozenTransfer(owner: Pool, head: CatalogHeadRef) {
+  const page = await publicationAuthority(owner).readbackV3(head);
+  if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+  const sku = page.items[0]!, customer = randomUUID(), subscription = randomUUID();
+  const reference = { schemaVersion: 2, skuId: sku.facts.id, skuCode: sku.facts.code, skuRevisionId: sku.reference.revisionId, publicationHead: page.head,
+    typeRef: page.product.type, definitionDigest: page.product.definitionDigest, optionDigest: sku.facts.optionDigest, netContent: sku.facts.netContent };
+  const acceptance = { schemaVersion: 2, lines: [reference] };
+  const now = (await owner.query(`SELECT to_char(date_trunc('milliseconds',clock_timestamp()) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at`)).rows[0].at;
+  await owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [customer,`${customer}@example.invalid`]);
+  await owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)", [subscription,customer,now]);
+  const codec = createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value));
+  const snapshot = codec.freeze({ subscription_id: subscription, client_id: customer, cadence_days: 28, template_version: 1, scheduled_at: now,
+    currency_code: "XXX", stock_source_key: "synthetic", settlement_channel_key: "sandbox", authorization_ref: "synthetic-authorization",
+    payer_account_ref: null, unattended_charge_authorized_at: now, next_cycle_number: 1, paid_cycle_count: 1,
+    activation_cycle_id: randomUUID(), activation_cycle_paid: true, delivery_admission: "allowed",
+    purchase_facts: { templateId: "synthetic-template", shippingAmountMinor: 0, acquisitionRef: null,
+      renewalTerms: { version: "native.renewal-terms.v1" } },
+    lines: [{ lineOrdinal: 1, sku: sku.facts.code, quantity: 3, unitAmountMinor: 617 }], catalog_acceptance: acceptance,
+  }, { subscriptionId: subscription, scheduledAt: now, scheduledInstant: Date.parse(now) });
+  const claim = await createPostgresRenewalStore(owner, codec).claimDue({ snapshot, workerId: "synthetic-transfer", now });
+  return { customer, subscription, acceptance: JSON.stringify(acceptance), codec, snapshot, claim, now };
+}
+it("LC5-D-016 LC5-D-068 LC5-D-069 LC5-A-033 transfer governed facts, nullable bindings and frozen replay", async () => {
   const held = lifecycleSource, history = lifecycleHistory, sourceAuthority = publicationAuthority(held.owner);
   const page = await sourceAuthority.readbackV3(history.first);
   if (page.outcome !== "page") throw new Error(JSON.stringify(page));
   expect(await sourceAuthority.readbackV2(history.first)).toMatchObject({ outcome: "unsupported", reason: "catalog_lifecycle_reader_required" });
-  const sku = page.items[0]!, customer = randomUUID(), subscription = randomUUID(), legacySubscription = randomUUID(), order = randomUUID();
-  const reference = { schemaVersion: 2, skuId: sku.facts.id, skuCode: sku.facts.code, skuRevisionId: sku.reference.revisionId, publicationHead: page.head,
-    typeRef: page.product.type, definitionDigest: page.product.definitionDigest, optionDigest: sku.facts.optionDigest, netContent: sku.facts.netContent };
-  const acceptance = JSON.stringify({ schemaVersion: 2, lines: [reference] });
-  await held.owner.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [customer,`${customer}@example.invalid`]);
-  await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [subscription,customer]);
+  const sku = page.items[0]!, legacySubscription = randomUUID(), order = randomUUID();
+  const { customer, subscription, acceptance, codec, snapshot, claim, now } = lifecycleFrozen;
   await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,3,0,617,'XXX',$3)", [subscription,sku.facts.id,sku.reference.revisionId]);
   await held.owner.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,clock_timestamp()+interval '28 days')", [legacySubscription,customer]);
   await held.owner.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,3,0,617,'XXX')", [legacySubscription,sku.facts.id]);
@@ -248,6 +273,11 @@ it("transfers governed lifecycle facts and nullable same-SKU accepted bindings w
   expect(await restore(target.owner,captured)).toMatchObject({ replayed: false });
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await publicationAuthority(target.owner).readbackV3(history.first)).toEqual(page);
+  expect(await publicationAuthority(target.owner).readbackV3(history.second)).toMatchObject({ outcome: "page", head: history.second });
+  const renewed = createPostgresRenewalStore(target.owner, codec);
+  expect(await renewed.claimDue({ snapshot, workerId: "synthetic-transfer", now })).toMatchObject({ operationId: claim.operationId, replayed: true });
+  expect((await target.owner.query("SELECT cycle_snapshot FROM public.subscription_renewal_operations WHERE id=$1", [claim.operationId])).rows)
+    .toEqual([{ cycle_snapshot: codec.encode(snapshot) }]);
   expect((await target.owner.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [subscription])).rows).toEqual([{ catalog_sku_revision_id: sku.reference.revisionId }]);
   expect((await target.owner.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [legacySubscription])).rows).toEqual([{ catalog_sku_revision_id: null }]);
   (await target.owner.connect()).release(true);
@@ -256,4 +286,31 @@ it("transfers governed lifecycle facts and nullable same-SKU accepted bindings w
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect(await restore(target.owner,captured)).toMatchObject({ replayed: true });
   expect(await journeyCensus(target.owner)).toEqual(before);
+
+
+  // This fixture has two valid immutable revision records with the same code.
+  // The malformed history must stay unusable through every retained reader.
+  const duplicateSku = randomUUID(), revision = randomUUID(), publication = randomUUID();
+  const historyRow = (await target.owner.query("SELECT * FROM public.catalog_publications WHERE id=$1", [history.second.publicationId])).rows[0];
+  const retained = JSON.parse(historyRow.canonical_state);
+  const duplicate = canonicalCatalogDraftJson({ ...sku.facts, id: duplicateSku });
+  const digest = createHash("sha256").update(duplicate).digest("hex");
+  retained.skus.push({ skuId: duplicateSku, revisionId: revision, revision: 1, digest });
+  retained.skus.sort((a: { skuId: string }, b: { skuId: string }) => a.skuId < b.skuId ? -1 : 1);
+  const canonical = canonicalCatalogDraftJson(retained);
+  await target.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Duplicate witness')", [duplicateSku,history.productId,`SECOND-${duplicateSku}`]);
+  await target.owner.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+    SELECT $1,product_id,revision+1,id,draft_id,draft_revision,'test:roster:candidate',candidate_digest,document_revision_id,$2,$3,actor_id
+    FROM public.catalog_publications WHERE id=$4`, [publication,canonical,createHash("sha256").update(canonical).digest("hex"),historyRow.id]);
+  await target.owner.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,1,$4,$5,$6)",
+    [revision,duplicateSku,history.productId,publication,duplicate,digest]);
+  const malformed = { ...history.second, publicationId: publication, revision: history.second.revision+1 };
+  await expect(target.owner.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [history.productId,publication,malformed.revision]))
+    .rejects.toMatchObject({ code: "23514", message: "catalog_publication_sku_revision_invalid" });
+  const reader = publicationAuthority(target.owner, true);
+  const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
+  expect(await reader.readbackV3(malformed)).toEqual(refusal);
+  expect(await reader.resolveRetained({ kind: "order", sourceId: order, lineId: randomUUID(), productId: history.productId,
+    skuId: duplicateSku, skuRevisionId: revision, publicationId: publication, documentRevisionId: historyRow.document_revision_id }, reader.authorizeReadScope(undefined)))
+    .toEqual(refusal);
 });

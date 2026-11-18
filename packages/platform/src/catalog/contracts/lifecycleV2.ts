@@ -19,8 +19,14 @@ export type CatalogDraftPublicationOperationV4 = Exclude<CatalogDraftPublication
 /** Separate stored dialect: old payloads, command fingerprints and receipts remain exact.
  * @experimental
  */
-export interface CatalogDraftPayloadV4 extends Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> {
+export interface CatalogDraftPayloadV4 extends Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication" | "skus"> {
   schemaVersion: 4;
+  skus: (CatalogDraftPayloadV3["skus"][number] & {
+    /** Optional demand policy sealed into the SKU revision.
+     * @experimental
+     */
+    demandPolicyRef?: string;
+  })[];
   publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & { operations: CatalogDraftPublicationOperationV4[] };
 }
 /** @experimental */
@@ -37,7 +43,13 @@ export interface CatalogLifecycleStoredRecord extends CatalogDraftSummary { payl
 /** @experimental */
 export interface CatalogPublishedProductV3 extends CatalogPublishedProduct { schemaVersion: 3; lifecycleState: CatalogLifecycleStateV2; definitionDigest: string }
 /** @experimental */
-export interface CatalogPublishedSkuV3 extends CatalogPublishedSku { schemaVersion: 3; lifecycleState: CatalogLifecycleStateV2; optionDigest: string }
+export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
+  schemaVersion: 3; lifecycleState: CatalogLifecycleStateV2; optionDigest: string;
+  /** The optional policy reference owned by this immutable revision.
+   * @experimental
+   */
+  demandPolicyRef?: string;
+}
 /** @experimental */
 export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3;
 /** @experimental */

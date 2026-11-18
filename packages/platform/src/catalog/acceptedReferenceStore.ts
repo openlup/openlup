@@ -4,7 +4,7 @@ import { z } from "./validation.js";
 import { catalogAcceptedReferenceV2Schema } from "./lifecycleV2.js";
 /** @experimental */
 export const catalogAcceptanceV2Schema: z.ZodType<CatalogAcceptanceV2> = z.object({ schemaVersion: z.literal(2),
-  lines: z.array(catalogAcceptedReferenceV2Schema).min(1).max(100).refine(lines => new Set(lines.map(line => line.skuId)).size === lines.length) }).strict();
+  lines: z.array(catalogAcceptedReferenceV2Schema).min(1).max(100).refine(lines => new Set(lines.map(line => line.skuId)).size === lines.length && new Set(lines.map(line => line.skuCode)).size === lines.length) }).strict();
 /** Verifies only supplied immutable identity. It neither infers a legacy binding nor acquires commerce locks.
  * @experimental
  */

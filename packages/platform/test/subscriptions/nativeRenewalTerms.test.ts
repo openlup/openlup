@@ -137,3 +137,23 @@ it("catalogue snapshot v3 retains references, agreed money and every old wire di
   expect(() => codec.freeze(row(terms()), schedule)).toThrow("catalog_acceptance");
   expect(() => codec.decode({ ...wire, catalogAcceptance: { schemaVersion: 2, lines: [{ ...reference, skuCode: "FORGED" }] } })).toThrow();
 });
+
+it.each(["missing", "duplicate line", "duplicate reference code", "foreign code"] as const)(
+  "LC5-A-028 frozen acceptance refuses %s", defect => {
+    const reference = { schemaVersion: 2, skuId: "abcdef04-2345-4678-9abc-def012345678", skuCode: "SYNTHETIC-REFILL",
+      skuRevisionId: "abcdef05-2345-4678-9abc-def012345678", publicationHead: { publicationId: "abcdef06-2345-4678-9abc-def012345678", revision: 1, documentDigest: "a".repeat(64) },
+      typeRef: { key: "example:article", version: 1 }, definitionDigest: "b".repeat(64), optionDigest: "c".repeat(64),
+      netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 } };
+    const codec = createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value));
+    const schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    const stable = row(terms());
+    const other = { ...reference, skuId: "abcdef07-2345-4678-9abc-def012345678", skuCode: "SYNTHETIC-OTHER" };
+    expect(codec.freeze({ ...stable, catalog_acceptance: { schemaVersion: 2, lines: [reference] } }, schedule).frozenRevision)
+      .toBe("native.purchase-renewal.v3");
+    const lines = defect === "duplicate line" ? [{ ...line(4500) }, { ...line(4500), lineOrdinal: 2 }] : stable.lines;
+    const references = defect === "missing" ? [] : defect === "foreign code" ? [other] : defect === "duplicate reference code"
+      ? [reference, { ...other, skuCode: reference.skuCode }] : [reference, other];
+    const expected = defect === "missing" ? /too_small/u : defect === "duplicate reference code" ? /subscription_catalog_acceptance_invalid/u : /subscription_catalog_acceptance_line_mismatch/u;
+    expect(() => codec.freeze({ ...stable, lines, catalog_acceptance: { schemaVersion: 2, lines: references } }, schedule)).toThrow(expected);
+  },
+);
