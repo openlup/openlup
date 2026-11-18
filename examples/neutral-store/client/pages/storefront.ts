@@ -1,9 +1,9 @@
 import { quantityChoices } from '../../shared/subscription-offer.ts';
 import type { PageContext } from '../context.ts';
 import type { Cart, OfferResult } from '../../shared/offer.ts';
-import { emptyCart, validateCart } from '../../shared/offer.ts';
+import { emptyCart, isRecord, parseCart, validateCart } from '../../shared/offer.ts';
 import { nativeUnitPrice, refreshLiveQuote, clearLiveQuote } from '../live-quote.ts';
-import { routes } from '../../shared/routes.ts';
+import { productPath, routes } from '../../shared/routes.ts';
 import { append, button, el, link } from '../dom.ts';
 import { field, refusal } from '../forms.ts';
 
@@ -31,11 +31,13 @@ export function catalogPage(context: PageContext): HTMLElement {
 }
 
 function productGrid(context: PageContext): HTMLElement {
+  if (context.governedCatalogue) return publishedProducts(context, null);
   return el('div', { class: `products ${context.config.offer.layout}` },
     ...context.config.offer.products.map(product => context.fragments.productCard(context, product)));
 }
 
 export function productPage(context: PageContext): HTMLElement {
+  if (context.governedCatalogue && context.route.slug) return publishedProducts(context, context.route.slug);
   const product = context.config.offer.products.find(item => item.slug === context.route.slug);
   if (!product) return el('section', {}, el('h1', {}, context.t('notFound')),
     link(context.t('catalog'), routes.catalog[context.locale]));
@@ -73,6 +75,7 @@ export function productPage(context: PageContext): HTMLElement {
 }
 
 export function builderPage(context: PageContext): HTMLElement {
+  if (context.governedCatalogue) return el('section', {}, el('h1', {}, context.t('chooseProducts')), publishedProducts(context, null));
   const config = context.config;
   const initial = context.getCart();
   const selected = new Map<string, HTMLInputElement>();
@@ -156,7 +159,7 @@ export function cartPage(context: PageContext): HTMLElement {
   function save(): boolean {
     const next: Cart = { ...cart, mode: mode.value(), cadenceDays: mode.cadence(),
       lines: cart.lines.map(line => ({ sku: line.sku, quantity: Number(quantities.get(line.sku)?.value) })) };
-    const value = validateCart(context.config, next);
+    const value = context.governedCatalogue ? parseCart(context.config.id, next) : validateCart(context.config, next);
     if (!value.ok) { clearLiveQuote(result); result.replaceChildren(offerIssues(context,value)); return false; }
     void refreshLiveQuote(context,value.cart,result,quote => result.replaceChildren(context.fragments.checkoutSummary(context,quote)));
     context.setCart(value.cart);
@@ -169,6 +172,49 @@ export function cartPage(context: PageContext): HTMLElement {
     result, link(context.t('builder'), routes.builder[context.locale]));
   save();
   return page;
+}
+
+function publishedProducts(context: PageContext, slug: string | null): HTMLElement {
+  const shell = el('section', { 'aria-live': 'polite' }, el('p', {}, context.t('loading')));
+  const route = slug ? '/api/catalogue/' + encodeURIComponent(slug) : '/api/catalogue';
+  const load = async () => {
+    const nodes: HTMLElement[] = [];
+    let cursor: string | null = null;
+    do {
+      const response: Response = await fetch(cursor ? route + '?cursor=' + encodeURIComponent(cursor) : route,
+        { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000) });
+      if (response.status === 404) { shell.replaceChildren(el('h1', {}, context.t('notFound'))); return; }
+      if (!response.ok) throw new Error('starter_dependency_unavailable');
+      const page: unknown = await response.json();
+      if (!isRecord(page) || !Array.isArray(page.items)) throw new Error('starter_response_invalid');
+      for (const item of page.items) {
+        if (!isRecord(item) || !isRecord(item.product) || typeof item.product.title !== 'string' || typeof item.product.slug !== 'string'
+          || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(item.product.slug) || !isRecord(item.sku) || typeof item.sku.code !== 'string'
+          || typeof item.sku.title !== 'string' || !isRecord(item.sku.sellability)) throw new Error('starter_response_invalid');
+        const sku = item.sku.code;
+        const output = el('div', { role: 'status' });
+        nodes.push(el('article', { class: 'panel' }, el(slug ? 'h1' : 'h2', {},
+          link(item.sku.title, productPath(item.product.slug, context.locale))),
+          item.sku.sellability.oneTime || item.sku.sellability.subscription ? button(context.t('buy'), () => {
+            const cart = context.getCart();
+            if (cart.lines.reduce((sum, line) => sum + line.quantity, 0) >= context.config.offer.maxUnits) {
+              output.replaceChildren(refusal(context, 'maximum_units', context.t('maximum_units'))); return;
+            }
+            const previous = cart.lines.find(line => line.sku === sku);
+            if (previous) previous.quantity++;
+            else cart.lines.push({ sku, quantity: 1 });
+            context.setCart(cart);
+            output.replaceChildren(link(context.t('cartSaved'), routes.cart[context.locale]));
+          }) : null, output));
+      }
+      const next = typeof page.nextCursor === 'string' ? page.nextCursor : null;
+      if (next !== null && (next === cursor || slug !== null || !page.items.length || nodes.length > 5_000)) throw new Error('starter_response_invalid');
+      cursor = next;
+    } while (cursor !== null);
+    shell.replaceChildren(...nodes);
+  };
+  void load().catch(() => shell.replaceChildren(refusal(context, 'starter_dependency_unavailable', context.t('loading'))));
+  return shell;
 }
 
 function modeFields(context: PageContext, cart: Cart) {

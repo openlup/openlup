@@ -63,10 +63,11 @@ async function start(): Promise<void> {
   assertConfig(config);
   const notices = new Set<'storageUnavailable' | 'cartReset' | 'storageChanged'>();
   let renderReady = false;
+  const governedCatalogue = response.catalogueAuthority === 'publication';
   const cart = createBrowserCart(config, kind => {
     notices.add(kind);
     if (renderReady) render(false);
-  });
+  }, governedCatalogue);
   function navigate(path: string): void {
     if (!path.startsWith('/') || path.startsWith('//')) throw new Error('starter_navigation_not_local');
     history.pushState(null, '', path);
@@ -78,7 +79,7 @@ async function start(): Promise<void> {
     const route = resolveRoute(location.pathname);
     const locale = route.locale;
     const context: PageContext = {
-      config, locale, route, query: new URLSearchParams(location.search), fragments,
+      config, governedCatalogue, catalogueDraftType: response.catalogueDraftType, locale, route, query: new URLSearchParams(location.search), fragments,
       t: key => copy[locale][key],
       money: amount => new Intl.NumberFormat(locale, {
         style: 'currency', currency: config.market.currency,

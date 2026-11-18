@@ -428,6 +428,13 @@ stage. After migration, an explicit migration-owner call to
 `backfillCatalogNetContent(installExecutor, {batchSize})` drains bounded,
 ascending-ID batches. Only positive legacy grams with absent content convert;
 zero stays unknown, existing quantities and gross mass are never overwritten.
+The later native quantity-serving forward makes `net_weight_g` nullable for
+governed SKU writes. Its write-time compatibility trigger uses the immutable
+bound type's exact unit factor for nonstandard mass units. The existing
+positive-gram backfill and unadopted legacy rows retain their previous behavior.
+Captures keep the existing column and restore position, including SQL NULL
+for a valid typed quantity with no exact signed integer gram projection.
+
 No install hook runs automatically, and runtime has no backfill EXECUTE. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for the driver
 and the [catalogue lock order](CANONICAL_CONTRACTS.md#catalogue-lock-order).
@@ -4779,3 +4786,46 @@ hard refusals independently
 of ordinary readiness reasons. Readiness calls no capture or commerce writer
 and takes no commerce row/advisory lock. The managed rail does not supply this
 feature; the migration fragment describes the separate RLS-preserving twin.
+
+### Adopt an existing native catalogue
+
+Apply the complete native migration catalogue before granting access to
+adoption. The forward adds a source kind to the publication ledger. Draft
+revisions continue to require their exact draft references. An adopted first
+revision points to the existing document and records its own source digest
+without a previous publication or draft. The operator receipt kind is
+`adoption`. Transfer carries the publication, its immutable SKU revisions, the
+receipt and each proven legacy obligation binding. The binding records evidence
+at adoption time and does not become an accepted purchase reference.
+
+Use a restricted internal operator transaction whose session comes from
+verified human administrator membership. Grant only the required execute
+privileges on `catalog_adoption_preflight(uuid,text)`,
+`catalog_adopt_existing(uuid,text,text,text)`, and
+`catalog_adoption_receipt(uuid,text)`. Grant the internal read executor
+`catalog_adoption_read(uuid,uuid)` only after it can authorize the requested
+read scope. The schema installation grants none of these privileges.
+
+1. Install the required product type and measured quantity definitions and
+   verify the stored product, SKU, primary identifier and current document.
+   If a legacy document has no stored canonical text, supply the exact bytes
+   that its recorded digest covers.
+2. Run `preflight` through `createPostgresCatalogAdoption` for one product.
+   Review the source digest with the document and SKU identities, price
+   windows and outstanding obligations returned by the restricted observation.
+3. Submit that digest with a new scoped command key through `adopt`. If the
+   source moved, review a fresh preflight before submitting a new command.
+   After uncertain delivery, retry the original command or recover its receipt
+   using the same human operator.
+4. Use `createPostgresCatalogAdoptionReader` to resolve the adopted initial
+   revision by product and optionally its retained SKU evidence. Confirm the
+   restored agreements and retained reads before enabling authoring.
+5. Prepare the first draft-backed revision from the adopted head. Include the
+   real existing SKU identities in that draft and explicitly qualify the offer
+   membership and presentation that the host will serve. The existing
+   materiality classifier compares the proposed facts with the sealed adoption
+   baseline. Material and inconclusive changes require a successor SKU.
+
+Disabling a host writer leaves adoption receipts, read grants and retained
+subscriptions available. The managed rail does not install this command or a
+second publication head.

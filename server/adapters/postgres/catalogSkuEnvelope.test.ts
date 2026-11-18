@@ -239,6 +239,28 @@ describe("Postgres catalog SKU envelope adapter", () => {
     expect(probe.calls).toHaveLength(2);
   });
 
+  it.each([
+    { dimension: "volume", grams: 400 },
+    { dimension: "count", grams: 0 },
+    { dimension: "mass", grams: null },
+    { dimension: "mass", grams: 0 },
+  ])("MC5-D-001 refuses a $dimension quantity with legacy column $grams on all V1 reads", async ({ dimension, grams }) => {
+    const source = catalogSkuEnvelopeFixture.postgresRows[1]!;
+    const rows = [{ ...source, typed_net_content_dimension: dimension, net_content_unscaled: grams }];
+    const { client } = executor({ rows });
+    const port = createPostgresCatalogSkuEnvelopeReadPort(client);
+    const page = { cursor: null, limit: 1 };
+    for (const read of [
+      () => port.getSkuEnvelopeById(DETAIL_SKU_ID),
+      () => port.getSkuEnvelope({ kind: "sku_code", skuCode: source.sku_code }),
+      () => port.getSkuEnvelope({ kind: "primary_product_slug", productSlug: source.product_slug }),
+      () => port.listSkuEnvelopes(page),
+      () => port.listActiveSkuEnvelopes(page),
+      () => port.listPublicActiveSkuEnvelopes(page),
+      () => port.listPublicActiveProductSkuEnvelopes(source.product_id, page),
+    ]) await expect(read()).rejects.toMatchObject({ code: "quantity_requires_v2" });
+  });
+
   it("resolves exact SKU-code and primary-product-slug selectors in two queries", async () => {
     const byCode = executor();
     await expect(createPostgresCatalogSkuEnvelopeReadPort(byCode.client).getSkuEnvelope({
@@ -354,6 +376,7 @@ const EXPECTED_SKU_SELECT_COLUMNS = [
   "product_id",
   "sku",
   "net_weight_g",
+  "net_content_dimension",
   "status",
   "sellable_standalone",
   "sellable_in_subscription",

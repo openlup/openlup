@@ -103,3 +103,23 @@ in every package's npm version history. Historical starters are explicitly
 labelled reconstructed. This proves only the checked neutral-starter file and
 dependency transition; it provides no SQL migration, browser/provider coverage,
 rollback guarantee or stable/support claim.
+
+## Reconcile the starter catalogue registration
+
+For the catalogue registration update, first extract a fresh starter from the
+candidate release and install its exact dependencies. Before applying the
+managed-file upgrade to your application, run the candidate's explicit step
+under an application maintenance window.
+
+```sh
+./lifecycle upgrade-catalogue /path/to/existing-starter
+```
+
+The step reconciles the released defaults of `owned/catalogue.ts` and
+`owned/copy.ts` and introduces the four supplements pack files and the
+fictional market table from the candidate extraction. It validates the
+replacement and creation paths before writing. If an owned file conflicts,
+merge the catalogue changes with your local copy. An exact repeat performs no
+writes. Subsequent managed-file upgrades preserve the pack and market files as
+application-owned. The released consumer runs the extracted starter's
+`test/catalogue-upgrade.test.ts` to check these cases.

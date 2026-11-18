@@ -3,6 +3,8 @@ import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutatio
 import { createPersonalDataContributorRegistry, createCustomerBillingPrivacyContributor, createCustomerSavedAddressPrivacyContributor,
   createCustomerPreferencePrivacyContributor, createFulfillmentParcelContactPrivacyContributor, type PersonalDataContributor } from '@openlup/platform/identity';
 import type { PgQueryExecutor } from '@openlup/platform/data';
+import { bindStarterCatalogue, type StarterCatalogueOptions } from './catalogue-binding.ts';
+import { bindRegisteredCatalogue, type StarterCatalogueSelection } from './catalogue-selection.ts';
 import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
@@ -51,8 +53,10 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 }
 
 /** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring,
+  registration?: StarterCatalogueSelection): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
+  let catalogue: StarterCatalogueOptions | undefined;
   try {
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
       rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user`)).rows[0];
@@ -60,6 +64,10 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       || identity.rolsuper !== false || identity.rolbypassrls !== false) throw new Error('starter_runtime_connection_required');
     if (!(await pool.query("SELECT to_regprocedure('public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamp with time zone)') IS NOT NULL AS ready")).rows[0]?.ready)
       throw new Error('starter_billing_installation_required');
+    if (registration) {
+      const lane = createPostgresRoleFreeTransactionLane({ connectionString }, { poolFactory: () => pool });
+      catalogue = await bindRegisteredCatalogue(registration, { run: work => lane.run(db => work(db as PgGatewayClient)) });
+    }
   } catch (error) { await pool.end(); throw error; }
   const sessions = createSessions(origin.secureCookies);
   const gateway = createPostgresDataGateway({ connectionString }, { poolFactory: () => pool });
@@ -214,7 +222,13 @@ export async function composeNativeBindings(connectionString: string, origin: Or
     const value = await oms.getOrderDetail({ view: 'control_plane_v1', orderId });
     return value ? success(value) : refused('starter_order_not_found');
   };
+  const governed = catalogue && bindStarterCatalogue({ options: catalogue, db: pool, actions, authorizeHuman: async context => {
+    const auth = await operatorAuth.authorize(context.actor.sessionToken ?? '', { allowedRoles: ['admin'] });
+    return auth.ok && auth.principalId === context.actor.operatorRef
+      ? { ok: true, userId: auth.principalId, role: auth.role, isMachineActor: auth.isMachineActor } : { ok: false };
+  } });
   return {
+    ...governed,
     personalData: createStarterPersonalDataRegistry(),
     actions,
     async authenticate(request) {

@@ -3,6 +3,7 @@ import { validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileRef,
 import type { PgQueryExecutor } from "../data/index.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 
+/** Observe the exact registered definition on the chosen database. @experimental */
 export async function hasInstalledSubscriptionProfile(db: PgQueryExecutor,
   ref: CatalogSubscriptionProfileRef, resolved: { profile: CatalogSubscriptionProfileV1; digest: string }): Promise<boolean> {
   const validated = validateCatalogSubscriptionProfile(resolved.profile);

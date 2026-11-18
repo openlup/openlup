@@ -1,14 +1,17 @@
 import type { SubscriptionTermsAdmission } from '@openlup/platform/subscriptions/contracts';
 import { admitsTerms } from '../shared/subscription-offer.ts';
-import { createPostgresCommerceQuoteCatalogReadPort } from '@openlup/platform/catalog';
 import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort,
   type CommercePriceAuthorityReadPort, type CreateQuoteRequest, type CommerceQuoteCatalogItem } from '@openlup/platform/pricing';
 import { createPostgresStockAvailability } from '@openlup/platform/inventory';
 import type { CompositionRulesPort } from '@openlup/core/bundle';
 import type { SizedCatalogFact, SizedHostPorts, SubscriptionQueryExecutor, PackageEditConstraintMapper } from '@openlup/platform/subscriptions';
 import type { StoreConfig } from '../shared/config.ts';
+import type { StarterCatalogueSelection } from './catalogue-selection.ts';
+import type { StarterCatalogueQuoteBinding } from './catalogue-binding.ts';
+import { asLegacyIntegralGrams } from '@openlup/platform/catalog';
+import type { CommerceQuoteCatalogItemV2 } from '@openlup/platform/pricing';
 import { isRecord } from '../shared/offer.ts';
-import { documentDigest, editorProducts, demoIdentifier, productDocument, verifyProductDocument } from './editor-catalogue.ts';
+import { documentDigest, editorProducts, demoIdentifier, productDocument, starterQuoteCatalogue } from './editor-catalogue.ts';
 
 const instant = (value: unknown) => value instanceof Date ? value.toISOString() : String(value);
 /** Exact effective-list selection and amount policy stay in the public pricing authority. */
@@ -33,12 +36,20 @@ function priceReads(db: SubscriptionQueryExecutor): CommercePriceAuthorityReadPo
     },
   };
 }
-export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig) {
-  const quoteCatalogReadPort = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (value,envelope) => verifyProductDocument(value,envelope,config.quote.document.schemaId) });
+export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreConfig, selected?: StarterCatalogueSelection,
+  governed?: StarterCatalogueQuoteBinding) {
+  const { registration, legacy } = starterQuoteCatalogue(db, config, selected);
+  let batch: Promise<CommerceQuoteCatalogItemV2[]> | undefined;
+  const roster = governed && (() => batch ??= governed.serving.listQuoteCatalogItems());
+  const quoteCatalogReadPort = roster ? { listQuoteCatalogItems: async () => (await roster()).map(item => {
+    const mass = asLegacyIntegralGrams(item.netContent);
+    return { ...item, netWeightG: mass.outcome === 'converted' ? mass.grams : null };
+  }) } : legacy;
   const taxProfile = { included: true as const,country: config.market.country,category: config.purchase.tax.category,
     vatRateBps: config.purchase.tax.vatRateBps,legalBasis: config.purchase.tax.legalBasis };
-  const quotePort = createDbBackedCommerceQuotePort<CreateQuoteRequest,CommerceQuoteCatalogItem,Record<string, never>,{ mode: 'one_time' | 'subscription'; promoCodes: string[]; cadenceDays: number | null }>({
-    quoteCatalogReadPort,isStrictD1Quote: true,commercePriceAuthorityPort: createCommercePriceAuthorityPort(priceReads(db)),
+  const quotePort = createDbBackedCommerceQuotePort<CreateQuoteRequest,Omit<CommerceQuoteCatalogItem, 'netWeightG'>,Record<string, never>,{ mode: 'one_time' | 'subscription'; promoCodes: string[]; cadenceDays: number | null }>({
+    quoteCatalogReadPort: roster ? { listQuoteCatalogItems: roster } : legacy,
+    isStrictD1Quote: true,commercePriceAuthorityPort: createCommercePriceAuthorityPort(priceReads(db)),
     regionCode: config.market.country,currency: config.market.currency,taxProfile,supportedTaxProfiles: [taxProfile],hasPromotionCodePort: false,
     lineContext: () => ({}),quoteContext: request => () => ({ mode: request.mode,promoCodes: [],cadenceDays: request.cadenceDays ?? null }),
     resolveAutomaticQuotePromotions: async () => ({ discounts: [],codeRejections: [] }),
@@ -62,12 +73,29 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
       return { coreLines,constraint: { ...constraint,data: { ...constraint.data,value: lever.value } } };
     },
   };
-  return { quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort,admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') };
+  const catalogueEvidence: Parameters<typeof import('@openlup/platform/subscriptions').createPostgresPackageEditor>[0]['catalogueEvidence'] =
+    governed && roster ? async ({ subscriptionId, lane, cadenceDays, optIn, lines }) => {
+      const items = await roster();
+      const priced = await quotePort.createServerAuthoritativeQuote({ mode: 'subscription', cadenceDays, promoCodes: [],
+        lines: lines.map(line => {
+          const item = items.find(item => item.variantId === line.variantId && item.isAddon === line.isAddon);
+          if (!item) throw new Error('catalog_authority_changed');
+          return { sku: item.skuCode, quantity: line.qty, modeAtLine: 'subscription', isAddon: line.isAddon };
+        }) });
+      const proof = await governed.buildAdmission(priced, items, { mode: 'subscription', purpose: 'account', cadenceDays,
+        offerEvidence: { subscriptionId, lane, offerVersion: lane === 'sized' ? 'sized.v1' : governed.offerVersion,
+          ...(optIn === undefined ? {} : { optIn }) } });
+      await governed.admission.assertCurrent(db, proof);
+      return proof;
+    } : undefined;
+  return { catalogueRegistration: registration,quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort,
+    ...(catalogueEvidence ? { catalogueEvidence } : { admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') }) };
 }
 
 /** A seeded synthetic profile is shared by this demonstration's owned customer subjects.
  * Locking its installed row protects fact equality through the package's apply transaction. */
-export function sizedHostPorts(config: StoreConfig, now: () => string, connection: SubscriptionQueryExecutor): Omit<SizedHostPorts, 'quotePort'> {
+export function sizedHostPorts(config: StoreConfig, now: () => string, connection: SubscriptionQueryExecutor,
+  governed?: StarterCatalogueQuoteBinding): Omit<SizedHostPorts, 'quotePort'> {
   const read = async (db: SubscriptionQueryExecutor, context: { subscriptionId: string; clientId: string }, lock = false) => {
     const row = (await db.query(`SELECT settings.value_text FROM public.commerce_settings settings
       WHERE settings.key=$1 AND EXISTS(SELECT 1 FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
@@ -82,12 +110,25 @@ export function sizedHostPorts(config: StoreConfig, now: () => string, connectio
     return { value,exclusions: exclusions as string[],dailyNeed: Number(value.dailyNeed) };
   };
   const configuredIds = editorProducts(config).map(product => demoIdentifier(config,'sku',product.sku));
-  const readCatalog = async (db: SubscriptionQueryExecutor,ids: string[] = configuredIds): Promise<SizedCatalogFact[]> => {
+  const readCatalog = async (db: SubscriptionQueryExecutor, ids?: string[]): Promise<SizedCatalogFact[]> => {
+    if (governed) {
+      if (!governed.sizedFacts) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');
+      const items = (await governed.serving.listEditorSkus()).filter(item => !ids || ids.includes(item.sku.id));
+      const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now }).readPort.read({
+        skus: items.map(item => item.sku.code),horizonDays: 14,excludeOrderId: null });
+      return items.map(item => {
+        const availability = stock.get(item.sku.code);
+        return { variantId: item.sku.id, sku: item.sku.code, groupId: item.product.id, isAddon: item.sku.isAddon,
+          sellable: item.sku.sellability.subscription, documentRevisionId: item.documentRevision.id,
+          documentDigest: item.documentRevision.digest, verified: true, ...governed.sizedFacts!(item),
+          sellableNow: availability?.stale ? 0 : availability?.availableForNewPurchases ?? null };
+      });
+    }
     const rows = (await db.query(`SELECT sku.id,sku.sku,sku.product_id,sku.is_addon,sku.status,sku.sellable_in_subscription,sku.net_weight_g,product.status AS product_status,
       product.current_document_revision_id,revision.document_payload,revision.digest FROM public.catalog_skus sku
       JOIN public.catalog_products product ON product.id=sku.product_id
       JOIN public.catalog_product_document_revisions revision ON revision.id=product.current_document_revision_id
-      WHERE sku.id=ANY($1::uuid[]) ORDER BY sku.id`, [ids])).rows;
+      WHERE sku.id=ANY($1::uuid[]) ORDER BY sku.id`, [ids ?? configuredIds])).rows;
     const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now }).readPort.read({
       skus: rows.map(row => String(row.sku)),horizonDays: 14,excludeOrderId: null });
     return rows.map((row): SizedCatalogFact => {
@@ -101,7 +142,7 @@ export function sizedHostPorts(config: StoreConfig, now: () => string, connectio
     });
   };
   return {
-    admitSubscriptionTerms: starterTermsAdmission(connection,config,'sized'),
+    ...(governed ? {} : { admitSubscriptionTerms: starterTermsAdmission(connection,config,'sized') }),
     async readFacts(db,context) { const facts = await read(db,context);
       return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: `starter:${context.clientId}`,exclusions: facts.exclusions,snapshot: facts.value }; },
     async resolveOptInNeed(db,context) { const facts = await read(db,context); return { dailyNeed: facts.dailyNeed,snapshot: facts.value }; },

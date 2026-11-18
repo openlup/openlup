@@ -100,6 +100,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  const catalogueUpgrade = "installation/catalogue-upgrade.ts";
+  const packEntry = "owned/catalog-packs/supplements/pack.ts";
+  const introducesPack = existsSync(join(pair.to, packEntry)) && !existsSync(join(app, packEntry));
+  if (Object.hasOwn(to.files, catalogueUpgrade) && (!Object.hasOwn(from.files, catalogueUpgrade) || introducesPack)) {
+    phase("upgrade-catalogue", () => execFileSync(process.execPath, [join(pair.to, "lifecycle.mjs"), "upgrade-catalogue", app],
+      { cwd: pair.to, env: isolatedConsumerEnv() }));
+  }
   phase("customize-owned", () => {
     const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
     for (const [path, before, after] of [

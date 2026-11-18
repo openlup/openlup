@@ -1603,6 +1603,7 @@ export {};
 ## dist/subscriptions/contracts/stockWait.d.ts
 
 ```ts
+import type { CatalogQuantity } from "@openlup/core/catalog";
 import type { RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule } from "./renewal.js";
 export interface StockWaitRecoveryBinding {
     caseId: string | null;
@@ -1616,6 +1617,8 @@ export interface StockWaitDeficit {
     sku: string;
     displayName: string;
     size: string | null;
+    /** Exact frozen content captured with the agreement. @experimental */
+    netContent?: CatalogQuantity;
     required: number;
     /** This operation's own reserved units. */
     reserved: number;
@@ -2073,6 +2076,18 @@ export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMone
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
+/** Captures trusted evidence for the normalized preview. The apply owner rechecks it transactionally. @experimental */
+export type SubscriptionEditCatalogueEvidence = (input: {
+    subscriptionId: string;
+    lane: "classic" | "exact" | "sized";
+    cadenceDays: number;
+    optIn?: boolean;
+    lines: readonly {
+        variantId: string;
+        qty: number;
+        isAddon: boolean;
+    }[];
+}) => Promise<object>;
 /** Trusted host ports; neither identity nor price evidence comes from a browser. */
 export interface PackageEditSubscription {
     cadenceDays: number;
@@ -2145,6 +2160,8 @@ export interface PackageEditLimits {
     maximumQuantity: number;
 }
 export interface PackageEditorOptions extends PackageEditQuotePorts {
+    /** @experimental */
+    catalogueEvidence?: SubscriptionEditCatalogueEvidence;
     /** Required only for the exact portion lever. */
     portionModes?: SubscriptionPortionModes;
     /** One connection through commit/rollback; authorization precedes this factory. */
@@ -2726,13 +2743,15 @@ export declare function createPostgresRetryLifecycleBinding(options: NativeRetry
 
 ```ts
 import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding } from "./contracts/stockWait.js";
-import type { RenewalSchedule } from "./contracts/renewal.js";
+import type { RenewalFrozenSnapshot, RenewalSchedule } from "./contracts/renewal.js";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeStockWaitBinding {
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     codec: NativeRenewalCodec;
     workerId: string;
+    /** Opt in to the typed retained display on stock-wait readback. @experimental */
+    retainedContent?: "v2";
 }
 export interface NativeStockWaitAdmission {
     waiting: boolean;
@@ -2742,7 +2761,7 @@ export interface NativeStockWaitAdmission {
 /** Internal native projection shared with the checked notice observation.
  * @experimental
  */
-export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]>;
+export declare function nativeStockWaitDeficits(db: SubscriptionQueryExecutor, value: unknown, snapshot?: RenewalFrozenSnapshot): Promise<StockWaitDeficit[]>;
 /** Each multi-statement mutation uses the host transaction. Payment execution is
  * deliberately outside this store. SQL owns stock locks and subtransactions. */
 export declare function createPostgresStockWaitStore(options: NativeStockWaitBinding): {
@@ -2796,7 +2815,7 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
 
 ```ts
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
@@ -2809,6 +2828,10 @@ export declare const successorNoticeSources: readonly ["catalog.publication.comm
  */
 export declare function createPostgresSuccessorNotices(options: {
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Decode frozen content for notices of the versioned renewal dialect. */
+    renewalCodec?: Pick<NativeRenewalCodec, "decode">;
+    /** Optional presentation eviction after verifying the persisted commit event. */
+    invalidateCatalogueProduct?(productId: string): void;
     /** Bind the catalogue owner's complete withdrawal-impact port. */
     impact: {
         report(skuId: string): Promise<{
@@ -3368,6 +3391,8 @@ export interface SizedHostPorts {
     };
 }
 export interface SizedEditorOptions extends SizedHostPorts {
+    /** @experimental */
+    catalogueEvidence?: import("./packageEditContracts.js").SubscriptionEditCatalogueEvidence;
     policy: SizedEditPolicy;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     now(): string;

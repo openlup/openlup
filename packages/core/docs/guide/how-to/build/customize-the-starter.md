@@ -457,6 +457,11 @@ executable validators. The operator can create, revise, abandon, list and read
 drafts; the host supplies the actor and command key. Provision and deactivate
 support access through the [operator roster](#provision-operator-rosters).
 
+## Read the supplements reference pack
+
+The extracted `owned/catalog-packs/supplements/` folder contains fictional
+drafts and policy. See the [catalogue extension guide](../extend/catalogue-extension.md).
+
 ## Replace acquisition location choices
 
 `owned/acquisition-addresses.ts` contains fictional choice IDs, localized labels

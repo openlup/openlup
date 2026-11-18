@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { starterCatalogue } from '../host/catalogue-selection.ts';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts } from '../host/editor-catalogue.ts';
@@ -88,6 +90,10 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
     stock: { async recordProviderStockCurrent(input) { stockCalls.push(input); return { replayed: false,readBack: true }; } },
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('SELECT public.catalog_definition_install')) {
+        const payload = JSON.parse(String(values?.[2]));
+        return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(payload.manifest).digest('hex') } }] };
+      }
       if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
       if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
@@ -140,6 +146,7 @@ for (const config of Object.values(configurations)) {
     assert.equal(bootstraps, 1);
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN');
+    assert.equal(first.calls.some(call => call.text.startsWith('SELECT public.catalog_definition_install')), starterCatalogue.select(config.id).pack !== null);
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const capabilities = first.calls.filter(call => call.text.startsWith('INSERT INTO public.catalog_publication_pointer_capabilities'));
     assert.deepEqual(capabilities.map(call => call.values), buildDemoSeed(config).documents.map(row => [row.productId,row.id,row.digest]));
@@ -158,7 +165,7 @@ for (const config of Object.values(configurations)) {
     assert.match(registry[0]!.text, /ON CONFLICT \(source, reference, revision\) DO NOTHING/);
     assert.equal(first.calls.filter(call => call.text.startsWith('SELECT provenance')).length, acquisitionAddresses.length);
     const second = installation();
-    await applyDemoSeed(config, second.binding);
+    await applyDemoSeed(config, second.binding, { installDefinitions: true });
     assert.deepEqual(second.calls, first.calls);
   });
 }

@@ -59,3 +59,5 @@ export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
 
 export { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "./postgresCatalogPriceSetupStore.js";
+
+export type { CommerceQuoteCatalogItemV2, CommerceQuoteCatalogReadPortV2 } from "./commerceQuoteCatalogReadPort.js";

@@ -1301,7 +1301,7 @@ export interface CatalogPriceContext {
     atTime: string;
 }
 /** Refusal vocabulary shared by managed and portable catalog readers. */
-export type CatalogSkuAuthorityRefusal = "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
+export type CatalogSkuAuthorityRefusal = "quantity_requires_v2" | "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
 export declare class CatalogSkuAuthorityError extends Error {
     readonly code: CatalogSkuAuthorityRefusal;
     constructor(code: CatalogSkuAuthorityRefusal);
@@ -1517,9 +1517,13 @@ export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
     optionDigest: string;
 }
 /** @experimental */
-export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3;
+export type CatalogProductState = CatalogPublishedProduct | CatalogPublishedProductV3 | (Omit<CatalogPublishedProductV3, "source"> & {
+    source: null;
+});
 /** @experimental */
-export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3;
+export type CatalogSkuState = CatalogPublishedSku | CatalogPublishedSkuV3 | (Omit<CatalogPublishedSkuV3, "source"> & {
+    source: null;
+});
 /** Shared pure reference; subscriptions own its accepted binding. */
 export type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/core/catalog";
 /** @experimental */

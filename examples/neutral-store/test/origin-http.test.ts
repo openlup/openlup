@@ -6,6 +6,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, connect } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
+import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { configurations } from '../owned/store.config.ts';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -20,9 +21,9 @@ async function fixture(origin?: unknown, insecure?: boolean) {
   if (origin !== undefined) config.publicOrigin = origin as string;
   if (insecure !== undefined) config.allowInsecurePublicOrigin = insecure;
   await writeFile(resolve(directory, 'owned/store.config.ts'),
-    `export const configurations = { demo: ${JSON.stringify(config)} };
-export const defaultConfigurationId = 'demo';
-export function selectConfiguration() { return configurations.demo; }
+    `export const configurations = ${JSON.stringify({ ...configurations, [config.id]: config })};
+export const defaultConfigurationId = ${JSON.stringify(config.id)};
+export function selectConfiguration() { return configurations[defaultConfigurationId]; }
 `);
   return directory;
 }
@@ -130,4 +131,63 @@ test('host and lifecycle both refuse invalid origin before listening or Docker',
   try { server = await start(allowed);
     assert.equal((await http(server.port, 'POST', '/api/actions/application.status', write('store.example.test', 'http://store.example.test'))).status, 200);
   } finally { await server?.close(); await rm(allowed, { recursive: true, force: true }); }
+});
+
+test('catalog_pdp_reads_new_publication_without_rebuild serves typed public facts and distinguishes outage', async () => {
+  const { createApplication } = await import('../host/server.ts');
+  const { pendingBindings } = await import('../host/bindings.ts');
+  type Item = import('@openlup/platform/catalog').NeutralSkuEnvelopeV2;
+  const productId = '10000000-0000-4000-8000-000000000001';
+  const skuId = '20000000-0000-4000-8000-000000000001';
+  const item = {
+    product: { id: productId, slug: 'article', title: 'Article', type: { key: 'example:article', version: 1 }, primarySkuId: skuId, attributes: {} },
+    sku: { id: skuId, code: 'ARTICLE', title: 'First', netContent: { unit: 'openlup:piece', unscaled: '56', scale: 0, dimension: 'count' },
+      grossMass: null, options: {}, attributes: {}, sellability: { status: 'active', oneTime: true, subscription: false } },
+    acceptedReference: { publicationHead: { publicationId: productId, revision: 1, documentDigest: 'a'.repeat(64) }, skuRevisionId: 'private-proof' },
+    documentRevision: { sourceRef: 'private-source' },
+  } as Item;
+  let available = true;
+  let published = false;
+  let adopted = true;
+  const rows = () => {
+    if (!available) throw new Error('private connection details');
+    if (!adopted) throw new CommerceQuoteCatalogReadError('catalog_authority_unsupported');
+    return { version: String(item.acceptedReference.publicationHead.revision), items: published ? [item] : [] };
+  };
+  const binding = pendingBindings();
+  const host = createApplication(binding).listen(0, '127.0.0.1');
+  await once(host, 'listening');
+  try {
+    const address = host.address();
+    assert.ok(address && typeof address !== 'string');
+    const get = (path: string) => http(address.port, 'GET', path, ['Host: 127.0.0.1:4319', 'Connection: close']);
+    assert.equal((await get('/api/catalogue/article')).status, 404);
+    binding.catalogue = {
+      list: async () => ({ ...rows(), nextCursor: null }),
+      detail: async () => rows(),
+      listQuoteCatalogItems: async () => [],
+      listEditorSkus: async () => [],
+      invalidateProduct() {},
+    };
+    assert.deepEqual(await get('/api/catalogue'), { status: 200, body: { version: '1', items: [], nextCursor: null } });
+    assert.equal((await get('/api/catalogue/article')).status, 404);
+    adopted = false;
+    assert.deepEqual(await get('/api/catalogue/article'), { status: 404, body: { ok: false, code: 'starter_route_unknown' } });
+    assert.equal((await get('/api/catalogue')).status, 503);
+    adopted = true;
+    published = true;
+    item.sku.title = 'Second';
+    item.acceptedReference.publicationHead.revision++;
+    const live = await get('/api/catalogue/article');
+    assert.equal(live.status, 200);
+    const body = live.body as { version: string; items: { sku: { title: string; netContent: unknown } }[] };
+    assert.equal(body.version, '2');
+    assert.equal(body.items[0]?.sku.title, 'Second');
+    assert.deepEqual(body.items[0]?.sku.netContent, item.sku.netContent);
+    assert.doesNotMatch(JSON.stringify(live.body), /private-(proof|source)/u);
+    available = false;
+    assert.deepEqual(await get('/api/catalogue/article'), { status: 503, body: { ok: false, code: 'starter_dependency_unavailable' } });
+  } finally {
+    await new Promise<void>((resolve, reject) => host.close(error => error ? reject(error) : resolve()));
+  }
 });

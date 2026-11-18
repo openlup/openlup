@@ -42,6 +42,9 @@ export interface EditorCandidate {
   physicalSize: number; demandPerUnit: number; sellableNow: number | null;
 }
 
+export type ClassicEditorCandidate = Omit<EditorCandidate, 'physicalSize'> & { physicalSize: number | null;
+  netContent?: import('@openlup/platform/catalog/contracts').CatalogQuantity };
+
 export function assertEditorConfig(config: SubscriptionEditorConfig): void {
   const positive = (value: number) => Number.isSafeInteger(value) && value > 0;
   if (!config || ![config.minimumBaseUnits, config.maximumBaseLines, config.maximumAddonLines,

@@ -4,11 +4,12 @@ import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryRea
   computeEditState, editCutoff, isCustomerVisibleSubscription, recurringPrice } from '@openlup/platform/account-support';
 import { createPostgresPackageEditor, createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError,
   type PackageEditActor, type SubscriptionQueryExecutor } from '@openlup/platform/subscriptions';
-import type { EditorCandidate, EditorSubscription } from '../shared/subscription-edit.ts';
+import type { ClassicEditorCandidate, EditorSubscription } from '../shared/subscription-edit.ts';
 import type { ActionContext, ApplicationBindings, VerifiedActor } from './bindings.ts';
 import { isRecord } from '../shared/offer.ts';
 import { editorProducts } from './editor-catalogue.ts';
 import { editorQuotePorts, sizedHostPorts } from './editor-ports.ts';
+import { StarterCatalogueRefusal } from './catalogue-binding.ts';
 
 const success = (value: unknown) => ({ ok: true as const,value });
 const refused = (code: string, status: 400 | 403 | 409 | 503 = 409) => ({ ok: false as const,code,status });
@@ -71,11 +72,12 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
       }
       catch (error) { await db.query('ROLLBACK'); throw error; }
     };
-    const ports = editorQuotePorts(db,config), values = config.subscriptionEditing;
+    const ports = editorQuotePorts(db,config,context.catalogueRegistration,context.catalogueQuote), values = config.subscriptionEditing;
     const classic = createPostgresPackageEditor({ ...ports,withTransaction: transaction(true),now,
       limits: { maximumPlanDays: Math.max(...choices(config.subscriptionOffers.classic.days)),maximumBaseLines: values.maximumBaseLines,
         maximumAddonLines: values.maximumAddonLines,maximumQuantity: values.maximumQuantity } });
-    const sized = createPostgresSizedEditor({ ...sizedHostPorts(config,now,db),quotePort: ports.quotePort,policy: values.sized,withTransaction: transaction(false),now });
+    const sized = createPostgresSizedEditor({ ...sizedHostPorts(config,now,db,context.catalogueQuote),quotePort: ports.quotePort,
+      ...('catalogueEvidence' in ports ? { catalogueEvidence: ports.catalogueEvidence } : {}),policy: values.sized,withTransaction: transaction(false),now });
     const dispatched = createOfferDispatchedSubscriptionEditor({ classic,sized,
       readBinding: (_actor,id) => owned(db,context,id) });
     return { ...dispatched,sized,ports };
@@ -98,6 +100,7 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'subscription_command_forbidden') return refused(error.message,403);
+      if (error instanceof StarterCatalogueRefusal) return refused(error.message);
       const mapped = mapSizedEditError(error,phase,typeof request.action === 'string' ? request.action : undefined);
       return refused(mapped.reason ?? (phase === 'preview' ? 'starter_subscription_preview_unavailable' : 'starter_subscription_save_unavailable'),mapped.status);
     }
@@ -117,10 +120,11 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
           const name = (sku: string) => products.find(product => product.sku === sku)?.name ?? { en: sku,pl: sku };
           if (payload.mode === 'classic') {
             if (binding !== 'classic') return refused('subscription_reprice_configured_offer_action_mismatch',400);
-            const candidates: EditorCandidate[] = (await editor.ports.quoteCatalogReadPort.listQuoteCatalogItems())
+            const candidates: ClassicEditorCandidate[] = (await editor.ports.quoteCatalogReadPort.listQuoteCatalogItems())
               .filter(item => item.sellability.subscription && !item.isAddon).map(item => ({ variantId: item.variantId,sku: item.skuCode,
                 groupId: products.find(product => product.sku === item.skuCode)?.groupKey ?? item.productSlug,name: name(item.skuCode),
-                isAddon: false,sellable: true,selectable: true,physicalSize: item.netWeightG,demandPerUnit: 0,sellableNow: null }));
+                isAddon: false,sellable: true,selectable: true,physicalSize: item.netWeightG,
+                ...('netContent' in item ? { netContent: item.netContent } : {}),demandPerUnit: 0,sellableNow: null }));
             return success({ candidates });
           }
           if (binding === 'classic' && payload.optIn !== true) return refused('subscription_reprice_configured_offer_action_mismatch',400);

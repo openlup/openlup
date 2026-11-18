@@ -716,7 +716,7 @@ type ResolvedPriceObservation = {
     priceEntryId: string;
     unitPriceMinor: number;
 };
-type StrictCatalogFactsItem = CommerceQuoteCatalogItem & {
+type StrictCatalogFactsItem = Omit<CommerceQuoteCatalogItem, "netWeightG"> & {
     documentRevision: {
         id: string;
         digest: string;
@@ -738,7 +738,7 @@ export declare function createCatalogFactsProvenance(input: {
     baseUnitAmountMinor: number;
     policy?: PolicyDerivedSubscriptionFacts;
 }): CatalogFactsProvenance;
-export declare function catalogFactsForQuoteLine(enabled: boolean, item: CommerceQuoteCatalogItem, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts): CatalogFactsProvenance | undefined;
+export declare function catalogFactsForQuoteLine(enabled: boolean, item: Omit<CommerceQuoteCatalogItem, "netWeightG">, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts): CatalogFactsProvenance | undefined;
 /** Public responses retain every money field but never server-only catalog identifiers. */
 export declare function projectPublicQuoteSnapshot<Snapshot extends CreateQuoteResponse>(snapshot: Snapshot): Snapshot;
 export {};
@@ -1219,6 +1219,7 @@ export declare function createCommerceQuoteBatchHandler<Request extends CreateQu
 ## dist/pricing/commerceQuoteCatalogReadPort.d.ts
 
 ```ts
+import type { CatalogAcceptedReferenceV2, CatalogQuantity } from "@openlup/core/catalog";
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
     skuId: string;
@@ -1241,10 +1242,21 @@ export interface CommerceQuoteCatalogItem {
 export interface CommerceQuoteCatalogReadPort {
     listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
 }
-export type CommerceQuoteCatalogReadRefusalCode = "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
+export type CommerceQuoteCatalogReadRefusalCode = "quantity_requires_v2" | "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_unsupported" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
 export declare class CommerceQuoteCatalogReadError extends Error {
     readonly code: CommerceQuoteCatalogReadRefusalCode;
     constructor(code: CommerceQuoteCatalogReadRefusalCode);
+}
+/** Exact catalogue facts for quote and effect admission. @experimental */
+export interface CommerceQuoteCatalogItemV2 extends Omit<CommerceQuoteCatalogItem, "netWeightG"> {
+    productId: string;
+    netContent: CatalogQuantity;
+    grossMass: CatalogQuantity | null;
+    acceptedReference: CatalogAcceptedReferenceV2;
+}
+/** @experimental */
+export interface CommerceQuoteCatalogReadPortV2 {
+    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItemV2[]>;
 }
 ```
 ## dist/pricing/commerceQuoteHandler.d.ts
@@ -1779,7 +1791,7 @@ import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js
 export interface SkuIndexEntry<Item = CommerceQuoteCatalogItem> {
     item: Item;
 }
-export declare function buildSkuIndex<Item extends CommerceQuoteCatalogItem>(quoteCatalogReadPort: {
+export declare function buildSkuIndex<Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">>(quoteCatalogReadPort: {
     listQuoteCatalogItems(): Promise<Item[]>;
 }): Promise<Map<string, SkuIndexEntry<Item>>>;
 export declare function eligibleQtyForMode(request: CreateQuoteRequest, mode: Exclude<PricingMode, "any">): number;
@@ -1864,7 +1876,7 @@ export interface QuotePromotionResult {
     codeRejections: CommerceCodeRejection[];
     codeRejectionDetails: CommerceCodeRejectionDetail[];
 }
-export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext> {
+export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">, LineContext extends object, Context extends CommerceQuoteContext> {
     quoteCatalogReadPort: {
         listQuoteCatalogItems(): Promise<Item[]>;
     };
@@ -1905,7 +1917,7 @@ export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteReques
         atTime: string;
     }): Promise<QuotePromotionResult>;
 }
-export declare function createDbBackedCommerceQuotePort<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext>(deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>): {
+export declare function createDbBackedCommerceQuotePort<Request extends CreateQuoteRequest, Item extends Omit<CommerceQuoteCatalogItem, "netWeightG">, LineContext extends object, Context extends CommerceQuoteContext>(deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>): {
     createQuote: (request: Request, options?: CreateQuoteOptions) => Promise<Omit<CreateQuoteResponse, "quote"> & {
         quote: Omit<CreateQuoteResponse["quote"], "context"> & {
             context: Context & {
@@ -1995,6 +2007,7 @@ export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogP
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
 export { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "./postgresCatalogPriceSetupStore.js";
+export type { CommerceQuoteCatalogItemV2, CommerceQuoteCatalogReadPortV2 } from "./commerceQuoteCatalogReadPort.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 

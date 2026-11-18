@@ -54,7 +54,7 @@ if (command === 'candidate') {
   run('npm', ['install', '--package-lock-only', '--ignore-scripts']);
   process.stdout.write('next: npm ci\n');
 } else if (command === 'up') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
   const { assertConfig } = await import('./shared/config.ts');
   try {
     const config = selectConfiguration(configurationArgument(args));
@@ -104,7 +104,7 @@ if (command === 'candidate') {
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
   const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
-  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
   try {
     await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
   } catch (error) {
@@ -120,7 +120,7 @@ if (command === 'candidate') {
 } else if (command === 'browser') {
   await databaseBrowserRecipe(args);
 } else if (command === 'checkout-recovery') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
   const { parseHostArguments } = await import('./shared/config.ts');
   const { runCheckoutRecovery } = await import('./host/paid-mail.ts');
   const { default: pg } = await import('pg');
@@ -131,7 +131,7 @@ if (command === 'candidate') {
     publicOrigin: config.publicOrigin ?? `http://127.0.0.1:${options.port}` })) + '\n'); }
   finally { await pool.end(); }
 } else if (command === 'care') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
   const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
   const { runScheduledCare } = await import('./host/scheduled-renewal.ts');
   const options = parseHostArguments(args);
@@ -139,7 +139,7 @@ if (command === 'candidate') {
   if (!options.databaseUrl) throw new Error('starter_runtime_connection_required');
   process.stdout.write(JSON.stringify(await runScheduledCare(options.databaseUrl, config, { publicOrigin: `http://127.0.0.1:${options.port}` })) + '\n');
 } else if (command === 'renewal') {
-  const { selectConfiguration } = await import('./owned/store.config.ts');
+  const { selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
   const { parseHostArguments, assertConfig } = await import('./shared/config.ts');
   const { runScheduledRenewal } = await import('./host/scheduled-renewal.ts');
   const options = parseHostArguments(args);
@@ -156,6 +156,10 @@ if (command === 'candidate') {
   try { await access(binary); }
   catch { throw new Error('starter_installed_verify_unavailable'); }
   run(binary, ['verify', ...args]);
+} else if (command === 'upgrade-catalogue') {
+  if (args.length !== 1) throw new Error('starter_catalogue_upgrade_root_required');
+  const { upgradeStarterCatalogue } = await import('./installation/catalogue-upgrade.ts');
+  process.stdout.write(JSON.stringify(await upgradeStarterCatalogue(args[0])) + '\n');
 } else if (command === 'upgrade') {
   const binary = resolve(root, 'node_modules/.bin/openlup');
   try { await access(binary); }
@@ -164,7 +168,7 @@ if (command === 'candidate') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | browser [Playwright selection flags] | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | browser [Playwright selection flags] | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | upgrade-catalogue <application-root> | ownership\n');
   process.exitCode = 2;
 }
 
@@ -181,8 +185,14 @@ async function databaseBrowserRecipe(argv) {
   const { hostname } = await import('node:os');
   const { default: pg } = await import('pg');
   const { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } = await import('@openlup/platform/migrations');
-  const { configurations } = await import('./owned/store.config.ts');
-  const { applyDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
+  const { starterCatalogue, selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
+  const projects = argv.flatMap((arg, index) => {
+    if (arg.startsWith('--project=')) return [arg.slice('--project='.length)];
+    if (arg === '--project') return [argv[index + 1] ?? ''];
+    return [];
+  });
+  const selected = projects.length ? [...new Set(projects)].map(id => selectConfiguration(id)) : starterCatalogue.list().filter(entry => !entry.explicitOnly).map(entry => entry.configuration);
+  const { applyRegisteredDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
   const containers = [], hosts = [], pools = [];
@@ -201,7 +211,7 @@ async function databaseBrowserRecipe(argv) {
     await writeFile(viteConfig, `export default {root:${JSON.stringify(application)}};\n`, { mode: 0o600 });
     await child('npx', ['--no', '--', 'vite', 'build', '--config', viteConfig]);
     const entries = [];
-    for (const config of Object.values(configurations)) {
+    for (const config of selected) {
       const name = `starter-care-${process.pid}-${config.id}-${randomUUID().slice(0, 8)}`;
       containers.push(name);
       docker('run', '--detach', '--name', name, '--tmpfs', '/var/lib/postgresql/data:rw', '--label', 'dev.disposable=1', '--label', `dev.disposable.owner.pid=${process.pid}`, '--label', `dev.disposable.host=${hostname()}`, '--label', `dev.disposable.started=${Math.floor(Date.now() / 1000)}`, '--env', 'POSTGRES_HOST_AUTH_METHOD=trust', '--env', 'POSTGRES_DB=neutral_store', '--publish', '127.0.0.1::5432', 'postgres:16');
@@ -232,7 +242,7 @@ async function databaseBrowserRecipe(argv) {
       if ((await runner.status()).pending.length)
         throw new Error('starter_database_browser_installation_incomplete');
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-      await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => { } });
+      await applyRegisteredDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => { } });
       const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       const state = resolve(directory, config.id);
       await mkdir(state, { recursive: true, mode: 0o700 });
