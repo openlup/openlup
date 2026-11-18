@@ -77,6 +77,7 @@ and limits. `npm run build` then `npm start` remains the ordinary one-shot previ
 | Task | Application-relative route | Existing verification route |
 | --- | --- | --- |
 | Brand, copy, media, offer or cadence | `owned/store.config.ts`, `owned/copy.ts`, `public/media/`; start at [customization](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/core/docs/guide/how-to/build/customize-the-starter.md) | `npm test`, `npm run typecheck`, `npm run build`; add new media to `ownership.json` |
+| Languages and default | `market.locales` and `market.defaultLocale` from `owned/market.config.ts`, composed in `owned/store.config.ts`; supply every configured locale in owned copy | `test/locales.test.ts`; startup names missing copy keys/locales and refuses unsupported locales (currently only `en` and `pl`) |
 | Product, offer or checkout presentation | The three functions in `owned/fragments.ts` | Typecheck and build, then relevant browser proof |
 | Edit cutoff for new subscriptions | `subscriptionCreation.editWindowHours` in `owned/store.config.ts` (default 72, integer 1–720) | `test/subscription-creation.test.ts`; startup code `starter_subscription_creation_invalid`; frozen on new rows, existing subscriptions unchanged |
 | Subscription cadence, SKU and quantity admission | `subscriptionOffers` in `owned/store.config.ts`; `shared/policy.ts` owns the typed set/range helper | `test/subscription-offer.test.ts`, `test/offer.test.ts`, editor and checkout witnesses; keep managed files unchanged |

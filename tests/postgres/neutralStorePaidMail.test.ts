@@ -278,9 +278,9 @@ it('unpaid and cancelled orders produce no paid message, while every other send 
 
 it('copy validation refuses a missing locale and an empty subject', () => {
   const missing = config(); Reflect.deleteProperty(missing.renewal.notices.copy, 'pl');
-  expect(() => assertRenewalConfig(missing.renewal)).toThrow('starter_renewal_configuration_invalid');
+  expect(() => assertRenewalConfig(missing.renewal)).toThrow('starter_locale_copy_missing: renewal.notices.copy');
   const empty = config(); empty.renewal.notices.copy.en.paid.subject = '  ';
-  expect(() => assertRenewalConfig(empty.renewal)).toThrow('starter_renewal_configuration_invalid');
+  expect(() => assertRenewalConfig(empty.renewal)).toThrow('starter_locale_copy_missing: renewal.notices.copy.paid.subject (en)');
 });
 
 it('the paid artifact preserves atomic bytes and refuses corrupt identities without exposing private content', async () => {

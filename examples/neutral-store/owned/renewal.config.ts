@@ -1,12 +1,13 @@
 import type { RenewalConfig, SubscriptionCareConfig } from '../shared/renewal-config.ts';
 import { renewalNoticeCopy } from './renewal-copy.ts';
+import { market } from './market.config.ts';
 import { choice } from '../shared/policy.ts';
 
 export function demoRenewalConfig(configuration: string): RenewalConfig {
   return { subscriptionCare: demoSubscriptionCare(), enabled: false, retryBackoffHours: [24, 48, 72], population: `demo:${configuration}`, cadenceSeconds: 90,
     batchLimit: 10, leaseSeconds: 180, sandbox: { initial: 'declined', retry: 'succeeded' },
     recovery: { activeGraceSeconds: 21600, exhaustedTtlSeconds: 86400 },
-    notices: { locale: 'en', countryLocales: {}, copy: renewalNoticeCopy } };
+    notices: { locale: market.defaultLocale, countryLocales: {}, copy: renewalNoticeCopy } };
 }
 
 

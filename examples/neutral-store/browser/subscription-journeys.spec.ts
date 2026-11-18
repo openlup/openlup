@@ -1,3 +1,5 @@
+import { market } from '../owned/market.config.ts';
+import { editorText } from '../owned/editor-copy.ts';
 import { test, expect, nativeSubscription } from './subscription-native-fixture.ts';
 import { randomUUID } from 'node:crypto';
 
@@ -5,15 +7,15 @@ import { randomUUID } from 'node:crypto';
 test('J-C1: quantities, candidate and removal review exact recurring money/date, confirm and read back',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject),catalog = await f.catalogue();
   const candidate = catalog.candidates.find(item => !f.sub.lines.some(line => line.variantId === item.variantId) && item.groupId !== f.config.subscriptionEditing.catalogue[0]!.groupKey)!;
-  await f.open(); await page.getByRole('button',{ name: `Add one unit: ${f.sub.lines[0]!.title}`,exact: true }).click();
+  await f.open(); await page.getByRole('button',{ name: editorText(market.defaultLocale, 'increase', { name: String(f.sub.lines[0]!.title) }),exact: true }).click();
   await page.locator(`[data-variant="${candidate.variantId}"]`).click();
-  await page.getByTestId(`editor-line-${f.sub.lines[1]!.variantId}`).getByRole('button',{ name: `Remove ${f.sub.lines[1]!.title} from package`,exact: true }).click();
+  await page.getByTestId(`editor-line-${f.sub.lines[1]!.variantId}`).getByRole('button',{ name: editorText(market.defaultLocale, 'remove', { name: String(f.sub.lines[1]!.title) }),exact: true }).click();
   const previewResponse = page.waitForResponse(response => response.url().endsWith('/subscription.preview'));
-  await page.getByRole('button',{ name: 'Review changes',exact: true }).click();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true }).click();
   const preview = (await (await previewResponse).json()).value;
   await expect(page.getByTestId('price-review')).toBeVisible();
-  await expect(page.locator('main')).toContainText('without the one-time introductory promotion');
-  await page.getByRole('button',{ name: 'Confirm changes',exact: true }).click(); await expect(page).toHaveURL(/packageSaved=1$/);
+  await expect(page.locator('main')).toContainText(editorText(market.defaultLocale, 'pricePolicy').split('{date}')[0]!);
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'confirm'),exact: true }).click(); await expect(page).toHaveURL(/packageSaved=1$/);
   const current = await f.read(); expect(current.recurringTotal).toEqual(preview.newTotal);
   expect(current.lines.some(line => line.variantId === candidate.variantId && line.qty === 1)).toBe(true);
   expect(current.lines.some(line => line.variantId === f.sub.lines[1]!.variantId)).toBe(false);
@@ -21,33 +23,33 @@ test('J-C1: quantities, candidate and removal review exact recurring money/date,
 });
 test('J-C2: classic plan-only edit preserves quantities and moves cadence',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject),days = f.config.subscriptionEditing.planDays.find(value => value !== f.sub.cadenceDays)!;
-  await f.open(); await page.getByRole('button',{ name: `Every ${days} days`,exact: true }).click(); await f.confirm();
+  await f.open(); await page.getByRole('button',{ name: editorText(market.defaultLocale, 'everyDays', { days: days }),exact: true }).click(); await f.confirm();
   const current = await f.read(); expect(current.cadenceDays).toBe(days);
   expect(current.lines.map(line => [line.variantId,line.qty])).toEqual(f.sub.lines.map(line => [line.variantId,line.qty]));
 });
 test('J-C3: native small purchase displays the minimum banner and cannot review',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject,1); await f.open();
-  await expect(page.getByTestId('minimum-banner')).toBeVisible(); await expect(page.getByRole('button',{ name: 'Review changes',exact: true })).toBeDisabled();
+  await expect(page.getByTestId('minimum-banner')).toBeVisible(); await expect(page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true })).toBeDisabled();
 });
 test('J-C4: a concurrent edit stales acceptance; return to editing and a fresh review succeeds',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject); await f.open();
-  await page.getByRole('button',{ name: `Add one unit: ${f.sub.lines[0]!.title}`,exact: true }).click();
-  await page.getByRole('button',{ name: 'Review changes',exact: true }).click();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'increase', { name: String(f.sub.lines[0]!.title) }),exact: true }).click();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true }).click();
   const competing = await f.classicRequest(); competing.base[1]!.qty++;
   await f.apply(competing);
-  await page.getByRole('button',{ name: 'Confirm changes',exact: true }).click();
-  await expect(page.getByTestId('editor-error')).toContainText('could not be saved');
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'confirm'),exact: true }).click();
+  await expect(page.getByTestId('editor-error')).toContainText(editorText(market.defaultLocale, 'saveFailed'));
   await f.confirm(); expect((await f.read()).lines.find(line => line.variantId === f.sub.lines[0]!.variantId)!.qty).toBe(7);
 });
 test('J-C5: closed edit window and open payment blocker disable the editor without moving its anchor',async ({ page,baseURL,composeProject }) => {
   // Keep the native purchase anchor within the configured 720-hour window bound.
   const f = await nativeSubscription(page,baseURL,composeProject,6,{ completeIntro: false });
   f.sql(`UPDATE public.subscriptions SET edit_window_hours=720 WHERE id='${f.id}'`);
-  await f.open(); await expect(page.getByRole('alert')).toContainText('edit window');
+  await f.open(); await expect(page.getByRole('alert')).toContainText(editorText(market.defaultLocale, 'windowClosed'));
   f.sql(`UPDATE public.subscriptions SET edit_window_hours=72 WHERE id='${f.id}'`);
   const client = f.rows(`SELECT client_id FROM public.subscriptions WHERE id='${f.id}'`)[0]!.client_id;
   f.sql(`SELECT public.dunning_lifecycle_open_case('${randomUUID()}','${f.id}',NULL,'${f.uuid(String(client))}',1,'2030-12-01T12:00:00.000Z','provider_declined','synthetic','2026-11-06T12:00:00.000Z',100,'XTS','subscription-payment-failed-1',NULL)`);
-  await page.reload(); await expect(page.getByRole('alert')).toContainText('open payment case');
+  await page.reload(); await expect(page.getByRole('alert')).toContainText(editorText(market.defaultLocale, 'paymentBlocked'));
   expect((await f.read()).nextCycleAt).toBe(f.sub.nextCycleAt); expect((await f.read()).status).toBe('active');
 });
 test('J-C6: an agreed extra is removed and restored with its saved quantity',async ({ page,baseURL,composeProject }) => {
@@ -55,25 +57,25 @@ test('J-C6: an agreed extra is removed and restored with its saved quantity',asy
   const addon = String(f.rows('SELECT id FROM public.catalog_skus WHERE is_addon ORDER BY id LIMIT 1')[0]!.id);
   await f.apply({ subscriptionId: f.id,action: 'add_addon',variantId: addon,qty: 3 });
   const saved = (await f.read()).lines.find(line => line.isAddon)!;
-  await f.open(); await page.getByRole('button',{ name: `Remove ${saved.title} (3)`,exact: true }).click();
-  await page.getByRole('button',{ name: `Restore ${saved.title} (3)`,exact: true }).click();
-  await page.getByRole('button',{ name: `Every ${f.config.subscriptionEditing.planDays.find(day => day !== f.sub.cadenceDays)!} days`,exact: true }).click(); await f.confirm();
+  await f.open(); await page.getByRole('button',{ name: editorText(market.defaultLocale, 'removeAddon', { name: String(saved.title), quantity: 3 }),exact: true }).click();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'restoreAddon', { name: String(saved.title), quantity: 3 }),exact: true }).click();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'everyDays', { days: f.config.subscriptionEditing.planDays.find(day => day !== f.sub.cadenceDays)! }),exact: true }).click(); await f.confirm();
   expect((await f.read()).lines.find(line => line.isAddon)!.qty).toBe(3);
 });
 test('J-C7: test-only native notice capture sees one package-change mail and none for a no-op',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject); await f.open();
-  await page.getByRole('button',{ name: `Add one unit: ${f.sub.lines[0]!.title}`,exact: true }).click(); await f.confirm();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'increase', { name: String(f.sub.lines[0]!.title) }),exact: true }).click(); await f.confirm();
   expect(f.captureNotices().filter(item => item.subscriptionId === f.id && item.kind === 'subscription.package_changed')).toHaveLength(1);
   const noOp = await f.apply(await f.classicRequest()); expect(noOp.result.status).toBe('noop'); expect(noOp.result.eventId).toBeNull();
   expect(f.captureNotices().filter(item => item.subscriptionId === f.id && item.kind === 'subscription.package_changed')).toHaveLength(0);
 });
 test('J-S1: entry and abandonment keep classic; unchanged contents require review and explicit sized consent',async ({ page,baseURL,composeProject }) => {
   const f = await nativeSubscription(page,baseURL,composeProject); await f.open(true,true);
-  expect((await f.read()).offerVersion).toBe('classic'); await page.getByRole('button',{ name: 'Back to classic package',exact: true }).click();
+  expect((await f.read()).offerVersion).toBe('classic'); await page.getByRole('button',{ name: editorText(market.defaultLocale, 'backClassic'),exact: true }).click();
   expect((await f.read()).offerVersion).toBe('classic'); await f.open(true,true);
-  await page.getByRole('button',{ name: 'Review changes',exact: true }).click(); await expect(page.getByTestId('opt-in-consent')).toBeVisible();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true }).click(); await expect(page.getByTestId('opt-in-consent')).toBeVisible();
   expect((await f.read()).offerVersion).toBe('classic');
-  await page.getByRole('button',{ name: 'I accept size-aware servicing and the price; save',exact: true }).click();
+  await page.getByRole('button',{ name: editorText(market.defaultLocale, 'confirmOptIn'),exact: true }).click();
   await expect(page).toHaveURL(/packageSaved=1$/); expect((await f.read()).offerVersion).toBe('sized.v1');
 });
 test('J-S2: exact size/count/group edit quotes changed lines and retains the unchanged agreement',async ({ page,baseURL,composeProject }) => {
@@ -84,10 +86,10 @@ test('J-S2: exact size/count/group edit quotes changed lines and retains the unc
   const price = f.rows(`SELECT id,unit_price_minor FROM public.price_entries WHERE variant_id='${f.uuid(f.sub.lines[1]!.variantId)}' AND mode='subscription'`)[0]!;
   try {
     f.sql(`UPDATE public.price_entries SET unit_price_minor=unit_price_minor+7 WHERE id='${f.uuid(String(price.id))}'`);
-    await f.open(true); await page.getByRole('combobox',{ name: `Size: ${first.name.en}`,exact: true }).selectOption(sibling.variantId);
-    await page.getByRole('button',{ name: `Add one unit: ${first.name.en}`,exact: true }).click();
+    await f.open(true); await page.getByRole('combobox',{ name: editorText(market.defaultLocale, 'size', { name: first.name[market.defaultLocale] }),exact: true }).selectOption(sibling.variantId);
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'increase', { name: first.name[market.defaultLocale] }),exact: true }).click();
     const candidate = catalog.candidates.find(item => !item.isAddon && !f.sub.lines.some(line => line.variantId === item.variantId) && item.groupId !== first.groupId && item.groupId !== catalog.candidates.find(row => row.variantId === f.sub.lines[1]!.variantId)!.groupId)!;
-    await page.getByRole('button',{ name: `Add ${candidate.name.en} to package`,exact: true }).click(); await f.confirm();
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'add', { name: candidate.name[market.defaultLocale] }),exact: true }).click(); await f.confirm();
     const after = f.eventPricing() as { sku: string; quoteLine: unknown }[];
     expect(after.find(item => item.sku === unchangedSku)!.quoteLine).toEqual(before.find(item => item.sku === unchangedSku)!.quoteLine);
     expect((await f.read()).lines.find(line => line.variantId === sibling.variantId)!.qty).toBe(7);
@@ -102,8 +104,8 @@ test('J-S3: excessive stock increase refuses; retained/reduced zero-stock lines 
     const request = await f.sizedRequest(); if (request.action !== 'resize_bundle' || request.resizeLever.kind !== 'subscription.sized.parcel') throw new Error('fixture');
     request.resizeLever.value.coreLines[0]!.qty++; request.compositionConstraint.value = 9;
     expect((await f.action('subscription.preview',{ request })).body.ok).toBe(false);
-    await f.open(true); await expect(page.getByRole('button',{ name: `Add one unit: ${first.name.en}`,exact: true })).toBeDisabled();
-    await page.getByRole('button',{ name: `Remove one unit: ${first.name.en}`,exact: true }).click(); await f.confirm();
+    await f.open(true); await expect(page.getByRole('button',{ name: editorText(market.defaultLocale, 'increase', { name: first.name[market.defaultLocale] }),exact: true })).toBeDisabled();
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'decrease', { name: first.name[market.defaultLocale] }),exact: true }).click(); await f.confirm();
     expect((await f.read()).lines.find(line => line.variantId === first.variantId)!.qty).toBe(5);
   } finally { for (const item of siblings) f.setStock(item.variantId,1000); }
 });
@@ -112,19 +114,19 @@ test('J-S4: seeded exclusions block new selection/preview; retained conflict can
   const catalog = await f.catalogue(true),conflict = catalog.candidates.find(item => item.sku === f.config.offer.products[2]!.sku)!;
   try {
     f.setSubject({ ...JSON.parse(original),currentExclusions: ['demo-restricted'] });
-    await f.open(true); await expect(page.getByRole('button',{ name: `Add ${conflict.name.en} to package`,exact: true })).toBeDisabled();
+    await f.open(true); await expect(page.getByRole('button',{ name: editorText(market.defaultLocale, 'add', { name: conflict.name[market.defaultLocale] }),exact: true })).toBeDisabled();
     const request = await f.sizedRequest(); if (request.action !== 'resize_bundle' || request.resizeLever.kind !== 'subscription.sized.parcel') throw new Error('fixture');
     request.resizeLever.value.coreLines.push({ variantId: conflict.variantId,qty: 1 }); request.compositionConstraint.value = 9;
     expect((await f.action('subscription.preview',{ request })).body.code).toBe('subscription_reprice_sized_exclusion_conflict');
     f.setSubject(JSON.parse(original)); await f.apply(request);
     f.setSubject({ ...JSON.parse(original),currentExclusions: ['demo-restricted'] });
-    await f.open(true); await expect(page.getByRole('button',{ name: 'Review changes',exact: true })).toBeDisabled();
-    await page.getByRole('button',{ name: `Remove ${conflict.name.en} from package`,exact: true }).click();
+    await f.open(true); await expect(page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true })).toBeDisabled();
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'remove', { name: conflict.name[market.defaultLocale] }),exact: true }).click();
     const previewReply = page.waitForResponse(response => response.url().endsWith('/subscription.preview'));
-    await page.getByRole('button',{ name: 'Review changes',exact: true }).click(); expect((await (await previewReply).json()).ok).toBe(true);
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true }).click(); expect((await (await previewReply).json()).ok).toBe(true);
     f.setSubject({ ...JSON.parse(original),revision: 2 });
     const applyReply = page.waitForResponse(response => response.url().endsWith('/subscription.command'));
-    await page.getByRole('button',{ name: 'Confirm changes',exact: true }).click(); expect((await (await applyReply).json()).ok).toBe(false);
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'confirm'),exact: true }).click(); expect((await (await applyReply).json()).ok).toBe(false);
     expect((await f.read()).lines.some(line => line.variantId === conflict.variantId)).toBe(true);
   } finally { f.setSubject(JSON.parse(original)); }
 });

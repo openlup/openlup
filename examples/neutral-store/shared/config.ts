@@ -11,12 +11,13 @@ import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 import { assertEditorConfig, type SubscriptionEditorConfig } from './subscription-edit.ts';
 
 import { assertSubscriptionOffer, type SubscriptionOffers } from './subscription-offer.ts';
+import { assertLocaleMarket, type Localized, type LocaleMarket } from './locales.ts';
+import { assertStarterCopy } from './locale-copy.ts';
+export type { Locale, Localized } from './locales.ts';
 
 // Starter cart representation bound; owned offers may choose a lower maximum.
 const MAX_STARTER_OFFER_UNITS = 100;
 
-export type Locale = 'en' | 'pl';
-export type Localized = Record<Locale, string>;
 export type PurchaseMode = 'one_time' | 'subscription';
 
 export interface Product extends SellableCatalogItem {
@@ -68,11 +69,10 @@ export interface StoreConfig {
     hero: string;
     heroAlt: Localized;
   };
-  market: {
+  market: LocaleMarket & {
     country: string;
     currency: string;
     timezone: string;
-    locales: readonly Locale[];
   };
   offer: {
     layout: 'cards' | 'list';
@@ -117,6 +117,7 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
+  assertLocaleMarket(config.market);
   const schedule = config.checkoutRecoveryReminders;
   const scheduleCode = 'checkout_recovery_reminder_schedule_invalid';
   if (!schedule || Object.keys(schedule).sort().join(',') !== 'abandonedCart,checkoutRecovery,revision'
@@ -146,13 +147,14 @@ export function assertConfig(config: StoreConfig): void {
     || config.subscriptionCreation.editWindowHours < 1 || config.subscriptionCreation.editWindowHours > 720) {
     throw new Error('starter_subscription_creation_invalid');
   }
-  assertRenewalConfig(config.renewal);
+  assertRenewalConfig(config.renewal, config.market.locales);
   assertRetention(config.renewal.subscriptionCare);
   for (const offer of Object.values(config.subscriptionOffers)) assertSubscriptionOffer(offer, config.subscriptionEditing.catalogue.map(product => product.sku));
   assertEditorConfig(config.subscriptionEditing);
   assertPublicOrigin(config);
-  assertRecoveryConfiguration(config.recovery);
+  assertRecoveryConfiguration(config.recovery, config.market.locales);
   assertSupportEmail(config);
+  assertStarterCopy(config);
   const offer = config.offer;
   assertQuoteConfiguration(config.quote, config.subscriptionOffers.classic);
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
@@ -160,7 +162,7 @@ export function assertConfig(config: StoreConfig): void {
     || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
     throw new Error('starter_market_invalid');
   }
-  try { new Intl.DateTimeFormat('en', { timeZone: config.market.timezone }); }
+  try { new Intl.DateTimeFormat(config.market.defaultLocale, { timeZone: config.market.timezone }); }
   catch { throw new Error('starter_market_invalid'); }
   if (typeof config.id !== 'string' || config.id.length > 80
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');
@@ -187,12 +189,6 @@ export function assertConfig(config: StoreConfig): void {
     throw new Error('starter_offer_invalid');
   }
   const purchase = config.purchase;
-  if (!purchase?.recoveryMessage || (['subject', 'body', 'expiryLabel', 'orderLabel'] as const).some(key => {
-    const value = purchase.recoveryMessage[key];
-    return !value || ['en', 'pl'].some(locale => typeof value[locale as Locale] !== 'string' || !value[locale as Locale].trim());
-  })) {
-    throw new Error('starter_recovery_message_invalid');
-  }
   if (!purchase
     || !Number.isSafeInteger(purchase.responseFloorMs) || purchase.responseFloorMs < 0
     || !purchase.contact.acquisitionSource.trim() || purchase.contact.acquisitionSource.length > 100
@@ -218,7 +214,7 @@ export function assertConfig(config: StoreConfig): void {
     || !config.orderControls?.holdReasons.length) throw new Error('starter_order_controls_configuration_invalid');
   for (const choices of [config.returns.reasons, config.orderControls.holdReasons]) {
     if (new Set(choices.map(choice => choice.code)).size !== choices.length || choices.some(choice =>
-      !choice.code.trim() || !choice.label.en.trim() || !choice.label.pl.trim())) {
+      !choice.code.trim())) {
       throw new Error('starter_order_controls_configuration_invalid');
     }
   }

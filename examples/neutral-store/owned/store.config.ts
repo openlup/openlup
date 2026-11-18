@@ -1,3 +1,4 @@
+import { market } from './market.config.ts';
 import { quoteConfigurations } from './quote.config.ts';
 import { demoRenewalConfig } from './renewal.config.ts';
 import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
@@ -49,7 +50,7 @@ const inputs = {
       hero: '/media/collection.svg',
       heroAlt: { en: 'Three illustrated fictional containers', pl: 'Trzy ilustracje fikcyjnych opakowań' },
     },
-    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
+    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', ...market },
     offer: {
       layout: 'cards',
       minUnits: 1,
@@ -150,7 +151,7 @@ const inputs = {
       offerBody: { en: 'Mix the fictional roasts and choose your frequency.', pl: 'Połącz fikcyjne kawy i wybierz częstotliwość.' },
     },
     media: { hero: '/media/coffee.svg', heroAlt: { en: 'Illustrated coffee bags', pl: 'Ilustracja torebek kawy' } },
-    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
+    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', ...market },
     offer: {
       layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 640,
       freeShippingFromMinor: 1000, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,

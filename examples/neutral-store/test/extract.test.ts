@@ -130,6 +130,22 @@ test('extract creates an independent repository and refuses to overwrite an exis
   }
 });
 
+test('a Polish-only owned market typechecks the extracted starter and passes its tests', async () => {
+  await mkdir(dirname(scratch), { recursive: true });
+  const target = await mkdtemp(scratch);
+  try {
+    execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
+    await writeFile(resolve(target, 'owned/market.config.ts'),
+      "export const market = { locales: ['pl'], defaultLocale: 'pl' } as const;\n");
+    // Reuse the source checkout's dependencies; extraction needs no new installation.
+    execFileSync('npm', ['run', 'typecheck'], { cwd: target, encoding: 'utf8', stdio: 'pipe' });
+    const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
+      cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
+    });
+    assert.match(tests, /fail 0/);
+  } finally { await rm(target, { recursive: true, force: true }); }
+});
+
 const sha256 = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
 async function releasedFixture() {
   await mkdir(dirname(scratch), { recursive: true });

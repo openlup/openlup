@@ -1,3 +1,5 @@
+import { market } from '../owned/market.config.ts';
+import { copyKeys } from '../shared/copy-keys.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { messageDestinations, resolveRoute, routes } from '../shared/routes.ts';
@@ -10,17 +12,17 @@ test('accepted method setup and saved account draft limitations retain named act
   assert.ok(nativeLimits.find(limit => limit.id === 'N9')!.actions.includes('resumeAccountDraft'));
 });
 
-test('every message destination resolves in Polish and English without collisions', () => {
+test('every message destination resolves in every configured locale without collisions', () => {
   const seen = new Set<string>();
   for (const [key, locales] of Object.entries(routes)) {
-    for (const locale of ['en', 'pl'] as const) {
+    for (const locale of market.locales) {
       assert.equal(seen.has(locales[locale]), false, locales[locale]);
       seen.add(locales[locale]);
       assert.deepEqual(resolveRoute(locales[locale]), { key, locale });
     }
   }
   for (const destination of messageDestinations) {
-    for (const locale of ['en', 'pl'] as const) {
+    for (const locale of market.locales) {
       const route = resolveRoute(routes[destination.route][locale]);
       assert.equal(route.key, destination.route);
       assert.equal(route.locale, locale);
@@ -29,17 +31,16 @@ test('every message destination resolves in Polish and English without collision
 });
 
 test('malformed path encoding is an unknown page, never an exception', () => {
-  assert.deepEqual(resolveRoute('/products/%zz'), { key: 'notFound', locale: 'en' });
+  assert.deepEqual(resolveRoute(`${routes.catalog[market.defaultLocale]}/%zz`), { key: 'notFound', locale: market.defaultLocale });
 });
 
-test('both locales supply every copy key and every named-limit action', () => {
-  assert.deepEqual(Object.keys(copy.en).sort(), Object.keys(copy.pl).sort());
+test('configured locales supply every copy key and every named-limit action', () => {
+  for (const locale of market.locales) assert.deepEqual(Object.keys(copy[locale]).sort(), [...copyKeys].sort());
   assert.equal(nativeLimits.length, 14);
   for (const limit of nativeLimits) {
     assert.ok(limit.code.trim());
     for (const action of limit.actions) {
-      assert.ok(copy.en[action]);
-      assert.ok(copy.pl[action]);
+      for (const locale of market.locales) assert.ok(copy[locale][action]);
     }
   }
 });
@@ -51,7 +52,7 @@ test('the partial account limit retains private views while billing and preferen
   assert.deepEqual(limit.actions, ['privateProfile', 'profileViews']);
 });
 
-test('operator select choices use copy keys present in both languages', async () => {
+test('operator select choices use copy keys present in every configured locale', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../client/pages/operator.ts', import.meta.url), 'utf8');
   function checkChoices(text: string): number {
@@ -60,9 +61,9 @@ test('operator select choices use copy keys present in both languages', async ()
     for (const choice of choices) {
       const key = /^context\.t\('([^']+)'\)\s*$/.exec(choice[1]!.trim())?.[1];
       assert.ok(key, 'operator option labels must use owned copy keys');
-      for (const locale of ['en', 'pl'] as const) {
+      for (const locale of market.locales) {
         assert.ok(Object.hasOwn(copy[locale], key), `${locale}: ${key}`);
-        assert.ok(copy[locale][key as keyof typeof copy.en].trim());
+        assert.ok(copy[locale][key as keyof typeof copy[typeof locale]].trim());
       }
     }
     return choices.length;

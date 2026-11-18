@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { composeSizedPaidEmailNote } from '../host/editor-mail.ts';
@@ -20,9 +21,9 @@ function fixture() {
 }
 test('describeParcel uses frozen quantities, exact retained physical identities and the renewal snapshot cadence', async () => {
   const f = fixture();
-  assert.equal(await f.note(id(1),'en',new AbortController().signal),'Items: 6 · 4 × 250 g, 2 × 500 g · Every 28 days');
-  assert.equal(await f.note(id(1),'pl',new AbortController().signal),'Produkty: 6 · 4 × 250 g, 2 × 500 g · Co 28 dni');
-  assert.deepEqual(f.calls.filter(call => call.sql.includes('FROM public.catalog_skus')).map(call => call.values),[[id(4)],[id(5)],[id(4)],[id(5)]]);
+  for (const locale of market.locales) assert.equal(await f.note(id(1),locale,new AbortController().signal),
+    { en: 'Items: 6 · 4 × 250 g, 2 × 500 g · Every 28 days', pl: 'Produkty: 6 · 4 × 250 g, 2 × 500 g · Co 28 dni' }[locale]);
+  assert.deepEqual(f.calls.filter(call => call.sql.includes('FROM public.catalog_skus')).map(call => call.values),market.locales.flatMap(() => [[id(4)],[id(5)]]));
   assert.ok(f.calls.every(call => !call.sql.includes('s.cadence_days') && !call.sql.includes('subscription_lines')));
 });
 for (const kind of ['identity','quantity','correlation','acquisition','binding','unreadable'] as const) {
@@ -34,12 +35,12 @@ for (const kind of ['identity','quantity','correlation','acquisition','binding',
     if (kind === 'acquisition') f.header.cycle_snapshot.cycle.logicalCycleNumber = 1;
     if (kind === 'binding') f.header.binding = 'classic';
     if (kind === 'unreadable') f.retained.get(id(4))!.net_weight_g = 0;
-    assert.equal(await f.note(id(1),'en',new AbortController().signal),null);
+    assert.equal(await f.note(id(1),market.defaultLocale,new AbortController().signal),null);
   });
 }
 test('describeParcel omits an unsupported frozen cadence and stops before reading after abort', async () => {
   const f = fixture(); f.header.cycle_snapshot.templateSnapshot.cadenceDays = 17;
-  assert.equal(await f.note(id(1),'en',new AbortController().signal),'Items: 6 · 4 × 250 g, 2 × 500 g');
+  assert.equal(await f.note(id(1),market.defaultLocale,new AbortController().signal),{ en: 'Items: 6 · 4 × 250 g, 2 × 500 g', pl: 'Produkty: 6 · 4 × 250 g, 2 × 500 g' }[market.defaultLocale]);
   const before = f.calls.length,controller = new AbortController(); controller.abort();
-  assert.equal(await f.note(id(1),'en',controller.signal),null); assert.equal(f.calls.length,before);
+  assert.equal(await f.note(id(1),market.defaultLocale,controller.signal),null); assert.equal(f.calls.length,before);
 });

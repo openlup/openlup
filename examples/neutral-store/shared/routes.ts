@@ -1,4 +1,5 @@
-import type { Locale } from './config.ts';
+import type { Locale, LocaleMarket, LocaleCopy } from './locales.ts';
+import { market as defaultMarket } from '../owned/market.config.ts';
 
 export const routes = {
   home: { en: '/', pl: '/pl' },
@@ -27,7 +28,7 @@ export const routes = {
   partners: { en: '/partners', pl: '/partnerzy' },
   limits: { en: '/limits', pl: '/ograniczenia' },
   destinations: { en: '/destinations', pl: '/linki' },
-} as const;
+} as const satisfies Record<string, LocaleCopy<string>>;
 
 export type RouteKey = keyof typeof routes;
 
@@ -37,14 +38,14 @@ export interface ResolvedRoute {
   slug?: string;
 }
 
-export function resolveRoute(path: string): ResolvedRoute {
+export function resolveRoute(path: string, market: LocaleMarket = defaultMarket): ResolvedRoute {
   const clean = path.length > 1 ? path.replace(/\/+$/, '') : path;
   for (const [key, locales] of Object.entries(routes)) {
-    for (const locale of ['en', 'pl'] as const) {
+    for (const locale of market.locales) {
       if (locales[locale] === clean) return { key: key as RouteKey, locale };
     }
   }
-  for (const locale of ['en', 'pl'] as const) {
+  for (const locale of market.locales) {
     const prefix = `${routes.catalog[locale]}/`;
     if (clean.startsWith(prefix)) {
       try {
@@ -54,7 +55,7 @@ export function resolveRoute(path: string): ResolvedRoute {
       }
     }
   }
-  return { key: 'notFound', locale: clean.startsWith('/pl') ? 'pl' : 'en' };
+  return { key: 'notFound', locale: market.locales.find(locale => routes.home[locale].length > 1 && clean.startsWith(routes.home[locale])) ?? market.defaultLocale };
 }
 
 export function productPath(slug: string, locale: Locale): string {
