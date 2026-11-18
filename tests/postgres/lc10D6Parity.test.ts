@@ -2,7 +2,7 @@ import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfil
 import { qualifiedPostgresStartupOptions } from "@openlup/platform/migrations";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createPostgresCatalogPublication,createCatalogProductTypeRegistry,installCatalogDefinitions,catalogDefinitionDigest,canonicalCatalogDraftJson,catalogAcceptedReferenceV2Schema,createPostgresCatalogWithdrawalImpact } from "@openlup/platform/catalog";
-import type { CatalogDraftPayloadV4,CatalogDraftPayloadV5,CatalogHeadRef } from "@openlup/platform/catalog/contracts";
+import type { CatalogDraftPayloadV4,CatalogDraftPayloadV5,CatalogHeadRef,CatalogProductTypeDefinition,CatalogOptionValue } from "@openlup/platform/catalog/contracts";
 import { createNativeCatalogRenewalCodecV2,createPostgresSuccessorStore,createPostgresSuccessorNotices,successorNoticeSources,createPostgresPackageEditor } from "@openlup/platform/subscriptions";
 import { readOutboxDispatchConfig } from "@openlup/outbox";
 import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
@@ -828,6 +828,24 @@ it("successor_offer_never_advances_cycle",async()=>{
   expect((await db.query("SELECT count(*)::integer AS count FROM public.subscription_cycles WHERE subscription_id=$1 AND scheduled_at=$2",[f.subscription,f.anchor])).rows).toEqual([{count:0}]);
 });
 
+// Pack-owned strength and shade data use the admitted mass-based native rail.
+it.each(["strength","shade"] as const)("lc10_successor_pack_%s_active_subscriber",async profile=>{
+  const f=await createSuccessorJourney(pool,{profile});
+  expect(f.predecessor.value.skus[0].options).not.toEqual(f.successor.value.skus[0].options);
+  expect(f.predecessor.reference.optionDigest).not.toBe(f.successor.reference.optionDigest);
+  expect(f.successor.reference.netContent).toEqual(f.predecessor.reference.netContent);
+  expect((await pool.query("SELECT publication_facts->>'lifecycleState' AS state FROM public.catalog_skus WHERE id=$1",[f.predecessor.sku])).rows).toEqual([{state:"withdrawn"}]);
+  expect((await pool.query("SELECT s.status,l.variant_id,l.unit_price_minor FROM public.subscriptions s JOIN public.subscription_lines l ON l.subscription_id=s.id WHERE s.id=$1",[f.subscription])).rows)
+    .toEqual([{status:"active",variant_id:f.predecessor.sku,unit_price_minor:"617"}]);
+  expect(await createPostgresCatalogWithdrawalImpact(pool).report(f.predecessor.sku)).toMatchObject({outcome:"complete",obligations:expect.arrayContaining([
+    expect.objectContaining({family:"template",subscriptionId:f.subscription}),expect.objectContaining({family:"stock_wait",sourceId:f.caseId,subscriptionId:f.subscription})])});
+  const before=(await pool.query("SELECT next_cycle_at,t.next_cycle_number FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1",[f.subscription])).rows;
+  const key=randomUUID(),accept=()=>transaction(async connection=>(await connection.query("SELECT public.resolve_stock_wait_with_successor($1,$2,$3,$4,$5,$6) AS result",[f.caseId,f.proposalId,f.quoteHash,key,f.client,f.at])).rows[0].result);
+  const first=await accept();expect(first).toMatchObject({status:"applied",proposalId:f.proposalId});expect(await accept()).toEqual(first);
+  expect((await pool.query("SELECT variant_id,unit_price_minor FROM public.subscription_lines WHERE subscription_id=$1",[f.subscription])).rows).toEqual([{variant_id:f.successor.sku,unit_price_minor:"777"}]);
+  expect((await pool.query("SELECT next_cycle_at,t.next_cycle_number FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1",[f.subscription])).rows).toEqual(before);
+});
+
 it.each(["classic","exact","sized"] as const)("lc10_successor_lane_acceptance_%s",async lane=>{
   for(const ordinary of [false,true]){
     const f=await createSuccessorJourney(pool,{lane,ordinary}),key=randomUUID();
@@ -1172,8 +1190,15 @@ it.each(["opened_first","publication_first"])("lc10_N3_shared_completion",async 
 });
 
 /** Existing journey resources, with real publication, frozen wait and consent owners. */
-async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" | "recover"; recoveryStock?: number;lane?:"classic"|"exact"|"sized";ordinary?:boolean;continuation?:boolean } = {}) {
-  const definition={ key:"example:article",version:1,units:[{code:"openlup:g",dimension:"mass" as const,integral:false}],netContentUnits:["openlup:g"],dimensions:[],axes:[],validatorRef:`sha256:${"a".repeat(64)}`,validateContent:()=>[] };
+async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" | "recover"; recoveryStock?: number;lane?:"classic"|"exact"|"sized";ordinary?:boolean;continuation?:boolean;profile?:"strength"|"shade" } = {}) {
+  const profile=options.profile;
+  const definition:CatalogProductTypeDefinition={ key:profile?`example:article-${profile}`:"example:article",version:1,
+    units:[{code:"openlup:g",dimension:"mass",integral:false,...(profile?{factor:{canonicalUnit:"openlup:g",unscaled:"1",scale:0}}:{})}],netContentUnits:["openlup:g"],
+    dimensions:profile==="strength"?[{key:profile,kind:"quantity",dimension:"mass",units:["openlup:g"]}]:profile?[{key:profile,kind:"choice",values:["a","b"]}]:[],
+    axes:profile?[{key:profile,attributeKey:profile}]:[],
+    ...(profile?{attributes:[{key:profile,scope:"variant",required:false,cardinality:{min:0,max:1},filterable:false,facetable:false,public:true,displayOrder:0,labels:{},
+      valueType:profile==="strength"?{kind:"quantity",dimension:"mass",units:["openlup:g"]}:{kind:"enum",values:[{id:"a"},{id:"b"}]} }]}:{}),
+    validatorRef:`sha256:${"a".repeat(64)}`,validateContent:()=>[] };
   const registry=createCatalogProductTypeRegistry([definition]);
   const rules={canonicalizeDocument:canonicalCatalogDraftJson,deriveSkuFacts:(document:unknown)=>({derived:(document as {derived:number}).derived}),validateProduct:()=>[],classifySkuChange:()=>"compatible" as const};
   const hash = (value: string) => createHash("sha256").update(value).digest("hex"), admin = randomUUID();
@@ -1182,7 +1207,7 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
-    await installCatalogDefinitions(db,{ id: "example:successor",namespace: "example",version: 1,openlupRange: "0.44.x",capabilities: { publish: false },types: [definition],taxClasses: [] });
+    await installCatalogDefinitions(db,{ id: profile?`example:successor-${profile}`:"example:successor",namespace: "example",version: 1,openlupRange: "0.44.x",capabilities: { publish: false },types: [definition],taxClasses: [] });
     await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)",[admin,`${admin}@example.invalid`]);
     await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())",[admin]);
     await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1') ON CONFLICT(key) DO NOTHING");
@@ -1207,10 +1232,12 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
       const gtin=digits+String((10-[...digits].reduce((sum,digit,index)=>sum+Number(digit)*(index%2?3:1),0)%10)%10);
       const content={schemaVersion:1,derived:12},canonicalText=canonicalCatalogDraftJson(content),documentDigest=hash(canonicalText);
       const authoredFacts={skuCode:code,title:"Synthetic article",minQuantity:1,isAddon:false,facts:{derived:12}};
-      const value:CatalogDraftPayloadV4={schemaVersion:4,product:{id:product,type:{key:definition.key,version:1},dimensions:[],slug,primarySkuId:sku,
+      const optionValues:Record<string,CatalogOptionValue>=profile==="strength"?{strength:{kind:"quantity",value:{dimension:"mass",unit:"openlup:g",unscaled:predecessor?"20":"10",scale:0}}}
+        :profile?{shade:{kind:"choice",value:predecessor?"b":"a"}}:{};
+      const value:CatalogDraftPayloadV4={schemaVersion:4,product:{id:product,type:{key:definition.key,version:1},dimensions:definition.dimensions.map(d=>d.key),slug,primarySkuId:sku,
         documentRevision:{id:document,productId:product,revisionNo:1,schemaId:"example:document.v1",documentRef:"example:document",sourceRef:"example:source",digest:documentDigest},
         sharedContent:{schemaVersion:1,catalogAction:"create",document:content,presentation:{},publicationSkus:[authoredFacts],requestedModes:[{skuCode:code,modes:[]}],offerMemberships:[]}},
-        skus:[{id:sku,productId:product,code,options:{},netContent:{dimension:"mass",unit:"openlup:g",unscaled:"100",scale:0},identifiers:[{scheme:"gs1:gtin",issuer:"example",value:gtin,packagingLevel:"unit"}]}],
+        skus:[{id:sku,productId:product,code,options:optionValues,netContent:{dimension:"mass",unit:"openlup:g",unscaled:"100",scale:0},identifiers:[{scheme:"gs1:gtin",issuer:"example",value:gtin,packagingLevel:"unit"}]}],
         publication:{kind:"release",evidence:{},operations:[{op:"create_product",productId:product,productSlug:slug,name:"Synthetic article"},
           {op:"register_document_revision",productSlug:slug,revisionId:document,revisionNo:1,documentRef:"example:document",sourceRef:"example:source",canonicalText,digest:documentDigest,provenance:{source:"current_draft"}},
           {op:"move_document_pointer",productSlug:slug,documentRevisionNo:1},{op:"create_sku",productSlug:slug,documentRevisionNo:1,skuId:sku,...authoredFacts},
