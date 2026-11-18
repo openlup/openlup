@@ -2641,6 +2641,23 @@ it.each([2_147_483_646, 2_147_483_647])("cycle1 native publication revision boun
   expect(await authority.reads.current(data.productId)).toMatchObject({ outcome: "found", head: first.head });
 });
 
+it.each([["immediate", 3], ["skipped", 4]] as const)("publication bulk admission verifies the %s predecessor even when inserted later", async (_mode, revision) => {
+  const data = await draft(), first = await commit(data.publication);
+  const client = await db.connect(), earlier = randomUUID(), later = randomUUID();
+  try {
+    await client.query("BEGIN");
+    const insert = client.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,
+      candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,command_key)
+      SELECT input.id,p.product_id,input.revision,input.previous_id,p.draft_id,p.draft_revision,input.id::text,
+        p.candidate_digest,p.document_revision_id,p.canonical_state,p.digest,p.actor_id,input.id::text
+      FROM public.catalog_publications p CROSS JOIN (VALUES (1,$1::uuid,$2::integer,$3::uuid),(2,$3::uuid,2,$4::uuid))
+        input(position,id,revision,previous_id) WHERE p.id=$4 ORDER BY input.position`,
+    [later, revision, earlier, first.head.publicationId]);
+    if (revision === 3) expect((await insert).rowCount).toBe(2);
+    else await expect(insert).rejects.toMatchObject({ code: "23503" });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
 it.each(["direct media", "resumed activation", "resumed media"] as const)("cycle1 native media cannot borrow an unmaterialized SKU from a retained product draft: %s", async mode => {
   const data = await draft(), initial = structuredClone(data.payload), pending = structuredClone(initial.skus[0]), gtin = nextGtin();
   pending.id = randomUUID(); pending.code = `PENDING-${pending.id}`;

@@ -23,6 +23,7 @@ CREATE TABLE public.catalog_publications (
  product_id uuid NOT NULL REFERENCES public.catalog_products(id),
  revision integer NOT NULL CHECK (revision BETWEEN 1 AND 2147483647),
  previous_id uuid,
+ previous_revision integer GENERATED ALWAYS AS (NULLIF(revision - 1, 0)) STORED,
  draft_id uuid NOT NULL,
  draft_revision integer NOT NULL CHECK (draft_revision BETWEEN 1 AND 2147483647),
  command_key text NOT NULL CHECK (octet_length(command_key) BETWEEN 1 AND 200),
@@ -34,7 +35,7 @@ CREATE TABLE public.catalog_publications (
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  committed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  UNIQUE(product_id,revision), UNIQUE(product_id,id), UNIQUE(product_id,id,revision), UNIQUE(product_id,command_key),
- FOREIGN KEY(product_id,previous_id) REFERENCES public.catalog_publications(product_id,id),
+ FOREIGN KEY(product_id,previous_id,previous_revision) REFERENCES public.catalog_publications(product_id,id,revision),
  FOREIGN KEY(product_id,draft_id,draft_revision) REFERENCES public.catalog_draft_revisions(product_id,draft_id,revision),
  FOREIGN KEY(product_id,document_revision_id) REFERENCES public.catalog_product_document_revisions(product_id,id)
 );
