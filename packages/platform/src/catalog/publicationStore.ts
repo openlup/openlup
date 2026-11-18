@@ -422,8 +422,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const product = state.product;
     async function pointer(documentId: string) {
       await db.query("INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint) VALUES(pg_current_xact_id(),$1,$2,$3)", [product.id, documentId, fingerprint]);
-      await db.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1 AND current_document_revision_id IS DISTINCT FROM $2::uuid", [product.id, documentId]);
-      await db.query("DELETE FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=pg_current_xact_id() AND product_id=$1 AND revision_id=$2 AND command_fingerprint=$3", [product.id, documentId, fingerprint]);
+      const updated = await tuple(db, "UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1 AND current_document_revision_id IS DISTINCT FROM $2::uuid RETURNING id", [product.id, documentId]);
+      require(updated.length === 1 && updated[0]?.id === product.id, "catalog_publication_pointer_capability_unconsumed");
+      const residue = await tuple(db, "SELECT 1 FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=pg_current_xact_id() LIMIT 1");
+      require(residue.length === 0, "catalog_publication_pointer_capability_unconsumed");
     }
     for (const operation of payload.publication.operations) {
       if (operation.op === "create_product") await db.query(`INSERT INTO public.catalog_products(id,slug,name,status,type_key,type_version,variant_axes,attribute_values,publication_facts)
@@ -461,17 +463,17 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       } else if (operation.op === "set_primary_sku") {
         const sku = state.skus.find(sku => sku.code === operation.skuCode)!;
         await db.query("UPDATE public.catalog_products SET primary_sku_id=$2::uuid,publication_facts=jsonb_set(publication_facts,'{primarySkuId}',to_jsonb($2::text)) WHERE id=$1", [product.id, sku.id]);
-      } else if (operation.op === "set_product_status") await db.query("UPDATE public.catalog_products SET status=$2,publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE id=$1", [product.id, operation.status]);
+      } else if (operation.op === "set_product_status") await db.query("UPDATE public.catalog_products SET status=$2,updated_at=transaction_timestamp(),publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE id=$1", [product.id, operation.status]);
       else if (operation.op === "set_product_presentation") await db.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{presentation}',$2::jsonb) WHERE id=$1", [product.id, publicationJson(operation.presentation)]);
-      else if (operation.op === "set_sku_status") await db.query(`UPDATE public.catalog_skus SET status=$2,
+      else if (operation.op === "set_sku_status") await db.query(`UPDATE public.catalog_skus SET status=$2,updated_at=transaction_timestamp(),
         publication_facts=jsonb_set(publication_facts,'{status}',to_jsonb($2::text)) WHERE product_id=$1 AND sku=$3`, [product.id, operation.status, operation.skuCode]);
-      else if (operation.op === "set_eligibility") await db.query(`UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3,
+      else if (operation.op === "set_eligibility") await db.query(`UPDATE public.catalog_skus SET sellable_standalone=$2,sellable_in_subscription=$3,updated_at=transaction_timestamp(),
         publication_facts=jsonb_set(jsonb_set(publication_facts,'{sellableStandalone}',to_jsonb($2::boolean)),'{sellableInSubscription}',to_jsonb($3::boolean))
         WHERE product_id=$1 AND sku=$4`, [product.id, operation.sellableStandalone, operation.sellableInSubscription, operation.skuCode]);
       else if (operation.op === "set_sku_metadata") await db.query(`UPDATE public.catalog_skus SET
         publication_facts=jsonb_set(publication_facts,'{logisticsRef}',$2::jsonb) WHERE product_id=$1 AND sku=$3`, [product.id, publicationJson(operation.logisticsRef), operation.skuCode]);
       else if (operation.op === "set_derived_sku_facts") await db.query(`UPDATE public.catalog_skus SET
-        publication_facts=jsonb_set(publication_facts,'{facts}',$2::jsonb) WHERE product_id=$1 AND sku=$3`, [product.id, publicationJson(operation.facts), operation.skuCode]);
+        publication_facts=jsonb_set(publication_facts,'{facts}',$2::jsonb),updated_at=transaction_timestamp() WHERE product_id=$1 AND sku=$3`, [product.id, publicationJson(operation.facts), operation.skuCode]);
       else if (operation.op === "set_offer_membership") await db.query(`UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}',
         (SELECT jsonb_agg(member ORDER BY member->>'offerVersion' COLLATE "C") FROM
           (SELECT member FROM jsonb_array_elements(publication_facts->'memberships') AS member WHERE member->>'offerVersion'<>$2

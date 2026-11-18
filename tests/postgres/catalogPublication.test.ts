@@ -3093,3 +3093,89 @@ it("publication refuses a GTIN held by a different legacy issuer", async () => {
   expect(await authority.publish(data.publication, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_identity_conflict" });
   expect(await snapshot()).toEqual(before);
 });
+
+it.each(["changed", "unchanged", "repeated", "unconsumed", "other tuple", "missing update"] as const)(
+  "the document pointer fence alone consumes a changed pointer capability: %s", async mode => {
+    const data = await draft(), payload = structuredClone(data.payload);
+    const pointer = { op: "move_document_pointer" as const, productSlug: payload.product.slug!, documentRevisionNo: 1 };
+    let command = data.publication;
+    if (mode === "unchanged") {
+      const first = await commit(command);
+      payload.product.sharedContent.catalogAction = "revise";
+      payload.publication.kind = "compensation";
+      payload.publication.operations = [pointer];
+      command = await save(payload, data.draftId, 1, first.head);
+    } else if (mode === "repeated") {
+      payload.publication.operations.push(pointer);
+      command = await save(payload, data.draftId, 1);
+    }
+    const refusals = ["unconsumed", "other tuple", "missing update"];
+    let capabilityArgs: unknown[] | undefined, inserts = 0, projected = false;
+    const target = createPostgresCatalogPublication(dependencies(async (sql, executor, rows, values) => {
+      if (sql.startsWith("INSERT INTO public.catalog_publication_pointer_capabilities")) { capabilityArgs = values; inserts++; }
+      if (sql.startsWith("UPDATE public.catalog_products SET current_document_revision_id")) {
+        if (mode === "unconsumed" || mode === "other tuple") await executor.query(
+          "INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3)",
+          mode === "unconsumed" ? capabilityArgs : [foreignPublished.data.productId, foreignPublished.data.payload.product.documentRevision!.id, "f".repeat(64)]);
+        if (mode === "missing update") rows.length = 0;
+      }
+      if (sql.startsWith("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{document}'")) projected = true;
+    }));
+    const capability = (await target.authorize(null))!;
+    await approve(command, target, capability);
+    const before = await snapshot(), result = await target.publish(command, capability);
+    expect(inserts).toBe(mode === "unchanged" ? 0 : 1);
+    if (refusals.includes(mode)) {
+      expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_pointer_capability_unconsumed" });
+      expect(projected).toBe(false);
+      expect(await snapshot()).toEqual(before);
+    } else {
+      expect(result).toMatchObject({ outcome: "committed" });
+      expect((await db.query("SELECT * FROM public.catalog_publication_pointer_capabilities WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+    }
+  });
+
+it.each(["product active", "product archived", "SKU active", "SKU archived", "eligibility on", "eligibility off", "repeated cache", "rollback"] as const)(
+  "ordered publication touches only the timestamps owned by its effects: %s", async mode => inPriceDatabase(async () => {
+    const active = mode === "product active" || mode === "SKU active" || mode === "eligibility on";
+    const initial = realPriceAuthority(), initialActor = (await initial.authorize(null))!;
+    const data = active ? await priceDraft() : await draft();
+    let head = (await commit(data.publication, initial, initialActor)).head;
+    let revision = active ? 2 : 1;
+    let payload = structuredClone(data.payload);
+    if (mode === "SKU archived") {
+      head = (await commit(await incrementalSku(data, head, revision++), initial, initialActor)).head;
+      payload = (await db.query("SELECT public.catalog_draft_record($1,$2) AS record", [data.draftId, revision])).rows[0].record.payload;
+    }
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.publication.kind = "compensation";
+    const sku = payload.skus[0], skuCode = sku.code!;
+    delete sku.priceOperations;
+    const productStatus = mode === "product active" || mode === "product archived";
+    const eligibility = { op: "set_eligibility" as const, skuCode, sellableStandalone: active, sellableInSubscription: false };
+    const cache = { op: "set_derived_sku_facts" as const, skuCode, documentRevisionNo: 1, netContent: sku.netContent!, facts: { derived: 12 } };
+    payload.publication.operations = productStatus
+      ? [{ op: "set_product_status", productSlug: payload.product.slug!, status: mode === "product active" ? "active" : "archived" }]
+      : mode === "SKU active" ? [{ op: "set_sku_status", skuCode, status: "active" }, eligibility]
+      : mode === "SKU archived" ? [{ op: "set_sku_status", skuCode, status: "archived" }]
+      : mode === "repeated cache" || mode === "rollback" ? [cache, cache] : [eligibility];
+    await db.query("UPDATE public.catalog_products SET updated_at=statement_timestamp()-interval '1 day' WHERE id=$1", [data.productId]);
+    await db.query("UPDATE public.catalog_skus SET updated_at=statement_timestamp()-interval '1 day' WHERE id=$1", [sku.id]);
+    const timestamps = async (executor: PgQueryExecutor) => (await executor.query(`SELECT
+      (SELECT updated_at=transaction_timestamp() FROM public.catalog_products WHERE id=$1) AS product,
+      (SELECT updated_at=transaction_timestamp() FROM public.catalog_skus WHERE id=$2) AS sku`, [data.productId, sku.id])).rows[0];
+    const seen: unknown[] = [];
+    const target = realPriceAuthority(undefined, async (sql, executor) => {
+      if (/^UPDATE public.catalog_(?:products SET status|skus SET (?:status|sellable_standalone)|skus SET\s+publication_facts=jsonb_set\(publication_facts,'\{facts\}')/u.test(sql)) seen.push(await timestamps(executor));
+      if (mode === "rollback" && sql.startsWith("INSERT INTO public.catalog_publications")) throw new Error("Synthetic publication failure after touches");
+    });
+    const capability = (await target.authorize(null))!, command = await save(payload, data.draftId, revision, head);
+    await approve(command, target, capability);
+    const before = await snapshot(), result = await target.publish(command, capability);
+    expect(seen).toEqual(Array.from({ length: mode === "repeated cache" || mode === "SKU active" || mode === "rollback" ? 2 : 1 },
+      () => ({ product: productStatus, sku: !productStatus })));
+    if (mode === "rollback") {
+      expect(result).toMatchObject({ outcome: "dependency_unavailable" });
+      expect(await snapshot()).toEqual(before);
+    } else expect(result).toMatchObject({ outcome: "committed" });
+  }));
