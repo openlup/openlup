@@ -92,3 +92,43 @@ for token authority, reminder scheduling, retry and recreation composition.
 Consult [refusal codes](../reference/refusal-codes.md) and
 [recovery limits](../reference/limits.md#expired-checkout-recovery-and-order-holds)
 when deciding which continuation to offer.
+
+## Native stock priority
+
+Native available-to-promise (ATP) subtracts eligible held and committed reservations,
+uncredited active subscription demand through the installed renewal horizon, and
+channel exposure. The cutoff is inclusive. Only the fenced renewal allocator can
+skip soft demand; a new purchase cannot select that exemption. This policy does
+not change subscription dates, delivery alignment or frozen renewal terms.
+
+In the next minor candidate, `@openlup/platform/inventory` exports
+`RenewalStockProtectionPolicy`, `installRenewalStockProtectionPolicy(db, policy)`
+and `readRenewalStockProtectionPolicy(db)`; its contracts subpath also exports the
+type. Apply the ordered native migration
+`20261123130000_inventory_renewal_protection_policy.sql` before using the helpers.
+An explicit installation writes the `inventory_renewal_protection` commerce setting:
+exactly `{ revision: 'store-1', renewalProtectionDays: 14 }`, with a nonblank revision
+and an integer from 1 through 3660. Absence returns
+`{ revision: 'default', renewalProtectionDays: 14 }` and keeps historical ATP results.
+Malformed stored data refuses with `inventory_renewal_protection_policy_invalid`.
+Use a host-owned installation connection to write. ATP callers need EXECUTE on
+`inventory_renewal_protection_days()` in addition to their existing ATP grants.
+After the migration, upgrade each custom runtime role before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Without it, ATP raises SQLSTATE `42501` even when no policy is installed. The
+restricted SECURITY DEFINER helper reads settings with its owner's privileges;
+ATP callers need no settings-table SELECT. The TypeScript policy reader still
+requires SELECT on `commerce_settings` to return revision and days. Qualified
+installations supply both privileges through their service-role binding.
+
+`createPostgresStockAvailability().readPort.read` admits only `horizonDays` equal
+to the installed value and no excluded order; otherwise it retains
+`native_stock_read_options_unsupported`. Set the `horizonDays` option on
+`createNewPurchaseStockAvailabilityPort` to that same value when composing it.
+A request cannot override installed priority. The managed stock adapter retains
+its existing 14-day contract; this native migration does not change managed SQL.

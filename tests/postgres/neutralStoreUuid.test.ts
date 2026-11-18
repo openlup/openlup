@@ -170,7 +170,7 @@ describe.each(Object.values(configurations))('$id host UUID identity', config =>
       const base = 'http://127.0.0.1:' + port;
       process.chdir(${JSON.stringify(state)});
       const keyring = { current: 'fixture-only-acceptance-key-00000000000000' };
-      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), keyring);
+      const bindings = await composeNativeBindings(connectionString, createOriginPolicy(config, port), config, keyring);
       const pool = new Pool({ connectionString });
       const registrar = createPostgresContactClientRegistrar({ connectionString });
       const lane = createPostgresRoleFreeTransactionLane({ connectionString });

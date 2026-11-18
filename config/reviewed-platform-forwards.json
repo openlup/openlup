@@ -5572,6 +5572,25 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "K7-INVENTORY-RENEWAL-PROTECTION",
+        "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+            "beforeSha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.inventory_renewal_protection_days()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -7843,6 +7862,22 @@
           "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
           "beforeSha256": null,
           "afterSha256": "549bd5701142449bb97e5ec517a10f2909d4fe44400abb140dc15b1615ab740b"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
+      "sha256": "383b9a3fbac03c9a0ec5ab4fcb049dae2e121756f28c8de51933ffd3a8965834",
+      "functions": [
+        {
+          "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+          "beforeSha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d",
+          "afterSha256": "271417d6788f0e55e36f55c3e7415c45d862e4f7a32520eeacbb91655a1a1c1b"
+        },
+        {
+          "signature": "public.inventory_renewal_protection_days()",
+          "beforeSha256": null,
+          "afterSha256": "4d1570aecc30219d65da01d175f2d87c95c1cc4caef9d803c0f9e20e803f74db"
         }
       ]
     }

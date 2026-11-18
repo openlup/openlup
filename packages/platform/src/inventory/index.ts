@@ -25,3 +25,5 @@ export { createInventoryBindings, type InventoryBindingDependencies, type Invent
 export { createPostgresStockAvailability } from "./postgresStockAvailability.js";
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
+export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
+export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy } from "./renewalStockProtection.js";

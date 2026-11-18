@@ -12,6 +12,8 @@ import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
+import type { StoreConfig } from '../shared/config.ts';
+import { readRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
 import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -51,13 +53,18 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 }
 
 /** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
       rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user`)).rows[0];
     if (identity?.login !== 'starter_runtime' || identity.role !== 'starter_runtime'
       || identity.rolsuper !== false || identity.rolbypassrls !== false) throw new Error('starter_runtime_connection_required');
+    const installed = await readRenewalStockProtectionPolicy(pool);
+    const expected = config.inventory.renewalProtection;
+    if (installed.revision !== expected.revision || installed.renewalProtectionDays !== expected.renewalProtectionDays) {
+      throw new Error('starter_installed_policy_drift');
+    }
     if (!(await pool.query("SELECT to_regprocedure('public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamp with time zone)') IS NOT NULL AS ready")).rows[0]?.ready)
       throw new Error('starter_billing_installation_required');
   } catch (error) { await pool.end(); throw error; }

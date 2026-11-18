@@ -142,12 +142,15 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.'));
-    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
+    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 4);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
+    const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
+    assert.equal(protection.length, 1);
+    assert.deepEqual(JSON.parse(String(protection[0]!.values?.[1])), config.inventory.renewalProtection);
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
     assert.equal(registry.length, acquisitionAddresses.length);
     assert.match(registry[0]!.text, /\(source, reference, revision, provenance, active\)/);
@@ -269,4 +272,17 @@ test('an existing seed caller without a stock port uses the native writer and ro
   };
   await assert.rejects(applyDemoSeed(config,failed.binding),{ message: 'native_stock_refused' });
   assert.equal(failed.calls.at(-1)!.text,'ROLLBACK');
+});
+
+test('owned renewal priority validates before installation writes, independent of configuration ID', async () => {
+  for (const protection of [{ revision: '', renewalProtectionDays: 14 },
+    { revision: 'owned-1', renewalProtectionDays: 0 }, { revision: 'owned-1', renewalProtectionDays: 3661 },
+    { revision: 'owned-1', renewalProtectionDays: 1.5 }, { revision: 'owned-1', renewalProtectionDays: 14, extra: true }]) {
+    const config = structuredClone(Object.values(configurations)[0]!);
+    config.id = 'arbitrary-policy-fixture';
+    config.inventory.renewalProtection = protection;
+    const fixture = installation();
+    await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'inventory_renewal_protection_policy_invalid' });
+    assert.deepEqual(fixture.calls, []);
+  }
 });

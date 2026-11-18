@@ -163,6 +163,7 @@ export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInven
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
 export type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
 export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
+export type { RenewalStockProtectionPolicy } from "./renewalStockProtection.js";
 ```
 ## dist/inventory/contracts/inventory.d.ts
 
@@ -349,6 +350,15 @@ export interface NewPurchaseStockAvailabilityOptions {
     horizonDays?: number;
 }
 ```
+## dist/inventory/contracts/renewalStockProtection.d.ts
+
+```ts
+/** Installed native ATP priority; request callers cannot override it. */
+export interface RenewalStockProtectionPolicy {
+    revision: string;
+    renewalProtectionDays: number;
+}
+```
 ## dist/inventory/contracts/reservation.d.ts
 
 ```ts
@@ -427,6 +437,8 @@ export { createInventoryBindings, type InventoryBindingDependencies, type Invent
 export { createPostgresStockAvailability } from "./postgresStockAvailability.js";
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
+export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
+export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy } from "./renewalStockProtection.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -597,7 +609,7 @@ export interface NativeStockPromise {
     softSubscriptionDemandQuantity: number;
     channelExposureQuantity: number;
 }
-/** Native read-only ATP. The fixed 14-day priority cannot be waived by a new
+/** Native read-only ATP. The installed priority cannot be waived by a new
  * purchase caller. Only the fenced native SQL allocator uses the renewal exemption. */
 export declare function createPostgresStockAvailability(executor: StockQueryExecutor, options: {
     sourceKey: string;
@@ -707,6 +719,21 @@ export interface AutomaticRenewalInventoryPort {
 }
 /** ATP/reservation adapter; it can reserve only through the fenced public renewal function. */
 export declare function createPostgresRenewalReservationPort(executor: PgQueryExecutor): AutomaticRenewalInventoryPort;
+export {};
+```
+## dist/inventory/renewalStockProtection.d.ts
+
+```ts
+import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Explicit install step on a host-owned write-capable connection. Never called by a read. */
+export declare function installRenewalStockProtectionPolicy(db: Executor, policy: RenewalStockProtectionPolicy): Promise<void>;
+/** Absence retains the historical 14-day priority. Malformed installed data refuses. */
+export declare function readRenewalStockProtectionPolicy(db: Executor): Promise<RenewalStockProtectionPolicy>;
 export {};
 ```
 ## dist/inventory/reservationPolicy.d.ts

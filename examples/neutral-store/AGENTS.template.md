@@ -115,3 +115,11 @@ The default `test:browser` setup does not prove a successful persisted purchase;
 on the installed CLI and explicit inputs and may refuse.
 
 Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).
+
+Own renewal stock priority in `inventory.renewalProtection` in
+`owned/store.config.ts`: exactly `revision` (nonblank) and `renewalProtectionDays`
+(integer 1..3660). The demo uses revision `starter-1` and 14 days. The explicit
+installation step installs it; start only reads and refuses
+`starter_installed_policy_drift` on revision or value mismatch. Apply the native
+policy migration and deliberately install a changed policy before restarting.
+New-purchase requests must use the installed horizon and cannot waive protection.
