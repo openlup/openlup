@@ -39,10 +39,11 @@ this package's declarations and changelogs and source at the matching release
 tag. A current-`main` link establishes no compatibility or support guarantee.
 See [CHANGELOG.md](CHANGELOG.md) for release changes and migration precautions.
 
-The prepared `1.1.0` set supersedes published `1.0.0`, which failed exact-set
-qualification for starter upgrades. It documents the required owned-file
-migration and includes cadence widening with native forward 151. Qualification of
-1.1.0 is recorded after publication.
+The published `1.1.0` set is the first qualified stable npm set and image
+([qualification run](https://github.com/openlup/openlup/actions/runs/44263843134)).
+It includes the required owned-file migration, cadence widening and native
+forward 151. It supersedes `1.0.0`, which later passed qualification as an npm
+set without an image ([requalification run](https://github.com/openlup/openlup/actions/runs/44256496392)).
 
 The `subscriptions` entry also exposes `createPostgresSubscriptionAutoResume`:
 bind its `run(limit, now)` method to the host scheduler and job ledger after

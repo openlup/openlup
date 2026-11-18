@@ -3,6 +3,7 @@ import { z } from "../../lib/validation/zod.js";
 
 import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
 export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "@openlup/platform/pricing/contracts";
+import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 export type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
 const catalogFactsFields = {
   skuId: z.string().uuid(),
@@ -51,12 +52,28 @@ const catalogFactsV3ProvenanceSchema = z
   })
   .strict();
 
-/** Server-only evidence for strict catalog, subscription policy and one-time offer prices. */
-export const catalogFactsProvenanceSchema = z.union([
+const legacyCatalogFactsProvenanceSchema = z.union([
   catalogFactsV1ProvenanceSchema,
   catalogFactsV2ProvenanceSchema,
-  catalogFactsV3ProvenanceSchema,
 ]);
+
+/** Server-only evidence for strict catalog, subscription policy and one-time offer prices. */
+export const catalogFactsProvenanceSchema = z.transform<CatalogFactsProvenance, CatalogFactsProvenance>((input: unknown, context) => {
+  // Keep the existing union diagnostics for historical and unrecognized inputs.
+  const schema = typeof input === "object" && input !== null && "version" in input
+    && input.version === CATALOG_FACTS_OFFER_PROVENANCE_VERSION
+    ? catalogFactsV3ProvenanceSchema
+    : legacyCatalogFactsProvenanceSchema;
+  const result = schema.safeParse(input);
+  if (result.success) return result.data;
+  for (const issue of result.error.issues) {
+    // The legacy union emits non-union issues only from the one branch that
+    // can continue, so its enclosing quote refinements must still run.
+    const canContinue = schema === legacyCatalogFactsProvenanceSchema && issue.code !== "invalid_union";
+    context.addIssue({ ...issue, continue: canContinue ? true : undefined });
+  }
+  return z.NEVER;
+});
 
 
 
