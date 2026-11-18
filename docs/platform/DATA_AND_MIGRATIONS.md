@@ -36,6 +36,44 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Native activation edit window
+
+The native `20261123120000_subscription_edit_window_activation.sql` forward adds
+an invoker activation entry point and commit helper with `_with_edit_window`
+suffixes. Their optional final integer defaults to NULL, which explicitly uses
+72, matching the column default; explicit input must be 1–720 and refuses
+with `subscription_activation_edit_window_invalid` before writes. The value is
+stored in the initial subscription INSERT. Existing rows, cycle dates and edit
+fences are unchanged. Completed activation replay retains the stored value.
+
+A defaulted overload of the existing name makes PostgreSQL reject legacy calls
+as ambiguous even with typed arguments. The distinct names preserve existing
+function identities. This forward never redefines or changes privileges on
+either predecessor: their bodies, owner, ACLs and search paths remain identical.
+Old activation and repair callers retain their existing behavior and column
+default of 72. Each new function contains its predecessor's body with the edit
+window input; the new entry point uses the new commit helper. Neither legacy
+function calls the new functions, and neither new function calls a predecessor.
+Both new functions use SECURITY INVOKER with the pinned `public, pg_catalog`
+search path. They revoke PUBLIC privileges, conditionally revoke anon and
+authenticated, and conditionally grant EXECUTE to service_role using the admitted
+constant `pg_roles` blocks. Opting in requires EXECUTE on both new functions;
+service_role receives it where present, and owner-run self-host installations
+have it as owner. The TypeScript binding calls the unchanged predecessor when
+`editWindowHours` is omitted. The starter always passes its owned
+`subscriptionCreation.editWindowHours`, including 72, so it opts in.
+The mirrored package SQL and three native manifest selections bind the same
+bytes; only current inventories are remeasured.
+
+The managed chain has no native `subscription_activate_from_captured_payment`
+equivalent. Its separate `subscription_activate_from_paid_checkout_order` uses
+managed payment intents and subscription composition; it still supplies 72.
+That separate boundary and its provisional/starter path are unchanged here.
+The [activation witness](../../tests/postgres/subscriptionActivationEditWindow.test.ts)
+proves default and legacy compatibility, zero-write refusal, frozen replay and
+the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
+as the installed fence subtracts stored hours from the next cycle instant.
+
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while
@@ -2246,6 +2284,25 @@ installed FK targets, ordered keys, `confdeltype='r'`, default update/match
 actions, validation and non-deferrability, the primary key and check, while
 retaining every existing ownership, ACL and catalogue guard. This admission
 control adds no feature SQL, publication binding or catalogue capability.
+Four further closed new-table declarations admit successor storage only:
+`public.subscription_successor_proposals`,
+`public.subscription_successor_operations_v2`,
+`public.subscription_successor_wait_cases_v2`, and
+`public.subscription_successor_reservations_v2`. The complete declarations in
+[`NATIVE_SUCCESSOR_TABLE_SQL`](../../scripts/reviewed-platform-forward.ts)
+fix every column, type, nullability, default, ordered primary/unique key, CHECK
+and inline single-column `ON DELETE RESTRICT` reference. Only unquoted SQL
+words fold case; literal values and token kinds stay exact. No other action,
+shape or appended SQL gains admission. The independent
+[catalogue comparator](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+checks installed columns and constraints, ordered FK keys and exact targets,
+RESTRICT, update/match/validation/deferrability, ordinary-table identity and
+RLS and column collation. Client-bearing shapes require blocking absorption
+classification. Only these four shapes may reference one another in the same slot; all
+other targets and keys must preexist. Owner/ACL, absorption classification and
+all generic catalogue guards still apply; only an explicitly listed absorption
+census may add its existing closed client-column grant and policy. No feature
+SQL, runtime grant, binding or capability is installed by this control.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
@@ -3304,14 +3361,17 @@ its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
 refusal recovery. Uncaptured refusals rotate on the existing renewal operation
 `updated_at` selection stamp, so recovery failures before case creation cannot
 keep occupying a bounded page. Captured waits retain their case selection stamp.
-The seam subtracts hard commitments and fixed 14-day active
-subscription demand from new-purchase availability. Native safety and channel
-exposure remain zero. This is no advance reservation lifecycle or one-time
+The seam subtracts hard commitments and active subscription demand through the
+native horizon installed via `inventory_renewal_protection` (default 14 days)
+from new-purchase availability. The managed ATP contract remains fixed at 14 days.
+Native safety and channel exposure remain zero. This is no advance reservation
+lifecycle or one-time
 checkout write contract. The allocator alone uses the renewal exemption.
 
 For a separate native runtime role, the host must explicitly grant `EXECUTE` on
 `public.inventory_available_to_promise(text,text,timestamptz,boolean)` and its
-helper `public.inventory_channel_exposure_quantity(text,text)`, including for
+helpers `public.inventory_channel_exposure_quantity(text,text)` and
+`public.inventory_renewal_protection_days()`, including for
 roles that reserve renewals or call N3 deficits/admission/refusal recovery.
 New-purchase readers additionally need `EXECUTE` on
 `public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)`.
@@ -3321,8 +3381,23 @@ Alongside the caller's existing relation privileges, ATP requires `SELECT` on
 `subscription_renewal_terms`, `subscription_renewal_term_lines`,
 `subscription_renewal_operations` and `subscription_cycles` in `public`;
 new-purchase reads also require `SELECT` on `public.catalog_skus`.
-These invoker helpers have no shipped runtime grant. The allocator retains its
-existing ACL, and neither X nor Y calls ATP; their existing grants still apply.
+When upgrading a custom runtime role from the earlier grant list, apply exactly
+one additional grant after the policy migration and before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Without it ATP fails with SQLSTATE `42501`, even when the policy is absent;
+permission failure never falls back to 14 days. The policy helper is
+`SECURITY DEFINER` with `search_path = pg_catalog, pg_temp` and reads the
+schema-qualified settings table, so ATP callers need no `SELECT` on
+`commerce_settings`. The TypeScript policy reader separately needs that `SELECT`
+to return the revision and days. The policy helper grants `EXECUTE` to
+`service_role`; the other invoker helpers have no shipped runtime grant.
+The allocator retains its existing ACL, and neither X nor Y calls ATP; their
+existing grants still apply.
 
 X restores released late-paid reservation lines to committed, non-expiring ATP
 holds once, returning from its immutable recovery receipt before further writes.
@@ -4382,6 +4457,38 @@ The two stable definer snapshots grant execution only to `service_role`, with no
 new raw-table grants. Their [package composition](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls)
 binds client ownership and separates expired inspection from payment authority.
 This forward contains no recreation writer or historical backfill.
+
+### Installed checkout reminder schedule
+
+The native `20261123140000_checkout_recovery_reminder_schedule.sql` forward
+replaces `commerce_enqueue_abandoned_cart_reminders(integer)` (current preimage:
+`20260818120000_checkout_recovery_lifecycle.sql`) and
+`commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)` (current
+preimage: `20261110100000_checkout_recovery_waves.sql`). Signatures, security,
+search paths, owners and ACLs are preserved; the integer-only checkout wrapper
+is unchanged. The new restricted SECURITY DEFINER
+`commerce_checkout_recovery_reminder_schedule()` validates the installed
+`checkout_recovery_reminders` setting with `search_path = pg_catalog, pg_temp`.
+Absence returns the historical 1/24/72 and 1/20 waves; malformed data raises
+`checkout_recovery_reminder_schedule_invalid` before writes. No policy is seeded
+and no pending event is rewritten. See the [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
+for stage routes, timing precedence, predecessor gates and hour-derived keys.
+The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderSchedule.test.ts)
+compares both current preimages, payloads (apart from the new stage and random
+tokens), metadata, dedup keys, replay, function attributes and restricted access.
+
+Separate runtime roles retain their existing producer EXECUTE and relation
+privileges. Add this one EXECUTE grant before resuming the invoker abandoned-cart
+producer; the qualified service-role binding already receives it:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() TO runtime_role;
+```
+
+The validator requires no caller settings SELECT. Missing EXECUTE raises `42501`
+even with an absent key. The TypeScript read helper separately needs settings
+SELECT to return the revision and full schedule. Installer-only writes and
+read-only starter drift checks follow the installed inventory policy pattern.
 
 ### Expired checkout preparation
 

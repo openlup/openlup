@@ -1,3 +1,4 @@
+import { isConfiguredLocale } from '../shared/locales.ts';
 import { createHash } from 'node:crypto';
 import { createOrderReviewHandlers, createPostgresOrderReviewLifecyclePort,
   createOrderReviewAdminHandlers, createPostgresOrderReviewAdminReadPort } from '@openlup/platform/commerce/server';
@@ -28,7 +29,7 @@ export function composeExistingCapabilities(input: {
     if (Object.keys(payload).some(key => !['email', 'consent', 'addressChoiceId', 'locale'].includes(key))
       || typeof payload.email !== 'string' || payload.email.length > 254
       || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email.trim())
-      || payload.consent !== true || (payload.locale !== 'en' && payload.locale !== 'pl')) return refused('starter_input_invalid');
+      || payload.consent !== true || !isConfiguredLocale(payload.locale, context.config.market)) return refused('starter_input_invalid');
     const choice = acquisitionAddresses.find(item => item.id === payload.addressChoiceId);
     if (!choice) return refused('starter_input_invalid');
     if (!context.actor.requesterKey) return refused('starter_requester_unavailable');

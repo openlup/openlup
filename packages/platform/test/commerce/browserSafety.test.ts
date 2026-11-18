@@ -32,6 +32,8 @@ const serverExports = [
   "CHECKOUT_RECOVERY_TOKEN_PREFIX",
   "EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS",
   "ORDER_DRAFT_RPC_NAME",
+  "installCheckoutRecoveryReminderSchedule",
+  "readCheckoutRecoveryReminderSchedule",
   "ORDER_DRAFT_SUPERSEDE_RPC_NAME",
   "cancelAbandonedCheckout",
   "cancelUnstartedPromotionCheckout",

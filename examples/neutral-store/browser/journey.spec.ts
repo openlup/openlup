@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test, expect } from '@playwright/test';
 import { messageDestinations, routes } from '../shared/routes.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
@@ -27,7 +28,7 @@ test('mixed-store installed quotes retain both purchase modes', async ({ request
   }
 });
 
-for (const locale of ['en', 'pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: quote refusals explain safe repairs and hide unknown payloads`, async ({ page }) => {
     let code = 'host_binding_required';
     await page.route('**/api/actions/offer.validate', route => route.fulfill({
@@ -82,7 +83,7 @@ for (const locale of ['en', 'pl'] as const) {
     test(`${locale}: follows ${destination.id}`, async ({ page }) => {
       await page.goto(routes.destinations[locale]);
       const row = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: destination.id, exact: true }) });
-      await row.getByRole('link').nth(locale === 'en' ? 0 : 1).click();
+      await row.getByRole('link').nth(market.locales.indexOf(locale)).click();
       await expect(page.locator('main h1')).toBeVisible();
       if (destination.hash) {
         await expect(page).toHaveURL(new RegExp(`#${destination.hash}$`));
@@ -138,7 +139,7 @@ for (const locale of ['en', 'pl'] as const) {
       }));
       const form = page.locator(`${item.section} form.action-form`);
       const select = form.locator(`select[name="${item.field}"]`);
-      await expect(select.locator('option')).toHaveText(item.choices.map(choice => choice[locale === 'en' ? 1 : 2]!));
+      await expect(select.locator('option')).toHaveText(item.choices.map(choice => choice[{ en: 1, pl: 2 }[locale]]!));
       await form.locator(`input[name="${item.reference}"]`).fill('fictional-reference');
       for (const choice of item.choices) {
         await select.selectOption(choice[0]!);
@@ -260,13 +261,13 @@ for (const locale of ['en', 'pl'] as const) {
 // This is deliberately a required, failing witness until the native path is actually bound.
 // It must never be rewritten to accept a missing binding as a completed sandbox purchase.
 test('completes sandbox purchase through the installed engine', async ({ page }) => {
-  await page.goto(routes.builder.en);
+  await page.goto(routes.builder[market.defaultLocale]);
   await page.getByRole('spinbutton').first().fill('1');
-  await page.getByRole('button', { name: copy.en.addBox, exact: true }).click();
-  await page.getByRole('button', { name: copy.en.checkout, exact: true }).click();
-  await page.getByLabel(copy.en.termsAccept).check();
-  await page.getByRole('button', { name: copy.en.placeOrder, exact: true }).click();
-  await page.locator('main').getByRole('link', { name: copy.en.completion, exact: true }).click();
-  await page.getByRole('button', { name: copy.en.simulatePaid, exact: true }).click();
+  await page.getByRole('button', { name: copy[market.defaultLocale].addBox, exact: true }).click();
+  await page.getByRole('button', { name: copy[market.defaultLocale].checkout, exact: true }).click();
+  await page.getByLabel(copy[market.defaultLocale].termsAccept).check();
+  await page.getByRole('button', { name: copy[market.defaultLocale].placeOrder, exact: true }).click();
+  await page.locator('main').getByRole('link', { name: copy[market.defaultLocale].completion, exact: true }).click();
+  await page.getByRole('button', { name: copy[market.defaultLocale].simulatePaid, exact: true }).click();
   await expect(page.locator('main')).toContainText('paid');
 });

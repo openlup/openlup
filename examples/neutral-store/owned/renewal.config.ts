@@ -1,11 +1,13 @@
 import type { RenewalConfig, SubscriptionCareConfig } from '../shared/renewal-config.ts';
 import { renewalNoticeCopy } from './renewal-copy.ts';
+import { market } from './market.config.ts';
+import { choice } from '../shared/policy.ts';
 
 export function demoRenewalConfig(configuration: string): RenewalConfig {
   return { subscriptionCare: demoSubscriptionCare(), enabled: false, retryBackoffHours: [24, 48, 72], population: `demo:${configuration}`, cadenceSeconds: 90,
     batchLimit: 10, leaseSeconds: 180, sandbox: { initial: 'declined', retry: 'succeeded' },
     recovery: { activeGraceSeconds: 21600, exhaustedTtlSeconds: 86400 },
-    notices: { locale: 'en', countryLocales: {}, copy: renewalNoticeCopy } };
+    notices: { locale: market.defaultLocale, countryLocales: {}, copy: renewalNoticeCopy } };
 }
 
 
@@ -15,7 +17,10 @@ export function demoSubscriptionCare(): SubscriptionCareConfig {
     terms: { pauseDays: 14, pauseMonths: 1, slideMinDays: 3, slideMaxDays: 60,
       orderNowDelayMinutes: 5, reactivateDelayDays: 2 },
     retentionReasons: ['too_much_product', 'delivery_issue', 'too_expensive', 'not_a_good_fit', 'other'],
-    retention: { offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause' },
+    retention: { offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' }, defaultOffer: 'pause', pausePreset: '1_month' },
+    actions: { active: ['skip', 'slide', 'order_now', 'pause', 'cancel'], paused: ['resume', 'cancel'], cancelled: ['reactivate'],
+      whilePaymentBlocked: ['pause', 'cancel'], whilePaymentExpired: ['cancel', 'resume'] },
+    pausePresets: choice('2_weeks', '2_weeks', '1_month', 'indefinite'),
     rescheduleOfferDays: 14,
     dispatch: { leaseSeconds: 60, maxAttempts: 6, transientBackoffSeconds: 900 },
     notices: { renewalMinSeconds: 259200, renewalMaxSeconds: 432000, ordinaryFreshnessSeconds: 432000,

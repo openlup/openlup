@@ -305,6 +305,31 @@ assert.deepEqual(timeline,["link-key","callback","action-key"]);
 `);
 }
 
+/** K4: local formats and refusal behavior through the installed shipping export. */
+export function proveSavedAddressFormatsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createCustomerSavedAddressRequestSchemas } from "@openlup/platform/shipping";
+const addressPolicy={country:"ZZ",countryAliases:["example"],phonePrefix:"999",normalizeTaxId:()=>null,isValidTaxId:()=>true,
+  messages:{name:"name",country:"country",phone:"phone",postalCode:"postal",taxId:"tax"}};
+const addressInput={idempotencyKey:"address-key",kind:"shipping",line1:"Example 1",city:"Example",country:"example",postalCode:"ab 1234",contactPhone:"12345678"};
+const local={normalizePostalCode:value=>value.replaceAll(" ",""),isValidPostalCode:value=>value==="AB1234",normalizePhone:value=>value==="12345678"?"+99912345678":null};
+const addressSchema=createCustomerSavedAddressRequestSchemas({...addressPolicy,local}).customerAddressUpsertRequestSchema;
+const addressResult=addressSchema.safeParse(addressInput);
+assert.equal(addressResult.success,true);
+assert.equal(addressResult.data.postalCode,"AB1234");assert.equal(addressResult.data.contactPhone,"+99912345678");
+const badAddress=addressSchema.safeParse({...addressInput,postalCode:"12345"});
+assert.equal(badAddress.success,false);assert.deepEqual(badAddress.error.flatten().fieldErrors,{postalCode:["postal"]});
+const callbackFailure=createCustomerSavedAddressRequestSchemas({...addressPolicy,local:{...local,normalizePhone(){throw Error("private");}}})
+  .customerAddressUpsertRequestSchema.safeParse(addressInput);
+assert.equal(callbackFailure.success,false);assert.deepEqual(callbackFailure.error.flatten().fieldErrors,{contactPhone:["phone"]});
+const compatibleAddress=createCustomerSavedAddressRequestSchemas(addressPolicy).customerAddressUpsertRequestSchema
+  .safeParse({...addressInput,postalCode:"12345",contactPhone:"500100100"});
+assert.equal(compatibleAddress.success,true);assert.equal(compatibleAddress.data.postalCode,"12-345");assert.equal(compatibleAddress.data.contactPhone,"+999500100100");
+assert.throws(()=>createCustomerSavedAddressRequestSchemas({...addressPolicy,local:{...local,isValidPostalCode:null}}),/saved_address_policy_invalid/);
+`);
+}
+
 /** C10: installed self-service selection, exact owner receipt/refusal and no fallback. */
 export function proveSelfServiceConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -2534,6 +2559,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveAccountSupportReadsConsumer(consumer);
     for (const proof of ACCOUNT_SUPPORT_COMPOSITION_PROOFS) proveAccountSupportCompositionConsumer(consumer, compiler, proof);
     proveSelfServiceConsumer(consumer);
+    proveSavedAddressFormatsConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
     proveG10FulfillmentConsumer(consumer);

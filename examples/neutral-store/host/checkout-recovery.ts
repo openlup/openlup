@@ -1,3 +1,4 @@
+import type { Locale } from '../shared/locales.ts';
 import { createPrivateCapture } from './private-capture.ts';
 import type { PostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
 import type { ActionContext } from './bindings.ts';
@@ -14,7 +15,7 @@ export interface CheckoutRecoveryMessage {
 }
 export interface PurchaseRecovery {
   tokens: PostgresCheckoutRecoveryTokenPort;
-  deliver(input: { email: string; rawToken: string; orderRef: string; expiresAt: string; context: ActionContext; locale: 'en' | 'pl' }): Promise<void>;
+  deliver(input: { email: string; rawToken: string; orderRef: string; expiresAt: string; context: ActionContext; locale: Locale }): Promise<void>;
 }
 
 /** Private delivery artifact, separate from authentication challenges and logs. */
@@ -183,7 +184,7 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
         settlementIntentId: latest.paymentIntentId, attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
       if (accepted.status !== 200) return refuse('unavailable');
       if (outcome === 'captured' && latest.mode === 'subscription_cycle') {
-        await activation.activate({ orderId: latest.orderId, acceptedQuote, currency: latest.currency,
+        await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: latest.orderId, acceptedQuote, currency: latest.currency,
           capturedReference: latest.paymentIntentId, methodFacts: attempt.methodFacts,
           stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
       }
@@ -331,7 +332,7 @@ export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRo
           attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
         if (accepted.status !== 200) return refused();
         if (outcome === 'captured' && order.mode === 'subscription_cycle') {
-          await activation.activate({ orderId: order.orderId, acceptedQuote, currency: order.currency,
+          await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: order.orderId, acceptedQuote, currency: order.currency,
             capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts,
             stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
         }

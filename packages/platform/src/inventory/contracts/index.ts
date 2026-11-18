@@ -14,5 +14,6 @@ export type {
   InventoryForecastResponse,
 } from "./inventory.js";
 export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
-export type { ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
+export type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
 export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
+export type { RenewalStockProtectionPolicy } from "./renewalStockProtection.js";

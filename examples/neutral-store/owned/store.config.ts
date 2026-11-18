@@ -1,3 +1,4 @@
+import { market } from './market.config.ts';
 import { quoteConfigurations } from './quote.config.ts';
 import { demoRenewalConfig } from './renewal.config.ts';
 import { demoRecoveryConfiguration } from '../shared/recovery-config.ts';
@@ -17,6 +18,11 @@ function offers(days: Numbers, defaultDays: number, skus: readonly string[]): Su
 const inputs = {
   supplements: {
     id: 'supplements',
+    inventory: { renewalProtection: { revision: 'starter-1', renewalProtectionDays: 14 } },
+    checkoutRecoveryReminders: { revision: 'starter-1',
+      abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'gentle', afterHours: 24 }, { stage: 'last', afterHours: 72 }],
+      checkoutRecovery: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 20 }] },
+    subscriptionCreation: { editWindowHours: 72 },
     subscriptionOffers: offers(set(28, 56), 28, ['ASTER-DAWN-60', 'ASTER-DAWN-60-L', 'ASTER-DAWN-60-EXTRA',
       'ASTER-NOON-60', 'ASTER-NOON-60-L', 'ASTER-DUSK-30', 'ASTER-DUSK-30-L']),
     quote: quoteConfigurations.supplements,
@@ -44,7 +50,7 @@ const inputs = {
       hero: '/media/collection.svg',
       heroAlt: { en: 'Three illustrated fictional containers', pl: 'Trzy ilustracje fikcyjnych opakowań' },
     },
-    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
+    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', ...market },
     offer: {
       layout: 'cards',
       minUnits: 1,
@@ -116,6 +122,11 @@ const inputs = {
   },
   coffee: {
     id: 'coffee',
+    inventory: { renewalProtection: { revision: 'starter-1', renewalProtectionDays: 14 } },
+    checkoutRecoveryReminders: { revision: 'starter-1',
+      abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'gentle', afterHours: 24 }, { stage: 'last', afterHours: 72 }],
+      checkoutRecovery: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 20 }] },
+    subscriptionCreation: { editWindowHours: 72 },
     subscriptionOffers: offers(set(14, 28, 56), 28, ['PEBBLE-LIGHT-250', 'PEBBLE-LIGHT-250-L', 'PEBBLE-LIGHT-250-EXTRA',
       'PEBBLE-MEDIUM-250', 'PEBBLE-MEDIUM-250-L', 'PEBBLE-DARK-250', 'PEBBLE-DARK-250-L']),
     quote: quoteConfigurations.coffee,
@@ -140,7 +151,7 @@ const inputs = {
       offerBody: { en: 'Mix the fictional roasts and choose your frequency.', pl: 'Połącz fikcyjne kawy i wybierz częstotliwość.' },
     },
     media: { hero: '/media/coffee.svg', heroAlt: { en: 'Illustrated coffee bags', pl: 'Ilustracja torebek kawy' } },
-    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', locales: ['en', 'pl'] },
+    market: { country: 'ZZ', currency: 'XTS', timezone: 'UTC', ...market },
     offer: {
       layout: 'list', minUnits: 1, maxUnits: 12, shippingMinor: 640,
       freeShippingFromMinor: 1000, subscriptionDiscountBps: 500, subscriptionRoundingQuantumMinor: 10,

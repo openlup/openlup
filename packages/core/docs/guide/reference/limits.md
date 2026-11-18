@@ -17,13 +17,13 @@ refusals while running it.
 The opt-in subscription reference does not demonstrate automatic renewals,
 fulfillment, failed-renewal recovery or the complete late-delivery journey.
 A renewal date is a planned charge date, not a delivery promise. Follow its
-[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
 for setup and buyer/account verification.
 
 To evaluate a source reference, choose an immutable release tag and follow that
 revision's README and release notes, including its toolchain and test
 prerequisites. A source build does not start a complete commerce application.
-See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/.github/INSTALL_SUPPORT_POLICY.md)
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
 
 ## Subscription cadence representation
@@ -63,6 +63,27 @@ edit-quote CHECK to **1..3660** through
 This forward is unreleased; apply the matching package's complete native
 catalogue before using longer cadences. The managed chain has no corresponding
 90-day cap and receives no migration in this change.
+
+## Quantity and line representation
+
+Checkout commands represent at most **99 units per line** and **50 lines**.
+The platform schema keeps these fixed bounds as private
+`MAX_CHECKOUT_LINE_QUANTITY` and `MAX_CHECKOUT_LINES` constants; they are not
+configurable package exports. The starter also retains its **100-unit cart**
+bound (`MAX_STARTER_OFFER_UNITS`). Owned business limits may be lower.
+
+In the current source candidate, startup refuses unsupported owned configuration:
+
+| Configuration above the representation bound | Startup code |
+| --- | --- |
+| `offer.maxUnits > 100`, or any subscription SKU quantity domain maximum above 99 | `starter_units_above_representation` |
+| `maximumBaseLines + maximumAddonLines > 50` in either subscription offer | `starter_lines_above_representation` |
+
+Exactly these bounds are accepted. Subscription `maximumUnits` is a separate
+aggregate business limit; it does not replace the per-SKU or line bounds.
+Lowering owned limits applies to fresh admission. Completed matching checkout
+receipts and authorized paid-order reads retain their stored result, with
+ownership and request fingerprint checks intact.
 
 ## Fulfillment execution limits
 
@@ -152,7 +173,7 @@ shadow, review or enforcement policy; a result alone authorizes no order or paym
 Starting the starter host without a runtime database connection leaves its
 native actions unbound. Its lifecycle supplies that connection for the local
 demonstration database; configuration health alone does not establish live
-operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/deploy/neutral-store/README.md)
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/deploy/neutral-store/README.md)
 does not establish rollback after a schema or package upgrade. Follow the
 [database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
 
@@ -172,7 +193,7 @@ paid orders awaiting subscription activation.
 ## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
-[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/examples/neutral-store/shared/limits.ts).
+[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/examples/neutral-store/shared/limits.ts).
 A visible refusal button displays the code and explanation locally; it does not submit an operation.
 API refusals return an object such as `{"ok":false,"code":"host_binding_required"}`.
 Unknown operations return HTTP 404; other action refusals normally return HTTP 409 unless the handler supplies another status.
@@ -340,7 +361,8 @@ both demonstrations use 160. Phone and postal-code fields share the native
 destination bounds. `subscriptionOffers` owns cadences, defaults and per-SKU
 quantities; `offer.cadenceDays` is a derived UI projection. Configured days must
 be whole numbers from 1 through 3660 (`MAX_CADENCE_DAYS`). Invalid offer domains
-refuse with `starter_subscription_offer_invalid`; invalid projected choices
+refuse with `starter_subscription_offer_invalid`, except values above the
+representation bounds, which use the named codes listed above; invalid projected choices
 refuse with `starter_offer_invalid`. Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and unit prices fit
 PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis

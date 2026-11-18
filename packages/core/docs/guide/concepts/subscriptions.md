@@ -16,7 +16,7 @@ PostgreSQL bindings. Constructing a binding does not mount a runner or select a
 payment provider. Your application supplies authorization, durable storage,
 scheduling and provider bindings, using matching installed `@openlup/*`
 versions. Check the installed exports and
-[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/api/subscriptions.api.md)
+[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/api/subscriptions.api.md)
 before selecting a seam.
 
 The engine returns models and events. Durable admission decides whether a new
@@ -24,6 +24,34 @@ renewal may proceed, using stored delivery facts before renewal artifacts are
 created. A successful payment is not delivery evidence; the
 delivery-alignment boundary, described under "Subscription delivery alignment"
 below, owns arrival and persisted schedule alignment.
+
+## Freeze the edit window at activation
+
+In the current source candidate for the next release after 1.1.0,
+`activateNativePurchaseWithRenewal` accepts the optional trusted host input
+`editWindowHours`: an integer from 1 through 720. Invalid input throws
+`subscription_activation_edit_window_invalid` before any database query.
+Omission preserves the installed default of 72 hours. Apply the packaged native
+`20261123120000_subscription_edit_window_activation.sql` forward before supplying
+this input. Opting in requires EXECUTE on both new `_with_edit_window` functions:
+the forward grants it to `service_role` where that role exists, and owner-run
+self-host installations have it as owner. When the input is omitted, the binding
+calls the unchanged predecessor with its existing privileges; an older
+installation continues to support those calls.
+
+The value is stored in `subscriptions.edit_window_hours` when the subscription
+is created. Existing edit fences read that row. Changing host configuration or
+replaying a completed activation leaves existing subscriptions unchanged.
+The cutoff is the next cycle instant minus the stored hours: a 72-hour cutoff
+closes earlier than a 24-hour cutoff. This input does not change cycle dates,
+delivery alignment or renewal admission.
+
+Direct native SQL callers can use
+`subscription_activate_from_captured_payment_with_edit_window` with a trailing
+integer argument; omission or SQL `NULL` explicitly uses 72, matching the column
+default. Existing activation and repair signatures retain their behavior, including the 72-hour
+default. The managed checkout activation path is separate and does not expose
+this native input.
 
 ## Choose the right layer
 
@@ -83,6 +111,48 @@ admit 1..3660 after the complete catalogue includes
 apply the matching package's complete catalogue before using longer periods.
 The public package and exact editors use separate writers.
 
+## Admit account commands
+
+In the unreleased source candidate for the next minor, compose optional
+`admitSubscriptionCommand: SubscriptionCommandAdmission` on
+`NativeSubscriptionCommandBinding`, used by `createPostgresSubscriptionCommands`
+and `createPostgresSubscriptionCommandStore`. This additive API belongs to the
+stable subscriptions and subscriptions/contracts subpaths. Omitting it preserves
+native command behavior, including the existing queries and refusal receipts.
+
+Your host authenticates and authorizes the actor before invoking the port.
+The port takes the actor/key lock, checks receipt identity and fingerprint,
+and returns a completed replay before current admission. For fresh preview
+and apply (including apply of a pending preview), it locks the owned subscription
+and supplies `action`, nullable `pausePreset` and `reason`, `subscriptionStatus`
+and nullable `paymentBlocker`. Payment facts follow account projection precedence:
+open dunning is `payment_blocked`, otherwise expired dunning is `payment_expired`,
+otherwise failed/retry-scheduled cycles are `payment_failed`, otherwise null.
+Native skip/slide names map to `skip`/`slide`; native bundle and add-on edits map
+to `edit_future_terms`.
+
+Use READ COMMITTED in `withTransaction`. Payment facts are read in a separate
+statement after the subscription lock is acquired, so they include a dunning
+case committed while the command waited. PostgreSQL also gives READ UNCOMMITTED
+these statement snapshots. REPEATABLE READ and SERIALIZABLE retain the older
+transaction snapshot; fresh admission throws
+`subscription_command_admission_isolation_unsupported` before the callback or
+writes. Completed receipt replay still returns before this isolation check.
+
+Return normally to admit or throw an error with a named application code to
+refuse. The error propagates through the transaction, before host term translation,
+pricing, quotes, receipts, events or other durable writes. Keep this callback
+effect-free: evaluate the supplied facts and owned static data only. Do not
+authorize, read mutable state, perform provider I/O or write anything. Native
+authorization, lifecycle state, in-flight payment and delivery-alignment fences
+remain unconditional; admission cannot relax them.
+
+A narrowed action list or removed pause preset still permits a matching
+completed receipt to replay its stored result. Changed payloads conflict before
+admission. Apply current policy to fresh work, without rewriting existing
+obligations. Expose the same owned choices in your account UI; hiding a control
+alone does not enforce command admission.
+
 ## Lifecycle in durable storage
 
 The [engine status matrix and dunning continuity](subscription-engine.md#the-status-matrix-and-dunning-continuity)
@@ -106,7 +176,7 @@ uncollected cycle. These duties are not performed by a pure engine call.
 
 The managed win-back and historical recovery functions assign the requested
 instant plus the implementation’s restart lead unconditionally; consult the
-[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
+[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
 for the durable timing boundary. Unlike the core restart, they do not
 preserve a later stored date: a subscription paid through a later date can
 therefore receive an earlier next charge on this path. Account for that
@@ -262,9 +332,9 @@ and 11 after the initial decline if each runs and fails when due. Days 1, 3 and
 Sandbox observation recording is separate from provider-result recording;
 configuring the starter sandbox does not establish provider retry timing.
 The current definitions are `payment_provider_result_apply` in
-[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
+[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
 and both failure overloads in
-[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
+[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Verify your selected catalogue or applied prefix with the
 [current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).
 
@@ -430,7 +500,7 @@ contention can still roll capture back; redelivery converges after contention
 clears, without an automatic retry dispatcher.
 
 Operators find review-marked events with the read-only query on the
-[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v1.0.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
+[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v1.1.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
 run through an authorized native PostgreSQL session; pass a returned event ID to
 the truth port's `readEvent` for details. The query records no review decision
 and no money or order transition.

@@ -49,7 +49,7 @@ import {
   proveCatalogConformanceConsumer,
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
-import { proveSelfServiceConsumer } from "./platform-cold-consumer.ts";
+import { proveSelfServiceConsumer, proveSavedAddressFormatsConsumer } from "./platform-cold-consumer.ts";
 import { ACCOUNT_SUPPORT_COMPOSITION_PROOFS, proveAccountSupportCompositionConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -697,6 +697,8 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
+    installCheckoutRecoveryReminderSchedule: "function",
+    readCheckoutRecoveryReminderSchedule: "function",
     cancelAbandonedCheckout: "function",
     cancelUnstartedPromotionCheckout: "function",
     classifyCheckoutRecoveryTokenState: "function",
@@ -1130,6 +1132,10 @@ it("C11 rejects removal of the envelope-returning self-service callable", () => 
   expect(mutant).not.toBe(implementation);
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), mutant);
   expect(() => proveSelfServiceConsumer(consumer)).toThrow(/self-service factory must be callable/);
+});
+
+it("K4 accepts installed local address formats and preserves field refusals and defaults", () => {
+  proveSavedAddressFormatsConsumer(pristinePackedA1Fixture());
 });
 
 it("C11 accepts the installed account-support closure with declared module and package edges", () => {

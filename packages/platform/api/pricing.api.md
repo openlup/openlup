@@ -4613,6 +4613,12 @@ export interface CustomerSavedAddressValidationPolicy {
     country: string;
     countryAliases: readonly string[];
     phonePrefix: string;
+    /** Optional local-country formats. Effect-free: no I/O or authorization. Throws refuse the affected field. */
+    local?: {
+        normalizePostalCode(value: string): string;
+        isValidPostalCode(value: string): boolean;
+        normalizePhone(value: string): string | null;
+    };
     normalizeTaxId(value: string | null): string | null;
     isValidTaxId(value: string): boolean;
     messages: {

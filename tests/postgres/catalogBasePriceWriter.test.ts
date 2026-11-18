@@ -132,7 +132,7 @@ beforeAll(async () => {
   genuine = await genuinePurchase(owner);
   await owner.query(readFileSync(inputsPath, "utf8"));
   await owner.query(readFileSync(writerPath, "utf8"));
-  await owner.query(readFileSync("db/platform/migrations/20261122200000_catalog_publication.sql", "utf8"));
+  await owner.query(readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8"));
   await owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
   await owner.query("UPDATE public.price_entries SET mode='one_time',unit_price_minor=1000 WHERE variant_id=$1", [genuine.sku]);
   await owner.query(`INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)

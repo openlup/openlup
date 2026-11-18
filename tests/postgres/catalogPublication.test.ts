@@ -49,10 +49,10 @@ beforeAll(async () => {
   db = new Pool({ connectionString: container.connectionString }); pools.push(db);
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) {
-    if (unit.file === "db/platform/migrations/20261122200000_catalog_publication.sql") break;
+    if (unit.file === "db/platform/migrations/20261123150000_catalog_publication.sql") break;
     await db.query(readFileSync(unit.file, "utf8"));
   }
-  await db.query(readFileSync("db/platform/migrations/20261122200000_catalog_publication.sql", "utf8"));
+  await db.query(readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8"));
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -2861,7 +2861,7 @@ it.each(["catalog_publications", "catalog_sku_revisions", "catalog_operator_rece
 
 
 it.each((["anon", "authenticated", "service_role"] as const).flatMap(role => (["present", "absent"] as const).map(mode => ({ role, mode }))))("cycle1 native optional role SQL admission: $role $mode", async ({ role, mode }) => {
-  const statement = readFileSync("db/platform/migrations/20261122200000_catalog_publication.sql", "utf8").split("\n")
+  const statement = readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8").split("\n")
     .find(line => line.startsWith("DO $$") && line.includes(`FROM ${role};`));
   expect(statement).toBeDefined();
   const client = await db.connect();

@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -53,26 +54,26 @@ test('native acquisition, replay, quotas, durable read and unresolved support au
     expect(status.find((item: { operation: string }) => item.operation === operation).bound).toBe(false);
   }
   const contact = `applicant-${randomUUID()}@example.test`;
-  const valid = { email: contact, consent: true, locale: 'en', addressChoiceId: acquisitionAddresses[0]!.id };
+  const valid = { email: contact, consent: true, locale: market.defaultLocale, addressChoiceId: acquisitionAddresses[0]!.id };
   expect(await action('acquisition.submit', { ...valid, consent: false })).toEqual({ ok: false, code: 'starter_input_invalid' });
   expect(await action('acquisition.submit', { ...valid, addressChoiceId: 'unknown' })).toEqual({ ok: false, code: 'starter_input_invalid' });
   for (const field of ['reference', 'source', 'revision', 'provenance', 'addressReference', 'requesterKey', 'actorRef']) {
     expect(await action('acquisition.submit', { ...valid, [field]: 'caller-controlled' }))
       .toEqual({ ok: false, code: 'starter_input_invalid' });
   }
-  await page.goto(routes.acquisition.en);
+  await page.goto(routes.acquisition[market.defaultLocale]);
   const form = page.locator('main form');
   await expect(form.locator('[name=firstName], [name=lastName]')).toHaveCount(0);
   await form.locator('[name=email]').fill(contact);
   await form.locator('[name=addressChoiceId]').selectOption(acquisitionAddresses[0]!.id);
   await expect(form.locator('[name=consent]')).not.toBeChecked();
-  await form.getByRole('button', { name: copy.en.apply, exact: true }).click();
+  await form.getByRole('button', { name: copy[market.defaultLocale].apply, exact: true }).click();
   await expect(form.locator('[name=consent]:invalid')).toHaveCount(1);
   await expect(form.locator('.action-result')).toBeEmpty();
   await form.locator('[name=consent]').check();
   const submission = page.waitForResponse(response => response.url().endsWith('/api/actions/acquisition.submit'));
   const request = page.waitForRequest(request => request.url().endsWith('/api/actions/acquisition.submit'));
-  await form.getByRole('button', { name: copy.en.apply, exact: true }).click();
+  await form.getByRole('button', { name: copy[market.defaultLocale].apply, exact: true }).click();
   const sent = (await request).postDataJSON();
   expect(Object.keys(sent).sort()).toEqual(['addressChoiceId', 'consent', 'email', 'locale']);
   const receipt = await (await submission).json();
@@ -82,7 +83,7 @@ test('native acquisition, replay, quotas, durable read and unresolved support au
   const caseRef: string = receipt.value.caseRef;
   await expect(form.locator('.action-result')).toContainText(caseRef);
   const replay = page.waitForResponse(response => response.url().endsWith('/api/actions/acquisition.submit'));
-  await form.getByRole('button', { name: copy.en.apply, exact: true }).click();
+  await form.getByRole('button', { name: copy[market.defaultLocale].apply, exact: true }).click();
   expect(await (await replay).json()).toEqual({ ok: true, value: { caseRef }, replayed: true });
   for (let index = 0; index < 2; index++) expect((await action('acquisition.submit', valid)).code).toBe('acquisition_case_conflict');
   expect((await action('acquisition.submit', valid)).code).toBe('acquisition_case_rate_limited');
@@ -105,13 +106,13 @@ test('native acquisition, replay, quotas, durable read and unresolved support au
   for (const operation of ['operator.customerSearch', 'operator.customer']) {
     expect((await action(operation, { query: customerEmail, customerRef })).code).toBe('host_binding_required');
   }
-  await page.goto(routes.admin.en + '#customers');
+  await page.goto(routes.admin[market.defaultLocale] + '#customers');
   const customerForms = page.locator('#customers form');
   await customerForms.nth(0).locator('[name=query]').fill(customerEmail);
-  await customerForms.nth(0).getByRole('button', { name: copy.en.searchCustomer, exact: true }).click();
+  await customerForms.nth(0).getByRole('button', { name: copy[market.defaultLocale].searchCustomer, exact: true }).click();
   await expect(customerForms.nth(0).locator('.action-result')).toContainText('host_binding_required');
   await customerForms.nth(1).locator('[name=customerRef]').fill(customerRef);
-  await customerForms.nth(1).getByRole('button', { name: copy.en.read, exact: true }).click();
+  await customerForms.nth(1).getByRole('button', { name: copy[market.defaultLocale].read, exact: true }).click();
   await expect(customerForms.nth(1).locator('.action-result')).toContainText('host_binding_required');
 
   const durable = native(`

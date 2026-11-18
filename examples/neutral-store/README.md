@@ -29,6 +29,9 @@ The database-free preview does not compose native database actions.
 
 ## Current candidate
 
+The owned market registry in `owned/market.config.ts` selects `locales` and
+`defaultLocale`; supply copy for every configured locale.
+
 The installed native catalogue and account stores use the runtime connection.
 The composition root binds guest checkout, sandbox payment and customer
 subscription address and lifecycle changes through public native factories. Host and browser
@@ -266,7 +269,7 @@ sends the configured Host; any external health probe must also send that Host.
 
 `owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts` own typed
 configuration, localized general copy and the named presentation fragments.
-Domain inputs include `owned/renewal.config.ts` (cancellation offers and retry
+Domain inputs include `owned/renewal.config.ts` (account actions, pause presets, cancellation offers and retry
 timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
 [the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
@@ -571,8 +574,8 @@ from promised arrival; unavailable arrival promises remain explicitly unavailabl
 Effective address outcomes come from the owning native event. Other rich account
 sections keep their existing refusal.
 
-The [notice binder](host/lifecycle-notices.ts) renders configured English/Polish
-copy through the separately owned private capture module and M04 receipt owner.
+The [notice binder](host/lifecycle-notices.ts) renders copy for every
+configured locale through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
 access-grant references contain the native token UUID. The one-shot care command mounts the native lifecycle dispatcher with this binder. No parallel
 subscription-notice outbox handler is registered. The separate paid-order
@@ -596,7 +599,7 @@ reclaimed events reuse the original record. No real mail provider is active.
 Subject and summary labels live in the per-locale `paid` values in
 [owned notice copy](owned/renewal-copy.ts). Locale selection uses the same
 `renewal.notices.locale` and `countryLocales` as subscription notice copy.
-Both English and Polish copy must be complete and nonempty. All other email
+Copy for every configured locale must be complete and nonempty. All other email
 send methods refuse with `starter_paid_mail_method_not_selected`.
 
 ## Subscription care candidate
@@ -662,7 +665,8 @@ a delivery claim.
 `host/paid-mail.ts` composes the native job lease, first/final wave producer,
 canonical expiry and initial-checkout sweeps, reconciliation and the existing
 outbox handlers. Private messages reuse the atomic local capture protocol.
-Only confirmed capture in the selected profile qualifies the final wave.
+When the schedule has a first wave, only its confirmed capture in the selected
+profile qualifies the final wave; a last-only schedule has no predecessor gate.
 Checkout expiry links inspect the source and recovery lineage. Live pending-order
 links support original-order sandbox continuation payment. Dedicated token pay,
 exact cookie-authorized inline retry and the embedded-browser buyer-link control

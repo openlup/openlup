@@ -583,6 +583,22 @@ export interface CommerceOfferAvailabilityPort {
     }): Promise<CommerceOfferAvailability[]>;
 }
 ```
+## dist/commerce/contracts/checkoutRecoveryReminders.d.ts
+
+```ts
+/** Installed native reminder stages are independent of elapsed hours. */
+export interface CheckoutRecoveryReminderSchedule {
+    revision: string;
+    abandonedCart: readonly {
+        stage: "first" | "gentle" | "last";
+        afterHours: number;
+    }[];
+    checkoutRecovery: readonly {
+        stage: "first" | "last";
+        afterHours: number;
+    }[];
+}
+```
 ## dist/commerce/contracts/fulfillmentRecovery.d.ts
 
 ```ts
@@ -628,6 +644,7 @@ export type * from "./orderMoney.js";
 export type { OmsPaymentStatus } from "./state.js";
 export type * from "./fulfillmentRecovery.js";
 export type * from "./omsTypes.js";
+export type { CheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminders.js";
 ```
 ## dist/commerce/contracts/intent.d.ts
 
@@ -7103,6 +7120,7 @@ export interface CheckoutRecoveryEmailInput<Locale extends string = string> {
     recoveryToken: string;
     mode: string;
     reminderHours: number;
+    stage?: "first" | "last";
     linkSource?: "buyer_hatch";
     outboxEventId: string;
     locale?: Locale;
@@ -7820,6 +7838,21 @@ export declare function withCheckoutRecoveryPaymentHold<Input extends {
 }): {
     pay(input: Input): Promise<Result>;
 };
+```
+## dist/commerce/server/checkoutRecoveryReminderSchedule.d.ts
+
+```ts
+import type { CheckoutRecoveryReminderSchedule } from "../contracts/checkoutRecoveryReminders.js";
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** Explicit installation on a host-owned write-capable connection. Reads never install. */
+export declare function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void>;
+/** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
+export declare function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule>;
+export {};
 ```
 ## dist/commerce/server/checkoutRecoveryToken.d.ts
 
@@ -10175,6 +10208,7 @@ export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.j
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
+export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminderSchedule.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -19477,6 +19511,12 @@ export interface CustomerSavedAddressValidationPolicy {
     country: string;
     countryAliases: readonly string[];
     phonePrefix: string;
+    /** Optional local-country formats. Effect-free: no I/O or authorization. Throws refuse the affected field. */
+    local?: {
+        normalizePostalCode(value: string): string;
+        isValidPostalCode(value: string): boolean;
+        normalizePhone(value: string): string | null;
+    };
     normalizeTaxId(value: string | null): string | null;
     isValidTaxId(value: string): boolean;
     messages: {

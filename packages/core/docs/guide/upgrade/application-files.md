@@ -5,6 +5,8 @@ and a candidate snapshot. Use `planAppUpgrade` and `applyAppUpgrade` from
 `@openlup/platform/lifecycle`, and keep application-specific brand, content,
 policy and integration composition outside that managed inventory.
 
+For a 0.43.0 starter, first follow the [required owned-file migration](v1-0-0.md#starter-applications-from-0430).
+
 ## Prepare snapshots
 
 Keep immutable `from` and `to` values of type `AppVersionSnapshot`. Each names
@@ -85,10 +87,18 @@ backfill nor dependency provenance, runtime behavior or a rollback path.
 Perform [database migration](./database-migrations.md) and application checks
 separately before resuming service.
 
+The set-release preflight exercises this same transition before publication
+against retained digest-verified local candidate packs; a failure blocks the
+dispatch. Its receipt labels the target `candidate, local digest-verified`.
+Published provenance and post-publication qualification remain separate.
+
 The published-set qualification also exercises the neutral starter from the
 previous complete published set through the target release's public upgrade
 CLI. Managed snapshots come from each starter's ownership inventory. The check
-customizes owned theme and fragment files, refuses a divergent managed file,
+first applies the [required 0.43.0 starter migration](v1-0-0.md#starter-applications-from-0430)
+when applicable: target-only entries create three owned files, and four pristine
+owned contracts take the target extraction's bytes. It then customizes owned
+theme and fragment files, refuses a divergent managed file,
 interrupts apply with a process kill, resumes with identical snapshots and
 requires replay to make no changes. A harness check refuses incomplete file
 or declared-versus-installed dependency state; this is not an automatic serving

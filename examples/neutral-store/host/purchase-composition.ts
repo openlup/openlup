@@ -1,3 +1,4 @@
+import { isConfiguredLocale } from '../shared/locales.ts';
 import { mintSandboxContinuation } from './checkout-recovery.ts';
 import { isInitialCheckoutOrder, sameUuid } from './recurring-fence.ts';
 import { createHash } from 'node:crypto';
@@ -94,7 +95,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!offer.ok) return refused(offer.issues[0]!.code);
     if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
     if (payload.termsAccepted !== true) return refused('starter_terms_required');
-    if (payload.locale !== 'en' && payload.locale !== 'pl') return refused('starter_input_invalid');
+    if (!isConfiguredLocale(payload.locale, context.config.market)) return refused('starter_input_invalid');
     const email = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef, context.actor.principalRef])).rows[0]?.email
       : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
@@ -234,7 +235,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
       let renewalAttachment: string | undefined;
       if (payload.outcome === 'captured') {
         if (!await isInitialCheckoutOrder(db, order.id)) return refused('starter_order_not_found');
-        renewalAttachment = await activation.activate({ orderId: order.id, acceptedQuote: storedQuote,
+        renewalAttachment = await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: order.id, acceptedQuote: storedQuote,
           currency: order.currency_code, capturedReference: intent.external_ref ?? intent.id, methodFacts: attempt.methodFacts,
           stockSourceKey: source(context), templateId: `starter:${context.config.id}` });
       }

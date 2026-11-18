@@ -301,13 +301,13 @@ describe("CI image mirror workflow controls", () => {
     ]);
     expect(writer).not.toMatch(/\b(?:npm|npx|node)\b|actions\/checkout|secrets\.|^\s*(?:shell|container|services):/mu);
     const runs = writer.match(/^ {6}(?:- | {2})run:.*\n(?: {10}[^\n]*\n|\n)*/gmu) ?? [];
-    expect(runs).toHaveLength(2);
-    expect(runs[0]).not.toContain("${{");
+    expect(runs).toHaveLength(3);
+    expect(runs[1]).not.toContain("${{");
     // Seal the reviewed skopeo + shell/jq writer, including env and alternate YAML
     // run forms; shell allowlists cannot prove that candidate code stays inert.
     // Canonical workflow keys precede jobs, so this also seals inherited env,
     // permissions, triggers and concurrency. Defaults are refused above.
-    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("188974acde01acb1ef38d585216d55d647beeaca0f33125be67fbbc3819cd9bf");
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("e2f36008bb459cf6d3320924331e2432881b7c0f3be13bf134213df0699bb61f");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
   it.each([

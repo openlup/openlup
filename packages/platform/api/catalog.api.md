@@ -4959,9 +4959,9 @@ export declare const CATALOG_MIGRATIONS: readonly [
     },
     /** @experimental */
     {
-        readonly id: "20261122200000_catalog_publication";
-        readonly catalogPath: "db/platform/migrations/20261122200000_catalog_publication.sql";
-        readonly position: 152;
+        readonly id: "20261123150000_catalog_publication";
+        readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
+        readonly position: 155;
         readonly sha256: "833268f19ef85fe3b980d7fe2cc1d96e000f9ca536739ab0c22d623149654ae6";
         readonly url: URL;
     }
@@ -9757,6 +9757,12 @@ export interface CustomerSavedAddressValidationPolicy {
     country: string;
     countryAliases: readonly string[];
     phonePrefix: string;
+    /** Optional local-country formats. Effect-free: no I/O or authorization. Throws refuse the affected field. */
+    local?: {
+        normalizePostalCode(value: string): string;
+        isValidPostalCode(value: string): boolean;
+        normalizePhone(value: string): string | null;
+    };
     normalizeTaxId(value: string | null): string | null;
     isValidTaxId(value: string): boolean;
     messages: {

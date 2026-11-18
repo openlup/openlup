@@ -144,6 +144,10 @@ jobs:
           else
             npm run packages:check -- --cold --out "$RUNNER_TEMP/packs" --release-tag "openlup-$PACKAGE-v$VERSION"
           fi
+      - name: Prove the adjacent starter upgrade against retained candidate packs
+        if: inputs.package == 'all'
+        working-directory: target
+        run: node --experimental-strip-types scripts/packages/exact-set-qualification.mjs "openlup-core-v$VERSION" "$TARGET_COMMIT" "$RUNNER_TEMP/candidate-upgrade.json" --candidate "$RUNNER_TEMP/packs/packages-manifest.json"
       - name: Install checksum-verified gitleaks 8.30.1
         env:
           GH_TOKEN: ${{ github.token }}

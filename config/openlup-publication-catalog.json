@@ -1466,7 +1466,19 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261122200000_catalog_publication.sql",
+      "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
       "class": "public-output"
     },
     {
@@ -2570,6 +2582,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/market.config.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote-copy.ts",
       "class": "public-output"
     },
@@ -2670,7 +2686,19 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/shared/copy-keys.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/shared/limits.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/locale-copy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/shared/locales.ts",
       "class": "public-output"
     },
     {
@@ -2734,6 +2762,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/test/checkout-recovery-stage.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/test/checkout-recovery.test.ts",
       "class": "public-output"
     },
@@ -2775,6 +2807,10 @@
     },
     {
       "path": "examples/neutral-store/test/interim-pricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/locales.test.ts",
       "class": "public-output"
     },
     {
@@ -2823,6 +2859,10 @@
     },
     {
       "path": "examples/neutral-store/test/sessions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/subscription-creation.test.ts",
       "class": "public-output"
     },
     {
@@ -4814,7 +4854,19 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261122200000_catalog_publication.sql",
+      "path": "packages/platform/sql/20261123120000_subscription_edit_window_activation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123130000_inventory_renewal_protection_policy.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123150000_catalog_publication.sql",
       "class": "public-output"
     },
     {
@@ -5662,6 +5714,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/contracts/checkoutRecoveryReminders.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/contracts/fulfillmentRecovery.ts",
       "class": "public-output"
     },
@@ -5970,6 +6026,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryReminderSchedule.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/checkoutRecoveryToken.ts",
       "class": "public-output"
     },
@@ -6139,6 +6199,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/installedPolicy.ts",
       "class": "public-output"
     },
     {
@@ -7618,6 +7682,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/contracts/renewalStockProtection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/contracts/reservation.ts",
       "class": "public-output"
     },
@@ -7627,6 +7695,10 @@
     },
     {
       "path": "packages/platform/src/inventory/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/installedPolicy.ts",
       "class": "public-output"
     },
     {
@@ -7655,6 +7727,10 @@
     },
     {
       "path": "packages/platform/src/inventory/renewalReservation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/renewalStockProtection.ts",
       "class": "public-output"
     },
     {
@@ -9714,6 +9790,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/checkoutRecoveryReminderSchedule.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/checkoutRecoveryToken.test.ts",
       "class": "public-output"
     },
@@ -10766,6 +10846,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/renewalStockProtection.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/inventory/reservationPolicyConformance.test.ts",
       "class": "public-output"
     },
@@ -11627,6 +11711,10 @@
     },
     {
       "path": "packages/platform/test/shipping/thresholdPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/activationEditWindow.test.ts",
       "class": "public-output"
     },
     {
@@ -18871,6 +18959,10 @@
     },
     {
       "path": "server/domains/commerce/outboxAbandonedCartEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/outboxAbandonedCartReminderStage.test.ts",
       "class": "public-output"
     },
     {
@@ -29862,6 +29954,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/checkoutRecoveryReminderSchedule.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/checkoutRecoveryTokenPort.test.ts",
       "class": "public-output"
     },
@@ -30207,6 +30303,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/inventoryRenewalProtectionPolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -30699,6 +30799,10 @@
     },
     {
       "path": "tests/postgres/stripePortableRail.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionActivationEditWindow.test.ts",
       "class": "public-output"
     },
     {

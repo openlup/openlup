@@ -30,6 +30,9 @@ const subscriptionOffer = { days, defaultDays: 28, minimumBaseUnits: 6, checkout
   bySku: Object.fromEntries(["JOURNEY-GUEST", "JOURNEY-GUEST-L"].map(sku => [sku,
     [{ days, quantities: { kind: "range" as const, min: 1, max: 99, step: 1 } }]])) };
 const config: StoreConfig = {
+  checkoutRecoveryReminders: { revision: "fixture-1", abandonedCart: [{ stage: "last", afterHours: 72 }], checkoutRecovery: [{ stage: "last", afterHours: 20 }] },
+  inventory: { renewalProtection: { revision: "fixture-1", renewalProtectionDays: 14 } },
+  subscriptionCreation: { editWindowHours: 72 },
   subscriptionOffers: { classic: subscriptionOffer, sized: subscriptionOffer },
   renewal: demoRenewalConfig("journey"),
   subscriptionEditing: undefined as never,
@@ -38,7 +41,7 @@ const config: StoreConfig = {
   theme: { ink: "#111111", paper: "#ffffff", accent: "#222222", accentInk: "#ffffff", border: "#333333" },
   copy: { heroTitle: words, heroBody: words, offerTitle: words, offerBody: words },
   media: { hero: "/media/synthetic.svg", heroAlt: words },
-  market: { country: "ZZ", currency: "XXX", timezone: "UTC", locales: ["en", "pl"] },
+  market: { country: "ZZ", currency: "XXX", timezone: "UTC", locales: ["en", "pl"], defaultLocale: "en" },
   offer: { layout: "cards", minUnits: 1, maxUnits: 10, shippingMinor: 0, freeShippingFromMinor: 0,
     subscriptionDiscountBps: 0, subscriptionRoundingQuantumMinor: 1,
     cadenceDays: [28], defaultCadenceDays: 28, products: [{ sku: "JOURNEY-GUEST", slug: "item", title: "Synthetic item",

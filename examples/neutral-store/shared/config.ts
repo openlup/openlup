@@ -1,3 +1,5 @@
+import type { CheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/contracts';
+import type { RenewalStockProtectionPolicy } from '@openlup/platform/inventory/contracts';
 import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import type { AdminCommerceOrderHoldRequest } from '@openlup/platform/commerce/contracts';
 import { estimateOffer } from './offer-estimate.ts';
@@ -9,9 +11,13 @@ import type { SellableCatalogItem } from '@openlup/platform/catalog/contracts';
 import { assertEditorConfig, type SubscriptionEditorConfig } from './subscription-edit.ts';
 
 import { assertSubscriptionOffer, type SubscriptionOffers } from './subscription-offer.ts';
+import { assertLocaleMarket, type Localized, type LocaleMarket } from './locales.ts';
+import { assertStarterCopy } from './locale-copy.ts';
+export type { Locale, Localized } from './locales.ts';
 
-export type Locale = 'en' | 'pl';
-export type Localized = Record<Locale, string>;
+// Starter cart representation bound; owned offers may choose a lower maximum.
+const MAX_STARTER_OFFER_UNITS = 100;
+
 export type PurchaseMode = 'one_time' | 'subscription';
 
 export interface Product extends SellableCatalogItem {
@@ -28,6 +34,9 @@ export interface Product extends SellableCatalogItem {
 /** Application-owned data, shared without translation between browser and host. */
 export interface StoreConfig {
   id: string;
+  inventory: { renewalProtection: RenewalStockProtectionPolicy };
+  checkoutRecoveryReminders: CheckoutRecoveryReminderSchedule;
+  subscriptionCreation: { editWindowHours: number };
   subscriptionEditing: SubscriptionEditorConfig;
   subscriptionOffers: SubscriptionOffers;
   renewal: RenewalConfig;
@@ -60,11 +69,10 @@ export interface StoreConfig {
     hero: string;
     heroAlt: Localized;
   };
-  market: {
+  market: LocaleMarket & {
     country: string;
     currency: string;
     timezone: string;
-    locales: readonly Locale[];
   };
   offer: {
     layout: 'cards' | 'list';
@@ -109,13 +117,44 @@ export interface StoreConfig {
 }
 
 export function assertConfig(config: StoreConfig): void {
-  assertRenewalConfig(config.renewal);
+  assertLocaleMarket(config.market);
+  const schedule = config.checkoutRecoveryReminders;
+  const scheduleCode = 'checkout_recovery_reminder_schedule_invalid';
+  if (!schedule || Object.keys(schedule).sort().join(',') !== 'abandonedCart,checkoutRecovery,revision'
+    || typeof schedule.revision !== 'string' || !schedule.revision.trim()) throw new Error(scheduleCode);
+  for (const key of ['abandonedCart', 'checkoutRecovery'] as const) {
+    const waves = schedule[key];
+    if (!Array.isArray(waves) || !waves.length) throw new Error(scheduleCode);
+    let previous = 0;
+    const seen = new Set<string>();
+    for (const wave of waves) {
+      if (!wave || Object.keys(wave).sort().join(',') !== 'afterHours,stage'
+        || !['first', 'last', ...(key === 'abandonedCart' ? ['gentle'] : [])].includes(wave.stage)
+        || seen.has(wave.stage) || !Number.isInteger(wave.afterHours)
+        || wave.afterHours <= previous || wave.afterHours > 2147483647) throw new Error(scheduleCode);
+      previous = wave.afterHours; seen.add(wave.stage);
+    }
+    if (waves.at(-1)?.stage !== 'last') throw new Error(scheduleCode);
+  }
+  const protection = config.inventory?.renewalProtection;
+  if (!protection || Object.keys(protection).sort().join(',') !== 'renewalProtectionDays,revision'
+    || typeof protection.revision !== 'string' || !protection.revision.trim()
+    || !Number.isInteger(protection.renewalProtectionDays)
+    || protection.renewalProtectionDays < 1 || protection.renewalProtectionDays > 3660) {
+    throw new Error('inventory_renewal_protection_policy_invalid');
+  }
+  if (!Number.isInteger(config.subscriptionCreation?.editWindowHours)
+    || config.subscriptionCreation.editWindowHours < 1 || config.subscriptionCreation.editWindowHours > 720) {
+    throw new Error('starter_subscription_creation_invalid');
+  }
+  assertRenewalConfig(config.renewal, config.market.locales);
   assertRetention(config.renewal.subscriptionCare);
   for (const offer of Object.values(config.subscriptionOffers)) assertSubscriptionOffer(offer, config.subscriptionEditing.catalogue.map(product => product.sku));
   assertEditorConfig(config.subscriptionEditing);
   assertPublicOrigin(config);
-  assertRecoveryConfiguration(config.recovery);
+  assertRecoveryConfiguration(config.recovery, config.market.locales);
   assertSupportEmail(config);
+  assertStarterCopy(config);
   const offer = config.offer;
   assertQuoteConfiguration(config.quote, config.subscriptionOffers.classic);
   if (typeof config.market.country !== 'string' || !/^[A-Z]{2}$/.test(config.market.country)
@@ -123,7 +162,7 @@ export function assertConfig(config: StoreConfig): void {
     || typeof config.market.timezone !== 'string' || !config.market.timezone.trim()) {
     throw new Error('starter_market_invalid');
   }
-  try { new Intl.DateTimeFormat('en', { timeZone: config.market.timezone }); }
+  try { new Intl.DateTimeFormat(config.market.defaultLocale, { timeZone: config.market.timezone }); }
   catch { throw new Error('starter_market_invalid'); }
   if (typeof config.id !== 'string' || config.id.length > 80
     || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.id)) throw new Error('starter_configuration_invalid');
@@ -140,8 +179,9 @@ export function assertConfig(config: StoreConfig): void {
     offer.subscriptionRoundingQuantumMinor]) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('starter_offer_invalid');
   }
+  if (offer.maxUnits > MAX_STARTER_OFFER_UNITS) throw new Error('starter_units_above_representation');
   if (offer.shippingMinor > 2147483647 || offer.freeShippingFromMinor > 2147483647
-    || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits || offer.maxUnits > 100
+    || offer.subscriptionRoundingQuantumMinor < 1 || offer.minUnits < 1 || offer.maxUnits < offer.minUnits
     || offer.subscriptionDiscountBps > 10000 || offer.cadenceDays.length === 0
     || !offer.cadenceDays.includes(offer.defaultCadenceDays)
     || !Number.isSafeInteger(offer.defaultCadenceDays) || offer.defaultCadenceDays < 1 || offer.defaultCadenceDays > MAX_CADENCE_DAYS
@@ -149,12 +189,6 @@ export function assertConfig(config: StoreConfig): void {
     throw new Error('starter_offer_invalid');
   }
   const purchase = config.purchase;
-  if (!purchase?.recoveryMessage || (['subject', 'body', 'expiryLabel', 'orderLabel'] as const).some(key => {
-    const value = purchase.recoveryMessage[key];
-    return !value || ['en', 'pl'].some(locale => typeof value[locale as Locale] !== 'string' || !value[locale as Locale].trim());
-  })) {
-    throw new Error('starter_recovery_message_invalid');
-  }
   if (!purchase
     || !Number.isSafeInteger(purchase.responseFloorMs) || purchase.responseFloorMs < 0
     || !purchase.contact.acquisitionSource.trim() || purchase.contact.acquisitionSource.length > 100
@@ -180,7 +214,7 @@ export function assertConfig(config: StoreConfig): void {
     || !config.orderControls?.holdReasons.length) throw new Error('starter_order_controls_configuration_invalid');
   for (const choices of [config.returns.reasons, config.orderControls.holdReasons]) {
     if (new Set(choices.map(choice => choice.code)).size !== choices.length || choices.some(choice =>
-      !choice.code.trim() || !choice.label.en.trim() || !choice.label.pl.trim())) {
+      !choice.code.trim())) {
       throw new Error('starter_order_controls_configuration_invalid');
     }
   }
