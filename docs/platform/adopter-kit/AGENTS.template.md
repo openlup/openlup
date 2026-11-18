@@ -64,3 +64,15 @@ monorepo instead, and this file does not apply there.
 Write your application's own rules here, outside the managed block.
 
 Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).
+
+## Change a business setting
+
+<!-- npm-scripts: starter -->
+
+From the starter application root, run `npm run settings -- list` to find the
+key by goal. For example, run
+`npm run settings -- list --goal "renewal stock protection horizon"`, then
+`npm run settings -- show inventory_renewal_protection --json`. Check the
+owner, allowed values, effect and frozen records before changing configuration.
+See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
+for the read path and refusal guidance.

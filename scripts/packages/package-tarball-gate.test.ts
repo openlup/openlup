@@ -26,6 +26,19 @@ describe("tarball gate", () => {
     }
     for (const path of [... ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json", "extra.ts", "install.mjs"].map(file => base + file), "docs/guide/other/pack.ts"]) expect(rules(packed([[path, "sample"]]))).toEqual(["package-content-allowlist"]);
   });
+  it("admits only the two tracked Platform settings artefacts", () => {
+    const platform = { name: "@openlup/platform", directory: "packages/platform", publish: true };
+    const files = ["settings-catalog.json", "settings-refusals.json"];
+    const packedFile = (path: string, bytes = "{}") => ({ path, bytes: encode(bytes) });
+    const read = (path: string) => ["package.json", ...files].some(file => path === "packages/platform/" + file)
+      ? encode("{}") : undefined;
+    const check = (data: TarballEntry[]) => checkTarballEntries(platform, [packedFile("package.json"), ...data], read)
+      .map(({ rule }) => rule);
+    expect(check(files.map(file => packedFile(file)))).toEqual([]);
+    expect(check([packedFile(files[0]!, "{ }")])).toEqual(["changed-file"]);
+    expect(check([packedFile("settings-other.json")])).toEqual(["package-content-allowlist"]);
+    expect(rules(packed([[files[0]!, "{}"]]))).toEqual(["package-content-allowlist"]);
+  });
   it("actual npm files lists exclude fragments for every admitted package; the tarball gate refuses a leak", () => {
     for (const name of ["core", "outbox", "platform"]) {
       const root = mkdtempSync(join(tmpdir(), "fragment-pack-"));

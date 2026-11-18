@@ -1594,6 +1594,8 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
+export { subscriptionSettings } from "./settings.js";
+export { subscriptionsSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -2805,6 +2807,79 @@ export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
     readonly executorCount: 1;
     readonly defaultEnabled: false;
 }>;
+```
+## dist/subscriptions/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by subscriptions. */
+export declare const subscriptionsSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
+```
+## dist/subscriptions/settings.d.ts
+
+```ts
+/** @experimental Discovery metadata for subscription creation and winback. */
+export declare const subscriptionSettings: readonly [{
+    readonly key: "subscriptionCreation.editWindowHours";
+    readonly domain: "subscriptions";
+    readonly kind: "code";
+    readonly goal: "Set how many hours before a renewal customers can edit a newly created subscription.";
+    readonly schemaVersion: 1;
+    readonly schema: {
+        readonly type: "integer";
+        readonly minimum: 1;
+        readonly maximum: 720;
+    };
+    readonly rules: readonly [];
+    readonly examples: readonly [{
+        readonly value: 48;
+    }];
+    readonly fallback: 72;
+    readonly defaultBasis: {
+        readonly kind: "reference-code";
+    };
+    readonly whyThisDefault: "A three-day cutoff preserves the established edit window and gives operations notice before renewal.";
+    readonly effect: {
+        readonly appliesTo: "New native subscription activations after deploying the host configuration.";
+        readonly frozenOn: readonly ["Existing subscriptions keep their stored edit window."];
+        readonly impact: "customer-promise";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "The host supplies the value at subscription activation.";
+    };
+    readonly change: {
+        readonly file: "owned/store.config.ts";
+        readonly symbol: "subscriptionCreation.editWindowHours";
+    };
+}, {
+    readonly key: "subscriber_winback_policy";
+    readonly domain: "subscriptions";
+    readonly kind: "installed";
+    readonly goal: "Find the cancellation age window for subscriber winback messages.";
+    readonly schemaVersion: 1;
+    readonly rules: readonly [];
+    readonly examples: readonly [];
+    readonly fallback: {
+        readonly minCancellationAgeDays: 14;
+        readonly maxCancellationAgeDays: 120;
+    };
+    readonly defaultBasis: {
+        readonly kind: "reference-code";
+    };
+    readonly whyThisDefault: "The age window preserves the established outreach timing after cancellation.";
+    readonly effect: {
+        readonly appliesTo: "Candidates for new winback messages.";
+        readonly frozenOn: readonly ["Existing winback delivery receipts retain their deduplication identity."];
+        readonly impact: "customer-promise";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "Discovery documents the age window. The full policy, consent behavior and episode change need separate qualification.";
+    };
+    readonly change: {
+        readonly operation: "No settings write operation is available for this key.";
+    };
+}];
 ```
 ## dist/subscriptions/sizedComposition.d.ts
 

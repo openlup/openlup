@@ -33,7 +33,9 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "release-gates.json"
+    "release-gates.json",
+    "settings-catalog.json",
+    "settings-refusals.json"
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",

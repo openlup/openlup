@@ -99,6 +99,19 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
       assert(readFileSync(join(app, path)).equals(readFileSync(join(target, path))), `starter owned migration did not match target: ${path}`);
     }
   }
+  if (!Object.hasOwn(from.files, "host/settings.ts") && Object.hasOwn(to.files, "host/settings.ts")) {
+    const path = "AGENTS.md", heading = "\n## Change a business setting\n";
+    const previous = readFileSync(join(app, path), "utf8");
+    const candidate = readFileSync(join(target, path), "utf8");
+    const start = candidate.indexOf(heading);
+    assert(start >= 0, "starter settings guidance missing from target");
+    if (!previous.includes(heading)) {
+      const end = candidate.indexOf("\n## ", start + heading.length);
+      const section = candidate.slice(start, end < 0 ? undefined : end);
+      writeFileSync(join(app, path), previous + (previous.endsWith("\n") ? "" : "\n") + section);
+    }
+    assert(JSON.parse(to.files["package.json"]).scripts.settings, "starter settings command missing from target");
+  }
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
   if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;
@@ -354,6 +367,69 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
     assert.deepEqual(executeApp(), { installedVersion: "0.36.0", coreVersion: "0.36.0", executedVersion: "0.36.0" });
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/** Exercise both independent discovery paths in the existing installed starter proof. */
+export function proveSettingsDiscovery(app: string): void {
+  const env = isolatedConsumerEnv();
+  const run = (name: string, args: string[]) =>
+    execFileSync(name, args, { cwd: app, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const key = "inventory_renewal_protection", goal = "renewal stock protection horizon";
+  const guide = join(app, "AGENTS.md");
+  const guideBytes = readFileSync(guide, "utf8");
+  const heading = "\n## Change a business setting\n";
+  const start = guideBytes.indexOf(heading);
+  assert(start >= 0, "starter settings guidance missing");
+  const end = guideBytes.indexOf("\n## ", start + heading.length);
+  const section = guideBytes.slice(start, end < 0 ? undefined : end);
+  const settings = (...args: string[]) => run("npm", ["--silent", "run", "settings", "--", ...args]);
+  const show = () => {
+    const result = JSON.parse(settings("show", key, "--json"));
+    assert.equal(result.schemaVersion, 1);
+    assert.equal(result.setting.key, key);
+    assert.equal(result.setting.domain, "inventory");
+    assert.equal(result.setting.schema.properties.renewalProtectionDays.minimum, 1);
+    assert.equal(result.setting.schema.properties.renewalProtectionDays.maximum, 3660);
+    assert.match(result.setting.effect.appliesTo, /Future available-to-promise/);
+    assert(result.setting.effect.frozenOn.some((item: string) => item.includes("Existing reservations")));
+    assert.equal(result.observation.state, "offline");
+  };
+
+  try {
+    writeFileSync(guide, guideBytes.replace(section, ""));
+    const lookup = JSON.parse(run(join(app, "node_modules/.bin/openlup-context"), ["search", goal, "--json"]));
+    const entry = lookup.hits.find((hit: { file: string; title: string }) =>
+      hit.file.endsWith("/settings-catalogue.md") && hit.title === key);
+    assert(entry, "openlup-context did not find the catalogue key");
+    assert(lookup.hits.some((hit: { file: string }) => hit.file.endsWith("/configure-settings.md")),
+      "openlup-context did not find Configure settings");
+    const lines = readFileSync(entry.file, "utf8").split("\n").slice(entry.start - 1, entry.end);
+    assert(lines.includes(`npm run settings -- show ${key}`), "catalogue entry did not lead to show");
+    show();
+  } finally {
+    writeFileSync(guide, guideBytes);
+  }
+
+  // The mirror follows only the instructions in the restored application guide.
+  assert(section.includes('npm run settings -- list --goal "' + goal + '"'));
+  const list = JSON.parse(settings("list", "--goal", goal, "--json"));
+  assert.deepEqual(list.entries.map(({ key }: { key: string }) => key), [key]);
+  assert(section.includes(`npm run settings -- show ${list.entries[0].key} --json`));
+  show();
+  assert(settings("list", "--goal", goal).includes(key));
+  assert(settings("show", key).includes("Existing reservations"));
+  const refused = spawnSync("npm", ["--silent", "run", "settings", "--", "show", "no_such_setting", "--json"],
+    { cwd: app, env, encoding: "utf8" });
+  assert.equal(refused.status, 1);
+  const { refusal } = JSON.parse(refused.stdout);
+  const explained = JSON.parse(settings("explain", refusal.code, "--json")).explanation;
+  assert.deepEqual(explained, refusal);
+  assert(settings("explain", refusal.code).includes(refusal.remediation.command));
+  for (const command of ["list", "show", "explain"]) assert(settings(command, "--help").includes("Examples:"));
+  for (const file of ["settings-catalog.json", "settings-refusals.json"]) {
+    const data = JSON.parse(readFileSync(join(app, "node_modules/@openlup/platform", file), "utf8"));
+    assert.equal(data.schemaVersion, 1);
   }
 }
 

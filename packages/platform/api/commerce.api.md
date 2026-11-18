@@ -124,6 +124,72 @@ export declare function buildOrderDeliveryContact(input: OrderDeliveryContactInp
 export declare function uuidFromOrderRef(orderRef: string): string;
 export declare function messageOf(error: unknown, stage: string): string;
 ```
+## dist/commerce/checkoutRecoveryReminderSetting.d.ts
+
+```ts
+export declare const checkoutRecoveryReminderSetting: {
+    readonly key: "checkout_recovery_reminders";
+    readonly domain: "commerce";
+    readonly kind: "installed";
+    readonly goal: "Find when checkout recovery and abandoned cart reminders are sent.";
+    readonly schemaVersion: 1;
+    readonly rules: readonly [];
+    readonly examples: readonly [];
+    readonly fallback: {
+        readonly revision: "default";
+        readonly abandonedCart: readonly [{
+            readonly stage: "first";
+            readonly afterHours: 1;
+        }, {
+            readonly stage: "gentle";
+            readonly afterHours: 24;
+        }, {
+            readonly stage: "last";
+            readonly afterHours: 72;
+        }];
+        readonly checkoutRecovery: readonly [{
+            readonly stage: "first";
+            readonly afterHours: 1;
+        }, {
+            readonly stage: "last";
+            readonly afterHours: 20;
+        }];
+    };
+    readonly absentMeans: {
+        readonly description: "Checkout recovery wave offsets come from host call parameters. Abandoned cart waves use 1, 24 and 72 hours.";
+        readonly source: "host call parameters";
+        readonly value: {
+            readonly abandonedCart: readonly [{
+                readonly stage: "first";
+                readonly afterHours: 1;
+            }, {
+                readonly stage: "gentle";
+                readonly afterHours: 24;
+            }, {
+                readonly stage: "last";
+                readonly afterHours: 72;
+            }];
+            readonly checkoutRecovery: null;
+        };
+    };
+    readonly defaultBasis: {
+        readonly kind: "reference-code";
+    };
+    readonly whyThisDefault: "The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.";
+    readonly effect: {
+        readonly appliesTo: "Scheduling new reminder waves.";
+        readonly frozenOn: readonly ["Enqueued messages and send receipts retain their recorded identity."];
+        readonly impact: "customer-promise";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "Runtime editing needs episode lineage and delivery replay evidence.";
+    };
+    readonly change: {
+        readonly operation: "installCheckoutRecoveryReminderSchedule";
+    };
+};
+```
 ## dist/commerce/checkoutRecoveryStartSchemas.d.ts
 
 ```ts
@@ -2760,6 +2826,8 @@ export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvail
 export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";
 export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION, checkoutRecoveryStartRequestSchema, checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
 export type { CheckoutRecoveryStartRequest, CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
+export { checkoutRecoveryReminderSetting } from "./checkoutRecoveryReminderSetting.js";
+export { commerceSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/commerce/model/customerFulfillmentRecovery.d.ts
 
@@ -8348,4 +8416,10 @@ export declare function createCommerceSchemas<Line extends z.ZodType, Currency e
 };
 export { CHECKOUT_RECOVERY_START_CONTRACT_VERSION, checkoutRecoveryStartRequestSchema, checkoutRecoveryStartResponseSchema } from './checkoutRecoveryStartSchemas.js';
 export type { CheckoutRecoveryStartRequest, CheckoutRecoveryStartResponse } from './checkoutRecoveryStartSchemas.js';
+```
+## dist/commerce/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by commerce. */
+export declare const commerceSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```

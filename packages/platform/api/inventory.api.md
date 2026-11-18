@@ -438,7 +438,8 @@ export { createPostgresStockAvailability } from "./postgresStockAvailability.js"
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
-export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy } from "./renewalStockProtection.js";
+export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, renewalStockProtectionSetting } from "./renewalStockProtection.js";
+export { inventorySettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -724,7 +725,65 @@ export {};
 ## dist/inventory/renewalStockProtection.d.ts
 
 ```ts
+import { z } from "zod";
 import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
+/** @experimental Discovery metadata for the installed renewal stock protection policy. */
+export declare const renewalStockProtectionSetting: {
+    readonly key: "inventory_renewal_protection";
+    readonly domain: "inventory";
+    readonly kind: "installed";
+    readonly goal: "Set the renewal stock protection horizon used to calculate stock available to new purchases.";
+    readonly schemaVersion: 1;
+    readonly schema: z.ZodObject<{
+        revision: z.ZodString;
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+    readonly rules: readonly [{
+        readonly code: "inventory_renewal_protection_policy_invalid";
+        readonly path: readonly ["revision"];
+        readonly description: "The revision must contain a non-whitespace character.";
+        readonly check: (value: RenewalStockProtectionPolicy) => boolean;
+    }];
+    readonly examples: readonly [{
+        readonly value: {
+            readonly revision: "store-1";
+            readonly renewalProtectionDays: 21;
+        };
+    }, {
+        readonly value: {
+            readonly revision: " ";
+            readonly renewalProtectionDays: 21;
+        };
+        readonly code: "inventory_renewal_protection_policy_invalid";
+    }, {
+        readonly value: {
+            readonly revision: "store-1";
+            readonly renewalProtectionDays: 0;
+        };
+        readonly code: "inventory_renewal_protection_policy_invalid";
+    }];
+    readonly fallback: {
+        readonly revision: "default";
+        readonly renewalProtectionDays: 14;
+    };
+    readonly defaultBasis: {
+        readonly kind: "reference-code";
+    };
+    readonly whyThisDefault: "Two weeks cover a typical replenishment cycle and preserve the established stock priority.";
+    readonly effect: {
+        readonly appliesTo: "Future available-to-promise calculations and new purchase allocations.";
+        readonly frozenOn: readonly ["Existing reservations keep their quantities and expiry times."];
+        readonly impact: "operations";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "The starter editor still supplies its configured horizon to the stock read port.";
+    };
+    readonly change: {
+        readonly operation: "installRenewalStockProtectionPolicy";
+    };
+};
+export declare function validateRenewalStockProtection(value: unknown): RenewalStockProtectionPolicy;
 interface Executor {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
@@ -734,6 +793,8 @@ interface Executor {
 export declare function installRenewalStockProtectionPolicy(db: Executor, policy: RenewalStockProtectionPolicy): Promise<void>;
 /** Absence retains the historical 14-day priority. Malformed installed data refuses. */
 export declare function readRenewalStockProtectionPolicy(db: Executor): Promise<RenewalStockProtectionPolicy>;
+/** @experimental Read an explicit installed override, preserving absence. */
+export declare function readRenewalStockProtectionOverride(db: Executor): Promise<RenewalStockProtectionPolicy | undefined>;
 export {};
 ```
 ## dist/inventory/reservationPolicy.d.ts
@@ -888,6 +949,12 @@ export declare function createInventorySubscriptionForecastResponseSchema(provid
         recommendedProductionQty: z.ZodNumber;
     }, z.core.$strict>;
 }, z.core.$strict>;
+```
+## dist/inventory/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by inventory. */
+export declare const inventorySettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/inventory/sql.d.ts
 

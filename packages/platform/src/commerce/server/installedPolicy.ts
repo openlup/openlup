@@ -2,16 +2,20 @@
 export function installedPolicy<T>(db: {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }, key: string, validate: (value: unknown) => T, fallback: T, code: string) {
+  async function readOverride(): Promise<T | undefined> {
+    const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key=$1", [key]);
+    if (!rows.length) return undefined;
+    let value: unknown;
+    try {
+      if (typeof rows[0]?.value_text !== "string") throw new Error(code);
+      value = JSON.parse(rows[0].value_text);
+    } catch { throw new Error(code); }
+    return validate(value);
+  }
   return {
+    readOverride,
     async read(): Promise<T> {
-      const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key=$1", [key]);
-      if (!rows.length) return { ...fallback };
-      let value: unknown;
-      try {
-        if (typeof rows[0]?.value_text !== "string") throw new Error(code);
-        value = JSON.parse(rows[0].value_text);
-      } catch { throw new Error(code); }
-      return validate(value);
+      return await readOverride() ?? { ...fallback };
     },
     async install(value: T): Promise<void> {
       const policy = validate(value);

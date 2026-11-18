@@ -1,8 +1,9 @@
 import { installedPolicy } from "./installedPolicy.js";
-import type { CheckoutRecoveryReminderSchedule } from "../contracts/checkoutRecoveryReminders.js";
+import { checkoutRecoveryReminderSetting as setting } from "../index.js";
+import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
 
 const code = "checkout_recovery_reminder_schedule_invalid";
-function validate(value: unknown): CheckoutRecoveryReminderSchedule {
+function validateCheckoutRecoveryReminderSchedule(value: unknown): CheckoutRecoveryReminderSchedule {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
   const schedule = value as Record<string, unknown>;
   if (Object.keys(schedule).sort().join(",") !== "abandonedCart,checkoutRecovery,revision"
@@ -24,13 +25,10 @@ function validate(value: unknown): CheckoutRecoveryReminderSchedule {
   }
   return structuredClone(schedule) as unknown as CheckoutRecoveryReminderSchedule;
 }
-const fallback: CheckoutRecoveryReminderSchedule = { revision: "default",
-  abandonedCart: [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }],
-  checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }] };
 interface Executor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
-const store = (db: Executor) => installedPolicy(db, "checkout_recovery_reminders", validate, structuredClone(fallback), code);
+const store = (db: Executor) => installedPolicy(db, setting.key, validateCheckoutRecoveryReminderSchedule, structuredClone(setting.fallback), code);
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export async function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void> {
   await store(db).install(schedule);
@@ -38,4 +36,9 @@ export async function installCheckoutRecoveryReminderSchedule(db: Executor, sche
 /** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
 export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule> {
   return store(db).read();
+}
+
+/** @experimental Read the installed schedule when a policy row exists. */
+export async function readCheckoutRecoveryReminderOverride(db: Executor): Promise<CheckoutRecoveryReminderSchedule | undefined> {
+  return store(db).readOverride();
 }

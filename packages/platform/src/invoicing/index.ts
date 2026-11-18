@@ -39,3 +39,4 @@ export { claimInvoiceSellerRevision } from "./sellerRevision.js";
 export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";
 
 export { createPostgresBillingInvoiceStore } from "./postgresInvoiceStore.js";
+export { invoicingSettingBoundaries } from "./settingBoundaries.js";

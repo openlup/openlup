@@ -1896,6 +1896,7 @@ export { createAccountEventPrivacyContributor } from "./customerAccount/accountE
 export type { AccountEventPrivacyJson, AccountEventPrivacyObligation, AccountEventPrivacyDocument, AccountEventPrivacySubject, AccountEventPrivacyAssessment, AccountEventPrivacyContributor, AccountEventPrivacyDependencies } from "./customerAccount/accountEventPrivacy.js";
 export { createPostgresCustomerBillingProfilePort, createCustomerBillingProfileSchemas, createCustomerBillingProfilesHandler } from "./customerAccount/billingProfiles.js";
 export type { BillingProfileTaxPolicy } from "./customerAccount/billingProfiles.js";
+export { account_supportSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -2315,6 +2316,12 @@ export declare function createSelfServiceCommandFacade<Request extends {
     subscriptionId: string;
     action: string;
 }, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot = unknown>(input: SelfServiceCommandFacadeInput<Request, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot>): SelfServiceCommandFacade<Request, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot>;
+```
+## dist/account-support/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by account-support. */
+export declare const account_supportSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/account-support/subscriptionCommandCodec.d.ts
 

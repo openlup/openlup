@@ -7855,7 +7855,7 @@ export declare function withCheckoutRecoveryPaymentHold<Input extends {
 ## dist/commerce/server/checkoutRecoveryReminderSchedule.d.ts
 
 ```ts
-import type { CheckoutRecoveryReminderSchedule } from "../contracts/checkoutRecoveryReminders.js";
+import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
 interface Executor {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
@@ -7865,6 +7865,8 @@ interface Executor {
 export declare function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void>;
 /** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
 export declare function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule>;
+/** @experimental Read the installed schedule when a policy row exists. */
+export declare function readCheckoutRecoveryReminderOverride(db: Executor): Promise<CheckoutRecoveryReminderSchedule | undefined>;
 export {};
 ```
 ## dist/commerce/server/checkoutRecoveryToken.d.ts
@@ -10223,7 +10225,7 @@ export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.j
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
-export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminderSchedule.js";
+export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderOverride } from "./checkoutRecoveryReminderSchedule.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -13922,6 +13924,7 @@ export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHa
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
 export { createFulfillmentServices } from './bindings.js';
 export { createCapturedFulfillmentAdapter, type CapturedFulfillmentCommand } from './capturedAdapter.js';
+export { fulfillmentSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 
@@ -14957,6 +14960,12 @@ export declare function createScriptedFulfillmentFake<Calls extends Record<strin
     assertDrained(): void;
 }>;
 export {};
+```
+## dist/fulfillment/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by fulfillment. */
+export declare const fulfillmentSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/fulfillment/shipmentsOverviewHandler.d.ts
 
@@ -16965,6 +16974,7 @@ export { createCatalogPriceSetupHandler } from "./catalogPriceSetupHandler.js";
 export type { CatalogPriceSetupStorePort, CatalogPriceSetupHandlerDeps, CatalogPriceSetupReadback } from "./catalogPriceSetupHandler.js";
 export { createPostgresCatalogPriceSetupStore, catalogPriceSetupRefusal, CATALOG_PRICE_SETUP_HARD_REFUSALS } from "./postgresCatalogPriceSetupStore.js";
 export type { CatalogPriceSetupQueryExecutor } from "./postgresCatalogPriceSetupStore.js";
+export { pricingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -18859,6 +18869,12 @@ export interface QuoteShippingPromotionResult extends QuotePromotionResult {
     acquisitionTerms?: ResolvedAcquisitionTerms;
 }
 ```
+## dist/pricing/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by pricing. */
+export declare const pricingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
+```
 ## dist/pricing/subscriptionPricePolicy.d.ts
 
 ```ts
@@ -19818,6 +19834,8 @@ export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
 export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
 export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
+export { savedAddressValidationSetting } from "./settings.js";
+export { shippingSettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 
@@ -19902,6 +19920,49 @@ export declare function createPostgresCustomerDefaultsPort(db: SavedAddressQuery
 ```ts
 import type { DeliverySelectionEvidence, DeliverySelectionSources } from "./contracts/delivery.js";
 export declare function resolveDeliverySelectionEvidence(sources: DeliverySelectionSources): DeliverySelectionEvidence;
+```
+## dist/shipping/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by shipping. */
+export declare const shippingSettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
+```
+## dist/shipping/settings.d.ts
+
+```ts
+/** @experimental Discovery metadata for the host's saved-address callback. */
+export declare const savedAddressValidationSetting: {
+    readonly key: "savedAddressValidation";
+    readonly domain: "shipping";
+    readonly kind: "callback";
+    readonly goal: "Customize validation and normalization of the postal code and phone on saved customer addresses.";
+    readonly schemaVersion: 1;
+    readonly rules: readonly [];
+    readonly examples: readonly [];
+    readonly fallback: null;
+    readonly absentMeans: {
+        readonly description: "The platform uses the standard normalization and validation for the supplied address policy.";
+        readonly source: "shipping address policy";
+        readonly value: null;
+    };
+    readonly defaultBasis: {
+        readonly kind: "neutral";
+    };
+    readonly whyThisDefault: "Hosts can choose address formats required by their delivery integrations while preserving existing behavior by default.";
+    readonly effect: {
+        readonly appliesTo: "Subsequent saved-address submissions after deployment.";
+        readonly frozenOn: readonly ["Existing saved addresses and captured delivery destinations keep their stored values."];
+        readonly impact: "customer-promise";
+    };
+    readonly runtime: {
+        readonly level: "read-only";
+        readonly reason: "The callbacks are executable host code.";
+    };
+    readonly change: {
+        readonly file: "owned/acquisition-policy.ts";
+        readonly symbol: "savedAddressValidation";
+    };
+};
 ```
 ## dist/shipping/shippingRatePorts.d.ts
 

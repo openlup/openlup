@@ -1,5 +1,7 @@
 # Recover abandoned checkouts and payments
 
+Discover the [checkout recovery reminder schedule](../operate/settings-catalogue.md#checkout_recovery_reminders) in the settings catalogue.
+
 Let customers resume unpaid checkouts, request payment links, or replace
 technically expired orders. Compose recovery on your server with your
 authentication, routes, screens, localized messages, transport and schedules.

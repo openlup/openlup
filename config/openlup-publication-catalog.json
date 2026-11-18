@@ -2522,6 +2522,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/subscription-editors.ts",
       "class": "public-output"
     },
@@ -4238,6 +4242,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/settings-catalog.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/settings-refusals.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5082,6 +5094,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/subscriptionCommandCodec.ts",
       "class": "public-output"
     },
@@ -5434,6 +5450,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/sql.ts",
       "class": "public-output"
     },
@@ -5655,6 +5675,10 @@
     },
     {
       "path": "packages/platform/src/commerce/checkoutHelpers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutRecoveryReminderSetting.ts",
       "class": "public-output"
     },
     {
@@ -6350,6 +6374,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/accountingDocumentDelivery.ts",
       "class": "public-output"
     },
@@ -6731,6 +6759,10 @@
     },
     {
       "path": "packages/platform/src/communications/resend/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/settingBoundaries.ts",
       "class": "public-output"
     },
     {
@@ -7250,6 +7282,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/shipmentsOverviewHandler.ts",
       "class": "public-output"
     },
@@ -7630,6 +7666,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/sql.ts",
       "class": "public-output"
     },
@@ -7715,6 +7755,10 @@
     },
     {
       "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/settingBoundaries.ts",
       "class": "public-output"
     },
     {
@@ -7879,6 +7923,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/sellerRevision.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/settingBoundaries.ts",
       "class": "public-output"
     },
     {
@@ -8210,6 +8258,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/contracts/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/errors.ts",
       "class": "public-output"
     },
@@ -8267,6 +8319,18 @@
     },
     {
       "path": "packages/platform/src/operations/server/platformWatchdogService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/settingsSchema.ts",
       "class": "public-output"
     },
     {
@@ -8459,6 +8523,10 @@
     },
     {
       "path": "packages/platform/src/payments/schemaCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/settingBoundaries.ts",
       "class": "public-output"
     },
     {
@@ -8854,6 +8922,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/subscriptionPricePolicy.ts",
       "class": "public-output"
     },
@@ -8963,6 +9035,10 @@
     },
     {
       "path": "packages/platform/src/promotions/quoteShippingPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/settingBoundaries.ts",
       "class": "public-output"
     },
     {
@@ -9186,6 +9262,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/shippingRatePorts.ts",
       "class": "public-output"
     },
@@ -9387,6 +9471,14 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/settingBoundaries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/settings.ts",
       "class": "public-output"
     },
     {
@@ -11094,6 +11186,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsRead.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/watchdogQueue.test.ts",
       "class": "public-output"
     },
@@ -12626,6 +12722,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/distribution-cli-settings.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },
@@ -12975,6 +13075,14 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-catalogue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-catalogue.ts",
       "class": "public-output"
     },
     {
@@ -31227,7 +31335,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-9e02b27ca2e171d50f113a29b41438c593a4c78100c64c6adb384de32311340c"
+      "digest": "sha256-6a781a1a684a4a871654ec01945d61ec16d2781f36979f7dbbac7a456ac1544c"
     },
     {
       "path": "package.json",

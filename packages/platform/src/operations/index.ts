@@ -7,3 +7,4 @@ export * from "./alertPagingPolicy.js";
 export * from "./alertThrottlePolicy.js";
 export * from "./errors.js";
 export * from "./clients.js";
+export { toolInputSchema } from "./settingsSchema.js";

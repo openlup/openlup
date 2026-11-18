@@ -52,6 +52,8 @@ Pin exact versions and upgrade all `@openlup/*` packages together.
 
 ### How-to: operate
 
+- [Configure settings](how-to/operate/configure-settings.md)
+- [Settings catalogue](how-to/operate/settings-catalogue.md)
 - [Connect to PostgreSQL](how-to/operate/connect-postgresql.md)
 - [Customer diagnostic history and retention](how-to/operate/diagnostics-and-retention.md)
 - [Production checklist](how-to/operate/production-checklist.md)

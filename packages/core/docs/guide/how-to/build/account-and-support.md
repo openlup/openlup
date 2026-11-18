@@ -1,5 +1,7 @@
 # Compose account and support services
 
+Discover the [saved-address validation callback](../operate/settings-catalogue.md#savedaddressvalidation) in the settings catalogue.
+
 Build customer account reads, self-service commands and operator recovery around
 your application's verified identity and selected owner ports. Keep customer
 routes and operator routes separately authorized.

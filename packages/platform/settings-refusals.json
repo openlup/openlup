@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "refusals": [
+    {
+      "code": "commerce_setting_unknown",
+      "path": [
+        "key"
+      ],
+      "rule": "Use a key from the installed settings catalogue.",
+      "hint": "Search by the business goal to find the key.",
+      "remediation": {
+        "retry": true,
+        "action": "Find a key in the list, then run show with that key.",
+        "command": "npm run settings -- list"
+      }
+    },
+    {
+      "code": "commerce_setting_refusal_unknown",
+      "path": [
+        "code"
+      ],
+      "rule": "Use a refusal code from this package version.",
+      "hint": "Copy the exact code from the refusal.",
+      "remediation": {
+        "retry": true,
+        "action": "Use explain with the reported code.",
+        "command": "npm run settings -- explain commerce_setting_unknown"
+      }
+    },
+    {
+      "code": "commerce_setting_read_input_invalid",
+      "path": [],
+      "rule": "Supply a supported settings command and its required arguments.",
+      "hint": "Each settings command has an example in help.",
+      "remediation": {
+        "retry": true,
+        "action": "Review command syntax and correct the arguments.",
+        "command": "npm run settings -- --help"
+      }
+    },
+    {
+      "code": "commerce_setting_read_unavailable",
+      "path": [
+        "key"
+      ],
+      "rule": "A connected read requires an accessible, valid settings row or confirmed absence.",
+      "hint": "Read with an authorized settings reader for the intended store.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the connection and SELECT access, or omit the connection to use discovery offline.",
+        "command": "npm run settings -- list"
+      }
+    },
+    {
+      "code": "commerce_setting_runtime_not_ready",
+      "path": [
+        "key"
+      ],
+      "rule": "Live settings changes require a qualified runtime consumer.",
+      "hint": "Read the key's runtime reason and existing change mechanism.",
+      "remediation": {
+        "retry": false,
+        "action": "Review the catalogue for the key's documented change mechanism.",
+        "command": "npm run settings -- list"
+      }
+    },
+    {
+      "code": "inventory_renewal_protection_policy_invalid",
+      "path": [
+        "revision"
+      ],
+      "rule": "The revision must contain a non-whitespace character.",
+      "hint": "Check the value schema and examples for inventory_renewal_protection.",
+      "remediation": {
+        "retry": true,
+        "action": "Check the schema and correct the rejected value.",
+        "command": "npm run settings -- show inventory_renewal_protection"
+      }
+    }
+  ]
+}

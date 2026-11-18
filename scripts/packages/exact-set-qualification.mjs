@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
+import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
@@ -116,6 +116,7 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     }
     assertInstalledPackages(extracted, released?.packages ?? ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
     released?.verifyInstalled();
+    if (metadata.scripts?.settings) proveSettingsDiscovery(extracted);
     for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) run("npm", args);
     run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
     if (released) assert.equal(lockHash(), released.lockfileSha256, "starter proof changed committed lock");

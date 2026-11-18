@@ -114,6 +114,42 @@ its users or operators can observe.
 
 <a id="development-preview-checks"></a>
 
+
+## Add a setting
+
+Use [renewal stock protection](packages/core/docs/guide/how-to/operate/settings-catalogue.md#inventory_renewal_protection)
+as the discovery example. Ship the domain's setting and its evidence together
+when qualifying it for installed runtime use.
+
+1. Add a browser-safe descriptor with a schema, named rules, a valid example
+   and a failing example per rule. Describe the default, absence, effect
+   and records that keep their original terms.
+2. For an installed setting, add the domain's `<key>_validate(jsonb)` forward
+   and a `commerce_setting_define` record when the shared write path is available. Have the
+   SQL reader call that validator.
+3. Use one corpus of inputs, normalized values and refusal codes to check TS
+   and PostgreSQL together.
+4. Qualify domain preview before opening a runtime write path.
+5. Name every TS and SQL consumer. Prove that all use the installed value in
+   the same snapshot without a restart before marking the key runtime-ready.
+6. Prove absence preserves behavior, refusal happens before a write, completed
+   receipts replay, open commitments keep their terms, two sessions cannot
+   overwrite one another, and rollback restores both a prior value and absence.
+7. Build the workspaces, run `node scripts/settings-catalogue.ts --write` and
+   update the owning reader-guide page. The package gate checks the generated
+   bytes against the domain exports.
+8. Include each refusal's specific remediation and next command.
+
+Use a neutral default supported by evidence, or record a matching reference-code provenance. Record the exact
+commit and file line in the PR task record. Only a verified deployment read can establish a live
+basis. Keep market and brand examples in the adopter's files, preserve the
+historical result on an absent row, and leave explicit overrides in place.
+Changing a fallback is a behavior change. Give it a separate PR, an upgrade
+note and an updated absence witness.
+
+Keep rules, defaults, normalization and effect in each domain. The shared
+layer owns descriptor transport and discovery.
+
 ## Contribution checks
 
 Start from the question you need to answer during implementation:

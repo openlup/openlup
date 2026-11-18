@@ -52,3 +52,4 @@ export * from './postgresEcommerceEvents.js';
 
 export { withCheckoutRecoverySendEvidence } from './checkoutRecoverySendEvidence.js';
 export * from './ecommerceEventPrivacy.js';
+export { communicationsSettingBoundaries } from "./settingBoundaries.js";

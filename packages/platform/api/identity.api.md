@@ -1647,6 +1647,7 @@ export { createFulfillmentParcelContactPrivacyContributor } from './parcelContac
 export { createCustomerSavedAddressPrivacyContributor } from "./savedAddressPrivacy.js";
 export { createCustomerPreferencePrivacyContributor } from './customerPreferencePrivacy.js';
 export { createCustomerBillingPrivacyContributor } from './billingProfilePrivacy.js';
+export { identitySettingBoundaries } from "./settingBoundaries.js";
 ```
 ## dist/identity/inviteAdminUserUseCase.d.ts
 
@@ -2840,6 +2841,12 @@ import type { PersonalDataContributor } from './privacyPorts.js';
 import type { PgQueryExecutor } from '../data/index.js';
 /** Compose with identity authorization, the subscriptions veto and account-event ownership. */
 export declare function createCustomerSavedAddressPrivacyContributor(): PersonalDataContributor<PgQueryExecutor>;
+```
+## dist/identity/settingBoundaries.d.ts
+
+```ts
+/** @experimental Informational catalogue entries owned by identity. */
+export declare const identitySettingBoundaries: readonly (readonly [key: string, kind: "cap" | "invariant", goal: string, reason: string])[];
 ```
 ## dist/identity/sql.d.ts
 
