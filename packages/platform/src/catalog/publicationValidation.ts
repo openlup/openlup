@@ -386,8 +386,8 @@ export function compileCatalogPublicationEffects(input: CatalogPublicationCompil
   const payload = catalogDraftPayloadV3Schema.parse(input.payload);
   assertCatalogPublicationPreparation(payload, input);
   need(input.skus.length === 0 || input.product !== null, "catalog_publication_source_invalid");
-  need(input.product === null || catalogPublishedProductSchema.safeParse(input.product).success,
-    "catalog_publication_read_invalid", "dependency_unavailable");
+  if (input.product !== null && !catalogPublishedProductSchema.safeParse(input.product).success)
+    publicationRefuse("catalog_publication_read_invalid", "dependency_unavailable");
   need(input.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
   const retainedIds = new Set<string>(), retainedCodes = new Set<string>();
   for (const sku of input.skus) {
