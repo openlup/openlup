@@ -2024,7 +2024,7 @@ The monorepo's package artifact checker enforces this package's
 `release-gates.json` caps and packed content allowlist. Only
 `--release-set <version>` checks compressed growth against the last released
 baseline, with explanations in the new set's changelog section and release body.
-For the prepared `1.1.0` set, comparison uses the published `1.0.0` tarball;
+For the published `1.1.0` set, comparison used the published `1.0.0` tarball;
 releases before `0.43.0` remain in the source-only `CHANGELOG-HISTORY.md`. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
 [package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
@@ -2039,8 +2039,9 @@ artifact evidence.
 
 The payments entry also exports verified ingress, canonical truth fingerprints, method lifecycle/refusal handoff, reconciliation/verify-now and three runner-independent conformance functions. A new internal boundary projects verified envelopes into the contributed processing carrier: original bytes reach verification unchanged, receipt time starts processing, and durable first receipt overrides redelivery time. Full-reversal chargebacks use the existing dispute path. Snapshot and delta observations preserve original payment money; missing observation, required money or identity refuses before terminal application. Missing money, amounts that are not safe positive integers, or blank currencies on succeeded, refunded or disputed adapter evidence use the existing amount-mismatch refusal before ingestion or terminal application; ingress returns the existing processing-failure response. Failed and pending evidence may still omit money. Hosts own durable stores and response transport. Conformance requires safe positive integer amounts and nonblank currencies on settling money and checks exact identity/money, capability/port agreement and transient-secret exclusion; its evidence contains no handoff. Real-store durability still requires a selected-store proof.
 
-The paragraph below records the earlier direct-truth-only profile; the current
-source preview adds the provider store described immediately afterwards.
+The next paragraph records the earlier direct-truth-only profile. The published
+package includes the provider store described below and its matching native
+migration.
 
 `createPostgresPaymentTruthPort` accepts the platform data executor structural
 shape and `PostgresPaymentTruthOptions` from the contracts entry. It preserves
@@ -2198,9 +2199,10 @@ This composition selects card provider only. The second reference provider's por
 composition and live-provider qualification remain follow-up work. Existing
 managed exports and the default sandbox bindings remain available.
 
-The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
-native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
-commands use the existing `sandbox` settlement channel only. The host authorizes
+The published package includes `createPostgresSandboxPaymentSimulator` and its
+matching native migration. The simulator requires the complete native chain
+through `20261101222000_sandbox_payment_attempts.sql`. Its server commands use
+the existing `sandbox` settlement channel only. The host authorizes
 `beginAttempt`, `recordObservation` and `readAttempt`; do not expose those commands
 as unauthenticated browser actions. No key or provider SDK is needed. Beginning
 records dispatch conservatively; a replay returns the same row with `replayed`
@@ -2614,9 +2616,9 @@ savepoint, preserving its existing add-on lookup and due anchor.
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.
 Hosts supply trusted purchase facts and current method identity and retry pending
-attachment duties. These source-preview exports require the selected database
-forward; they claim no real PSP, mandate, automatic repair, default runner or
-published complete migration chain. See the
+attachment duties. The published package includes these exports and the matching
+native migrations. This composition requires the selected database forward and
+supplies no real PSP, mandate, automatic repair or default runner. See the
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 for the fingerprint dialect, transaction boundaries and recovery limits.
 

@@ -23,12 +23,12 @@ package's `AGENTS.md`, `README.md` and `CHANGELOG.md`. Use its public exports,
 declarations and shipped source when checking an option or port. The [upgrade procedure](../upgrade/README.md)
 owns package, database and application-file upgrades.
 
-Installing packages requires no OpenLup clone. The separate
-[starter application](../how-to/build/customize-the-starter.md#prepare-the-application)
-has a separate recipe for downloading the exact 0.43.0 source archive and its
-immutable manifest/lock pair, extracting with `--mode released`, installing with
-`npm ci` and running `./lifecycle up`. npm installation alone does not create an
-application. Local candidate archives are a contributor workflow.
+Installing packages requires no OpenLup clone. For a starter application, start
+from the 1.1.0 demo store (`openlup/demo-store` on GitHub) or use release-matched
+starter inputs when available. The
+[starter guide](../how-to/build/customize-the-starter.md#prepare-the-application)
+retains the historical 0.43.0 recipe and input pair. Local candidate archives
+are a contributor workflow.
 
 ## Keep application ownership
 

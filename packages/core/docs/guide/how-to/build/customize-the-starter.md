@@ -6,10 +6,13 @@ change reaches its structure or workflow.
 
 ## Prepare the application
 
-The starter is separate application source; installing npm packages does not
-create it. For the released **0.43.0 starter recipe**, use Node 24,
-npm 11.19.0, Git, curl and tar. Start in a directory with no application named
-`my-store`; the extractor refuses a nonempty destination.
+Start from the 1.1.0 demo store (`openlup/demo-store` on GitHub) or use
+release-matched starter inputs when available. The starter is separate
+application source that you can customize in your own repository.
+
+For the historical **0.43.0 starter recipe** below, use Node 24, npm 11.19.0,
+Git, curl and tar. Start in a directory with no application named `my-store`.
+The extractor refuses a nonempty destination.
 
 This historical recipe selects the 0.43.0 source commit
 `6facc3e72441ade5813397f65ac7edbe34fd1d0f` and the manifest/lock pair from input commit
