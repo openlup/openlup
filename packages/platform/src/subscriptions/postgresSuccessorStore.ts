@@ -6,6 +6,9 @@ import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
 
+const successorCommandKey = z.string().trim().min(8).max(180);
+const successorQuoteHash = z.string().trim().regex(/^[a-f0-9]{64}$/u);
+
 function successorBusy(error:unknown,reason:"lc10_commerce_busy"|"lc10_root_operation_busy"="lc10_commerce_busy"):never {
   if((error as {code?:string}).code==="55P03")throw Object.assign(new Error(reason,{cause:error}),{code:"55P03"});throw error;
 }
@@ -97,12 +100,16 @@ export function createPostgresSuccessorStore(options: {
       });
     },
     decide(actor:PackageEditActor,input:{ proposalId:string;decision:"accepted"|"declined"|"expired";commandKey:string;quoteHash:string|null;now:string }) {
-      stamp.parse(input.now);if(input.quoteHash!==null)hash.parse(input.quoteHash);
-      return options.withTransaction(async db=>{ await authorizeProposal(db,actor,input.proposalId);return call(db,"subscription_successor_proposal_decide_v2",[input.proposalId,actor.clientId,input.decision,input.commandKey,input.quoteHash,input.now]); });
+      stamp.parse(input.now);
+      const commandKey = successorCommandKey.parse(input.commandKey);
+      const quoteHash = successorQuoteHash.nullable().parse(input.quoteHash);
+      return options.withTransaction(async db=>{ await authorizeProposal(db,actor,input.proposalId);return call(db,"subscription_successor_proposal_decide_v2",[input.proposalId,actor.clientId,input.decision,commandKey,quoteHash,input.now]); });
     },
     resolve(actor:PackageEditActor,input:Omit<SuccessorResolutionRequest,"clientId">) {
-      hash.parse(input.acceptedQuoteHash);stamp.parse(input.now);id.parse(input.caseId);
-      return options.withTransaction(async db=>{ await authorizeProposal(db,actor,input.proposalId);return call(db,"resolve_stock_wait_with_successor",[input.caseId,input.proposalId,input.acceptedQuoteHash,input.commandKey,actor.clientId,input.now]); });
+      const commandKey = successorCommandKey.parse(input.commandKey);
+      const acceptedQuoteHash = successorQuoteHash.parse(input.acceptedQuoteHash);
+      stamp.parse(input.now);id.parse(input.caseId);
+      return options.withTransaction(async db=>{ await authorizeProposal(db,actor,input.proposalId);return call(db,"resolve_stock_wait_with_successor",[input.caseId,input.proposalId,acceptedQuoteHash,commandKey,actor.clientId,input.now]); });
     },
     async readCase(caseId:string,caseKind:SuccessorCaseKind) {
       return options.withTransaction(async db=>{

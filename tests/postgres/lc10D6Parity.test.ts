@@ -1243,6 +1243,45 @@ it.each(["classic","exact","sized"] as const)("lc10_successor_lane_acceptance_%s
   }
 });
 
+const successorCommandPaths = [
+  ["a2", "classic", "ordinary"], ["a3", "exact", "ordinary"], ["a4", "sized", "ordinary"],
+  ["a6", "classic", "declined"], ["a7", "classic", "expired"],
+  ["a8", "classic", "wait"], ["a9", "exact", "wait"], ["a10", "sized", "wait"],
+] as const;
+it.each(successorCommandPaths.flatMap(([path, lane, mode]) => (
+  mode === "declined" || mode === "expired" ? ["key"] as const : ["key", "hash"] as const
+).map(field => [`lc10_d_${field === "key" ? "222" : "223"}_${path}`, lane, mode, field] as const)))(
+  "%s", async (_name, lane, mode, field) => {
+    const f = await createSuccessorJourney(pool, { lane, ordinary: mode !== "wait" });
+    const now = mode === "expired" ? (await pool.query(
+      "SELECT expires_at+interval '1 second' AS at FROM public.subscription_successor_proposals WHERE id=$1", [f.proposalId],
+    )).rows[0].at.toISOString() : f.at;
+    const store = createPostgresSuccessorStore({ withTransaction: transaction, codec: f.codec,
+      previews: { prepare: async () => { throw Error("decision_must_not_quote"); } } });
+    const actor = { actorId: f.principal, clientId: f.client };
+    const key = field === "key" ? (mode === "expired" ? `ą${"b".repeat(179)}` : "ąbcdefgh") : randomUUID();
+    const hash = f.quoteHash;
+    const invoke = (commandKey: string, quoteHash: string) => mode === "wait"
+      ? store.resolve(actor, { caseId: f.caseId, proposalId: f.proposalId, acceptedQuoteHash: quoteHash, commandKey, now })
+      : store.decide(actor, { proposalId: f.proposalId, decision: mode === "ordinary" ? "accepted" : mode,
+        commandKey, quoteHash: mode === "ordinary" ? quoteHash : null, now });
+    const receipts = async () => (await pool.query(
+      "SELECT idempotency_key FROM public.subscription_command_receipts WHERE subscription_id=$1", [f.subscription],
+    )).rows;
+    for (const [invalidKey, invalidHash] of field === "key"
+      ? [[" abcdefg ", hash], [` ${"a".repeat(181)} `, hash]]
+      : [[key, ` ${"g".repeat(64)} `], [key, ` ${"a".repeat(63)} `]]) {
+      await expect(Promise.resolve().then(() => invoke(invalidKey!, invalidHash!))).rejects.toMatchObject({ name: "ZodError" });
+    }
+    expect(await receipts()).toEqual([]);
+    const decorated = (value: string) => ` \t${value}\r\n`;
+    const first = await invoke(field === "key" ? decorated(key) : key, field === "hash" ? decorated(hash) : hash);
+    expect(first).toMatchObject({ status: "applied", proposalId: f.proposalId });
+    expect(await invoke(key, hash)).toEqual(first);
+    expect((await receipts()).filter(row => row.idempotency_key === key)).toHaveLength(1);
+  },
+);
+
 it.each(["declined","expired"] as const)("lc10_successor_%s_preserves_obligations",async decision=>{
   for(const ordinary of [false,true]){
     const f=await createSuccessorJourney(pool,{ordinary}),key=randomUUID();
