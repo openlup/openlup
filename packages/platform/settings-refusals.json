@@ -47,8 +47,8 @@
       "hint": "Read with an authorized settings reader for the intended store.",
       "remediation": {
         "retry": true,
-        "action": "Check the connection and SELECT access, or omit the connection to use discovery offline.",
-        "command": "node --experimental-strip-types host/settings.ts list"
+        "action": "Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.",
+        "command": "node --experimental-strip-types host/settings.ts show <key> --database-url <read-capable-url> --json"
       }
     },
     {
@@ -83,7 +83,7 @@
       "remediation": {
         "retry": true,
         "action": "Correct the supplied policy using the rule, then repeat the connected read.",
-        "command": "node --experimental-strip-types host/settings.ts show checkout_recovery_reminders --json"
+        "command": "node --experimental-strip-types host/settings.ts show checkout_recovery_reminders --database-url <read-capable-url> --json"
       }
     }
   ]

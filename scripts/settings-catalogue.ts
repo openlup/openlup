@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
@@ -50,21 +50,29 @@ export function parseSettingData(contents: string, domain: string): readonly Set
   return raw as typeof entries;
 }
 
-const dataDomains = [
-  "account-support", "catalog", "commerce", "communications", "fulfillment", "identity",
-  "inventory", "invoicing", "payments", "pricing", "promotions", "shipping", "subscriptions",
-] as const;
+function readSettingDescriptors(root: string): readonly SourceDescriptor[] {
+  const source = join(root, "packages/platform/src");
+  const domains = readdirSync(source, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .sort();
+  const data = domains.flatMap(name => {
+    const path = join(source, name, "settings-data.json");
+    const file = lstatSync(path, { throwIfNoEntry: false });
+    if (!file) return [];
+    if (!file.isFile()) throw new Error(`Expected a regular settings data file at ${path}`);
+    try {
+      return parseSettingData(readFileSync(path, "utf8"), name);
+    } catch (cause) {
+      throw new Error(`Invalid settings data in ${path}`, { cause });
+    }
+  });
+  return [describeRenewalStockProtectionSetting(), ...data];
+}
 
-export const settingDescriptors = [
-  describeRenewalStockProtectionSetting(),
-  ...dataDomains.flatMap(domain => {
-    const path = new URL(`../packages/platform/src/${domain}/settings-data.json`, import.meta.url);
-    return parseSettingData(readFileSync(path, "utf8"), domain);
-  }),
-] satisfies readonly SourceDescriptor[];
-
-function settingCommand(key: string): string {
-  return `node --experimental-strip-types host/settings.ts show ${key} --json`;
+function settingCommand(key: string, connected = false): string {
+  const database = connected ? " --database-url <read-capable-url>" : "";
+  return `node --experimental-strip-types host/settings.ts show ${key}${database} --json`;
 }
 
 function isZod(schema: ZodType | Record<string, unknown>): schema is ZodType {
@@ -103,15 +111,10 @@ const searchTerms: Record<string, string> = {
 };
 
 function settingSynonyms(entry: { key: string; domain: string }): string {
-  return searchTerms[entry.key] ?? searchTerms[entry.domain] ?? "";
+  return searchTerms[entry.key] ?? searchTerms[entry.domain] ?? entry.domain.replaceAll("-", " ");
 }
 
-export const settingsCatalogue = [...settingDescriptors]
-  .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
-  .map(describeSetting);
-if (new Set(settingsCatalogue.map(entry => entry.key)).size !== settingsCatalogue.length) throw new Error("Duplicate setting key");
-
-const settingRefusals: readonly SettingRefusal[] = [
+const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly SettingRefusal[] => [
   {
     code: "commerce_setting_unknown",
     path: ["key"],
@@ -138,7 +141,11 @@ const settingRefusals: readonly SettingRefusal[] = [
     path: ["key"],
     rule: "A connected read requires an accessible, valid settings row or confirmed absence.",
     hint: "Read with an authorized settings reader for the intended store.",
-    remediation: { retry: true, action: "Check the connection and SELECT access, or omit the connection to use discovery offline.", command: "node --experimental-strip-types host/settings.ts list" },
+    remediation: {
+      retry: true,
+      action: "Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.",
+      command: settingCommand("<key>", true),
+    },
   },
   {
     code: "commerce_setting_runtime_not_ready",
@@ -147,7 +154,7 @@ const settingRefusals: readonly SettingRefusal[] = [
     hint: "Read the key's runtime reason and existing change mechanism.",
     remediation: { retry: false, action: "Review the catalogue for the key's documented change mechanism.", command: "node --experimental-strip-types host/settings.ts list" },
   },
-  ...settingDescriptors.flatMap(entry => entry.rules.map(rule => ({
+  ...descriptors.flatMap(entry => entry.rules.map(rule => ({
     code: rule.code,
     path: rule.path,
     rule: rule.description,
@@ -155,7 +162,7 @@ const settingRefusals: readonly SettingRefusal[] = [
     remediation: {
       retry: true,
       action: entry.schema ? "Check the schema and correct the rejected value." : "Correct the supplied policy using the rule, then repeat the connected read.",
-      command: settingCommand(entry.key),
+      command: settingCommand(entry.key, !entry.schema),
     },
   }))),
 ];
@@ -169,7 +176,12 @@ const paths = {
   guide: "packages/core/docs/guide/how-to/operate/settings-catalogue.md",
 } as const;
 
-export function renderSettingsCatalogue(): Readonly<Record<string, string>> {
+export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<string, string>> {
+  const descriptors = readSettingDescriptors(root);
+  const settingsCatalogue = [...descriptors]
+    .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+    .map(describeSetting);
+  if (new Set(settingsCatalogue.map(entry => entry.key)).size !== settingsCatalogue.length) throw new Error("Duplicate setting key");
   const guide = [
     "# Settings catalogue",
     "",
@@ -198,13 +210,13 @@ export function renderSettingsCatalogue(): Readonly<Record<string, string>> {
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   return {
     [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms }),
-    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals: settingRefusals }),
+    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals: settingRefusals(descriptors) }),
     [paths.guide]: guide,
   };
 }
 
 export function checkSettingsCatalogue(root: string): void {
-  for (const [path, content] of Object.entries(renderSettingsCatalogue())) {
+  for (const [path, content] of Object.entries(renderSettingsCatalogue(root))) {
     if (readFileSync(join(root, path), "utf8") !== content)
       throw new Error(`${path} is stale. Run node scripts/settings-catalogue.ts --write.`);
   }

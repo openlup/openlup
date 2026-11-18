@@ -317,6 +317,8 @@ shipment transaction commits and retain that wrapper's fail-soft policy.
 
 The signed-in account can read, create, edit and delete its saved addresses.
 Default clearing and the host's `CustomerSavedAddressValidationPolicy` apply.
+See the [saved-address validation catalogue entry](../how-to/operate/settings-catalogue.md#savedaddressvalidation)
+for the host callback and its effect.
 In 1.2.0, `createCustomerSavedAddressRequestSchemas`
 from `@openlup/platform/shipping` accepts optional `local` callbacks:
 `normalizePostalCode`, `isValidPostalCode` and `normalizePhone`. They run only
