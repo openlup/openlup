@@ -118,7 +118,9 @@ export function createCatalogPriceSetupTransactionWriter<Actor extends object>(r
         if (!parsed.success || (parsed.data.outcome !== "committed" && parsed.data.outcome !== "replayed")) return refuse("invalid_store_response");
         const receipt = parsed.data.receipt;
         if (receipt.actorId !== handle.actor || receipt.commandKey !== command.commandKey || receipt.variantId !== command.variantId
-          || receipt.priceListId !== command.priceListId || receipt.current.unitPriceMinor !== command.unitPriceMinor) return refuse("invalid_store_response");
+          || receipt.priceListId !== command.priceListId || receipt.current.unitPriceMinor !== command.unitPriceMinor
+          || (receipt.previous?.entryId ?? null) !== command.expected.entryId
+          || (receipt.previous?.unitPriceMinor ?? null) !== command.expected.unitPriceMinor) return refuse("invalid_store_response");
       }
     },
   };

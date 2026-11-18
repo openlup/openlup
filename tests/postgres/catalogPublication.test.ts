@@ -3039,6 +3039,7 @@ it.each([
     "legacy readback": /^SELECT product_id FROM public.catalog_publications/u, recovery: /FROM public.catalog_operator_receipts WHERE kind='publish'/u,
     retained: /^SELECT p.revision,p.canonical_state,p.digest AS manifest_digest/u, price: /^SELECT public.catalog_price_setup_apply_in_transaction/u,
   };
+  ["price", "unexpected previous entry"],
   let hits = 0;
   const target = createPostgresCatalogPublication({ ...dependencies((sql, _executor, rows) => {
     if (!predicates[boundary].test(sql)) return;
@@ -3067,6 +3068,11 @@ it.each([
         target.resolveRetained({ kind, sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId,
         skuId: data.skuId, skuRevisionId: full.items[0].reference.revisionId, publicationId: first!.head.publicationId,
         documentRevisionId: full.product.document!.id }, target.authorizeReadScope(null))));
+    else if (variation === "unexpected previous entry") {
+      const result = rows[0]!.result as { results: { receipt: { current: { entryId: string } } & Record<string, unknown> }[] };
+      const { receipt } = result.results[0];
+      receipt.previous = { ...receipt.current, entryId: randomUUID() };
+    }
       expect(results.every(answer => canonicalCatalogDraftJson(answer) === canonicalCatalogDraftJson(results[0]))).toBe(true);
       return results[0];
     }
