@@ -1,6 +1,6 @@
 import { quantityChoices } from '../../shared/subscription-offer.ts';
 import type { PackageEditPreview } from '@openlup/platform/subscriptions/contracts';
-import type { EditorCandidate, EditorSubscription } from '../../shared/subscription-edit.ts';
+import type { ClassicEditorCandidate, EditorSubscription } from '../../shared/subscription-edit.ts';
 import type { PageContext } from '../context.ts';
 import { el, link } from '../dom.ts';
 import { routes } from '../../shared/routes.ts';
@@ -13,16 +13,28 @@ export function classicEditorPage(context: PageContext): HTMLElement {
   const root = el('div',{},el('h1',{},text(context,'classic')),el('p',{ role: 'status' },text(context,'loading')));
   const values = context.config.subscriptionEditing;
   let subscription: EditorSubscription, baseline: ClassicDraft, draft: ClassicDraft;
-  let catalog: EditorCandidate[] = [], catalogLoading = true, catalogFailed = false;
+  let catalog: ClassicEditorCandidate[] = [], catalogLoading = true, catalogFailed = false;
   let preview: PackageEditPreview['packageEdit'] | null = null, previewing = false, applying = false;
   let error = '', lineError: { id: string; message: string } | null = null;
   const id = context.query.get('subscription') ?? '';
   const label = (variantId: string) => catalog.find(product => product.variantId === variantId)?.name[context.locale]
     ?? subscription.lines.find(line => line.variantId === variantId)?.title ?? variantId;
   const offer = context.config.subscriptionOffers.classic;
-  const eligible = (sku: string) => quantityChoices(offer,sku,draft.planDays);
-  const admitted = (value = draft) => validClassic(value,offer,[...catalog,...subscription.lines.map(line => ({ variantId: line.variantId,sku: line.sku ?? '' }))]);
-  const quantity = (id: string, direction: -1 | 1) => changeClassicQuantity(draft,id,direction,values.minimumBaseUnits,values.maximumQuantity,offer,catalog);
+  const eligible = (sku: string) => context.governedCatalogue ? [1] : quantityChoices(offer,sku,draft.planDays);
+  const admitted = (value = draft) => context.governedCatalogue
+    ? values.planDays.includes(value.planDays) && units(value.base) >= values.minimumBaseUnits && value.base.length <= values.maximumBaseLines
+      && value.addons.length <= values.maximumAddonLines && units([...value.base, ...value.addons]) <= offer.maximumUnits
+    : validClassic(value,offer,[...catalog,...subscription.lines.map(line => ({ variantId: line.variantId,sku: line.sku ?? '' }))]);
+  const quantity = (id: string, direction: -1 | 1) => changeClassicQuantity(draft,id,direction,values.minimumBaseUnits,values.maximumQuantity,
+    context.governedCatalogue ? undefined : offer,catalog);
+  const size = (id: string) => {
+    const item = catalog.find(it => it.variantId === id);
+    if (item?.physicalSize != null) return `${item.physicalSize} g`;
+    const amount = item?.netContent;
+    if (!amount) return '—';
+    const digits = amount.unscaled.padStart(amount.scale + 1, '0');
+    return `${amount.scale ? digits.slice(0, -amount.scale) + '.' + digits.slice(-amount.scale) : digits} ${amount.unit}`;
+  };
   const changed = () => classicChanged(baseline,draft);
   function change(next: ClassicDraft) { draft = next; preview = null; error = ''; lineError = null; render(); }
   function render() {
@@ -58,7 +70,7 @@ export function classicEditorPage(context: PageContext): HTMLElement {
         const hint = `remove-${line.variantId}`;
         if (refusal) { remove.setAttribute('aria-disabled','true'); remove.setAttribute('aria-describedby',hint); }
         const row = el('div',{ class: 'panel','data-testid': `editor-line-${line.variantId}` },el('h3',{},name),
-          el('p',{},`${line.qty} × ${catalog.find(item => item.variantId === line.variantId)?.physicalSize ?? '—'} g`),
+          el('p',{},`${line.qty} × ${size(line.variantId)}`),
           el('output',{ 'aria-label': text(context,'quantity') },line.qty),
           control(text(context,'decrease',{ name }),() => change(quantity(line.variantId,-1)),
             previewing || quantity(line.variantId,-1) === draft),
@@ -72,7 +84,8 @@ export function classicEditorPage(context: PageContext): HTMLElement {
       for (const item of catalog.filter(product => product.selectable && product.sellable && eligible(product.sku).length > 0 && !product.isAddon && !draft.base.some(line => line.variantId === product.variantId))) {
         const add = control(text(context,'add',{ name: item.name[context.locale] }),() => change(addClassicLine(draft,item.variantId,values.maximumBaseLines,eligible(item.sku)[0]!)),previewing || draft.base.length >= values.maximumBaseLines);
         add.setAttribute('data-variant',item.variantId);
-        candidates.append(el('div',{},add,el('span',{ class: 'small' },text(context,'sizeValue',{ size: item.physicalSize }))));
+        candidates.append(el('div',{},add,el('span',{ class: 'small' },item.physicalSize === null
+          ? size(item.variantId) : text(context,'sizeValue',{ size: item.physicalSize }))));
       }
       const plans = el('fieldset',{},el('legend',{},text(context,'plan')));
       for (const days of values.planDays) {
@@ -131,7 +144,7 @@ export function classicEditorPage(context: PageContext): HTMLElement {
       try {
         const result = await editorAction('subscription.catalog',{ subscriptionRef: id,mode: 'classic' });
         if (!isRecord(result) || !Array.isArray(result.candidates)) throw new Error('catalog_unavailable');
-        catalog = result.candidates as EditorCandidate[];
+        catalog = result.candidates as ClassicEditorCandidate[];
       } catch { catalogFailed = true; }
       catalogLoading = false; render();
     } catch (caught) { root.replaceChildren(el('h1',{},text(context,'classic')),el('p',{ role: 'alert' },

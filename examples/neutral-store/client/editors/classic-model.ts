@@ -16,7 +16,8 @@ const equalLines = (left: readonly PackageEditLine[],right: readonly PackageEdit
 export function classicChanged(before: ClassicDraft,after: ClassicDraft): boolean {
   return before.planDays !== after.planDays || !equalLines(before.base,after.base) || !equalLines(before.addons,after.addons);
 }
-export function changeClassicQuantity(draft: ClassicDraft,id: string,direction: -1 | 1,minimum: number,maximum: number, offer?: SubscriptionOffer, catalog: readonly EditorCandidate[] = []): ClassicDraft {
+export function changeClassicQuantity(draft: ClassicDraft,id: string,direction: -1 | 1,minimum: number,maximum: number, offer?: SubscriptionOffer,
+  catalog: readonly Pick<EditorCandidate, 'variantId' | 'sku'>[] = []): ClassicDraft {
   const line = draft.base.find(item => item.variantId === id);
   if (!line || direction < 0 && (line.qty <= 1 || units(draft.base) <= minimum) || direction > 0 && line.qty >= maximum) return draft;
   const quantities = offer ? quantityChoices(offer,catalog.find(item => item.variantId === id)?.sku ?? '',draft.planDays) : [];

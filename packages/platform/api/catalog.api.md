@@ -4557,6 +4557,7 @@ export type { CatalogServingReadPortV2, CatalogServingScopeV2, NeutralSkuEnvelop
 export { buildResolvedSkuProjectionV2, type ResolvedSkuProjectionV2 } from "./resolvedSkuProjection.js";
 export { projectManagedCatalogContent, type ManagedCatalogContentRow } from "./managedCatalogContent.js";
 export { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
+export { hasInstalledSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4568,6 +4569,17 @@ import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
  * @experimental
  */
 export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
+```
+## dist/catalog/installedSubscriptionProfiles.d.ts
+
+```ts
+import { type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
+import type { PgQueryExecutor } from "../data/index.js";
+/** Observe the exact registered definition on the chosen database. @experimental */
+export declare function hasInstalledSubscriptionProfile(db: PgQueryExecutor, ref: CatalogSubscriptionProfileRef, resolved: {
+    profile: CatalogSubscriptionProfileV1;
+    digest: string;
+}): Promise<boolean>;
 ```
 ## dist/catalog/lifecycleV2.d.ts
 

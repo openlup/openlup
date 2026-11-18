@@ -110,3 +110,4 @@ export type { CatalogServingReadPortV2, CatalogServingScopeV2, NeutralSkuEnvelop
 export { buildResolvedSkuProjectionV2, type ResolvedSkuProjectionV2 } from "./resolvedSkuProjection.js";
 export { projectManagedCatalogContent, type ManagedCatalogContentRow } from "./managedCatalogContent.js";
 export { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
+export { hasInstalledSubscriptionProfile } from "./installedSubscriptionProfiles.js";

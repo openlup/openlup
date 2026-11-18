@@ -147,3 +147,29 @@ Repeating an identical tuple is safe. A different provenance or inactive row
 fails the entire transaction rather than overwriting it. A customer environment
 needs its own owner-loaded registry and onboarding. Editing this list never
 grants runtime registry writes or customer delivery qualification.
+
+### Bind the installed publication catalogue
+
+The starter starts with its existing catalogue. To select installed publication
+authority, export `bindCatalogue(selection, databaseUrl)` from the application's
+`owned/catalogue.ts` and start the host with `--catalogue-publication on`. The function returns
+`StarterCatalogueOptions` for the supplied registry selection. Supply the
+publication transaction, pack validators and per-use readiness and media proofs.
+The runtime database login supplies shopper and commerce reads. The publication
+transaction supplies the restricted write grants. The application verifies the
+operator session again for each publication action.
+
+Set `readEnabled` explicitly to serve the selected listing, product and editor
+catalogue. Grant the write transaction access and set `writerEnabled` separately
+to approve or publish. Existing checkout settlement, account history and renewal
+use their recorded evidence when the writer is disabled. Existing installations
+can supply an adoption transaction and follow the native adoption runbook.
+Load the successor store with its prelocked preview binding before advertising
+successor offers.
+
+Install the selected pack's profile definitions first. Supply host policy
+callbacks only for the profiles that use them. A profiled lane is advertised
+when its capability and the installed profile and cadence evidence are ready.
+Checkout and editor preview attach exact catalogue and price identities for
+the native acceptance transaction to verify. When the installed catalogue is
+selected, stock comes from the installed inventory authority.

@@ -246,7 +246,10 @@ export interface NativeCheckoutQuery {
 }
 export interface NativeCheckoutDraftRequest {
     idempotencyKey: string;
-    quoteSnapshot: CreateQuoteResponse;
+    quoteSnapshot: CreateQuoteResponse & {
+        /** Trusted quote evidence, validated by the native admission guard. @experimental */
+        catalogAdmission?: object;
+    };
 }
 export interface NativeCheckoutDraftResponse {
     contractVersion: typeof COMMERCE_CONTRACT_VERSION;

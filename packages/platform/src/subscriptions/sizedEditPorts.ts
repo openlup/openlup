@@ -34,6 +34,8 @@ export interface SizedHostPorts {
   quotePort: { createServerAuthoritativeQuote(request: SizedQuoteRequest & { compositionConstraint: Record<string, unknown> }): Promise<{ quote: SizedRecurringQuote }> };
 }
 export interface SizedEditorOptions extends SizedHostPorts {
+  /** @experimental */
+  catalogueEvidence?: import("./packageEditContracts.js").SubscriptionEditCatalogueEvidence;
   policy: SizedEditPolicy;
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   now(): string;

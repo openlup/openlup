@@ -12,6 +12,11 @@ import { CATALOG_SUBSCRIPTION_PROFILE_MAX_CADENCE_DAYS, createCatalogSubscriptio
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
 import { createPostgresPackageEditor, createPostgresSizedEditor, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
+import { bindStarterCatalogue } from "../../examples/neutral-store/host/catalogue-binding.ts";
+import { createStarterCatalogueRegistry } from "../../examples/neutral-store/host/catalogue-registry.ts";
+import { starterCatalogue } from "../../examples/neutral-store/host/catalogue-selection.ts";
+import type { ApplicationBindings } from "../../examples/neutral-store/host/bindings.ts";
+import type { CreateQuoteResponse } from "@openlup/platform/pricing";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -159,6 +164,47 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
+
+it("catalogue_bound_g1_ports uses the installed serving roster and retains the SP1 profile in the admitted quote", async () => {
+  const f = await fixture("bound-starter", { profiled: true });
+  const original = starterCatalogue.select().configuration;
+  const configuration = { ...original, subscriptionOffers: { ...original.subscriptionOffers,
+    classic: { ...original.subscriptionOffers.classic, days: { kind: "set" as const, values: [28] } } } };
+  const registration = createStarterCatalogueRegistry([{ configuration, offerVersion: "classic",
+    draftType: f.reference.typeRef,
+    pack: { id: "example:admission", namespace: "example", version: 1, openlupRange: "0.44.x",
+      capabilities: { publish: false }, types: [definition, profiledDefinition], taxClasses: [],
+      subscriptionProfiles: [profileRef], subscriptionProfileDefinitions: [profile] },
+  }], configuration.id).select();
+  const transactions = { async run<T>(work: (db: PoolClient) => Promise<T>) {
+    const db = await pool.connect();
+    try { await db.query("BEGIN"); const output = await work(db); await db.query("COMMIT"); return output; }
+    catch (error) { await db.query("ROLLBACK"); throw error; }
+    finally { db.release(); }
+  } };
+  const actions: ApplicationBindings["actions"] = { "offer.validate": async (_payload, context) => {
+    if (!context.catalogueQuote) throw new Error("profiled quote lane unbound");
+    const roster = await context.catalogueQuote.serving.listQuoteCatalogItems();
+    const price = f.admission.priceContextVersions[0]!;
+    const quote = { quote: { lines: [{ sku: f.code, quantity: 2, catalogFacts: {
+      version: "catalog_facts_v1", skuId: f.sku, documentRevisionId: f.value.product.documentRevision!.id,
+      documentDigest: f.head.documentDigest, resolvedPriceEntryId: price.entryId,
+    } }] } } as CreateQuoteResponse;
+    const evidence = await context.catalogueQuote.buildAdmission(quote, roster, {
+      mode: "subscription", purpose: "order", cadenceDays: 28, offerEvidence: { offerVersion: "classic" },
+    });
+    await transactions.run(db => context.catalogueQuote!.admission.assertCurrent(db, evidence));
+    return { ok: true, value: evidence };
+  } };
+  const bound = bindStarterCatalogue({ db: pool, actions, authorizeHuman: async () => ({ ok: false }),
+    options: { registration, readEnabled: () => true, writerEnabled: () => false, publication: { transactions, rules,
+      readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false } } });
+  expect(await bound.catalogueStatus()).toMatchObject({ profiledAcquisition: true, capabilities: { publish: false } });
+  expect(await actions["offer.validate"]!({}, { config: configuration, commandKey: "catalogue-witness", actor: {
+    customerRef: null, operatorRef: null,
+  } })).toEqual({ ok: true, value: { ...f.admission, purpose: "order" } });
+});
+
 async function edit(f: Fixture, lane: Lane = "classic") {
   const key = randomUUID(), hash = digest(key), line = { variantId: f.sku,qty: 2,isAddon: false,
     quoteLine: { sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234) } };

@@ -128,10 +128,13 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
         const snapshot = exact ? { editConsent: quote.editConsent, lines: quote.lines, cadenceDays: quote.cadenceDays, compositionConstraint: quote.compositionConstraint,
           ...(quote.portionModes ? { portionModes: quote.portionModes } : {}) }
           : { editConsent: quote.editConsent, baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
+        const catalogAdmission = await options.catalogueEvidence?.({ subscriptionId: request.subscriptionId, lane: exact ? "exact" : "classic",
+          cadenceDays: quote.cadenceDays, lines: exact ? quote.lines : [...quote.baseLines.map(line => ({ ...line, isAddon: false })),
+            ...quote.addonLines.map(line => ({ ...line, isAddon: true }))] });
         const totals = exact ? {} : { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta };
         const recorded=await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz) AS result`,
           [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,
-            ledgerRequest, snapshot, totals, options.now()]);
+            ledgerRequest, { ...snapshot, ...(catalogAdmission ? { catalogAdmission } : {}) }, totals, options.now()]);
         const previewId=stockWait?z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id):undefined;
         const identity=stockWait?{previewId}:{};
         if (exact) return { ...preview,...identity, editConsent: quote.editConsent, currentTotal: quote.currentRecurringPrice, newTotal: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash, quoteExpiresAt: expires };

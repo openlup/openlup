@@ -2076,6 +2076,18 @@ export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMone
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
+/** Captures trusted evidence for the normalized preview. The apply owner rechecks it transactionally. @experimental */
+export type SubscriptionEditCatalogueEvidence = (input: {
+    subscriptionId: string;
+    lane: "classic" | "exact" | "sized";
+    cadenceDays: number;
+    optIn?: boolean;
+    lines: readonly {
+        variantId: string;
+        qty: number;
+        isAddon: boolean;
+    }[];
+}) => Promise<object>;
 /** Trusted host ports; neither identity nor price evidence comes from a browser. */
 export interface PackageEditSubscription {
     cadenceDays: number;
@@ -2148,6 +2160,8 @@ export interface PackageEditLimits {
     maximumQuantity: number;
 }
 export interface PackageEditorOptions extends PackageEditQuotePorts {
+    /** @experimental */
+    catalogueEvidence?: SubscriptionEditCatalogueEvidence;
     /** Required only for the exact portion lever. */
     portionModes?: SubscriptionPortionModes;
     /** One connection through commit/rollback; authorization precedes this factory. */
@@ -3377,6 +3391,8 @@ export interface SizedHostPorts {
     };
 }
 export interface SizedEditorOptions extends SizedHostPorts {
+    /** @experimental */
+    catalogueEvidence?: import("./packageEditContracts.js").SubscriptionEditCatalogueEvidence;
     policy: SizedEditPolicy;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     now(): string;

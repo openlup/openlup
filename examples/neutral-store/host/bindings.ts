@@ -7,6 +7,7 @@ import { evaluateOffer, parseCart, validateCart } from '../shared/offer.ts';
 import type { PersonalDataContributorRegistry } from '@openlup/platform/identity';
 import type { CatalogServingReadPortV2 } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
+import type { StarterCatalogueQuoteBinding } from './catalogue-binding.ts';
 
 export interface VerifiedActor {
   customerRef: string | null;
@@ -28,6 +29,7 @@ export interface ActionContext {
   config: StoreConfig;
   /** Selected at HTTP boot. Trusted programmatic composition can supply its legacy configuration directly. */
   catalogueRegistration?: StarterCatalogueSelection;
+  catalogueQuote?: StarterCatalogueQuoteBinding;
   setCookie?: (cookie: string) => void;
   accept?: () => Promise<void>;
 }
@@ -36,6 +38,8 @@ export type ActionBinding = (input: ActionInput, context: ActionContext) => Prom
 
 export interface ApplicationBindings {
   catalogue?: CatalogServingReadPortV2;
+  catalogueEnabled?(): boolean;
+  catalogueStatus?(): Promise<unknown>;
   /** Programmatic owner composition only; never serialized as an HTTP action. */
   personalData?: PersonalDataContributorRegistry<PgQueryExecutor>;
   actions: Partial<Record<Operation, ActionBinding>>;
@@ -56,7 +60,7 @@ export const customerOperations = new Set<Operation>([
   'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
-  'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.address', 'return.request',
+  'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.successor', 'subscription.address', 'return.request',
 ]);
 
 export async function dispatchAction(
@@ -74,7 +78,7 @@ export async function dispatchAction(
   const limit = operationLimits[operation];
   if (limit) return { ok: false, code: limit.code };
   if (operation === 'offer.validate' || operation === 'checkout.create') {
-    const selected = operation === 'checkout.create' && bindings.actions[operation]
+    const selected = bindings.catalogueEnabled?.() === true || (operation === 'checkout.create' && bindings.actions[operation])
       ? parseCart(context.config.id,input.cart) : validateCart(context.config,input.cart);
     if (!selected.ok) return { ok: false,code: selected.issues[0]!.code };
     if (selected.cart.mode === 'subscription' && input.acquisitionCapability !== 'subscription-acquisition.v1') return { ok: false,code: 'acquisition_terms_capability_required' };

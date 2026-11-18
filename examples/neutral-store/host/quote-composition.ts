@@ -18,8 +18,10 @@ import { isQuoteRefusalCode } from '../owned/quote-copy.ts';
 import { isRecord, parseCart, validateCart, type OfferQuote } from '../shared/offer.ts';
 import type { ActionContext } from './bindings.ts';
 import type { AcquisitionPredecessors } from './acquisition-predecessors.ts';
+import type { CatalogAdmissionInput } from '@openlup/platform/catalog/contracts';
+import { StarterCatalogueRefusal } from './catalogue-binding.ts';
 
-interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unknown>; pricingPolicy: typeof pricingPolicy; pricePolicyBasis?: unknown; renewalPolicy?: unknown }
+interface Request extends AcquisitionQuoteRequest { checkout: Record<string, unknown>; pricingPolicy: typeof pricingPolicy; pricePolicyBasis?: unknown; renewalPolicy?: unknown; catalogAdmission?: CatalogAdmissionInput }
 export const pricingPolicy = { offerPolicyVersion: 'commerce.offer-policy.v2', promotionEngineVersion: 'promotion-engine.v2' } as const;
 const acceptance = createPromotionQuoteAcceptance<Request>({ projectRequest: request => request });
 const digest = (value: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(value)).digest('hex');
@@ -31,6 +33,7 @@ const quoteErrorCodes = new Set(['cart_invalid','cart_configuration_changed','ca
   'catalog_document_digest_mismatch', 'catalog_primary_trade_item_invalid', 'catalog_cursor_invalid', 'catalog_cardinality_exceeded']);
 
 export function quoteFailure(error: unknown): string {
+  if (error instanceof StarterCatalogueRefusal) return error.message;
   if (error instanceof AcquisitionTermsError) return error.reason;
   if (error instanceof CommerceQuoteError && error.code === 'PRICE_NOT_CONFIGURED'
     && isQuoteRefusalCode(error.details.reason)) return error.details.reason;
@@ -61,7 +64,12 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
       return { request, snapshot: replay, token: null, terms: (replay.quote.context as { acquisitionTerms?: ResolvedAcquisitionTerms }).acquisitionTerms,
         projection: projectQuote(replay, config.quote.acquisition.minimumProductPayableMinor) };
     }
-    const admitted = validateCart(config,payload.cart);
+    const governed = context.catalogueQuote;
+    const roster = await governed?.serving.listQuoteCatalogItems();
+    const catalogue = roster?.map(item => ({ sku: item.skuCode, permittedPurchaseModes: [
+      ...(item.sellability.oneTime ? ['one_time'] as const : []), ...(item.sellability.subscription ? ['subscription'] as const : []),
+    ] }));
+    const admitted = validateCart(config,payload.cart,'checkout',catalogue);
     if (!admitted.ok) throw new Error(admitted.issues[0]!.code);
     const eligibility = selected.cart.mode === 'subscription' && email !== null
       ? await predecessors.eligibility(db).resolve(email) : { clientId: context.actor.customerRef };
@@ -76,20 +84,26 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
     const shipping = createQuoteShipping<Request>(config, { ...automatic, ...codes,
       promoDataPort: createPostgresCommercePromoDataPort(db) });
     const taxProfile = { included: true as const, country: config.market.country, ...config.purchase.tax };
-    const port = createDbBackedCommerceQuotePort<Request, import('@openlup/platform/pricing').CommerceQuoteCatalogItem, Record<string, never>,
-      { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY; starterRenewalTerms?: RenewalRetainedTerms }>({
-      quoteCatalogReadPort: starterQuoteCatalogue(db, config, context.catalogueRegistration).legacy,
+    const port = createDbBackedCommerceQuotePort<Request, Omit<import('@openlup/platform/pricing').CommerceQuoteCatalogItem, 'netWeightG'>, Record<string, never>,
+      { mode: Request['mode']; cadenceDays: number | null; promoCodes: string[]; starterRequest: string; acquisitionCapability?: typeof ACQUISITION_TERMS_CAPABILITY;
+        starterRenewalTerms?: RenewalRetainedTerms; offerVersion?: string }>({
+      quoteCatalogReadPort: roster ? { listQuoteCatalogItems: async () => roster } : starterQuoteCatalogue(db, config, context.catalogueRegistration).legacy,
       isStrictD1Quote: true, commercePriceAuthorityPort: createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)),
       taxProfile, supportedTaxProfiles: [taxProfile], regionCode: config.market.country, currency: config.market.currency,
       now: () => atTime, hasPromotionCodePort: false, lineContext: () => ({}),
       quoteContext: input => () => ({ mode: input.mode, cadenceDays: input.cadenceDays ?? null, promoCodes: input.promoCodes, starterRequest: requestIdentity,
+        ...(governed ? { offerVersion: governed.offerVersion } : {}),
         ...(input.acquisitionCapability ? { acquisitionCapability: input.acquisitionCapability } : {}) }),
       ...automatic, ...codes, ...shipping,
     });
-    const snapshot = await port.createServerAuthoritativeQuote(request, { clientId: eligibility.clientId, pricingPolicy });
+    const priced = await port.createServerAuthoritativeQuote(request, { clientId: eligibility.clientId, pricingPolicy });
+    const catalogAdmission = governed && roster ? await governed.buildAdmission(priced, roster, {
+      mode: request.mode, purpose: 'order', cadenceDays: request.cadenceDays ?? null, offerEvidence: { offerVersion: governed.offerVersion },
+    }) : undefined;
+    const snapshot = { ...priced, ...(catalogAdmission ? { catalogAdmission } : {}) };
     const terms = snapshot.quote.context.acquisitionTerms;
     if (terms) {
-      const graduation = validateCart(config,{ ...selected.cart,cadenceDays: config.quote.acquisition.graduationCadenceDays },'graduation');
+      const graduation = validateCart(config,{ ...selected.cart,cadenceDays: config.quote.acquisition.graduationCadenceDays },'graduation',catalogue);
       if (!graduation.ok) throw new Error(graduation.issues[0]!.code);
       const view = projectQuote(snapshot, config.quote.acquisition.minimumProductPayableMinor);
       if (view.secondTotalMinor === undefined) throw new Error('starter_quote_refresh_required');
@@ -107,7 +121,7 @@ export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPred
               isAddon: line.isAddon, quoteLine: line.quoteLine })) } } };
     }
     const retained = snapshot.quote.context.starterRenewalTerms;
-    const acceptedRequest = { ...request, ...(retained ? { renewalPolicy: { minimumPayableMinor: retained.minimumPayableMinor,
+    const acceptedRequest = { ...request, ...(catalogAdmission ? { catalogAdmission } : {}), ...(retained ? { renewalPolicy: { minimumPayableMinor: retained.minimumPayableMinor,
       normalCadenceDays: retained.normalCadenceDays, starterIntervalDays: retained.starterPack!.starterIntervalDays,
       graduationCadenceDays: retained.starterPack!.graduation.cadenceDays, delivery2: retained.starterPack!.delivery2 } } : {}), pricePolicyBasis: snapshot.quote.lines.map(line => {
       const facts = line.catalogFacts;

@@ -46,3 +46,88 @@ for (const entry of starterCatalogue.list()) test(`MC5-N-005 ${entry.configurati
   assert.throws(() => createStarterCatalogueRegistry([{ ...entry, offerVersion: scope.offerVersion }, { ...entry, offerVersion: scope.offerVersion }], configuration.id),
     { message: 'starter_catalogue_registration_invalid' });
 });
+
+import { bindCataloguePorts } from '../host/catalogue-binding.ts';
+import type { ActionContext, ApplicationBindings } from '../host/bindings.ts';
+
+const bindingCases = [
+  ['shopper', 'offer.validate'], ['settlement', 'checkout.create'], ['settlement', 'checkout.inlineRetry'],
+  ['account', 'account.orders'], ['editor', 'subscription.preview'], ['successor', 'subscription.successor'],
+  ['publicationRead', null], ['publish', 'operator.catalogPublication'], ['lifecycleWrite', 'operator.catalogPublication'],
+  ['profiles', null],
+] as const;
+
+for (const [lane, operation] of bindingCases) test(`LC8 catalogue_bound_g1_ports ${lane} ${operation ?? 'status'}`, async () => {
+  type Inputs = Parameters<typeof bindCataloguePorts>[0];
+  const comeFrom = 'explicit-publication';
+  const config = starterCatalogue.select().configuration;
+  const actor = { customerRef: 'client', principalRef: 'principal', operatorRef: 'operator' };
+  const context: ActionContext = { actor, config, commandKey: 'host-command-key' };
+  let enabled = false, writer = false, verified = true;
+  let observed: 'ready' | 'unsupported' | 'unadopted' | 'dependency_unavailable' = 'ready';
+  let calls = 0;
+  const touched = async () => { calls++; return { ok: true as const, value: comeFrom }; };
+  const useHost = async (_input: unknown, supplied: ActionContext) =>
+    supplied.catalogueQuote === quote ? touched() : { ok: true as const, value: 'legacy' };
+  const actions: ApplicationBindings['actions'] = { 'offer.validate': useHost, 'checkout.create': useHost,
+    'checkout.inlineRetry': useHost, 'account.orders': useHost, 'subscription.preview': useHost };
+  const empty = { items: [], version: comeFrom, nextCursor: null };
+  const serving: Inputs['serving'] = {
+    list: async () => { calls++; return empty; }, detail: async () => empty,
+    listQuoteCatalogItems: async () => [], listEditorSkus: async () => [], invalidateProduct() {},
+  };
+  const quote: Inputs['quote'] = { serving, offerVersion: 'classic', admission: { async assertCurrent() {} },
+    async buildAdmission() { throw new Error('unexpected quote'); } };
+  const ready = async () => ({ schemaCompatible: true, privilegeGranted: true, state: 'ready' as const });
+  const probe = async () => ({ ...await ready(), state: observed });
+  const publish = async (command: { commandKey: string }) => {
+    assert.equal(command.commandKey, context.commandKey);
+    calls++;
+    return { outcome: 'replayed', receipt: { productId: comeFrom } };
+  };
+  const publisher = { authorize: async () => verified ? {} : null, decision: publish, publish, reads: { current: publish } } as unknown as Inputs['publisher'];
+  const successor = { offer: async (owner: { actorId: string; clientId: string }, command: { historicalBinding?: unknown }) => {
+    assert.deepEqual(owner, { actorId: 'principal', clientId: 'client' });
+    assert.equal(command.historicalBinding, undefined); calls++; return comeFrom;
+  } } as unknown as Inputs['successor'];
+  const binding = bindCataloguePorts({ actions, serving, quote, publisher, successor, adoption: undefined,
+    configId: config.id, readEnabled: () => enabled, writerEnabled: () => writer,
+    observeRead: lane === 'shopper' || lane === 'publicationRead' ? probe : ready,
+    observeAdmission: lane === 'editor' ? probe : ready, observeSettlement: lane === 'settlement' ? probe : ready,
+    observeAccount: lane === 'account' ? probe : ready, observeSuccessor: lane === 'successor' ? probe : ready,
+    observeProfiles: lane === 'profiles' ? probe : ready, observeWriter: lane === 'publish' || lane === 'lifecycleWrite' ? probe : ready });
+  const payload = lane === 'successor' ? { action: 'offer', command: { historicalBinding: 'ignored' } }
+    : { action: lane === 'publish' ? 'decide' : 'publish', command: { commandKey: 'payload-key' } };
+  const run = () => operation ? actions[operation]!(payload, context) : binding.catalogue.list({ cursor: null, limit: 1 });
+  assert.equal((await binding.catalogueStatus()).profiledAcquisition, false);
+  if (operation && ['shopper', 'settlement', 'account', 'editor'].includes(lane)) {
+    assert.deepEqual(await run(), { ok: true, value: 'legacy' });
+  }
+  enabled = true;
+  if (lane === 'profiles') {
+    assert.equal((await binding.catalogueStatus()).profiledAcquisition, true);
+    observed = 'unsupported';
+    assert.equal((await binding.catalogueStatus()).profiledAcquisition, false);
+    return;
+  }
+  if (lane === 'publish' || lane === 'lifecycleWrite') {
+    assert.deepEqual(await run(), { ok: false, code: 'catalog_capability_unsupported' });
+    writer = true;
+    verified = false;
+    assert.deepEqual(await run(), { ok: false, code: 'publisher_not_authorized' });
+    verified = true;
+  }
+  if (lane === 'publicationRead') {
+    assert.deepEqual(await run(), empty);
+    observed = 'unadopted';
+    await assert.rejects(run, { code: 'catalog_authority_unsupported' });
+    observed = 'dependency_unavailable';
+    await assert.rejects(run, { code: 'catalog_authority_unavailable' });
+  } else {
+    const delivered = await run();
+    assert.ok('ok' in delivered && delivered.ok);
+    observed = 'dependency_unavailable';
+    assert.deepEqual(await run(), { ok: false, code: 'dependency_unavailable' });
+  }
+  assert.equal(calls, 1);
+});

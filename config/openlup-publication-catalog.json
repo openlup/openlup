@@ -2402,6 +2402,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/catalogue-binding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/catalogue-registry.ts",
       "class": "public-output"
     },

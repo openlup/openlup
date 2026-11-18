@@ -3,3 +3,8 @@ Experimental native operator preflight seals an installed product's document, id
 Migration: Apply the complete native catalogue including `20261124010000_catalog_adoption.sql`. Install adoption-aware readers before granting an operator executor access. Review the sealed observation before submitting its digest through the verified human lane. Existing draft receipts keep their own dialect. Transfer carries adopted revisions and legacy bindings alongside the existing publication history.
 
 The managed rail does not supply native catalogue adoption. A managed host can map its existing verified publication head and membership into its read evidence. It retains its own single publication authority, human and machine role separation, row-level policies and legacy mutation fences.
+
+The neutral starter can explicitly compose the installed serving and profile
+authorities. Native checkout and edit previews carry catalogue admission
+evidence into the existing transaction guards. The published catalogue, editor
+and retained service lanes have independent readiness.

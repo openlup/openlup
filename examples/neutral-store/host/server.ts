@@ -6,7 +6,7 @@ import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
-import { starterCatalogue } from './catalogue-selection.ts';
+import { bindRegisteredCatalogue, starterCatalogue } from './catalogue-selection.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
 import type { NeutralSkuEnvelopeV2 } from '@openlup/platform/catalog';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
@@ -14,7 +14,7 @@ import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const options = parseHostArguments(process.argv.slice(2));
-const registration = { ...starterCatalogue.select(options.configuration) };
+const registration = starterCatalogue.select(options.configuration);
 const config = registration.configuration;
 assertConfig(config);
 const configuredPort = options.port;
@@ -52,7 +52,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
   const url = new URL(request.url ?? '/', origin);
   if (url.origin !== origin) { sendJson(response, 400, { ok: false, code: 'starter_request_invalid' }); return; }
   if (request.method === 'GET' && (url.pathname === '/api/catalogue' || url.pathname.startsWith('/api/catalogue/'))) {
-    if (!bindings.catalogue) { sendJson(response, 404, { ok: false, code: 'starter_route_unknown' }); return; }
+    if (!bindings.catalogue || bindings.catalogueEnabled?.() === false) { sendJson(response, 404, { ok: false, code: 'starter_route_unknown' }); return; }
     const slug = url.pathname === '/api/catalogue' ? null : url.pathname.slice('/api/catalogue/'.length);
     if (slug !== null && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug)) {
       sendJson(response, 404, { ok: false, code: 'starter_route_unknown' });
@@ -73,7 +73,9 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     return;
   }
   if (url.pathname === '/api/config' && request.method === 'GET') {
-    sendJson(response, 200, { config, catalogueDraftType: { key: registration.draftType.key, version: registration.draftType.version }, artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
+    sendJson(response, 200, { config, ...(bindings.catalogueEnabled?.() ? { catalogueAuthority: 'publication' } : {}),
+      catalogueDraftType: { key: registration.draftType.key, version: registration.draftType.version },
+      artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
     return;
   }
   if (url.pathname.startsWith('/api/actions/')) {
@@ -89,6 +91,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     if (operation === 'application.status') {
       sendJson(response, 200, { ok: true, value: {
         artifact: 'local-candidate', installation: 'unknown', risk: 'off',
+        ...(bindings.catalogueStatus ? { catalogue: await bindings.catalogueStatus() } : {}),
         bindings: operations.map(name => ({ operation: name, declared: true,
           bound: name === 'offer.validate' || name === 'application.status' || Boolean(bindings.actions[name]), checked: false })),
       } });
@@ -150,9 +153,11 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const catalogue = options.cataloguePublication && options.databaseUrl
+    ? await bindRegisteredCatalogue(registration, options.databaseUrl) : undefined;
   const bindings = options.databaseUrl
     ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, options.quoteAcceptanceKeyFile
-      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined)
+      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, catalogue)
     : pendingBindings();
   const server = createApplication(bindings);
   server.requestTimeout = 25000;
