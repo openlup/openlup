@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline, type EditAgreementBaseline } from "./editConsentBaseline.js";
-import { lockUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
+import { lockUnpaidSuccessorPreview, recordUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
 import type { SuccessorCaseKind } from "./contracts/successors.js";
 import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
@@ -98,6 +98,10 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
   }
   async function previewFor(actor:PackageEditActor,input:SizedEditRequest,stockWait?:{caseId:string;caseKind:SuccessorCaseKind}):Promise<SizedEditPreview&{previewId?:string}> {
       const parsed = parse(input);
+      if (stockWait && "compositionConstraint" in parsed &&
+        (Object.hasOwn(parsed.compositionConstraint, "version") || Object.hasOwn(parsed.compositionConstraint, "data"))) {
+        throw new Error("subscription_reprice_invalid_request");
+      }
       assertRequestLimits(parsed);
       if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
       return options.withTransaction(async db => {
@@ -118,11 +122,15 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request,stockWait!==undefined);
         const priced = await quote(db, context, request, "preview", baseline), { subscriptionId: _id, ...raw } = request;
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
-        const recorded=await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz) AS result",
-          [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
-            { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
-        const identity=stockWait?{previewId:z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id)}:{};
+        const snapshot = { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays,
+          compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts };
+        const totals = { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta };
+        const now = options.now();
+        const identity = stockWait ? { previewId: await recordUnpaidSuccessorPreview(db, { actor, subscriptionId: request.subscriptionId,
+          action: request.action, quoteHash: priced.quoteHash, templateVersion: priced.expectedTemplateVersion, expiresAt: expires,
+          request: raw, snapshot, totals, now }) } : {};
+        if (!stockWait) await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz) AS result",
+          [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw, snapshot, totals, now]);
         return { ...preview,...identity, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
           newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
             newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,

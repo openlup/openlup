@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCatalogCandidateService,catalogDefinitionDigest,createCatalogProductTypeRegistry,catalogDraftPayloadV5Schema,catalogDraftPayloadV4Schema,createPostgresCatalogWithdrawalImpact } from "@openlup/platform/catalog";
 import type { CatalogDraftPayloadV2,CatalogDraftPayloadV5 } from "@openlup/platform/catalog/contracts";
-import { createPostgresSuccessorStore,createNativeRenewalCodec,createPostgresSuccessorNotices } from "@openlup/platform/subscriptions";
+import { createPostgresSuccessorStore,createNativeRenewalCodec,createPostgresSuccessorNotices,createPostgresSizedEditor } from "@openlup/platform/subscriptions";
 import type { HistoricalSuccessorProtocolBinding } from "@openlup/platform/subscriptions";
 import { customerSubscriptionPreviewResponseSchema } from "../../src/domains/customers/subscriptionFacadeContracts.js";
 import type { CustomerSubscriptionPreviewResponse } from "../../src/domains/customers/subscriptionFacadeContracts.js";
@@ -50,7 +50,7 @@ it.each([
   const publicationId = "81000000-0000-4000-8000-000000000004";
   const notice = vi.fn();
   const stored = createPostgresSuccessorNotices({
-    withTransaction: work => work({ query: async sql => {
+    withTransaction: work => work({ query: async (sql, params) => {
       if (sql.includes("FROM public.outbox_events")) return { rows: [{ matching: true }] };
       if (sql.includes("FROM public.catalog_publications")) {
         return { rows: [{ canonical_state: JSON.stringify({ skus: [{ skuId: readSku }] }) }] };
@@ -59,8 +59,9 @@ it.each([
         notice();
         return { rows: [{ result: { outcome: "handed_off" } }] };
       }
-      const cases = items.map(item => ({ source_id: item.sourceId,
-        legacy: !wrongKind && item.sourceId === obligation.sourceId, successor: wrongKind || item.sourceId !== obligation.sourceId }));
+      const requested = (params?.[0] ?? []) as string[];
+      const cases = requested.map(sourceId => ({ source_id: sourceId,
+        legacy: !wrongKind && sourceId === obligation.sourceId, successor: wrongKind || sourceId !== obligation.sourceId }));
       return { rows: cases };
     } }),
     impact: { report: async () => ({ outcome: "complete", obligations: items }) },
@@ -75,6 +76,32 @@ it.each([
   expect(notice).toHaveBeenCalledTimes(calls);
 });
 
+it.each(["subscription.successor.offered.v2","subscription.predecessor_withdrawn.v2"] as const)(
+  "lc10_notice_accepted_precedes_live_%s",async eventType=>{
+    const queries:string[] = [];
+    const recipient=vi.fn();
+    const enqueue=vi.fn();
+    const store=createPostgresSuccessorNotices({
+      withTransaction:work=>work({query:async sql=>{
+        queries.push(sql);
+        if(sql.includes("FROM public.outbox_events"))return {rows:[{matching:true}]};
+        if(sql.includes("transactional_delivery_read_receipt"))return {rows:[{state:"accepted"}]};
+        throw Error("accepted_notice_must_not_read_live_data");
+      }}),
+      recipient,delivery:{enqueue},impact:{report:async()=>{throw Error("unexpected_impact");}},
+    });
+    const at="2026-11-18T12:00:00Z";
+    expect(await store.handle({id:obligation.sourceId,created_at:at,available_at:at,processed_at:null,aggregate_type:"subscription",
+      aggregate_id:obligation.subscriptionId,event_type:eventType,idempotency_key:obligation.sourceId,status:"pending",
+      error:null,attempts:0,metadata:{},payload:{subscriptionId:obligation.subscriptionId,clientId:readSku,
+        proposalId:obligation.sourceId,caseKind:"legacy",caseId:obligation.sourceId}}))
+      .toEqual({kind:"processed",detail:{dedupe:"email_already_sent"}});
+    expect(queries).toHaveLength(2);
+    expect(recipient).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  },
+);
+
 const readAt = "2026-11-18T12:00:00Z";
 const readFingerprint = "a".repeat(64);
 const waitCase = { id: obligation.sourceId, subscription_id: obligation.subscriptionId, client_id: readSku,
@@ -88,12 +115,13 @@ const legacyDue = { schemaVersion: 2, operationKind: "legacy", due: { subscripti
   stock_source_key: "synthetic", settlement_channel_key: "native", authorization_ref: "synthetic",
   payer_account_ref: null, unattended_charge_authorized_at: readAt, delivery_admission: "ready", delivery_block_reason: null } };
 const successorDue = { schemaVersion: 2, operationKind: "successor", operationId: obligation.subscriptionId,
-  identityKey: "synthetic:operation", operationFingerprint: readFingerprint, snapshot: { schemaVersion: 2 } };
+  identityKey: "synthetic:operation", operationFingerprint: readFingerprint,
+  snapshot: { schemaVersion: 2, subscriptionId: readSku, scheduledAt: readAt } };
 const successorCandidate = { ...successorDue, caseKind: "successor", caseId: obligation.sourceId, cycleNumber: 1,
   binding: { caseKind: "successor", caseId: obligation.sourceId, operationId: obligation.subscriptionId,
-    rootOperationId: readSku, proposalId: readSku } };
+    rootOperationId: readSku, proposalId: readSku, claimGeneration: 1 } };
 const legacyCandidate = { schemaVersion: 2, operationKind: "legacy", caseKind: "legacy",
-  frozen: { ...successorDue, caseId: null, cycleNumber: 1,
+  frozen: { ...successorDue, snapshot:{...successorDue.snapshot,subscriptionId:obligation.sourceId},caseId: null, cycleNumber: 1,
     binding: { caseId: null, cycleId: null, orderId: null, paymentId: null, engineIdempotencyKey: successorDue.identityKey } } };
 const resumedCase = { ...caseRead, case: { ...waitCase, state: "resumed", order_id: readSku, resumed_at: readAt } };
 it.each([
@@ -119,7 +147,8 @@ it.each([
 ] as const)("lc10_read_versioned_%s_%s", async (method, _case, result, valid) => {
   const store = createPostgresSuccessorStore({ codec: createNativeRenewalCodec(),
     previews: { prepare: async () => { throw Error("read_must_not_prepare"); } },
-    withTransaction: work => work({ query: async () => ({ rows: result === undefined ? [] : [{ result }] }) }),
+    withTransaction: work => work({ query: async sql => ({ rows: method==="listDue"&&sql.includes("stock_wait_candidates_v2")
+      ?[{result:[]}]:result===undefined?[]:[{result}] }) }),
   });
   const reads = {
     readCase: () => store.readCase(obligation.sourceId, "successor"), markResumed: () => store.markResumed(readSku),
@@ -127,6 +156,68 @@ it.each([
   };
   if (valid) expect(await reads[method]()).toEqual(result);
   else await expect(reads[method]()).rejects.toHaveProperty("message", "subscription_renewal_response_invalid");
+});
+
+it.each([[0,1],[1,1],[2,2],[50,50],[51,50],[500,50],[501,50],[null,50]] as const)("lc10_select_combined_cap_%s",async(limit,cap)=>{
+  const normal=[legacyDue,successorDue],waiting=[legacyCandidate,{...successorCandidate,
+    snapshot:{...successorCandidate.snapshot,scheduledAt:"2026-11-18T13:00:00+01:00"}}];
+  const query=vi.fn(async(sql:string,_parameters?:readonly unknown[])=>({rows:[{result:sql.includes("stock_wait_candidates_v2")?waiting:normal}]}));
+  const store=createPostgresSuccessorStore({codec:createNativeRenewalCodec(),
+    withTransaction:work=>work({query}),previews:{prepare:async()=>{throw Error("selection_must_not_quote");}}});
+  expect(await store.listDue(limit,readAt)).toEqual([legacyDue,legacyCandidate,waiting[1]].slice(0,cap));
+  expect(query.mock.calls.map(([,parameters])=>parameters?.[0])).toEqual([cap,cap]);
+});
+
+const readPrepared = { schemaVersion: 2, operationKind: "successor", state: "attempt_prepared", replayed: true,
+  operationId: readSku, operationFingerprint: readFingerprint, cycleId: obligation.subscriptionId,
+  orderId: obligation.sourceId, settlementIntentId: obligation.sourceId };
+const readWaiting = { schemaVersion: 2, caseKind: "successor", waiting: true, caseId: obligation.sourceId,
+  deficits: [{ sku: "SYNTHETIC", requiredUnits: 1, reservedUnits: 0, availableUnits: 0, missingUnits: 1 }] };
+
+it.each([
+  ["prepare", "exact", readPrepared, true],
+  ["prepare", "missing_cycle", { ...readPrepared, cycleId: undefined }, false],
+  ["prepare", "missing_order", { ...readPrepared, orderId: undefined }, false],
+  ["prepare", "missing_payment", { ...readPrepared, settlementIntentId: undefined }, false],
+  ["prepare", "wrong_operation", { ...readPrepared, operationId: obligation.sourceId }, false],
+  ["prepare", "invalid_replay", { ...readPrepared, replayed: "true" }, false],
+  ["recover", "exact_wait", readWaiting, true],
+  ["recover", "missing_case", { ...readWaiting, caseId: undefined }, false],
+  ["recover", "empty_deficits", { ...readWaiting, deficits: [] }, false],
+  ["recover", "unrelated_error", { error: "other_error", caseId: obligation.sourceId }, false],
+  ["recover", "durable_blocker", { error: "stock_wait_check_failed", caseId: obligation.sourceId }, true],
+  ["recover", "secured", { schemaVersion: 2, operationKind: "successor", waiting: false, replayed: true,
+    caseId: obligation.sourceId, operation: { id: readSku } }, true],
+] as const)("lc10_read_command_%s_%s", async (method, _input, result, valid) => {
+  const query = vi.fn(async (sql: string) => ({ rows: sql.includes("SELECT cycle_snapshot") ? [{ cycle_snapshot: {} }] : [{ result }] }));
+  const store = createPostgresSuccessorStore({
+    codec: { ...createNativeRenewalCodec(), decode: vi.fn().mockReturnValue({}) },
+    withTransaction: work => work({ query }), previews: { prepare: async () => { throw Error("unexpected_quote"); } },
+  });
+  const invoke = () => method === "prepare" ? store.prepare({ operationId: readSku, claimToken: readSku, now: readAt })
+    : store.recover({ operationId: readSku, fingerprint: readFingerprint, workerId: "fixture", now: readAt });
+  if (valid) expect(await invoke()).toEqual(result);
+  else await expect(invoke()).rejects.toHaveProperty("message", method === "prepare"
+    ? "subscription_renewal_prepare_response_invalid" : "subscription_renewal_response_invalid");
+  expect(query).toHaveBeenCalledTimes(method === "prepare" ? 2 : 1);
+});
+
+it.each([["version",{version:1}],["data",{data:{}}],["flat",{}]] as const)("lc10_quote_successor_sized_constraint_%s",async(kind,extra)=>{
+  const transaction=vi.fn(async()=>{throw Error("preview_transaction");});
+  const editor=createPostgresSizedEditor({
+    now:()=>readAt,withTransaction:transaction,
+    policy:{minimumCoreUnits:1,maximumCoreLines:3,maximumAddonLines:3,maximumQuantity:12,allowedCadences:[28],
+      maximumExclusions:20,maximumCatalogExclusions:20,fixedThroughCycle:2,graduationCycle:3,
+      portionModes:{full:{mode:"complete",factor:1},reduced:{mode:"partial",factor:0.5}}},
+    readFacts:vi.fn(),resolveOptInNeed:vi.fn(),readCatalog:vi.fn(),assertCurrentFacts:vi.fn(),proposePortion:vi.fn(),
+    quotePort:{createServerAuthoritativeQuote:vi.fn()},
+  });
+  await expect(editor.previewStockWaitSuccessor({actorId:obligation.sourceId,clientId:readSku},
+    {subscriptionId:obligation.subscriptionId,action:"update_bundle",coreLines:[{variantId:readSku,qty:1}],
+      compositionConstraint:{kind:"unit_count",value:1,dailyNeed:1,...extra}},
+    {caseId:obligation.sourceId,caseKind:"legacy"})).rejects.toHaveProperty("message",kind==="flat"
+      ?"preview_transaction":"subscription_reprice_invalid_request");
+  expect(transaction).toHaveBeenCalledTimes(kind==="flat"?1:0);
 });
 
 function historicalOffer(installedBindings:readonly HistoricalSuccessorProtocolBinding[],lineage=historical) {

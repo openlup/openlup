@@ -244,6 +244,14 @@ BEGIN
   jsonb_build_object('schemaVersion',2,'caseKind','successor','caseId',p_case.id,'operationId',p_case.operation_id,
    'subscriptionId',p_case.subscription_id,'clientId',p_case.client_id,'identityKey',p_case.identity_key,'frozenFingerprint',p_case.fingerprint,'scheduledAt',p_case.scheduled_at),jsonb_build_object('source','subscription_stock_wait'))
  ON CONFLICT(event_type,idempotency_key) DO NOTHING;
+ IF p_case.state='waiting' AND jsonb_array_length(p_case.deficits)>0 THEN
+  INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
+  VALUES('subscription_stock_wait',p_case.id,'subscription_stock_wait.started.v2','subscription_stock_wait:'||p_case.id::text||':started:v2',
+   jsonb_build_object('schemaVersion',2,'caseKind','successor','caseId',p_case.id,'operationId',p_case.operation_id,
+    'clientId',p_case.client_id,'subscriptionId',p_case.subscription_id,'scheduledAt',p_case.scheduled_at,'deficits',p_case.deficits),
+   jsonb_build_object('source','subscription_stock_wait'))
+  ON CONFLICT(event_type,idempotency_key) DO NOTHING;
+ END IF;
 END; $$;
 REVOKE ALL ON FUNCTION public.subscription_stock_wait_record_opened_v2(public.subscription_successor_wait_cases_v2) FROM PUBLIC;
 
@@ -554,6 +562,12 @@ BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'successor_history_immutable' USING ERRCODE='23514'; END IF;
  IF TG_TABLE_NAME='catalog_sku_successors' THEN
   IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'successor_history_immutable' USING ERRCODE='23514'; END IF;
+  IF (SELECT count(*) FROM public.catalog_publications publication
+      JOIN public.catalog_skus successor ON successor.id=NEW.successor_sku_id AND successor.product_id=publication.product_id
+      CROSS JOIN LATERAL jsonb_array_elements(publication.canonical_state::jsonb->'successors') pair
+      WHERE publication.id=NEW.publication_id AND publication.canonical_state::jsonb->'schemaVersion'='4'::jsonb
+       AND pair->>'successorSkuId'=NEW.successor_sku_id::text AND pair->>'successorOf'=NEW.predecessor_sku_id::text)<>1
+   THEN RAISE EXCEPTION 'catalog_successor_publication_binding_changed' USING ERRCODE='23514'; END IF;
   RETURN NEW;
  END IF;
  after_row:=to_jsonb(NEW);
@@ -700,18 +714,40 @@ REVOKE ALL ON FUNCTION public.subscription_read_successor_renewal_v2(text) FROM 
 CREATE FUNCTION public.subscription_stock_wait_frozen_v2(p_operation_id uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE g public.subscription_successor_operations_v2; c public.subscription_successor_wait_cases_v2;
+ s public.subscriptions; p public.subscription_successor_proposals; expected_command jsonb;
 BEGIN
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=p_operation_id;
  IF NOT FOUND OR g.superseded_by_proposal_id IS NOT NULL OR g.attempt_prepared_at IS NOT NULL OR g.external_attempt_ref IS NOT NULL
   OR g.external_attempt_acknowledged_at IS NOT NULL OR g.cycle_id IS NOT NULL OR g.order_id IS NOT NULL OR g.settlement_intent_id IS NOT NULL
-  OR NOT EXISTS(SELECT 1 FROM public.subscriptions s WHERE s.id=g.subscription_id AND s.status='active' AND s.next_cycle_at=g.scheduled_at)
-  OR NOT EXISTS(SELECT 1 FROM public.subscription_successor_proposals p WHERE p.id=g.proposal_id AND p.state='accepted' AND p.accepted_receipt IS NOT NULL)
-  OR EXISTS(SELECT 1 FROM jsonb_array_elements(g.outcomes) o WHERE o->>'outcome'<>'refused' OR coalesce(o->>'reason','') NOT IN ('inventory_unavailable','reservation_expired') OR o->>'externalRef' IS NOT NULL) THEN RETURN NULL; END IF;
+  OR g.fulfillment_id IS NOT NULL
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(g.outcomes) o WHERE o->>'outcome' IS DISTINCT FROM 'refused'
+   OR coalesce(o->>'reason','') NOT IN ('inventory_unavailable','reservation_expired') OR o->>'externalRef' IS NOT NULL) THEN RETURN NULL; END IF;
+ SELECT * INTO s FROM public.subscriptions WHERE id=g.subscription_id;
+ IF s.id IS NULL OR s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM g.scheduled_at
+  OR EXISTS(SELECT 1 FROM public.subscription_cycles cycle WHERE cycle.subscription_id=s.id AND cycle.scheduled_at=g.scheduled_at)
+  THEN RETURN NULL; END IF;
+ SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=g.proposal_id;
+ IF p.id IS NULL OR p.state<>'accepted' OR p.subscription_id IS DISTINCT FROM s.id OR p.client_id IS DISTINCT FROM s.client_id
+  OR p.original_operation_id IS DISTINCT FROM g.root_operation_id OR p.source_binding->>'kind' IS DISTINCT FROM 'stock_wait'
+  OR p.accepted_receipt->>'operationId' IS DISTINCT FROM g.id::text OR p.accepted_receipt->>'quoteHash' IS DISTINCT FROM p.quote_hash
+  THEN RETURN NULL; END IF;
+ expected_command:=jsonb_build_object('clientId',s.client_id,'subscriptionId',s.id,'action','resolve_stock_wait_with_successor',
+  'payload',jsonb_build_object('caseId',p.source_binding->>'caseId','proposalId',p.id,'acceptedQuoteHash',p.quote_hash));
+ IF (SELECT count(*) FROM public.subscription_command_receipts r
+     WHERE r.actor_id=(p.preview->>'actor_id')::uuid AND r.client_id=s.client_id AND r.subscription_id=s.id AND r.status='applied'
+       AND r.quote_hash=p.quote_hash AND r.command=expected_command AND r.command_fingerprint=encode(sha256(convert_to(expected_command::text,'UTF8')),'hex')
+       AND r.result=p.accepted_receipt)<>1 THEN RETURN NULL; END IF;
  SELECT * INTO c FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id;
- IF c.id IS NOT NULL AND c.state NOT IN ('waiting','stock_secured') THEN RETURN NULL; END IF;
+ IF c.id IS NOT NULL AND (c.state NOT IN ('waiting','stock_secured') OR c.superseded_by_proposal_id IS NOT NULL
+  OR c.root_case_id IS DISTINCT FROM p.original_case_id OR c.subscription_id IS DISTINCT FROM s.id OR c.client_id IS DISTINCT FROM s.client_id
+  OR c.scheduled_at IS DISTINCT FROM g.scheduled_at OR c.cycle_number IS DISTINCT FROM g.cycle_number
+  OR c.identity_key IS DISTINCT FROM g.identity_key OR c.fingerprint IS DISTINCT FROM g.operation_fingerprint
+  OR c.cycle_snapshot IS DISTINCT FROM g.cycle_snapshot OR p.accepted_receipt->>'caseId' IS DISTINCT FROM c.id::text)
+ THEN RETURN NULL; END IF;
  RETURN jsonb_build_object('schemaVersion',2,'operationKind','successor','operationId',g.id,'caseKind','successor','caseId',c.id,
   'identityKey',g.identity_key,'operationFingerprint',g.operation_fingerprint,'snapshot',g.cycle_snapshot,'cycleNumber',g.cycle_number,
-  'binding',jsonb_build_object('caseKind','successor','caseId',c.id,'operationId',g.id,'rootOperationId',g.root_operation_id,'proposalId',g.proposal_id));
+  'binding',jsonb_build_object('caseKind','successor','caseId',c.id,'operationId',g.id,'rootOperationId',g.root_operation_id,'proposalId',g.proposal_id,
+   'claimGeneration',g.claim_generation));
 END; $$;
 REVOKE ALL ON FUNCTION public.subscription_stock_wait_frozen_v2(uuid) FROM PUBLIC;
 
@@ -764,10 +800,10 @@ BEGIN
  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=hint.id FOR UPDATE NOWAIT;
  PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=(SELECT original_case_id FROM public.subscription_successor_proposals WHERE id=g.proposal_id) FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  SELECT * INTO r FROM public.subscription_successor_reservations_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  IF g.claim_token IS DISTINCT FROM p_claim_token OR g.lease_expires_at<=p_now THEN RAISE EXCEPTION 'fulfillment_renewal_reservation_stale_claim' USING ERRCODE='40001'; END IF;
- IF g.superseded_by_proposal_id IS NOT NULL OR s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM g.scheduled_at
-  OR NOT EXISTS(SELECT 1 FROM public.subscription_successor_proposals p WHERE p.id=g.proposal_id AND p.state='accepted' AND p.accepted_receipt IS NOT NULL) THEN
+ IF public.subscription_stock_wait_frozen_v2(g.id) IS NULL THEN
   RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
  IF r.id IS NOT NULL THEN
   IF r.operation_fingerprint IS DISTINCT FROM g.operation_fingerprint OR r.lines IS DISTINCT FROM g.cycle_snapshot->'lines' THEN RAISE EXCEPTION 'stock_wait_reservation_snapshot_mismatch' USING ERRCODE='23505'; END IF;
@@ -970,11 +1006,21 @@ CREATE FUNCTION public.subscription_list_due_successor_renewals_v2(p_limit integ
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE result jsonb;
 BEGIN
- IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 OR p_now IS NULL OR NOT isfinite(p_now) THEN RAISE EXCEPTION 'subscription_renewal_claim_invalid_input' USING ERRCODE='22023'; END IF;
+ IF p_now IS NULL OR NOT isfinite(p_now) THEN RAISE EXCEPTION 'subscription_renewal_claim_invalid_input' USING ERRCODE='22023'; END IF;
  SELECT coalesce(jsonb_agg(value ORDER BY scheduled_at,subscription_id,operation_id),'[]'::jsonb) INTO result FROM (
   SELECT value,scheduled_at,subscription_id,operation_id FROM (
    SELECT jsonb_build_object('schemaVersion',2,'operationKind','legacy','due',to_jsonb(d)) value,d.scheduled_at,d.subscription_id,NULL::uuid operation_id
-    FROM public.subscription_list_due_renewals(p_now,p_limit) d
+    FROM (
+     SELECT s.id AS subscription_id,s.client_id,s.next_cycle_at AS scheduled_at,s.cadence_days,terms.next_cycle_number AS cycle_number,
+      terms.currency_code,terms.stock_source_key,terms.settlement_channel_key,terms.authorization_ref,terms.payer_account_ref,
+      terms.unattended_charge_authorized_at,terms.delivery_admission,terms.delivery_block_reason
+     FROM public.subscriptions s JOIN public.subscription_renewal_terms terms ON terms.subscription_id=s.id
+     WHERE s.status='active' AND s.next_cycle_at<=p_now
+      AND NOT EXISTS(SELECT 1 FROM public.subscription_renewal_operations root
+       WHERE root.subscription_id=s.id AND root.scheduled_at=s.next_cycle_at AND (root.state IN ('succeeded','refused') OR root.lease_expires_at>p_now))
+      AND NOT EXISTS(SELECT 1 FROM public.subscription_stock_wait_cases c
+       WHERE c.subscription_id=s.id AND c.client_id=s.client_id AND c.scheduled_at=s.next_cycle_at AND c.state IN ('waiting','stock_secured'))
+    ) d
     WHERE NOT EXISTS(SELECT 1 FROM public.subscription_successor_operations_v2 owned
       WHERE owned.subscription_id=d.subscription_id AND owned.scheduled_at=d.scheduled_at AND owned.superseded_by_proposal_id IS NULL)
    UNION ALL
@@ -983,7 +1029,8 @@ BEGIN
     JOIN public.subscription_successor_proposals p ON p.id=g.proposal_id
     WHERE g.superseded_by_proposal_id IS NULL AND g.state NOT IN ('succeeded','refused') AND g.scheduled_at<=p_now
      AND g.lease_expires_at<=p_now AND s.status='active' AND s.next_cycle_at=g.scheduled_at AND p.state='accepted'
-  ) records ORDER BY scheduled_at,subscription_id,operation_id LIMIT p_limit
+     AND public.subscription_stock_wait_frozen_v2(g.id) IS NOT NULL
+  ) records ORDER BY scheduled_at,subscription_id,operation_id LIMIT greatest(1,least(p_limit,50))
  ) selected;
  RETURN result;
 END; $$;
@@ -1236,7 +1283,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_record_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE canonical text; expected text; body jsonb;
+DECLARE canonical text; expected text; body jsonb; pair jsonb; successor uuid; prior_successor uuid;
 BEGIN
  IF TG_TABLE_NAME = 'catalog_publications' THEN
   canonical := NEW.canonical_state; expected := NEW.digest;
@@ -1257,6 +1304,25 @@ BEGIN
   IF (body->'schemaVersion' IS NULL OR body->'schemaVersion' NOT IN ('2'::jsonb,'3'::jsonb,'4'::jsonb)) OR body->'product'->>'id' IS DISTINCT FROM NEW.product_id::text
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
+  END IF;
+  IF body->'schemaVersion'='4'::jsonb THEN
+   IF jsonb_typeof(body->'successors') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+   IF jsonb_array_length(body->'successors') NOT BETWEEN 1 AND 10000 THEN
+    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+   FOR pair IN SELECT value FROM jsonb_array_elements(body->'successors') LOOP
+    IF jsonb_typeof(pair) IS DISTINCT FROM 'object' THEN
+     RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+    IF pair-ARRAY['successorSkuId','successorOf']<>'{}'::jsonb
+     OR coalesce(pair->>'successorSkuId','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     OR coalesce(pair->>'successorOf','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     OR pair->>'successorSkuId'=pair->>'successorOf'
+     OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(body->'skus') sku WHERE sku->>'skuId'=pair->>'successorSkuId') THEN
+     RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+    successor:=(pair->>'successorSkuId')::uuid;
+    IF prior_successor>=successor THEN RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+    prior_successor:=successor;
+   END LOOP;
   END IF;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
   IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text THEN
@@ -1457,6 +1523,9 @@ BEGIN
     IS DISTINCT FROM (SELECT jsonb_agg(jsonb_build_object('sku',l->>'sku','quantity',(l->>'quantity')::integer) ORDER BY l->>'sku') FROM jsonb_array_elements(root.cycle_snapshot->'lines') l)))
   OR EXISTS(SELECT 1 FROM public.subscription_successor_reservations_v2 r WHERE r.operation_id=prior_generation.id AND r.status IN ('committed','consumed')) THEN
   RAISE EXCEPTION 'stock_wait_successor_provider_owned' USING ERRCODE='22023'; END IF;
+ IF EXISTS(SELECT 1 FROM public.subscription_dunning_cases WHERE subscription_id=s.id AND status='open')
+  OR NOT (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(SELECT 1 FROM public.subscription_method_states ms WHERE ms.subscription_id=s.id AND ms.health_state='healthy') END) THEN
+  RAISE EXCEPTION 'subscription_command_payment_blocked' USING ERRCODE='22023'; END IF;
  p_action:=proposal.action; p_payload:=proposal.request->'applyPayload';
  -- The selected native lane still consumes its original ledger/hash and complete request.
  p_payload:=jsonb_set(jsonb_set(p_payload,'{acceptedQuoteHash}',to_jsonb(q.quote_hash)),'{request,acceptedQuoteHash}',to_jsonb(q.quote_hash));
@@ -1490,17 +1559,6 @@ BEGIN
    AND EXISTS(SELECT 1 FROM jsonb_array_elements(prior_snapshot->'lines') l WHERE l->>'sku'=predecessor.sku)) THEN
   RAISE EXCEPTION 'stock_wait_successor_predecessor_not_withdrawn' USING ERRCODE='22023'; END IF;
  -- Effects start only after ownership, frozen identity, quote and current admission.
- IF source_case_kind='legacy' THEN
-  UPDATE public.subscription_stock_wait_cases SET state='closed',closed_at=p_now,block_reason='superseded_by_successor' WHERE id=p_case_id;
-  IF root.state NOT IN ('succeeded','refused') THEN UPDATE public.subscription_renewal_operations SET state='refused',terminal_outcome='refused',terminal_reason='superseded_by_successor',terminal_at=p_now,updated_at=p_now WHERE id=root.id; END IF;
- ELSE
-  UPDATE public.subscription_successor_wait_cases_v2 SET state='closed',closed_at=p_now,block_reason='superseded_by_successor',superseded_by_proposal_id=proposal.id WHERE id=p_case_id;
-  UPDATE public.subscription_successor_operations_v2 SET superseded_by_proposal_id=proposal.id,updated_at=p_now WHERE id=prior_generation.id;
- END IF;
- UPDATE public.fulfillment_inventory_reservations SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
-  WHERE renewal_operation_id=root.id AND status IN ('held','expired');
- UPDATE public.subscription_successor_reservations_v2 SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
-  WHERE operation_id=prior_generation.id AND status IN ('held','expired');
  IF proposal.lane='classic' THEN
 <<accepted_lane>>
 DECLARE
@@ -1545,9 +1603,6 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
  IF s.status<>'active' OR s.next_cycle_at IS NULL THEN
   RAISE EXCEPTION 'subscription_edit_window_closed' USING ERRCODE='22023'; END IF;
- IF EXISTS(SELECT 1 FROM public.subscription_dunning_cases WHERE subscription_id=s.id AND status='open')
-  OR NOT (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(SELECT 1 FROM public.subscription_method_states ms WHERE ms.subscription_id=s.id AND ms.health_state='healthy') END) THEN
-  RAISE EXCEPTION 'subscription_command_payment_blocked' USING ERRCODE='22023'; END IF;
  IF COALESCE(p_payload->>'acceptedQuoteHash','') !~ '^[a-f0-9]{64}$' THEN
   RAISE EXCEPTION 'subscription_edit_quote_required' USING ERRCODE='22023'; END IF;
  IF COALESCE(p_payload->>'expectedTemplateVersion','') !~ '^[0-9]{1,9}$' THEN
@@ -1700,9 +1755,6 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
  IF s.status<>'active' OR s.next_cycle_at IS NULL THEN
   RAISE EXCEPTION 'subscription_edit_window_closed' USING ERRCODE='22023'; END IF;
- IF EXISTS(SELECT 1 FROM public.subscription_dunning_cases WHERE subscription_id=s.id AND status='open')
-  OR NOT (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(SELECT 1 FROM public.subscription_method_states ms WHERE ms.subscription_id=s.id AND ms.health_state='healthy') END) THEN
-  RAISE EXCEPTION 'subscription_command_payment_blocked' USING ERRCODE='22023'; END IF;
  IF COALESCE(p_payload->>'acceptedQuoteHash','') !~ '^[a-f0-9]{64}$' THEN
   RAISE EXCEPTION 'subscription_edit_quote_required' USING ERRCODE='22023'; END IF;
  IF COALESCE(p_payload->>'expectedTemplateVersion','') !~ '^[0-9]{1,9}$' THEN
@@ -1911,9 +1963,6 @@ BEGIN
  END IF;
  IF s.status<>'active' OR s.next_cycle_at IS NULL THEN
   RAISE EXCEPTION 'subscription_edit_window_closed' USING ERRCODE='22023'; END IF;
- IF EXISTS(SELECT 1 FROM public.subscription_dunning_cases WHERE subscription_id=s.id AND status='open')
-  OR NOT (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(SELECT 1 FROM public.subscription_method_states ms WHERE ms.subscription_id=s.id AND ms.health_state='healthy') END) THEN
-  RAISE EXCEPTION 'subscription_command_payment_blocked' USING ERRCODE='22023'; END IF;
  IF COALESCE(request->>'acceptedQuoteHash','') !~ '^[a-f0-9]{64}$' THEN
   RAISE EXCEPTION 'subscription_edit_quote_required' USING ERRCODE='22023'; END IF;
  IF COALESCE(request->>'expectedTemplateVersion','') !~ '^[0-9]{1,9}$' THEN
@@ -2054,6 +2103,18 @@ ELSE RAISE EXCEPTION 'successor_lane_unavailable' USING ERRCODE='55000'; END IF;
   OR snapshot#>'{templateSnapshot,lines}' IS DISTINCT FROM basket OR snapshot#>'{orderSnapshot,lines}' IS DISTINCT FROM basket
   OR snapshot#>'{pricingSnapshot,totalAmountMinor}' IS DISTINCT FROM snapshot->'totalAmountMinor'
   OR coalesce(snapshot->>'frozenFingerprint','') !~ '^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'subscription_renewal_snapshot_inconsistent' USING ERRCODE='22023'; END IF;
+ -- Validate the accepted next basket before changing its unpaid source.
+ IF source_case_kind='legacy' THEN
+  UPDATE public.subscription_stock_wait_cases SET state='closed',closed_at=p_now,block_reason='superseded_by_successor' WHERE id=p_case_id;
+  IF root.state NOT IN ('succeeded','refused') THEN UPDATE public.subscription_renewal_operations SET state='refused',terminal_outcome='refused',terminal_reason='superseded_by_successor',terminal_at=p_now,updated_at=p_now WHERE id=root.id; END IF;
+ ELSE
+  UPDATE public.subscription_successor_wait_cases_v2 SET state='closed',closed_at=p_now,block_reason='superseded_by_successor',superseded_by_proposal_id=proposal.id WHERE id=p_case_id;
+  UPDATE public.subscription_successor_operations_v2 SET superseded_by_proposal_id=proposal.id,updated_at=p_now WHERE id=prior_generation.id;
+ END IF;
+ UPDATE public.fulfillment_inventory_reservations SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
+  WHERE renewal_operation_id=root.id AND status IN ('held','expired');
+ UPDATE public.subscription_successor_reservations_v2 SET status='released',expires_at=NULL,terminal_reason='superseded_by_successor',updated_at=p_now
+  WHERE operation_id=prior_generation.id AND status IN ('held','expired');
  new_fingerprint:=snapshot->>'frozenFingerprint';
  INSERT INTO public.subscription_successor_operations_v2(id,root_operation_id,proposal_id,predecessor_generation_id,subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,due_snapshot,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at,created_at,updated_at)
  VALUES(generation,root.id,proposal.id,prior_generation.id,s.id,root.scheduled_at,root.cycle_number,root.identity_key||':successor:'||proposal.id::text,new_fingerprint,
@@ -2140,24 +2201,50 @@ REVOKE ALL ON FUNCTION public.fulfillment_expire_successor_renewals_v2(integer,t
 
 CREATE FUNCTION public.subscription_stock_wait_admit_v2(p_input jsonb,p_due jsonb,p_now timestamptz DEFAULT now()) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE g public.subscription_successor_operations_v2; p public.subscription_successor_proposals; c public.subscription_successor_wait_cases_v2; frozen jsonb; result jsonb;
+DECLARE hint public.subscription_successor_operations_v2; g public.subscription_successor_operations_v2; p public.subscription_successor_proposals;
+ c public.subscription_successor_wait_cases_v2; s public.subscriptions; frozen jsonb; result jsonb;
 BEGIN
  IF jsonb_typeof(p_input) IS DISTINCT FROM 'object' OR jsonb_typeof(p_due) IS DISTINCT FROM 'object' THEN
   RAISE EXCEPTION 'stock_wait_frozen_binding_changed' USING ERRCODE='23505'; END IF;
- SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=(p_input->>'operationId')::uuid;
+ IF current_setting('transaction_isolation')<>'read committed' THEN RAISE EXCEPTION 'inventory_admission_isolation_unsupported' USING ERRCODE='22023'; END IF;
+ IF NOT pg_try_advisory_xact_lock(846832106,1) THEN RAISE EXCEPTION 'inventory_admission_busy' USING ERRCODE='55P03'; END IF;
+ SELECT * INTO hint FROM public.subscription_successor_operations_v2 WHERE id=(p_input->>'operationId')::uuid;
+ SELECT * INTO s FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE NOWAIT;
+ PERFORM 1 FROM public.clients WHERE id=s.client_id FOR KEY SHARE NOWAIT;
+ BEGIN PERFORM 1 FROM public.subscription_renewal_operations WHERE id=hint.root_operation_id FOR UPDATE NOWAIT;
+ EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
+ SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=hint.id FOR UPDATE NOWAIT;
+ SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=g.proposal_id;
+ PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=p.original_case_id FOR UPDATE NOWAIT;
+ SELECT * INTO c FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  frozen:=public.subscription_stock_wait_frozen_v2(g.id);
  IF frozen IS NULL OR frozen->'snapshot' IS DISTINCT FROM p_input->'snapshot' OR frozen->>'operationFingerprint' IS DISTINCT FROM p_input->>'operationFingerprint'
   OR frozen->>'identityKey' IS DISTINCT FROM p_input->>'identityKey' OR (p_due ? 'stockWaitRecovery' AND frozen->'binding' IS DISTINCT FROM p_due->'stockWaitRecovery') THEN
   RAISE EXCEPTION 'stock_wait_frozen_binding_changed' USING ERRCODE='23505'; END IF;
  IF g.state='refused' OR g.state='reserved' AND g.lease_expires_at<=p_now THEN RETURN public.subscription_stock_wait_recover_refusal_v2(g.id,g.operation_fingerprint,p_input->>'worker',p_now); END IF;
- result:=public.fulfillment_reserve_successor_renewal_v2(g.id,(p_input->>'claimToken')::uuid,900,p_now);
- IF (result->>'reserved')::boolean THEN RETURN result||jsonb_build_object('waiting',false); END IF;
- SELECT * INTO p FROM public.subscription_successor_proposals WHERE id=g.proposal_id;
+ BEGIN
+  result:=public.fulfillment_reserve_successor_renewal_v2(g.id,(p_input->>'claimToken')::uuid,900,p_now);
+ EXCEPTION WHEN lock_not_available OR serialization_failure OR unique_violation OR invalid_text_representation THEN RAISE;
+ WHEN OTHERS THEN
+  IF c.id IS NULL OR SQLSTATE='22023' AND SQLERRM NOT IN ('stock_wait_stock_missing','stock_wait_stock_stale') THEN RAISE; END IF;
+  UPDATE public.subscription_successor_wait_cases_v2 SET block_reason='stock_wait_check_failed',last_checked_at=p_now WHERE id=c.id;
+  RETURN jsonb_build_object('error','stock_wait_check_failed','caseId',c.id);
+ END;
+ IF (result->>'reserved')::boolean THEN
+  IF c.id IS NOT NULL AND (c.state<>'stock_secured' OR c.deficits<>'[]'::jsonb OR c.block_reason IS NOT NULL) THEN
+   UPDATE public.subscription_successor_wait_cases_v2 SET state='stock_secured',deficits='[]',block_reason=NULL,
+    stock_secured_at=coalesce(stock_secured_at,p_now),last_checked_at=p_now WHERE id=c.id;
+  END IF;
+  RETURN result||jsonb_build_object('waiting',false);
+ END IF;
  INSERT INTO public.subscription_successor_wait_cases_v2(id,root_case_id,operation_id,subscription_id,client_id,scheduled_at,cycle_number,state,due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits,opened_at,last_checked_at)
  VALUES(gen_random_uuid(),p.original_case_id,g.id,g.subscription_id,p.client_id,g.scheduled_at,g.cycle_number,'waiting',p_due,g.cycle_snapshot,g.operation_fingerprint,g.identity_key,result->'deficits',p_now,p_now)
- ON CONFLICT(operation_id) DO UPDATE SET last_checked_at=p_now RETURNING * INTO c;
+ ON CONFLICT(operation_id) DO UPDATE SET state='waiting',deficits=EXCLUDED.deficits,block_reason=NULL,last_checked_at=p_now RETURNING * INTO c;
  PERFORM public.subscription_stock_wait_record_opened_v2(c);
  RETURN result||jsonb_build_object('waiting',true,'caseId',c.id,'caseKind','successor');
+EXCEPTION WHEN lock_not_available THEN
+ IF SQLERRM IN ('inventory_admission_busy','lc10_root_operation_busy') THEN RAISE; END IF;
+ RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03';
 END; $$;
 REVOKE ALL ON FUNCTION public.subscription_stock_wait_admit_v2(jsonb,jsonb,timestamptz) FROM PUBLIC;
 
@@ -2180,11 +2267,10 @@ BEGIN
  PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=(SELECT original_case_id FROM public.subscription_successor_proposals WHERE id=g.proposal_id) FOR UPDATE NOWAIT;
  SELECT * INTO c FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  SELECT * INTO r FROM public.subscription_successor_reservations_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
- IF g.id IS NULL OR g.operation_fingerprint IS DISTINCT FROM p_fingerprint OR g.superseded_by_proposal_id IS NOT NULL OR s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM g.scheduled_at
-  OR c.id IS NULL OR c.state NOT IN ('waiting','stock_secured') OR c.cycle_snapshot IS DISTINCT FROM g.cycle_snapshot OR c.fingerprint IS DISTINCT FROM g.operation_fingerprint
-  OR c.identity_key IS DISTINCT FROM g.identity_key OR c.superseded_by_proposal_id IS NOT NULL THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
+ IF g.operation_fingerprint IS DISTINCT FROM p_fingerprint OR c.id IS NULL OR public.subscription_stock_wait_frozen_v2(g.id) IS NULL
+ THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
  IF c.state='stock_secured' AND g.state='reserved' AND r.status='held' AND r.expires_at>p_now AND g.lease_expires_at>p_now THEN RETURN public.subscription_read_successor_renewal_v2(g.identity_key)||jsonb_build_object('waiting',false,'replayed',true,'caseId',c.id); END IF;
- IF public.subscription_stock_wait_frozen_v2(g.id) IS NULL OR g.lease_expires_at>p_now OR NOT coalesce(g.state='refused' AND g.terminal_reason IN ('inventory_unavailable','reservation_expired') OR g.state='reserved' AND c.state='stock_secured',false)
+ IF g.lease_expires_at>p_now OR NOT coalesce(g.state='refused' AND g.terminal_reason IN ('inventory_unavailable','reservation_expired') OR g.state='reserved' AND c.state='stock_secured',false)
   OR r.id IS NOT NULL AND (r.operation_fingerprint IS DISTINCT FROM g.operation_fingerprint OR r.lines IS DISTINCT FROM g.cycle_snapshot->'lines' OR r.source_key IS DISTINCT FROM g.cycle_snapshot->>'stockSourceKey'
    OR r.status NOT IN ('released','expired') AND NOT (r.status='held' AND c.state='stock_secured')) THEN RAISE EXCEPTION 'stock_wait_recovery_provider_owned_or_not_eligible' USING ERRCODE='22023'; END IF;
  BEGIN
@@ -2272,6 +2358,8 @@ BEGIN
  FOR line IN SELECT value FROM jsonb_array_elements(snapshot->'lines') ORDER BY value->>'sku' LOOP
   SELECT k.* INTO sku FROM public.catalog_skus k WHERE k.sku=line->>'sku';
   IF sku.id IS NULL OR sku.publication_facts->>'code' IS DISTINCT FROM sku.sku OR sku.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb THEN RAISE EXCEPTION 'catalog_obligation_evidence_unknown' USING ERRCODE='55000'; END IF;
+  IF coalesce(sku.publication_facts->>'lifecycleState','') NOT IN ('draft','active','withdrawn','archived')
+   THEN RAISE EXCEPTION 'catalog_obligation_evidence_unknown' USING ERRCODE='55000'; END IF;
   IF sku.publication_facts->>'lifecycleState'<>'withdrawn' THEN CONTINUE; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.catalog_publication_heads WHERE product_id=sku.product_id) OR EXISTS(
    SELECT 1 FROM public.catalog_publications p CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') ref
@@ -2380,25 +2468,33 @@ CREATE FUNCTION public.subscription_stock_wait_mark_resumed_v2(p_order_id uuid) 
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE hint public.subscription_successor_operations_v2; g public.subscription_successor_operations_v2;
  c public.subscription_successor_wait_cases_v2; shipment public.fulfillment_shipments;
+ s public.subscriptions; cycle public.subscription_cycles; o public.commerce_orders; payment public.commerce_settlement_intents;
 BEGIN
  SELECT * INTO hint FROM public.subscription_successor_operations_v2 WHERE order_id=p_order_id;
  IF NOT FOUND THEN RETURN NULL; END IF;
- PERFORM 1 FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE NOWAIT;
+ SELECT * INTO s FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE NOWAIT;
  BEGIN PERFORM 1 FROM public.subscription_renewal_operations WHERE id=hint.root_operation_id FOR UPDATE NOWAIT;
  EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
  SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=hint.id FOR UPDATE NOWAIT;
  SELECT * INTO c FROM public.subscription_successor_wait_cases_v2 WHERE operation_id=g.id FOR UPDATE NOWAIT;
  IF c.id IS NULL THEN RETURN NULL; END IF;
- PERFORM 1 FROM public.subscription_cycles WHERE id=g.cycle_id FOR UPDATE NOWAIT;
- PERFORM 1 FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE NOWAIT;
- SELECT * INTO shipment FROM public.fulfillment_shipments WHERE order_id=p_order_id AND replaces_shipment_id IS NULL ORDER BY id LIMIT 1 FOR UPDATE NOWAIT;
- IF c.state='closed' OR g.superseded_by_proposal_id IS NOT NULL OR EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status='pending_payment') THEN RETURN NULL; END IF;
- IF g.state<>'succeeded' OR NOT EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status IN ('paid','fulfillment_pending','fulfilled'))
-  OR NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE id=g.settlement_intent_id AND order_id=p_order_id AND status='settled')
-  OR NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE id=g.cycle_id AND status='paid')
+ SELECT * INTO cycle FROM public.subscription_cycles WHERE id=g.cycle_id FOR UPDATE NOWAIT;
+ SELECT * INTO shipment FROM public.fulfillment_shipments WHERE order_id=p_order_id AND replaces_shipment_id IS NULL AND sequence_no=0 FOR UPDATE NOWAIT;
+ SELECT * INTO o FROM public.commerce_orders WHERE id=p_order_id FOR UPDATE NOWAIT;
+ SELECT * INTO payment FROM public.commerce_settlement_intents WHERE id=g.settlement_intent_id FOR UPDATE NOWAIT;
+ IF c.state='closed' OR g.superseded_by_proposal_id IS NOT NULL OR o.status='pending_payment' THEN RETURN NULL; END IF;
+ IF g.state<>'succeeded' OR o.id IS NULL OR o.status NOT IN ('paid','fulfillment_pending','fulfilled')
+  OR o.client_id IS DISTINCT FROM s.client_id OR o.subscription_cycle_id IS DISTINCT FROM cycle.id
+  OR cycle.status IS DISTINCT FROM 'paid' OR cycle.subscription_id IS DISTINCT FROM s.id OR cycle.scheduled_at IS DISTINCT FROM g.scheduled_at
+  OR payment.status IS DISTINCT FROM 'settled' OR payment.order_id IS DISTINCT FROM o.id
+  OR payment.amount_minor IS DISTINCT FROM o.total_amount_minor OR payment.currency_code IS DISTINCT FROM o.currency_code
   OR NOT EXISTS(SELECT 1 FROM public.subscription_successor_reservations_v2 WHERE operation_id=g.id AND status='consumed')
   OR shipment.id IS NULL OR shipment.status IN ('cancelled','exception') OR EXISTS(SELECT 1 FROM public.commerce_order_holds WHERE order_id=p_order_id AND status='active') THEN
   RAISE EXCEPTION 'stock_wait_realization_admission_missing' USING ERRCODE='22023'; END IF;
+ IF c.cycle_id IS NOT NULL AND c.cycle_id IS DISTINCT FROM cycle.id OR c.order_id IS NOT NULL AND c.order_id IS DISTINCT FROM o.id
+  OR c.fulfillment_id IS NOT NULL AND c.fulfillment_id IS DISTINCT FROM shipment.id
+  OR g.fulfillment_id IS NOT NULL AND g.fulfillment_id IS DISTINCT FROM shipment.id THEN
+  RAISE EXCEPTION 'stock_wait_fulfillment_replay_mismatch'; END IF;
  IF c.state='resumed' THEN
   IF c.fulfillment_id IS DISTINCT FROM shipment.id OR g.fulfillment_id IS DISTINCT FROM shipment.id THEN RAISE EXCEPTION 'stock_wait_fulfillment_replay_mismatch'; END IF;
   RETURN public.subscription_stock_wait_projection_v2(c);
@@ -2419,53 +2515,92 @@ REVOKE ALL ON FUNCTION public.subscription_stock_wait_mark_resumed_v2(uuid) FROM
 
 CREATE FUNCTION public.subscription_stock_wait_candidates_v2(p_limit integer DEFAULT 50,p_now timestamptz DEFAULT now()) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE selected record; answer jsonb:='[]'; frozen jsonb;
+DECLARE selected record; answer jsonb:='[]'; frozen jsonb; s public.subscriptions;
+ root public.subscription_renewal_operations; g public.subscription_successor_operations_v2;
+ prior public.subscription_stock_wait_cases; waiting public.subscription_successor_wait_cases_v2;
 BEGIN
- IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 500 OR p_now IS NULL OR NOT isfinite(p_now) THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
- FOR selected IN SELECT * FROM (
+ IF p_now IS NULL OR NOT isfinite(p_now) THEN RAISE EXCEPTION 'stock_wait_binding_changed' USING ERRCODE='22023'; END IF;
+ FOR selected IN WITH candidates AS (
   SELECT 'legacy'::text kind,op.id,op.subscription_id,op.id root_id,op.scheduled_at,c.id case_id,
-   CASE WHEN c.id IS NULL THEN op.updated_at ELSE c.last_selected_at END last_selected
+   CASE WHEN c.id IS NULL THEN op.updated_at ELSE c.last_selected_at END last_selected,
+   coalesce(c.last_checked_at,op.created_at) last_checked,
+   c.id IS NOT NULL AND (s.status='cancelled' OR s.next_cycle_at IS DISTINCT FROM c.scheduled_at) stale,
+   s.status='active' AND s.next_cycle_at=op.scheduled_at AND op.scheduled_at<=p_now AND op.lease_expires_at<=p_now
+     AND (op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired') OR op.state='reserved' AND c.state='stock_secured')
+     AND public.subscription_stock_wait_frozen(op.subscription_id,op.scheduled_at) IS NOT NULL ready
   FROM public.subscription_renewal_operations op JOIN public.subscriptions s ON s.id=op.subscription_id
   LEFT JOIN public.subscription_stock_wait_cases c ON c.renewal_operation_id=op.id
-  WHERE s.status='active' AND s.next_cycle_at=op.scheduled_at AND op.lease_expires_at<=p_now
-   AND (op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired') OR op.state='reserved' AND c.state='stock_secured')
-   AND (c.id IS NULL OR c.state IN ('waiting','stock_secured')) AND public.subscription_stock_wait_frozen(op.subscription_id,op.scheduled_at) IS NOT NULL
+  WHERE c.id IS NULL OR (c.state IN ('waiting','stock_secured') AND c.client_id=s.client_id AND c.scheduled_at=op.scheduled_at)
   UNION ALL
-  SELECT 'successor',g.id,g.subscription_id,g.root_operation_id,g.scheduled_at,c.id,c.last_selected_at
-  FROM public.subscription_successor_operations_v2 g JOIN public.subscriptions s ON s.id=g.subscription_id
-  JOIN public.subscription_successor_wait_cases_v2 c ON c.operation_id=g.id
-  WHERE s.status='active' AND s.next_cycle_at=g.scheduled_at AND g.lease_expires_at<=p_now AND g.superseded_by_proposal_id IS NULL
-   AND (g.state='refused' AND g.terminal_reason IN ('inventory_unavailable','reservation_expired') OR g.state='reserved' AND c.state='stock_secured')
-   AND c.state IN ('waiting','stock_secured') AND public.subscription_stock_wait_frozen_v2(g.id) IS NOT NULL
- ) candidates ORDER BY last_selected NULLS FIRST,scheduled_at,id LIMIT p_limit LOOP
-  IF selected.kind='legacy' THEN
-   IF selected.case_id IS NOT NULL THEN
-    PERFORM 1 FROM public.subscription_stock_wait_cases WHERE id=selected.case_id FOR UPDATE SKIP LOCKED;
-    IF NOT FOUND THEN CONTINUE; END IF;
+  SELECT 'successor',op.id,op.subscription_id,op.root_operation_id,op.scheduled_at,c.id,c.last_selected_at,c.last_checked_at,
+   s.status='cancelled' OR s.next_cycle_at IS DISTINCT FROM c.scheduled_at,
+   s.status='active' AND s.next_cycle_at=op.scheduled_at AND op.scheduled_at<=p_now AND op.lease_expires_at<=p_now
+     AND (op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired') OR op.state='reserved' AND c.state='stock_secured')
+     AND public.subscription_stock_wait_frozen_v2(op.id) IS NOT NULL
+  FROM public.subscription_successor_operations_v2 op JOIN public.subscriptions s ON s.id=op.subscription_id
+  JOIN public.subscription_successor_wait_cases_v2 c ON c.operation_id=op.id
+  WHERE c.state IN ('waiting','stock_secured') AND c.client_id=s.client_id AND c.scheduled_at=op.scheduled_at
+   AND op.superseded_by_proposal_id IS NULL
+ ), chosen AS (
+  SELECT candidates.*,row_number() OVER (ORDER BY last_selected NULLS FIRST,last_checked,coalesce(case_id,id)) ordinal
+  FROM candidates WHERE ready
+  ORDER BY ordinal LIMIT greatest(1,least(p_limit,50))
+ ), actions AS (
+  SELECT * FROM chosen UNION ALL SELECT candidates.*,NULL::bigint FROM candidates WHERE stale
+ ) SELECT * FROM actions ORDER BY subscription_id,root_id,id,case_id LOOP
+  BEGIN
+   SELECT * INTO s FROM public.subscriptions WHERE id=selected.subscription_id FOR UPDATE NOWAIT;
+   SELECT * INTO root FROM public.subscription_renewal_operations WHERE id=selected.root_id FOR UPDATE NOWAIT;
+   IF selected.kind='successor' THEN
+    SELECT * INTO g FROM public.subscription_successor_operations_v2 WHERE id=selected.id FOR UPDATE NOWAIT;
+    SELECT * INTO waiting FROM public.subscription_successor_wait_cases_v2 WHERE id=selected.case_id FOR UPDATE NOWAIT;
+    IF waiting.state NOT IN ('waiting','stock_secured') OR waiting.client_id IS DISTINCT FROM s.client_id
+     OR g.superseded_by_proposal_id IS NOT NULL THEN CONTINUE; END IF;
+   ELSE
+    SELECT * INTO prior FROM public.subscription_stock_wait_cases WHERE id=selected.case_id FOR UPDATE NOWAIT;
+    IF selected.case_id IS NOT NULL AND (prior.state NOT IN ('waiting','stock_secured') OR prior.client_id IS DISTINCT FROM s.client_id)
+     THEN CONTINUE; END IF;
    END IF;
-   PERFORM 1 FROM public.subscription_renewal_operations WHERE id=selected.id FOR UPDATE SKIP LOCKED;
-   IF NOT FOUND THEN CONTINUE; END IF;
-   frozen:=public.subscription_stock_wait_frozen(selected.subscription_id,selected.scheduled_at);
-   IF frozen IS NULL THEN CONTINUE; END IF;
-   IF selected.case_id IS NOT NULL THEN UPDATE public.subscription_stock_wait_cases SET last_selected_at=p_now WHERE id=selected.case_id;
-   ELSE UPDATE public.subscription_renewal_operations SET updated_at=p_now WHERE id=selected.id; END IF;
-   answer:=answer||jsonb_build_array(jsonb_build_object('schemaVersion',2,'caseKind','legacy','operationKind','legacy','frozen',frozen));
-  ELSE
-   PERFORM 1 FROM public.subscriptions WHERE id=selected.subscription_id FOR UPDATE NOWAIT;
-   BEGIN PERFORM 1 FROM public.subscription_renewal_operations WHERE id=selected.root_id FOR UPDATE NOWAIT;
-   EXCEPTION WHEN lock_not_available THEN RAISE EXCEPTION 'lc10_root_operation_busy' USING ERRCODE='55P03'; END;
-   PERFORM 1 FROM public.subscription_successor_operations_v2 WHERE id=selected.id FOR UPDATE NOWAIT;
-   PERFORM 1 FROM public.subscription_successor_wait_cases_v2 WHERE id=selected.case_id FOR UPDATE NOWAIT;
-   frozen:=public.subscription_stock_wait_frozen_v2(selected.id);
-   IF frozen IS NULL THEN CONTINUE; END IF;
-   UPDATE public.subscription_successor_wait_cases_v2 SET last_selected_at=p_now WHERE id=selected.case_id;
-   answer:=answer||jsonb_build_array(frozen);
-  END IF;
+   IF selected.stale THEN
+    IF s.status<>'cancelled' AND s.next_cycle_at IS NOT DISTINCT FROM selected.scheduled_at THEN CONTINUE; END IF;
+    IF root.attempt_prepared_at IS NOT NULL OR root.external_attempt_ref IS NOT NULL OR root.external_attempt_acknowledged_at IS NOT NULL
+     OR EXISTS(SELECT 1 FROM public.subscription_cycles WHERE renewal_operation_id=root.id OR subscription_id=s.id AND scheduled_at=selected.scheduled_at)
+     OR EXISTS(SELECT 1 FROM public.commerce_orders WHERE renewal_operation_id=root.id)
+     OR EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE renewal_operation_id=root.id)
+     OR selected.kind='successor' AND (g.attempt_prepared_at IS NOT NULL OR g.external_attempt_ref IS NOT NULL OR g.external_attempt_acknowledged_at IS NOT NULL
+      OR g.cycle_id IS NOT NULL OR g.order_id IS NOT NULL OR g.settlement_intent_id IS NOT NULL OR waiting.order_id IS NOT NULL)
+     OR selected.kind='legacy' AND (prior.order_id IS NOT NULL OR prior.cycle_id IS NOT NULL)
+     THEN CONTINUE; END IF;
+    IF selected.kind='legacy' THEN
+     UPDATE public.subscription_stock_wait_cases SET state='closed',closed_at=p_now,block_reason='cancelled_or_superseded' WHERE id=prior.id;
+    ELSE
+     UPDATE public.subscription_successor_wait_cases_v2 SET state='closed',closed_at=p_now,block_reason='cancelled_or_superseded' WHERE id=waiting.id;
+    END IF;
+    CONTINUE;
+   END IF;
+   IF s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM selected.scheduled_at THEN CONTINUE; END IF;
+   IF selected.kind='legacy' THEN
+    IF root.lease_expires_at>p_now OR NOT coalesce(root.state='refused' AND root.terminal_reason IN ('inventory_unavailable','reservation_expired')
+      OR root.state='reserved' AND prior.state='stock_secured',false) THEN CONTINUE; END IF;
+    frozen:=public.subscription_stock_wait_frozen(selected.subscription_id,selected.scheduled_at);
+    IF frozen IS NULL OR frozen->>'caseId' IS DISTINCT FROM selected.case_id::text THEN CONTINUE; END IF;
+    IF prior.id IS NOT NULL THEN UPDATE public.subscription_stock_wait_cases SET last_selected_at=p_now WHERE id=prior.id;
+    ELSE UPDATE public.subscription_renewal_operations SET updated_at=p_now WHERE id=root.id; END IF;
+    frozen:=jsonb_build_object('schemaVersion',2,'caseKind','legacy','operationKind','legacy','frozen',frozen);
+   ELSE
+    IF g.lease_expires_at>p_now OR NOT coalesce(g.state='refused' AND g.terminal_reason IN ('inventory_unavailable','reservation_expired')
+      OR g.state='reserved' AND waiting.state='stock_secured',false) THEN CONTINUE; END IF;
+    frozen:=public.subscription_stock_wait_frozen_v2(g.id);
+    IF frozen IS NULL THEN CONTINUE; END IF;
+    UPDATE public.subscription_successor_wait_cases_v2 SET last_selected_at=p_now WHERE id=waiting.id;
+   END IF;
+   answer:=answer||jsonb_build_array(jsonb_build_object('ordinal',selected.ordinal,'wire',frozen));
+  EXCEPTION WHEN lock_not_available THEN
+   -- A busy candidate rolls back its tentative locks and makes no progress.
+   CONTINUE;
+  END;
  END LOOP;
- RETURN answer;
-EXCEPTION WHEN lock_not_available THEN
- IF SQLERRM='lc10_root_operation_busy' THEN RAISE; END IF;
- RAISE EXCEPTION 'lc10_commerce_busy' USING ERRCODE='55P03';
+ RETURN (SELECT coalesce(jsonb_agg(item->'wire' ORDER BY (item->>'ordinal')::bigint),'[]'::jsonb) FROM jsonb_array_elements(answer) item);
 END; $$;
 REVOKE ALL ON FUNCTION public.subscription_stock_wait_candidates_v2(integer,timestamptz) FROM PUBLIC;
 

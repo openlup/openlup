@@ -8405,7 +8405,7 @@
     },
     {
       "path": "db/platform/migrations/20261123210000_catalog_successors.sql",
-      "sha256": "089e044564edc6f22bf17d58fdd8facebde9f94f10026e9d884236e5ec9ebd0b",
+      "sha256": "be5334452593243279bc4fbfa03ea6c286efad56ef92662409b1099e5ee206dc",
       "functions": [
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",
@@ -8440,7 +8440,7 @@
         {
           "signature": "public.catalog_publication_record_admit()",
           "beforeSha256": "57f25c9304b556df7d21a387870fb05e95c8556204dd679887a7519790c03b01",
-          "afterSha256": "2764aa7897beee773d83bb09d6d1019a8a508d3e33b72413179affa44a7dac2a"
+          "afterSha256": "efb441a28d469b75204dd23b8ff0e01f21c0f955884513278a80a0644f641738"
         },
         {
           "signature": "public.catalog_accepted_reference_assert_v2(jsonb)",
@@ -8465,12 +8465,12 @@
         {
           "signature": "public.subscription_stock_wait_record_opened_v2(public.subscription_successor_wait_cases_v2)",
           "beforeSha256": null,
-          "afterSha256": "80f2c04a5f03c3d90863415b05171e05f95365c1bbaf6673b3334a8c264f079a"
+          "afterSha256": "0752fef384aec05ac6548cd501704491b7c5a3ba31efa3b333f6b3c70cadd14d"
         },
         {
           "signature": "public.subscription_successor_guard_v2()",
           "beforeSha256": null,
-          "afterSha256": "3c3d4f3c8c287e62fe1bfa035756a95d9dc9bcf5c026b606433b54fae575cd9b"
+          "afterSha256": "a823061ec501ec603c766183e0189eac829b530ed17f1061336acdece811f5bb"
         },
         {
           "signature": "public.subscription_stock_wait_read_v2(uuid,text)",
@@ -8485,7 +8485,7 @@
         {
           "signature": "public.subscription_stock_wait_frozen_v2(uuid)",
           "beforeSha256": null,
-          "afterSha256": "fc7b4c8ab275ed1f0007e4f7a0f171a31589025989ac39262ef74bc4e6155f42"
+          "afterSha256": "2e9df9bec3fe52bd66a9bc359867c4ea6bc9d473b7e9eeb486230ea187d2c8b2"
         },
         {
           "signature": "public.subscription_claim_successor_renewal_v2(text,text,jsonb,text,integer,timestamptz)",
@@ -8495,7 +8495,7 @@
         {
           "signature": "public.fulfillment_reserve_successor_renewal_v2(uuid,uuid,integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "365e789d2bf23c5786841d65c37c0326dd48c21deb6b212475a7795a93074824"
+          "afterSha256": "692c4c3386dcaa74b411ef2d419b8d004d73d5c1c9df02d3ce4b9a5accc2fcf0"
         },
         {
           "signature": "public.commerce_prepare_successor_renewal_v2(uuid,uuid,timestamptz)",
@@ -8505,7 +8505,7 @@
         {
           "signature": "public.subscription_list_due_successor_renewals_v2(integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "ba332a9e5a55decd51d95514ff6acbf31768127b0ae13743d20f9daf0720f55b"
+          "afterSha256": "6c2eb7a88a8b61d5d634d58df2b1c768508c7e80d399503af556deb6bf917525"
         },
         {
           "signature": "public.subscription_successor_proposal_offer_v2(uuid,uuid,jsonb,timestamptz)",
@@ -8515,7 +8515,7 @@
         {
           "signature": "public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "83b38f46bbe537b55fb6812c764c4139f598dbd3ae92e70816ee76d2a0e0a503"
+          "afterSha256": "01f6e4af1dc106ea1459a530f31e363293b4b7c1c7b095645c5d5b65a271583b"
         },
         {
           "signature": "public.fulfillment_release_successor_renewal_v2(uuid,uuid,text,timestamptz)",
@@ -8530,17 +8530,17 @@
         {
           "signature": "public.subscription_stock_wait_admit_v2(jsonb,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "28e12c8774ceb2390263a778d43d98cf7a56faa1dff8eaa562f899951e971577"
+          "afterSha256": "b0db1a986936497d47a9a17cc8cd5c66015f798006d3d7265193d6cde4641777"
         },
         {
           "signature": "public.subscription_stock_wait_recover_refusal_v2(uuid,text,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "5227420cd1e1ffca8667f57a1a12d218288a0d7e33fe6ea5d23437aba3ab1262"
+          "afterSha256": "c2055565316f2b54b170da1d61dae74c9ed26dc3f7c051a5a148618b9d4fad40"
         },
         {
           "signature": "public.subscription_successor_notice_v2(uuid,text,uuid)",
           "beforeSha256": null,
-          "afterSha256": "6e9e366f667852f2b7a5ade21db75c11e57a308a67e46fbfc7dffcc5692b6fc7"
+          "afterSha256": "efb7d4261b80a5bbb7ee857c47487020dc8a0680525f06e16095e229474f5ff2"
         },
         {
           "signature": "public.commerce_settle_successor_renewal_v2(uuid,text,jsonb,timestamptz)",
@@ -8550,12 +8550,12 @@
         {
           "signature": "public.subscription_stock_wait_mark_resumed_v2(uuid)",
           "beforeSha256": null,
-          "afterSha256": "503739a51b3b609435c4f9c4fe63d1d4d2cd71336aacfd959f20e02ea60911c4"
+          "afterSha256": "e1d9273f3c1d25fcae42eec866193a9f182e3f38c2695d0715c281b2b22d82cc"
         },
         {
           "signature": "public.subscription_stock_wait_candidates_v2(integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "b6697de259ecf8d63fff7e80fbcc627ef3b3f9678e35abfc2cb8fba02ba68f07"
+          "afterSha256": "5f440eb5d57b0bbd83048547b2f865f6bf0938986dfebc9fc314a774d04506e5"
         },
         {
           "signature": "public.subscription_successor_proposal_decide_v2(uuid,uuid,text,text,text,timestamptz)",

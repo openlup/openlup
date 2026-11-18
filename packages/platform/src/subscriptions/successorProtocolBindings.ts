@@ -12,6 +12,7 @@ export class Lc10ProtocolBindingError extends Error {
   readonly code = "lc10_protocol_binding_unavailable";
   constructor() { super("lc10_protocol_binding_unavailable"); this.name = "Lc10ProtocolBindingError"; }
 }
+/** Resolve one exact installed authority for retained successor evidence. @experimental */
 export function requireHistoricalProtocolBinding(
   input: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">,
   installedBindings: readonly HistoricalSuccessorProtocolBinding[],

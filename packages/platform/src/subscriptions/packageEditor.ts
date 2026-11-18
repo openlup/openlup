@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline } from "./editConsentBaseline.js";
-import { lockUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
+import { lockUnpaidSuccessorPreview, recordUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
 import type { SuccessorCaseKind } from "./contracts/successors.js";
 import { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
@@ -129,10 +129,12 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
           ...(quote.portionModes ? { portionModes: quote.portionModes } : {}) }
           : { editConsent: quote.editConsent, baseLines: quote.baseLines, addonLines: quote.addonLines, compositionConstraint: quote.compositionConstraint };
         const totals = exact ? {} : { currentRecurringPrice: quote.currentRecurringPrice, newRecurringPrice: quote.newRecurringPrice, delta: quote.delta };
-        const recorded=await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz) AS result`,
-          [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires,
-            ledgerRequest, snapshot, totals, options.now()]);
-        const previewId=stockWait?z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id):undefined;
+        const recordedAt = options.now();
+        const previewId = stockWait ? await recordUnpaidSuccessorPreview(db, { actor, subscriptionId: request.subscriptionId, action,
+          quoteHash: quote.quoteHash, templateVersion: quote.expectedTemplateVersion, expiresAt: expires,
+          request: ledgerRequest, snapshot, totals, now: recordedAt }) : undefined;
+        if (!stockWait) await db.query(`SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,'${action}',$4::text,$5::integer,$6::timestamptz,$7::jsonb,$8::jsonb,$9::jsonb,$10::timestamptz) AS result`,
+          [actor.actorId, actor.clientId, request.subscriptionId, quote.quoteHash, quote.expectedTemplateVersion, expires, ledgerRequest, snapshot, totals, recordedAt]);
         const identity=stockWait?{previewId}:{};
         if (exact) return { ...preview,...identity, editConsent: quote.editConsent, currentTotal: quote.currentRecurringPrice, newTotal: quote.newRecurringPrice, delta: quote.delta, quoteHash: quote.quoteHash, quoteExpiresAt: expires };
         return { ...preview,...identity, editConsent: quote.editConsent, quoteHash: quote.quoteHash, quoteExpiresAt: expires, currentTotal: quote.currentRecurringPrice,

@@ -1732,6 +1732,7 @@ export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge
 export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
 export { createPostgresSuccessorStore } from "./postgresSuccessorStore.js";
 export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuccessorStore.js";
+export { requireHistoricalProtocolBinding } from "./successorProtocolBindings.js";
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
@@ -2687,13 +2688,20 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
 ## dist/subscriptions/postgresSuccessorNotices.d.ts
 
 ```ts
+import { z } from "zod";
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
-import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
+import type { SubscriptionLifecycleMessagePort, SubscriptionLifecycleMessageDescriptor } from "./contracts/messages.js";
+declare const waitMessage: z.ZodObject<{
+    from: z.ZodString;
+    to: z.ZodString;
+    subject: z.ZodString;
+    html: z.ZodString;
+}, z.core.$loose>;
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
  */
-export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2", "subscription_stock_wait.started", "subscription_stock_wait.resumed"];
+export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2", "subscription_stock_wait.started", "subscription_stock_wait.resumed", "subscription_stock_wait.started.v2", "subscription_stock_wait.resumed.v2"];
 /** Source claims must be committed before invocation. Commerce commits its handoff
  * before M04 enqueue; a crash between enqueue and source acknowledgement replays
  * the same message key. Construction registers no worker or capability.
@@ -2715,10 +2723,19 @@ export declare function createPostgresSuccessorNotices(options: {
             reason: string;
         }>;
     };
-    /** Native M04 receipts share this store. For stock-wait facts the host freezes
-     * rendered copy with subscription_stock_wait_bind_notice(caseId,factId,message)
-     * before enqueue and reuses the returned message on every attempt. */
+    /** Native M04 receipts share this store. */
     delivery: SubscriptionLifecycleMessagePort;
+    /** The store freezes rendered stock-wait copy before invoking the transport.
+     * @experimental
+     */
+    stockWaitDelivery?: {
+        render(descriptor: SubscriptionLifecycleMessageDescriptor): Promise<z.input<typeof waitMessage>>;
+        send(input: {
+            messageKey: string;
+            templateSlug: string;
+            message: z.output<typeof waitMessage>;
+        }): Promise<void>;
+    };
     recipient(clientId: string): Promise<{
         recipientRef: string;
         locale: string;
@@ -2726,6 +2743,7 @@ export declare function createPostgresSuccessorNotices(options: {
 }): {
     handle(row: OutboxEventRow): Promise<OutboxHandlerOutcome>;
 };
+export {};
 ```
 ## dist/subscriptions/postgresSuccessorStore.d.ts
 
@@ -2822,11 +2840,34 @@ export declare const successorCaseReadSchema: z.ZodDiscriminatedUnion<[z.ZodObje
     waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
     schemaVersion: z.ZodLiteral<2>;
 }, z.core.$loose>], "caseKind">;
+declare const recoverySelection: z.ZodObject<{
+    caseKind: z.ZodLiteral<"successor">;
+    caseId: z.ZodGUID;
+    operationId: z.ZodGUID;
+    rootOperationId: z.ZodGUID;
+    proposalId: z.ZodGUID;
+    claimGeneration: z.ZodNumber;
+}, z.core.$loose>;
 /** Internal source check shared by the existing preview owners. */
 export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
     caseId: string;
     caseKind: SuccessorCaseKind;
 }): Promise<void>;
+/** Record a validated unpaid preview on its owner connection after locking the subscription.
+ * @experimental
+ */
+export declare function recordUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, input: {
+    actor: PackageEditActor;
+    subscriptionId: string;
+    action: string;
+    quoteHash: string;
+    templateVersion: number;
+    expiresAt: string;
+    request: unknown;
+    snapshot: unknown;
+    totals: unknown;
+    now: string;
+}): Promise<string>;
 /** Server-owned enrichment of a recorded native preview. The store preholds the
  * subscription, client, preview and source parents. Enrichment may update only
  * that preview; it takes no catalogue fence or other commerce lock.
@@ -2885,8 +2926,8 @@ export declare function createPostgresSuccessorStore(options: {
     }): Promise<Record<string, unknown>>;
     resolve(actor: PackageEditActor, input: Omit<SuccessorResolutionRequest, "clientId">): Promise<Record<string, unknown>>;
     readCase(caseId: string, caseKind: SuccessorCaseKind): Promise<Record<string, unknown> | null>;
-    listDue(limit: number, now: string): Promise<{} | null>;
-    listCandidates(limit: number, now: string): Promise<{} | null>;
+    listDue(limit: number | null, now: string): Promise<unknown[]>;
+    listCandidates(limit: number | null, now: string): Promise<{} | null>;
     claim(input: {
         identityKey: string;
         fingerprint: string;
@@ -2906,6 +2947,8 @@ export declare function createPostgresSuccessorStore(options: {
         fingerprint: string;
         workerId: string;
         now: string;
+        /** @experimental */
+        selection?: z.input<typeof recoverySelection>;
     }): Promise<Record<string, unknown>>;
     prepare(input: {
         operationId: string;
@@ -2925,6 +2968,7 @@ export declare function createPostgresSuccessorStore(options: {
     }): Promise<Record<string, unknown>>;
     markResumed(orderId: string): Promise<Record<string, unknown> | null>;
 };
+export {};
 ```
 ## dist/subscriptions/postgresWinback.d.ts
 
@@ -3537,5 +3581,6 @@ export declare class Lc10ProtocolBindingError extends Error {
     readonly code = "lc10_protocol_binding_unavailable";
     constructor();
 }
+/** Resolve one exact installed authority for retained successor evidence. @experimental */
 export declare function requireHistoricalProtocolBinding(input: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">, installedBindings: readonly HistoricalSuccessorProtocolBinding[]): HistoricalSuccessorProtocolBinding;
 ```
