@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, readPostgresCatalogMembershipPage, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
-import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
+import type { CatalogPublicationManifestV2, CatalogPublishedSku, CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -56,7 +56,10 @@ beforeAll(async () => {
   }
   await db.query(readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8"));
   await db.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
+  // The forward must revoke direct helper access even with explicit installer defaults.
+  await db.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role");
   await db.query(readFileSync("db/platform/migrations/20261123170000_catalog_publication_reads.sql", "utf8"));
+  await db.query("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated, service_role");
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -3104,6 +3107,7 @@ describe("governed publication reads", () => {
   const pageSql = "SELECT public.catalog_offer_memberships_page($1,$2,$3,$4,$5) AS result";
   const batchSql = "SELECT public.catalog_publication_activation_readiness($1,$2) AS result";
   const wrongDigest = "0".repeat(64);
+  const liveDrift = { code: "40001", message: "catalog_publication_live_drift" };
   let first: Awaited<ReturnType<typeof publishMember>>, last: typeof first;
 
   async function publishMember(id: string, code: string, logisticsRef: string) {
@@ -3174,7 +3178,6 @@ describe("governed publication reads", () => {
   }));
 
   it.each([
-    ["D-209.order", { limit: 1 }, [firstId], firstId],
     ["D-210.lookahead", { limit: 1 }, [firstId], firstId],
     ["D-210.no-lookahead", { limit: 2 }, [firstId, lastId], null],
     ["D-210.empty", { mode: "subscription", cursor: { skuId: lastId, headDigest: wrongDigest } }, [], null],
@@ -3251,9 +3254,15 @@ describe("governed publication reads", () => {
     expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
   }));
 
-  it("D-207.null-offer", async () => isolated(async connection => {
+  it.each([
+    ["D-207.null-offer", null, null],
+    ["D-207.offer-min", "", null],
+    ["D-207.offer-max", "x".repeat(81), null],
+    ["D-207.offer-trim", ` ${offerVersion} `, null],
+    ["LC6-D-092.format-digest", offerVersion, "invalid"],
+  ])("%s", async (_rule, offer, digest) => isolated(async connection => {
     await connection.query("DELETE FROM public.catalog_publication_heads");
-    await expect(connection.query(pageSql, [null, null, 1, null, null]))
+    await expect(connection.query(pageSql, [offer, digest === null ? null : firstId, 1, null, digest]))
       .rejects.toMatchObject({ code: "22023", message: "catalog_offer_memberships_page_input_invalid" });
   }));
 
@@ -3297,6 +3306,26 @@ describe("governed publication reads", () => {
     if (rule === "D-214.logistics") expect(result.items.map(item => item.logisticsRef)).toEqual([first.logisticsRef, last.logisticsRef, null]);
     if (rule === "D-214.ready") expect(result.items.slice(0, 2).map(({ ready, reasons }) => ({ ready, reasons })))
       .toEqual([{ ready: true, reasons: [] }, { ready: false, reasons: ["price_readiness_missing"] }]);
+  });
+
+  it.each(["D-214.native-reasons", "LC2R-READINESS.read-only"])("%s", async rule => {
+    if (rule === "D-214.native-reasons") {
+      await isolated(async connection => {
+        const { headDigest } = await governed(connection);
+        await connection.query("DELETE FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1 AND is_primary", [firstId]);
+        const { rows } = await connection.query(batchSql, [[first.code], headDigest]);
+        expect(rows[0]!.result.items).toMatchObject([{ skuCode: first.code, skuId: firstId, ready: false, reasons: ["unit_gtin_missing"] }]);
+      });
+    } else {
+      const { headDigest } = await governed();
+      const target = createPostgresCatalogPublication({ ...dependencies(), async readiness(connection) {
+        const { rows } = await connection.query("SHOW transaction_read_only");
+        expect(rows).toEqual([{ transaction_read_only: "on" }]);
+        return { ready: true, reasons: [] };
+      } });
+      expect(await target.activationReadiness([first.code], headDigest))
+        .toMatchObject({ protocol: "governed", items: [{ skuId: firstId, ready: true, reasons: [] }] });
+    }
   });
 
   it("D-213.scope", async () => isolated(async connection => {
@@ -3365,5 +3394,148 @@ describe("governed publication reads", () => {
         else await expect(connection.query(sql, values)).rejects.toMatchObject({ code: "42501" });
       });
     }
+  });
+
+  const sharedHelpers = [
+    ["catalog_publication_read_head", "SELECT public.catalog_publication_read_head()", []],
+    ["catalog_publication_read_member", "SELECT public.catalog_publication_read_member($1)", [firstId]],
+  ] as const;
+  it.each(sharedHelpers.flatMap(([name, sql, parameters]) =>
+    ["lc2r_reader", "anon", "authenticated", "service_role"].map(role =>
+      [`LC2R-ACL.helpers.${name}.${role}`, name, sql, parameters, role] as const)))("%s", async (_rule, name, sql, parameters, role) => isolated(async connection => {
+    if (role === "lc2r_reader") await connection.query("CREATE ROLE lc2r_reader NOLOGIN");
+    await connection.query(`SET LOCAL ROLE ${role}`);
+    await expect(connection.query(sql, [...parameters])).rejects
+      .toMatchObject({ code: "42501", message: `permission denied for function ${name}` });
+  }));
+
+  // Rewrite sealed fixture bytes only in the rollback scope. Reseal every
+  // unrelated carrier so a secondary check cannot mask the targeted change.
+  async function rewriteManifest(connection: PoolClient, change: (manifest: CatalogPublicationManifestV2) => void, mirrorProduct = false) {
+    await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+    const publicationId = first.receipt.head.publicationId;
+    const { rows: [row] } = await connection.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [publicationId]);
+    const manifest: CatalogPublicationManifestV2 = JSON.parse(row!.canonical_state);
+    change(manifest);
+    const text = canonicalCatalogDraftJson(manifest);
+    await connection.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+      [publicationId, text, createHash("sha256").update(text).digest("hex")]);
+    if (mirrorProduct) await connection.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [first.productId, manifest.product]);
+  }
+
+  async function rewriteSku(connection: PoolClient, change: (sku: CatalogPublishedSku) => void) {
+    await connection.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+    const { rows: [row] } = await connection.query("SELECT id,full_facts FROM public.catalog_sku_revisions WHERE sku_id=$1", [firstId]);
+    const sku: CatalogPublishedSku = JSON.parse(row!.full_facts);
+    change(sku);
+    const text = canonicalCatalogDraftJson(sku);
+    const digest = createHash("sha256").update(text).digest("hex");
+    await connection.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3 WHERE id=$1", [row!.id, text, digest]);
+    await connection.query("UPDATE public.catalog_skus SET publication_facts=$2 WHERE id=$1", [firstId, sku]);
+    await rewriteManifest(connection, manifest => { manifest.skus[0]!.digest = digest; });
+  }
+
+  it.each<[string, (connection: PoolClient) => Promise<unknown>]>([
+    ["LC6-D-094.subscription-drift", connection => connection.query("UPDATE public.catalog_skus SET sellable_in_subscription=false WHERE id=$1", [firstId])],
+    ["LC6-D-094.retained-link.sku", connection => rewriteManifest(connection, manifest => { manifest.skus[0]!.skuId = lastId; })],
+    ["LC6-D-094.retained-link.revision-id", connection => rewriteManifest(connection, manifest => { manifest.skus[0]!.revisionId = randomUUID(); })],
+    ["LC6-D-094.retained-link.revision-number", connection => rewriteManifest(connection, manifest => { manifest.skus[0]!.revision++; })],
+    ["LC6-D-094.retained-link.owner", async connection => {
+      const { rows: [foreign] } = await connection.query("SELECT id,revision,digest,full_facts FROM public.catalog_sku_revisions WHERE sku_id=$1", [lastId]);
+      await rewriteManifest(connection, manifest => {
+        manifest.skus[0] = { skuId: firstId, revisionId: foreign!.id, revision: foreign!.revision, digest: foreign!.digest };
+      });
+      await connection.query("UPDATE public.catalog_skus SET sku='LC2R-UNRELATED' WHERE id=$1", [lastId]);
+      await connection.query("UPDATE public.catalog_skus SET sku=$2,publication_facts=$3::jsonb WHERE id=$1", [firstId, last.code, foreign!.full_facts]);
+    }],
+    ["LC6-D-094.ambiguous-retained", connection => rewriteManifest(connection, manifest => { manifest.skus.push(manifest.skus[0]!); })],
+    ["LC6-D-094.hash-publication", async connection => {
+      await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+      await connection.query("UPDATE public.catalog_publications SET canonical_state=canonical_state||' ' WHERE id=$1", [first.receipt.head.publicationId]);
+    }],
+    ["LC6-D-094.hash-sku", async connection => {
+      await connection.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+      await connection.query("UPDATE public.catalog_sku_revisions SET full_facts=full_facts||' ' WHERE sku_id=$1", [firstId]);
+    }],
+    ["LC6-D-094.hash-document", async connection => {
+      await connection.query("ALTER TABLE public.catalog_product_document_revisions DISABLE TRIGGER catalog_product_document_revisions_immutable");
+      await connection.query("UPDATE public.catalog_product_document_revisions SET canonical_text=canonical_text||' ' WHERE id=$1", [first.payload.product.documentRevision!.id]);
+    }],
+    ["LC6-D-094.document-projection", connection => rewriteManifest(connection, manifest => { manifest.product.document!.sourceRef = "example:wrong"; }, true)],
+    ["LC6-D-094.live-product", connection => connection.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{name}',to_jsonb($2::text)) WHERE id=$1", [first.productId, "Different name"])],
+    ["LC6-D-094.live-sku", connection => connection.query("UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{title}',to_jsonb($2::text)) WHERE id=$1", [firstId, "Different title"])],
+    ["LC6-D-094.live-slug", connection => connection.query("UPDATE public.catalog_products SET slug='different-slug' WHERE id=$1", [first.productId])],
+    ["LC6-D-094.live-status.product", connection => rewriteManifest(connection, manifest => { manifest.product.status = "archived"; }, true)],
+    ["LC6-D-094.live-status.sku", connection => rewriteSku(connection, sku => { sku.status = "archived"; })],
+  ])("%s", async (_rule, change) => isolated(async connection => {
+    await change(connection);
+    const { rows: [head] } = await connection.query("SELECT public.catalog_publication_read_head() AS digest");
+    const { rows: [selected] } = await connection.query("SELECT sku FROM public.catalog_skus WHERE id=$1", [firstId]);
+    await connection.query("SAVEPOINT membership_evidence");
+    const page = await connection.query(pageSql, [offerVersion, null, 1, null, null]).catch((error: unknown) => error);
+    await connection.query("ROLLBACK TO SAVEPOINT membership_evidence");
+    const batch = await connection.query(batchSql, [[selected!.sku], head!.digest]).catch((error: unknown) => error);
+    expect({ page, batch }).toMatchObject({ page: liveDrift, batch: liveDrift });
+  }));
+
+  it("LC6-D-094.retained-link.current", async () => isolated(async connection => {
+    const previous = first.receipt.head;
+    const { items: [member] } = await governed(connection);
+    const publicationId = randomUUID();
+    await connection.query(`INSERT INTO public.catalog_publications
+      (id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+      SELECT $2,product_id,revision+1,id,draft_id,draft_revision,candidate_ref||'/selected-fixture',candidate_digest,document_revision_id,canonical_state,digest,actor_id
+      FROM public.catalog_publications WHERE id=$1`, [previous.publicationId, publicationId]);
+    await connection.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=revision+1 WHERE product_id=$1", [first.productId, publicationId]);
+    const otherText = canonicalCatalogDraftJson({ variant: "another retained document" });
+    await connection.query(`INSERT INTO public.catalog_product_document_revisions
+      (product_id,revision_no,schema_id,document_ref,source_ref,document_payload,provenance,digest,canonical_text)
+      SELECT product_id,revision_no+1,schema_id,document_ref,source_ref,$2::text::jsonb,provenance,$3,$2::text
+      FROM public.catalog_product_document_revisions WHERE id=$1`,
+    [member!.document.id, otherText, createHash("sha256").update(otherText).digest("hex")]);
+    const { items: [selected] } = await governed(connection);
+    expect(selected).toMatchObject({
+      head: { ...previous, publicationId, revision: previous.revision + 1 },
+      skuRevisionId: member!.skuRevisionId, document: member!.document,
+    });
+  }));
+
+  it.each(["presentation", "logistics"])("D-210.null-optionals.%s", async field => isolated(async connection => {
+    if (field === "presentation") await rewriteManifest(connection, manifest => { manifest.product.presentation = null; }, true);
+    else await rewriteSku(connection, sku => { sku.logisticsRef = null; });
+    const { items } = await governed(connection);
+    expect(items).toMatchObject([{
+      skuId: firstId,
+      presentation: field === "presentation" ? null : first.payload.product.sharedContent.presentation,
+      logisticsRef: field === "logistics" ? null : first.logisticsRef,
+    }]);
+  }));
+
+  describe("bounded paging parity", () => {
+    const thirdId = "03000000-0000-4000-8000-000000000003";
+
+    beforeAll(async () => {
+      await publishMember(thirdId, "LC2R-THIRD", "example:third");
+    });
+
+    it.each([
+      ["D-209.order", 1, [firstId], firstId],
+      ["D-210.cursor-last", 2, [firstId, lastId], lastId],
+      ["D-208.head-fold", 3, [firstId, lastId, thirdId], null],
+    ] as const)("%s", async (rule, limit, ids, cursor) => {
+      const result = await governed(db, { ...query, limit });
+      expect(result.items.map(item => item.skuId)).toEqual(ids);
+      expect(result.nextCursor).toEqual(cursor === null ? null : { skuId: cursor, headDigest: result.headDigest });
+      if (rule === "D-210.cursor-last") {
+        expect((await governed(db, { ...query, cursor: result.nextCursor })).items.map(item => item.skuId)).toEqual([thirdId]);
+      }
+      if (rule === "D-208.head-fold") {
+        const { rows } = await db.query(`SELECT jsonb_build_array(h.product_id,h.publication_id,h.revision,p.digest)::text AS entry
+          FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id ORDER BY h.product_id`);
+        expect(rows.length).toBeGreaterThanOrEqual(3);
+        const expected = createHash("sha256").update(`[${rows.map(row => row.entry).join(", ")}]`).digest("hex");
+        expect(result.headDigest).toBe(expected);
+      }
+    });
   });
 });

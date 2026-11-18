@@ -6,6 +6,7 @@ import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 
 import { createPostgresCatalogPublication, readPostgresCatalogMembershipPage } from "../../src/catalog/publicationStore.js";
+import type { CatalogPublicationDependencies } from "../../src/catalog/publicationPortsV2.js";
 import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/contracts/publication.js";
 import { input, definition, registry, rules } from "./fixtures/publicationInput.js";
 it("W32_V5-0597_predicate_precedence_boundary", () => {
@@ -882,13 +883,16 @@ describe("governed read response admission", () => {
   const member2 = { ...member, skuId: "30000000-0000-4000-8000-000000000002", skuCode: "SECOND" };
   const page = (items: unknown[] = [member], nextCursor: string | null = null) => ({ protocol: "governed", headDigest: digest, items, nextCursor });
 
-  function readBatch(data: unknown, rowCount = 1) {
+  type ReadinessHook = CatalogPublicationDependencies<null>["readiness"];
+  function readBatch(data: unknown, rowCount = 1, readiness: ReadinessHook = async () => ({ ready: true, reasons: [] })) {
     return createPostgresCatalogPublication({
       registry, rules,
       authorizeHuman: async () => ({ ok: false }), verifyMedia: async () => false,
-      readiness: async () => ({ ready: true, reasons: [] }),
+      readiness,
       transactions: { run: work => work({ async query(sql) {
-        return { rows: sql.startsWith("SET TRANSACTION") ? [] : Array.from({ length: rowCount }, () => ({ result: data })) };
+        if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
+        if (data instanceof Error) throw data;
+        return { rows: Array.from({ length: rowCount }, () => ({ result: data })) };
       } }) },
     });
   }
@@ -897,6 +901,7 @@ describe("governed read response admission", () => {
     ["D-215.shape-extra", { extra: true }], ["D-215.shape-id", { skuId: "bad" }],
     ["D-215.shape-boolean", { ready: "true" }], ["D-215.reasons-cap", { ready: false, reasons: Array(33).fill("blocked") }],
     ["D-215.reason-format", { ready: false, reasons: ["contains spaces"] }],
+    ["D-215.reason-min", { ready: false, reasons: ["x"] }],
     ["D-215.reason-length", { ready: false, reasons: ["x".repeat(121)] }],
     ["D-215.logistics-empty", { logisticsRef: "" }], ["D-215.logistics-size", { logisticsRef: "x".repeat(501) }],
     ["D-215.logistics-trim", { logisticsRef: " padded " }], ["D-215.verdict", { ready: true, reasons: ["blocked"] }],
@@ -906,6 +911,7 @@ describe("governed read response admission", () => {
   });
 
   it.each([
+    ["D-215.envelope-shape", { ...response(), extra: true }, [sku.code], 1, invalid],
     ["D-215.shape-protocol", { ...response(), protocol: "legacy" }, [sku.code], 1, invalid],
     ["D-216.head", response([item], "f".repeat(64)), [sku.code], 1, changed],
     ["D-216.count", response(), [sku.code, blocked.skuCode], 1, changed],
@@ -931,6 +937,7 @@ describe("governed read response admission", () => {
     ["LC6-D-080.query-limit-max", { limit: 101 }], ["LC6-D-080.query-limit-int", { limit: 1.5 }],
     ["LC6-D-080.query-mode", { mode: "invalid" }], ["LC6-D-080.query-cursor", { cursor: { skuId: "invalid", headDigest: digest } }],
     ["LC6-D-080.query-head", { cursor: { skuId: sku.id, headDigest: "invalid" } }],
+    ["LC6-D-080.query-cursor-extra", { cursor: { skuId: sku.id, headDigest: digest, extra: true } }],
   ])("%s", async (_rule, patch) => {
     const db = { async query() { throw new Error("Invalid input reached the database"); } };
     const result = await readPostgresCatalogMembershipPage(db, registry, { ...query, ...patch } as typeof query);
@@ -947,7 +954,28 @@ describe("governed read response admission", () => {
       .toEqual(page([]));
   });
 
+  const legacy = { protocol: "legacy", headDigest: null, items: [], nextCursor: null };
+  const noncanonicalId = "AAAAAAAA-0000-4000-8000-000000000001";
   it.each([
+    ["LC6-D-087.shape-identity.sku-id", query, page([{ ...member, skuId: "invalid" }])],
+    ["LC6-D-087.shape-identity.product-id", query, page([{ ...member, productId: noncanonicalId, document: { ...member.document!, productId: noncanonicalId } }])],
+    ["LC6-D-087.shape-identity.code-min", query, page([{ ...member, skuCode: "" }])],
+    ["LC6-D-087.shape-identity.code-max", query, page([{ ...member, skuCode: "X".repeat(161) }])],
+    ["LC6-D-087.shape-identity.slug-min", query, page([{ ...member, productSlug: "" }])],
+    ["LC6-D-087.shape-identity.slug-max", query, page([{ ...member, productSlug: "x".repeat(81) }])],
+    ["LC6-D-087.shape-facts.revision", query, page([{ ...member, skuRevisionId: "invalid" }])],
+    ["LC6-D-087.shape-facts.type", query, page([{ ...member, productType: { ...member.productType, extra: true } }])],
+    ["LC6-D-087.shape-facts.quantity", query, page([{ ...member, netContent: { ...member.netContent, extra: true } }])],
+    ["LC6-D-087.shape-facts.head", query, page([{ ...member, head: { ...member.head, extra: true } }])],
+    ["LC6-D-087.shape-facts.document", query, page([{ ...member, document: { ...member.document, extra: true } }])],
+    ["LC6-D-087.shape-facts.standalone", query, page([{ ...member, sellableStandalone: 1 }])],
+    ["LC6-D-087.shape-facts.subscription", query, page([{ ...member, sellableInSubscription: 1 }])],
+    ["LC6-D-087.shape-envelope.governed-extra", query, { ...page(), extra: true }],
+    ["LC6-D-087.shape-envelope.governed-digest", query, { ...page(), headDigest: "invalid" }],
+    ["LC6-D-087.shape-envelope.legacy-extra", query, { ...legacy, extra: true }],
+    ["LC6-D-087.shape-envelope.legacy-head", query, { ...legacy, headDigest: digest }],
+    ["LC6-D-087.shape-envelope.legacy-items", query, { ...legacy, items: [member] }],
+    ["LC6-D-087.shape-envelope.legacy-cursor", query, { ...legacy, nextCursor: sku.id }],
     ["LC6-D-087.shape-extra", query, page([{ ...member, extra: true }])],
     ["LC6-D-087.shape-presentation", query, page([{ ...member, presentation: "invalid" }])],
     ["LC6-D-087.shape-logistics", query, page([{ ...member, logisticsRef: " padded " }])],
@@ -968,6 +996,48 @@ describe("governed read response admission", () => {
     ["LC6-D-094.document-head", query, page([{ ...member, document: { ...member.document, digest: "d".repeat(64) } }])],
   ] as const)("%s", async (_rule, requested, result) => {
     expect(await readPostgresCatalogMembershipPage({ async query() { return { rows: [{ result }] }; } }, registry, requested)).toEqual(invalid);
+  });
+
+  it.each([
+    ["LC6-D-092.reply-head", { ...query, cursor: { skuId: member.skuId, headDigest: "d".repeat(64) } }, page([]), registry,
+      { outcome: "conflict", reason: "catalog_publication_head_moved" }],
+    ["LC6-D-094.definition", query, page(), { resolve: () => undefined },
+      { outcome: "dependency_unavailable", reason: "catalog_publication_readiness_unavailable" }],
+  ] as const)("%s", async (_rule, requested, result, types, expected) => {
+    expect(await readPostgresCatalogMembershipPage({ async query() { return { rows: [{ result }] }; } }, types, requested)).toEqual(expected);
+  });
+
+  const evidenceInvalid = { outcome: "dependency_unavailable", reason: "catalog_publication_readiness_evidence_invalid" };
+  const hookInvalid = { outcome: "dependency_unavailable", reason: "catalog_publication_readiness_invalid" };
+  const nativeReasons = Array.from({ length: 17 }, (_, index) => `native_${index}`);
+  const installedReasons = Array.from({ length: 16 }, (_, index) => `installed_${index}`);
+  it.each([
+    ["LC2R-READINESS.absent-evidence.id", { ...blocked, skuId: sku.id }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.absent-evidence.logistics", { ...blocked, logisticsRef: sku.logisticsRef }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.absent-evidence.blocker", { ...blocked, reasons: ["different_reason"] }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.selected-evidence.id", { ...item, skuId: member2.skuId }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.selected-evidence.code", { ...item, skuCode: "OTHER" }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.selected-evidence.owner", { ...item, evidence: { product, sku: { ...sku, productId: member2.skuId } } }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.selected-evidence.logistics", { ...item, logisticsRef: "example:other" }, undefined, evidenceInvalid],
+    ["LC2R-READINESS.hook-shape.extra", item, { ready: true, reasons: [], extra: true }, hookInvalid],
+    ["LC2R-READINESS.hook-shape.verdict", item, { ready: false, reasons: [] }, hookInvalid],
+    ["LC2R-READINESS.hook-shape.cap", item, { ready: false, reasons: Array(33).fill("repeated_reason") }, hookInvalid],
+    ["LC2R-READINESS.hook-union-cap", { ...item, ready: false, reasons: nativeReasons }, { ready: false, reasons: installedReasons }, hookInvalid],
+  ] as const)("%s", async (_rule, row, hook, expected) => {
+    const result = await readBatch(response([row]), 1, hook && (async () => hook as Awaited<ReturnType<ReadinessHook>>))
+      .activationReadiness([row.skuCode], digest);
+    expect(result).toEqual(expected);
+  });
+
+  it.each([
+    ["LC6-D-090.sql-permission", "42501", "permission denied", "unauthorized", "catalog_publication_read_not_authorized"],
+    ["LC6-D-090.sql-input", "22023", "catalog_offer_memberships_page_input_invalid", "validation_issue", "catalog_offer_memberships_page_input_invalid"],
+    ["LC6-D-090.sql-legacy", "55000", "catalog_publication_not_adopted", "unsupported", "catalog_publication_not_adopted"],
+  ])("%s", async (_rule, code, message, outcome, reason) => {
+    const error = Object.assign(new Error(message), { code });
+    const result = code === "55000" ? await readBatch(error).activationReadiness([sku.code], digest)
+      : await readPostgresCatalogMembershipPage({ async query() { throw error; } }, registry, query);
+    expect(result).toEqual({ outcome, reason });
   });
 
   it("LC6-D-090.outage", async () => {
