@@ -523,6 +523,27 @@ it("stock_wait_notice_names_withdrawn_predecessor",async()=>{
   expect((await invoke()).rows[0].result).toEqual(first);
 });
 
+it("lc10_N2_immutable_operation_generation",async()=>{
+  const f=await createSuccessorJourney(pool);
+  const notice=()=>transaction(async connection=>(await connection.query("SELECT public.subscription_successor_notice_v2($1,'legacy',$2) AS result",[f.caseId,f.withdrawalHead.publicationId])).rows[0].result);
+  const first=await notice();
+  const generation=Number((await pool.query("SELECT claim_generation FROM public.subscription_renewal_operations WHERE id=$1",[f.operationId])).rows[0].claim_generation);
+  await transaction(async connection=>{
+    const at=(await connection.query("SELECT clock_timestamp() AS at")).rows[0].at.toISOString();
+    const stock=createPostgresFulfillmentStockSyncPort(connection,{sourceKey:f.source,readLocalInventoryStock:async()=>[]});
+    await stock.recordProviderStockCurrent({requestKey:`notice-recovery:${f.operationId}`,snapshot:{providerRef:"synthetic",collectedAt:at,sourceRevision:null,revisionSource:"collection",quantityKind:"snapshot",skuRef:f.predecessor.code,totalQuantity:100,forSaleQuantity:100,reservedOrUnavailableQuantity:0,syncRunId:f.subscription},inventoryClass:"sellable",lastSyncedAt:at,staleAfter:(await connection.query("SELECT clock_timestamp()+interval '1 day' AS until")).rows[0].until.toISOString()});
+    expect((await connection.query("SELECT public.subscription_stock_wait_recover_refusal($1,$2,'notice-recovery',$3) AS result",[f.operationId,f.codec.fingerprint(f.frozen),at])).rows[0].result).toMatchObject({waiting:false});
+  });
+  expect(Number((await pool.query("SELECT claim_generation FROM public.subscription_renewal_operations WHERE id=$1",[f.operationId])).rows[0].claim_generation)).toBe(generation+1);
+  const changed=structuredClone(f.predecessor.value);changed.product.sharedContent.catalogAction="revise";changed.product.sharedContent.presentation={label:"Synthetic editorial revision"};
+  changed.publication.operations=[{op:"set_product_presentation",productSlug:changed.product.slug!,presentation:{label:"Synthetic editorial revision"}}];
+  const head=await f.publish(changed,f.predecessor.draft,2,f.withdrawalHead);
+  expect(head.revision).toBe(f.withdrawalHead.revision+1);
+  expect(await notice()).toEqual(first);
+  expect(first).toMatchObject({outcome:"handed_off",notices:[{messageKey:`subscription-predecessor-withdrawn:${f.withdrawalHead.publicationId}:${f.caseId}`,payload:{operationId:f.operationId}}]});
+  expect((await pool.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription.predecessor_withdrawn.v2'",[f.subscription])).rows).toEqual([{id:first.notices[0].noticeId}]);
+});
+
 async function transaction<T>(work:(db:PoolClient)=>Promise<T>):Promise<T> {
   const connection=await pool.connect();
   try {await connection.query("BEGIN");const result=await work(connection);await connection.query("COMMIT");return result;}
