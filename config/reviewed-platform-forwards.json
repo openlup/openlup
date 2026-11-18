@@ -5776,7 +5776,7 @@
       },
       {
         "row": "catalogue-lc9",
-        "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+        "path": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
         "replacedFunctions": [
           {
             "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
@@ -5787,11 +5787,37 @@
             "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
             "beforeSha256": "37a21a9a47c15b509f13e1a0826c9ca48945180c3aee38d6152b042666879e68",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+            "beforeSha256": "9f5cc769b9b95b1c818f24b971bdb44a681f359f5d85debc38a57ae64d947ac6",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
+            "beforeSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "createdFunctions": [
           {
             "signature": "public.customer_self_service_prune_subscription_quote_previews(pg_catalog.interval,integer,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_bundle_edit_apply_internal(uuid,uuid,text,uuid,jsonb,timestamptz,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_consented_bundle_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_sized_consent_phase(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_edit_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text,text)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -8383,8 +8409,8 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
-      "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a",
+      "path": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
+      "sha256": "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c",
       "functions": [
         {
           "signature": "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)",
@@ -8397,15 +8423,45 @@
           "afterSha256": "432bc36e85f7412e7e92ff795e4b8259d8aaf0886d3f140c4988c5eb9ff82bb1"
         },
         {
+          "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+          "beforeSha256": "9f5cc769b9b95b1c818f24b971bdb44a681f359f5d85debc38a57ae64d947ac6",
+          "afterSha256": "6f7022bb8a350c1c26471b7cd8e4a1b34d762db87186b3bacb485b1fd833b130"
+        },
+        {
+          "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
+          "beforeSha256": "8ea4dda08b6ce8db6cde7ba83eec3157ba7602e0a77399809c2b05946a984402",
+          "afterSha256": "70a957a6c2769d7d09ace8d2035d876b7cc69456379360392be9f9f3e0877cfc"
+        },
+        {
           "signature": "public.customer_self_service_prune_subscription_quote_previews(pg_catalog.interval,integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "5b863ab37de33ebfba7b7a65a9d0e3edb84b92a219a32cc6be6721f7f1270d0e"
+          "afterSha256": "d288bb85f373e5322e7179abca195ad9bad7ec90cf2a946a5c013205de0c2bc1"
+        },
+        {
+          "signature": "public.subscription_bundle_edit_apply_internal(uuid,uuid,text,uuid,jsonb,timestamptz,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "1d05d8dfc509ad100efbf517514c5b43a40dfa019a6c7c8f2577832f2f51f029"
+        },
+        {
+          "signature": "public.subscription_consented_bundle_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "d114019cb6bb5824345b413e0d24b39d44aa683f474d8596a66cbe61eb230e89"
+        },
+        {
+          "signature": "public.subscription_sized_consent_phase(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "afae68aee661a6d8839ea1f44232218851cfa3a196aeca554a2a71458edcb237"
+        },
+        {
+          "signature": "public.catalog_edit_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "6cf9c76cf2c73838fbf032e165f8075a3286857a1ffa649b64fbb4e3dc86b352"
         }
       ]
     },
     {
       "path": "db/platform/migrations/20261123210000_catalog_successors.sql",
-      "sha256": "6088672ea0da316438ad9c40e65ddc8b3651d85afd33484df1d450b94206156e",
+      "sha256": "2c0685796196a7c4daa5ec96a09bdd0dfbc5f245230465b06b16d4ebda740166",
       "functions": [
         {
           "signature": "public.communication_paid_fact(public.commerce_orders)",
@@ -8515,7 +8571,7 @@
         {
           "signature": "public.resolve_stock_wait_with_successor(uuid,uuid,text,text,uuid,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "f0ba9b4042635cf4d8120337ae63e6947961c18e5b3deb365e924110d2662ea4"
+          "afterSha256": "80f0544bbae36feff027ef1aa3ac9c23de822f879770eb667ef32b37fb79a80d"
         },
         {
           "signature": "public.fulfillment_release_successor_renewal_v2(uuid,uuid,text,timestamptz)",
@@ -8560,7 +8616,7 @@
         {
           "signature": "public.subscription_successor_proposal_decide_v2(uuid,uuid,text,text,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "2d40fcd0e6ef3fc5cab87ccdec912ebeec12696c949824946914927c95cf23bc"
+          "afterSha256": "6e449cbc6f0ada4b7185be04c65eadba625cd402f4aae6bd08a30c05ae510f35"
         },
         {
           "signature": "public.inventory_successor_reservation_quantity(text,text,timestamptz,uuid,timestamptz)",

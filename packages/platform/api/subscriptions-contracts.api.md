@@ -302,22 +302,40 @@ export interface RenewalFailureHandoffPort {
 ## dist/subscriptions/contracts/editConsent.d.ts
 
 ```ts
-/** Per-line agreement disclosure. Missing sides are absent prices, including for zero-priced lines.
- * @experimental
- */
-export interface SubscriptionEditDisclosureLine {
-    kind: "retained" | "added" | "removed";
+type DisclosureLineIdentity = {
     variantId: string;
     sku: string;
     isAddon: boolean;
-    agreedQuantity: number | null;
-    newQuantity: number | null;
-    agreedUnitMinor: number | null;
-    newUnitMinor: number | null;
-    deltaMinor: number | null;
     subtotalDeltaMinor: number;
-    reason: "unchanged" | "price_changed" | "quantity_changed" | "added" | "removed";
-}
+};
+/** Per-line agreement disclosure. Missing sides are absent prices, including for zero-priced lines.
+ * @experimental
+ */
+export type SubscriptionEditDisclosureLine = DisclosureLineIdentity & ({
+    kind: "retained";
+    agreedQuantity: number;
+    newQuantity: number;
+    agreedUnitMinor: number;
+    newUnitMinor: number;
+    deltaMinor: number;
+    reason: "unchanged" | "price_changed" | "quantity_changed";
+} | {
+    kind: "added";
+    agreedQuantity: null;
+    newQuantity: number;
+    agreedUnitMinor: null;
+    newUnitMinor: number;
+    deltaMinor: null;
+    reason: "added";
+} | {
+    kind: "removed";
+    agreedQuantity: number;
+    newQuantity: null;
+    agreedUnitMinor: number;
+    newUnitMinor: null;
+    deltaMinor: null;
+    reason: "removed";
+});
 /** Versioned disclosure bound to the original lane quote and complete current agreement.
  * @experimental
  */
@@ -330,6 +348,10 @@ export interface SubscriptionEditConsent {
     agreedTotalMinor: number;
     newTotalMinor: number;
     subtotalDeltaMinor: number;
+    /** Present when the command keeps the agreement despite a fresh comparison. @experimental */
+    noChange?: {
+        livePriceDiffers: boolean;
+    };
 }
 /** Legacy desired-set inputs; money and identity are supplied on the server.
  * @experimental
@@ -349,6 +371,22 @@ export interface LegacyEditConsentRequest {
     expectedTemplateVersion?: number;
     acceptedQuoteHash?: string;
 }
+/** Classic bundle composition with explicit update and resize actions.
+ * Omitting add-on lines retains the current set.
+ * @experimental
+ */
+export type ClassicBundleEditRequest = Omit<LegacyEditConsentRequest, "coreLines" | "addonLines"> & ({
+    action: "update_bundle";
+    coreLines: LegacyEditConsentRequest["coreLines"];
+    addonLines?: LegacyEditConsentRequest["addonLines"];
+} | {
+    action: "resize_bundle";
+    resizeLever: {
+        kind: string;
+        value: unknown;
+    };
+});
+export {};
 ```
 ## dist/subscriptions/contracts/exactEdit.d.ts
 
@@ -431,7 +469,7 @@ export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMone
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
 export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
-export type { LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
+export type { ClassicBundleEditRequest, LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 
@@ -1336,6 +1374,11 @@ export interface SizedEditContext {
     compositionConstraint: Record<string, unknown> | null;
     nextCycleAt: string | null;
     paidCycleCount: number;
+    /** Authoritative numbered phase on the consented context. @experimental */
+    numberedPhase?: {
+        upcomingCycle: number;
+        phase: SizedEditPhase;
+    };
     marker: {
         basisTemplateVersion: number;
         graduation: {

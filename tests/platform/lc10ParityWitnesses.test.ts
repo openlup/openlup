@@ -253,9 +253,12 @@ it.each([["version",{version:1}],["data",{data:{}}],["flat",{}]] as const)("lc10
 });
 
 it("lc10_quote_shipped_sized_constraint_envelope_result", async () => {
-  const stored = { status: "applied", action: "update_bundle", templateVersion: 4 };
+  const id = obligation.subscriptionId;
+  const stored = { status: "applied", action: "update_bundle", templateVersion: 4,
+    subscriptionId: id, subscriptionStatus: "active", nextCycleAt: null, eventId: obligation.sourceId };
   const withTransaction: Parameters<typeof createPostgresSizedEditor>[0]["withTransaction"] = work => work({
-    query: async sql => ({ rows: sql.includes("SELECT s.*") ? [{ status: "active", payment_blocked: true,
+    query: async sql => ({ rows: sql.includes("SELECT id,template_version") ? [{ id, template_version: 3 }]
+      : sql.includes("SELECT s.*") ? [{ id, status: "active", payment_blocked: true,
       method_healthy: true, configured_offer_version: "sized.v1", next_cycle_at: null, template_version: 3 }]
       : sql.includes("FROM public.subscription_command_receipts") ? [{ matches: true, result: stored, status: "applied" }] : [] }),
   });

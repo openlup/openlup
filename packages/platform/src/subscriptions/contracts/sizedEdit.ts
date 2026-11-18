@@ -42,6 +42,8 @@ export interface SizedEditContext {
   subscriptionId: string; clientId: string; binding: "classic" | "sized.v1";
   templateVersion: number; cadenceDays: number; compositionConstraint: Record<string, unknown> | null;
   nextCycleAt: string | null; paidCycleCount: number;
+  /** Authoritative numbered phase on the consented context. @experimental */
+  numberedPhase?: { upcomingCycle: number; phase: SizedEditPhase };
   marker: { basisTemplateVersion: number; graduation: { cadenceDays: number; sizeConstraint?: Record<string, unknown>; lines: unknown[] } } | null;
   lines: SizedAgreedLine[]; graduationLines: SizedAgreedLine[];
 }

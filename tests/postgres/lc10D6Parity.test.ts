@@ -2759,6 +2759,16 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
     await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,started_at,currency_code,price_list_id) VALUES($1,$2,28,$3,$4,'XXX',$5)",[subscription,client,anchor,authorized,list]);
     await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,1,0,617,'XXX',$3)",[subscription,predecessor.sku,predecessor.reference.skuRevisionId]);
     await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3::timestamptz-interval '28 days','paid')",[activationCycle,subscription,anchor]);
+    if (options.lane === "sized") {
+      const order = randomUUID();
+      await db.query("INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'paid','XXX',617)",
+        [order, client, activationCycle]);
+      await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,1,1,617,617)",
+        [order, predecessor.sku]);
+      await db.query(`INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,
+        activation_idempotency_key,declare_idempotency_key,declared_at,activated_at) VALUES($1,$2,$3,28,'active',repeat('a',64),$4,$5,$6,$6)`,
+      [order, client, subscription, randomUUID(), randomUUID(), authorized]);
+    }
     await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,next_cycle_number,catalog_acceptance) VALUES($1,'XXX',$2,'sandbox',$3,'synthetic',1,$4::jsonb)",[subscription,source,authorized,{ schemaVersion: 2,lines: [predecessor.reference] }]);
     await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,1,617)",[subscription,predecessor.code]);
     await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')",[subscription]);
@@ -2825,8 +2835,8 @@ async function createSuccessorJourney(pool: Pool, options: { creator?: "admit" |
         physicalSize: 100, demandPerUnit: 28, documentRevisionId: successor.reference.skuRevisionId,
         documentDigest: successor.reference.optionDigest, verified: true, exclusions: [], sellableNow: 100,
       }] };
-    const nativeEvidence=lane==="classic"?evidence:{editConsent:consent,catalogAdmission:admission,lines:[lane==="exact"?{...line,lineId}:line],cadenceDays:28,compositionConstraint:lane==="sized"?constraint:null,...(lane==="sized"?{subjectFacts,optInFacts:{revision:1}}:{})};
     const ledgerRequest=lane==="classic"?{planDays:28,base:core,addons:[]}:Object.fromEntries(Object.entries(nativeRequest).filter(([key])=>!["expectedTemplateVersion","acceptedQuoteHash"].includes(key)));
+    const nativeEvidence=lane==="classic"?evidence:{editConsent:consent,catalogAdmission:admission,lines:[lane==="exact"?{...line,lineId}:line],cadenceDays:28,compositionConstraint:lane==="sized"?constraint:null,...(lane==="sized"?{subjectFacts,optInFacts:{revision:1},consentRequest:ledgerRequest}:{})};
     const quote=await rpc(db,"subscription_quote_preview_record",[principal,client,subscription,action,quoteHash,1,(await db.query("SELECT now()+interval '1 hour' AS until")).rows[0].until.toISOString(),ledgerRequest,nativeEvidence,totals,at]);
     const newFrozen=codec.withDestination!(codec.freeze({ ...header,template_version: 2,lines: [{ lineOrdinal: 1,sku: successor.code,quantity: qty,unitAmountMinor: 777 }],catalog_acceptance: { schemaVersion: 2,lines: [successor.reference] },graduation_pricing: [{ sku: successor.code,quantity: qty,unitAmountMinor: 777,isAddon: false,quoteLine: line.quoteLine }] },schedule),destination);
     const proposalId=randomUUID(),offer={ proposalId,predecessorSkuId: predecessor.sku,successorSkuId: successor.sku,publicationId: successor.declared.publicationId,

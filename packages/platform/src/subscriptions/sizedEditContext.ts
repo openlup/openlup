@@ -24,9 +24,15 @@ const sizedRequestSchema = z.discriminatedUnion("action", [
 ]);
 /** Internal parser for the shipped sized wire. @experimental */
 export function parseSizedEditRequest(request: unknown): SizedEditRequest {
+  const parsed = tryParseSizedEditRequest(request);
+  if (!parsed) throw new Error("subscription_reprice_invalid_request");
+  return parsed;
+}
+
+/** Internal parse for receipt dispatch. @experimental */
+export function tryParseSizedEditRequest(request: unknown): SizedEditRequest | null {
   const result = sizedRequestSchema.safeParse(request);
-  if (!result.success) throw new Error("subscription_reprice_invalid_request");
-  return result.data;
+  return result.success ? result.data : null;
 }
 
 /** The successor wire requires the flat form for both requested and effective constraints.
@@ -63,8 +69,8 @@ const contextSchema = z.object({ subscriptionId: z.uuid(), clientId: z.uuid(), b
   nextCycleAt: z.string().nullable(), paidCycleCount: z.number().int().nonnegative(), marker: object.nullable(),
   lines: z.array(line).min(1), graduationLines: z.array(line) });
 export async function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn = false): Promise<SizedEditContext> {
-  const raw = (await db.query("SELECT public.subscription_sized_edit_context($1::uuid,$2::uuid,$3::boolean) AS context", [clientId, id, optIn])).rows[0]?.context;
-  const result = contextSchema.safeParse(raw);
+  const { rows } = await db.query("SELECT public.subscription_sized_edit_context($1::uuid,$2::uuid,$3::boolean) AS context", [clientId, id, optIn]);
+  const result = contextSchema.safeParse(rows.length === 1 ? rows[0].context : undefined);
   if (!result.success) throw new Error("subscription_reprice_sized_context_unreadable");
   const value = result.data;
   if (value.subscriptionId.toLowerCase() !== id.toLowerCase() || value.clientId.toLowerCase() !== clientId.toLowerCase()) throw new Error("subscription_command_forbidden");
@@ -82,6 +88,13 @@ export async function readSizedEditContext(db: SubscriptionQueryExecutor, client
   }
   return { ...value, marker, lines: value.lines.map(agreed), graduationLines: value.graduationLines.map(agreed) };
 }
+const numberedPhaseSchema = z.strictObject({ upcomingCycle: z.number().int().positive(), phase: z.enum(["fixed","graduation_pending","none"]) });
+export async function readSizedConsentPhase(db: SubscriptionQueryExecutor, clientId: string, subscriptionId: string) {
+  const { rows } = await db.query("SELECT public.subscription_sized_consent_phase($1::uuid,$2::uuid) AS phase", [clientId,subscriptionId]);
+  const parsed = numberedPhaseSchema.safeParse(rows.length === 1 ? rows[0].phase : undefined);
+  if (!parsed.success) throw new Error("subscription_edit_cycle_history_unreadable");
+  return parsed.data;
+}
 /** Construct once per authenticated request; do not share across preview/apply. */
 export function createSizedEditContextScope(read: (id: string, optIn: boolean) => Promise<SizedEditContext>) {
   const contexts = new Map<string, Promise<SizedEditContext>>();
@@ -92,7 +105,8 @@ export function createSizedEditContextScope(read: (id: string, optIn: boolean) =
     return value.then(context => structuredClone(context));
   };
 }
-export function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount">, policy: SizedEditPolicy): SizedEditPhase {
+export function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount" | "numberedPhase">, policy: SizedEditPolicy): SizedEditPhase {
+  if (context.numberedPhase) return context.numberedPhase.phase;
   if (!context.marker) return "none";
   const upcoming = context.paidCycleCount + 1;
   if (upcoming <= policy.fixedThroughCycle) return "fixed";

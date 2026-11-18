@@ -6,7 +6,7 @@ import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
 import type { PackageEditActor, PackageEditLimits } from "./packageEditContracts.js";
 import type { SizedEditPolicy } from "./contracts/sizedEdit.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
-import { isSizedOptIn, parseSuccessorSizedEditRequest, readSizedEditContext } from "./sizedEditContext.js";
+import { isSizedOptIn, parseSuccessorSizedEditRequest, readSizedConsentPhase, readSizedEditContext } from "./sizedEditContext.js";
 import type { SizedHostPorts } from "./sizedEditPorts.js";
 import { assertSizedSubjectFacts } from "./sizedEditQuote.js";
 import { buildEditConsent, hashEditConsent } from "./editConsent.js";
@@ -318,10 +318,11 @@ export function createPostgresSuccessorStore(options: {
     if (!snapshot.success) throw new Error("subscription_reprice_sized_subject_facts_unreadable");
     const { catalogFacts, ...facts } = snapshot.data.subjectFacts;
     assertSizedSubjectFacts(facts, { clientId, subscriptionId }, { maximumExclusions: 20 });
+    const numberedPhase = await readSizedConsentPhase(db, clientId, subscriptionId);
     const context = await readSizedEditContext(db, clientId, subscriptionId, isSizedOptIn({
       action: String(quote.action), resizeLever: request.resizeLever,
     }));
-    await options.assertCurrentSizedFacts(db, context, facts, snapshot.data.optInFacts, catalogFacts);
+    await options.assertCurrentSizedFacts(db, { ...context, numberedPhase }, facts, snapshot.data.optInFacts, catalogFacts);
   }
   return {
     offer(actor:PackageEditActor,input:SuccessorOfferInput) {

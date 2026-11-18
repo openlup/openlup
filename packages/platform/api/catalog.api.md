@@ -5339,16 +5339,16 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly sha256: "45188d7a73aa01dc5bc57147d04c58a4d5d0bdf1af3869f89dbbd20588ceb2a0";
     readonly url: URL;
 }, {
-    readonly id: "20261122220000_subscription_edit_consent";
-    readonly catalogPath: "db/platform/migrations/20261122220000_subscription_edit_consent.sql";
+    readonly id: "20261123200000_subscription_edit_consent";
+    readonly catalogPath: "db/platform/migrations/20261123200000_subscription_edit_consent.sql";
     readonly position: 154;
-    readonly sha256: "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a";
+    readonly sha256: "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c";
     readonly url: URL;
 }, {
     readonly id: "20261123210000_catalog_successors";
     readonly catalogPath: "db/platform/migrations/20261123210000_catalog_successors.sql";
     readonly position: 155;
-    readonly sha256: "6088672ea0da316438ad9c40e65ddc8b3651d85afd33484df1d450b94206156e";
+    readonly sha256: "2c0685796196a7c4daa5ec96a09bdd0dfbc5f245230465b06b16d4ebda740166";
     readonly url: URL;
 }];
 ```

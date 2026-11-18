@@ -1570,7 +1570,7 @@ BEGIN
   plan integer; version integer; minimum_text text; minimum_units integer; ordinal integer:=0;
   core_matches boolean; addon_matches boolean; outcome text:='applied'; base_matches boolean; base_set boolean;
   target_id uuid; new_line_id uuid; current_total bigint; desired_total bigint;
-  action text; request jsonb; opt_in boolean; intro jsonb; phase_config jsonb; paid integer;
+  action text; request jsonb; opt_in boolean; numbered_phase text;
   current_core jsonb; desired_core jsonb; rewrites_addons boolean; expected_lines jsonb;
  BEGIN
  <<validate_lane>>
@@ -1844,19 +1844,9 @@ BEGIN
   AND request#>'{resizeLever,value,optInToSized}'='true'::jsonb;
  IF s.configured_offer_version<>'sized.v1' AND NOT (s.configured_offer_version='classic' AND COALESCE(opt_in,false)) THEN
   RAISE EXCEPTION 'subscription_edit_invalid_offer_binding' USING ERRCODE='22023'; END IF;
- intro:=public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,starterPack}';
- IF intro IS NOT NULL THEN
-  SELECT value_text::jsonb INTO phase_config FROM public.commerce_settings WHERE key='subscription_sized_intro_phase';
-  IF phase_config IS NULL OR COALESCE(phase_config->>'fixedThroughCycle','') !~ '^[1-9][0-9]*$'
-   OR COALESCE(phase_config->>'graduationCycle','') !~ '^[1-9][0-9]*$' THEN
-   RAISE EXCEPTION 'subscription_edit_invalid_sized_configuration' USING ERRCODE='22023'; END IF;
-  SELECT count(*)::integer INTO paid FROM public.subscription_cycles WHERE subscription_id=s.id AND status='paid';
-  IF paid+1<=(phase_config->>'fixedThroughCycle')::integer THEN
-   RAISE EXCEPTION 'subscription_edit_invalid_intro_fixed' USING ERRCODE='22023'; END IF;
-  IF COALESCE(opt_in,false) AND s.template_version=(intro->>'basisTemplateVersion')::integer
-   AND paid<(phase_config->>'graduationCycle')::integer THEN
-   RAISE EXCEPTION 'subscription_edit_invalid_intro_fixed' USING ERRCODE='22023'; END IF;
- END IF;
+ numbered_phase:=public.subscription_sized_consent_phase(p_client_id,s.id)->>'phase';
+ IF numbered_phase='fixed' OR (COALESCE(opt_in,false) AND numbered_phase='graduation_pending') THEN
+  RAISE EXCEPTION 'subscription_edit_invalid_intro_fixed' USING ERRCODE='22023'; END IF;
  IF s.status<>'active' OR s.next_cycle_at IS NULL THEN
   RAISE EXCEPTION 'subscription_edit_window_closed' USING ERRCODE='22023'; END IF;
  IF COALESCE(request->>'acceptedQuoteHash','') !~ '^[a-f0-9]{64}$' THEN
@@ -1911,9 +1901,9 @@ BEGIN
     IF (SELECT jsonb_object_agg(l->>'variantId',coalesce(l->'qty',l->'quantity')) FROM jsonb_array_elements(lines) l)
       IS DISTINCT FROM (SELECT jsonb_object_agg(l#>>'{reference,skuId}',l->'quantity') FROM jsonb_array_elements(v_catalog_evidence->'skuRevisions') l) THEN
       RAISE EXCEPTION 'customer_self_service_invalid_offer_membership' USING ERRCODE='22023'; END IF;
-    PERFORM public.catalog_admission_assert_current(v_catalog_evidence->'heads',v_catalog_evidence->'skuRevisions','subscription',
+    PERFORM public.catalog_edit_admission_assert_current(v_catalog_evidence->'heads',v_catalog_evidence->'skuRevisions','subscription',
       (v_catalog_evidence->'offerEvidence')||jsonb_build_object('subscriptionId',s.id,'offerVersion',s.configured_offer_version,'lane','sized','optIn',coalesce(opt_in,false)),
-      v_catalog_evidence->'priceContextVersions','account');
+      v_catalog_evidence->'priceContextVersions','account',numbered_phase);
     SELECT jsonb_build_object('schemaVersion',2,'lines',jsonb_agg(l->'reference' ORDER BY l#>>'{reference,skuId}'))
       INTO v_catalog_acceptance FROM jsonb_array_elements(v_catalog_evidence->'skuRevisions') l;
   END IF;
@@ -2671,7 +2661,9 @@ BEGIN
   PERFORM k.id FROM public.price_entries k WHERE k.id IN (SELECT (value->>'entryId')::uuid FROM jsonb_array_elements(admission->'priceContextVersions')) ORDER BY k.id FOR SHARE NOWAIT;
   IF proposal.lane='classic' THEN result:=public.subscription_package_edit_apply(actor,p_client_id,key,s.id,payload,p_now);
   ELSIF proposal.lane='exact' THEN result:=public.subscription_line_edit_apply(actor,p_client_id,key,s.id,proposal.action,payload,p_now);
-  ELSIF proposal.lane='sized' THEN result:=public.subscription_sized_edit_apply(actor,p_client_id,key,s.id,payload,p_now);
+  ELSIF proposal.lane='sized' THEN
+   result:=public.subscription_consented_bundle_edit_apply(actor,p_client_id,key,s.id,payload,p_now,'sized',
+    (q.quote_snapshot->'consentRequest')||jsonb_build_object('acceptedQuoteHash',q.quote_hash));
   ELSE RAISE EXCEPTION 'successor_lane_unavailable' USING ERRCODE='55000'; END IF;
   IF result->>'status' NOT IN ('applied','noop','replayed') OR result->>'status' IS NULL THEN RAISE EXCEPTION 'successor_lane_refused' USING ERRCODE='22023'; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id AND variant_id=proposal.successor_sku_id)
