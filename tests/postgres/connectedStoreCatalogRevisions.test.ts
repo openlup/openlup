@@ -49,7 +49,7 @@ beforeAll(async () => {
   retainedPublication = await seedPublicationHistory(source.owner);
   packet = await captureStoreJourney(source.owner, "catalog-document-source");
   lifecycleSource = await resources.installation("lifecycle-source");
-  lifecycleHistory = await seedPublicationHistory(lifecycleSource.owner, 4);
+  lifecycleHistory = await seedPublicationHistory(lifecycleSource.owner, 4, lifecycleSource.runtime);
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
@@ -166,7 +166,7 @@ function publicationAuthority(owner: Pool, ownsRetained = false) {
     acceptedSource: async (_db, _context, binding) => ownsRetained ? binding : "unauthorized",
   });
 }
-async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3) {
+async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3, draftWriter = owner) {
   await installCatalogDefinitions(owner, { id: "example:transfer", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [publicationDefinition], taxClasses: [] });
   await owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'transfer-publication@example.invalid')", [publicationAdmin]);
   await owner.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [publicationAdmin]);
@@ -190,7 +190,7 @@ async function seedPublicationHistory(owner: Pool, schemaVersion: 3 | 4 = 3) {
     if (expectedRevision) { payload.product.sharedContent.catalogAction = "revise"; payload.product.sharedContent.presentation = { label: "Second presentation" };
       payload.publication.operations = [{ op: "set_product_presentation", productSlug: slug, presentation: payload.product.sharedContent.presentation }]; }
     const command = { schemaVersion, action: expectedRevision ? "revise" : "create", draftId, commandKey: `draft:${expectedRevision + 1}`, expectedRevision, payload }, text = canonicalCatalogDraftJson(command);
-    expect((await owner.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [text, createHash("sha256").update(text).digest("hex")])).rows[0].result.outcome).toBe("committed");
+    expect((await draftWriter.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [text, createHash("sha256").update(text).digest("hex")])).rows[0].result.outcome).toBe("committed");
     const candidateRef = `v1:${draftId}@${expectedRevision + 1}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
     const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
       .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: catalogDefinitionDigest(publicationDefinition) }])).update(",").update(canonicalCatalogDraftJson(head)).update("]").digest("hex");

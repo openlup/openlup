@@ -476,78 +476,13 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_bound_obligations_v2(uuid) FROM PUBLIC;
 
--- The persisted v4 dialect checks its new operation leaves and evidence before
--- recording a revision. Exact old receipts replay before this boundary.
-CREATE FUNCTION public.catalog_lifecycle_draft_valid_v4(p_inputs jsonb) RETURNS boolean
-LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE op jsonb; child jsonb; evidence jsonb; asset jsonb; previous text; verb text;
- uuid_shape constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
- code_shape constant text := '^[A-Za-z0-9._:-]{1,160}$';
-BEGIN
- FOR op IN SELECT value FROM jsonb_array_elements(p_inputs->'operations') LOOP
-  verb := op->>'op';
-  IF (op ? 'productSlug' AND (jsonb_typeof(op->'productSlug') IS DISTINCT FROM 'string'
-    OR op->>'productSlug' !~ '^[a-z0-9][a-z0-9_-]{0,63}$'))
-   OR (op ? 'skuCode' AND (jsonb_typeof(op->'skuCode') IS DISTINCT FROM 'string' OR op->>'skuCode' !~ code_shape)) THEN RETURN false; END IF;
-  IF verb='set_eligibility' AND (jsonb_typeof(op->'sellableStandalone') IS DISTINCT FROM 'boolean'
-    OR jsonb_typeof(op->'sellableInSubscription') IS DISTINCT FROM 'boolean') THEN RETURN false; END IF;
-  IF verb IN ('set_product_lifecycle','set_sku_lifecycle') AND
-   (coalesce(op->>'expectedState','') NOT IN ('draft','active','withdrawn','archived')
-    OR coalesce(op->>'state','') NOT IN ('active','withdrawn','archived')) THEN RETURN false; END IF;
-  IF verb IN ('restore_product','restore_sku') AND op->'expectedState' IS DISTINCT FROM '"withdrawn"'::jsonb THEN RETURN false; END IF;
-  IF verb='set_product_lifecycle' THEN
-   IF jsonb_typeof(op->'children') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
-   IF jsonb_array_length(op->'children')>50000 THEN RETURN false; END IF;
-   previous := NULL;
-   FOR child IN SELECT value FROM jsonb_array_elements(op->'children') LOOP
-    IF jsonb_typeof(child) IS DISTINCT FROM 'object' OR child - ARRAY['skuCode','expectedState'] <> '{}'::jsonb
-     OR jsonb_typeof(child->'skuCode') IS DISTINCT FROM 'string' OR child->>'skuCode' !~ code_shape
-     OR coalesce(child->>'expectedState','') NOT IN ('draft','active','withdrawn','archived')
-     OR previous COLLATE "C">=child->>'skuCode' COLLATE "C" THEN RETURN false; END IF;
-    previous := child->>'skuCode';
-   END LOOP;
-  END IF;
-  IF (verb='restore_sku' OR verb='set_sku_lifecycle' AND op->>'state'='active')
-    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_inputs->'operations') e
-      WHERE e->>'op'='set_eligibility' AND e->'skuCode'=op->'skuCode'
-       AND (e->'sellableStandalone'='true'::jsonb OR e->'sellableInSubscription'='true'::jsonb)) THEN RETURN false; END IF;
- END LOOP;
- IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_inputs#>'{evidence,drafts}') e GROUP BY e->>'draftId' HAVING count(*)>1)
-  OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_inputs#>'{evidence,media}') e GROUP BY e->>'skuCode' HAVING count(*)>1) THEN RETURN false; END IF;
- FOR evidence IN SELECT value FROM jsonb_array_elements(p_inputs#>'{evidence,drafts}') LOOP
-  IF jsonb_typeof(evidence->'draftId') IS DISTINCT FROM 'string' OR evidence->>'draftId' !~ uuid_shape
-   OR jsonb_typeof(evidence->'revision') IS DISTINCT FROM 'number' OR evidence->>'revision' !~ '^[1-9][0-9]{0,9}$'
-   OR jsonb_typeof(evidence->'commandKey') IS DISTINCT FROM 'string' OR length(evidence->>'commandKey') NOT BETWEEN 1 AND 240
-   OR evidence->>'commandKey' <> btrim(evidence->>'commandKey')
-   OR jsonb_typeof(evidence->'fingerprint') IS DISTINCT FROM 'string' OR evidence->>'fingerprint' !~ '^[a-f0-9]{64}$' THEN RETURN false; END IF;
-  IF (evidence->>'revision')::bigint>2147483647 THEN RETURN false; END IF;
- END LOOP;
- FOR evidence IN SELECT value FROM jsonb_array_elements(p_inputs#>'{evidence,media}') LOOP
-  IF jsonb_typeof(evidence->'skuCode') IS DISTINCT FROM 'string' OR evidence->>'skuCode' !~ code_shape
-   OR jsonb_typeof(evidence->'mediaRef') IS DISTINCT FROM 'string' OR length(evidence->>'mediaRef') NOT BETWEEN 1 AND 240
-   OR evidence->>'mediaRef'<>btrim(evidence->>'mediaRef')
-   OR jsonb_typeof(evidence->'revisionDigest') IS DISTINCT FROM 'string' OR evidence->>'revisionDigest' !~ '^[a-f0-9]{64}$'
-   OR jsonb_typeof(evidence->'assetRefs') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
-  IF jsonb_array_length(evidence->'assetRefs')>32 THEN RETURN false; END IF;
-  previous := NULL;
-  FOR asset IN SELECT value FROM jsonb_array_elements(evidence->'assetRefs') LOOP
-   IF jsonb_typeof(asset) IS DISTINCT FROM 'string' OR length(asset#>>'{}') NOT BETWEEN 1 AND 240
-    OR asset#>>'{}'<>btrim(asset#>>'{}') OR previous COLLATE "C">=asset#>>'{}' COLLATE "C" THEN RETURN false; END IF;
-   previous := asset#>>'{}';
-  END LOOP;
- END LOOP;
- RETURN true;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.catalog_lifecycle_draft_valid_v4(jsonb) FROM PUBLIC;
-
 CREATE OR REPLACE FUNCTION public.catalog_draft_apply(p_canonical_command text, p_fingerprint text, p_actor_id text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE
   c jsonb; p jsonb; s jsonb; operation jsonb; expectation jsonb; h public.catalog_draft_heads%ROWTYPE;
   receipt public.catalog_draft_command_receipts%ROWTYPE; reserved public.catalog_draft_sku_reservations%ROWTYPE;
   d uuid; product uuid; sku uuid; key text; action text; expected integer; next_revision integer;
-  actor text; state text; code_value text; inputs jsonb; content jsonb; claim jsonb; allowed text[];
+  actor text; state text; code_value text; inputs jsonb; content jsonb; claim jsonb; allowed text[]; valid_v4 boolean;
 BEGIN
   actor := p_actor_id; IF actor IS NULL OR actor <> btrim(actor) OR length(actor) NOT BETWEEN 1 AND 240 THEN RAISE EXCEPTION 'catalog_draft_actor_required' USING ERRCODE='42501'; END IF;
   IF p_canonical_command IS NULL OR octet_length(p_canonical_command) NOT BETWEEN 2 AND 1048576
@@ -691,8 +626,72 @@ BEGIN
           END IF;
         END IF;
       END LOOP;
-      IF c->'schemaVersion'='4'::jsonb AND NOT public.catalog_lifecycle_draft_valid_v4(inputs) THEN
-        RETURN jsonb_build_object('outcome','validation_issue','reason','publication_inputs_invalid');
+      IF c->'schemaVersion'='4'::jsonb THEN
+        -- Keep validation inside the existing invoker and its draft-role ACL.
+        valid_v4 := false;
+        <<v4_grammar>>
+        DECLARE
+          op jsonb; child jsonb; evidence jsonb; asset jsonb; previous text; verb text;
+          uuid_shape constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+          code_shape constant text := '^[A-Za-z0-9._:-]{1,160}$';
+        BEGIN
+          FOR op IN SELECT value FROM jsonb_array_elements(inputs->'operations') LOOP
+           verb := op->>'op';
+           IF (op ? 'productSlug' AND (jsonb_typeof(op->'productSlug') IS DISTINCT FROM 'string'
+             OR op->>'productSlug' !~ '^[a-z0-9][a-z0-9_-]{0,63}$'))
+            OR (op ? 'skuCode' AND (jsonb_typeof(op->'skuCode') IS DISTINCT FROM 'string' OR op->>'skuCode' !~ code_shape)) THEN EXIT v4_grammar; END IF;
+           IF verb='set_eligibility' AND (jsonb_typeof(op->'sellableStandalone') IS DISTINCT FROM 'boolean'
+             OR jsonb_typeof(op->'sellableInSubscription') IS DISTINCT FROM 'boolean') THEN EXIT v4_grammar; END IF;
+           IF verb IN ('set_product_lifecycle','set_sku_lifecycle') AND
+            (coalesce(op->>'expectedState','') NOT IN ('draft','active','withdrawn','archived')
+             OR coalesce(op->>'state','') NOT IN ('active','withdrawn','archived')) THEN EXIT v4_grammar; END IF;
+           IF verb IN ('restore_product','restore_sku') AND op->'expectedState' IS DISTINCT FROM '"withdrawn"'::jsonb THEN EXIT v4_grammar; END IF;
+           IF verb='set_product_lifecycle' THEN
+            IF jsonb_typeof(op->'children') IS DISTINCT FROM 'array' THEN EXIT v4_grammar; END IF;
+            IF jsonb_array_length(op->'children')>50000 THEN EXIT v4_grammar; END IF;
+            previous := NULL;
+            FOR child IN SELECT value FROM jsonb_array_elements(op->'children') LOOP
+             IF jsonb_typeof(child) IS DISTINCT FROM 'object' OR child - ARRAY['skuCode','expectedState'] <> '{}'::jsonb
+              OR jsonb_typeof(child->'skuCode') IS DISTINCT FROM 'string' OR child->>'skuCode' !~ code_shape
+              OR coalesce(child->>'expectedState','') NOT IN ('draft','active','withdrawn','archived')
+              OR previous COLLATE "C">=child->>'skuCode' COLLATE "C" THEN EXIT v4_grammar; END IF;
+             previous := child->>'skuCode';
+            END LOOP;
+           END IF;
+           IF (verb='restore_sku' OR verb='set_sku_lifecycle' AND op->>'state'='active')
+             AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(inputs->'operations') e
+               WHERE e->>'op'='set_eligibility' AND e->'skuCode'=op->'skuCode'
+                AND (e->'sellableStandalone'='true'::jsonb OR e->'sellableInSubscription'='true'::jsonb)) THEN EXIT v4_grammar; END IF;
+          END LOOP;
+          IF EXISTS(SELECT 1 FROM jsonb_array_elements(inputs#>'{evidence,drafts}') e GROUP BY e->>'draftId' HAVING count(*)>1)
+           OR EXISTS(SELECT 1 FROM jsonb_array_elements(inputs#>'{evidence,media}') e GROUP BY e->>'skuCode' HAVING count(*)>1) THEN EXIT v4_grammar; END IF;
+          FOR evidence IN SELECT value FROM jsonb_array_elements(inputs#>'{evidence,drafts}') LOOP
+           IF jsonb_typeof(evidence->'draftId') IS DISTINCT FROM 'string' OR evidence->>'draftId' !~ uuid_shape
+            OR jsonb_typeof(evidence->'revision') IS DISTINCT FROM 'number' OR evidence->>'revision' !~ '^[1-9][0-9]{0,9}$'
+            OR jsonb_typeof(evidence->'commandKey') IS DISTINCT FROM 'string' OR length(evidence->>'commandKey') NOT BETWEEN 1 AND 240
+            OR evidence->>'commandKey' <> btrim(evidence->>'commandKey')
+            OR jsonb_typeof(evidence->'fingerprint') IS DISTINCT FROM 'string' OR evidence->>'fingerprint' !~ '^[a-f0-9]{64}$' THEN EXIT v4_grammar; END IF;
+           IF (evidence->>'revision')::bigint>2147483647 THEN EXIT v4_grammar; END IF;
+          END LOOP;
+          FOR evidence IN SELECT value FROM jsonb_array_elements(inputs#>'{evidence,media}') LOOP
+           IF jsonb_typeof(evidence->'skuCode') IS DISTINCT FROM 'string' OR evidence->>'skuCode' !~ code_shape
+            OR jsonb_typeof(evidence->'mediaRef') IS DISTINCT FROM 'string' OR length(evidence->>'mediaRef') NOT BETWEEN 1 AND 240
+            OR evidence->>'mediaRef'<>btrim(evidence->>'mediaRef')
+            OR jsonb_typeof(evidence->'revisionDigest') IS DISTINCT FROM 'string' OR evidence->>'revisionDigest' !~ '^[a-f0-9]{64}$'
+            OR jsonb_typeof(evidence->'assetRefs') IS DISTINCT FROM 'array' THEN EXIT v4_grammar; END IF;
+           IF jsonb_array_length(evidence->'assetRefs')>32 THEN EXIT v4_grammar; END IF;
+           previous := NULL;
+           FOR asset IN SELECT value FROM jsonb_array_elements(evidence->'assetRefs') LOOP
+            IF jsonb_typeof(asset) IS DISTINCT FROM 'string' OR length(asset#>>'{}') NOT BETWEEN 1 AND 240
+             OR asset#>>'{}'<>btrim(asset#>>'{}') OR previous COLLATE "C">=asset#>>'{}' COLLATE "C" THEN EXIT v4_grammar; END IF;
+            previous := asset#>>'{}';
+           END LOOP;
+          END LOOP;
+          valid_v4 := true;
+        END v4_grammar;
+        IF NOT valid_v4 THEN
+          RETURN jsonb_build_object('outcome','validation_issue','reason','publication_inputs_invalid');
+        END IF;
       END IF;
     END IF;
     product := (p->'product'->>'id')::uuid;
