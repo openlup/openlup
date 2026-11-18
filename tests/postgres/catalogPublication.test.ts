@@ -3068,6 +3068,63 @@ it.each([
   expect(await snapshot()).toEqual(stable);
 }));
 
+it.each(["archive eligible product", "leave last membership", "live eligible", "live ineligible"] as const)(
+  "publication calculates affected obligations from the owning state: %s", async mode => inPriceDatabase(async () => {
+    const liveMismatch = mode.startsWith("live");
+    const data = await priceDraft(mode !== "live eligible"), initial = realPriceAuthority();
+    const initialActor = (await initial.authorize(null))!, first = await commit(data.publication, initial, initialActor);
+    const payload = structuredClone(data.payload), content = payload.product.sharedContent, skuCode = payload.skus[0].code!;
+    content.catalogAction = "revise";
+    delete payload.skus[0].priceOperations;
+    if (mode === "archive eligible product") payload.publication.operations = [
+      { op: "set_product_status", productSlug: payload.product.slug!, status: "archived" },
+    ];
+    if (mode === "leave last membership") {
+      content.offerMemberships[0].admitted = false;
+      payload.publication.operations = [{ op: "set_offer_membership", ...content.offerMemberships[0] }];
+    }
+    if (liveMismatch) {
+      payload.publication.kind = "compensation"; payload.skus = []; delete payload.product.primarySkuId;
+      Object.assign(content, { publicationSkus: [], offerMemberships: [], requestedModes: [] });
+      const document = { ...content.document, revisionNo: 2 };
+      const canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+      const reference = payload.product.documentRevision!;
+      content.document = document;
+      payload.product.documentRevision = { ...reference, id: revisionId, revisionNo: 2, digest };
+      payload.publication.operations = [
+        { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo: 2, documentRef: reference.documentRef,
+          sourceRef: reference.sourceRef, canonicalText, digest, provenance: { source: "current_draft" } },
+        { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+      ];
+    }
+    const command = await save(payload, data.draftId, 2, first.head);
+    await approve(command);
+    const connection = await db.connect(), phases: boolean[] = [];
+    try {
+      await connection.query("BEGIN");
+      await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+      if (liveMismatch) await connection.query("UPDATE public.catalog_skus SET status='active',sellable_standalone=$2 WHERE id=$1", [data.skuId, mode === "live eligible"]);
+      const target = realPriceAuthority(connection, (sql, _client, _rows, values) => {
+        if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) phases.push(Boolean(values?.[1]));
+      });
+      const capability = (await target.authorize(null))!, stable = await snapshot(connection);
+      const result = await target.publish(command, capability);
+      if (liveMismatch) {
+        expect(result).toEqual(mode === "live eligible" ? { outcome: "conflict", reason: "catalog_publication_draft_advanced" }
+          : { outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
+        expect(await snapshot(connection)).toEqual(stable);
+        if (mode === "live eligible") expect(phases).toEqual([]);
+      } else {
+        expect(result.outcome).toBe("committed");
+        const rows = (await connection.query(`SELECT p.status AS product_status,s.sellable_standalone,s.publication_facts->'memberships' AS memberships
+          FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id WHERE s.sku=$1`, [skuCode])).rows;
+        expect(rows).toEqual([{ product_status: mode === "archive eligible product" ? "archived" : "draft", sellable_standalone: true,
+          memberships: [{ offerVersion: "example:offer", admitted: mode !== "leave last membership" }] }]);
+        expect(phases).toEqual([]);
+      }
+    } finally { await connection.query("ROLLBACK"); connection.release(); }
+  }));
+
 async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
   const data = foreignPublished.data, payload = structuredClone(data.payload);
   payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation"; payload.skus = []; delete payload.product.primarySkuId;

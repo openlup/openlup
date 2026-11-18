@@ -186,6 +186,24 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
     need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
   } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
 }
+/** @experimental */
+export function catalogPublicationAffected(payload: CatalogDraftPayloadV3) {
+  let wholeProduct = false;
+  const created = new Set<string>(), admitted = new Set<string>(), enabling = new Set<string>();
+  for (const op of payload.publication.operations) {
+    if (op.op === "create_sku") created.add(op.skuCode);
+    if (op.op === "set_offer_membership" && op.admitted) admitted.add(op.skuCode);
+    if (op.op === "set_eligibility" && (op.sellableStandalone || op.sellableInSubscription)) enabling.add(op.skuCode);
+    if ((op.op === "move_document_pointer" || op.op === "set_product_status" && op.status === "active")
+      && op.productSlug === payload.product.slug) wholeProduct = true;
+  }
+  const structural = (code: string) => wholeProduct || created.has(code) || admitted.has(code);
+  return { structural, enabling,
+    source: (code: string) => wholeProduct || admitted.has(code),
+    priced: (sku: CatalogPublishedSku) => enabling.has(sku.code) || structural(sku.code) && sku.status === "active"
+      && (sku.sellableStandalone || sku.sellableInSubscription) && sku.memberships.some(row => row.admitted),
+  };
+}
 function matchesAuthoredIdentifier(
   authored: NonNullable<CatalogDraftPayloadV3["skus"][number]["identifiers"]>[number],
   published: Pick<CatalogPublishedSku["identifiers"][number], "scheme" | "issuer" | "value" | "packagingLevel" | "quantity">,
@@ -228,6 +246,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       digest: publicationDigest((({ source: _source, ...facts }) => facts)(sku), CATALOG_PUBLICATION_LIMITS.skuBytes) })) };
   }
   const original = publicationJson(materialState(product, input.skus));
+  const affected = catalogPublicationAffected(payload);
   // Preserve first-match semantics while indexing retained facts once.
   const originalById = new Map([...input.skus].reverse().map(sku => [sku.id, sku] as const));
   const skus = new Map(input.skus.map(sku => [sku.code, structuredClone(sku)]));
@@ -414,8 +433,8 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     catalogPublicationIntegralGrams(sku.netContent, input.definition);
     need(equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), sku.facts),
       "catalog_publication_v3_compile_derived_facts_mismatch");
-    if (sku.sellableStandalone || sku.sellableInSubscription) {
-      need(sku.status !== "archived" && result.status !== "archived", "catalog_publication_v3_compile_sku_archived");
+    if (affected.priced(sku)) {
+      need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
       assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, input.definition);
       need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
         && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");

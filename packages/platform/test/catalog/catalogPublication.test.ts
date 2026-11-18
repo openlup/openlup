@@ -586,13 +586,12 @@ it("cycle1 unchanged physical facts do not call the identity classifier", () => 
   let calls = 0; data.rules = { ...rules, classifySkuChange: () => { calls++; return "inconclusive"; } };
   expect(compileCatalogPublication(data).changed).toBe(false); expect(calls).toBe(0);
 });
-it.each(["archived SKU", "archived product", "absent identifier", "nonprimary GTIN", "foreign nonprimary identifier", "absent logistics", "absent membership", "declined membership"])(
+it.each(["archived SKU", "absent identifier", "nonprimary GTIN", "foreign nonprimary identifier", "absent logistics", "absent membership", "declined membership"])(
   "cycle1 final activation readiness refuses %s", kind => {
     const data = publicationWithSecondary(), second = data.skus[1]; second.status = "active"; second.sellableStandalone = true;
     data.payload.publication.kind = "compensation";
-    data.payload.publication.operations = [{ op: "set_product_presentation", productSlug: "article", presentation: {} }];
+    data.payload.publication.operations = [{ op: "set_eligibility", skuCode: second.code, sellableStandalone: true, sellableInSubscription: false }];
     if (kind === "archived SKU") second.status = "archived";
-    if (kind === "archived product") data.payload.publication.operations = [{ op: "set_product_status", productSlug: "article", status: "archived" }];
     if (kind === "absent identifier") second.identifiers = [];
     if (kind === "nonprimary GTIN") second.identifiers[0].isPrimary = false;
     if (kind === "foreign nonprimary identifier") { second.identifiers[0].scheme = "example:identifier"; second.identifiers[0].isPrimary = false; }

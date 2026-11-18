@@ -4623,6 +4623,13 @@ export declare function assertCatalogPublicationPreparation(payload: CatalogDraf
  * @experimental
  */
 export declare function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void;
+/** @experimental */
+export declare function catalogPublicationAffected(payload: CatalogDraftPayloadV3): {
+    structural: (code: string) => boolean;
+    enabling: Set<string>;
+    source: (code: string) => boolean;
+    priced: (sku: CatalogPublishedSku) => boolean;
+};
 /** Ordered publication compiler using installed definitions; never persists or calls commerce.
  * @experimental
  */

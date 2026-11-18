@@ -18,7 +18,7 @@ import { catalogProductTypeRefSchema } from "./productTypeSchemas.js";
 import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, compileCatalogPublication, CatalogPublicationError, publicationRefuse,
-  publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, type CatalogPublicationDocument } from "./publicationValidation.js";
+  publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
@@ -53,7 +53,8 @@ function failure(error: unknown): CatalogPublicationFailure {
 }
 interface StoredPublication { id: string; product_id: string; revision: number; document_revision_id: string; canonical_state: string; digest: string; committed_at: string }
 interface RetainedState { head: CatalogHeadRef | null; publication: StoredPublication | null; product: CatalogPublishedProduct | null;
-  skus: CatalogPublishedSku[]; references: CatalogSkuRevisionRef[]; documents: CatalogPublicationDocument[] }
+  skus: CatalogPublishedSku[]; references: CatalogSkuRevisionRef[]; documents: CatalogPublicationDocument[];
+  liveSkus: { sku: string; status: string; sellable_standalone: boolean; sellable_in_subscription: boolean }[] }
 /** No default binding. The host supplies trusted authorization, a single-connection transaction and installed adapters.
  * @experimental
  */
@@ -96,7 +97,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     if (!publication) {
       checkHead(null);
       require(!historical && row.live_product === null, "catalog_publication_lineage_unknown", "unsupported");
-      return { head: null, publication: null, product: null, skus: [], references: [], documents };
+      return { head: null, publication: null, product: null, skus: [], references: [], documents, liveSkus: [] };
     }
     require(publication.product_id === productId && publicationDigest(JSON.parse(publication.canonical_state)) === publication.digest
       && publicationJson(JSON.parse(publication.canonical_state)) === publication.canonical_state, "catalog_publication_manifest_invalid", "dependency_unavailable");
@@ -133,7 +134,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       try { await assertProjection(db, { product: manifest.product, skus }); }
       catch (error) { if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") publicationRefuse("catalog_publication_live_drift", "conflict"); throw error; }
     }
-    return { head, publication, product: manifest.product, skus, references: manifest.skus, documents };
+    return { head, publication, product: manifest.product, skus, references: manifest.skus, documents, liveSkus: row.live_skus as RetainedState["liveSkus"] };
   }
   async function commandGuards(db: PgQueryExecutor, productId: string, candidateRef: string, candidateDigest: string, commandKey: string) {
     const referenceDigest = publicationDigest([candidateRef, candidateDigest]);
@@ -229,12 +230,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       require(source.productId === prepared.record.productId && source.commandKey === claim.commandKey && source.fingerprint === claim.fingerprint, "catalog_publication_source_mismatch");
       retained.push(source);
     }
-    const activationCodes = new Set(prepared.payload.publication.operations.flatMap(operation =>
-      operation.op === "set_eligibility" && (operation.sellableStandalone || operation.sellableInSubscription) ? [operation.skuCode] : []));
-    for (const sku of before.skus) if (sku.status === "active" && (sku.sellableStandalone || sku.sellableInSubscription)
-      && prepared.payload.publication.operations.some(operation => operation.op === "set_offer_membership" && operation.admitted && operation.skuCode === sku.code
-        || operation.op === "move_document_pointer" && operation.productSlug === before.product?.slug
-        || operation.op === "set_product_status" && operation.status === "active" && operation.productSlug === before.product?.slug)) activationCodes.add(sku.code);
+    const affected = catalogPublicationAffected(prepared.payload), activationCodes = new Set(affected.enabling);
+    for (const sku of before.liveSkus) if (sku.status === "active" && (sku.sellable_standalone || sku.sellable_in_subscription)
+      && affected.source(sku.sku)) activationCodes.add(sku.sku);
     const sources = [prepared.record, ...retained];
     const currentSourceCodes = new Set([...activationCodes, ...(prepared.payload.publication.evidence.media ?? []).map(claim => claim.skuCode)]);
     for (const code of currentSourceCodes) {
@@ -263,16 +261,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(verdict.data?.ready === true, reason);
   }
   async function checkReadiness(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[] }, payload: CatalogDraftPayloadV3, activation: boolean) {
-    const operations = payload.publication.operations;
-    const hasPresentation = operations.some(operation => operation.op === "set_product_presentation");
-    const wholeProduct = operations.some(operation => operation.op === "move_document_pointer"
-      || operation.op === "set_product_status" && operation.status === "active");
-    const structural = state.skus.filter(sku => wholeProduct || operations.some(operation => operation.op === "create_sku" && operation.skuCode === sku.code
-      || operation.op === "set_offer_membership" && operation.admitted && operation.skuCode === sku.code));
-    const priced = state.skus.filter(sku => operations.some(operation => operation.op === "set_eligibility" && operation.skuCode === sku.code
-      && (operation.sellableStandalone || operation.sellableInSubscription)) || structural.includes(sku) && sku.status === "active"
-      && (sku.sellableStandalone || sku.sellableInSubscription) && sku.memberships.some(row => row.admitted));
-
+    const affected = catalogPublicationAffected(payload);
+    const hasPresentation = payload.publication.operations.some(operation => operation.op === "set_product_presentation");
+    const structural = state.skus.filter(sku => affected.structural(sku.code));
+    const priced = state.skus.filter(affected.priced);
     for (const [skus, requirePrice] of [[structural, false], [priced, true]] as const) {
       const reason = requirePrice ? "catalog_publication_v3_activation_readiness_failed" : "catalog_publication_v3_structural_readiness_failed";
       for (const sku of skus) {
