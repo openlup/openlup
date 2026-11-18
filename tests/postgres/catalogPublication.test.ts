@@ -3147,7 +3147,6 @@ describe("governed publication reads", () => {
   });
 
   it.each([
-    ["D-207.null-offer", [null, null, 1, null, null]],
     ["D-207.unknown-offer", ["example:unknown", null, 1, null, null]],
     ["D-207.null-limit", [offerVersion, null, null, null, null]],
     ["D-207.low-limit", [offerVersion, null, 0, null, null]],
@@ -3252,6 +3251,12 @@ describe("governed publication reads", () => {
     expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
   }));
 
+  it("D-207.null-offer", async () => isolated(async connection => {
+    await connection.query("DELETE FROM public.catalog_publication_heads");
+    await expect(connection.query(pageSql, [null, null, 1, null, null]))
+      .rejects.toMatchObject({ code: "22023", message: "catalog_offer_memberships_page_input_invalid" });
+  }));
+
   it.each(["D-208.legacy", "D-212.legacy"])("%s", async rule => isolated(async connection => {
     await connection.query("DELETE FROM public.catalog_publication_heads");
     if (rule === "D-208.legacy") {
@@ -3313,6 +3318,37 @@ describe("governed publication reads", () => {
       await expect.poll(async () => (await writer.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [readBackend])).rows[0]?.wait_event)
         .toBe("advisory");
     } finally { await writer.query("ROLLBACK"); writer.release(); await pending.finally(() => reader.release()); }
+  });
+
+  it("D-212.latest-after-wait", async () => {
+    const { headDigest } = await governed();
+    const data = await draft();
+    await approve(data.publication);
+    const writer = await db.connect(), reader = await db.connect();
+    try {
+      const readerPid = (await reader.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+      await writer.query("BEGIN");
+      await writer.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`);
+      const publisher = createPostgresCatalogPublication({ ...dependencies(), transactions: { run: work => work(writer) } });
+      const published = await publisher.publish(data.publication, (await publisher.authorize(null))!);
+      expect(published).toMatchObject({ outcome: "committed" });
+
+      await reader.query("BEGIN");
+      const target = createPostgresCatalogPublication({ ...dependencies(), transactions: { run: work => work(reader) } });
+      const pending = target.activationReadiness([first.code], headDigest);
+      try {
+        await expect.poll(async () => (await writer.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [readerPid])).rows[0]?.wait_event)
+          .toBe("advisory");
+        await writer.query("COMMIT");
+      } finally {
+        await writer.query("ROLLBACK");
+        expect(await pending).toEqual({ outcome: "conflict", reason: "catalog_publication_head_moved" });
+      }
+    } finally {
+      await Promise.all([writer.query("ROLLBACK"), reader.query("ROLLBACK")]);
+      writer.release();
+      reader.release();
+    }
   });
 
   it.each([

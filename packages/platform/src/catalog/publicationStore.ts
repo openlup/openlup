@@ -842,7 +842,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       if (!codes.success || !digest.safeParse(expectedHeadDigest).success)
         return publicationRefuse("catalog_publication_readiness_query_invalid");
       return await deps.transactions.run(async db => {
-        await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED READ ONLY");
         const batch = singletonRead(await tuple(db, "SELECT public.catalog_publication_activation_readiness($1,$2) AS result",
           [codes.data, expectedHeadDigest]), readinessRow);
         require(batch.headDigest === expectedHeadDigest && batch.items.length === codes.data.length
