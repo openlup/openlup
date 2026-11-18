@@ -1278,10 +1278,10 @@
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "b4f1d3afe8142549b7562cce3cc5cf65427e96a1906b0641b8abf8c165adc478"
+          "withRestore": "01d8f609afbafcf992d367a4817f950af1d00ba08e8bef566401f20fe85478e6"
         },
         "separateMigrator": {
-          "withRestore": "d595cff2b2050c3c51feb86514ad6927c60a606f4842d56a281a7a25e223d4c1"
+          "withRestore": "e44c2d03823e71c0665e4b50393b0f49856bb335f372e4a55576c245301b61ff"
         }
       }
     },
@@ -1929,8 +1929,8 @@
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "2793f72eb22742b74cbb8c65bae2082711e206276d63923b90185e496b735d43",
-        "operatorProvisioned": "bb9c018404cc88d67675c96741438ba6c1b1d6541b899ad2842ec44a6e0d7ac7"
+        "installerManaged": "1587f546baadf270b1a58bbcffb0d59e58d30d67283916023032c3cd5bdb4914",
+        "operatorProvisioned": "f776b4f628d1422380c37ecf46a245cc6adef16723c5ec4eb9bf50d72d189a33"
       }
     }
   },
