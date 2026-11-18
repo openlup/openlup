@@ -20,7 +20,8 @@ import { validateCatalogPublicationAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, assertCatalogPublicationAuthorship, assertCatalogPublicationPreparation,
   compileCatalogPublicationEffects, CatalogPublicationError, publicationRefuse,
-  publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected, type CatalogPublicationDocument } from "./publicationValidation.js";
+  publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected,
+  catalogPublicationMediaIssue, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publication_id,result::jsonb AS result";
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -387,8 +388,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     }
     for (const claim of media) {
       const sku = authoredSkus.get(claim.skuCode)!;
-      require(claim.mediaRef === prepared.payload.product.sharedContent.presentation.mediaRef
-        && equal(claim.assetRefs, [...(sku.assetRefs ?? [])].sort(comparePublicationText)), "catalog_publication_media_evidence_mismatch");
+      require(!catalogPublicationMediaIssue(prepared.payload.product.sharedContent.presentation?.mediaRef, sku.assetRefs ?? [], claim),
+        "catalog_publication_media_evidence_mismatch");
     }
     return { retained, activationCodes, selectedSources };
   }

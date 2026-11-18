@@ -11,7 +11,7 @@ import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
-import { catalogPublicationPreparationIssues, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
+import { catalogPublicationMediaIssue, catalogPublicationPreparationIssues, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
   type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
 import { z } from "./validation.js";
 
@@ -86,16 +86,16 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     }
     if (!payload.product.documentRevision) hard.push({ path: "product.documentRevision", code: "document_reference_missing" });
     if (!rules || head && !deps.readPublicationState) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
-    for (const op of payload.publication.operations) {
-      if (op.op !== "set_product_presentation" || op.presentation === null) continue;
+    const presentation = payload.product.sharedContent.presentation;
+    if (presentation !== null) {
       let result: unknown;
-      try { result = await deps.presentationReadiness?.(record.productId, op.presentation); } catch { /* Evidence is unknown. */ }
+      try { result = await deps.presentationReadiness?.(record.productId, presentation); } catch { /* Evidence is unknown. */ }
       const verdict = publicationReadinessVerdict.safeParse(result), path = "product.sharedContent.presentation";
       if (!verdict.success) unknown.push({ path, code: "catalog_publication_presentation_unavailable" });
       else hard.push(...verdict.data.reasons.map(code => ({ path, code })));
     }
     let compiled: ReturnType<typeof compileCatalogPublication> | undefined;
-    if (hard.length === 0 && unknown.length === 0 && rules) {
+    if (hard.length === 0 && rules) {
       try {
         const current = head ? await deps.readPublicationState?.(head) : { product: null, skus: [], documents: [], retainedSources: [] };
         if (!current || head && current.product?.id !== record.productId)
@@ -117,6 +117,9 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
       }
     }
     const activation: NonNullable<CatalogCandidatePreview["preparation"]>["activation"] = { outcome: "pending", issues: [] };
+    const activating = new Set(payload.publication.operations.flatMap(op => op.op === "set_eligibility"
+      && (op.sellableStandalone || op.sellableInSubscription) ? [op.skuCode] : []));
+    const mediaIssues: CatalogDraftIssue[] = [];
     const pending = payload.skus.flatMap((sku, index) => {
       if (!sku.code) return [];
       const path = `skus.${index}`, issues: (CatalogDraftIssue & { channel?: "one_time" | "subscription" })[] = [];
@@ -125,26 +128,32 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
       if (!sku.grossMass) issues.push({ path: `${path}.grossMass`, code: "gross_mass_missing" });
       if (!sku.logisticsRef) issues.push({ path: `${path}.logisticsRef`, code: "logistics_reference_missing" });
       if (!sku.priceOperations?.length) issues.push({ path: `${path}.priceOperations`, code: "price_reference_missing" });
+      if (payload.publication.operations.some(op => op.op === "create_sku" && op.skuCode === sku.code)
+        && !content.offerMemberships.some(row => row.skuCode === sku.code))
+        issues.push({ path: "product.sharedContent.offerMemberships", code: "offer_membership_missing" });
       if (!modes) issues.push({ path: "product.sharedContent.requestedModes", code: "requested_modes_missing" });
       for (const channel of modes ?? []) issues.push({ path: `${path}.priceOperations`, code: "activation_not_assessed", channel });
-      const mediaRef = content.presentation.mediaRef;
-      if (sku.assetRefs?.length && !mediaRef) issues.push({ path: "product.sharedContent.presentation.mediaRef", code: "media_reference_missing" });
-      else if ((mediaRef || sku.assetRefs?.length) && !payload.publication.evidence.media?.some(claim => claim.skuCode === sku.code))
-        issues.push({ path: `${path}.assetRefs`, code: "media_readiness_unknown" });
+      const media = catalogPublicationMediaIssue(presentation?.mediaRef, sku.assetRefs ?? [],
+        payload.publication.evidence.media?.find(claim => claim.skuCode === sku.code));
+      if (media) {
+        const issue = { path: media === "media_reference_missing" ? "product.sharedContent.presentation.mediaRef" : `${path}.assetRefs`, code: media };
+        issues.push(issue);
+        if (activating.has(sku.code)) mediaIssues.push(issue);
+      }
       return issues;
     });
     activation.issues = pending;
-    if (payload.publication.operations.some(op => op.op === "set_eligibility" && (op.sellableStandalone || op.sellableInSubscription))) {
+    if (activating.size > 0) {
       let verdict: Awaited<ReturnType<NonNullable<CatalogCandidateDeps["assessActivation"]>>> | undefined;
       if (head && compiled) {
         try { verdict = await deps.assessActivation?.(compiled, head); } catch { /* Missing current evidence is an unknown verdict. */ }
       }
       const parsed = publicationReadinessVerdict.safeParse(verdict);
-      activation.outcome = hard.length > 0 || !head ? "blocked-input" : parsed.success
-        ? parsed.data.ready ? "ready" : "blocked-input"
-        : "unknown";
+      activation.outcome = hard.length > 0 || !head || parsed.success && !parsed.data.ready
+        || mediaIssues.some(issue => issue.code !== "media_readiness_unknown") ? "blocked-input"
+        : parsed.success && !mediaIssues.length ? "ready" : "unknown";
       activation.issues = hard.length ? [...hard, ...pending] : !head ? [{ path: "publication", code: "product_not_materialized" }]
-        : parsed.success ? parsed.data.reasons.map(code => ({ path: "publication", code }))
+        : parsed.success ? [...parsed.data.reasons.map(code => ({ path: "publication", code })), ...mediaIssues]
         : [...pending, { path: "publication", code: "activation_unknown" }];
     }
     return { structural: { outcome: hard.length ? "blocked-input" : unknown.length ? "unknown" : "staged", issues: [...hard, ...unknown] },

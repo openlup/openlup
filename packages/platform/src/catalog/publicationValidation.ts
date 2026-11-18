@@ -214,6 +214,17 @@ function matchesAuthoredIdentifier(
       : authored.value === published.value)
     && authored.packagingLevel === published.packagingLevel && (authored.quantity ?? 1) === published.quantity;
 }
+/** Checks a sealed media claim against the presentation and SKU before consulting installed evidence.
+ * @experimental
+ */
+export function catalogPublicationMediaIssue(mediaRef: unknown, assets: readonly string[],
+  claim?: NonNullable<CatalogDraftPayloadV3["publication"]["evidence"]["media"]>[number]) {
+  if (!mediaRef && !assets.length && !claim) return null;
+  if (typeof mediaRef !== "string" || !mediaRef) return "media_reference_missing";
+  if (!claim) return "media_readiness_unknown";
+  return claim.mediaRef === mediaRef && equal([...assets].sort(comparePublicationText), claim.assetRefs)
+    ? null : "media_readiness_mismatch";
+}
 function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument["reference"], "digest" | "documentRef" | "revisionNo">,
   slug: string, rules: CatalogPublicationRules) {
   need(createHash("sha256").update(canonicalText).digest("hex") === reference.digest, "catalog_publication_v3_document_digest_mismatch");

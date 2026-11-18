@@ -195,3 +195,57 @@ it.each([
   expect(await service.validate(prepared.candidateRef)).toEqual(prepared);
   expect(await service.compareCandidate({ ...prepared, expectedHead: head })).toEqual(prepared);
 });
+
+it.each([
+  ["unknown route, missing effect", "blocked-input", "pending", "catalog_publication_identifier_effect_missing"],
+  ["retained route collision", "blocked-input", "pending", "duplicate_route"],
+  ["activation missing media", "staged", "unknown", "media_readiness_unknown"],
+  ["mismatched media claim", "staged", "pending", "media_readiness_mismatch"],
+  ["new SKU without membership", "staged", "pending", "offer_membership_missing"],
+] as const)("preparation preserves independent evidence through each facade method: %s", async (mode, structural, activation, code) => {
+  const fixture = publicationInput(), { payload, record } = fixture;
+  const content = payload.product.sharedContent, sku = payload.skus[0];
+  if (mode.includes("media")) {
+    content.presentation = { mediaRef: "example:media" };
+    const presentation = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
+    if (presentation.op === "set_product_presentation") presentation.presentation = content.presentation;
+    sku.assetRefs = ["actual"];
+  }
+  if (mode === "mismatched media claim")
+    payload.publication.evidence.media = [{ skuCode: sku.code!, mediaRef: "example:media", assetRefs: ["different"], revisionDigest: "b".repeat(64) }];
+  if (mode === "unknown route, missing effect")
+    payload.publication.operations = payload.publication.operations.filter(op => op.op !== "create_identifier");
+  const prior = mode === "retained route collision" || mode === "activation missing media" ? compileCatalogPublication(fixture) : null;
+  const head = prior ? { publicationId: listId, revision: 1, documentDigest: prior.product.document!.digest } : null;
+  if (prior) {
+    content.catalogAction = "revise";
+    sku.logisticsRef = "example:logistics";
+    payload.publication.operations = [{ op: "set_sku_metadata", skuCode: sku.code!, logisticsRef: sku.logisticsRef }];
+  }
+  if (mode === "activation missing media") {
+    sku.grossMass = sku.netContent;
+    content.requestedModes[0].modes = ["one_time"];
+    content.offerMemberships = [{ skuCode: sku.code!, offerVersion: "example:offer", admitted: true }];
+    payload.publication.operations.push({ op: "set_offer_membership", ...content.offerMemberships[0] },
+      { op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false },
+      { op: "set_sku_status", skuCode: sku.code!, status: "active" },
+      { op: "set_product_status", productSlug: payload.product.slug!, status: "active" });
+  }
+  const service = createCatalogCandidateService({
+    readDraft: async () => structuredClone(record), registry: publicationRegistry,
+    installedDefinitionDigest: async () => catalogDefinitionDigest(fixture.definition),
+    currentHead: async () => head ? { outcome: "found", head, documentRef: "example:document", observations: [] } : { outcome: "unpublished" },
+    resolveHead: async () => head, publicationRules: fixture.rules,
+    readPublicationState: async () => prior && { ...prior, retainedSources: [] },
+    ...(mode === "unknown route, missing effect" ? {} : {
+      presentationReadiness: async () => mode === "retained route collision" ? { ready: false, reasons: ["duplicate_route"] } : { ready: true, reasons: [] },
+    }),
+    assessActivation: async () => ({ ready: true, reasons: [] }),
+  });
+  const prepared = await service.prepareCandidate({ draftId: record.draftId, draftRevision: record.revision, expectedHead: head });
+  for (const preview of [prepared, await service.validate(prepared.candidateRef), await service.compareCandidate({ ...prepared, expectedHead: head })]) {
+    expect(preview.preparation).toMatchObject({ structural: { outcome: structural }, activation: { outcome: activation } });
+    const issues = structural === "blocked-input" ? preview.preparation!.structural.issues : preview.preparation!.activation.issues;
+    expect(issues.map(issue => issue.code)).toContain(code);
+  }
+});
