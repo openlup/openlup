@@ -37,7 +37,7 @@ it("isolates inventory and reminder reads and installs from mutated discovery da
   inventory.fallback.renewalProtectionDays = 99;
   const query = vi.fn(async () => ({ rows: [] }));
   const reminderObservation = await readCheckoutRecoveryReminderObservation({ query });
-  if (reminderObservation.present) throw new Error("Expected an absent schedule");
+  if ("refusal" in reminderObservation || reminderObservation.present) throw new Error("Expected an absent schedule");
   reminderObservation.effective.abandonedCart[0]!.afterHours = 66;
   const inventoryDefault = { revision: "default", renewalProtectionDays: 14 };
   const reminderDefault = {
@@ -85,6 +85,7 @@ describe("settings show", () => {
     [{ finalOffsetSeconds: 54000 }, 1, 15],
     [{ firstOffsetSeconds: 7200 }, 2, 20],
     [{}, 1, 20],
+    [{ finalOffsetSeconds: 86400, checkoutSeconds: 86401 }, 1, 24],
   ] as const)("uses SQL defaults for omitted host offsets in %j", async (policy, first, last) => {
     const query = vi.fn(async () => ({ rows: [] }));
     expect(await showSetting({ key }, {
@@ -95,12 +96,33 @@ describe("settings show", () => {
     } });
   });
 
+  it.each([
+    { firstOffsetSeconds: 72000 },
+    { finalOffsetSeconds: 86400 },
+    { recoverySeconds: 2147483648 },
+    { activitySeconds: 0.5 },
+    { profile: "capture!" },
+    { profile: "capture", unknown: true },
+  ])("refuses a host policy rejected by the native validator: %j", async policy => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const code = "checkout_recovery_policy_invalid";
+    const explanation = explainSetting(code);
+    expect(explanation).toMatchObject({
+      explanation: { code, remediation: { retry: true, action: expect.stringContaining("Correct the supplied policy") } },
+    });
+    const result = await showSetting({ key }, {
+      [key]: () => readCheckoutRecoveryReminderObservation({ query }, policy),
+    });
+    expect(result).toEqual({ refusal: "explanation" in explanation && explanation.explanation });
+  });
+
   it("reports absent reminders without guessing unknown host offsets and retains cart waves", async () => {
     const result = {
       state: "absent", absentMeans: expect.stringContaining("host call parameters"), source: "host call parameters, with SQL defaults for omitted offsets",
       value: { abandonedCart, checkoutRecovery: null },
     };
-    expect(await showSetting({ key }, { [key]: async () => ({ present: false }) })).toMatchObject({ observation: result });
+    const db = { query: async () => ({ rows: [] }) };
+    expect(await showSetting({ key }, { [key]: () => readCheckoutRecoveryReminderObservation(db) })).toMatchObject({ observation: result });
     expect(explainSetting(key)).toMatchObject({ observation: result });
   });
 

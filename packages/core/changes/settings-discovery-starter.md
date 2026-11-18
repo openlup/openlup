@@ -14,4 +14,5 @@
   the installed OpenLup package versions match.
 - Verify discovery with
   `node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json`.
+  The extracted app’s `AGENTS.md` gives the npm form for pure JSON on stdout.
   This step needs no database or installed-policy operation.

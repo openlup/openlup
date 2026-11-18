@@ -1,14 +1,15 @@
 import { parseArgs } from 'node:util';
 import { explainSetting, invalidSettingsCommand, listSettings, showSetting, type SettingReader } from '@openlup/platform/operations/server';
 
-const help = `Usage: node --experimental-strip-types host/settings.ts list [--goal <text>] | show <key> | explain <refusal-code-or-key>
-Use --json for versioned output. Add --help to see these examples.
+const help = `Usage: npm run --silent settings -- list [--goal <text>] | show <key> | explain <refusal-code-or-key>
+Use --json for versioned output. Keep --silent on the npm command so stdout contains only JSON.
+Add --help to see these examples.
 For a connected show, pass --database-url <read-capable-url>.
 
 Examples:
-  node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"
-  node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json
-  node --experimental-strip-types host/settings.ts explain commerce_setting_unknown`;
+  npm run --silent settings -- list --goal "renewal stock protection horizon"
+  npm run --silent settings -- show inventory_renewal_protection --json
+  npm run --silent settings -- explain commerce_setting_unknown`;
 
 async function run(args: string[]) {
   let parsed;

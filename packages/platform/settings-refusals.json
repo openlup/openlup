@@ -74,6 +74,17 @@
         "action": "Check the schema and correct the rejected value.",
         "command": "node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json"
       }
+    },
+    {
+      "code": "checkout_recovery_policy_invalid",
+      "path": [],
+      "rule": "The host checkout recovery policy accepts only firstOffsetSeconds, finalOffsetSeconds, checkoutSeconds, recoverySeconds, activitySeconds and profile. Supply seconds as integers from 1 to 2147483647 and keep firstOffsetSeconds below finalOffsetSeconds, which must be below checkoutSeconds after defaults. A supplied profile starts with a lowercase letter and has up to 48 lowercase letters, digits, underscores or hyphens.",
+      "hint": "Check the policy supplied for checkout_recovery_reminders.",
+      "remediation": {
+        "retry": true,
+        "action": "Correct the supplied policy using the rule, then repeat the connected read.",
+        "command": "node --experimental-strip-types host/settings.ts show checkout_recovery_reminders --json"
+      }
     }
   ]
 }

@@ -21,6 +21,7 @@ type ShowResult = { schemaVersion: 1; setting: SettingDescriptor; observation: O
 export type SettingReader = () => Promise<
   | { present: true; value: JsonValue; revision: string | null }
   | { present: false; effective?: JsonValue }
+  | { refusal: string }
 >;
 
 const byCode = new Map(settingRefusals.map(refusal => [refusal.code, refusal]));
@@ -54,9 +55,10 @@ function absentObservation(setting: typeof settingsCatalogue[number], effective?
     : { state: "fallback", value: setting.fallback };
 }
 
-async function observe(setting: typeof settingsCatalogue[number], read?: SettingReader): Promise<Observation> {
+async function observe(setting: typeof settingsCatalogue[number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
+  if ("refusal" in observed) return refuse(observed.refusal);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }
@@ -68,11 +70,9 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
   const setting = settingsCatalogue.find(entry => entry.key === parsed.data.key);
   if (!setting) return refuse("commerce_setting_unknown");
   try {
-    return settingsShowResult.parse({
-      schemaVersion: settingsVersion,
-      setting,
-      observation: await observe(setting, Object.hasOwn(readers, setting.key) ? readers[setting.key] : undefined),
-    });
+    const observation = await observe(setting, Object.hasOwn(readers, setting.key) ? readers[setting.key] : undefined);
+    if ("refusal" in observation) return observation;
+    return settingsShowResult.parse({ schemaVersion: settingsVersion, setting, observation });
   } catch {
     return refuse("commerce_setting_read_unavailable");
   }

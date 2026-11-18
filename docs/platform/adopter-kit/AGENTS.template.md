@@ -70,7 +70,7 @@ Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogu
 From the starter application root, run `node --experimental-strip-types host/settings.ts list` to find the
 key by goal. For example, run
 `node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"`, then
-`node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json`. Check the
+`node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json`. The extracted starter’s guide gives the npm form for JSON output. Check the
 owner, allowed values, effect and frozen records before changing configuration.
 See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
 for the read path and refusal guidance.

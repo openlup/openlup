@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 
@@ -372,6 +372,8 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
 
 /** Exercise both independent discovery paths in the existing installed starter proof. */
 export function proveSettingsDiscovery(app: string): void {
+  const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
+  assert(typeof manifest.scripts?.settings === "string" && manifest.scripts.settings.trim(), "extracted starter settings script missing");
   const env = isolatedConsumerEnv();
   const run = (name: string, args: string[]) =>
     execFileSync(name, args, { cwd: app, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -383,11 +385,16 @@ export function proveSettingsDiscovery(app: string): void {
   assert(start >= 0, "starter settings guidance missing");
   const end = guideBytes.indexOf("\n## ", start + heading.length);
   const section = guideBytes.slice(start, end < 0 ? undefined : end);
-  const settingsArgs = ["--experimental-strip-types", "host/settings.ts"];
-  const command = "node " + settingsArgs.join(" ");
-  const settings = (...args: string[]) => run(process.execPath, [...settingsArgs, ...args]);
-  const show = () => {
-    const result = JSON.parse(settings("show", key, "--json"));
+  const directArgs = ["--experimental-strip-types", "host/settings.ts"];
+  const directCommand = "node " + directArgs.join(" ");
+  const direct = (...args: string[]) => run(process.execPath, [...directArgs, ...args]);
+  const npm = run("/bin/bash", ["-c", "command -v npm"]).trim();
+  assert(isAbsolute(npm), "starter settings proof requires an absolute npm path");
+  const npmArgs = ["run", "--silent", "settings", "--"];
+  const npmCommand = "npm " + npmArgs.join(" ");
+  const settings = (...args: string[]) => run(npm, [...npmArgs, ...args]);
+  const show = (invoke: typeof settings) => {
+    const result = JSON.parse(invoke("show", key, "--json"));
     assert.equal(result.schemaVersion, 1);
     assert.equal(result.setting.key, key);
     assert.equal(result.setting.domain, "inventory");
@@ -404,31 +411,44 @@ export function proveSettingsDiscovery(app: string): void {
     const entry = lookup.hits.find((hit: { file: string; title: string }) =>
       hit.file.endsWith("/settings-catalogue.md") && hit.title === key);
     assert(entry, "openlup-context did not find the catalogue key");
-    assert(lookup.hits.some((hit: { file: string }) => hit.file.endsWith("/configure-settings.md")),
-      "openlup-context did not find Configure settings");
+    const configure = lookup.hits.find((hit: { file: string }) => hit.file.endsWith("/configure-settings.md"));
+    assert(configure, "openlup-context did not find Configure settings");
+    const instructions = readFileSync(configure.file, "utf8").split("\n");
+    assert(instructions.includes(`${directCommand} list --goal "${goal}"`));
+    assert(instructions.includes(`${directCommand} show ${key} --json`));
+    assert(instructions.includes(`${directCommand} explain commerce_setting_unknown`));
+    assert(direct("list").includes(key));
+    assert(direct("list", "--goal", goal).includes(key));
+    assert(direct("explain", "commerce_setting_unknown").includes("commerce_setting_unknown"));
     const lines = readFileSync(entry.file, "utf8").split("\n").slice(entry.start - 1, entry.end);
-    assert(lines.includes(`${command} show ${key} --json`), "catalogue entry did not lead to show");
-    show();
+    assert(lines.includes(`${directCommand} show ${key} --json`), "catalogue entry did not lead to show");
+    show(direct);
   } finally {
     writeFileSync(guide, guideBytes);
   }
 
   // The mirror follows only the instructions in the restored application guide.
-  assert(section.includes(`${command} list --goal "${goal}"`));
+  assert(section.includes(`${npmCommand} list\``));
+  assert(section.includes(`${npmCommand} list --goal "${goal}"`));
+  assert(settings("list").includes(key));
+  assert(settings("list", "--goal", goal).includes(key));
   const list = JSON.parse(settings("list", "--goal", goal, "--json"));
   assert.deepEqual(list.entries.map(({ key }: { key: string }) => key), [key]);
-  assert(section.includes(`${command} show ${list.entries[0].key} --json`));
-  show();
-  assert(settings("list", "--goal", goal).includes(key));
+  assert(section.includes(`${npmCommand} show ${list.entries[0].key} --json`));
+  show(settings);
   assert(settings("show", key).includes("Existing reservations"));
-  const refused = spawnSync(process.execPath, [...settingsArgs, "show", "no_such_setting", "--json"],
+  const refused = spawnSync(npm, [...npmArgs, "show", "no_such_setting", "--json"],
     { cwd: app, env, encoding: "utf8" });
   assert.equal(refused.status, 1);
   const { refusal } = JSON.parse(refused.stdout);
   const explained = JSON.parse(settings("explain", refusal.code, "--json")).explanation;
   assert.deepEqual(explained, refusal);
   assert(settings("explain", refusal.code).includes(refusal.remediation.command));
-  for (const command of ["list", "show", "explain"]) assert(settings(command, "--help").includes("Examples:"));
+  for (const command of ["list", "show", "explain"]) {
+    const help = settings(command, "--help");
+    assert(help.includes("Examples:"));
+    assert(help.includes(`${npmCommand} show ${key} --json`));
+  }
   for (const file of ["settings-catalog.json", "settings-refusals.json"]) {
     const data = JSON.parse(readFileSync(join(app, "node_modules/@openlup/platform", file), "utf8"));
     assert.equal(data.schemaVersion, 1);

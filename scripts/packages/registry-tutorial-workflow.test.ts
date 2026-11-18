@@ -413,6 +413,24 @@ execFileSync("git", ["init", "--quiet", target]);`);
     } finally { rmSync(application, { recursive: true, force: true }); }
   });
 
+  it("requires the settings script when the qualified release source includes discovery", () => {
+    const application = realpathSync(mkdtempSync(join(tmpdir(), "qualification-settings-")));
+    const lock = "{}";
+    try {
+      writeFileSync(join(application, "package.json"), "{}");
+      writeFileSync(join(application, "package-lock.json"), lock);
+      mkdirSync(join(application, "node_modules", name), { recursive: true });
+      const verifyInstalled = vi.fn();
+      expect(() => proveNeutralStarterConsumer(ROOT, {
+        mode: "candidate", application, environment: {},
+        run: (command, args) => command === "git" && args[0] === "rev-parse" ? application : "",
+        lockfileSha256: createHash("sha256").update(lock).digest("hex"), packages: [name], verifyInstalled,
+        settingsDiscovery: true,
+      })).toThrow("extracted starter settings script missing");
+      expect(verifyInstalled).toHaveBeenCalledOnce();
+    } finally { rmSync(application, { recursive: true, force: true }); }
+  });
+
   it("parses successful npm audit bundles with each publishable package's own certificate and tag", () => {
     const directory = mkdtempSync(join(tmpdir(), "qualification-certificates-"));
     try {

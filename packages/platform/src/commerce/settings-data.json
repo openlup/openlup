@@ -13,7 +13,13 @@
     "effect": {"appliesTo": "Scheduling new reminder waves.", "frozenOn": ["Enqueued messages and send receipts retain their recorded identity."], "impact": "customer-promise"},
     "runtime": {"level": "read-only", "reason": "Runtime editing needs episode lineage and delivery replay evidence."},
     "change": {"operation": "installCheckoutRecoveryReminderSchedule"},
-    "rules": []
+    "rules": [
+      {
+        "code": "checkout_recovery_policy_invalid",
+        "path": [],
+        "description": "The host checkout recovery policy accepts only firstOffsetSeconds, finalOffsetSeconds, checkoutSeconds, recoverySeconds, activitySeconds and profile. Supply seconds as integers from 1 to 2147483647 and keep firstOffsetSeconds below finalOffsetSeconds, which must be below checkoutSeconds after defaults. A supplied profile starts with a lowercase letter and has up to 48 lowercase letters, digits, underscores or hyphens."
+      }
+    ]
   },
   {
     "key": "commerce.manualHoldReasons",

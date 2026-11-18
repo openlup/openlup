@@ -1793,6 +1793,8 @@ export type SettingReader = () => Promise<{
 } | {
     present: false;
     effective?: JsonValue;
+} | {
+    refusal: string;
 }>;
 /** @experimental List matching entries from the installed package, offline. */
 export declare function listSettings(input: unknown): ListResult | {

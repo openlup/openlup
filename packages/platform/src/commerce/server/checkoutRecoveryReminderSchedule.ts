@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { installedPolicy } from "./installedPolicy.js";
 import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
 import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
@@ -9,16 +10,33 @@ const fallback = {
   checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }],
 } as const satisfies CheckoutRecoveryReminderSchedule;
 
-// Match commerce_checkout_recovery_policy when a supplied policy omits an offset.
-const firstOffsetSeconds = 3600;
-const finalOffsetSeconds = 72000;
+// Match the JSON accepted by commerce_checkout_recovery_policy, including its defaults.
+const seconds = z.int().min(1).max(2147483647);
+const wavePolicy = z.strictObject({
+  firstOffsetSeconds: seconds.default(3600),
+  finalOffsetSeconds: seconds.default(72000),
+  checkoutSeconds: seconds.default(86400),
+  recoverySeconds: seconds.default(2592000),
+  activitySeconds: seconds.default(900),
+  profile: z.string().regex(/^[a-z][a-z0-9_-]{0,47}$/u).default("capture"),
+}).refine(policy => policy.firstOffsetSeconds < policy.finalOffsetSeconds && policy.finalOffsetSeconds < policy.checkoutSeconds);
 
-function checkoutRecoveryReminderAbsence(policy?: Pick<CheckoutRecoveryWavePolicy, "firstOffsetSeconds" | "finalOffsetSeconds">) {
+function effectiveWavePolicy(policy: Partial<CheckoutRecoveryWavePolicy>) {
+  try {
+    // The native adapter sends JSON, so omitted properties stay omitted and explicit nulls refuse.
+    const parsed = wavePolicy.safeParse(JSON.parse(JSON.stringify(policy)));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function checkoutRecoveryReminderAbsence(policy?: z.output<typeof wavePolicy>) {
   return {
     abandonedCart: fallback.abandonedCart.map(wave => ({ ...wave })),
     checkoutRecovery: policy ? [
-      { stage: "first", afterHours: (policy.firstOffsetSeconds ?? firstOffsetSeconds) / 3600 },
-      { stage: "last", afterHours: (policy.finalOffsetSeconds ?? finalOffsetSeconds) / 3600 },
+      { stage: "first", afterHours: policy.firstOffsetSeconds / 3600 },
+      { stage: "last", afterHours: policy.finalOffsetSeconds / 3600 },
     ] : null,
   };
 }
@@ -62,13 +80,15 @@ export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promis
 /** @experimental Observe an installed override or the effective waves for an absent row. */
 export async function readCheckoutRecoveryReminderObservation(
   db: Executor,
-  policy?: Pick<CheckoutRecoveryWavePolicy, "firstOffsetSeconds" | "finalOffsetSeconds">,
+  policy?: Partial<CheckoutRecoveryWavePolicy>,
 ) {
+  const effective = policy === undefined ? undefined : effectiveWavePolicy(policy);
+  if (policy !== undefined && !effective) return { refusal: "checkout_recovery_policy_invalid" } as const;
   const schedule = await store(db).readOverride();
   if (schedule) return {
     present: true as const,
     revision: schedule.revision,
     value: { ...schedule, abandonedCart: [...schedule.abandonedCart], checkoutRecovery: [...schedule.checkoutRecovery] },
   };
-  return { present: false as const, effective: checkoutRecoveryReminderAbsence(policy) };
+  return { present: false as const, effective: checkoutRecoveryReminderAbsence(effective) };
 }

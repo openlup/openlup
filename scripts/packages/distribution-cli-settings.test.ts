@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { assertCompleteStarter, migrateStarterOwned, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -27,7 +27,7 @@ it.each([false, true])("reconciles settings guidance and the managed CLI upgrade
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const script = "host/settings.ts";
   const base = "# App guide\n";
-  const section = "\n## Change a business setting\n\nRun `node --experimental-strip-types host/settings.ts list`.\n";
+  const section = "\n## Change a business setting\n\nRun `npm run --silent settings -- list`.\n";
   write("AGENTS.md", customized ? base + "\nLocal workflow.\n" : base);
   candidate("AGENTS.md", base + section);
   const targetOwnership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
@@ -47,4 +47,9 @@ it.each([false, true])("reconciles settings guidance and the managed CLI upgrade
   expect(result.status, result.stderr).toBe(0);
   expect(JSON.parse(result.stdout).applied.sort()).toEqual([script, "ownership.json", "package.json"]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
+});
+
+it("refuses an extracted starter without the settings script", () => {
+  const { directory } = fixture();
+  expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });

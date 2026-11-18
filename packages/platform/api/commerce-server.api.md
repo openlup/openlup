@@ -7867,7 +7867,13 @@ export declare function installCheckoutRecoveryReminderSchedule(db: Executor, sc
 /** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export declare function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule>;
 /** @experimental Observe an installed override or the effective waves for an absent row. */
-export declare function readCheckoutRecoveryReminderObservation(db: Executor, policy?: Pick<CheckoutRecoveryWavePolicy, "firstOffsetSeconds" | "finalOffsetSeconds">): Promise<{
+export declare function readCheckoutRecoveryReminderObservation(db: Executor, policy?: Partial<CheckoutRecoveryWavePolicy>): Promise<{
+    readonly refusal: "checkout_recovery_policy_invalid";
+    present?: undefined;
+    revision?: undefined;
+    value?: undefined;
+    effective?: undefined;
+} | {
     present: true;
     revision: string;
     value: {
@@ -7881,6 +7887,7 @@ export declare function readCheckoutRecoveryReminderObservation(db: Executor, po
         }[];
         revision: string;
     };
+    readonly refusal?: undefined;
     effective?: undefined;
 } | {
     present: false;
@@ -7900,6 +7907,7 @@ export declare function readCheckoutRecoveryReminderObservation(db: Executor, po
             afterHours: number;
         }[] | null;
     };
+    readonly refusal?: undefined;
     revision?: undefined;
     value?: undefined;
 }>;
