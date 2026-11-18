@@ -455,6 +455,19 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it("checks the starter npm command against the starter manifest in guide pages and upgrade fragments", () => {
+    const example = "# Find settings\n\n<!-- npm-scripts: starter -->\n\nFrom the starter, run `npm run settings -- list`.\n";
+    const roots = guideFixture("# Guide\n", { "how-to/find-settings.md": example });
+    mkdirSync(join(roots.core, "changes"));
+    writeFileSync(join(roots.core, "changes/starter-settings.md"), example.replace("# Find settings", "### Find settings"));
+    const starter = join(roots.repository, "examples/neutral-store");
+    mkdirSync(starter, { recursive: true });
+    writeFileSync(join(starter, "package.json"), JSON.stringify({ scripts: { settings: "node host/settings.ts" } }));
+    expect(() => checkGuide(roots)).not.toThrow();
+    writeFileSync(join(starter, "package.json"), JSON.stringify({ scripts: {} }));
+    expect(() => checkGuide(roots)).toThrow(/changes\/starter-settings\.md: unknown npm script settings[\s\S]*how-to\/find-settings\.md: unknown npm script settings/u);
+  });
+
   it.each([
     [2, "# Title\n\n# Another title\n"],
     [2, "# Title\n\n # Other\n"],
