@@ -177,7 +177,7 @@ locale may stay when it is in `market.locales`, otherwise notices fall back to
 other than two uppercase letters with `starter_renewal_configuration_invalid`.
 A country mapping to a platform-supported locale outside `market.locales`
 passes startup validation. Notice delivery falls back to `market.defaultLocale`.
-For example, mapping `PL` to `pl` in an English-only registry delivers notices
+For example, mapping a country to `pl` in an English-only registry delivers notices
 in English. Keep mappings within `market.locales` by removing or remapping
 entries for dropped locales.
 
