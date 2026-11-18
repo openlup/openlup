@@ -230,19 +230,26 @@ it.each(["set_product_lifecycle", "set_sku_lifecycle", "set_eligibility"] as con
 it.each([
   ["LC5-D-019", { op: "set_product_lifecycle", productSlug: "foreign", expectedState: "active", state: "withdrawn", children: [] }, "catalog_publication_scope_expansion"],
   ["LC5-D-019", { op: "restore_product", productSlug: "foreign", expectedState: "withdrawn" }, "catalog_publication_scope_expansion"],
+  ["LC5-D-019", { op: "set_product_lifecycle", productSlug: "foreign", expectedState: "active", state: "active", children: [] }, "catalog_publication_scope_expansion"],
+  ["LC5-D-019", { op: "set_product_lifecycle", productSlug: "foreign", expectedState: "draft", state: "archived", children: [] }, "catalog_publication_scope_expansion"],
+  ["LC5-D-019", { op: "set_sku_lifecycle", skuCode: "ABSENT", expectedState: "draft", state: "active" }, "catalog_publication_v3_compile_sku_absent"],
+  ["LC5-D-019", { op: "set_sku_lifecycle", skuCode: "ABSENT", expectedState: "active", state: "withdrawn" }, "catalog_publication_v3_compile_sku_absent"],
+  ["LC5-D-019", { op: "set_eligibility", skuCode: "ABSENT", sellableStandalone: false, sellableInSubscription: false }, "catalog_publication_v3_compile_sku_absent"],
   ["LC5-D-019", { op: "set_sku_lifecycle", skuCode: "ABSENT", expectedState: "draft", state: "archived" }, "catalog_publication_v3_compile_sku_absent"],
   ["LC5-D-019", { op: "restore_sku", skuCode: "ABSENT", expectedState: "withdrawn" }, "catalog_publication_v3_compile_sku_absent"],
   ["LC5-D-019", { op: "set_offer_membership", skuCode: "ABSENT", offerVersion: "example:offer@1", admitted: false }, "catalog_publication_v3_compile_sku_absent"],
   ["LC5-D-020", { op: "set_primary_sku", productSlug: "article", skuCode: "ABSENT" }, "catalog_publication_v3_compile_sku_absent"],
+  ["LC5-D-020", { op: "set_primary_sku", productSlug: "article", skuCode: "ARTICLE" }, "catalog_publication_v3_compile_primary_foreign"],
   ["LC5-D-021", { op: "set_primary_sku", productSlug: "article", skuCode: "ARTICLE" }, "catalog_publication_v3_compile_sku_archived"],
   ["LC5-D-024", { op: "restore_product", productSlug: "article", expectedState: "withdrawn" }, "catalog_publication_v3_compile_product_incomplete"],
 ] satisfies [string, CatalogDraftPublicationOperationV4, string][])(
   "operation proof %s %j", (rule, operation, reason) => {
     const ops = [operation];
-    if (operation.op === "restore_sku") ops.push({
-      op: "set_eligibility", skuCode: "ABSENT", sellableStandalone: true, sellableInSubscription: false,
+    if (operation.op === "restore_sku" || operation.op === "set_sku_lifecycle" && operation.state === "active") ops.push({
+      op: "set_eligibility", skuCode: operation.skuCode, sellableStandalone: true, sellableInSubscription: false,
     });
     const value = revision(ops);
+    if (reason === "catalog_publication_v3_compile_primary_foreign") delete value.payload.product.primarySkuId;
     if (rule === "LC5-D-021") Object.assign(value.skus[0]!, { status: "archived", lifecycleState: "archived" });
     if (rule === "LC5-D-024") Object.assign(value.product!, { primarySkuId: null, lifecycleState: "withdrawn" });
     expect(() => compileCatalogPublication(value)).toThrow(reason);
