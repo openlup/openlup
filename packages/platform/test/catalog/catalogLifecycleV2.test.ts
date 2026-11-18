@@ -50,10 +50,15 @@ it("binds the entire child withdrawal set into the candidate", () => {
   const value = revision([{ op: "set_product_lifecycle", productSlug: "article", expectedState: "active", state: "withdrawn", children: [] }]);
   expect(() => compileCatalogPublication(value)).toThrow("catalog_lifecycle_child_effects_mismatch");
 });
-it("requires genuine same-command parent withdrawal for the last active child", () => {
+it.each([false, true])("LC5-A-004 requires the parent to finish withdrawn after its last active child withdrawal, restored=%s", restore => {
   const value = revision([{ op: "set_sku_lifecycle", skuCode: "ARTICLE", expectedState: "active", state: "withdrawn" }]);
   expect(() => compileCatalogPublication(value)).toThrow("catalog_lifecycle_last_active_child");
   value.payload.publication.operations.push({ op: "set_product_lifecycle", productSlug: "article", expectedState: "active", state: "withdrawn", children: [{ skuCode: "ARTICLE", expectedState: "withdrawn" }] });
+  if (restore) {
+    value.payload.publication.operations.push({ op: "restore_product", productSlug: "article", expectedState: "withdrawn" });
+    expect(() => compileCatalogPublication(value)).toThrow("catalog_lifecycle_last_active_child");
+    return;
+  }
   expect(catalogAuthoritativeLifecycleV2(compileCatalogPublication(value).product)).toBe("withdrawn");
 });
 it("restoring a parent never implicitly restores children or fresh-sale flags", () => {
