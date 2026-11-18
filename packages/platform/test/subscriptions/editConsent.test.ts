@@ -30,7 +30,7 @@ it("edit_consent_duplicate_baseline_refuses", async () => {
   row.term_lines.push({ ...row.term_lines[0] }); await expect(read(row)).rejects.toThrow("agreement_baseline_unavailable");
 });
 it("edit_consent_extra_baseline_line_refuses", async () => {
-  const row = state(); row.term_lines.push({ ...row.term_lines[0],ordinal: 2,sku: ids.b });
+  const row = state(); row.accepted_lines.push({ ...row.accepted_lines[0],lineId: "unmatched-agreement-line",variantId: ids.b,sku: ids.b,quantity: 1,unitMinor: 0 });
   await expect(read(row)).rejects.toThrow("agreement_baseline_unavailable");
 });
 it("edit_consent_baseline_identity_role_quantity_refuses", async () => {
@@ -51,7 +51,10 @@ it("edit_consent_real_zero_is_valid", async () => {
   expect((await read(row)).lines[0].unitMinor).toBe(0);
 });
 it("edit_consent_unsafe_money_refuses", () => {
-  expect(() => buildEditConsent(baseline(),digest,desired(Number.MAX_SAFE_INTEGER,2))).toThrow("agreement_baseline_unavailable");
+  // Each line subtotal is safe; only their aggregate exceeds the exact-money bound.
+  const lines = [...desired(Number.MAX_SAFE_INTEGER,1),...desired(1,1,ids.b)];
+  expect(lines.every(line => Number.isSafeInteger(line.quoteLine.lineSubtotalGross.amountMinor))).toBe(true);
+  expect(() => buildEditConsent(baseline(),digest,lines)).toThrow(/^agreement_baseline_unavailable$/);
 });
 it("edit_consent_absent_side_is_not_zero", () => {
   const old = baseline(); old.lines = [{ ...old.lines[0],unitMinor: 0 }];

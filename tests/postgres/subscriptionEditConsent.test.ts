@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
+import type { SubscriptionEditConsent } from "@openlup/platform/subscriptions/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresPackageEditor, createPostgresSizedEditor, createPostgresLegacyEditConsentBridge, type PackageEditorOptions, type SizedEditorOptions, type ExactSubscriptionEditRequest } from "@openlup/platform/subscriptions";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
@@ -117,8 +118,12 @@ it.each([false,true])("edit_consent_wrapped_classic_actor_equality[noop=%s]",asy
   expect((await api.apply({ actorId: f.actor,clientId: f.client },"wrapped-same-actor",{ ...input,acceptedQuoteHash: preview.quoteHash })).status).toBe(noop ? "noop" : "applied");
 });
 it("edit_consent_old_unaccepted_preview_requires_refresh",async () => {
-  const f = await fixture(), q = await record(f), before = await snapshot(f);
-  await expect(editor(f).apply({ actorId: f.actor,clientId: f.client },"old-preview-refresh",{ subscriptionId: f.subscription,planDays: 30,base: [{ variantId: f.sku,qty: 2 }],acceptedQuoteHash: q.digest }))
+  const f = await fixture(), api = editor(f),actor = { actorId: f.actor,clientId: f.client };
+  const input = { subscriptionId: f.subscription,planDays: 30,base: [{ variantId: f.sku,qty: 2 }] },preview = await api.preview(actor,input);
+  // All request/hash/baseline inputs remain valid; only the required disclosure is absent.
+  await pool.query("UPDATE public.subscription_quote_previews SET quote_snapshot=quote_snapshot-'editConsent' WHERE subscription_id=$1",[f.subscription]);
+  const before = await snapshot(f);
+  await expect(api.apply(actor,"old-preview-refresh",{ ...input,acceptedQuoteHash: preview.quoteHash }))
     .rejects.toMatchObject({ message: "subscription_edit_quote_required" });
   expect(await snapshot(f)).toEqual(before);
 });
@@ -162,6 +167,10 @@ it("edit_consent_prune_strict_cutoff_oldest_first_and_accepted_kept",async () =>
   expect(await prune("7 days",1,f.at)).toBe(1);
   expect((await pool.query("SELECT id FROM public.subscription_quote_previews WHERE id=ANY($1::uuid[]) ORDER BY id",[[a.preview.id,b.preview.id,equal.preview.id,accepted.preview.id]])).rows.map(row => row.id).sort())
     .toEqual([b.preview.id,equal.preview.id,accepted.preview.id].sort());
+  // With capacity remaining, equality at the cutoff must still be retained.
+  expect(await prune("7 days",1000,f.at)).toBe(1);
+  expect((await pool.query("SELECT id FROM public.subscription_quote_previews WHERE id=ANY($1::uuid[]) ORDER BY id",[[b.preview.id,equal.preview.id,accepted.preview.id]])).rows.map(row => row.id).sort())
+    .toEqual([equal.preview.id,accepted.preview.id].sort());
 });
 it("edit_consent_prune_service_only_acl",async () => {
   const signature = "public.customer_self_service_prune_subscription_quote_previews(interval,integer,timestamptz)";
@@ -174,6 +183,13 @@ it("edit_consent_prune_service_only_acl",async () => {
   }
 });
 const pruneOn = (db: PoolClient) => rpc(db,"customer_self_service_prune_subscription_quote_previews",["0 seconds",1000,null]);
+
+function expectBoundDisclosure(preview: { quoteHash?: unknown; editConsent?: unknown }) {
+  expect(preview.editConsent).toMatchObject({ version: 1,currency: "XXX",lines: expect.any(Array) });
+  const consent = preview.editConsent as SubscriptionEditConsent;
+  expect(preview.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
+  expect(preview.quoteHash).not.toBe(consent.innerQuoteHash);
+}
 
 function bridge(f: Fixture, after?: (db: PoolClient,sql: string) => Promise<void>) {
   return createPostgresLegacyEditConsentBridge({ now: () => f.at,withTransaction: async work => {
@@ -194,6 +210,7 @@ it("edit_consent_bridge_actor_equality",async () => {
   const f = await fixture(), api = bridge(f), actor = { actorId: f.actor,clientId: f.client },input = legacyRequest(f), key = "legacy-same-actor";
   const result = await api.preview(actor,key,input), preview = result.preview as Record<string,unknown>;
   expect(preview.editConsent).toMatchObject({ lines: [{ agreedUnitMinor: 100,newUnitMinor: 137 }] });
+  expectBoundDisclosure(preview);
   const accepted = { ...input,acceptedQuoteHash: String(preview.quoteHash) };
   const before = await snapshot(f);
   await pool.query("UPDATE public.subscription_quote_previews SET actor_id=$2 WHERE subscription_id=$1",[f.subscription,f.other]);
@@ -240,21 +257,38 @@ const recorderCases = [
   ["parity_LC9_01372_sql_code",{ action: "resize_bundle" },null],
   ["parity_LC9_01373_sql_code",{ action: "update_bundle" },null],
   ...["01366_sql_guard","01374_sql_code","01375_sql_raise"].map(id => [`parity_LC9_${id}`,{ action: "unsupported" },"subscription_command_unsupported_action"]),
-  ...["01376_sql_guard","01377_sql_code","01378_sql_raise"].map(id => [`parity_LC9_${id}`,{ digest: "invalid" },"subscription_edit_quote_required"]),
+  ...["01376_sql_guard","01377_sql_code","01378_sql_raise"].map(id => [`parity_LC9_${id}`,{ digest: "A".repeat(64) },"subscription_edit_quote_required"]),
   ...["01379_sql_guard","01380_sql_code","01381_sql_raise"].map(id => [`parity_LC9_${id}`,{ version: null },"subscription_edit_stale_template"]),
   ...["01382_sql_guard","01383_sql_code","01384_sql_raise"].map(id => [`parity_LC9_${id}`,{ expired: true },"subscription_edit_quote_expired"]),
-  ...["01385_sql_guard","01386_sql_code","01387_sql_raise"].map(id => [`parity_LC9_${id}`,{ client: null },"subscription_command_invalid_input"]),
+  ...["01385_sql_guard","01386_sql_code","01387_sql_raise"].map(id => [`parity_LC9_${id}`,{ now: "-infinity" },"subscription_command_invalid_input"]),
   ...["01388_sql_guard","01389_sql_code","01390_sql_raise"].map(id => [`parity_LC9_${id}`,{ foreign: true },"subscription_command_forbidden"]),
   ...["01391_sql_guard","01392_sql_code","01393_sql_raise"].map(id => [`parity_LC9_${id}`,{ version: 2 },"subscription_edit_stale_template"]),
 ] as const;
 it.each(recorderCases)("%s",async (_name,patch,reason) => {
-  const f = await fixture(), p = patch as { action?: string; digest?: string; version?: number | null; expired?: boolean; client?: null; foreign?: boolean };
+  const f = await fixture(), p = patch as { action?: string; digest?: string; version?: number | null; expired?: boolean; client?: null; foreign?: boolean; now?: string };
   const expiry = p.expired ? f.at : (await pool.query("SELECT $1::timestamptz+interval '1 hour' AS at",[f.at])).rows[0].at;
   const digest = p.digest ?? hash(randomUUID()), action = p.action ?? "update_bundle";
-  const args = [f.actor,p.foreign ? f.other : p.client === null ? null : f.client,f.subscription,action,digest,p.version === undefined ? 1 : p.version,expiry,{},{},{},f.at];
+  const args = [f.actor,p.foreign ? f.other : p.client === null ? null : f.client,f.subscription,action,digest,p.version === undefined ? 1 : p.version,expiry,{},{},{},p.now ?? f.at];
   const before = await snapshot(f);
-  if (reason) { await expect(rpc(pool,"subscription_quote_preview_record",args)).rejects.toMatchObject({ message: reason,code: "22023" }); expect(await snapshot(f)).toEqual(before); }
-  else expect(await rpc(pool,"subscription_quote_preview_record",args)).toMatchObject({ subscription_id: f.subscription,client_id: f.client,actor_id: f.actor,action,quote_hash: digest,template_version: 1,status: "previewed" });
+  if (reason) {
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      // Isolate the function's deciding guard from a downstream storage backstop.
+      // These fixture changes and any mutant write are always rolled back.
+      if (p.version === null) await db.query("ALTER TABLE public.subscription_quote_previews ALTER COLUMN template_version DROP NOT NULL");
+      if (p.foreign) {
+        await db.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$1)",[f.other,`${f.other}@example.invalid`]);
+        await db.query("ALTER TABLE public.subscription_quote_previews ALTER COLUMN subscription_id DROP NOT NULL");
+      }
+      await expect(rpc(db,"subscription_quote_preview_record",args)).rejects.toMatchObject({ message: reason,code: "22023" });
+    } finally {
+      await db.query("ROLLBACK"); db.release();
+      expect((await pool.query("SELECT attname,attnotnull FROM pg_attribute WHERE attrelid='public.subscription_quote_previews'::regclass AND attname IN ('subscription_id','template_version') ORDER BY attname")).rows)
+        .toEqual([{ attname: "subscription_id",attnotnull: true },{ attname: "template_version",attnotnull: true }]);
+    }
+    expect(await snapshot(f)).toEqual(before);
+  } else expect(await rpc(pool,"subscription_quote_preview_record",args)).toMatchObject({ subscription_id: f.subscription,client_id: f.client,actor_id: f.actor,action,quote_hash: digest,template_version: 1,status: "previewed" });
 });
 it("parity_LC9_01394_sql_return",async () => {
   const f = await fixture(), q = await record(f);
@@ -267,6 +301,8 @@ it.each([
   ["parity_LC9_01500_sql_guard","used"], ["parity_LC9_01504_sql_raise","used"],
 ])("%s",async (_name,kind) => {
   const f = await fixture(), q = await record(f), key = "primitive-parity-key";
+  // The table permits this synthetic action; only take's explicit action admission refuses it.
+  if (kind === "action") await pool.query("UPDATE public.subscription_quote_previews SET action='unsupported' WHERE id=$1",[q.preview.id]);
   if (kind === "used") {
     const event = randomUUID(); await pool.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.customer_self_service.update_package_template',$3,'{}')",[event,f.subscription,randomUUID()]);
     await rpc(pool,"subscription_quote_preview_mark_accepted",[q.preview.id,"original-parity-key",event,f.at]);
@@ -275,8 +311,29 @@ it.each([
   const code = kind === "action" ? "subscription_command_unsupported_action" : kind === "owner" ? "subscription_command_forbidden"
     : kind === "missing" ? "subscription_edit_quote_required" : kind === "expired" ? "subscription_edit_quote_expired" : "subscription_edit_quote_already_used";
   const before = await snapshot(f);
-  await expect(rpc(pool,"subscription_quote_preview_take",[f.actor,kind === "owner" ? f.other : f.client,f.subscription,
-    kind === "action" ? "unsupported" : "update_package_template",kind === "missing" ? hash("missing") : q.digest,1,key,now])).rejects.toMatchObject({ message: code,code: "22023" });
+  const signature = "public.subscription_quote_preview_take(uuid,uuid,uuid,text,text,integer,text,timestamptz)";
+  const definition = String((await pool.query("SELECT pg_get_functiondef($1::regprocedure) AS body",[signature])).rows[0].body);
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    if (kind === "owner" || kind === "missing") {
+      // Preserve the guard under test; isolate it from its later null-row checks.
+      // Replacing the identical-signature function is fixture-local and rolled back.
+      const actorCheck = "IF q.actor_id IS DISTINCT FROM p_actor_id THEN\n  RAISE EXCEPTION 'subscription_edit_quote_actor_mismatch' USING ERRCODE='22023'; END IF;";
+      expect(definition).toContain(actorCheck);
+      let isolated = definition.replace(actorCheck,"NULL;");
+      if (kind === "owner") {
+        const absentCheck = "IF NOT FOUND THEN RAISE EXCEPTION 'subscription_edit_quote_required' USING ERRCODE='22023'; END IF;";
+        expect(isolated).toContain(absentCheck); isolated = isolated.replace(absentCheck,"NULL;");
+      }
+      await db.query(isolated);
+    }
+    await expect(rpc(db,"subscription_quote_preview_take",[f.actor,kind === "owner" ? f.other : f.client,f.subscription,
+      kind === "action" ? "unsupported" : "update_package_template",kind === "missing" ? hash("missing") : q.digest,1,key,now])).rejects.toMatchObject({ message: code,code: "22023" });
+  } finally {
+    await db.query("ROLLBACK"); db.release();
+    expect((await pool.query("SELECT pg_get_functiondef($1::regprocedure) AS body",[signature])).rows[0].body).toBe(definition);
+  }
   expect(await snapshot(f)).toEqual(before);
 });
 it.each(["applied","noop"] as const)("edit_consent_historical_applied_noop_replay_bytes[%s]",async outcome => {
@@ -319,6 +376,8 @@ function sizedEditor(f: Fixture) {
 it.each([28,30])("edit_consent_wrapped_exact_actor_equality[update_plan_length,%s]",async planDays => {
   const f = await fixture(), actor = { actorId: f.actor,clientId: f.client },api = editor(f),request = { subscriptionId: f.subscription,action: "update_plan_length" as const,planDays };
   const preview = await api.preview(actor,request),before = await snapshot(f);
+  expectBoundDisclosure(preview);
+  expect(preview.editConsent?.lines).toMatchObject([{ kind: "retained",variantId: f.sku,agreedQuantity: 2,newQuantity: 2,agreedUnitMinor: 100,newUnitMinor: 137,deltaMinor: 37,subtotalDeltaMinor: 74 }]);
   await expect(api.apply({ ...actor,actorId: f.other },"exact-other-actor",{ ...request,acceptedQuoteHash: preview.quoteHash })).rejects.toMatchObject({ message: "subscription_edit_quote_actor_mismatch" });
   expect(await snapshot(f)).toEqual(before);
   expect((await api.apply(actor,"exact-same-actor",{ ...request,acceptedQuoteHash: preview.quoteHash })).status).toBe(planDays === 28 ? "noop" : "applied");
@@ -329,6 +388,7 @@ it.each([true,false])("edit_consent_wrapped_sized_actor_equality[update_bundle,n
   const request = { subscriptionId: f.subscription,expectedTemplateVersion: 2,action: "update_bundle" as const,coreLines: [{ variantId: f.sku,qty: 2 }],cadenceDays: noop ? 30 : 28,
     compositionConstraint: { kind: "unit_count",value: 2,dailyNeed: 1 } };
   const preview = await api.preview(actor,request),before = await snapshot(f);
+  expectBoundDisclosure(preview);
   expect(preview.editConsent?.lines[0]).toMatchObject({ agreedUnitMinor: 137,newUnitMinor: 137,deltaMinor: 0 });
   await expect(api.apply({ ...actor,actorId: f.other },"sized-other-actor",{ ...request,acceptedQuoteHash: preview.quoteHash })).rejects.toMatchObject({ message: "subscription_edit_quote_actor_mismatch" });
   expect(await snapshot(f)).toEqual(before);
@@ -352,18 +412,25 @@ it.each(["swap_base_line","add_addon","remove_addon","update_addon_quantity","up
       : action === "update_portion" ? { portionMode: "full" } : { variantId: target,...(action === "remove_addon" ? {} : { qty: 2 }) };
   const input = { subscriptionId: f.subscription,expectedTemplateVersion: 1,action,...fields } as ExactSubscriptionEditRequest;
   const actor = { actorId: f.actor,clientId: f.client },api = editor(f),preview = await api.preview(actor,input),before = await snapshot(f);
+  expectBoundDisclosure(preview);
+  expect(preview.editConsent?.agreedTotalMinor).toBe(["remove_addon","update_addon_quantity"].includes(action) ? 300 : 200);
   await expect(api.apply({ ...actor,actorId: f.other },"exact-action-other",{ ...input,acceptedQuoteHash: preview.quoteHash })).rejects.toMatchObject({ message: "subscription_edit_quote_actor_mismatch" });
   expect(await snapshot(f)).toEqual(before);
   expect(["applied","noop"]).toContain((await api.apply(actor,"exact-action-same",{ ...input,acceptedQuoteHash: preview.quoteHash })).status);
 });
 
 it("edit_consent_prune_defaults_and_native_tie_break",async () => {
-  const f = await fixture(),a = await record(f),b = await record(f);
+  const f = await fixture(); await prune("0 seconds",10000,f.at);
+  const a = await record(f),b = await record(f);
   await pool.query("UPDATE public.subscription_quote_previews SET expires_at=$2::timestamptz-interval '8 days' WHERE subscription_id=$1",[f.subscription,f.at]);
   expect(await prune("7 days",1,f.at)).toBe(1);
   const kept = [a.preview.id,b.preview.id].sort()[1];
   expect((await pool.query("SELECT id FROM public.subscription_quote_previews WHERE subscription_id=$1",[f.subscription])).rows).toEqual([{ id: kept }]);
-  expect((await pool.query("SELECT public.customer_self_service_prune_subscription_quote_previews() AS deleted")).rows[0].deleted).toBe(1);
+  await pool.query(`INSERT INTO public.subscription_quote_previews(subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,request_payload,quote_snapshot,totals)
+    SELECT $1,$2,$3,'update_bundle',repeat(md5(g::text),2),1,$4::timestamptz-interval '8 days','{}','{}','{}' FROM generate_series(1,1000) g`,[f.subscription,f.client,f.actor,f.at]);
+  // There are 1001 eligible rows: default 1000 must delete exactly 1000.
+  expect((await pool.query("SELECT public.customer_self_service_prune_subscription_quote_previews() AS deleted")).rows[0].deleted).toBe(1000);
+  expect((await pool.query("SELECT count(*)::integer AS count FROM public.subscription_quote_previews WHERE subscription_id=$1",[f.subscription])).rows[0].count).toBe(1);
 });
 it("edit_consent_actor_id_every_writer",async () => {
   const writers = (await pool.query("SELECT proname,prosrc FROM pg_proc WHERE pronamespace='public'::regnamespace AND prosrc LIKE '%INSERT INTO public.subscription_quote_previews(%' ORDER BY proname")).rows;
@@ -446,4 +513,53 @@ it("edit_consent_competing_equal_total_edits",async () => {
   const before = await snapshot(drift);
   await expect(driftApi.apply(verified,"equal-total-baseline-drift",{ ...request,acceptedQuoteHash: stale.quoteHash })).rejects.toMatchObject({ message: "subscription_reprice_quote_not_accepted" });
   expect(await snapshot(drift)).toEqual(before);
+});
+
+// Confirmed in-hunk return obligations; distinct case names retain their census identity.
+it.each(["parity_LC9_07208_ts_return","parity_LC9_07235_ts_return"])("%s",async () => {
+  const f = await fixture(),initial = await lane(f,"sized"); await initial.invoke(f.actor,"return-sized-opt-in");
+  const preview = await sizedEditor(f).preview({ actorId: f.actor,clientId: f.client },{ subscriptionId: f.subscription,expectedTemplateVersion: 2,
+    action: "update_bundle",coreLines: [{ variantId: f.sku,qty: 3 }],cadenceDays: 28,compositionConstraint: { kind: "unit_count",value: 3,dailyNeed: 1 } });
+  expectBoundDisclosure(preview);
+  expect(preview.editConsent?.lines[0]).toMatchObject({ variantId: f.sku,newQuantity: 3,newUnitMinor: 137 });
+});
+it("parity_LC9_08778_ts_return",async () => {
+  const f = await fixture(),preview = await editor(f).preview({ actorId: f.actor,clientId: f.client },{ subscriptionId: f.subscription,planDays: 30,base: [{ variantId: f.sku,qty: 2 }] });
+  expectBoundDisclosure(preview);
+  expect(preview.editConsent?.lines[0]).toMatchObject({ variantId: f.sku,newQuantity: 2,newUnitMinor: 137 });
+});
+it("edit_consent_recorder_retention_is_seven_days",async () => {
+  const f = await fixture(); await prune("0 seconds",10000,f.at);
+  const recent = await record(f),old = await record(f);
+  await pool.query("UPDATE public.subscription_quote_previews SET expires_at=$2::timestamptz-interval '1 day' WHERE id=$1",[recent.preview.id,f.at]);
+  await pool.query("UPDATE public.subscription_quote_previews SET expires_at=$2::timestamptz-interval '8 days' WHERE id=$1",[old.preview.id,f.at]);
+  await record(f);
+  expect((await pool.query("SELECT id FROM public.subscription_quote_previews WHERE id=ANY($1::uuid[])",[[recent.preview.id,old.preview.id]])).rows).toEqual([{ id: recent.preview.id }]);
+});
+it("edit_consent_recorder_keeps_native_id_tie_break",async () => {
+  const f = await fixture(); await prune("0 seconds",10000,f.at);
+  await pool.query(`INSERT INTO public.subscription_quote_previews(subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,request_payload,quote_snapshot,totals)
+    SELECT $1,$2,$3,'update_bundle',repeat(md5(g::text),2),1,$4::timestamptz-interval '8 days','{}','{}','{}' FROM generate_series(1,501) g`,[f.subscription,f.client,f.actor,f.at]);
+  const expected = (await pool.query("SELECT id FROM public.subscription_quote_previews WHERE subscription_id=$1 ORDER BY id DESC LIMIT 1",[f.subscription])).rows;
+  await record(f);
+  expect((await pool.query("SELECT id FROM public.subscription_quote_previews WHERE subscription_id=$1 AND expires_at<$2::timestamptz",[f.subscription,f.at])).rows).toEqual(expected);
+});
+
+it.each(["exact","sized","bridge"] as const)("edit_consent_lane_hash_binds_same_price_baseline[%s]",async laneName => {
+  const f = await fixture(),actor = { actorId: f.actor,clientId: f.client };
+  if (laneName === "sized") { const initial = await lane(f,"sized"); await initial.invoke(f.actor,"binding-sized-opt-in"); }
+  const preview = laneName === "bridge"
+    ? async () => (await bridge(f).preview(actor,"binding-legacy-key",legacyRequest(f))).preview as { quoteHash?: unknown; editConsent?: unknown }
+    : laneName === "exact"
+      ? () => editor(f).preview(actor,{ subscriptionId: f.subscription,action: "update_plan_length",planDays: 30 })
+      : () => sizedEditor(f).preview(actor,{ subscriptionId: f.subscription,expectedTemplateVersion: 2,action: "update_bundle",coreLines: [{ variantId: f.sku,qty: 2 }],
+        cadenceDays: 28,compositionConstraint: { kind: "unit_count",value: 2,dailyNeed: 1 } });
+  const first = await preview(); expectBoundDisclosure(first);
+  // Only baseline identity/order changes: all prices, quantities and lane input stay equal.
+  await pool.query("UPDATE public.subscription_renewal_term_lines SET line_ordinal=line_ordinal+100 WHERE subscription_id=$1",[f.subscription]);
+  const second = await preview(); expectBoundDisclosure(second);
+  const a = first.editConsent as SubscriptionEditConsent,b = second.editConsent as SubscriptionEditConsent;
+  expect(b.lines).toEqual(a.lines); expect(b.innerQuoteHash).toBe(a.innerQuoteHash);
+  expect(b.baselineFingerprint).not.toBe(a.baselineFingerprint);
+  expect(second.quoteHash).not.toBe(first.quoteHash);
 });
