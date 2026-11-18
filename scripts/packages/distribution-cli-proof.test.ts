@@ -156,10 +156,11 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   for (const [path, bytes] of Object.entries(owned)) expect(read(path)).toBe(bytes);
   if (customized) for (const [path, , after] of customizations) expect(read(path)).toContain(after);
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
-  for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) {
-    const check = spawnSync("npm", args, { cwd: app, encoding: "utf8", timeout: 90_000 });
-    expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
-  }
+  // The full upgraded-starter suite runs in the pre-publication proof (#783);
+  // here, run only the owned-contract tests so the root shard stays bounded.
+  const contracts = ["test/locales.test.ts", "test/renewal.test.ts", "test/policy.test.ts", "test/subscription-creation.test.ts"];
+  const check = spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...contracts], { cwd: app, encoding: "utf8", timeout: 60_000 });
+  expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
   const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval",
     'const { createApplication } = await import("./host/server.ts"); const server = createApplication(); server.listen(0, "127.0.0.1", () => server.close());'],
   { cwd: app, encoding: "utf8", timeout: 10_000 });
