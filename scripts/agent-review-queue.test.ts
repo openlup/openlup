@@ -1,5 +1,6 @@
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
@@ -48,6 +49,104 @@ function handoffFixture() {
   const enqueue = vi.fn(async () => { f.queuePr.mergeQueueEntry = { id: 'QUEUE_1' }; return { id: 'QUEUE_1' }; });
   return { ...f, api, runGit, enqueue, execute: () => enqueueAfterChecks({ event: f.event, env: f.env, api, runGit, enqueue, now: () => f.clock }), state: f };
 }
+
+describe('hosted receipt comments', () => {
+  const modernReceipt = (reviewer = 'reviewer-1', card = 'receipt-card', padding = '') => {
+    const rules = { version: 3, base: digest([]), head: digest([]) };
+    const candidate = { base: receipt.base, head: receipt.head, tree: receipt.tree, changedPaths: observed.changedPaths, modeChanged: false, clean: true, rules };
+    const prepared = prepareCandidate(null, { ...candidate, authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Verify the receipt' } }, time);
+    const report = { cold: true, tree: receipt.tree, verdict: 'PASS', documentation: 'Checked the contributor guide.', findings: [], closes: [] };
+    const failed = recordReport(prepared, { ...report, reviewer: 'prior-failure', verdict: 'FAIL', findings: [{ id: card, summary: 'Resolve the card.', material: true }] }, time);
+    const first = recordReport(failed, { ...report, reviewer, closes: [card] }, time);
+    const second = recordReport(first, { ...report, reviewer: 'reviewer-2' }, time);
+    const completed = recordReport(second, { ...report, reviewer: 'delta-only', ordinary: true }, time);
+    return receiptSummary({ ...completed, padding }, receipt.pr, time);
+  };
+
+  const waitFor = async (...bodies: string[]) => {
+    const f = handoffFixture();
+    f.state.comments = bodies.map((body, index) => comment({ id: 42 + index, body }));
+    const original = f.runGit.getMockImplementation()!;
+    f.runGit.mockImplementation(async (cwd, ...args) => args[0] === 'show' ? 'export const REVIEW_RULES_VERSION = 3;\n' : original(cwd, ...args));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      return await waitNativeAdmission({
+        event: { number: receipt.pr, repository: { private: false }, pull_request: { head: { sha: receipt.head } } },
+        env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api: f.api, runGit: f.runGit,
+        now: () => f.state.clock, sleep: async ms => { f.state.clock += ms; }, deadlineMs: 15000,
+      });
+    } finally { log.mockRestore(); }
+  };
+
+  it.each([false, true])('renders and admits the counted reports with gzip=%s', async gzip => {
+    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
+    const rendered = receiptBody(summary);
+    const json = JSON.stringify(summary);
+    const type = gzip ? 'text' : 'json';
+    const payload = gzip ? gzipSync(json).toString('base64') : json;
+    expect(rendered.split('\n')).toEqual([
+      gzip ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER, '',
+      'PR #12 · Head bbbbbbb · Tree ccccccc · Verdict PASS · Reviewer floor 2 · Scope full', '',
+      '| Reviewer | Verdict | Scope | Cards closed |', '| --- | --- | --- | --- |',
+      '| reviewer-1 | PASS | full | receipt-card |', '| reviewer-2 | PASS | full | none |', '',
+      'Open cards: none', '', '<details><summary>Machine-readable receipt (verified by admission)</summary>', '',
+      `\`\`\`${type}`, payload, '```', '', '</details>',
+    ]);
+    expect(parseReceipt(rendered)).toEqual(summary);
+    await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+
+  it('ignores a changed verdict cell, a deleted row and a fake row during hosted admission', async () => {
+    const summary = modernReceipt();
+    const rendered = receiptBody(summary);
+    const edited = rendered.replace('| reviewer-1 | PASS |', '| reviewer-1 | FAIL |')
+      .replace('| reviewer-2 | PASS | full | none |\n', '')
+      .replace('\n\nOpen cards:', '\n| fake-reviewer | PASS | delta | made-up-card |\n\nOpen cards:');
+    expect(edited).toContain('| reviewer-1 | FAIL |');
+    expect(edited).not.toContain('| reviewer-2 |');
+    expect(edited).toContain('| fake-reviewer |');
+    expect(parseReceipt(edited)).toEqual(summary);
+    expect(parseReceipt(rendered)).toEqual(summary);
+    const admitted = await waitFor(rendered);
+    expect(admitted).toEqual(summary);
+    await expect(waitFor(edited)).resolves.toEqual(admitted);
+  });
+
+  it.each([false, true])('refuses a duplicate machine block with gzip=%s and names the comment and remedy', async gzip => {
+    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
+    const rendered = receiptBody(summary);
+    const machine = rendered.split('\n').slice(-5, -2).join('\n');
+    const duplicate = `${rendered}\n\n${machine}`;
+    expect(parseReceipt(duplicate)).toBeNull();
+    await expect(waitFor(duplicate)).rejects.toThrow(
+      'receipt comment 42 is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
+    );
+    await expect(waitFor(rendered, duplicate)).resolves.toEqual(summary);
+  });
+
+  it.each(['raw v2', 'raw v3', 'gzip v3'])('parses and admits the bare %s format', async format => {
+    const summary = format === 'raw v2' ? receipt : modernReceipt();
+    const json = JSON.stringify(summary);
+    const rendered = format === 'raw v2' ? body() : format === 'raw v3'
+      ? `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${json}\n\`\`\``
+      : `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${gzipSync(json).toString('base64')}\n\`\`\``;
+    expect(parseReceipt(rendered)).toEqual(summary);
+    await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+
+  it('sanitizes and caps reviewer and card cells without changing the admitted machine block', async () => {
+    const suffix = '```json|\n<details>' + 'x'.repeat(100);
+    const summary = modernReceipt(`reviewer-${suffix}`, `card-${suffix}`);
+    const rendered = receiptBody(summary);
+    const lines = rendered.split('\n');
+    const reviewer = 'reviewer-???json???details?'.padEnd(80, 'x');
+    const card = 'card-???json???details?'.padEnd(80, 'x');
+    expect(lines).toContain(`| ${reviewer} | PASS | full | ${card} |`);
+    expect(lines.filter(line => line.startsWith('```'))).toEqual(['```json', '```']);
+    expect(parseReceipt(rendered)).toEqual(summary);
+    await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+});
 
 describe('CI completion queue handoff', () => {
   it.each([false, true])('enqueues one armed reviewed source head, including fork=%s and empty run pull_requests', async fork => {

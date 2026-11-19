@@ -14,16 +14,19 @@ describe('native receipt transport', () => {
   const rawBody = (marker: string, summary: unknown) => `${marker}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
   const textBody = (payload: string) => `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;
   const compress = (summary: unknown) => gzipSync(JSON.stringify(summary)).toString('base64');
+  const v3 = recordReport(prepare({ rules: { version: 3 } }), report(), time);
+  const padded = (padding: string) => receiptSummary({ ...v3, padding }, 12, time);
 
-  it('keeps raw v3 bytes through 65,536 characters and compresses at 65,537', () => {
-    const summary = { version: 3, session: { history: '' } };
-    const overhead = rawBody(ECONOMY_RECEIPT_MARKER, summary).length;
-    summary.session.history = 'x'.repeat(65_535 - overhead);
-    expect(receiptBody(summary)).toBe(rawBody(ECONOMY_RECEIPT_MARKER, summary));
-    summary.session.history += 'x';
-    expect(receiptBody(summary)).toBe(rawBody(ECONOMY_RECEIPT_MARKER, summary));
-    summary.session.history += 'x';
-    expect(receiptBody(summary)).toBe(textBody(compress(summary)));
+  it('counts the full body through 65,536 characters and compresses at 65,537', () => {
+    const padding = 'x'.repeat(65_536 - receiptBody(padded('')).length);
+    const atLimit = receiptBody(padded(padding));
+    expect(atLimit).toHaveLength(65_536);
+    expect(atLimit.split('\n')[0]).toBe(ECONOMY_RECEIPT_MARKER);
+    const above = padded(padding + 'x');
+    expect(rawBody(ECONOMY_RECEIPT_MARKER, above).length).toBeLessThan(65_536);
+    const compressed = receiptBody(above);
+    expect(compressed.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
+    expect(parseReceipt(compressed)).toEqual(above);
   });
 
   it('keeps v2 receipts byte-identical at any size', () => {
@@ -34,8 +37,9 @@ describe('native receipt transport', () => {
   });
 
   it('refuses an oversized compressed body with its measured size and recovery steps', () => {
-    const summary = { version: 3, session: { history: Array.from({ length: 5_000 }, (_, index) => digest(index)).join('') } };
-    const size = textBody(compress(summary)).length;
+    const summary = padded(Array.from({ length: 5_000 }, (_, index) => digest(index)).join(''));
+    const small = padded('');
+    const size = textBody(compress(summary)).length + receiptBody(small).length - rawBody(ECONOMY_RECEIPT_MARKER, small).length;
     expect(size).toBeGreaterThan(200_000);
     expect(() => receiptBody(summary)).toThrow(`compressed receipt is ${size} characters (limit 200000). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   });
@@ -53,6 +57,19 @@ describe('native receipt transport', () => {
       textBody(Buffer.from('not gzip').toString('base64')),
       textBody(gzipSync('not JSON').toString('base64')),
       textBody(compress(receiptSummary(passed(), 12, time))),
+    ]) expect(parseReceipt(body)).toBeNull();
+  });
+
+  it('requires exact marker and fence lines and keeps the 1 MiB body limit with display', () => {
+    const raw = rawBody(ECONOMY_RECEIPT_MARKER, { version: 3 });
+    const withDisplay = `${raw}\n\`\`\`text\nignored\n\`\`\``;
+    expect(parseReceipt(withDisplay)).toEqual({ version: 3 });
+    for (const body of [
+      raw.replace(`${ECONOMY_RECEIPT_MARKER}\n`, `${ECONOMY_RECEIPT_MARKER} \n`),
+      raw.replace('```json\n', '```json \n'),
+      raw.slice(0, -3) + '  ```',
+      raw.slice(0, -3) + '``` ',
+      withDisplay.padEnd(1024 * 1024 + 1, 'x'),
     ]) expect(parseReceipt(body)).toBeNull();
   });
 
@@ -464,6 +481,9 @@ describe('native review decisions', () => {
       requirements: { scope: 'repair-delta', floor: 1, acceptedReports: 1, missingReports: 0, reviewers: ['r3'] },
     });
     expect(verdict(withDeltaReport, withDeltaReport.candidate, time + 2).ok).toBe(true);
+    const body = receiptBody(receiptSummary(withDeltaReport, 12, time + 2));
+    expect(body).toContain('Reviewer floor 1 · Scope delta');
+    expect(body.match(/^\| .* \| PASS \| .*$/gmu)).toEqual(['| r3 | PASS | delta | none |']);
   });
   it.each(['git', 'registry-union', 'derived', 'resolution'])('explains v3 %s integration requirements', kind => {
     const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };

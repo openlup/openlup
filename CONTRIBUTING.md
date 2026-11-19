@@ -1772,6 +1772,7 @@ Existing receipt formats retain their identities; recorded expiry is not enforce
 A v3 receipt over 65,536 characters is printed as gzip-compressed, base64-encoded
 text under a dedicated marker, and admission decodes and verifies it like any
 receipt. The command refuses a compressed body over 200,000 characters.
+The summary table is a convenience; admission verifies only the machine block.
 
 ### Merge queue
 
