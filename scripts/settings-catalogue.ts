@@ -206,6 +206,11 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
       `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
       `- ${entry.whyThisDefault}`,
+      ...(entry.kind === "code" && "file" in entry.change ? [
+        `- Edit \`${entry.change.file}\` (${entry.change.symbol}).`,
+        `- ${entry.effect.appliesTo}`,
+        `- Frozen on: ${entry.effect.frozenOn.join(" ")}`,
+      ] : []),
       ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
       "",
       "```sh",

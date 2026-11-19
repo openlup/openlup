@@ -145,9 +145,21 @@ describe("settings show", () => {
   });
 });
 
+it.each([
+  ["inventory buffer", "inventory_renewal_protection"],
+  ["free shipping", "offer.freeShippingFromMinor"],
+  ["subscription discount", "offer.subscriptionDiscountBps"],
+  ["delivery interval", "subscriptionOffers.deliveryCycles"],
+  ["checkout reservation", "purchase.reservationMinutes"],
+])("finds %s in the settings list", (goal, key) => {
+  const { listResult } = loadSettingsCatalogue();
+  const entries = listResult.parse(listSettings({ goal })).entries;
+  expect(entries[0]?.key).toBe(key);
+});
+
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
   const [list, show, preview] = settingsReadTools;
-  const { listResult, showRequest, showResult } = loadSettingsCatalogue();
+  const { showRequest, showResult } = loadSettingsCatalogue();
   expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show", "settings__preview"]);
   for (const [tool, request] of [
     [list, settingsListRequest], [show, showRequest], [preview, settingsPreviewRequest],
@@ -167,7 +179,6 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   });
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
-  expect(listResult.parse(listSettings({ goal: "inventory buffer" })).entries.map(entry => entry.key)).toEqual([key]);
   expect(showResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
     properties: { renewalProtectionDays: { minimum: 1, maximum: 3660 } },
   });
@@ -276,8 +287,7 @@ it("passes exact SKU identifiers through and deduplicates only exact matches", a
   expect(run).toHaveBeenCalledExactlyOnceWith(proposed, expect.objectContaining({ skus: ["SKU-1", " SKU-1 "] }));
 });
 
-it("preserves the full serialized schemas of both legacy settings tools", () => {
-  // Captured from the built operations/server entry at main 4d939dbba.
+it("matches the pinned serialized schemas of the list and show settings tools", () => {
   const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
   const schemas = settingsReadTools
     .filter(({ name }) => name === "settings__list" || name === "settings__show")

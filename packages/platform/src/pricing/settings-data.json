@@ -1,5 +1,21 @@
 [
   {
+    "key": "offer.subscriptionDiscountBps",
+    "domain": "pricing",
+    "kind": "code",
+    "goal": "Set the subscription discount in basis points.",
+    "schemaVersion": 1,
+    "examples": [],
+    "fallback": 500,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Both sample configurations illustrate a 5% discount.",
+    "effect": {"appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation; use a pricing policy revision for an initialized store.", "frozenOn": ["Accepted quotes and existing orders and subscriptions keep their recorded price terms."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Starter composition consumes this value; if you replaced the owned pricing or installation code, your application owns the behavior."},
+    "change": {"file": "owned/store.config.ts", "symbol": "offer.subscriptionDiscountBps"},
+    "schema": {"type": "integer", "minimum": 0, "maximum": 10000, "description": "Checked by shared/config.ts (assertConfig)."},
+    "rules": []
+  },
+  {
     "key": "pricing.currencyExponent",
     "domain": "pricing",
     "goal": "Format money using the currency exponent.",
@@ -8,9 +24,9 @@
     "examples": [],
     "fallback": null,
     "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter.",
-    "effect": {"appliesTo": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter."},
+    "whyThisDefault": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.",
+    "effect": {"appliesTo": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"},
     "rules": []
   },

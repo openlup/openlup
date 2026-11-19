@@ -1,5 +1,21 @@
 [
   {
+    "key": "offer.freeShippingFromMinor",
+    "domain": "shipping",
+    "kind": "code",
+    "goal": "Set the free shipping threshold in currency minor units.",
+    "schemaVersion": 1,
+    "examples": [],
+    "fallback": 1000,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Both sample configurations use 1000 minor units as an example threshold.",
+    "effect": {"appliesTo": "After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.", "frozenOn": ["Accepted quotes and existing orders keep their recorded shipping terms."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Starter composition consumes this value; if you replaced the owned shipping resolver, your application owns the behavior."},
+    "change": {"file": "owned/store.config.ts", "symbol": "offer.freeShippingFromMinor"},
+    "schema": {"type": "integer", "minimum": 0, "maximum": 2147483647, "description": "Checked by shared/config.ts (assertConfig)."},
+    "rules": []
+  },
+  {
     "key": "savedAddressValidation",
     "domain": "shipping",
     "kind": "callback",

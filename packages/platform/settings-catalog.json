@@ -403,15 +403,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The starter displays several recorded timestamps directly.",
+      "whyThisDefault": "The starter account view displays some timestamps directly; format them in the starter using its market time zone.",
       "effect": {
-        "appliesTo": "The starter displays several recorded timestamps directly.",
+        "appliesTo": "The starter account view displays some timestamps directly; format them in the starter using its market time zone.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter displays several recorded timestamps directly."
+        "reason": "The starter account view displays some timestamps directly; format them in the starter using its market time zone."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"
@@ -760,6 +760,78 @@
       "rules": []
     },
     {
+      "key": "offer.freeShippingFromMinor",
+      "domain": "shipping",
+      "kind": "code",
+      "goal": "Set the free shipping threshold in currency minor units.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": 1000,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Both sample configurations use 1000 minor units as an example threshold.",
+      "effect": {
+        "appliesTo": "After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.",
+        "frozenOn": [
+          "Accepted quotes and existing orders keep their recorded shipping terms."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Starter composition consumes this value; if you replaced the owned shipping resolver, your application owns the behavior."
+      },
+      "change": {
+        "file": "owned/store.config.ts",
+        "symbol": "offer.freeShippingFromMinor"
+      },
+      "schema": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647,
+        "description": "Checked by shared/config.ts (assertConfig)."
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "offer.subscriptionDiscountBps",
+      "domain": "pricing",
+      "kind": "code",
+      "goal": "Set the subscription discount in basis points.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": 500,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Both sample configurations illustrate a 5% discount.",
+      "effect": {
+        "appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation; use a pricing policy revision for an initialized store.",
+        "frozenOn": [
+          "Accepted quotes and existing orders and subscriptions keep their recorded price terms."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Starter composition consumes this value; if you replaced the owned pricing or installation code, your application owns the behavior."
+      },
+      "change": {
+        "file": "owned/store.config.ts",
+        "symbol": "offer.subscriptionDiscountBps"
+      },
+      "schema": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10000,
+        "description": "Checked by shared/config.ts (assertConfig)."
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
       "key": "payments.declineNoticeTiming",
       "domain": "payments",
       "goal": "Choose the delay and link lifetime for a payment decline notice.",
@@ -910,15 +982,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter.",
+      "whyThisDefault": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.",
       "effect": {
-        "appliesTo": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter.",
+        "appliesTo": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter."
+        "reason": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"
@@ -1152,6 +1224,42 @@
       "rules": []
     },
     {
+      "key": "purchase.reservationMinutes",
+      "domain": "commerce",
+      "kind": "code",
+      "goal": "Set the checkout reservation lifetime in minutes.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": 30,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Both sample configurations use a 30-minute checkout hold.",
+      "effect": {
+        "appliesTo": "After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.",
+        "frozenOn": [
+          "Existing reservations keep their recorded expiry."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Starter composition consumes this value; if you replaced the owned checkout composition, your application owns the behavior."
+      },
+      "change": {
+        "file": "owned/store.config.ts",
+        "symbol": "purchase.reservationMinutes"
+      },
+      "schema": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991,
+        "description": "Checked by shared/config.ts (assertConfig)."
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
       "key": "savedAddressValidation",
       "domain": "shipping",
       "kind": "callback",
@@ -1317,6 +1425,50 @@
       "rules": []
     },
     {
+      "key": "subscriptionOffers.deliveryCycles",
+      "domain": "subscriptions",
+      "kind": "code",
+      "goal": "Choose the allowed delivery interval and default cadence for subscriptions.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": {
+        "days": {
+          "kind": "set",
+          "values": [
+            28,
+            56
+          ]
+        },
+        "defaultDays": 28
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The samples default to 28 days; one allows 28 and 56 days, and the other also allows 14 days.",
+      "effect": {
+        "appliesTo": "After deployment, the starter admits fresh subscription checkouts, graduations and terms edits against the configured intervals.",
+        "frozenOn": [
+          "Active subscriptions keep their recorded cadence until a terms edit changes it.",
+          "Completed matching commands replay with their original terms."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Starter composition consumes these choices; if you replaced the owned offer configuration or admission, your application owns the behavior."
+      },
+      "change": {
+        "file": "owned/store.config.ts",
+        "symbol": "subscriptionOffers"
+      },
+      "schema": {
+        "type": "object",
+        "description": "In shared/config.ts, assertConfig calls assertSubscriptionOffer: days is a nonempty set of distinct integers from 1 through 3660, or a range within those bounds with an integer step from 1 through 2147483647; defaultDays must belong to the offer and its checkout choices."
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
       "key": "subscriptions.addressBasedRenewalShipping",
       "domain": "subscriptions",
       "goal": "Reprice renewal shipping from the current address.",
@@ -1459,28 +1611,36 @@
     {
       "key": "subscriptions.lifecycleNoticeRetryBudget",
       "domain": "subscriptions",
+      "kind": "code",
       "goal": "Set the retry budget for subscription lifecycle notices.",
       "schemaVersion": 1,
-      "kind": "cap",
       "examples": [],
-      "fallback": null,
+      "fallback": 6,
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Native notice dispatch uses a limit of six attempts.",
+      "whyThisDefault": "The starter uses the native dispatch default of six attempts.",
       "effect": {
-        "appliesTo": "Native notice dispatch uses a limit of six attempts.",
-        "frozenOn": [],
+        "appliesTo": "The scheduled renewal host uses this cap when claiming lifecycle notices after deployment, including notices still eligible for retry.",
+        "frozenOn": [
+          "Existing dispatch receipts keep their identities and recorded attempt counts."
+        ],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Native notice dispatch uses a limit of six attempts."
+        "reason": "Starter composition supplies the budget when it creates the lifecycle notice dispatcher."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionslifecyclenoticeretrybudget"
+        "file": "owned/renewal.config.ts",
+        "symbol": "subscriptionCare.dispatch.maxAttempts"
       },
-      "schema": null,
+      "schema": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2147483647,
+        "description": "Checked by shared/config.ts via assertSubscriptionCare in shared/renewal-config.ts."
+      },
       "previewSchema": null,
       "rules": []
     },
@@ -1635,15 +1795,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Native recovery holds stock for 900 seconds.",
+      "whyThisDefault": "A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds.",
       "effect": {
-        "appliesTo": "Native recovery holds stock for 900 seconds.",
+        "appliesTo": "A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Native recovery holds stock for 900 seconds."
+        "reason": "A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"

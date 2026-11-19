@@ -38,9 +38,9 @@
     "examples": [],
     "fallback": null,
     "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The starter displays several recorded timestamps directly.",
-    "effect": {"appliesTo": "The starter displays several recorded timestamps directly.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "The starter displays several recorded timestamps directly."},
+    "whyThisDefault": "The starter account view displays some timestamps directly; format them in the starter using its market time zone.",
+    "effect": {"appliesTo": "The starter account view displays some timestamps directly; format them in the starter using its market time zone.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The starter account view displays some timestamps directly; format them in the starter using its market time zone."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"},
     "rules": []
   }

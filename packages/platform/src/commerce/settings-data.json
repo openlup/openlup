@@ -1,5 +1,21 @@
 [
   {
+    "key": "purchase.reservationMinutes",
+    "domain": "commerce",
+    "kind": "code",
+    "goal": "Set the checkout reservation lifetime in minutes.",
+    "schemaVersion": 1,
+    "examples": [],
+    "fallback": 30,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Both sample configurations use a 30-minute checkout hold.",
+    "effect": {"appliesTo": "After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.", "frozenOn": ["Existing reservations keep their recorded expiry."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Starter composition consumes this value; if you replaced the owned checkout composition, your application owns the behavior."},
+    "change": {"file": "owned/store.config.ts", "symbol": "purchase.reservationMinutes"},
+    "schema": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "Checked by shared/config.ts (assertConfig)."},
+    "rules": []
+  },
+  {
     "key": "checkout_recovery_reminders",
     "domain": "commerce",
     "kind": "installed",

@@ -181,7 +181,7 @@ Search terms include messaging, notifications.
 - Owner **communications** · kind **cap** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- The starter displays several recorded timestamps directly.
+- The starter account view displays some timestamps directly; format them in the starter using its market time zone.
 
 ```sh
 node --experimental-strip-types host/settings.ts show communications.messageDateFormatting --json
@@ -301,6 +301,40 @@ Search terms include billing documents, adjustments.
 node --experimental-strip-types host/settings.ts show invoicing.partialInvoiceCorrections --json
 ```
 
+## offer.freeShippingFromMinor
+
+Set the free shipping threshold in currency minor units.
+Search terms include delivery destination, address details.
+
+- Owner **shipping** · kind **code** · runtime **read-only**
+- Default is `1000`.
+- Basis `neutral`.
+- Both sample configurations use 1000 minor units as an example threshold.
+- Edit `owned/store.config.ts` (offer.freeShippingFromMinor).
+- After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.
+- Frozen on: Accepted quotes and existing orders keep their recorded shipping terms.
+
+```sh
+node --experimental-strip-types host/settings.ts show offer.freeShippingFromMinor --json
+```
+
+## offer.subscriptionDiscountBps
+
+Set the subscription discount in basis points.
+Search terms include quote amounts, price calculation.
+
+- Owner **pricing** · kind **code** · runtime **read-only**
+- Default is `500`.
+- Basis `neutral`.
+- Both sample configurations illustrate a 5% discount.
+- Edit `owned/store.config.ts` (offer.subscriptionDiscountBps).
+- The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation; use a pricing policy revision for an initialized store.
+- Frozen on: Accepted quotes and existing orders and subscriptions keep their recorded price terms.
+
+```sh
+node --experimental-strip-types host/settings.ts show offer.subscriptionDiscountBps --json
+```
+
 ## payments.declineNoticeTiming
 
 Choose the delay and link lifetime for a payment decline notice.
@@ -379,7 +413,7 @@ Search terms include quote amounts, price calculation.
 - Owner **pricing** · kind **cap** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- Some starter views assume two decimal places. The platform already provides a currency-aware formatter.
+- Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.
 
 ```sh
 node --experimental-strip-types host/settings.ts show pricing.currencyExponent --json
@@ -497,6 +531,23 @@ Search terms include discount rules, offer adjustments.
 node --experimental-strip-types host/settings.ts show promotions.promotionCompatibilityGroups --json
 ```
 
+## purchase.reservationMinutes
+
+Set the checkout reservation lifetime in minutes.
+Search terms include store orders, checkout processing.
+
+- Owner **commerce** · kind **code** · runtime **read-only**
+- Default is `30`.
+- Basis `neutral`.
+- Both sample configurations use a 30-minute checkout hold.
+- Edit `owned/store.config.ts` (purchase.reservationMinutes).
+- After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.
+- Frozen on: Existing reservations keep their recorded expiry.
+
+```sh
+node --experimental-strip-types host/settings.ts show purchase.reservationMinutes --json
+```
+
 ## savedAddressValidation
 
 Customize validation and normalization of the postal code and phone on saved customer addresses.
@@ -563,9 +614,29 @@ Search terms include edit cutoff, change deadline, activation window.
 - Default is `72`.
 - Basis `reference-code` (matches the reference deployment's code).
 - A three-day cutoff preserves the established edit window and gives operations notice before renewal.
+- Edit `owned/store.config.ts` (subscriptionCreation.editWindowHours).
+- New native subscription activations after deploying the host configuration.
+- Frozen on: Existing subscriptions keep their stored edit window.
 
 ```sh
 node --experimental-strip-types host/settings.ts show subscriptionCreation.editWindowHours --json
+```
+
+## subscriptionOffers.deliveryCycles
+
+Choose the allowed delivery interval and default cadence for subscriptions.
+Search terms include recurring orders, renewals.
+
+- Owner **subscriptions** · kind **code** · runtime **read-only**
+- Default is `{"days":{"kind":"set","values":[28,56]},"defaultDays":28}`.
+- Basis `neutral`.
+- The samples default to 28 days; one allows 28 and 56 days, and the other also allows 14 days.
+- Edit `owned/store.config.ts` (subscriptionOffers).
+- After deployment, the starter admits fresh subscription checkouts, graduations and terms edits against the configured intervals.
+- Frozen on: Active subscriptions keep their recorded cadence until a terms edit changes it. Completed matching commands replay with their original terms.
+
+```sh
+node --experimental-strip-types host/settings.ts show subscriptionOffers.deliveryCycles --json
 ```
 
 ## subscriptions.addressBasedRenewalShipping
@@ -643,10 +714,13 @@ node --experimental-strip-types host/settings.ts show subscriptions.introductory
 Set the retry budget for subscription lifecycle notices.
 Search terms include recurring orders, renewals.
 
-- Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
+- Owner **subscriptions** · kind **code** · runtime **read-only**
+- Default is `6`.
 - Basis `neutral`.
-- Native notice dispatch uses a limit of six attempts.
+- The starter uses the native dispatch default of six attempts.
+- Edit `owned/renewal.config.ts` (subscriptionCare.dispatch.maxAttempts).
+- The scheduled renewal host uses this cap when claiming lifecycle notices after deployment, including notices still eligible for retry.
+- Frozen on: Existing dispatch receipts keep their identities and recorded attempt counts.
 
 ```sh
 node --experimental-strip-types host/settings.ts show subscriptions.lifecycleNoticeRetryBudget --json
@@ -730,7 +804,7 @@ Search terms include recurring orders, renewals.
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- Native recovery holds stock for 900 seconds.
+- A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds.
 
 ```sh
 node --experimental-strip-types host/settings.ts show subscriptions.stockWaitHoldLifetime --json
