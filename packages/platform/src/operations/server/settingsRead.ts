@@ -144,26 +144,31 @@ export async function previewSetting<Result extends { schemaVersion: 1 } = never
   }
 }
 
+function createSettingsToolSchemas() {
+  const { listResult, showRequest, showResult, refusalSchema } = loadSettingsCatalogue();
+  return {
+    listOutput: settingsToolOutputSchema(listResult, refusalSchema),
+    showInput: toolInputSchema(showRequest),
+    showOutput: settingsToolOutputSchema(showResult, refusalSchema),
+  };
+}
+
+let toolSchemas: ReturnType<typeof createSettingsToolSchemas> | undefined;
+
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export const settingsReadTools = [
   {
     name: "settings__list",
     description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.",
     inputSchema: toolInputSchema(settingsListRequest),
-    get outputSchema() {
-      const { listResult, refusalSchema } = loadSettingsCatalogue();
-      return settingsToolOutputSchema(listResult, refusalSchema);
-    },
+    get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).listOutput; },
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__show",
     description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.",
-    get inputSchema() { return toolInputSchema(loadSettingsCatalogue().showRequest); },
-    get outputSchema() {
-      const { showResult, refusalSchema } = loadSettingsCatalogue();
-      return settingsToolOutputSchema(showResult, refusalSchema);
-    },
+    get inputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showInput; },
+    get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showOutput; },
     annotations: { readOnlyHint: true },
   },
   {

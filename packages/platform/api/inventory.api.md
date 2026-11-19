@@ -734,7 +734,6 @@ export declare function describeRenewalStockProtectionSetting(): {
     readonly domain: "inventory";
     readonly kind: "installed";
     readonly goal: "Set the renewal stock protection horizon used to calculate stock available to new purchases.";
-    readonly searchTerms: "stock lookahead, inventory buffer, renewal allocation, available to promise";
     readonly schemaVersion: 1;
     readonly schema: z.ZodObject<{
         revision: z.ZodString;

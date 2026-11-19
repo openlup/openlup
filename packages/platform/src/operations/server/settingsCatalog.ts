@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { settingRefusalSchema, settingsToolOutputSchema } from "./toolSchema.js";
+import { settingDescriptorSchema as descriptor, settingRefusalSchema } from "./toolSchema.js";
 
 export const settingsVersion = 1;
 const packageData = (name: string): unknown =>
@@ -25,7 +25,6 @@ const observationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("offline") }),
 ]);
 function readSettingsCatalogue() {
-  const { descriptor } = settingsToolOutputSchema;
   const { entries, searchTerms, previewOutputSchema } = z.strictObject({
     schemaVersion: z.literal(settingsVersion),
     entries: z.array(descriptor),

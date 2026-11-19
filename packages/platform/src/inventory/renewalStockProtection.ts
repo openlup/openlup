@@ -21,7 +21,6 @@ export function describeRenewalStockProtectionSetting() {
     domain: "inventory",
     kind: "installed",
     goal: "Set the renewal stock protection horizon used to calculate stock available to new purchases.",
-    searchTerms: "stock lookahead, inventory buffer, renewal allocation, available to promise",
     schemaVersion: 1,
     schema: policySchema(),
     previewSchema: previewEffectSchema(),
