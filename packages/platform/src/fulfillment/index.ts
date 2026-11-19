@@ -8,7 +8,7 @@ export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
 export type { FulfillmentIngressCounts, FulfillmentIngressResult } from "./verifiedIngress.js";
 export { verifyAndNormalizeFulfillmentObservation, fulfillmentIngressHttpResult } from "./verifiedIngress.js";
 export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
-export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
+export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage, type LocalFulfillmentReconciliationState } from "./providerReconciliationWorker.js";
 export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
 export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js";
 export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";

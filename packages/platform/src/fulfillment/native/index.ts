@@ -100,6 +100,7 @@ export function createNativeFulfillmentBinding(input: {
     ...(native ? { begin: (v: { dispatchRef: string; commandFingerprint: string }) => nativeCall<Awaited<ReturnType<FulfillmentStorePort['begin']>>>(executor, 'fulfillment_native_dispatch_begin', [v.dispatchRef, v.commandFingerprint]) } : {}),
     async prepare(ref) { const { disposition, contactRevision } = await readPrepared(ref); return { disposition, contactRevision }; },
     async readCandidate(ref) { return (await readPrepared(ref, true)).candidate; },
+    async prepareCandidate(ref) { return readPrepared(ref, true); },
   }) : null;
   const services = createFulfillmentServices({ ...input.services, listCandidates: listCandidates ?? (async () => []), enabled: input.enabled, store });
   async function whenReady<T>(work: () => Promise<T>) {

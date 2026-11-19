@@ -18,6 +18,13 @@ export interface ReconciliationResult {
   providerCalls: number; readBacks: number; skipped: boolean; reason?: string; providerError?: FulfillmentOperationError;
 }
 
+export interface LocalFulfillmentReconciliationState {
+  status: string | null;
+  latestOccurredAt: string | null;
+  handedOverAt: string | null;
+  carrier?: { carrierRef: string | null; serviceRef: string | null } | null;
+}
+
 export async function reconcileFulfillmentObservations(input: {
   /** Adapter/host maps the private page into typed readback, preserving unknowns. */
   readPage(input: { page: number; size: number }): Promise<readonly FulfillmentReconciliationObservation[]>;
@@ -27,6 +34,8 @@ export async function reconcileFulfillmentObservations(input: {
     readLocalFulfillmentStatus(ref: string): Promise<string | null>;
     latestStatusOccurredAt(ref: string): Promise<string | null>;
     readHandedOverAt(ref: string): Promise<string | null>;
+    /** Optional single-query local snapshot per row; workers fall back to individual readers when absent. */
+    readLocalState?(ref: string): Promise<LocalFulfillmentReconciliationState | null>;
   };
   lifecycle: Pick<Ingress["lifecycle"], "recordStatusEvidence" | "effects" | "keys"> & {
     findDispatchRef(evidence: PollEvidence): Promise<DispatchRef | null>;
@@ -85,7 +94,9 @@ export async function reconcileFulfillmentObservations(input: {
         const evidence = projectPollEvidence(readback.evidence);
         const ref = await input.lifecycle.findDispatchRef(evidence);
         if (!ref) { await quarantine(evidence, "missing_correlation"); continue; }
-        const localState = await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
+        const localState = input.localPersistence.readLocalState
+          ? ((await input.localPersistence.readLocalState(ref.fulfillmentRef))?.status ?? null)
+          : await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
         if (isOffTrackFulfillmentStatus(localState)) { result.offTrackSkips += 1; continue; }
         if (!(readback.externalRef?.trim() || ref.externalRef?.trim())) { await quarantine(evidence, "missing_external_ref"); continue; }
         await input.lifecycle.acknowledgeDispatchAcceptance(ref, evidence);
@@ -102,7 +113,12 @@ export async function reconcileFulfillmentObservations(input: {
       }
       const ref = await input.lifecycle.findDispatchRef(observation);
       if (!ref) { await quarantine(observation, "missing_correlation"); continue; }
-      const localState = await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
+      let rowState: LocalFulfillmentReconciliationState | null | undefined = input.localPersistence.readLocalState
+        ? await input.localPersistence.readLocalState(ref.fulfillmentRef)
+        : undefined;
+      const localState = rowState !== undefined
+        ? (rowState?.status ?? null)
+        : await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
       const offTrack = isOffTrackFulfillmentStatus(localState);
       if (offTrack) result.offTrackSkips += 1;
       if (!offTrack) {
@@ -111,15 +127,22 @@ export async function reconcileFulfillmentObservations(input: {
       }
       const occurredAt = normalizeReconciliationTimestamp(readback.updatedAt);
       const localStatus = observation.fact.canonicalStatus;
-      const latest = await input.localPersistence.latestStatusOccurredAt(ref.fulfillmentRef);
+      const latest = rowState !== undefined
+        ? (rowState?.latestOccurredAt ?? null)
+        : await input.localPersistence.latestStatusOccurredAt(ref.fulfillmentRef);
       if (latest && occurredAt && Date.parse(occurredAt) < Date.parse(latest)) {
         result.stale += 1;
-        if (!offTrack && input.lifecycle.issueAccountingInvoice && await input.localPersistence.readHandedOverAt(ref.fulfillmentRef)) await invoice(ref.fulfillmentRef);
+        const handedOverAt = rowState !== undefined
+          ? (rowState?.handedOverAt ?? null)
+          : await input.localPersistence.readHandedOverAt(ref.fulfillmentRef);
+        if (!offTrack && input.lifecycle.issueAccountingInvoice && handedOverAt) await invoice(ref.fulfillmentRef);
         continue;
       }
       // The normalized fact carries the same nullable occurrence used by dedupe.
       observation = { ...observation, fact: { ...observation.fact, occurredAt } };
       const status = await input.lifecycle.recordStatusEvidence(ref, observation);
+      // recordStatusEvidence mutates latestOccurredAt; invalidate that field immediately.
+      if (rowState) rowState = { ...rowState, latestOccurredAt: null };
       if (status.replayed) result.replayed += 1;
       if (offTrack) continue;
       result.updated += status.replayed ? 0 : 1;
@@ -127,14 +150,21 @@ export async function reconcileFulfillmentObservations(input: {
         const exception = await input.lifecycle.recordProviderException(ref, observation);
         if (exception.replayed) result.replayed += 1;
         result.exceptions += exception.replayed ? 0 : 1;
-        if (input.lifecycle.issueAccountingInvoice && await input.localPersistence.readHandedOverAt(ref.fulfillmentRef)) await invoice(ref.fulfillmentRef);
+        const handedOverAt = rowState !== undefined
+          ? (rowState?.handedOverAt ?? null)
+          : await input.localPersistence.readHandedOverAt(ref.fulfillmentRef);
+        if (input.lifecycle.issueAccountingInvoice && handedOverAt) await invoice(ref.fulfillmentRef);
         continue;
       }
       const trackingRefs = [];
       if (observationStatusPolicy.handsOver(localStatus)) {
         let carrier: Awaited<ReturnType<typeof input.lifecycle.readDeliveryCarrier>> | undefined;
         for (const tracking of uniqueTrackingReferences(observation.trackingRefs)) {
-          if (!trackingReferenceComplete(tracking) && carrier === undefined) carrier = await input.lifecycle.readDeliveryCarrier(ref.fulfillmentRef);
+          if (!trackingReferenceComplete(tracking) && carrier === undefined) {
+            carrier = rowState !== undefined && (rowState === null || rowState.carrier !== undefined)
+              ? (rowState?.carrier ?? null)
+              : await input.lifecycle.readDeliveryCarrier(ref.fulfillmentRef);
+          }
           const codecs = input.lifecycle.trackingCodecs;
           const candidate = enrichTrackingReference(tracking, carrier ?? null, { ...codecs, publicUrl: () => null });
           const enriched = projectTrackingReference(candidate, privacy, codecs.approveTrackingUrl, codecs);
@@ -144,6 +174,8 @@ export async function reconcileFulfillmentObservations(input: {
           trackingRefs.push({ trackingNumber: enriched.trackingNumber, trackingUrl: enriched.publicUrl, carrierKind: enriched.carrierRef, service: enriched.serviceRef });
         }
       }
+      // Never retain local state across effect mutations or across page rows.
+      rowState = undefined;
       await applyFulfillmentObservationEffects({
         port: input.lifecycle.effects, localStatus, ids: { orderId: ref.orderRef, fulfillmentOrderId: ref.fulfillmentRef }, observation,
         trackingRefs, stockIdempotencyKey: input.lifecycle.keys.stock(ref.fulfillmentRef), handoffIdempotencyKey: input.lifecycle.keys.handoff(ref.fulfillmentRef),

@@ -12530,6 +12530,12 @@ export interface FulfillmentStorePort {
         disposition: "ready" | "withheld";
         contactRevision: number | null;
     }>;
+    /** Optional single-transaction prepare + authoritative candidate read; workers fall back to prepare() + readCandidate() when absent. */
+    prepareCandidate?(fulfillmentRef: string): Promise<{
+        disposition: "ready" | "withheld";
+        contactRevision: number | null;
+        candidate: FulfillmentDispatchRequest | null;
+    }>;
     /** Evidence comes from adapter prepare, before any external submission. */
     claim(input: {
         requestKey: string;
@@ -13939,7 +13945,7 @@ export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
 export type { FulfillmentIngressCounts, FulfillmentIngressResult } from "./verifiedIngress.js";
 export { verifyAndNormalizeFulfillmentObservation, fulfillmentIngressHttpResult } from "./verifiedIngress.js";
 export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
-export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
+export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage, type LocalFulfillmentReconciliationState } from "./providerReconciliationWorker.js";
 export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
 export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js";
 export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";
@@ -14284,6 +14290,8 @@ export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, h
     /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
     prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
     readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+    /** Optional single-transaction prepare + authoritative candidate read. */
+    prepareCandidate?: FulfillmentStorePort['prepareCandidate'];
     /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
     intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
     /** Selected native commerce composition adds its recorded-parcel admission fence. */
@@ -14802,6 +14810,15 @@ export interface ReconciliationResult {
     reason?: string;
     providerError?: FulfillmentOperationError;
 }
+export interface LocalFulfillmentReconciliationState {
+    status: string | null;
+    latestOccurredAt: string | null;
+    handedOverAt: string | null;
+    carrier?: {
+        carrierRef: string | null;
+        serviceRef: string | null;
+    } | null;
+}
 export declare function reconcileFulfillmentObservations(input: {
     /** Adapter/host maps the private page into typed readback, preserving unknowns. */
     readPage(input: {
@@ -14815,6 +14832,8 @@ export declare function reconcileFulfillmentObservations(input: {
         readLocalFulfillmentStatus(ref: string): Promise<string | null>;
         latestStatusOccurredAt(ref: string): Promise<string | null>;
         readHandedOverAt(ref: string): Promise<string | null>;
+        /** Optional single-query local snapshot per row; workers fall back to individual readers when absent. */
+        readLocalState?(ref: string): Promise<LocalFulfillmentReconciliationState | null>;
     };
     lifecycle: Pick<Ingress["lifecycle"], "recordStatusEvidence" | "effects" | "keys"> & {
         findDispatchRef(evidence: PollEvidence): Promise<DispatchRef | null>;
