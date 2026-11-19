@@ -885,8 +885,8 @@ transactions and exact-prefix/replay behavior remain.
 
 ### Sealed native catalog publication history
 
-Position 155 adds the
-[`catalog_publication` forward](../../db/platform/migrations/20261123150000_catalog_publication.sql).
+The [`catalog_publication` forward](../../db/platform/migrations/20261123150000_catalog_publication.sql)
+adds native publication history.
 The publication, SKU revisions, operator receipts, and candidate decisions are
 immutable retained history. The head holds the latest issue for each governed
 product. Native transfer carries all five tables and restores them through the
@@ -895,15 +895,23 @@ projection. A document enters publication by its exact reference and the
 opaque bytes of its original draft operation. Pointer capabilities are
 transaction-local and must be empty on capture.
 
-The publication trigger checks the exact document and draft evidence, immediate
-predecessor, roster overlay, issuance count and receipt. Work scales with the
-predecessor roster and this issue's SKU facts, with a sort to compare the resulting
-roster in canonical order. Each SKU insert checks one row and finds its parent
-by key. The ordinal and SKU keys make each issued slot unique. Receipt, head and
-pointer events look up their associated rows by key. A decision additionally
-verifies the bounded source draft. The same pinned triggers refuse updates and
-deletes of saved history without a lookup. The constraints run at commit or
-when the owner explicitly makes them immediate.
+The publication trigger checks the exact document and draft evidence, approval
+balance, immediate predecessor, roster overlay, issuance count, response size and
+receipt. The latest issue also checks live product and SKU projections, using the
+same comparison as a current read. Work scales with the predecessor roster, the
+issued SKU facts, and the indexed decisions for this candidate, with a sort to
+compare the resulting roster in canonical order. Each SKU insert checks its
+parent by key. The ordinal and SKU keys make each issued slot unique. A deferred
+foreign key from each publication to its primary SKU revision prevents independent
+truncation of SKU history. Receipt, head and pointer events look up their
+associated rows by key. An approval change uses the existing draft head to
+serialize with issuance. The pinned triggers refuse changes to saved history and
+retargeting a pointer authorization without a lookup. The constraints run at
+commit or when the owner explicitly makes them immediate.
+
+Exact reads bind the stored issue, document and original command result by key
+and verify their recorded values. A full page checks at most 100 SKU sizes and
+loads only the selected SKU revisions, up to the 8 MiB response limit.
 
 Apply the complete native chain before binding native publication reads.
 A managed implementation can use the same relations, composite keys and

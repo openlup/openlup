@@ -347,112 +347,11 @@ it("retains one document value and refuses a different value with the same recor
     await insertGraph(db, issue, { existingDocument: true });
   })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_document_invalid" });
 });
-
-it("refuses retargeting and consuming a pointer authorization in its original transaction", async () => {
-  const { issued, legacy } = await transaction(pool, async db => {
-    const issued = await graph(db, fixture()), legacy = await graph(db, fixture());
-    await insertGraph(db, issued);
-    await documentRow(db, legacy);
-    return { issued, legacy };
-  });
-  const alternate = randomUUID();
-  await pool.query(`INSERT INTO public.catalog_product_document_revisions
-    (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
-    VALUES($1,$2,2,'example:legacy','example:other','{}','example:other','{}',$3)`, [alternate, issued.productId, hash("alternate")]);
-  const error = await transaction(pool, async db => {
-    await db.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3)",
-      [legacy.productId, legacy.documentId, issued.fingerprint]);
-    await db.query("UPDATE public.catalog_publication_pointer_capabilities SET product_id=$1,revision_id=$2 WHERE product_id=$3",
-      [issued.productId, alternate, legacy.productId]);
-    await db.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [issued.productId, alternate]);
-  }).catch(error => error);
-  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_content_not_saved" });
-  expect((await pool.query("SELECT current_document_revision_id AS id FROM public.catalog_products WHERE id=$1", [issued.productId])).rows)
-    .toEqual([{ id: issued.documentId }]);
-});
-
-it("refuses an owner truncation that would reopen an issued SKU slot", async () => {
-  const issue = await transaction(pool, async db => {
-    const value = await graph(db, fixture());
-    await insertGraph(db, value);
-    return value;
-  });
-  await expect(transaction(pool, async db => {
-    await db.query("TRUNCATE public.catalog_sku_revisions");
-    throw Error("Truncation was accepted");
-  })).rejects.toMatchObject({ code: "0A000", detail: expect.stringContaining("catalog_publications") });
-  expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
-});
-
-it("binds every issued SKU to the exact publication draft even when another draft source is valid", async () => {
-  await expect(transaction(pool, async db => {
-    const data = fixture();
-    const first = await graph(db, data);
-    await insertGraph(db, first);
-    const second = await graph(db, data, first.head);
-    second.facts.source = first.source;
-    await insertGraph(db, second);
-  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_sku_revision_invalid" });
-});
-
-it("refuses issuance after a receipted revocation and permits an active approval", async () => {
-  const data = fixture();
-  await expect(transaction(pool, async db => {
-    const issue = await graph(db, data);
-    const { rows: [times] } = await db.query(`SELECT
-      to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '1 second','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revoked,
-      to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '2 seconds','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed`, [issue.time]);
-    const decisionKey = "revoke:1";
-    const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
-    const revoked = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])), time: times.revoked };
-    await decisionReceipt(db, revoked);
-    await decisionRow(db, revoked);
-    await insertGraph(db, { ...issue, time: times.committed }, { approvalTime: issue.time });
-  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_candidate_invalid" });
-  await transaction(pool, async db => insertGraph(db, await graph(db, data)));
-});
-
-it("refuses a backdated revocation that would change a saved publication's approval", async () => {
-  const issue = await transaction(pool, async db => {
-    const value = await graph(db, fixture());
-    await insertGraph(db, value);
-    return value;
-  });
-  const decisionKey = "revoke:1";
-  const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
-  const revoke = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])) };
-  await expect(transaction(pool, async db => {
-    await decisionReceipt(db, revoke);
-    await decisionRow(db, revoke);
-  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_candidate_invalid" });
-  expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
-});
-
-it("cannot issue against an approval snapshot taken before a concurrent revocation", async () => {
-  const issue = await transaction(pool, db => graph(db, fixture()));
-  const decisionKey = "revoke:1";
-  const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
-  const revoke = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])) };
-  const publisher = await pool.connect();
-  try {
-    await publisher.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
-    await publisher.query("SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1", [issue.draftId]);
-    await transaction(pool, async db => {
-      await decisionReceipt(db, revoke);
-      await decisionRow(db, revoke);
-    });
-    await insertGraph(publisher, issue);
-    await expect(publisher.query("COMMIT")).rejects.toMatchObject({ code: "40001" });
-  } finally {
-    await publisher.query("ROLLBACK");
-    publisher.release();
-  }
-});
-
 it.each([
   ["unknown product field", { extraField: true }, "publication_details_invalid"],
   ["axes", { axes: ["Size"] }, "publication_axes_invalid"],
   ["attribute type", { attributes: { capacity: 5 } }, "publication_attributes_invalid"],
+  ["presentation carrier", { presentation: { document: { title: "Sample" } } }, "publication_content_invalid"],
 ] as const)("refuses %s in both the product decoder and admission", async (_label, change, reason) => {
   const error = await transaction(pool, async db => {
     const issue = await graph(db, fixture());
@@ -471,6 +370,8 @@ it.each([
   ["unsupported purchase mode", { requestedModes: [{ skuCode: "item", modes: ["weekly"] }] }, "one-time purchase or subscription"],
   ["duplicate SKU intents", { offerMemberships: Array(2).fill({ skuCode: "item", offerVersion: "example:offer", admitted: true }) }, "once per SKU"],
   ["unknown SKU intent field", { publicationSkus: [{ skuCode: "item", title: "Item", minQuantity: 1, isAddon: false, facts: {}, extra: true }] }, "title, order minimum"],
+  ["nested document in presentation", { presentation: { document: { title: "Sample" } } }, "presentation fields"],
+  ["nested facts in an intent", { publicationSkus: [{ skuCode: "item", title: "Item", minQuantity: 1, isAddon: false, facts: { document: {} } }] }, "valid facts"],
 ] as const)("refuses %s in both content decoding and admission", async (_label, change, repair) => {
   const error = await transaction(pool, async db => {
     const issue = await graph(db, fixture());
@@ -543,6 +444,107 @@ it.each([0, 1])("checks the real singleton page byte boundary with %i extra byte
     expect(Buffer.byteLength(json(page))).toBe(CATALOG_PUBLICATION_LIMITS.pageBytes);
   }
 }, 60_000);
+
+it("binds every issued SKU to the exact publication draft even when another draft source is valid", async () => {
+  await expect(transaction(pool, async db => {
+    const data = fixture();
+    const first = await graph(db, data);
+    await insertGraph(db, first);
+    const second = await graph(db, data, first.head);
+    second.facts.source = first.source;
+    await insertGraph(db, second);
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_sku_revision_invalid" });
+});
+
+it("refuses issuance after a receipted revocation and permits an active approval", async () => {
+  const data = fixture();
+  await expect(transaction(pool, async db => {
+    const issue = await graph(db, data);
+    const { rows: [times] } = await db.query(`SELECT
+      to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '1 second','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revoked,
+      to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '2 seconds','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed`, [issue.time]);
+    const decisionKey = "revoke:1";
+    const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
+    const revoked = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])), time: times.revoked };
+    await decisionReceipt(db, revoked);
+    await decisionRow(db, revoked);
+    await insertGraph(db, { ...issue, time: times.committed }, { approvalTime: issue.time });
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_candidate_invalid" });
+  await transaction(pool, async db => insertGraph(db, await graph(db, data)));
+});
+
+it("refuses a backdated revocation that would change a saved publication's approval", async () => {
+  const issue = await transaction(pool, async db => {
+    const value = await graph(db, fixture());
+    await insertGraph(db, value);
+    return value;
+  });
+  const decisionKey = "revoke:1";
+  const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
+  const revoke = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])) };
+  await expect(transaction(pool, async db => {
+    await decisionReceipt(db, revoke);
+    await decisionRow(db, revoke);
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_candidate_invalid" });
+  expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
+});
+
+it("cannot issue against an approval snapshot taken before a concurrent revocation", async () => {
+  const issue = await transaction(pool, db => graph(db, fixture()));
+  const decisionKey = "revoke:1";
+  const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
+  const revoke = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])) };
+  const publisher = await pool.connect();
+  try {
+    await publisher.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await publisher.query("SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1", [issue.draftId]);
+    await transaction(pool, async db => {
+      await decisionReceipt(db, revoke);
+      await decisionRow(db, revoke);
+    });
+    await insertGraph(publisher, issue);
+    await expect(publisher.query("COMMIT")).rejects.toMatchObject({ code: "40001" });
+  } finally {
+    await publisher.query("ROLLBACK");
+    publisher.release();
+  }
+});
+
+it("refuses retargeting and consuming a pointer authorization in its original transaction", async () => {
+  const { issued, legacy } = await transaction(pool, async db => {
+    const issued = await graph(db, fixture()), legacy = await graph(db, fixture());
+    await insertGraph(db, issued);
+    await documentRow(db, legacy);
+    return { issued, legacy };
+  });
+  const alternate = randomUUID();
+  await pool.query(`INSERT INTO public.catalog_product_document_revisions
+    (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
+    VALUES($1,$2,2,'example:legacy','example:other','{}','example:other','{}',$3)`, [alternate, issued.productId, hash("alternate")]);
+  const error = await transaction(pool, async db => {
+    await db.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3)",
+      [legacy.productId, legacy.documentId, issued.fingerprint]);
+    await db.query("UPDATE public.catalog_publication_pointer_capabilities SET product_id=$1,revision_id=$2 WHERE product_id=$3",
+      [issued.productId, alternate, legacy.productId]);
+    await db.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [issued.productId, alternate]);
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_content_not_saved" });
+  expect((await pool.query("SELECT current_document_revision_id AS id FROM public.catalog_products WHERE id=$1", [issued.productId])).rows)
+    .toEqual([{ id: issued.documentId }]);
+});
+
+it("refuses an owner truncation that would reopen an issued SKU slot", async () => {
+  const issue = await transaction(pool, async db => {
+    const value = await graph(db, fixture());
+    await insertGraph(db, value);
+    return value;
+  });
+  await expect(transaction(pool, async db => {
+    await db.query("TRUNCATE public.catalog_sku_revisions");
+    throw Error("Truncation was accepted");
+  })).rejects.toMatchObject({ code: "0A000", detail: expect.stringContaining("catalog_publications") });
+  expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
+});
 
 it.each([
   ["product", "UPDATE public.catalog_products SET name='Drift' WHERE id=$1", "productId"],

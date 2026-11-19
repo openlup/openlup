@@ -19,7 +19,8 @@ export interface CatalogPublishedProduct {
   id: string; slug: string; name: string; status: "draft" | "active" | "archived";
   type: CatalogProductTypeRef; axes: string[]; attributes: Record<string, CatalogAttributeValue>;
   primarySkuId: string | null; document: CatalogDocumentRevisionRef | null;
-  presentation: CatalogPublicationFacts | null; source: CatalogDraftClaimV3; content: Omit<CatalogDraftSharedContentV3, "document">;
+  presentation: CatalogPublishedPresentation | null; source: CatalogDraftClaimV3;
+  content: Omit<CatalogDraftSharedContentV3, "document" | "presentation"> & { presentation: CatalogPublishedPresentation };
 }
 /** @experimental */
 export interface CatalogPublishedSku {
@@ -112,6 +113,19 @@ const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
 const text = (max: number, min = 1) => z.string().min(min).refine(value => value.length <= max);
 const ref = text(240).refine(value => value.trim() === value);
 const facts = z.record(z.string(), z.json());
+const locale = z.string().min(2).max(35).regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u);
+const localized = z.record(locale, text(500));
+const presentation = z.object({
+  title: text(500).optional(),
+  routePath: z.record(locale, text(500).refine(value => value.startsWith("/"))).optional(),
+  shortName: localized.optional(),
+  advertisedWeightsG: z.array(z.number().int().positive()).max(500).optional(),
+  mediaRef: ref.optional(),
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+}).strict();
+type CatalogPublishedPresentation = z.infer<typeof presentation>;
+const scalarFacts = z.record(code, z.union([z.boolean(), z.number(), text(2048, 0), z.null()]));
+
 const attribute = z.union([z.string(), z.boolean(), catalogQuantitySchema,
   z.object({ namespace: catalogNamespacedKeySchema, id: z.string().min(1).max(120) }).strict(), z.record(z.string(), z.string())]);
 const attributes = z.record(z.string(), z.union([attribute, z.array(attribute)]));
@@ -135,12 +149,12 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
 }) as z.ZodType<CatalogPublishedSku>;
 const catalogPublishedContentSchema = z.object({
-  schemaVersion: z.literal(1), catalogAction: z.enum(["create", "revise"]), presentation: facts,
+  schemaVersion: z.literal(1), catalogAction: z.enum(["create", "revise"]), presentation,
   offerMemberships: z.array(z.object({ skuCode: code, offerVersion: ref, admitted: z.boolean() }).strict()).max(10_000),
   requestedModes: z.array(z.object({ skuCode: code, modes: z.array(z.enum(["one_time", "subscription"])).max(2)
     .refine(modes => new Set(modes).size === modes.length) }).strict()).max(10_000),
   publicationSkus: z.array(z.object({ skuCode: code, title: text(500).refine(text => text.trim() === text),
-    minQuantity: revision, isAddon: z.boolean(), facts }).strict()).max(10_000),
+    minQuantity: revision, isAddon: z.boolean(), facts: scalarFacts }).strict()).max(10_000),
 }).strict().superRefine((content, context) => {
   for (const key of ["offerMemberships", "requestedModes", "publicationSkus"] as const) {
     const codes = content[key].map(row => row.skuCode);
@@ -151,7 +165,7 @@ const catalogPublishedContentSchema = z.object({
 export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
   id, slug: z.string().min(1), name: text(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
-  document: catalogDocumentRevisionRefSchema.extend({ schemaId: ref, documentRef: ref, sourceRef: ref }).nullable(), presentation: facts.nullable(), source: claimSchema,
+  document: catalogDocumentRevisionRefSchema.extend({ schemaId: ref, documentRef: ref, sourceRef: ref }).nullable(), presentation: presentation.nullable(), source: claimSchema,
   content: catalogPublishedContentSchema,
 }).strict() as z.ZodType<CatalogPublishedProduct>;
 export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2> = z.object({

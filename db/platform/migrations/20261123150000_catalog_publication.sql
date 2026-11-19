@@ -324,10 +324,50 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS 
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_attributes_valid(jsonb) FROM PUBLIC;
 
+CREATE FUNCTION public.catalog_publication_presentation_valid(p_value jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ IF jsonb_typeof(p_value) IS DISTINCT FROM 'object'
+   OR p_value - ARRAY['title','routePath','shortName','advertisedWeightsG','mediaRef','accent'] <> '{}'::jsonb THEN RETURN false; END IF;
+ IF p_value ? 'title' AND public.catalog_publication_text_valid(p_value->'title',500,false) IS DISTINCT FROM true
+   OR p_value ? 'mediaRef' AND public.catalog_publication_text_valid(p_value->'mediaRef',240,true) IS DISTINCT FROM true
+   OR p_value ? 'accent' AND (jsonb_typeof(p_value->'accent')<>'string' OR p_value->>'accent' !~ '^#[0-9a-fA-F]{6}$') THEN RETURN false; END IF;
+ IF p_value ? 'advertisedWeightsG' THEN
+  IF jsonb_typeof(p_value->'advertisedWeightsG')<>'array' THEN RETURN false; END IF;
+  IF jsonb_array_length(p_value->'advertisedWeightsG')>500 OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_value->'advertisedWeightsG') item(value)
+     WHERE (CASE WHEN jsonb_typeof(value)='number' AND value::text ~ '^[1-9][0-9]*$'
+       THEN value::numeric<=9007199254740991 ELSE false END) IS DISTINCT FROM true) THEN RETURN false; END IF;
+ END IF;
+ IF EXISTS (SELECT 1 FROM jsonb_each(p_value) field WHERE field.key IN ('shortName','routePath')
+   AND CASE WHEN jsonb_typeof(field.value)<>'object' THEN true ELSE EXISTS (
+     SELECT 1 FROM jsonb_each(field.value) localized
+     WHERE localized.key !~ '^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,}$' OR length(localized.key)>35
+      OR public.catalog_publication_text_valid(localized.value,500,false) IS DISTINCT FROM true
+      OR field.key='routePath' AND left(localized.value #>> '{}',1)<>'/'
+   ) END) THEN RETURN false; END IF;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_presentation_valid(jsonb) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_scalar_facts_valid(p_value jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT CASE WHEN jsonb_typeof(p_value)='object' THEN NOT EXISTS (
+   SELECT 1 FROM jsonb_each(p_value) field
+    WHERE field.key !~ '^[A-Za-z0-9._:-]{1,160}$'
+      OR jsonb_typeof(field.value) IN ('object','array')
+      OR jsonb_typeof(field.value)='string' AND field.value<>to_jsonb(''::text)
+         AND public.catalog_publication_text_valid(field.value,2048,false) IS DISTINCT FROM true
+ ) ELSE false END
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_scalar_facts_valid(jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_publication_content_problem(p_content jsonb) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE field text; items jsonb;
 BEGIN
+ IF NOT public.catalog_publication_presentation_valid(p_content->'presentation') THEN RETURN 'presentation'; END IF;
  FOREACH field IN ARRAY ARRAY['offerMemberships','requestedModes','publicationSkus'] LOOP
   items := p_content->field;
   IF jsonb_array_length(items)>10000
@@ -350,7 +390,7 @@ BEGIN
          AND public.catalog_publication_text_valid(item->'title',500,true)
          AND CASE WHEN jsonb_typeof(item->'minQuantity')='number' AND item->>'minQuantity' ~ '^[1-9][0-9]{0,9}$'
            THEN (item->>'minQuantity')::numeric<=2147483647 ELSE false END
-         AND jsonb_typeof(item->'isAddon')='boolean' AND jsonb_typeof(item->'facts')='object'
+         AND jsonb_typeof(item->'isAddon')='boolean' AND public.catalog_publication_scalar_facts_valid(item->'facts')
       END) IS DISTINCT FROM true
    ) THEN RETURN field; END IF;
  END LOOP;
@@ -513,7 +553,7 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_attributes_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_attributes_invalid';
  END IF;
  content_problem := public.catalog_publication_content_problem(product->'content');
- IF jsonb_typeof(product->'presentation') NOT IN ('object','null') THEN
+ IF product->'presentation'<>'null'::jsonb AND NOT public.catalog_publication_presentation_valid(product->'presentation') THEN
   content_problem := 'presentation';
  END IF;
  IF content_problem IS NOT NULL THEN

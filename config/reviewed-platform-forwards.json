@@ -5694,6 +5694,14 @@
             "searchPath": "pg_catalog, public"
           },
           {
+            "signature": "public.catalog_publication_presentation_valid(jsonb)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_publication_scalar_facts_valid(jsonb)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
             "signature": "public.catalog_publication_content_problem(jsonb)",
             "searchPath": "pg_catalog, public"
           },
@@ -8105,7 +8113,7 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "20940641c2cfd2b10fac8d1dc539104dc8d9f3dd9bcbed5030cd59f215fc4fe0",
+      "sha256": "d99980e0ee7ea452f75d3850bbbe5ab7928ba787b25efb8a7378a65d464cf4a8",
       "functions": [
         {
           "signature": "public.catalog_publication_pointer_fence()",
@@ -8158,9 +8166,19 @@
           "afterSha256": "6973613e3cfa5fda74fac0962857ff030954de5afe77182b2f40c1ea401d2c1d"
         },
         {
+          "signature": "public.catalog_publication_presentation_valid(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "5d6dc660039e838fb18ab6503ef6dcd04dd9c0b8134d9544df6ccc0ee34d5b41"
+        },
+        {
+          "signature": "public.catalog_publication_scalar_facts_valid(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "e754fa7067a613bd5c610cde0028580c24c502a39b3486dcc32a15714484264c"
+        },
+        {
           "signature": "public.catalog_publication_content_problem(jsonb)",
           "beforeSha256": null,
-          "afterSha256": "49f7a9d6d2a2d7a1c0c0af1f98f65757ace1d08bcab30849828984b10538a594"
+          "afterSha256": "a68e7ec8773eca06277fd86c25707fdb95a0aab9a928cc4171a92dd880d241b4"
         },
         {
           "signature": "public.catalog_publication_sku_facts(public.catalog_sku_revisions)",
@@ -8170,7 +8188,7 @@
         {
           "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "5b20c12907be18f2be203f3e1326a207b0d44b326691e14f3b6530f04c06fe5b"
+          "afterSha256": "69226f235af0481c69f7dd405c90e88ed8b97179f3bc1a04a9dfd58cd214296d"
         },
         {
           "signature": "public.catalog_publication_sku_admit()",
