@@ -44,7 +44,6 @@ const CANONICAL_DOCUMENT_USES = new Map<string, readonly string[]>([
     ...PUBLICATION_PAYLOAD_USES.get(PUBLICATION_MIGRATION)!,
     "IF NEW.canonical_text IS NULL THEN RETURN NEW; END IF;",
     "IF encode(sha256(convert_to(NEW.canonical_text,'UTF8')),'hex') <> NEW.digest THEN",
-    "IF jsonb_typeof(NEW.canonical_text::jsonb) IS DISTINCT FROM 'object' THEN",
   ]],
   [PUBLICATION_WRITER, [
     ...PUBLICATION_PAYLOAD_USES.get(PUBLICATION_WRITER)!,
@@ -59,28 +58,35 @@ const CANONICAL_DOCUMENT_USES = new Map<string, readonly string[]>([
     '&& typeof row.canonical_text === "string" && createHash("sha256").update(row.canonical_text).digest("hex") === row.digest,',
   ]],
   [PUBLICATION_COMPILER, [
-    'reference: z.infer<typeof catalogDocumentRevisionRefSchema>; canonicalText: string;',
-    'decodeDocument(canonicalText: string): unknown;',
-    'identifyDocument(document: unknown): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number; name?: string };',
-    'function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument["reference"], "digest" | "documentRef" | "revisionNo">',
-    'need(createHash("sha256").update(canonicalText).digest("hex") === reference.digest, "catalog_publication_v3_document_digest_mismatch");',
-    'let document: unknown, identity: ReturnType<CatalogPublicationRules["identifyDocument"]>, canonical: string;',
-    'document = rules.decodeDocument(canonicalText);',
-    'identity = rules.identifyDocument(document);',
-    'canonical = rules.canonicalizeDocument(document);',
-    'need(canonical === canonicalText, "catalog_publication_v3_document_not_canonical");',
-    'return document;',
-    'const document = checkedDocument(operation.canonicalText, { ...operation, schemaId }, slug, rules);',
-    'return { reference, canonicalText: operation.canonicalText, provenance };',
-    'try { name = rules.identifyDocument(payload.product.sharedContent.document)?.name; }',
-    'need(equal(document, source.payload.product.sharedContent.document), "catalog_publication_v3_document_invalid");',
-    'checkedDocument(document.canonicalText, document.reference, slug, input.rules);',
-    'try { return input.rules.decodeDocument(document.canonicalText); }',
-    'function currentDocumentValue() {',
-    'need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");',
-    'need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");',
-    'if (payload.product.sharedContent.document !== undefined) need(equal(payload.product.sharedContent.document, currentDocumentValue()),',
-    'need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), sku.facts),',
+    "reference: z.infer<typeof catalogDocumentRevisionRefSchema>; canonicalText: string;",
+    "inspectDocument(canonicalText: string): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number;",
+    "identifyDocument(document: unknown): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number; name?: string };",
+    "deriveSkuFacts(canonicalText: string, sku: CatalogPublishedSku): CatalogPublicationFacts;",
+    "function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument[\"reference\"], \"digest\" | \"documentRef\" | \"revisionNo\">",
+    "need(createHash(\"sha256\").update(canonicalText).digest(\"hex\") === reference.digest, \"catalog_publication_v3_document_digest_mismatch\");",
+    "let documentInfo: ReturnType<CatalogPublicationRules[\"inspectDocument\"]>;",
+    "documentInfo = rules.inspectDocument(canonicalText);",
+    "need(documentInfo?.productSlug === slug && documentInfo.documentRef === reference.documentRef && documentInfo.revisionNo === reference.revisionNo",
+    "&& (reference.schemaId === undefined || documentInfo.schemaId === reference.schemaId), \"catalog_publication_v3_document_invalid\");",
+    "need(documentInfo.canonicallyEncoded === true, \"catalog_publication_v3_document_not_canonical\");",
+    "return documentInfo.contentDigest;",
+    "function matchesAuthoredDocument(document: unknown, canonicalText: string, contentDigest: string, rules: CatalogPublicationRules) {",
+    "let canonical: string;",
+    "canonical = rules.canonicalizeDocument(document);",
+    "return canonical === canonicalText && publicationDigest(document) === contentDigest;",
+    "function documentSkuFacts(document: CatalogPublicationDocument, sku: CatalogPublishedSku, rules: CatalogPublicationRules): CatalogPublicationFacts {",
+    "return rules.deriveSkuFacts(document.canonicalText, sku);",
+    "const contentDigest = checkedDocument(operation.canonicalText, { ...operation, schemaId }, slug, rules);",
+    "need(matchesAuthoredDocument(source.payload.product.sharedContent.document, operation.canonicalText, contentDigest, rules),",
+    "return { reference, canonicalText: operation.canonicalText, provenance };",
+    "try { name = rules.identifyDocument(payload.product.sharedContent.document)?.name; }",
+    "checkedDocument(document.canonicalText, document.reference, slug, input.rules);",
+    "need(equal(documentSkuFacts(currentDocument(), sku, input.rules), sku.facts), \"catalog_publication_v3_compile_derived_facts_mismatch\");",
+    "need(equal(documentSkuFacts(currentDocument(), sku, input.rules), operation.facts), \"catalog_publication_v3_compile_derived_facts_mismatch\");",
+    "if (payload.product.sharedContent.document !== undefined) {",
+    "need(matchesAuthoredDocument(payload.product.sharedContent.document, document.canonicalText,",
+    "checkedDocument(document.canonicalText, document.reference, slug, input.rules), input.rules), \"catalog_publication_document_source_mismatch\");",
+    "need(equal(documentSkuFacts(currentDocument(), sku, input.rules), sku.facts),",
   ]],
   ["packages/platform/src/catalog/contracts/draftV3.ts", [
     "documentRef: string; sourceRef: string; canonicalText: string; digest: string; provenance: CatalogDraftProvenanceV3 }",
@@ -92,7 +98,7 @@ const CANONICAL_DOCUMENT_USES = new Map<string, readonly string[]>([
     "WHEN 'register_document_revision' THEN ARRAY['op','productSlug','revisionId','revisionNo','documentRef','sourceRef','canonicalText','digest','provenance']",
   ]],
 ]);
-const CANONICAL_DOCUMENT = /\b(?:canonical_text|canonicalText|decodeDocument|identifyDocument|currentDocumentValue)\b|\bsharedContent\s*\??\s*(?:\.\s*document\b|\[\s*["']document["']\s*\])/;
+const CANONICAL_DOCUMENT = /\b(?:canonical_text|canonicalText|decodeDocument|inspectDocument|identifyDocument|deriveSkuFacts|documentInfo|matchesAuthoredDocument|documentSkuFacts)\b|\bsharedContent\s*\??\s*(?:\.\s*document\b|\[\s*["']document["']\s*\])/;
 const DOCUMENT_METHOD = /\b(?:parse|safeParse|validate|canonicalize)(?:Product)?Document(?:V1)?\b/;
 const PAYLOAD_COLUMN = String.raw`\b(?:document_payload|revision_document_payload)\b`;
 const SQL_DOCUMENT_OPERATOR = String.raw`(?:->>?|#>>?|@>|<@|\?)`;
@@ -188,16 +194,35 @@ function readsUnapprovedCanonicalDocument(file: SourceFile, lines: readonly stri
   return new Set(uses).size !== uses.length || uses.some(line => !allowed.includes(line));
 }
 
+const SQL_PROJECTION_TOKENS = /"(?:[^"]|"")*"|\b(?:select|from|returning)\b|[()]/gi;
+
+function projectionBody(projection: string): string {
+  const modifier = /^\s*(?:ALL\b|DISTINCT\b(?:\s+ON\s*\()?)\s*/i.exec(projection)?.[0] ?? "";
+  let body = projection.slice(modifier.length);
+  if (modifier.trimEnd().endsWith("(")) {
+    let depth = 1;
+    for (const { 0: token, index } of body.matchAll(SQL_PROJECTION_TOKENS)) {
+      if (token === "(") depth++;
+      if (token === ")" && --depth === 0) {
+        body = body.slice(index + 1);
+        break;
+      }
+    }
+  }
+  return body;
+}
+
 function readsWholeDocumentRow(source: string): boolean {
   return source.split(/[`;]/).some(statement => {
-    statement = statement.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\//g, " ");
+    statement = statement.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|\bONLY\b/gi,
+      token => token.startsWith('"') ? token : " ");
     if (/^\s*table\s+(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions\b/i.test(statement)) return true;
-    const tables = [...statement.matchAll(/(?:\b(?:from|join|update|into)\s+|,\s*)(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s+(?:as\s+)?(?:"([^"]+)"|([a-z_][\w]*)\b))?/gi)];
+    const tables = [...statement.matchAll(/(?:\b(?:from|join|update|into)\s+|,\s*)(?:\(\s*)?(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s*\))?(?:\s+(?:as\s+)?(?:"([^"]+)"|([a-z_][\w]*)\b))?/gi)];
     if (!tables.length) return false;
     const projections = [];
     const selects = new Map<number, number>();
     let depth = 0;
-    for (const { 0: token, index } of statement.matchAll(/"(?:[^"]|"")*"|\b(?:select|from|returning)\b|[()]/gi)) {
+    for (const { 0: token, index } of statement.matchAll(SQL_PROJECTION_TOKENS)) {
       switch (token.toLowerCase()) {
         case "(": depth++; break;
         case ")": selects.delete(depth--); break;
@@ -205,7 +230,7 @@ function readsWholeDocumentRow(source: string): boolean {
         case "from": {
           if (/\bIS\s+(?:NOT\s+)?DISTINCT\s*$/i.test(statement.slice(0, index))) break;
           const start = selects.get(depth);
-          if (start !== undefined) projections.push(statement.slice(start, index).replace(/^\s*(?:ALL\b|DISTINCT\b(?:\s+ON\s*\([^)]*\))?)/i, ""));
+          if (start !== undefined) projections.push(projectionBody(statement.slice(start, index)));
           selects.delete(depth);
           break;
         }
@@ -273,7 +298,7 @@ function violations(files: readonly SourceFile[]): string[] {
     const publicationPayloadUses = PUBLICATION_PAYLOAD_USES.get(file.path);
     const opaquePublication = publicationPayloadUses !== undefined && exactUses(payloadLines.map(line => line.trim()), publicationPayloadUses);
     const opaqueStorage = file.path === PORTABLE_MIGRATION
-      && payloadLines.every((line) => /^\s*document_payload jsonb NOT NULL,\s*$/.test(line));
+      && exactUses(payloadLines.map(line => line.trim()), ["document_payload jsonb NOT NULL,"]);
     if (!isTestSource && (
       (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead && !opaquePublication)
       || (file.path === QUOTE_READER && /\brevision_document_payload\b/.test(file.source) && !opaqueQuoteRead)
@@ -365,6 +390,9 @@ describe("portable catalog document boundary", () => {
     "SELECT jsonb_build_object('revision', d) FROM public.catalog_product_document_revisions d;",
     "SELECT DISTINCT ON (d.id) d FROM public.catalog_product_document_revisions d;",
     "SELECT DISTINCT ON (d.id) * FROM public.catalog_product_document_revisions d;",
+    "SELECT DISTINCT ON (coalesce(d.id, (NULL::uuid))) * FROM public.catalog_product_document_revisions d;",
+    "SELECT d.* FROM ONLY public.catalog_product_document_revisions d;",
+    "SELECT to_jsonb(d) FROM products p JOIN ONLY (public.catalog_product_document_revisions) d ON d.product_id=p.id;",
     'SELECT d FROM "public"."catalog_product_document_revisions" AS "d";',
     'SELECT "select" FROM public.catalog_product_document_revisions AS "select";',
     'SELECT ROW("saved revision") FROM public.catalog_product_document_revisions AS "saved revision";',
@@ -392,9 +420,16 @@ describe("portable catalog document boundary", () => {
     ["installed handoff (field extraction)", PUBLICATION_COMPILER, "const name = payload.product.sharedContent.document?.name;"],
     ["installed handoff (canonicalization result alias)", PUBLICATION_COMPILER, "const alias = canonical; JSON.parse(alias);"],
     ["installed handoff (decoded document alias)", PUBLICATION_COMPILER, "const alias = document; JSON.parse(alias);"],
+    ["installed handoff (field on handed-back value)", PUBLICATION_COMPILER,
+      "const name = (documentInfo as { document: { name: string } }).document.name;"],
     ["object envelope (field validation)", PUBLICATION_MIGRATION, "IF jsonb_typeof(NEW.canonical_text::jsonb->'name') IS DISTINCT FROM 'string' THEN"],
   ])("refuses a widened canonical document %s", (_kind, path, source) => {
     expect(violations([{ path, source }])).toContain(`${path}: unapproved canonical document operation`);
+  });
+
+  it("refuses a raw payload projection in the legacy storage owner", () => {
+    const source = "document_payload jsonb NOT NULL,\nSELECT document_payload FROM public.catalog_product_document_revisions;";
+    expect(violations([{ path: PORTABLE_MIGRATION, source }])).toContain(`${PORTABLE_MIGRATION}: document payload must remain opaque SQL storage only`);
   });
 
   it.each([...CANONICAL_DOCUMENT_USES].flatMap(([path, uses]) => uses.map(use => ({ path, use }))))(

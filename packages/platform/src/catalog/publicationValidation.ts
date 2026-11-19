@@ -87,13 +87,14 @@ export interface CatalogPublicationRules {
   /** Rejects a membership effect against the SKU's ordered prefix, including a no-op on a frozen roster. */
   validateMembershipChange?(sku: Readonly<CatalogPublishedSku>, change: { offerVersion: string; admitted: boolean }): boolean;
   canonicalizeDocument(document: unknown): string;
-  /** Decodes stored document bytes using the installed document rules. */
-  decodeDocument(canonicalText: string): unknown;
+  /** Validates stored bytes and returns only their identity, canonicality and value digest. */
+  inspectDocument(canonicalText: string): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number;
+    canonicallyEncoded: boolean; contentDigest: string };
   /** Reads identity using the installed document's schema. */
   identifyDocument(document: unknown): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number; name?: string };
   /** Optional installed category limit, applied to exactly converted integer grams. */
   validateSkuAmounts?(sku: { code: string; netGrams: string }): boolean;
-  deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
+  deriveSkuFacts(canonicalText: string, sku: CatalogPublishedSku): CatalogPublicationFacts;
   classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
     beforeProduct: CatalogPublishedProduct; afterProduct: CatalogPublishedProduct;
     beforeDocument: CatalogPublicationDocument | null; afterDocument: CatalogPublicationDocument;
@@ -271,16 +272,24 @@ function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicati
   & { schemaId?: string | undefined },
   slug: string, rules: CatalogPublicationRules) {
   need(createHash("sha256").update(canonicalText).digest("hex") === reference.digest, "catalog_publication_v3_document_digest_mismatch");
-  let document: unknown, identity: ReturnType<CatalogPublicationRules["identifyDocument"]>, canonical: string;
+  let documentInfo: ReturnType<CatalogPublicationRules["inspectDocument"]>;
   try {
-    document = rules.decodeDocument(canonicalText);
-    identity = rules.identifyDocument(document);
-    need(identity?.productSlug === slug && identity.documentRef === reference.documentRef && identity.revisionNo === reference.revisionNo
-      && (reference.schemaId === undefined || identity.schemaId === reference.schemaId), "catalog_publication_v3_document_invalid");
-    canonical = rules.canonicalizeDocument(document);
+    documentInfo = rules.inspectDocument(canonicalText);
+    need(documentInfo?.productSlug === slug && documentInfo.documentRef === reference.documentRef && documentInfo.revisionNo === reference.revisionNo
+      && (reference.schemaId === undefined || documentInfo.schemaId === reference.schemaId), "catalog_publication_v3_document_invalid");
   } catch { return publicationRefuse("catalog_publication_v3_document_invalid"); }
-  need(canonical === canonicalText, "catalog_publication_v3_document_not_canonical");
-  return document;
+  need(documentInfo.canonicallyEncoded === true, "catalog_publication_v3_document_not_canonical");
+  return documentInfo.contentDigest;
+}
+function matchesAuthoredDocument(document: unknown, canonicalText: string, contentDigest: string, rules: CatalogPublicationRules) {
+  let canonical: string;
+  try {
+    canonical = rules.canonicalizeDocument(document);
+  } catch { return false; }
+  return canonical === canonicalText && publicationDigest(document) === contentDigest;
+}
+function documentSkuFacts(document: CatalogPublicationDocument, sku: CatalogPublishedSku, rules: CatalogPublicationRules): CatalogPublicationFacts {
+  return rules.deriveSkuFacts(document.canonicalText, sku);
 }
 type PublicationSourceInput = Pick<CatalogPublicationCompileInput, "record" | "payload" | "retainedSources" | "rules">;
 type PublicationOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
@@ -354,13 +363,14 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
     const source = sources.find(source => source.draftId === provenance.draftId && source.revision === provenance.draftRevision
       && source.commandKey === provenance.draftCommandKey && source.fingerprint === provenance.draftFingerprint);
     const schemaId = source?.payload.schemaVersion === 3 ? source.payload.product.documentRevision?.schemaId : undefined;
-    const document = checkedDocument(operation.canonicalText, { ...operation, schemaId }, slug, rules);
+    const contentDigest = checkedDocument(operation.canonicalText, { ...operation, schemaId }, slug, rules);
     if (source?.payload.schemaVersion !== 3 || source.productId !== payload.product.id) return publicationRefuse("catalog_publication_document_source_missing");
     const reference = source.payload.product.documentRevision;
     if (!reference || reference.id !== operation.revisionId || reference.revisionNo !== operation.revisionNo
       || reference.documentRef !== operation.documentRef || reference.sourceRef !== operation.sourceRef || reference.digest !== operation.digest)
       return publicationRefuse("catalog_publication_document_source_mismatch");
-    need(equal(document, source.payload.product.sharedContent.document), "catalog_publication_v3_document_invalid");
+    need(matchesAuthoredDocument(source.payload.product.sharedContent.document, operation.canonicalText, contentDigest, rules),
+      "catalog_publication_v3_document_invalid");
     return { reference, canonicalText: operation.canonicalText, provenance };
   }
   function productOperation(operation: Extract<PublicationOperation, { productSlug: string }>) {
@@ -502,11 +512,6 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
   const knownSku = (code: string) => prefixSku(skus, code);
   function documentAt(no: number): CatalogPublicationDocument { return documents.find(document => document.reference.revisionNo === no) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }
   function currentDocument(): CatalogPublicationDocument { return documents.find(document => document.reference.id === knownProduct().document?.id) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }
-  function currentDocumentValue() {
-    const document = currentDocument();
-    try { return input.rules.decodeDocument(document.canonicalText); }
-    catch { return publicationRefuse("catalog_publication_v3_document_invalid"); }
-  }
   let activation = false;
   for (const operation of payload.publication.operations) {
     if ("productSlug" in operation) need(operation.productSlug === slug, "catalog_publication_scope_expansion");
@@ -541,7 +546,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
       need(knownProduct().document?.revisionNo === operation.documentRevisionNo
         && equal(source.payload.product.documentRevision, knownProduct().document), "catalog_publication_v3_compile_document_stale");
       existingCombinations.add(identity);
-      need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
+      need(equal(documentSkuFacts(currentDocument(), sku, input.rules), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
       skus.set(sku.code, sku); created.add(sku.code);
     } else if (operation.op === "create_identifier") {
       const sku = knownSku(operation.skuCode);
@@ -596,7 +601,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
       const original = originalById.get(sku.id);
       assertDerivedSource(operation, original, authoredDocument?.revisionNo);
       need(knownProduct().document?.revisionNo === operation.documentRevisionNo, "catalog_publication_derived_source_mismatch");
-      need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
+      need(equal(documentSkuFacts(currentDocument(), sku, input.rules), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
       applySkuPrefix(sku, operation, input.rules);
     } else { const _exhaustive: never = operation; publicationRefuse("catalog_publication_operation_invalid"); }
     yield { operation, product: knownProduct(), skus, documents };
@@ -605,8 +610,11 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
   if (payload.product.documentRevision) need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
   if (input.product?.document && !equal(input.product.document, authoredDocument) && !moved.has(authoredDocument!.id))
     publicationRefuse("catalog_publication_v3_document_reference_stale", "conflict");
-  if (payload.product.sharedContent.document !== undefined) need(equal(payload.product.sharedContent.document, currentDocumentValue()),
-    "catalog_publication_document_source_mismatch");
+  if (payload.product.sharedContent.document !== undefined) {
+    const document = currentDocument();
+    need(matchesAuthoredDocument(payload.product.sharedContent.document, document.canonicalText,
+      checkedDocument(document.canonicalText, document.reference, slug, input.rules), input.rules), "catalog_publication_document_source_mismatch");
+  }
   result.attributes = payload.product.attributes ?? result.attributes; result.axes = [...payload.product.dimensions];
   result.content = payload.product.sharedContent; result.source = claim;
   for (const [code, authored] of incoming) {
@@ -645,7 +653,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
     }
     need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
     catalogPublicationIntegralGrams(sku.netContent, input.definition);
-    need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), sku.facts),
+    need(equal(documentSkuFacts(currentDocument(), sku, input.rules), sku.facts),
       "catalog_publication_v3_compile_derived_facts_mismatch");
     const key = combination(sku.options);
     need(!identities.has(key), "duplicate_combination"); identities.add(key);

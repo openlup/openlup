@@ -3,21 +3,16 @@ import { createHash } from "node:crypto";
 import { compileCatalogPublication, type CatalogPublicationCompileInput } from "../../src/catalog/publicationValidation.js";
 import { input } from "./fixtures/publicationInput.js";
 
-it("publication delegates opaque document decoding and SKU facts to the installed rules", () => {
+it("publication consumes only installed document metadata and derived SKU facts", () => {
   const source = input();
-  const decodeDocument = vi.fn((canonicalText: string) => ({ ...JSON.parse(canonicalText), installed: true }));
-  const canonicalizeDocument = (value: unknown) => {
-    const { installed: _installed, ...document } = value as Record<string, unknown>;
-    return source.rules.canonicalizeDocument(document);
-  };
-  const deriveSkuFacts = vi.fn((value: unknown) => {
-    expect(value).toMatchObject({ installed: true, derived: 12 });
-    return source.rules.deriveSkuFacts(value);
+  const inspectDocument = vi.fn(source.rules.inspectDocument.bind(source.rules));
+  const deriveSkuFacts = vi.fn((bytes: string, sku: Parameters<typeof source.rules.deriveSkuFacts>[1]) => {
+    expect(typeof bytes).toBe("string");
+    return source.rules.deriveSkuFacts(bytes, sku);
   });
-  // The installed decoder adds the same marker carried by the authored object.
-  const prepared = { ...source, rules: { ...source.rules, decodeDocument, canonicalizeDocument, deriveSkuFacts } };
-  source.payload.product.sharedContent.document!.installed = true;
+  const prepared = { ...source, rules: { ...source.rules, inspectDocument, deriveSkuFacts } };
   expect(compileCatalogPublication(prepared).skus).toHaveLength(1);
+  expect(inspectDocument).toHaveBeenCalled();
   expect(deriveSkuFacts).toHaveBeenCalled();
 });
 

@@ -10,11 +10,15 @@ export const registry = createCatalogProductTypeRegistry([{ key: "example:articl
   units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] }]);
 export const definition = registry.resolve({ key: "example:article", version: 1 })!;
-export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson, decodeDocument: JSON.parse,
+export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson,
   identifyDocument(document) {
     const { schemaVersion, id, productSlug, revisionNo, name } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number; name: string };
     return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo, name };
-  }, deriveSkuFacts: document => ({ derived: (document as { derived: number }).derived }),
+  }, inspectDocument(canonicalText) {
+    const document = JSON.parse(canonicalText);
+    return { ...this.identifyDocument(document), canonicallyEncoded: this.canonicalizeDocument(document) === canonicalText,
+      contentDigest: createHash("sha256").update(canonicalCatalogDraftJson(document)).digest("hex") };
+  }, deriveSkuFacts: canonicalText => ({ derived: JSON.parse(canonicalText).derived }),
   validateProduct: () => [], classifySkuChange: () => "compatible" };
 export function input(): CatalogPublicationCompileInput {
   const document = { schemaVersion: 1, id: "example:document", productSlug: "article", revisionNo: 1, name: "Synthetic article", derived: 12 }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex");

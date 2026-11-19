@@ -156,8 +156,12 @@ function publicationAuthority(owner: Pool) {
     transactions: { async run(work) { const client = await owner.connect(); try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
       catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true as const, userId: publicationAdmin, role: "admin", isMachineActor: false }),
-    rules: { canonicalizeDocument: canonicalCatalogDraftJson, decodeDocument: JSON.parse, identifyDocument(document) {
+    rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
       return document as ReturnType<import("@openlup/platform/catalog").CatalogPublicationRules["identifyDocument"]>;
+    }, inspectDocument(canonicalText) {
+      const document = JSON.parse(canonicalText);
+      return { ...this.identifyDocument(document), canonicallyEncoded: this.canonicalizeDocument(document) === canonicalText,
+        contentDigest: createHash("sha256").update(canonicalCatalogDraftJson(document)).digest("hex") };
     }, deriveSkuFacts: () => ({}), validateProduct: () => [], classifySkuChange: () => "compatible" as const },
     presentationReadiness: async () => ({ ready: true, reasons: [] }),
     readiness: async () => ({ ready: true, reasons: [] }), verifyMedia: async () => false });

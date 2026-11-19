@@ -35,10 +35,14 @@ function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows
     try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows, values); return result; } }); await client.query("COMMIT"); return result; }
     catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true, userId: admin, role: "admin", isMachineActor: false }),
-    rules: { canonicalizeDocument: canonicalCatalogDraftJson, decodeDocument: JSON.parse, identifyDocument(document) {
+    rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
       const { schemaVersion, id, productSlug, revisionNo, name } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number; name: string };
       return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo, name };
-    }, deriveSkuFacts: (document) => ({ derived: (document as { derived: number }).derived }),
+    }, inspectDocument(canonicalText) {
+      const document = JSON.parse(canonicalText);
+      return { ...this.identifyDocument(document), canonicallyEncoded: this.canonicalizeDocument(document) === canonicalText,
+        contentDigest: createHash("sha256").update(canonicalCatalogDraftJson(document)).digest("hex") };
+    }, deriveSkuFacts: canonicalText => ({ derived: JSON.parse(canonicalText).derived }),
       validateProduct: () => [], classifySkuChange: (before, after, context) => {
         if (!context.beforeDocument) return "inconclusive";
         if (canonicalCatalogDraftJson(before.netContent) !== canonicalCatalogDraftJson(after.netContent)
@@ -3601,8 +3605,8 @@ it.each(["canonical mismatch", "digest mismatch", "nonobject", "legacy null"] as
     const insert = client.query(`INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
       SELECT $1,product_id,revision_no+1,schema_id,document_ref,$2::jsonb,source_ref,provenance,$3,$4 FROM public.catalog_product_document_revisions WHERE id=$5`,
     [randomUUID(), payload, mode === "digest mismatch" ? wrongDigest : digest, mode === "legacy null" ? null : canonical, foreignPublished.data.payload.product.documentRevision!.id]);
-    if (mode === "legacy null") expect((await insert).rowCount).toBe(1);
-    else await expect(insert).rejects.toMatchObject(mode === "canonical mismatch" ? { code: "23514", constraint: "catalog_document_canonical_text_check" } : { code: "23514", message: mode === "digest mismatch" ? "catalog_publication_digest_mismatch" : "catalog_publication_state_invalid" });
+    if (mode === "legacy null" || mode === "nonobject") expect((await insert).rowCount).toBe(1);
+    else await expect(insert).rejects.toMatchObject(mode === "canonical mismatch" ? { code: "23514", constraint: "catalog_document_canonical_text_check" } : { code: "23514", message: "catalog_publication_digest_mismatch" });
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
 

@@ -187,10 +187,6 @@ BEGIN
   IF encode(sha256(convert_to(NEW.canonical_text,'UTF8')),'hex') <> NEW.digest THEN
    RAISE EXCEPTION 'catalog_publication_digest_mismatch' USING ERRCODE='23514';
   END IF;
-  -- The generic storage envelope has an object root.
-  IF jsonb_typeof(NEW.canonical_text::jsonb) IS DISTINCT FROM 'object' THEN
-   RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
-  END IF;
   RETURN NEW;
  ELSIF TG_TABLE_NAME = 'catalog_publications' THEN
   canonical := NEW.canonical_state; expected := NEW.digest;

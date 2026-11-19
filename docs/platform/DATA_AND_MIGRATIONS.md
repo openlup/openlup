@@ -411,9 +411,9 @@ The installed document binding supplies the document's schema, reference,
 product slug and revision. The writer checks them against the sealed reference
 and canonical bytes. Canonical text and the JSONB payload carry the same opaque
 document. Publication transports the document, checks its byte digest and compares
-it as a whole for the storage constraint and immutable registration replay. The
-SQL storage envelope checks for an object root. Installed rules decode the bytes,
-read document identity and name, canonicalize the document and derive SKU facts.
+it as a whole for the storage constraint and immutable registration replay.
+Installed rules validate document shape, decode and canonicalize documents, and
+return typed identity, value digests and derived SKU facts to publication.
 The portable catalogue boundary binds these operations to their exact paths,
 trimmed lines and occurrence counts. It refuses field extraction, path and
 containment operators, schema-shaped validation, private schema imports, platform
