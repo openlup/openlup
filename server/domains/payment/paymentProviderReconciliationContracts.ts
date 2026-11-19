@@ -1,5 +1,17 @@
+import type {
+  ProviderReadPurpose,
+  ProviderReconciliationStatusKind,
+  SilenceWindowLookup,
+} from "@openlup/platform/payments/contracts";
+
+export type {
+  PaymentProviderReconciliationWorkerResult,
+  ProviderReadPurpose,
+  ProviderReconciliationStatusKind,
+  SilenceWindowLookup,
+} from "@openlup/platform/payments/contracts";
+
 export type ReconciliationProviderKind = "stripe" | "tpay";
-export type ProviderReconciliationStatusKind = "succeeded" | "failed" | "pending" | "unknown";
 
 export interface ProviderReconciliationStatus {
   status: ProviderReconciliationStatusKind;
@@ -11,22 +23,8 @@ export interface ProviderReconciliationStatus {
   rawPayload: Record<string, unknown>;
 }
 
-/**
- * Who is asking, and therefore what an unresolved provider state MEANS.
- *
- * The same read answers two different questions. Reconciliation — the caller
- * that names no purpose — asks "is this attempt over", long after the buyer
- * left, and an intent still waiting for its first payment method is over. A
- * buyer standing in a live checkout asks "is this attempt settled yet", and the
- * same state means the opposite: nobody has been asked anything.
- *
- * ⛔ Omitting the purpose keeps the reconciliation reading. Terminalizing real
- * abandonment is the more expensive of the two errors to lose, so it is the
- * behaviour a caller gets by default rather than one it must opt into.
- */
-export type ProviderReadPurpose = "recovery" | "active_checkout";
-
 export interface PaymentProviderReconciliationProvider {
+  /** An omitted purpose selects reconciliation readback. Checkout selects its own purpose. */
   readPayment(input: {
     providerPaymentId: string;
     attempt?: ClaimedPaymentAttempt;
@@ -209,33 +207,6 @@ export interface InteractivePreparedAttemptManualReconciliationPort extends Paym
   }): Promise<InteractivePreparedAttemptReopenResult>;
 }
 
-export interface PaymentProviderReconciliationWorkerResult {
-  ok: boolean;
-  checked: number;
-  corrected: number;
-  succeeded: number;
-  failed: number;
-  pending: number;
-  unknown: number;
-  ignored: number;
-  dunningOpened: number;
-  replayed: number;
-  providerCalls: number;
-  preparedWithoutProviderAck: number;
-  preparedAttemptsReopened: number;
-  manualReview: number;
-  /**
-   * Attempts whose rail has answered non-terminally for longer than that rail
-   * declares normal. Counted, never acted on: elapsed time is not evidence
-   * about money, so this surfaces a case for a human rather than resolving it.
-   */
-  silenceOverdue: number;
-  amountCurrencyMismatches: number;
-  failures: number;
-  skipped: boolean;
-  reason?: string;
-}
-
 export interface PaymentProviderReconciliationWorkerInput {
   port: PaymentProviderReconciliationPort;
   providers: Partial<Record<ReconciliationProviderKind, PaymentProviderReconciliationProvider>>;
@@ -257,15 +228,4 @@ export interface PaymentProviderReconciliationWorkerInput {
    * counted overdue, so omitting it preserves today's behaviour exactly.
    */
   capabilities?: SilenceWindowLookup;
-}
-
-/**
- * The narrow slice of the capability registry this worker reads.
- *
- * Declared here rather than importing the whole registry type so the worker
- * depends on the one question it asks - "when does this rail's silence stop
- * being normal" - and not on the shape of every unattended-charge capability.
- */
-export interface SilenceWindowLookup {
-  get(providerKind: string): { terminalOutcomeReporting?: { silenceBecomesSuspectAfterMinutes: number } } | null;
 }
