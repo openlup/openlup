@@ -3376,6 +3376,19 @@ to return the revision and days. The policy helper grants `EXECUTE` to
 The allocator retains its existing ACL, and neither X nor Y calls ATP; their
 existing grants still apply.
 
+The [inventory validation forward](../../db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql)
+creates `public.inventory_renewal_protection_validate(jsonb)` and replaces the
+body of `public.inventory_renewal_protection_days()`. The validator preserves
+the revision text and normalizes the horizon to an integer. Invalid input and
+malformed stored JSON retain SQLSTATE `22023` and
+`inventory_renewal_protection_policy_invalid`. The reader still returns 14
+for an absent row and retains its owner, ACL and pinned search path. Direct
+validator execution is reserved for the migration owner.
+
+`inventory_new_purchase_stock_read` calls native ATP inside a single STABLE
+statement, so ATP reads settings and stock against the same snapshot. Its
+TypeScript `readInstalled` entry takes only the SKU list.
+
 X restores released late-paid reservation lines to committed, non-expiring ATP
 holds once, returning from its immutable recovery receipt before further writes.
 Y excludes paid cycles and settled intents before the candidate limit. Refunds

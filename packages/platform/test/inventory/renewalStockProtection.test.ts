@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy } from "../../src/inventory/renewalStockProtection.js";
+import corpus from "./inventory_renewal_protection.json";
+import { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 
 it("defaults only for an absent row and installs exact validated JSON", async () => {
   const query = vi.fn().mockResolvedValue({ rows: [] });
@@ -12,15 +13,22 @@ it("defaults only for an absent row and installs exact validated JSON", async ()
     expect(await readRenewalStockProtectionPolicy({ query })).toEqual(policy);
   }
 });
-it.each([null, [], {}, { revision: "x" }, { renewalProtectionDays: 14 },
-  ...["", " \t", null, 1].map(revision => ({ revision, renewalProtectionDays: 14 })),
-  ...[null, "14", 0, -1, 1.5, 3661, Infinity, NaN].map(renewalProtectionDays => ({ revision: "x", renewalProtectionDays })),
-  { revision: "x", renewalProtectionDays: 14, extra: true },
-])("refuses invalid policy before writes and on persisted reads: %j", async value => {
-  const query = vi.fn().mockResolvedValue({ rows: [{ value_text: JSON.stringify(value) }] });
-  await expect(installRenewalStockProtectionPolicy({ query }, value as never)).rejects.toThrow("inventory_renewal_protection_policy_invalid");
+it.each(corpus)("shared corpus (TS): $name", async ({ input, accepted, normalized, code }) => {
+  if (accepted) {
+    expect(validateRenewalStockProtection(input)).toStrictEqual(normalized);
+    return;
+  }
+  const query = vi.fn().mockResolvedValue({ rows: [{ value_text: JSON.stringify(input) }] });
+  expect(() => validateRenewalStockProtection(input)).toThrow(code);
+  await expect(installRenewalStockProtectionPolicy({ query }, input as never)).rejects.toThrow(code);
   expect(query).not.toHaveBeenCalled();
-  await expect(readRenewalStockProtectionPolicy({ query })).rejects.toThrow("inventory_renewal_protection_policy_invalid");
+  await expect(readRenewalStockProtectionPolicy({ query })).rejects.toThrow(code);
+});
+it.each([Infinity, NaN])("refuses non-JSON numbers before writes: %s", async renewalProtectionDays => {
+  const query = vi.fn();
+  await expect(installRenewalStockProtectionPolicy({ query }, { revision: "x", renewalProtectionDays }))
+    .rejects.toThrow("inventory_renewal_protection_policy_invalid");
+  expect(query).not.toHaveBeenCalled();
 });
 it.each([null, "{bad-json", "undefined"])("names malformed persisted JSON: %j", async value_text => {
   const query = vi.fn().mockResolvedValue({ rows: [{ value_text }] });
