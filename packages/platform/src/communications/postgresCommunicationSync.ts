@@ -63,7 +63,7 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
     close: lane.close,
     async registerWork(input) {
       const register=nativeSyncRegistration(options,input);
-      return lane.run(db => register(db as SqlExecutor));
+      return lane.run(db => register(db));
     },
     registerPreference(input) {
       const email=nativeEmail(input.email),fingerprint=nativeFingerprint(email),purpose=nativeText(input.purpose);
@@ -76,7 +76,7 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
         let workId:string|null=null;
         if(purpose!=="tester_program"){
           const sourceKey=nativeFingerprint(JSON.stringify([fingerprint,purpose,input.state,nativeStamp(row.updated_at)]));
-          workId=(await registerNativeSyncWorkInTransaction(db as SqlExecutor,options,{sourceKey,contactId:fingerprint,normalizedEmail:email,eventType:input.state==="suppressed"?"suppress":"unsubscribe",purpose:purpose as NewsletterMarketingPurpose})).id;
+          workId=(await registerNativeSyncWorkInTransaction(db,options,{sourceKey,contactId:fingerprint,normalizedEmail:email,eventType:input.state==="suppressed"?"suppress":"unsubscribe",purpose:purpose as NewsletterMarketingPurpose})).id;
         }
         return {updated:true as const,email,purpose:purpose as "tester_program"|NewsletterMarketingPurpose,state:input.state,workId,alreadySuppressed:old?.state===input.state};
       });
@@ -85,7 +85,7 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
       checkProvider(input.providerKind);
       nativeInteger(input.batchSize,1,100); nativeInteger(input.visibilitySeconds,60,3600); nativeInteger(input.maxAttempts,1,20);
       return lane.run(async db => {
-        const work = await options.rail(db as SqlExecutor).claimBatch({ eventTypes: [eventType], knownEventTypes: [eventType], batchSize: input.batchSize,visibilitySeconds: input.visibilitySeconds,maxAttempts: input.maxAttempts });
+        const work = await options.rail(db).claimBatch({ eventTypes: [eventType], knownEventTypes: [eventType], batchSize: input.batchSize,visibilitySeconds: input.visibilitySeconds,maxAttempts: input.maxAttempts });
         const events: NewsletterSyncEvent[] = [];
         for (const row of work) {
           const state = (await db.query("UPDATE public.communication_native_sync_state SET max_attempts=$4 WHERE work_id=$1 AND binding=$2 AND provider_kind=$3 RETURNING *", [row.id,binding,provider,input.maxAttempts])).rows[0];
@@ -106,7 +106,7 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
         const row = (await db.query(`SELECT e.id FROM public.outbox_events e JOIN public.communication_native_sync_state s ON s.work_id=e.id
           WHERE e.id=$1 AND s.binding=$2 AND s.provider_kind=$3 AND e.event_type=$4 AND e.status='processing' AND e.metadata->>'claimToken'=$5 FOR UPDATE OF e,s`, [input.eventId,binding,provider,eventType,input.claimToken])).rows[0];
         if (!row) return false;
-        if (!(await options.rail(db as SqlExecutor).markProcessed({ eventId: input.eventId,claimToken: input.claimToken })).applied) throw new Error("native_sync_ack_lost");
+        if (!(await options.rail(db).markProcessed({ eventId: input.eventId,claimToken: input.claimToken })).applied) throw new Error("native_sync_ack_lost");
         await db.query("UPDATE public.communication_native_sync_state SET remote_profile_id=$2,response_summary=$3::jsonb WHERE work_id=$1", [input.eventId,remote,summary]);
         return true;
       });
@@ -117,7 +117,7 @@ export function createPostgresCommunicationSyncStore(env: PostgresDataGatewayEnv
         const row = (await db.query(`SELECT s.max_attempts FROM public.outbox_events e JOIN public.communication_native_sync_state s ON s.work_id=e.id
           WHERE e.id=$1 AND s.binding=$2 AND s.provider_kind=$3 AND e.event_type=$4 AND e.status='processing' AND e.metadata->>'claimToken'=$5 FOR UPDATE OF e,s`, [input.eventId,binding,provider,eventType,input.claimToken])).rows[0];
         if (!row) return false;
-        const result = await options.rail(db as SqlExecutor).markFailed({ eventId: input.eventId,claimToken: input.claimToken,error: nativeText(input.error,2000),outcome: input.retry ? "retry" : "discard",baseDelaySeconds: input.backoffSeconds,maxDelaySeconds: input.backoffSeconds,maxAttempts: nativeInteger(Number(row.max_attempts),1,20),snoozeSeconds: 300 });
+        const result = await options.rail(db).markFailed({ eventId: input.eventId,claimToken: input.claimToken,error: nativeText(input.error,2000),outcome: input.retry ? "retry" : "discard",baseDelaySeconds: input.backoffSeconds,maxDelaySeconds: input.backoffSeconds,maxAttempts: nativeInteger(Number(row.max_attempts),1,20),snoozeSeconds: 300 });
         if (!["failed","discarded"].includes(result.status)) throw new Error("native_sync_ack_lost");
         await db.query("UPDATE public.communication_native_sync_state SET response_summary=$2::jsonb WHERE work_id=$1", [input.eventId,JSON.stringify({ status: result.status })]);
         return true;

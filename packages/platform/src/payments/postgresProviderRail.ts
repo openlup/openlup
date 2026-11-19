@@ -12,6 +12,7 @@ import { createVerifiedPaymentIngress, type PaymentWebhookControlPort, type Norm
 
 export interface PostgresProviderAttemptSnapshot {
   orderId: string; intentStatus: string; settlementStatus: string; amountMinor: number; currency: string;
+  captureReviewRequired?: boolean;
   requestPayload: Record<string, unknown>; responsePayload: Record<string, unknown>;
   paymentAttempt: { id: string; paymentIntentId: string; paymentId: string; provider: string; status: string;
     providerAttemptId: string | null; providerSessionId: string | null; idempotencyKey: string };
@@ -26,7 +27,7 @@ export interface PostgresProviderPaymentRail {
   ingress: PaymentIngressPort;
 }
 const snapshot: z.ZodType<PostgresProviderAttemptSnapshot> = z.object({ orderId: z.guid(), intentStatus: z.string(), settlementStatus: z.string(),
-  amountMinor: z.number().int().positive(), currency: z.string(),
+  amountMinor: z.number().int().positive(), currency: z.string(), captureReviewRequired: z.boolean().optional(),
   requestPayload: z.record(z.string(), z.unknown()), responsePayload: z.record(z.string(), z.unknown()),
   paymentAttempt: z.object({ id: z.guid(), paymentIntentId: z.guid(), paymentId: z.guid(), provider: z.string(),
     status: z.string(), providerAttemptId: z.string().nullable(), providerSessionId: z.string().nullable(), idempotencyKey: z.string() }) });
@@ -79,14 +80,28 @@ export function createPostgresProviderPaymentRail(input: {
       // retain the prepared row. A restart can only read/reconcile that attempt.
       const execution = await input.adapter.attemptPort.execute(request);
       const facts = execution.persistence;
-      if (!facts) throw new Error("payment_adapter_persistence_unavailable");
+      const providerAttemptId = execution.dispatch.kind === "dispatched" ? execution.dispatch.providerPaymentRef : null;
+      const providerSessionId = facts?.providerSessionId ?? providerAttemptId;
+      const nextActionKind = facts?.nextActionKind
+        ?? (execution.handoff?.kind === "redirect"
+          ? "redirect"
+          : execution.handoff?.kind === "client-confirmed"
+            ? "sca_required"
+            : null);
+      const mergedRequestPayload = facts ? { ...facts.requestPayload, ...requestPayload } : requestPayload;
+      const responsePayload = facts?.responsePayload ?? {
+        diagnostics: execution.diagnostics,
+        dispatchKind: execution.dispatch.kind,
+        outcomeKind: execution.outcome.kind,
+        ...(execution.outcome.kind === "decline" ? { refusalCode: execution.outcome.refusal.code } : {}),
+      };
       const attempt = await control.finalizeProviderAttempt({ idempotencyKey: `${request.attemptRef}:finalize`,
         paymentIntentId: request.intentRef, paymentAttemptId: prepared.paymentAttemptId,
         providerIdempotencyKey: request.providerIdempotencyKey, providerRequestFingerprint: request.fingerprint,
-        providerAttemptId: execution.dispatch.kind === "dispatched" ? execution.dispatch.providerPaymentRef : null,
-        providerSessionId: facts.providerSessionId,
+        providerAttemptId,
+        providerSessionId,
         attemptStatus: execution.outcome.kind === "attempt" ? execution.outcome.status : "processing",
-        nextActionKind: facts.nextActionKind, requestPayload: { ...facts.requestPayload, ...requestPayload }, responsePayload: facts.responsePayload });
+        nextActionKind, requestPayload: mergedRequestPayload, responsePayload });
       return { execution, attempt };
     },
     ingress: createVerifiedPaymentIngress({ provider, verifyPort: input.adapter.verifyPort, paymentControlPort: webhook,
@@ -97,7 +112,10 @@ export function createPostgresProviderPaymentRail(input: {
         // Receipt time still records receipt. Missing provider time cannot become
         // a financial/lifecycle assertion; retain the evidence for manual repair.
         event.rawPayload.openlupReceipt = { receivedAt: event.occurredAt };
-        if (!at) return { paymentControlPort: { ingestPaymentEvent: webhook.ingestPaymentEvent } };
+        if (!at) return { paymentControlPort: {
+          findCompletedHistoricalCapture: webhook.findCompletedHistoricalCapture,
+          ingestPaymentEvent: webhook.ingestPaymentEvent,
+        } };
         const selected = input.composeWebhook?.(event, webhook) ?? webhook;
         return { paymentControlPort: { ...selected, ingestPaymentEvent: delivery => selected.ingestPaymentEvent({ ...delivery, occurredAt: at }) },
           methodRefPort: methods, afterProcessed: ({ event: delivery }) => consumePostgresPaymentMethodDelivery(input.executor, delivery) };

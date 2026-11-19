@@ -19,6 +19,13 @@ for (const [subpath, target] of Object.entries(codeExports)) {
   assert(target.types === `./${contract.entrypoint}` && target.import === target.default && target.import === target.types.replace(/\.d\.ts$/, ".js"), "declarations and runtime exports differ");
 }
 
+const declaredSubpathRoots = Object.entries(gates.packageSurface)
+  .map(([subpath, contract]) => ({
+    subpath,
+    dir: dirname(resolveInsidePackage(contract.entrypoint)),
+  }))
+  .sort((left, right) => right.dir.length - left.dir.length || left.dir.localeCompare(right.dir));
+
 for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
   const entrypoint = resolveInsidePackage(contract.entrypoint);
   const snapshotPath = resolveInsidePackage(contract.snapshot);
@@ -43,7 +50,7 @@ for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
 
 
 function renderSnapshot(subpath, contract, entrypoint) {
-  const declarations = collectDeclarationGraph(entrypoint);
+  const declarations = collectDeclarationGraph(subpath, entrypoint);
   const sections = declarations.map((file) => {
     const path = toPosix(relative(packageRoot, file));
     const source = readFileSync(file, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").split("\n").map(line => line.trimEnd()).join("\n").trimEnd();
@@ -64,7 +71,16 @@ function renderSnapshot(subpath, contract, entrypoint) {
   ].join("\n");
 }
 
-function collectDeclarationGraph(entrypoint) {
+function ownerSubpathOf(file) {
+  for (const entry of declaredSubpathRoots) {
+    if (file === entry.dir || file.startsWith(`${entry.dir}${sep}`)) {
+      return entry.subpath;
+    }
+  }
+  return null;
+}
+
+function collectDeclarationGraph(subpath, entrypoint) {
   const found = new Set();
   const pending = [entrypoint];
 
@@ -82,32 +98,66 @@ function collectDeclarationGraph(entrypoint) {
       true,
       ts.ScriptKind.TS,
     );
+    const localReexports = collectLocalReexportedNames(source);
 
-    visit(source, (specifier) => {
+    visit(source, localReexports, ({ specifier, reexport }) => {
       if (!specifier.startsWith(".")) return;
       const target = resolveDeclaration(file, specifier);
       assert(target, `cannot resolve ${specifier} from ${toPosix(relative(packageRoot, file))}`);
-      pending.push(target);
+      assert(target.startsWith(`${distRoot}${sep}`), `declaration escaped dist: ${target}`);
+      // Always follow explicit re-exports (including local `import { X }; export { X }`) so the
+      // snapshot retains every exported symbol's declaration; stop pure imports at sibling
+      // declared subpath boundaries because each sibling owns its own API snapshot.
+      if (reexport) {
+        pending.push(target);
+        return;
+      }
+      const targetOwner = ownerSubpathOf(target);
+      if (targetOwner === null || targetOwner === subpath) {
+        pending.push(target);
+      }
     });
   }
 
   return [...found].sort((left, right) => left.localeCompare(right));
 }
 
-function visit(node, onModuleSpecifier) {
-  if (
-    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-    node.moduleSpecifier &&
-    ts.isStringLiteral(node.moduleSpecifier)
-  ) {
-    onModuleSpecifier(node.moduleSpecifier.text);
+function collectLocalReexportedNames(source) {
+  const names = new Set();
+  for (const statement of source.statements) {
+    if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+      for (const element of statement.exportClause.elements) {
+        names.add((element.propertyName ?? element.name).text);
+      }
+    } else if (ts.isExportAssignment(statement) && !statement.isExportEquals && ts.isIdentifier(statement.expression)) {
+      names.add(statement.expression.text);
+    }
+  }
+  return names;
+}
+
+function importReexportsLocalName(node, localReexports) {
+  const clause = node.importClause;
+  if (!clause || localReexports.size === 0) return false;
+  if (clause.name && localReexports.has(clause.name.text)) return true;
+  const bindings = clause.namedBindings;
+  if (!bindings) return false;
+  if (ts.isNamespaceImport(bindings)) return localReexports.has(bindings.name.text);
+  return bindings.elements.some((element) => localReexports.has(element.name.text));
+}
+
+function visit(node, localReexports, onModuleSpecifier) {
+  if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    onModuleSpecifier({ specifier: node.moduleSpecifier.text, reexport: true });
+  } else if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    onModuleSpecifier({ specifier: node.moduleSpecifier.text, reexport: importReexportsLocalName(node, localReexports) });
   } else if (ts.isImportTypeNode(node)) {
     const argument = node.argument;
     if (ts.isLiteralTypeNode(argument) && ts.isStringLiteral(argument.literal)) {
-      onModuleSpecifier(argument.literal.text);
+      onModuleSpecifier({ specifier: argument.literal.text, reexport: false });
     }
   }
-  ts.forEachChild(node, (child) => visit(child, onModuleSpecifier));
+  ts.forEachChild(node, (child) => visit(child, localReexports, onModuleSpecifier));
 }
 
 function resolveDeclaration(fromFile, specifier) {

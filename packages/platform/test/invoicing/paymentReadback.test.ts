@@ -17,3 +17,26 @@ it("reads the supplied payment identity and preserves normalized, unknown and un
   expect(await readInvoicePaymentEvidence({ ...payment, providerPaymentId: null }, provider)).toMatchObject({ providerStatus: "unavailable", providerEvidence: { unavailableReason: "provider_payment_id_missing" } });
   expect(provider.readPayment).not.toHaveBeenCalled();
 });
+
+it.each([
+  { observed: null, configured: 900, expectedStatus: "succeeded", expectedReason: undefined },
+  { observed: null, configured: 700, expectedStatus: "unknown", expectedReason: "provider_configured_amount_mismatch" },
+  { observed: null, configured: undefined, expectedStatus: "succeeded", expectedReason: undefined },
+  { observed: 0, configured: 900, expectedStatus: "succeeded", expectedReason: undefined },
+  { observed: 800, configured: 900, expectedStatus: "succeeded", expectedReason: undefined },
+])("keeps payment observations ($observed) distinct from configured money ($configured)", async ({
+  observed, configured, expectedStatus, expectedReason,
+}) => {
+  const payment = { provider: "money-a", providerPaymentId: "final-claimed-id", amountCents: 900 };
+  const readPayment = vi.fn(async () => ({
+    status: "succeeded" as const, providerStatus: "settled", amountMinor: observed, configuredAmountMinor: configured, currency: "XTS",
+  }));
+  const result = await readInvoicePaymentEvidence(payment, { readPayment });
+  expect(result).toMatchObject({
+    providerStatus: expectedStatus,
+    providerAmountCents: observed,
+    providerEvidence: { amountAvailable: observed !== null, providerStatus: "settled" },
+  });
+  expect(result.providerEvidence.unavailableReason).toBe(expectedReason);
+  expect(result.providerEvidence.configuredComparisonAmountCents).toBe(observed === null ? configured : undefined);
+});

@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresPaymentProviderReconciliationPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderPaymentControlPort, createVerifiedPaymentIngress, runPaymentProviderReconciliationWorker } from "@openlup/platform/payments";
+import type { PaymentIngressPort } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { call } from "./subscriptionNativeFixture.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -33,6 +34,11 @@ async function fixture(name = "capture", subscription = false, finalized = true)
     [name, subscription, finalized])).rows[0].f;
 }
 const port = () => createPostgresPaymentProviderReconciliationPort(env.runtime, options);
+async function completedCaptureReceipt(provider: string, eventId: string, remote: string, fingerprint: string) {
+  return (await env.runtime.query(`SELECT public.commerce_payment_control_completed_capture_receipt(
+    $1,$2,$3,$4) AS event_id`, [provider, eventId, remote, fingerprint])).rows[0].event_id;
+}
+
 async function age(f: Fixture, time = old) {
   await db.query("UPDATE public.payment_provider_attempts SET created_at=$2,updated_at=$2 WHERE id=$1", [f.attempt, time]);
   await db.query("UPDATE public.payment_provider_states SET created_at=$2,updated_at=$2 WHERE id=$1", [f.intent, time]);
@@ -121,6 +127,407 @@ it("reads a verified 3000 event-delta refund on a 12999 payment through the runt
     .toEqual([{ amount_minor: "12999", delta: "3000", refunded: "3000" }]);
   expect((await env.runtime.query("SELECT amount_minor::text FROM public.commerce_settlement_intents WHERE id=$1", [f.intent]))
     .rows[0].amount_minor).toBe("12999");
+});
+
+it("settles two simultaneous verified webhook deliveries once and replays the historical exact receipt", async () => {
+  const f = await fixture();
+  const providerEventId = `verified-capture:${randomUUID()}`;
+  const createIngress = (runtime: PoolClient): PaymentIngressPort => createVerifiedPaymentIngress({
+    provider: f.provider,
+    paymentControlPort: createPostgresPaymentWebhookControlPort(runtime, options),
+    verifyPort: { verifyAndNormalize: async () => ({
+      kind: "money", provider: f.provider, providerEventId, fingerprint: "a".repeat(64),
+      providerOccurredAt: at, providerPaymentRef: `charge_${f.attempt}`, intentRef: f.intent, attemptRef: f.attempt,
+      outcome: "succeeded", money: { amountMinor: 12999, currency: "XXX" }, capturedAmountBasis: "provider_capture_v1",
+    }) },
+  });
+  const request = { rawBody: new Uint8Array(), headers: {}, receivedAt: at };
+  const receivers = await Promise.all([env.runtime.connect(), env.runtime.connect()]);
+  let pending: Promise<Awaited<ReturnType<PaymentIngressPort["receive"]>>[]> | undefined;
+  try {
+    // The real order-row lock forces both deliveries to contend in the store.
+    await db.query("BEGIN");
+    await db.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [f.order]);
+    const pids = await Promise.all(receivers.map(async receiver => (await receiver.query("SELECT pg_backend_pid() AS pid")).rows[0].pid));
+    pending = Promise.all(receivers.map(receiver => createIngress(receiver).receive(request)));
+    let waiting = 0;
+    for (let attempt = 0; attempt < 300 && waiting < 2; attempt++) {
+      waiting = (await db.query(`SELECT count(*)::int AS waiting FROM unnest($1::int[]) AS worker(pid)
+        WHERE cardinality(pg_blocking_pids(pid))>0`, [pids])).rows[0].waiting;
+    }
+    expect(waiting).toBe(2);
+    await db.query("COMMIT");
+    const deliveries = await pending;
+    expect(deliveries.map(delivery => delivery.status)).toEqual([200, 200]);
+    expect(deliveries.map(delivery => delivery.data.replayed).sort()).toEqual([false, true]);
+  } finally {
+    await db.query("ROLLBACK");
+    await pending;
+    for (const receiver of receivers) receiver.release();
+  }
+  const key = `provider-webhook:${f.provider}:${providerEventId}:apply`;
+  expect((await db.query(`SELECT
+    (SELECT count(*)::int FROM public.payment_provider_attempt_evidence WHERE settlement_intent_id=$1) AS events,
+    (SELECT count(*)::int FROM public.payment_provider_receipts WHERE scope='commerce.payment_result.apply' AND idempotency_key=$2) AS receipts,
+    (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS settlements,
+    (SELECT status FROM public.commerce_orders WHERE id=$3) AS order_status`, [f.intent, key, f.order])).rows[0])
+    .toEqual({ events: 1, receipts: 1, settlements: 1, order_status: "paid" });
+
+  // Completed historical event receipts remain exact replays when their
+  // evidence has no new capture basis column value.
+  const remote = `charge_${f.attempt}`, fingerprint = "a".repeat(64);
+  expect(await completedCaptureReceipt(f.provider, providerEventId, remote, fingerprint)).toBeNull();
+  const historicalProof = (await db.query(`UPDATE public.payment_provider_attempt_evidence SET captured_amount_basis=NULL
+    WHERE provider_event_id=$1 RETURNING id`, [providerEventId])).rows[0].id;
+  const lookupBefore = await census(f);
+  expect(await completedCaptureReceipt(f.provider, providerEventId, remote, fingerprint)).toBe(historicalProof);
+  expect(await completedCaptureReceipt(f.provider, providerEventId, remote, "b".repeat(64))).toBeNull();
+  expect(await completedCaptureReceipt(f.provider, providerEventId, "superseded-handle", fingerprint)).toBeNull();
+  expect(await census(f)).toEqual(lookupBefore);
+  const historicalEvent = await env.runtime.connect();
+  try {
+    expect(await createIngress(historicalEvent).receive(request)).toMatchObject({ status: 200, data: { replayed: true } });
+  } finally { historicalEvent.release(); }
+  expect((await db.query("SELECT captured_amount_basis FROM public.payment_provider_attempt_evidence WHERE provider_event_id=$1",
+    [providerEventId])).rows[0].captured_amount_basis).toBeNull();
+
+  // Represent the old completed eventless receipt without running the old writer.
+  const historicalKey = `historical-receipt:${f.intent}`;
+  await db.query(`INSERT INTO public.payment_provider_receipts
+    (scope,idempotency_key,request_fingerprint,status,response_payload,metadata)
+    SELECT scope,$2,md5($3::uuid::text || '||succeeded|' || $4::timestamptz::text || '|'),status,
+      jsonb_set(response_payload,'{paymentResult,idempotencyKey}',to_jsonb($2::text)),metadata
+    FROM public.payment_provider_receipts WHERE scope='commerce.payment_result.apply' AND idempotency_key=$1`, [key, historicalKey, f.intent, at]);
+  const before = await census(f);
+  expect(await createPostgresProviderPaymentControlPort(env.runtime, options).applyPaymentResult({
+    idempotencyKey: historicalKey, paymentIntentId: f.intent, paymentEventId: null,
+    resultStatus: "succeeded", occurredAt: at, failureReason: null,
+  })).toMatchObject({ status: "succeeded", replayed: true });
+  expect(await census(f)).toEqual(before);
+});
+
+it.each(["worker", "renewal"] as const)("records the exact amount and provenance of a %s readback before settling", async carrier => {
+  const f = await fixture();
+  const paymentId = (await db.query("SELECT payment_id FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0].payment_id;
+  const request = {
+    idempotencyKey: `reconcile-capture:${randomUUID()}`, expectedOrderId: f.order,
+    expectedPaymentIntentId: f.intent, expectedPaymentAttemptId: f.attempt, expectedPaymentId: paymentId,
+    provider: f.provider, providerPaymentId: `charge_${f.attempt}`, localStatus: "processing",
+    providerStatus: "succeeded", resultStatus: "succeeded" as const, occurredAt: at, failureReason: null, checkedAt: at,
+    payload: carrier === "worker" ? { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX", capturedAmountBasis: "provider_capture_v1" }
+      : { observedMoney: { amountMinor: 12999, currency: "XXX" }, providerOccurredAt: at, capturedAmountBasis: "provider_capture_v1" },
+  };
+  const before = await census(f);
+  await expect(port().applyTerminalResult({
+    ...request, payload: { normalizedStatus: "succeeded", currency: "XXX" },
+  })).rejects.toMatchObject({ code: "22023", message: "payment_control_result_success_evidence_required" });
+  await expect(port().applyTerminalResult({
+    ...request, payload: { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX" },
+  })).rejects.toMatchObject({ code: "22023", message: "payment_control_result_success_evidence_required" });
+  expect(await census(f)).toEqual(before);
+  expect(await port().applyTerminalResult(request)).toMatchObject({ correctionStatus: "corrected", replayed: false });
+  expect(await port().applyTerminalResult(request)).toMatchObject({ correctionStatus: "corrected", replayed: true });
+  expect((await db.query(`SELECT
+    e.received_via, e.signature_verified, e.amount_minor::text, e.currency, e.captured_amount_basis,
+    t.source_evidence->>'sourceKind' AS source_kind,
+    (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=e.settlement_intent_id AND outcome='succeeded') AS settlements
+    FROM public.payment_provider_attempt_evidence e
+    JOIN public.payment_truth_events t ON t.settlement_intent_id=e.settlement_intent_id
+      AND t.source_evidence->>'sourceReference'=e.id::text
+    WHERE e.settlement_intent_id=$1`, [f.intent])).rows)
+    .toEqual([{ received_via: "reconciliation_read.v1", signature_verified: null,
+      amount_minor: "12999", currency: "XXX", captured_amount_basis: "provider_capture_v1", source_kind: "reconciliation_read", settlements: 1 }]);
+
+  if (carrier === "worker") {
+    const historicalKey = `historical-readback:${f.intent}`;
+    await db.query(`INSERT INTO public.payment_provider_receipts
+      (scope,idempotency_key,request_fingerprint,status,response_payload,metadata)
+      SELECT scope,$2,md5($3::uuid::text || '||succeeded|' || $4::timestamptz::text || '|'),status,
+        jsonb_set(response_payload,'{paymentResult,idempotencyKey}',to_jsonb($2::text)),metadata-'paymentEventId'
+      FROM public.payment_provider_receipts WHERE scope='commerce.payment_result.apply' AND idempotency_key=$1`,
+    [request.idempotencyKey, historicalKey, f.intent, at]);
+    await db.query(`INSERT INTO public.payment_provider_reconciliation_runs
+      (provider,provider_payment_id,payment_intent_id,payment_attempt_id,local_status,provider_status,correction_status,idempotency_key,checked_at,payload)
+      SELECT provider,provider_payment_id,payment_intent_id,payment_attempt_id,local_status,provider_status,correction_status,$2,checked_at,payload-'amountMinor'-'capturedAmountBasis'
+      FROM public.payment_provider_reconciliation_runs WHERE idempotency_key=$1`,
+    [`${request.idempotencyKey}:evidence`, `${historicalKey}:evidence`]);
+    const historical = await census(f);
+    expect(await port().applyTerminalResult({ ...request, idempotencyKey: historicalKey }))
+      .toMatchObject({ correctionStatus: "corrected", replayed: true });
+    expect(await census(f)).toEqual(historical);
+  }
+});
+
+it.each([
+  ["cancelled", "webhook"], ["cancelled", "readback"], ["expired", "webhook"], ["expired", "readback"],
+] as const)("retains a %s order's late %s capture without paying it", async (closedStatus, carrier) => {
+  const f = await fixture(), control = createPostgresProviderPaymentControlPort(env.runtime, options);
+  await control.applyPaymentResult({ idempotencyKey: `closed-order-decline:${f.intent}`,
+    paymentIntentId: f.intent, paymentEventId: null, resultStatus: "failed", occurredAt: old, failureReason: "declined" });
+  const cancel = (suffix = "original") => call(env.runtime, "oms_cancel_unpaid_order_owned",
+    [`cancel:${f.order}:${suffix}`, f.order, "buyer_cancelled", null, {}, old]);
+  if (closedStatus === "cancelled") {
+    expect(await cancel()).toMatchObject({ status: "cancelled", replayed: false });
+  } else {
+    await db.query(`INSERT INTO public.fulfillment_inventory_reservations
+      (purchase_order_id,operation_fingerprint,source_key,status,created_at,expires_at)
+      VALUES($1,$2,'fixture','held',$3,$4)`, [f.order, "a".repeat(64), old, at]);
+    expect(await call(env.runtime, "commerce_sweep_expired_checkouts", [50, {}, at])).toMatchObject({ expired: 1, released: 1 });
+  }
+
+  const readStates = async () => (await db.query(`SELECT i.status AS intent_status,o.status AS order_status,
+    s.status AS provider_status,s.payment_status,a.status AS attempt_status,
+    to_jsonb(i) AS settlement, to_jsonb(o) AS order_row, to_jsonb(s) AS provider_state, to_jsonb(a) AS attempt,
+    (SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM public.fulfillment_inventory_reservations r WHERE r.purchase_order_id=o.id) AS reservations,
+    (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM public.outbox_events e WHERE e.aggregate_id=o.id) AS outbox
+    FROM public.commerce_settlement_intents i JOIN public.commerce_orders o ON o.id=i.order_id
+    JOIN public.payment_provider_states s ON s.id=i.id
+    JOIN public.payment_provider_attempts a ON a.id=s.active_attempt_id WHERE i.id=$1`, [f.intent])).rows[0];
+  const before = await readStates();
+  expect(before).toMatchObject({ order_status: closedStatus, attempt_status: "failed",
+    ...(closedStatus === "cancelled" ? { intent_status: "cancelled", provider_status: "cancelled" } : {}) });
+  const key = `review-capture:${f.intent}`, remote = `charge_${f.attempt}`;
+  const occurredAt = "2026-11-13T13:00:00Z";
+  const attemptRead = () => call(env.runtime, "payment_provider_attempt_read", [f.intent, f.attempt]);
+  expect(await attemptRead()).toMatchObject({ orderId: f.order, captureReviewRequired: false });
+  const checkDelayedNegativeResults = async (phase: string) => {
+    for (const resultStatus of ["failed", "expired"] as const) {
+      const providerEventId = `late-negative:${phase}:${resultStatus}:${f.intent}`;
+      const evidence = await createPostgresPaymentWebhookControlPort(env.runtime, options).ingestPaymentEvent({
+        provider: f.provider, providerEventId, providerPaymentId: remote, paymentIntentId: f.intent, paymentAttemptId: f.attempt,
+        eventType: "payment.failed", amountMinor: 12999, currency: "XXX", occurredAt, rawPayload: {},
+      });
+      const input = {
+        idempotencyKey: `provider-webhook:${f.provider}:${providerEventId}:apply`, paymentIntentId: f.intent,
+        paymentEventId: evidence.paymentEventId, resultStatus, occurredAt, failureReason: "late_decline",
+        failureClass: "authorization_refused", failureClassDecidedBy: "fixture",
+      };
+      expect(await control.applyPaymentResult(input)).toMatchObject({ kind: "ignored_failure_protected_state", replayed: false });
+      expect(await control.applyPaymentResult(input)).toMatchObject({ kind: "ignored_failure_protected_state", replayed: true });
+      expect(await readStates()).toEqual(before);
+      expect((await db.query(`SELECT e.processing_status,
+        (SELECT count(*)::int FROM public.payment_provider_transitions
+          WHERE settlement_intent_id=$1 AND idempotency_key=$2) AS business_transitions
+        FROM public.payment_provider_attempt_evidence e WHERE e.id=$3`,
+      [f.intent, `${input.idempotencyKey}:payment_result`, evidence.paymentEventId])).rows)
+        .toEqual([{ processing_status: "ignored", business_transitions: 0 }]);
+    }
+  };
+  await checkDelayedNegativeResults("before-review");
+
+  if (carrier === "webhook") {
+    const webhook = createPostgresPaymentWebhookControlPort(env.runtime, options);
+    const event = await webhook.ingestPaymentEvent({
+      provider: f.provider, providerEventId: key, providerPaymentId: remote, paymentIntentId: f.intent, paymentAttemptId: f.attempt,
+      eventType: "payment.succeeded", amountMinor: 12999, currency: "XXX", occurredAt,
+      rawPayload: {}, capturedAmountBasis: "provider_capture_v1",
+    });
+    const input = { idempotencyKey: `provider-webhook:${f.provider}:${key}:apply`, paymentIntentId: f.intent,
+      paymentEventId: event.paymentEventId, resultStatus: "succeeded" as const, occurredAt, failureReason: null };
+    expect(await control.applyPaymentResult(input)).toMatchObject({ kind: "ignored_success_requiring_review", replayed: false });
+    expect(await control.applyPaymentResult(input)).toMatchObject({ kind: "ignored_success_requiring_review", replayed: true });
+  } else {
+    const paymentId = (await db.query("SELECT payment_id FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0].payment_id;
+    const input = {
+      idempotencyKey: key, expectedOrderId: f.order, expectedPaymentIntentId: f.intent, expectedPaymentAttemptId: f.attempt,
+      expectedPaymentId: paymentId, provider: f.provider, providerPaymentId: remote, localStatus: before.attempt_status,
+      providerStatus: "succeeded", resultStatus: "succeeded" as const, occurredAt, failureReason: null, checkedAt: occurredAt,
+      payload: { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX", capturedAmountBasis: "provider_capture_v1" },
+    };
+    const later = "2026-11-13T13:01:00Z";
+    const concurrentInput = {
+      ...input, occurredAt: later, checkedAt: later, payload: { ...input.payload, trigger: "buyer_confirm_settled" },
+    };
+    const results = await Promise.all([port().applyTerminalResult(input), port().applyTerminalResult(concurrentInput)]);
+    expect(results).toEqual(results.map(() => expect.objectContaining({
+      correctionStatus: "ignored", paymentResult: expect.objectContaining({ kind: "ignored_success_requiring_review" }),
+    })));
+    expect(results.map(result => result.replayed).sort()).toEqual([false, true]);
+    expect(await port().applyTerminalResult(input)).toMatchObject({ correctionStatus: "ignored", replayed: true });
+    await expect(port().applyTerminalResult({ ...input, payload: { ...input.payload, amountMinor: 13000 } }))
+      .rejects.toThrow(/payment_reconciliation_apply_evidence_conflict/);
+    await expect(port().applyTerminalResult({ ...input, providerPaymentId: "other_payment" }))
+      .rejects.toThrow(/payment_reconciliation_apply_evidence_conflict/);
+
+    // Historical exact replay remains valid after the active slot is cleared.
+    const exact = results[0].replayed ? concurrentInput : input;
+    await db.query("UPDATE public.payment_provider_states SET active_attempt_id=NULL WHERE id=$1", [f.intent]);
+    try {
+      expect(await port().applyTerminalResult(exact)).toMatchObject({ correctionStatus: "ignored", replayed: true });
+      await expect(port().applyTerminalResult({ ...exact, occurredAt: "2026-11-13T13:02:00Z" })).rejects.toThrow(/idempotency_conflict/);
+    } finally {
+      await db.query("UPDATE public.payment_provider_states SET active_attempt_id=$2 WHERE id=$1", [f.intent, f.attempt]);
+    }
+  }
+
+  expect(await attemptRead()).toMatchObject({ orderId: f.order, captureReviewRequired: true });
+  await checkDelayedNegativeResults("after-review");
+  if (closedStatus === "cancelled") {
+    expect(await cancel()).toMatchObject({ status: "cancelled", replayed: true });
+    await expect(cancel("new-command")).rejects.toThrow(/oms_cancel_unpaid_order_payment_already_moved/);
+  }
+  expect(await readStates()).toEqual(before);
+  expect((await db.query(`SELECT t.outcome,t.state,t.review_required_at,t.settlement_transition_id,e.processing_status,
+    (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS paid,
+    (SELECT count(*)::int FROM public.payment_provider_transitions WHERE settlement_intent_id=$1
+      AND transition_kind='business_result' AND to_status='succeeded') AS finalized
+    FROM public.payment_truth_events t JOIN public.payment_provider_attempt_evidence e ON e.id::text=t.source_evidence->>'sourceReference'
+    WHERE t.settlement_intent_id=$1 AND t.outcome='captured'`, [f.intent])).rows).toEqual([{
+    outcome: "captured", state: "open", review_required_at: expect.any(Date), settlement_transition_id: null,
+    processing_status: "ignored", paid: 0, finalized: 0,
+  }]);
+});
+
+it.each(["capture", "cancellation"] as const)("serializes an OMS cancellation and readback with %s first", async first => {
+  const f = await fixture();
+  await createPostgresProviderPaymentControlPort(env.runtime, options).applyPaymentResult({
+    idempotencyKey: `race-decline:${f.intent}`, paymentIntentId: f.intent, paymentEventId: null,
+    resultStatus: "failed", occurredAt: old, failureReason: "declined",
+  });
+  const paymentId = (await db.query("SELECT payment_id FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0].payment_id;
+  const input = {
+    idempotencyKey: `race-capture:${f.intent}`, expectedOrderId: f.order, expectedPaymentIntentId: f.intent,
+    expectedPaymentAttemptId: f.attempt, expectedPaymentId: paymentId, provider: f.provider, providerPaymentId: `charge_${f.attempt}`,
+    localStatus: "failed", providerStatus: "succeeded", resultStatus: "succeeded" as const, occurredAt: at, failureReason: null,
+    checkedAt: at, payload: { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX", capturedAmountBasis: "provider_capture_v1" },
+  };
+  const capture = (runtime: PoolClient) => createPostgresPaymentProviderReconciliationPort(runtime, options).applyTerminalResult(input);
+  const cancel = (runtime: PoolClient) => call(runtime, "oms_cancel_unpaid_order_owned", [`race-cancel:${f.order}`, f.order, "buyer_cancelled", null, {}, at]);
+  const winner = await env.runtime.connect(), waiter = await env.runtime.connect();
+  let pending: Promise<unknown> | undefined;
+  try {
+    await winner.query("BEGIN");
+    const win = await (first === "capture" ? capture(winner) : cancel(winner));
+    const { pid } = (await waiter.query("SELECT pg_backend_pid() AS pid")).rows[0];
+    pending = (first === "capture" ? cancel(waiter) : capture(waiter)).catch(error => error);
+    let waiting = false;
+    for (let retry = 0; retry < 300 && !waiting; retry++) {
+      waiting = (await db.query("SELECT cardinality(pg_blocking_pids($1))>0 AS waiting", [pid])).rows[0].waiting;
+    }
+    expect(waiting).toBe(true);
+    await winner.query("COMMIT");
+    if (first === "capture") {
+      expect(win).toMatchObject({ correctionStatus: "corrected" });
+      expect(await pending).toMatchObject({ message: "oms_cancel_unpaid_order_payment_already_moved" });
+    } else {
+      expect(win).toMatchObject({ status: "cancelled" });
+      expect(await pending).toMatchObject({ correctionStatus: "ignored", paymentResult: { kind: "ignored_success_requiring_review" } });
+    }
+  } finally {
+    await winner.query("ROLLBACK");
+    await pending;
+    winner.release();
+    waiter.release();
+  }
+  expect((await db.query("SELECT status FROM public.commerce_orders WHERE id=$1", [f.order])).rows)
+    .toEqual([{ status: first === "capture" ? "paid" : "cancelled" }]);
+  expect(await call(env.runtime, "payment_provider_attempt_read", [f.intent, f.attempt]))
+    .toMatchObject({ captureReviewRequired: first === "cancellation" });
+});
+
+it("stops reclaiming an otherwise eligible attempt once its capture review is durable", async () => {
+  const f = await fixture();
+  // An old closed order can still have a stale processing projection. Isolate
+  // the claim filter from the lifecycle transitions covered above.
+  await db.query("UPDATE public.commerce_orders SET status='expired' WHERE id=$1", [f.order]);
+  await age(f);
+  const claim = (phase: string) => port().claimStaleAttempts({ now: at, staleAfterSeconds: 900, limit: 100,
+    claimKey: `capture-claim:${f.intent}:${phase}` });
+  const [pending] = (await claim("before-review")).filter(row => row.paymentAttemptId === f.attempt);
+  expect(pending).toMatchObject({ orderId: f.order, attemptStatus: "processing" });
+  expect(await port().applyTerminalResult({
+    idempotencyKey: `capture-review:${f.intent}`, expectedOrderId: pending.orderId, expectedPaymentIntentId: pending.paymentIntentId,
+    expectedPaymentAttemptId: pending.paymentAttemptId, expectedPaymentId: pending.paymentId,
+    provider: pending.provider, providerPaymentId: pending.providerPaymentId!, localStatus: pending.attemptStatus,
+    providerStatus: "succeeded", resultStatus: "succeeded", occurredAt: at, failureReason: null, checkedAt: at,
+    payload: { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX", capturedAmountBasis: "provider_capture_v1" },
+  })).toMatchObject({ correctionStatus: "ignored", paymentResult: { kind: "ignored_success_requiring_review" } });
+  expect(await call(env.runtime, "payment_provider_attempt_read", [f.intent, f.attempt]))
+    .toMatchObject({ paymentAttempt: { status: "processing" }, captureReviewRequired: true });
+  expect((await claim("after-review")).some(row => row.paymentAttemptId === f.attempt)).toBe(false);
+});
+
+it("keeps historical pending evidence unpaid and refuses readback through a predecessor handle", async () => {
+  const f = await fixture();
+  const oldEvent = await createPostgresPaymentWebhookControlPort(env.runtime, options).ingestPaymentEvent({
+    provider: f.provider, providerPaymentId: `charge_${f.attempt}`, providerEventId: `historic-evidence:${f.intent}`, paymentIntentId: f.intent,
+    paymentAttemptId: f.attempt, eventType: "payment.succeeded", amountMinor: 12999, currency: "XXX", occurredAt: at, rawPayload: {},
+  });
+  const pendingProof = (await db.query("SELECT provider_event_id,event_fingerprint FROM public.payment_provider_attempt_evidence WHERE id=$1",
+    [oldEvent.paymentEventId])).rows[0];
+  expect(await completedCaptureReceipt(f.provider, pendingProof.provider_event_id, `charge_${f.attempt}`, pendingProof.event_fingerprint)).toBeNull();
+  const before = await census(f);
+  await expect(createPostgresProviderPaymentControlPort(env.runtime, options).applyPaymentResult({
+    idempotencyKey: `historical-unpaid:${f.intent}`, paymentIntentId: f.intent, paymentEventId: oldEvent.paymentEventId,
+    resultStatus: "succeeded", occurredAt: at, failureReason: null,
+  })).rejects.toMatchObject({ code: "22023", message: "payment_control_result_success_evidence_required" });
+  expect(await census(f)).toEqual(before);
+
+  const predecessorRef = `charge_${f.attempt}`;
+  const paymentId = (await db.query(`UPDATE public.payment_provider_states SET provider_payment_id=$2
+    WHERE id=$1 RETURNING payment_id`, [f.intent, predecessorRef])).rows[0].payment_id;
+  await db.query("UPDATE public.payment_provider_attempts SET provider_attempt_id=NULL,provider_session_id=NULL WHERE id=$1", [f.attempt]);
+  const after = await census(f);
+  await expect(port().applyTerminalResult({
+    idempotencyKey: `historical-handle:${f.intent}`, expectedOrderId: f.order, expectedPaymentIntentId: f.intent,
+    expectedPaymentAttemptId: f.attempt, expectedPaymentId: paymentId, provider: f.provider, providerPaymentId: predecessorRef,
+    localStatus: "processing", providerStatus: "succeeded", resultStatus: "succeeded", occurredAt: at, failureReason: null, checkedAt: at,
+    payload: { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX", capturedAmountBasis: "provider_capture_v1" },
+  })).rejects.toMatchObject({ code: "22023", message: "payment_reconciliation_apply_claim_mismatch" });
+  expect(await census(f)).toEqual(after);
+
+  await age(f, "2026-11-13T08:00:00Z");
+  const claim = { now: at, staleAfterSeconds: 60, limit: 100, claimKey: `no-active-handle:${f.intent}` };
+  expect((await port().claimStaleAttempts(claim)).some(row => row.paymentAttemptId === f.attempt)).toBe(false);
+  expect((await db.query("SELECT count(*)::int AS n FROM public.payment_provider_reconciliation_runs WHERE payment_attempt_id=$1", [f.attempt]))
+    .rows[0].n).toBe(0);
+  const session = `active-session:${f.attempt}`;
+  await db.query("UPDATE public.payment_provider_attempts SET provider_session_id=$2 WHERE id=$1", [f.attempt, session]);
+  try {
+    expect((await port().claimStaleAttempts({ ...claim, claimKey: `active-handle:${f.intent}` }))
+      .find(row => row.paymentAttemptId === f.attempt)).toMatchObject({ providerPaymentId: session });
+  } finally { await db.query("UPDATE public.payment_provider_attempts SET provider_session_id=NULL WHERE id=$1", [f.attempt]); }
+});
+
+it("settles a concurrent verified webhook and provider readback through one business result", async () => {
+  const f = await fixture();
+  const paymentId = (await db.query("SELECT payment_id FROM public.payment_provider_states WHERE id=$1", [f.intent])).rows[0].payment_id;
+  const remote = `charge_${f.attempt}`;
+  const webhookKey = `webhook-capture:${f.intent}`, readbackKey = `readback-capture:${f.intent}`;
+  const [webhookDb, readbackDb] = await Promise.all([env.runtime.connect(), env.runtime.connect()]);
+  try {
+    const webhook = createPostgresPaymentWebhookControlPort(webhookDb, options);
+    const result = createPostgresProviderPaymentControlPort(webhookDb, options);
+    const event = await webhook.ingestPaymentEvent({
+      provider: f.provider, providerPaymentId: remote, providerEventId: webhookKey, paymentIntentId: f.intent,
+      paymentAttemptId: f.attempt, eventType: "payment.succeeded", amountMinor: 12999, currency: "XXX", occurredAt: at,
+      rawPayload: {}, capturedAmountBasis: "provider_capture_v1",
+    });
+    const [a, b] = await Promise.all([
+      result.applyPaymentResult({ idempotencyKey: webhookKey, paymentIntentId: f.intent, paymentEventId: event.paymentEventId,
+        resultStatus: "succeeded", occurredAt: at, failureReason: null }),
+      createPostgresPaymentProviderReconciliationPort(readbackDb, options).applyTerminalResult({
+        idempotencyKey: readbackKey, expectedOrderId: f.order, expectedPaymentIntentId: f.intent,
+        expectedPaymentAttemptId: f.attempt, expectedPaymentId: paymentId, provider: f.provider, providerPaymentId: remote,
+        localStatus: "processing", providerStatus: "succeeded", resultStatus: "succeeded", occurredAt: at, failureReason: null, checkedAt: at,
+        payload: { normalizedStatus: "succeeded", amountMinor: 12999, currency: "XXX", capturedAmountBasis: "provider_capture_v1" },
+      }),
+    ]);
+    expect([a.kind, b.paymentResult.kind].sort()).toEqual(["ignored_duplicate_success", "state_changed"]);
+  } finally { webhookDb.release(); readbackDb.release(); }
+  expect((await db.query(`SELECT
+    (SELECT count(*)::int FROM public.payment_provider_attempt_evidence WHERE settlement_intent_id=$1 AND captured_amount_basis='provider_capture_v1') AS proofs,
+    (SELECT count(*)::int FROM public.payment_provider_transitions WHERE settlement_intent_id=$1 AND transition_kind='business_result' AND to_status='succeeded') AS results,
+    (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS settlements`, [f.intent])).rows[0])
+    .toEqual({ proofs: 2, results: 1, settlements: 1 });
+});
+
+it("restricts the completed capture receipt lookup to the runtime role", async () => {
+  expect((await db.query(`SELECT
+    has_function_privilege('service_role', 'public.commerce_payment_control_completed_capture_receipt(text,text,text,text)', 'EXECUTE') AS runtime,
+    has_function_privilege('anon', 'public.commerce_payment_control_completed_capture_receipt(text,text,text,text)', 'EXECUTE') AS anonymous,
+    has_function_privilege('authenticated', 'public.commerce_payment_control_completed_capture_receipt(text,text,text,text)', 'EXECUTE') AS browser`)).rows[0])
+    .toEqual({ runtime: true, anonymous: false, browser: false });
 });
 
 it("denies runtime calls to the sealed interactive reopen body", async () => {
@@ -248,7 +655,7 @@ it("refuses legacy and superseded attribution without reconstructing payment or 
 
 it("rolls back refund, stock, notices and receipts together when reservation release refuses", async () => {
   const f = await fixture();
-  await db.query("SELECT pg_temp.provider_apply($1,$2,NULL,'succeeded',$3,NULL)", [`capture:${f.intent}`, f.intent, at]);
+  await db.query("SELECT pg_temp.provider_capture($1::jsonb,$2,$3)", [f, `capture:${f.intent}`, at]);
   await db.query(`INSERT INTO public.fulfillment_inventory_reservations(purchase_order_id,operation_fingerprint,source_key,status,created_at,expires_at)
     VALUES($1,$2,'fixture','held',$3,'2032-01-01T12:00Z')`, [f.order, "a".repeat(64), at]);
   const before = await census(f);
@@ -267,7 +674,7 @@ it("rolls back refund, stock, notices and receipts together when reservation rel
 
 it("serializes full refund with stock consumption while preserving consumed and unrelated reservations", async () => {
   const f = await fixture();
-  await db.query("SELECT pg_temp.provider_apply($1,$2,NULL,'succeeded',$3,NULL)", [`capture:${f.intent}`, f.intent, at]);
+  await db.query("SELECT pg_temp.provider_capture($1::jsonb,$2,$3)", [f, `capture:${f.intent}`, at]);
   const hold = (await db.query(`INSERT INTO public.fulfillment_inventory_reservations(purchase_order_id,operation_fingerprint,source_key,status,created_at,expires_at)
     VALUES($1,$2,'fixture','held',$3,'2032-01-01T12:00Z') RETURNING id`, [f.order, "b".repeat(64), at])).rows[0].id;
   const consume = await env.owner.connect();

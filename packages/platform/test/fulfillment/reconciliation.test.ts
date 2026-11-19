@@ -129,3 +129,83 @@ it("fails provider read uncertainty without local writes and projects unmapped e
   expect(await run(unmapped.input)).toMatchObject({ ok: true, quarantined: 1 });
   expect(seen).toEqual(Array(3).fill({ correlation: observation().correlation, eventKey: "legacy:unmapped" }));
 });
+
+it("uses single readLocalState per row when supplied and never carries state across rows after effect mutations", async () => {
+  const f = fixture();
+  const readLocalStateCalls: string[] = [];
+  const stateByCall = [
+    { status: "label_created", latestOccurredAt: "2030-10-20T10:00:00.000Z", handedOverAt: null, carrier: { carrierRef: "local", serviceRef: "local-service" } },
+    { status: "in_transit", latestOccurredAt: "2030-10-21T12:00:00.000Z", handedOverAt: "2030-10-21T11:00:00.000Z", carrier: { carrierRef: "local", serviceRef: "local-service" } },
+  ];
+  let idx = 0;
+  f.input.localPersistence.readLocalState = async (ref) => {
+    readLocalStateCalls.push(ref);
+    return stateByCall[idx++] ?? null;
+  };
+  f.input.localPersistence.readLocalFulfillmentStatus = async () => { throw new Error("should not call individual status reader"); };
+  f.input.localPersistence.latestStatusOccurredAt = async () => { throw new Error("should not call individual latest reader"); };
+  f.input.localPersistence.readHandedOverAt = async () => { throw new Error("should not call individual handedOver reader"); };
+  f.input.lifecycle.readDeliveryCarrier = async () => { throw new Error("should not call individual carrier reader"); };
+  const obs1 = observation("in_transit", "2030-10-21T12:00:00.000Z");
+  const obs2 = observation("in_transit", "2030-10-21T11:00:00.000Z");
+  f.input.readPage = async () => [
+    {
+      kind: "found",
+      externalRef: "external-a",
+      createdAt: null,
+      updatedAt: "2030-10-21T12:00:00.000Z",
+      observation: { ...obs1, trackingRefs: [{ trackingNumber: "TRACK-1", carrierRef: null, serviceRef: null, publicUrl: null }] },
+    },
+    {
+      kind: "found",
+      externalRef: "external-a",
+      createdAt: null,
+      updatedAt: "2030-10-21T11:00:00.000Z",
+      observation: obs2,
+    },
+  ];
+
+  const out = await run(f.input);
+  expect(out).toMatchObject({ ok: true, checked: 2, updated: 1, stale: 1, trackingRefs: 1 });
+  // Exactly 1 readLocalState call per row (fresh read on row 2 sees post-mutation latestOccurredAt -> stale).
+  expect(readLocalStateCalls).toEqual(["fulfillment-a", "fulfillment-a"]);
+});
+
+it("short-circuits fallback readHandedOverAt when off-track or issueAccountingInvoice is absent", async () => {
+  const staleOffTrack = fixture("cancelled");
+  staleOffTrack.input.localPersistence.latestStatusOccurredAt = async () => "2030-10-22T00:00:00.000Z";
+  staleOffTrack.input.localPersistence.readHandedOverAt = async () => { throw new Error("must not read handedOverAt when off-track"); };
+  staleOffTrack.input.readPage = async () => [{
+    kind: "found",
+    externalRef: "external-a",
+    createdAt: null,
+    updatedAt: "2030-10-21T12:00:00.000Z",
+    observation: observation("in_transit", "2030-10-21T12:00:00.000Z"),
+  }];
+  expect(await run(staleOffTrack.input)).toMatchObject({ ok: true, stale: 1, offTrackSkips: 1, failures: 0 });
+
+  const staleNoInvoice = fixture("in_transit");
+  staleNoInvoice.input.lifecycle.issueAccountingInvoice = undefined;
+  staleNoInvoice.input.localPersistence.latestStatusOccurredAt = async () => "2030-10-22T00:00:00.000Z";
+  staleNoInvoice.input.localPersistence.readHandedOverAt = async () => { throw new Error("must not read handedOverAt without invoicing"); };
+  staleNoInvoice.input.readPage = async () => [{
+    kind: "found",
+    externalRef: "external-a",
+    createdAt: null,
+    updatedAt: "2030-10-21T12:00:00.000Z",
+    observation: observation("in_transit", "2030-10-21T12:00:00.000Z"),
+  }];
+  expect(await run(staleNoInvoice.input)).toMatchObject({ ok: true, stale: 1, failures: 0 });
+
+  const exceptionNoInvoice = fixture("in_transit");
+  exceptionNoInvoice.input.lifecycle.issueAccountingInvoice = undefined;
+  exceptionNoInvoice.input.localPersistence.readHandedOverAt = async () => { throw new Error("must not read handedOverAt on exception without invoicing"); };
+  exceptionNoInvoice.input.readPage = async () => [{
+    kind: "found",
+    externalRef: "external-a",
+    createdAt: null,
+    updatedAt: "2030-10-21T12:00:00.000Z",
+    observation: observation("exception", "2030-10-21T12:00:00.000Z"),
+  }];
+  expect(await run(exceptionNoInvoice.input)).toMatchObject({ ok: true, exceptions: 1, failures: 0 });
+});

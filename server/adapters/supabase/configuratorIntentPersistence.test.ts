@@ -41,55 +41,39 @@ function completedPayload() {
   };
 }
 
-/** Minimal chainable stub for `.from(...).select(...).eq(...).eq(...).eq(...).limit(...)`. */
-function selectClient(result: { data: unknown; error: unknown }) {
-  const limit = vi.fn(async () => result);
-  const builder = { eq: vi.fn(() => builder), limit };
-  const select = vi.fn(() => builder);
-  const from = vi.fn(() => ({ select }));
-  return { client: asClient({ from }), from, select, builder, limit };
-}
-
 describe("supabaseConfiguratorIntentPersistencePort — findCompletedIdentity", () => {
-  it("returns the parsed identity stored on the completed key", async () => {
-    const { client, from, builder, limit } = selectClient({
-      data: [{ response_payload: completedPayload() }],
-      error: null,
+  it("reads the completed identity using the route-verified subject", async () => {
+    const rpc = vi.fn(async () => ({
+      data: [{ response_payload: completedPayload(), request_fingerprint: "stored" }], error: null,
+    }));
+    const from = vi.fn();
+    const port = createSupabaseConfiguratorIntentPersistencePort(asClient({ rpc, from }), { authenticatedUserId: CLIENT_ID });
+
+    expect(await port.findCompletedIdentity!("intent-2026-06-05-rex")).toEqual(completedPayload());
+    expect(rpc).toHaveBeenCalledWith("commerce_configurator_read_completed_intent", {
+      p_idempotency_key: "intent-2026-06-05-rex", p_auth_user_id: CLIENT_ID,
     });
-    const port = portFor(client);
-
-    const identity = await port.findCompletedIdentity!("intent-2026-06-05-rex");
-
-    expect(from).toHaveBeenCalledWith("commerce_idempotency_keys");
-    expect(builder.eq).toHaveBeenCalledWith("scope", "commerce_configurator_intent");
-    expect(builder.eq).toHaveBeenCalledWith("idempotency_key", "intent-2026-06-05-rex");
-    expect(builder.eq).toHaveBeenCalledWith("status", "completed");
-    expect(limit).toHaveBeenCalledWith(1);
-    expect(identity).toEqual(completedPayload());
+    expect(from).not.toHaveBeenCalled();
   });
 
-  it("returns null when no completed row exists", async () => {
-    const { client } = selectClient({ data: [], error: null });
-    const port = portFor(client);
+  it("returns null when the database returns no authorized receipt", async () => {
+    const port = portFor(asClient({ rpc: async () => ({ data: [], error: null }) }));
 
     expect(await port.findCompletedIdentity!("missing-key-123")).toBeNull();
   });
 
   it("returns null when the stored payload is not a valid identity", async () => {
-    const { client } = selectClient({
-      data: [{ response_payload: { contractVersion: "garbage" } }],
-      error: null,
-    });
-    const port = portFor(client);
+    const port = portFor(asClient({ rpc: async () => ({
+      data: [{ response_payload: { contractVersion: "garbage" }, request_fingerprint: null }], error: null,
+    }) }));
 
     expect(await port.findCompletedIdentity!("intent-2026-06-05-rex")).toBeNull();
   });
 
   it("throws on a transport error so the caller can fail-safe to 409", async () => {
-    const { client } = selectClient({ data: null, error: { message: "boom" } });
-    const port = portFor(client);
+    const port = portFor(asClient({ rpc: async () => ({ data: null, error: { message: "boom" } }) }));
 
-    await expect(port.findCompletedIdentity!("intent-2026-06-05-rex")).rejects.toThrow(/boom/);
+    await expect(port.findCompletedIdentity!("intent-2026-06-05-rex")).rejects.toThrow("Configurator intent identity lookup failed");
   });
 });
 
@@ -261,6 +245,44 @@ describe("supabaseConfiguratorIntentPersistencePort — the verified subject", (
 });
 
 describe("supabaseConfiguratorIntentPersistencePort — persistIntent error mapping", () => {
+  it("uses the owner-scoped read only for an out-of-range cadence", async () => {
+    const command = { ...commandWithPhone("+12025550123", "US"), mode: "subscription" as const, cadenceDays: 3661 };
+    const rpc = vi.fn(async () => ({ data: null, error: null }));
+    const from = vi.fn();
+    const port = createSupabaseConfiguratorIntentPersistencePort(asClient({ rpc, from }), { authenticatedUserId: CLIENT_ID });
+
+    await expect(port.persistCheckoutCommand(command)).rejects.toMatchObject({
+      details: { reason: "cadence_limit_exceeded" },
+    });
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("commerce_configurator_replay_checkout_command", {
+      p_command: { ...command, authenticatedUserId: CLIENT_ID },
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("replays a historical cadence using the canonical phone and server subject", async () => {
+    const command = { ...commandWithPhone("2025550123", "US"), mode: "subscription" as const, cadenceDays: 3661, authenticatedUserId: PET_ID };
+    const rpc = vi.fn(async () => ({ data: {
+      ...completedPayload(), idempotencyKey: command.idempotencyKey, petId: null, replayed: true,
+    }, error: null }));
+    const port = createSupabaseConfiguratorIntentPersistencePort(asClient({ rpc }), { authenticatedUserId: CLIENT_ID });
+
+    await expect(port.persistCheckoutCommand(command)).resolves.toMatchObject({
+      idempotencyKey: command.idempotencyKey, subjectId: null, replayed: true,
+    });
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("commerce_configurator_replay_checkout_command", {
+      p_command: { ...command, customer: { ...command.customer, phone: "+12025550123" }, authenticatedUserId: CLIENT_ID },
+    });
+  });
+
+  it("rejects a receipt for a different checkout key", async () => {
+    const command = commandWithPhone("+12025550123", "US");
+    const rpc = vi.fn(async () => ({ data: { ...completedPayload(), petId: null, replayed: true }, error: null }));
+    const port = portFor(asClient({ rpc }));
+
+    await expect(port.replayCheckoutCommand(command)).rejects.toThrow("Checkout command receipt is invalid");
+  });
+
   it("replays a completed 21-day checkout command through the managed identity RPC", async () => {
     const command = { ...commandWithPhone("+12025550123", "US"), mode: "subscription" as const, cadenceDays: 21 };
     const rpc = vi.fn(async () => ({ data: {

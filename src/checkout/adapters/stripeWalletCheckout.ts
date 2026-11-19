@@ -27,7 +27,7 @@ import { recoverAmbiguousCheckoutSubmit } from "@/checkout/machine/checkoutAmbig
  */
 
 export interface StripeWalletCheckoutContext {
-  locale: "pl" | "en";
+  locale?: "pl" | "en";
   subscriptionCheckoutEnabled: boolean;
   deliverySelectionEnabled: boolean;
   dhlOnlyDeliveryEnabled: boolean;

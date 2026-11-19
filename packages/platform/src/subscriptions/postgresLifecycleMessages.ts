@@ -31,6 +31,8 @@ export interface NativeLifecycleMessagesOptions {
   bind(notice: NativeLifecycleNotice, recipient: { email: string; firstName: string | null; country: string | null }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
   /** Explicit operator fields only: no customer payload, recovery path or claim token. */
   bindOperator?(notice: { notificationId: string; caseId: string; templateSlug: string }, recipient: { email: string }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+  /** Optional sink notified when per-notice dispatch throws; never aborts the batch. */
+  onError?(context: { source: NativeLifecycleNotice["source"]; id: string; subscriptionId: string }, error: unknown): void;
 }
 const aliases: Record<string, string> = {
   "subscription.customer_self_service.swap_base_line": "subscription.package_changed",
@@ -116,7 +118,7 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
             AND f.idempotency_key='renewal-reminder:'||to_char(r.reminder_day,'YYYY-MM-DD') AND r.reminder_kind='renewal_due_soon'
         ) SELECT x.* FROM sources x LEFT JOIN public.transactional_delivery_receipts r
           ON r.idempotency_key='subscription-notice:'||x.source||':'||x.id::text
-          WHERE r.state IS DISTINCT FROM 'accepted' AND COALESCE(r.attempt_count,0)<6
+          WHERE r.state IS DISTINCT FROM 'accepted' AND COALESCE(r.attempt_count,0)<$3::integer
             AND NOT EXISTS(SELECT 1 FROM public.subscription_events done WHERE done.subscription_id=x.subscription_id
               AND done.event_type='subscription.notice.suppressed'
               AND done.idempotency_key='notice-suppressed:'||x.source||':'||x.id::text)
@@ -125,7 +127,7 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
               AND done.idempotency_key=x.subscription_id::text||':notice-suppressed:'||x.source||':'||x.id::text)
             AND NOT EXISTS (SELECT 1 FROM public.subscription_notice_refusals refused
               WHERE refused.source=x.source AND refused.source_id=x.id)
-          ORDER BY x.id LIMIT $1::integer`, [limit, [...Object.keys(aliases), "subscription.pause_reminder_due"]])).rows;
+          ORDER BY x.id LIMIT $1::integer`, [limit, [...Object.keys(aliases), "subscription.pause_reminder_due"], dispatch.maxAttempts])).rows;
         const rows: Record<string, unknown>[] = [...dunning.map(row => ({ ...row, source: "dunning", client_id: row.recipient_ref, kind: row.notification_kind })), ...sources];
         for (const row of rows) {
           const source = row.source as NativeLifecycleNotice["source"];
@@ -236,9 +238,16 @@ export function createPostgresLifecycleMessages(options: NativeLifecycleMessages
               if (receipt.state !== "accepted" || !receipt.deliveryReference) throw new Error("subscription_notice_receipt_invalid");
               if (await settle("sent", receipt.deliveryReference)) result.sent++; else result.stale++;
             }
-          } catch {
+          } catch (error) {
             // Acceptance may be unknown. The existing receipt and lease own recovery.
             result.failed++;
+            if (options.onError) {
+              try {
+                options.onError({ source, id: String(row.id), subscriptionId: String(row.subscription_id) }, error);
+              } catch {
+                // Never allow an error sink to abort the remaining batch or skip advisory unlock.
+              }
+            }
           } finally { await db.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [key]); }
         }
         return result;

@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions } from "../data/index.js";
+import {
+  createPostgresRoleFreeTransactionLane,
+  type PgGatewayClient,
+  type PostgresDataGatewayEnv,
+  type PostgresDataGatewayOptions,
+} from "../data/index.js";
 
 export const nativeFingerprint = (value: string): string => createHash("sha256").update(value).digest("hex");
 export function nativeText(value: unknown, max = 256): string {
@@ -31,12 +36,11 @@ export function nativeJson(value: unknown): string {
 export const nativeStamp = (value: unknown): string => nativeTime(value instanceof Date ? value.toISOString() : value);
 /** Private capability-local helper. The host owns the connection authority; no SET ROLE or runtime DDL. */
 export function nativeTransactions(env: PostgresDataGatewayEnv, options: PostgresDataGatewayOptions, tables: string[]) {
-  if (!env.connectionString.trim()) throw new Error("communications_database_url_required");
-  const lane = createPostgresRoleFreeTransactionLane(env, options);
+  if (!options.pool && !env.connectionString.trim()) throw new Error("communications_database_url_required");
+  const lane = createPostgresRoleFreeTransactionLane<PgGatewayClient>(env, options);
   return {
     close: lane.close,
-    run: <T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> => lane.run(async gateway => {
-      const db = gateway as PgQueryExecutor;
+    run: <T>(work: (db: PgGatewayClient) => Promise<T>): Promise<T> => lane.run(async db => {
       // Effective privileges include PUBLIC, role membership and column/default grants.
       // Missing relations, malformed responses and untrusted execution roles all refuse.
       const row = (await db.query(`SELECT current_user IN ('anon','authenticated','authenticator') AS browser,

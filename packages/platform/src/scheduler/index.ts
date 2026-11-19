@@ -12,6 +12,7 @@ export {
   createPgAdvisoryLock,
   type AdvisoryLock,
   type AdvisoryLockQuerier,
+  type EnvAdvisoryLockOptions,
 } from "./advisoryLock.js";
 export {
   createNodeScheduler,

@@ -25,7 +25,7 @@ afterAll(async () => { db?.release(); await closePostgres(container, pool); }, p
 it.each([
   ["durability.sql", 56], ["blockedPreflight.sql", 9], ["eventFingerprint.sql", 8], ["zeroAmountAndAttribution.sql", 44],
   ["notChargeableCleanup.sql", 15],
-  ["terminalizedCycle.sql", 104],
+  ["terminalizedCycle.sql", 106],
   ["intentReplay.sql", 4], ["duplicateFailure.sql", 6],
 ] as const)("retains the native assertions in %s", async (file, count) => {
   try {

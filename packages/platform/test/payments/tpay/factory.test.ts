@@ -7,6 +7,7 @@ import { TpayTransactionDispatchError } from "../../../src/payments/tpay/tpayDis
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
 import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
 import { createVerifiedPaymentIngress, readMethodLifecycleEvent } from "../../../src/payments/index.js";
+import { createPostgresProviderPaymentRail } from "../../../src/payments/postgresProviderRail.js";
 import type { PaymentAdapterCapabilities, PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
 
 // The factory and its verifier consume this same private descriptor seam.
@@ -97,7 +98,9 @@ it("dispatches a bank redirect with the selected channel and transient payer", a
   expect(fetch).not.toHaveBeenCalled();
   const result = await adapter.attemptPort.execute(attemptInput());
   expect(result).toMatchObject({ outcome: { kind: "attempt", status: "processing" },
-    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" }, handoff: { kind: "redirect", url: "https://example.test/pay" } });
+    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" }, handoff: { kind: "redirect", url: "https://example.test/pay" },
+    persistence: { providerSessionId: "api-1", nextActionKind: "redirect", customerProviderRef: null, paymentMethodRef: null } });
+  expect(JSON.stringify(result.persistence)).not.toContain("https://example.test/pay");
   expect(request()).toMatchObject({ payer, hiddenDescription: "intent-1", description: "intent-1", amount: 25.99,
     currency: "PLN", pay: { channelId: "42" } });
   expectRedacted(result); expectRedacted(result.diagnostics);
@@ -201,9 +204,69 @@ it("keeps provider refusal prose and payer out of the complete returned decline 
   const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(),
     methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
   expect(result).toMatchObject({ outcome: { kind: "decline", refusal: { code: "indeterminate" } },
-    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" } });
+    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" },
+    persistence: { providerSessionId: "api-1", declineReason: "unknown", responsePayload: { providerErrorCodes: ["unknown"] } } });
   expect(result.handoff).toBeUndefined();
   expectRedacted(result); expectRedacted(result.diagnostics);
+});
+it("finalizes dispatched redirects, declines and pre-dispatch refusals through createPostgresProviderPaymentRail without leaking transient data", async () => {
+  const intentId = "11111111-1111-4111-8111-111111111111";
+  const attemptId = "22222222-2222-4222-8222-222222222222";
+  for (const mode of ["redirect", "decline", "oauth-fail"] as const) {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
+    const executor = {
+      async query(text: string, values: unknown[] = []) {
+        calls.push({ text, values });
+        const status = text.includes("prepare") ? "created" : values[7];
+        return {
+          rows: [{
+            response: {
+              paymentAttempt: {
+                id: attemptId,
+                status,
+                replayed: false,
+                providerAttemptId: text.includes("prepare") ? null : values[5],
+                providerSessionId: text.includes("prepare") ? null : values[6],
+                nextActionKind: text.includes("prepare") ? null : values[8],
+              },
+            },
+          }],
+        };
+      },
+    };
+    const { good } = dispatchConfig(mode === "decline");
+    if (mode === "oauth-fail") {
+      good.http.fetchImpl = vi.fn(async () => ({
+        ok: false, status: 400, text: async () => JSON.stringify({ result: "failed" }), json: async () => ({ result: "failed" }),
+      }));
+    }
+    const rail = createPostgresProviderPaymentRail({
+      executor,
+      adapter: createTpayPaymentAdapter(good),
+      mode: "test",
+      truth: { contractVersion: "payment.truth.v1", provider: "tpay", providerReference: "test-ref", environment: "test" },
+      resolveMethodOwner: async () => null,
+      resolveSavedMethodOwner: async () => null,
+    });
+    const input = mode === "redirect"
+      ? { ...attemptInput(), intentRef: intentId }
+      : { ...attemptInput(), intentRef: intentId, methodSelection: { family: "one-time-code" as const }, customerAuthorization: authorization };
+    const { execution, attempt } = await rail.execute(input);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.text).toContain("payment_provider_attempt_prepare");
+    expect(calls[1]!.text).toContain("payment_provider_attempt_finalize");
+    if (mode === "redirect") {
+      expect(execution.dispatch).toEqual({ kind: "dispatched", providerPaymentRef: "api-1" });
+      expect(attempt).toMatchObject({ providerAttemptId: "api-1", providerSessionId: "api-1", status: "processing", nextActionKind: "redirect" });
+    } else {
+      expect(execution.outcome.kind).toBe("decline");
+      expect(attempt.status).toBe("processing");
+    }
+    const serialized = JSON.stringify(calls.map(c => c.values));
+    for (const sensitive of [payer.email, payer.name, authorization, "https://example.test/pay"]) {
+      expect(serialized).not.toContain(sensitive);
+    }
+  }
 });
 const trustedFailures: TrustedProviderAttemptNoChargeFailure[] = [
   { phase: "oauth", code: "tpay_oauth_failed", dispatchState: "not_dispatched" },
@@ -317,10 +380,31 @@ it("bounds future signed issue time at the default and configured clock skew", a
 it("deduplicates receipt-independent fingerprints while separating transaction outcomes", async () => {
   const adapter = createTpayPaymentAdapter(config());
   const first = await verify(adapter);
+  expect(first).toMatchObject({ kind: "money", capturedAmountBasis: "provider_capture_v1" });
   expect(await verify(adapter, body(), undefined, "2030-01-01T00:00:00Z")).toEqual(first);
   const failed = await verify(adapter, body("FALSE"));
   expect(failed).toMatchObject({ kind: "money", outcome: "failed", providerEventId: "TR-1:failed" });
+  expect(failed).not.toHaveProperty("capturedAmountBasis");
   expect(failed).not.toEqual(first);
+});
+it("uses a historical fingerprint only to read a completed receipt when collected money is missing", async () => {
+  const adapter = createTpayPaymentAdapter(config());
+  const prior = await verify(adapter);
+  if (prior.kind !== "money") throw new Error("Expected verified legacy identity");
+  const rawBody = body().replace("&tr_paid=25.99", "");
+  expect(await verify(adapter, rawBody)).toMatchObject({ kind: "money", money: null,
+    historicalCaptureFingerprint: prior.fingerprint });
+  const findCompletedHistoricalCapture = vi.fn<() => Promise<string | null>>().mockResolvedValueOnce("prior-local-event").mockResolvedValueOnce(null);
+  const ingestPaymentEvent = vi.fn();
+  const applyPaymentResult = vi.fn();
+  const ingress = createVerifiedPaymentIngress({ provider: "tpay", verifyPort: adapter.verifyPort,
+    paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult } });
+  const delivery = { rawBody: Buffer.from(rawBody), headers: { "x-jws-signature": fixture.signature(rawBody) },
+    receivedAt: new Date(instant * 1000).toISOString() };
+  expect(await ingress.receive(delivery)).toMatchObject({ status: 200, data: { replayed: true, paymentEventId: "prior-local-event" } });
+  expect(await ingress.receive(delivery)).toMatchObject({ status: 503 });
+  expect(ingestPaymentEvent).not.toHaveBeenCalled();
+  expect(applyPaymentResult).not.toHaveBeenCalled();
 });
 it("carries only donor-filtered audit facts outside identity and fingerprints", async () => {
   const adapter = createTpayPaymentAdapter(config());

@@ -15,6 +15,8 @@ const claim = z.object({ payment_attempt_id: z.guid(), payment_intent_id: z.guid
   ? row.subscription_id === null && row.subscription_cycle_id === null : row.subscription_id !== null && row.subscription_cycle_id !== null);
 const paymentResult = z.object({ paymentIntentId: z.guid(), paymentAttemptId: z.guid(), paymentId: z.guid(), orderId: z.guid(),
   status: z.string(), kind: z.string(), replayed: z.boolean() });
+const reviewAttempt = z.object({ orderId: z.guid(), captureReviewRequired: z.boolean().optional(),
+  paymentAttempt: z.object({ id: z.guid(), paymentIntentId: z.guid() }) });
 const applied = z.object({ paymentReconciliationApply: z.object({ paymentResult, correctionStatus: z.enum(["corrected", "ignored"]),
   paymentReconciliation: z.object({ id: z.guid() }),
   replayed: z.boolean(), subscriptionWebhookDunning: z.object({ opened: z.boolean(), replayed: z.boolean(),
@@ -47,6 +49,19 @@ export function createPostgresPaymentProviderReconciliationPort(
       )).rows[0]?.response);
       if (!parsed.success) throw new Error("payment_reconciliation_evidence_readback_invalid");
       return { replayed: false, reconciliationId: parsed.data.paymentReconciliation.id };
+    },
+    async readCaptureReview(input) {
+      const value = (await db.query(
+        "SELECT public.payment_provider_attempt_read($1::uuid,$2::uuid) AS response",
+        [input.paymentIntentId, input.paymentAttemptId],
+      )).rows[0]?.response;
+      const parsed = reviewAttempt.safeParse(value);
+      if (!parsed.success || parsed.data.orderId !== input.orderId.toLowerCase()
+        || parsed.data.paymentAttempt.paymentIntentId !== input.paymentIntentId.toLowerCase()
+        || parsed.data.paymentAttempt.id !== input.paymentAttemptId.toLowerCase()) {
+        throw new Error("payment_capture_review_attempt_readback_invalid");
+      }
+      return parsed.data.captureReviewRequired === true;
     },
     async applyTerminalResult(input) {
       const parsed = applied.safeParse((await db.query(

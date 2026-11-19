@@ -69,8 +69,43 @@ export type NativeStoreCheck = { table: string; constraint: string; column: stri
 );
 export type NativeStoreUnique = { table: string; constraint: string; columns: string[]; nullsNotDistinct: boolean };
 const deferredEvents = ["INSERT", "UPDATE", "DELETE"] as const;
-// PostgreSQL reserved and type/function-name keywords, plus positional words in native admission.
-const deferredKeyword = new Set("add after all alter always analyse analyze and any array as asc asymmetric authorization before binary both case cast check collate collation column comment concurrently constraint create cross current_catalog current_date current_role current_schema current_time current_timestamp current_user default deferrable deferred delete desc disable distinct do drop each else enable end except execute exists false fetch for foreign freeze from full function grant group having if ilike in initially inner insert intersect into is isnull join lateral leading left like limit localtime localtimestamp natural not notnull null offset on only or order outer overlaps placing primary privileges public references rename replace replica returning revoke right row select session_user similar some symmetric system_user table tablesample then to trailing trigger true union unique update user using validate variadic verbose when where window with".split(" "));
+// Native catalogue pin: test-postgres 16 in config/ci-images.json. All PostgreSQL 16 keywords from https://github.com/postgres/postgres/blob/REL_16_STABLE/src/include/parser/kwlist.h
+const deferredKeyword = new Set(`
+  abort absent absolute access action add admin after aggregate all also alter always analyse analyze and any
+  array as asc asensitive assertion assignment asymmetric at atomic attach attribute authorization backward
+  before begin between bigint binary bit boolean both breadth by cache call called cascade cascaded case cast
+  catalog chain char character characteristics check checkpoint class close cluster coalesce collate collation
+  column columns comment comments commit committed compression concurrently configuration conflict connection
+  constraint constraints content continue conversion copy cost create cross csv cube current current_catalog
+  current_date current_role current_schema current_time current_timestamp current_user cursor cycle data
+  database day deallocate dec decimal declare default defaults deferrable deferred definer delete delimiter
+  delimiters depends depth desc detach dictionary disable discard distinct do document domain double drop each
+  else enable encoding encrypted end enum escape event except exclude excluding exclusive execute exists
+  explain expression extension external extract false family fetch filter finalize first float following for
+  force foreign format forward freeze from full function functions generated global grant granted greatest
+  group grouping groups handler having header hold hour identity if ilike immediate immutable implicit import
+  in include including increment indent index indexes inherit inherits initially inline inner inout input
+  insensitive insert instead int integer intersect interval into invoker is isnull isolation join json
+  json_array json_arrayagg json_object json_objectagg key keys label language large last lateral leading
+  leakproof least left level like limit listen load local localtime localtimestamp location lock locked logged
+  mapping match matched materialized maxvalue merge method minute minvalue mode month move name names national
+  natural nchar new next nfc nfd nfkc nfkd no none normalize normalized not nothing notify notnull nowait null
+  nullif nulls numeric object of off offset oids old on only operator option options or order ordinality
+  others out outer over overlaps overlay overriding owned owner parallel parameter parser partial partition
+  passing password placing plans policy position preceding precision prepare prepared preserve primary prior
+  privileges procedural procedure procedures program publication quote range read real reassign recheck
+  recursive ref references referencing refresh reindex relative release rename repeatable replace replica
+  reset restart restrict return returning returns revoke right role rollback rollup routine routines row rows
+  rule savepoint scalar schema schemas scroll search second security select sequence sequences serializable
+  server session session_user set setof sets share show similar simple skip smallint snapshot some sql stable
+  standalone start statement statistics stdin stdout storage stored strict strip subscription substring
+  support symmetric sysid system system_user table tables tablesample tablespace temp template temporary text
+  then ties time timestamp to trailing transaction transform treat trigger trim true truncate trusted type
+  types uescape unbounded uncommitted unencrypted union unique unknown unlisten unlogged until update user
+  using vacuum valid validate validator value values varchar variadic varying verbose version view views
+  volatile when where whitespace window with within without work wrapper write xml xmlattributes xmlconcat
+  xmlelement xmlexists xmlforest xmlnamespaces xmlparse xmlpi xmlroot xmlserialize xmltable year yes zone
+`.trim().split(/\s+/u));
 export type NativeDeferredTrigger = { name: string; relation: string; events: (typeof deferredEvents)[number][]; function: string; deferred: true; sha256: string };
 const deferredTriggerMessages = {
   unregistered: (name: PlatformSqlToken | undefined, supported: boolean) => `deferred trigger ${name?.value ?? "<missing name>"} is not registered; ${!supported ? "remove it" : name?.kind !== "word" || deferredNameRule(name.value)
@@ -2214,7 +2249,7 @@ export const isNativeStoreMigrationPath = (path: string, slots?: readonly Pick<N
 
 const nativeStoreName = (name: unknown): name is string => typeof name === "string" && /^[a-z_][a-z0-9_]*$/u.test(name);
 const deferredNameRule = (name: unknown) => !nativeStoreName(name) || name.length > 63 ? "must be an unquoted identifier of at most 63 bytes"
-  : deferredKeyword.has(name) ? "must not be an SQL keyword" : undefined;
+  : deferredKeyword.has(name) ? "is a PostgreSQL keyword. Rename the trigger (for example, add a prefix) and register the new name." : undefined;
 const nativeStoreTable = (name: unknown): name is string => typeof name === "string" && /^public\.[a-z_][a-z0-9_]*$/u.test(name);
 const nativeStoreList = (values: unknown): values is string[] => Array.isArray(values) && values.length > 0 && values.every(nativeStoreName) && new Set(values).size === values.length;
 const nativeStoreInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
@@ -2384,6 +2419,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (rule) throw new Error(deferredTriggerMessages.field(trigger.name, "name", rule));
       if (!nativeStoreTable(trigger.relation) || trigger.relation.length > 70) invalid("relation", "a public relation with an identifier of at most 63 bytes");
       if (typeof trigger.function !== "string" || !/^public\.[a-z_][a-z0-9_]{0,62}\(\)$/u.test(trigger.function)) invalid("function", "a zero-argument public function of at most 63 bytes");
+      if (deferredKeyword.has(trigger.function.slice(7, -2))) throw new Error(deferredTriggerMessages.field(trigger.name, "function", "name is a PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name."));
       if (!Array.isArray(trigger.events) || !trigger.events.length || canonical(trigger.events) !== canonical(deferredEvents.filter(event => trigger.events.includes(event)))) invalid("events", "a nonempty ordered subset of INSERT, UPDATE, DELETE");
       if (!hash(trigger.sha256)) invalid("sha256", "the 64-character SHA-256 digest of the statement");
       return !keysAre(trigger, "deferred,events,function,name,relation,sha256") && invalid("fields", "name, relation, events, function, deferred and sha256");
@@ -2663,7 +2699,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const baselineActions = new Set<number>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
-    const { tokens } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
+    const parsed = platformSqlTokens(statement, false, true), { tokens } = parsed, head = nativeTableHead(tokens);
     const word = (i: number, value: string) => nativeWord(tokens, i, value);
     const create = word(0, "CREATE"), drop = word(0, "DROP"), changing = word(0, "ALTER");
     const replacement = create && word(1, "OR") && word(2, "REPLACE"), kind = replacement ? 3 : word(0, "COMMENT") ? 2 : 1;
@@ -2673,7 +2709,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const next = (i: number) => i + (nativeSymbol(tokens, i + 1, ".") ? 3 : 1);
     const relation = (i: number) => next(i) === i + 3 ? `${id(i)}.${id(i + 2)}` : `public.${id(i)}`;
     const entry = create && word(triggerAt, "TRIGGER") && pins.find(pin => pin.name === id(nameIndex));
-    const block = nativeStoreRolePrivilege.exec(statement);
+    const block = nativeStoreRolePrivilege.exec(statement), pinScan = pins.length && block ? platformSqlTokens(block[2]!, false, true) : parsed;
+    // The pin scan reads unquoted and double-quoted identifiers in full. Exact statement pins cover text inside string literals and function bodies.
+    const unicodeEscape = pins.length && pinScan.tokens.some((token, i, scan) => nativeWord(scan, i, "UESCAPE")
+      || (nativeWord(scan, i, "U") && nativeSymbol(scan, i + 1, "&") && token.end === scan[i + 1]!.start
+        && scan[i + 1]!.end === scan[i + 2]?.start && (scan[i + 2]?.kind === "quoted" || scan[i + 2]?.kind === "string")));
+    if (pins.length && (!parsed.complete || !pinScan.complete || unicodeEscape)) throw new Error(`The statement cannot be checked for pinned objects. ${pinnedMessage(pins[0]!).message}`);
     if (entry) {
       if (statement !== renderNativeDeferredTrigger(entry) || triggers.has(entry.name)) throw pinnedMessage(entry);
       const digest = sqlSha256(statement);
@@ -2683,10 +2724,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const own = pins.find(pin => created.has(pin.function) && (create && word(1, "FUNCTION")
         ? nativeQualified(tokens, 2)?.name === pin.function.slice(0, -2) && nativeSymbol(tokens, 5, "(") && nativeSymbol(tokens, 6, ")")
         : revoke === `revoke all on function public . ${pin.function.slice(7, -2)} ( ) from public ;`))?.function.slice(7, -2);
-      const named = block ? platformSqlTokens(block[2]!, false, true).tokens : tokens;
-      for (const [i, token] of named.entries()) {
+      for (const token of pinScan.tokens) {
         const name = nativeIdentifier(token)?.slice(0, 63);
-        if (!name || name === own || (token.kind === "word" && deferredKeyword.has(name) && !nativeSymbol(named, i - 1, "."))) continue;
+        if (!name || name === own) continue;
         const pin = pins.find(pin => pin.name === name || pin.function === `public.${name}()`);
         if (pin) throw pinnedMessage(pin, name);
       }

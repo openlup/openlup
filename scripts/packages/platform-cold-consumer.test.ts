@@ -309,7 +309,17 @@ function refusalFixture(mode: "correct" | "raw" | "wrong-peer" | "no-cause" | "s
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   manifest.exports["./marketing/server/postgres"].default = "./postgres.js";
   writeFileSync(manifestPath, JSON.stringify(manifest));
-  writeFileSync(join(consumer, "node_modules/@openlup/platform/postgres.js"), 'import "pg";\n');
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/postgres.js"), `
+async function fail(peer) {
+  if (${JSON.stringify(mode)} === "success") return;
+  const cause = Object.assign(new Error("synthetic missing peer"), { code: "ERR_MODULE_NOT_FOUND" });
+  const message = ${JSON.stringify(mode)} === "raw" ? "raw module failure" : "OPENLUP_E_PEER_MISSING: " + (${JSON.stringify(mode)} === "wrong-peer" ? "wrong-package" : peer) + " is required by synthetic capability";
+  throw new Error(message, ${JSON.stringify(mode)} === "no-cause" ? undefined : { cause });
+}
+export const createPostgresAcquisitionCasePort = () => ({ activeCount: () => fail("pg"), close: async () => {} });
+export const createPostgresAcquisitionEvidencePort = () => ({ listSurveys: () => fail("pg"), close: async () => {} });
+export const createPostgresPartnerAcquisitionPort = () => ({ list: () => fail("pg"), close: async () => {} });
+`);
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), `
 async function fail(peer) {
   if (${JSON.stringify(mode)} === "success") return;

@@ -9,7 +9,7 @@ import type {
 import { createStripeSandboxPaymentExecutionAdapter, type StripeSandboxClient } from "./stripeSandboxPaymentExecutionAdapter.js";
 import { createStripePaymentReconciliationProvider, type StripePaymentIntentReader } from "./stripePaymentReconciliationProvider.js";
 import { normalizeStripeWebhookEvent } from "./stripeWebhookNormalizer.js";
-import { verifyStripeSignature } from "./webhookSignature.js";
+import { parseStripeSignatureHeader, verifyStripeSignature } from "./webhookSignature.js";
 import { declineCodeHints } from "./declineFailureHints.js";
 import type { PaymentExecutionResult } from "./donorContracts.js";
 
@@ -136,15 +136,14 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
       async verifyAndNormalize(input) {
         const header = Object.entries(input.headers).find(([key]) => key.toLowerCase() === "stripe-signature")?.[1];
         if (typeof header !== "string") return refusal("signature");
-        const parts = Object.fromEntries(header.split(",").map(part => part.split("=")).filter(([key, value]) => key && value));
-        const timestamp = Number(parts.t);
+        const parsed = parseStripeSignatureHeader(header);
         const current = now();
-        if (!parts.t || !parts.v1 || !Number.isFinite(timestamp) || !Number.isFinite(current)) return refusal("signature");
+        if (!parsed || !Number.isFinite(current)) return refusal("signature");
         // The preserved verifier supplies HMAC and comparison; this layer owns configurable freshness.
-        if (Math.abs(current - timestamp) > tolerance) return refusal("stale");
+        if (Math.abs(current - parsed.timestampSec) > tolerance) return refusal("stale");
         const rawBody = Buffer.from(input.rawBody).toString("utf8");
         if (!Buffer.from(rawBody).equals(Buffer.from(input.rawBody))) return refusal("malformed");
-        if (!verifyStripeSignature({ rawBody, signatureHeader: header, endpointSecret: secrets, now: () => timestamp })) return refusal("signature");
+        if (!verifyStripeSignature({ rawBody, signatureHeader: header, endpointSecret: secrets, now: () => parsed.timestampSec })) return refusal("signature");
         try {
           const raw: unknown = JSON.parse(rawBody);
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) return refusal("malformed");
@@ -180,10 +179,13 @@ function neutralDecline(decline: NonNullable<PaymentExecutionResult["providerDec
 
 function readback(base: Pick<PaymentReadbackEnvelope, "identity" | "expectedMoney" | "purpose">,
   status: Awaited<ReturnType<ReturnType<typeof createStripePaymentReconciliationProvider>["readPayment"]>>): PaymentReadbackEnvelope {
-  if (status.status === "unknown" || status.amountMinor === null || !Number.isSafeInteger(status.amountMinor) || !status.currency) {
+  if (status.status === "unknown" || status.amountMinor === null || !Number.isSafeInteger(status.amountMinor) || !status.currency
+    || (status.status === "succeeded" && status.capturedAmountBasis !== "provider_capture_v1")) {
     return { ...base, kind: "unknown", reason: "indeterminate" };
   }
-  return { ...base, kind: status.status, observedMoney: { amountMinor: status.amountMinor, currency: status.currency }, providerOccurredAt: status.occurredAt };
+  return { ...base, kind: status.status, observedMoney: { amountMinor: status.amountMinor, currency: status.currency },
+    providerOccurredAt: status.occurredAt,
+    ...(status.capturedAmountBasis ? { capturedAmountBasis: status.capturedAmountBasis } : {}) };
 }
 
 /** Preserve donor money classifications in the neutral evidence union. */
@@ -245,9 +247,20 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
             ? (object.last_payment_error as { advice_code: string }).advice_code : undefined }) } : {}),
     };
   }
-  // The donor normalizer constructs this filtered carrier, never the raw body.
-  // Keep its reader dialect and provenance outside normalized event identity.
+  // The old Stripe receipt preferred the requested amount. This alternate
+  // identity is restricted to reading a completed historical receipt.
+  const priorAmount = object.amount ?? object.amount_received;
+  const historicalCaptureFingerprint = result.kind === "money" && result.outcome === "succeeded"
+    && typeof priorAmount === "number" && Number.isSafeInteger(priorAmount) && priorAmount > 0
+    && priorAmount !== result.money?.amountMinor && normalized.currency
+    ? createHash("sha256").update(JSON.stringify({ ...result,
+      money: { amountMinor: priorAmount, currency: normalized.currency } })).digest("hex")
+    : undefined;
+  // The donor normalizer constructs this filtered carrier outside event identity.
   return { ...result, fingerprint: createHash("sha256").update(JSON.stringify(result)).digest("hex"),
+    ...(historicalCaptureFingerprint ? { historicalCaptureFingerprint } : {}),
+    ...(result.kind === "money" && result.outcome === "succeeded" && result.money
+      ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerAuditPayload: normalized.rawPayload };
 }
 

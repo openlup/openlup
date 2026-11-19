@@ -193,3 +193,31 @@ it("keeps the neutral receipt alias on host keys through acceptance and local re
   expect(await f.run()).toMatchObject({ ok: true, providerCalls: 0 });
   expect(f.calls()).toBe(1);
 });
+
+it("uses single prepareCandidate when supplied while still calling readCandidate on contact_stale remaps", async () => {
+  const f = fixture();
+  f.stale("begin");
+  let prepareCalls = 0;
+  let readCandidateCalls = 0;
+  let prepareCandidateCalls = 0;
+  const origReadCandidate = f.store.readCandidate.bind(f.store);
+  f.store.prepare = async () => {
+    prepareCalls += 1;
+    throw new Error("should not call separate prepare when prepareCandidate is supplied");
+  };
+  f.store.readCandidate = async (ref) => {
+    readCandidateCalls += 1;
+    return origReadCandidate(ref);
+  };
+  f.store.prepareCandidate = async (ref) => {
+    prepareCandidateCalls += 1;
+    const candidate = await origReadCandidate(ref);
+    return { disposition: "ready", contactRevision: candidate?.contactRevision.revision ?? null, candidate };
+  };
+
+  expect(await f.run()).toMatchObject({ ok: true, updated: 1, providerCalls: 1 });
+  expect(prepareCalls).toBe(0);
+  expect(prepareCandidateCalls).toBe(1);
+  // readCandidate is invoked exactly once for the contact_stale remap on begin.
+  expect(readCandidateCalls).toBe(1);
+});

@@ -21,6 +21,7 @@ type Buyer = { firstName: string; lastName: string; email: string; phone: string
 const initialBuyer: Buyer = { firstName: "", lastName: "", email: "", phone: "", street: "", postalCode: "", city: "" };
 
 export function ReferenceSubscribe() {
+  const { session, loading: authLoading } = useCustomerAuth();
   const [catalog, setCatalog] = useState<SellableCatalogListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -47,7 +48,7 @@ export function ReferenceSubscribe() {
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !catalog || !item) return;
+    if (busy || authLoading || !catalog || !item) return;
     const fingerprint = JSON.stringify([item.sku, catalog.profile.country, catalog.profile.currency, buyer]);
     if (intent.current?.fingerprint !== fingerprint) intent.current = { fingerprint, key: `reference:${crypto.randomUUID()}` };
     setBusy(true);
@@ -62,7 +63,7 @@ export function ReferenceSubscribe() {
         shippingAddress: { street: buyer.street, postalCode: buyer.postalCode, city: buyer.city, country: catalog.profile.country },
         currency: catalog.profile.currency,
         cadenceDays: 28,
-      } });
+      } }, session?.accessToken ?? null);
       setCheckout(result);
     } catch (cause) {
       setError(`Checkout could not be confirmed: ${errorMessage(cause)}. Retry keeps this checkout request's identity.`);
@@ -89,7 +90,7 @@ export function ReferenceSubscribe() {
             {field("postalCode", "Postal code")}
             {field("city", "City")}
             <p>Shipping country: {catalog.profile.country}. Payment outcome is selected by the trusted local server profile.</p>
-            <button type="submit" disabled={busy}>{busy ? "Submitting…" : "Place recurring order"}</button>
+            <button type="submit" disabled={busy || authLoading}>{busy ? "Submitting…" : "Place recurring order"}</button>
           </form>
         </>
       ) : null}

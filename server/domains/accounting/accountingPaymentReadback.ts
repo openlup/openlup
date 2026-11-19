@@ -7,6 +7,7 @@ export type AccountingPaymentProviderReadbackRegistry = Partial<
       status: "succeeded" | "failed" | "pending" | "unknown";
       providerStatus: string;
       amountMinor: number | null;
+      configuredAmountMinor?: number;
       currency: string | null;
     }>;
   }>

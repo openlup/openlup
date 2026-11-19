@@ -364,6 +364,10 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
     attemptRef: string | null;
     outcome: "succeeded" | "failed" | "pending" | "refunded" | "disputed";
     money: PaymentMoney | null;
+    /** Attests that a verified success used the provider’s collected-money field. Excluded from event identity. */
+    capturedAmountBasis?: "provider_capture_v1";
+    /** Receipt lookup only for a verified event whose prior normalization used different money. */
+    historicalCaptureFingerprint?: string;
     refusal?: PaymentRefusalEnvelope;
     refund?: PaymentRefundObservation;
 };
@@ -421,6 +425,7 @@ export type PaymentReadbackEnvelope = {
     kind: "succeeded" | "failed" | "pending";
     observedMoney: PaymentMoney;
     providerOccurredAt: string | null;
+    capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
     refusal?: PaymentRefusalEnvelope;
     handoff?: PaymentMethodHandoff;
 } | {
@@ -593,6 +598,7 @@ export interface ProviderReconciliationStatus {
     occurredAt: string | null;
     failureReason: string | null;
     amountMinor: number | null;
+    capturedAmountBasis?: "provider_capture_v1";
     currency: string | null;
     rawPayload: Record<string, unknown>;
 }
@@ -685,6 +691,12 @@ export interface PaymentProviderReconciliationPort {
         replayed: boolean;
         reconciliationId?: string;
     }>;
+    /** Reads committed capture review for the owned attempt before another provider read. */
+    readCaptureReview?(input: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+    }): Promise<boolean>;
     applyTerminalResult(input: {
         idempotencyKey: string;
         expectedOrderId: string;
@@ -848,6 +860,8 @@ export interface SilenceWindowLookup {
     } | null;
 }
 export interface VerifiableAttemptSnapshot {
+    /** Committed capture review from the owned attempt snapshot, when available. */
+    captureReviewRequired?: boolean;
     orderId: string;
     orderClientId: string;
     orderMode: string;

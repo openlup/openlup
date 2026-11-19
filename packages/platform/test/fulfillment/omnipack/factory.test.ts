@@ -598,6 +598,46 @@ it("keeps paginated, truncated and unproven readback collections unknown", async
     }
   }
 });
+it("walks bounded multi-page readback collections when readbackMaxPages > 1 and refuses duplicates or cap overflow", async () => {
+  const row = { orderId: "external-a", fulfilmentNumber: "parcel-a", status: "delivered", updatedAt: now };
+  const other = (n: number) => ({ orderId: `external-other-${n}`, fulfilmentNumber: `parcel-other-${n}`, status: "delivered", updatedAt: now });
+  const pages = [
+    { _embedded: { fulfilments: [other(1), other(2)] }, page: { number: 0, size: 100, totalPages: 3, totalElements: 5 }, _links: { next: { href: "/fulfilments?page=1" } } },
+    { _embedded: { fulfilments: [other(3), other(4)] }, page: { number: 1, size: 100, totalPages: 3, totalElements: 5 }, _links: { next: { href: "/fulfilments?page=2" } } },
+    { _embedded: { fulfilments: [row] }, page: { number: 2, size: 100, totalPages: 3, totalElements: 5 } },
+  ];
+  const f = fixture(url => {
+    const pageParam = Number(new URL(String(url)).searchParams.get("page") ?? "0");
+    return jsonResponse(pages[pageParam]!);
+  }, { readbackMaxPages: 5 });
+  const found = await f.adapter.readback.read(reading);
+  expect(found).toMatchObject({ kind: "found", externalRef: "external-a", observation: { fact: { canonicalStatus: "delivered" } } });
+  expect(f.fetchImpl).toHaveBeenCalledTimes(3);
+
+  const capped = fixture(() => jsonResponse(pages[0]!), { readbackMaxPages: 2 });
+  expect(await capped.adapter.readback.read(reading)).toMatchObject({ kind: "unknown", refusal: { reason: "local_missing" } });
+  expect(capped.fetchImpl).toHaveBeenCalledTimes(1);
+
+  const duplicated = fixture(url => {
+    const pageParam = Number(new URL(String(url)).searchParams.get("page") ?? "0");
+    const body = pageParam === 0
+      ? { _embedded: { fulfilments: [row] }, page: { number: 0, size: 100, totalPages: 2, totalElements: 2 }, _links: { next: { href: "/fulfilments?page=1" } } }
+      : { _embedded: { fulfilments: [row] }, page: { number: 1, size: 100, totalPages: 2, totalElements: 2 } };
+    return jsonResponse(body);
+  }, { readbackMaxPages: 5 });
+  expect(await duplicated.adapter.readback.read(reading)).toMatchObject({ kind: "unknown", refusal: { reason: "local_missing" } });
+
+  const contradictorySinglePage = fixture(
+    () => jsonResponse({
+      _embedded: { fulfilments: [row] },
+      page: { number: 0, size: 100, totalPages: 1, totalElements: 1 },
+      _links: { next: { href: "/fulfilments?page=1" } },
+    }),
+    { readbackMaxPages: 3 },
+  );
+  expect(await contradictorySinglePage.adapter.readback.read(reading)).toMatchObject({ kind: "unknown", refusal: { reason: "local_missing" } });
+  expect(contradictorySinglePage.fetchImpl).toHaveBeenCalledTimes(1);
+});
 it("prepares independently and joins dispatch before host resolution, credentials and POST", async () => {
   const releases: (() => void)[] = [];
   const resolveProduct = vi.fn(() => new Promise<{ lotNumber: string; expirationDate: string }>(resolve =>

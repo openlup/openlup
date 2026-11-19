@@ -10,6 +10,14 @@ type InstalledPackage = { name: string; version: string; root: string; manifest:
 type ScanSummary = { scope: "declarations" | "application" | "package-source"; packageName?: string; scannedFiles: number; fileLimit: number; limitReached: boolean };
 type ScanResult = { hits: Hit[]; summary?: ScanSummary };
 type Hit = { title: string; file: string; start: number; end: number; owner?: string; packageName: string; score: number; reason: string };
+export type SearchContextOptions = {
+  limit?: number;
+  scanLimits?: {
+    declarations?: number;
+    application?: number;
+    packageSource?: number;
+  };
+};
 
 const ignoredWords = new Set(["a", "an", "and", "are", "by", "do", "for", "from", "how", "in", "is", "of", "on", "or", "the", "to", "with", "czy", "dla", "gdzie", "i", "jak", "jest", "na", "oraz", "po", "przez", "się", "w", "z"]);
 const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"]);
@@ -17,8 +25,33 @@ const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "
 const guideEntryLimit = 400;
 const guideFileBytes = 200_000;
 const packageFileLimit = 2000;
+const applicationFileLimit = 2500;
+const defaultHitLimit = 8;
+const maxHitLimit = 50;
 const apiReportHeading = /^`?packages\/[^/]+\/api\/[^/]+\.api\.md`?$/u;
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\n";
+
+function readSortedEntries(directory: string) {
+  return readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
+}
+
+function resolveHitLimit(limit: number | undefined): number {
+  if (limit === undefined) return defaultHitLimit;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > maxHitLimit) {
+    throw new Error(`Limit must be an integer between 1 and ${maxHitLimit}`);
+  }
+  return limit;
+}
+
+function resolveScanLimit(limit: number | undefined, fallback: number): number {
+  if (limit === undefined) return fallback;
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new Error("Scan limit must be a positive integer");
+  }
+  return limit;
+}
 
 function readText(path: string): string | undefined {
   try { return readFileSync(path, "utf8"); }
@@ -196,7 +229,7 @@ function guideFiles(item: InstalledPackage): string[] {
   return files.sort();
 }
 
-function declarationHits(item: InstalledPackage, query: string): ScanResult {
+function declarationHits(item: InstalledPackage, query: string, fileLimit: number): ScanResult {
   const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(query.trim());
   const symbol = query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
     (exact && word === query.trim()) || /[A-Z_]/u.test(word.slice(1)));
@@ -207,12 +240,13 @@ function declarationHits(item: InstalledPackage, query: string): ScanResult {
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
-  while (pending.length && seen < packageFileLimit) {
+  while (pending.length && seen < fileLimit) {
     const directory = pending.pop()!;
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (seen >= packageFileLimit) break;
+    const subdirs: string[] = [];
+    for (const entry of readSortedEntries(directory)) {
+      if (seen >= fileLimit) break;
       const path = join(directory, entry.name);
-      if (entry.isDirectory()) pending.push(path);
+      if (entry.isDirectory()) subdirs.push(path);
       else if (entry.isFile() && path.endsWith(".d.ts")) {
         seen++;
         const content = readFileSync(path, "utf8");
@@ -224,8 +258,9 @@ function declarationHits(item: InstalledPackage, query: string): ScanResult {
         }
       }
     }
+    for (let index = subdirs.length - 1; index >= 0; index--) pending.push(subdirs[index]!);
   }
-  return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit: packageFileLimit, limitReached: seen >= packageFileLimit } };
+  return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit, limitReached: seen >= fileLimit } };
 }
 
 function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
@@ -244,17 +279,18 @@ function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit
   return hits;
 }
 
-function applicationHits(cwd: string, query: string, terms: string[]): ScanResult {
+function applicationHits(cwd: string, query: string, terms: string[], fileLimit: number): ScanResult {
   const hits: Hit[] = [];
   const pending = [cwd];
   let seen = 0;
-  while (pending.length && seen < 2500) {
+  while (pending.length && seen < fileLimit) {
     const directory = pending.pop()!;
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (seen >= 2500) break;
+    const subdirs: string[] = [];
+    for (const entry of readSortedEntries(directory)) {
+      if (seen >= fileLimit) break;
       if (entry.name.startsWith(".") || skippedDirectories.has(entry.name)) continue;
       const path = join(directory, entry.name);
-      if (entry.isDirectory()) { pending.push(path); continue; }
+      if (entry.isDirectory()) { subdirs.push(path); continue; }
       if (!entry.isFile() || !codeExtensions.has(entry.name.slice(entry.name.lastIndexOf(".")))) continue;
       if (lstatSync(path).size > 200_000) continue;
       seen++;
@@ -265,22 +301,24 @@ function applicationHits(cwd: string, query: string, terms: string[]): ScanResul
         if (score > 0) hits.push({ title: relative(cwd, path), file: path, start: index + 1, end: index + 1, packageName: "application", score, reason: "local application source" });
       }
     }
+    for (let index = subdirs.length - 1; index >= 0; index--) pending.push(subdirs[index]!);
   }
-  return { hits, summary: { scope: "application", scannedFiles: seen, fileLimit: 2500, limitReached: seen >= 2500 } };
+  return { hits, summary: { scope: "application", scannedFiles: seen, fileLimit, limitReached: seen >= fileLimit } };
 }
 
-function packageSourceHits(item: InstalledPackage, query: string, terms: string[]): ScanResult {
+function packageSourceHits(item: InstalledPackage, query: string, terms: string[], fileLimit: number): ScanResult {
   const root = join(item.root, "src");
   if (!existsSync(root) || !lstatSync(root).isDirectory()) return { hits: [] };
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
-  while (pending.length && seen < packageFileLimit) {
+  while (pending.length && seen < fileLimit) {
     const directory = pending.pop()!;
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (seen >= packageFileLimit) break;
+    const subdirs: string[] = [];
+    for (const entry of readSortedEntries(directory)) {
+      if (seen >= fileLimit) break;
       const path = join(directory, entry.name);
-      if (entry.isDirectory()) { pending.push(path); continue; }
+      if (entry.isDirectory()) { subdirs.push(path); continue; }
       if (!entry.isFile() || !codeExtensions.has(entry.name.slice(entry.name.lastIndexOf(".")))) continue;
       if (lstatSync(path).size > 200_000) continue;
       seen++;
@@ -298,11 +336,22 @@ function packageSourceHits(item: InstalledPackage, query: string, terms: string[
       }
       if (best) hits.push(best);
     }
+    for (let index = subdirs.length - 1; index >= 0; index--) pending.push(subdirs[index]!);
   }
-  return { hits, summary: { scope: "package-source", packageName: item.name, scannedFiles: seen, fileLimit: packageFileLimit, limitReached: seen >= packageFileLimit } };
+  return { hits, summary: { scope: "package-source", packageName: item.name, scannedFiles: seen, fileLimit, limitReached: seen >= fileLimit } };
 }
 
-export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[]; scans: ScanSummary[] } {
+export function searchContext(
+  cwd: string,
+  task: string,
+  includeCode = false,
+  includePackageCode = false,
+  options: SearchContextOptions = {},
+): { version: string; packages: string[]; hits: Hit[]; scans: ScanSummary[] } {
+  const hitLimit = resolveHitLimit(options.limit);
+  const declarationsLimit = resolveScanLimit(options.scanLimits?.declarations, packageFileLimit);
+  const appLimit = resolveScanLimit(options.scanLimits?.application, applicationFileLimit);
+  const packageSourceLimit = resolveScanLimit(options.scanLimits?.packageSource, packageFileLimit);
   const packages = selectedPackages(cwd);
   const query = task.toLocaleLowerCase("en").trim();
   const terms = tokens(task);
@@ -318,19 +367,19 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
       ] : []),
       ...(terms.some((term) => /upgrad|migrat|release|wersj/u.test(term)) ? markdownHits(item, "CHANGELOG.md", query, terms) : []),
     ];
-    const declarations = declarationHits(item, task);
+    const declarations = declarationHits(item, task, declarationsLimit);
     if (declarations.summary) scans.push(declarations.summary);
     packageHits.push(...declarations.hits, ...exportHits(item, query, terms));
     return packageHits;
   });
   if (includeCode) {
-    const result = applicationHits(cwd, query, terms);
+    const result = applicationHits(cwd, query, terms, appLimit);
     hits.push(...result.hits);
     if (result.summary) scans.push(result.summary);
   }
   if (includePackageCode) {
     for (const item of packages) {
-      const result = packageSourceHits(item, query, terms);
+      const result = packageSourceHits(item, query, terms, packageSourceLimit);
       hits.push(...result.hits);
       if (result.summary) scans.push(result.summary);
     }
@@ -347,7 +396,7 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
       apiDiffFiles.add(hit.file);
     }
     return true;
-  }).slice(0, 8);
+  }).slice(0, hitLimit);
   return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected, scans };
 }
 
@@ -373,12 +422,29 @@ async function main(): Promise<void> {
     return;
   }
   if (args[0] !== "search") throw new Error(usage.trim());
-  if (args.some((arg) => arg.startsWith("--") && !["--code", "--package-code", "--json"].includes(arg))) throw new Error(usage.trim());
-  const json = args.includes("--json");
-  const code = args.includes("--code");
-  const packageCode = args.includes("--package-code");
-  const task = args.slice(1).filter((arg) => !arg.startsWith("--")).join(" ").trim();
-  const result = searchContext(process.cwd(), task, code, packageCode);
+  let json = false;
+  let code = false;
+  let packageCode = false;
+  let limit: number | undefined;
+  const taskParts: string[] = [];
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "--json") { json = true; continue; }
+    if (arg === "--code") { code = true; continue; }
+    if (arg === "--package-code") { packageCode = true; continue; }
+    if (arg === "--limit" || arg.startsWith("--limit=")) {
+      const raw = arg === "--limit" ? args[++index] : arg.slice("--limit=".length);
+      if (raw === undefined || !/^\d+$/u.test(raw)) {
+        throw new Error(`Limit must be an integer between 1 and ${maxHitLimit}`);
+      }
+      limit = resolveHitLimit(Number(raw));
+      continue;
+    }
+    if (arg.startsWith("--")) throw new Error(usage.trim());
+    taskParts.push(arg);
+  }
+  const task = taskParts.join(" ").trim();
+  const result = searchContext(process.cwd(), task, code, packageCode, limit === undefined ? undefined : { limit });
   if (json) { process.stdout.write(`${JSON.stringify(result)}\n`); return; }
   process.stdout.write(formatContextResult(process.cwd(), result));
 }

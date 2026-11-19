@@ -1053,8 +1053,17 @@ For native hosts that want the installed horizon on each read, use
 `createPostgresStockAvailability(executor, { sourceKey, now }).readInstalled(skus)`.
 It sends a single batched query for a nonempty list. The native SQL stock read
 resolves the horizon in the same statement snapshot as stock and renewal demand.
-An empty list returns an empty map. Hosts supplying an explicit horizon can
-continue to use `readPort.read` and its existing option checks.
+An empty list returns an empty map. The starter subscription editor reads the
+installed horizon on each stock read. The explicit `readPort.read` still refuses
+requests that supply a different horizon.
+
+`previewRenewalStockProtection` uses a host pool on a read-only snapshot and
+returns one validation outcome for the proposed value. Use the
+[settings preview](../core/docs/guide/how-to/operate/configure-settings.md#preview-before-changing-a-setting)
+to inspect current stock for named SKUs, how the proposed horizon could affect
+new purchase availability, and which records retain their terms. Availability
+under the proposed horizon is pending; existing reservations keep their
+quantities and expiry times.
 
 Apply `20261123142000_inventory_renewal_protection_validation.sql` from the
 complete native catalogue. The existing horizon reader now calls
@@ -2143,6 +2152,16 @@ evidence atomically, and opens or advances dunning only from an immutable
 attempt-bound failure rung. Same and stale observations replay without changing
 case, authorization or notice authority. Historical unattributed cases return a
 named refusal while retaining applied money.
+
+Once the durable capture evidence migration is applied, native provider success
+requires a signed webhook or a recorded provider readback for the active payment
+attempt. Both carry the actual received amount, currency and
+`capturedAmountBasis: "provider_capture_v1"`. Custom reconciliation callers
+supply that basis with the observed `amountMinor` and `currency` and
+`normalizedStatus: "succeeded"` in the readback payload after confirming the
+capture through the provider. Use the active attempt's stored remote reference
+for that lookup. Apply the packaged migration and update the payment runtime
+together. Exact completed results and ordinary decline evidence remain valid.
 
 `paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are now
 `supported` for that installed chain. Auto-reopen remains default off. Explicit

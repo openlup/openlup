@@ -41,11 +41,20 @@ export async function runFulfillmentDispatchWorker(input: {
         result.updated += ack.replayed ? 0 : 1;
         continue;
       }
-      stage = "dispatch_prepare_failed";
-      const preparation = await input.store.prepare(candidate.fulfillmentRef);
-      if (preparation.disposition === "withheld") continue;
-      stage = "dispatch_candidate_read_failed";
-      const preparedCandidate = await input.store.readCandidate(candidate.fulfillmentRef);
+      let preparedCandidate: FulfillmentDispatchRequest | null;
+      if (input.store.prepareCandidate) {
+        stage = "dispatch_prepare_failed";
+        const prepared = await input.store.prepareCandidate(candidate.fulfillmentRef);
+        if (prepared.disposition === "withheld") continue;
+        stage = "dispatch_candidate_read_failed";
+        preparedCandidate = prepared.candidate;
+      } else {
+        stage = "dispatch_prepare_failed";
+        const preparation = await input.store.prepare(candidate.fulfillmentRef);
+        if (preparation.disposition === "withheld") continue;
+        stage = "dispatch_candidate_read_failed";
+        preparedCandidate = await input.store.readCandidate(candidate.fulfillmentRef);
+      }
       if (!preparedCandidate) throw new Error("dispatch_prepared_candidate_missing");
       if (input.config.mode !== "shadow" && !input.provider) {
         result.ok = false; result.failures += 1; result.reason ??= "provider_not_configured"; continue;

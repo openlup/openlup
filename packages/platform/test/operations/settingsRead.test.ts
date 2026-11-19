@@ -1,10 +1,10 @@
+import { readFileSync } from "node:fs";
+import { settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
 import { describe, expect, it, vi } from "vitest";
-import { describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
+import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
-import { explainSetting, listSettings, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
-import {
-  settingsListRequest, settingsListResult, settingsShowRequest, settingsShowResult,
-} from "../../src/operations/server/settingsCatalog.js";
+import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, settingsPreviewRequest, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
+import { loadSettingsCatalogue, settingsListRequest } from "../../src/operations/server/settingsCatalog.js";
 import { z } from "zod";
 
 describe("renewal stock policy descriptor", () => {
@@ -146,22 +146,141 @@ describe("settings show", () => {
 });
 
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
-  const [list, show] = settingsReadTools;
-  expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show"]);
+  const [list, show, preview] = settingsReadTools;
+  const { listResult, showRequest, showResult } = loadSettingsCatalogue();
+  expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show", "settings__preview"]);
   for (const [tool, request] of [
-    [list, settingsListRequest], [show, settingsShowRequest],
+    [list, settingsListRequest], [show, showRequest], [preview, settingsPreviewRequest],
   ] as const) {
+    const { inputSchema, outputSchema } = tool;
+    expect(tool.inputSchema).toBe(inputSchema);
+    expect(tool.outputSchema).toBe(outputSchema);
     expect(tool.annotations).toEqual({ readOnlyHint: true });
     expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
   }
+  const { byCode } = loadSettingsCatalogue();
+  expect(preview.outputSchema).toEqual({
+    type: "object",
+    ...toolInputSchema(z.union([renewalStockProtectionPreviewResult, z.strictObject({
+      schemaVersion: z.literal(1), refusal: settingRefusalSchema([...byCode.keys()]),
+    })]), "output"),
+  });
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
-  expect(settingsListResult.parse(listSettings({ goal: "inventory buffer" })).entries.map(entry => entry.key)).toEqual([key]);
-  expect(settingsShowResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
+  expect(listResult.parse(listSettings({ goal: "inventory buffer" })).entries.map(entry => entry.key)).toEqual([key]);
+  expect(showResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
     properties: { renewalProtectionDays: { minimum: 1, maximum: 3660 } },
   });
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
     remediation: expect.objectContaining({ command: "node --experimental-strip-types host/settings.ts list", retry: true }),
   }) });
+});
+
+const previewKey = "inventory_renewal_protection";
+const asOf = new Date(0).toISOString();
+const proposed = { revision: "candidate", renewalProtectionDays: 21 };
+
+it.each([
+  ["SELECT value_text", "42501", "policy_read_denied", /read the installed policy/u],
+  ["inventory_new_purchase_stock_read(", "42501", "stock_read_denied", /read stock availability/u],
+  ["inventory_renewal_protection_validate(", "42501", "validation_denied", /permission to preview/u],
+  ["inventory_renewal_protection_validate(", "42883", "validation_missing", /update the store/u],
+  ["ROLLBACK", "other", "unexpected", /Retry once/u],
+] as const)("returns the same contextual refusal from domain and dispatcher when %s fails", async (operation, code, reason, action) => {
+  const release = vi.fn();
+  const query = vi.fn(async (statement: string) => {
+    if (statement.includes(operation)) throw { code, message: "private details" };
+    if (statement.includes("inventory_renewal_protection_validate(")) return { rows: [{ value: proposed }] };
+    if (statement.includes("inventory_new_purchase_stock_read(")) return { rows: [{ response: [] }] };
+    return { rows: [] };
+  });
+  const connection = { sourceKey: "fixture", db: { connect: async () => ({ query, release }) } };
+  const request = { key: previewKey, proposed, skus: ["fixture"], asOf };
+  const direct = await previewRenewalStockProtection(previewKey, proposed, {
+    ...connection, asOf, skus: request.skus, refuse: refuseSettingsPreview,
+  });
+  expect(direct).toMatchObject({ schemaVersion: 1, refusal: {
+    code: `commerce_setting_preview_${reason}`,
+    remediation: { action: expect.stringMatching(action), command: expect.stringContaining("<read-capable-url>") },
+  } });
+  expect(JSON.stringify(direct)).not.toMatch(/private details|public[.]/u);
+  expect(await previewSetting(request, {
+    [previewKey]: (value, options) => previewRenewalStockProtection(previewKey, value, { ...connection, ...options }),
+  })).toEqual(direct);
+  expect(query).toHaveBeenLastCalledWith("ROLLBACK");
+  expect(release).toHaveBeenCalledWith(operation === "ROLLBACK");
+});
+
+it.each([true, false])("rejects when only one validator admits the proposal (installer admits %s)", async installerAdmits => {
+  const value = { ...proposed, renewalProtectionDays: installerAdmits ? 21 : 0 };
+  const query = vi.fn(async (statement: string) => {
+    if (!statement.includes("inventory_renewal_protection_validate(")) return { rows: [] };
+    if (installerAdmits) throw { code: "22023" };
+    return { rows: [{ value: proposed }] };
+  });
+  const result = await previewRenewalStockProtection(previewKey, value, {
+    asOf, skus: [], refuse: refuseSettingsPreview, sourceKey: "fixture",
+    db: { connect: async () => ({ query, release() {} }) },
+  });
+  const code = "inventory_renewal_protection_policy_invalid";
+  const { rule, hint, remediation } = refuseSettingsPreview(code).refusal;
+  expect(result).toMatchObject({
+    proposed: value, difference: null, validation: { state: "invalid", code, rule, hint, remediation },
+    effect: { newPurchaseAvailability: "undetermined" },
+  });
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("inventory_renewal_protection_validate("), [JSON.stringify(value)]);
+});
+
+it("snapshots a direct proposal before connecting and admits a request with more than 200 SKUs", async () => {
+  const value = { ...proposed };
+  const query = vi.fn(async (statement: string) => ({
+    rows: statement.includes("inventory_renewal_protection_validate(") ? [{ value: proposed }] : [],
+  }));
+  const result = await previewRenewalStockProtection(previewKey, value, {
+    asOf, skus: [], refuse: refuseSettingsPreview, sourceKey: "fixture",
+    db: { connect: async () => {
+      value.renewalProtectionDays = 0;
+      return { query, release() {} };
+    } },
+  });
+  expect(result).toMatchObject({ proposed, validation: { state: "valid", value: proposed } });
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("inventory_renewal_protection_validate("), [JSON.stringify(proposed)]);
+  const skus = Array.from({ length: 201 }, (_, index) => `SKU-${index}`);
+  await expect(previewSetting({ key: previewKey, proposed, skus }, { [previewKey]: async (_, input) => {
+    expect(input.skus).toEqual(skus);
+    return { schemaVersion: 1 };
+  } })).resolves.toEqual({ schemaVersion: 1 });
+});
+
+it("refuses nonfinite numbers under own __proto__ keys at the root or nested", async () => {
+  const run = vi.fn(async () => ({ schemaVersion: 1 as const }));
+  for (const json of [
+    '{"revision":"x","renewalProtectionDays":14,"__proto__":1e400}',
+    '{"revision":"x","renewalProtectionDays":14,"__proto__":[{"__proto__":-1e400}]}',
+  ]) {
+    await expect(previewSetting({ key: previewKey, proposed: JSON.parse(json) }, { [previewKey]: run }))
+      .resolves.toMatchObject({ schemaVersion: 1, refusal: {
+        code: "commerce_setting_preview_input_invalid", path: ["proposed"],
+        hint: "Supply a decoded JSON value with finite numbers.",
+      } });
+  }
+  expect(run).not.toHaveBeenCalled();
+});
+
+it("passes exact SKU identifiers through and deduplicates only exact matches", async () => {
+  const skus = ["SKU-1", " SKU-1 ", "SKU-1", " SKU-1 "];
+  const run = vi.fn(async () => ({ schemaVersion: 1 as const }));
+  await expect(previewSetting({ key: previewKey, proposed, skus, asOf }, { [previewKey]: run }))
+    .resolves.toEqual({ schemaVersion: 1 });
+  expect(run).toHaveBeenCalledExactlyOnceWith(proposed, expect.objectContaining({ skus: ["SKU-1", " SKU-1 "] }));
+});
+
+it("preserves the full serialized schemas of both legacy settings tools", () => {
+  // Captured from the built operations/server entry at main 4d939dbba.
+  const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
+  const schemas = settingsReadTools
+    .filter(({ name }) => name === "settings__list" || name === "settings__show")
+    .map(({ name, inputSchema, outputSchema }) => ({ name, inputSchema, outputSchema }));
+  expect(JSON.stringify(schemas) + "\n").toBe(expected);
 });

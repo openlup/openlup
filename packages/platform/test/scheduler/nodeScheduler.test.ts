@@ -72,6 +72,28 @@ describe("advisory guarded execution", () => {
       () => { throw failure; })()).rejects.toBe(failure);
     expect(lock.release).toHaveBeenCalledWith("queue-drain");
   });
+
+  it("reports lock tryAcquire and release errors to onError before rejecting", async () => {
+    const acquireErr = new Error("lock backend unavailable");
+    const onError = vi.fn();
+    const failingAcquire = {
+      tryAcquire: vi.fn().mockRejectedValue(acquireErr),
+      release: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    await expect(withAdvisoryLock("queue-drain", failingAcquire, vi.fn(), onError)()).rejects.toBe(acquireErr);
+    expect(onError).toHaveBeenCalledExactlyOnceWith("queue-drain", acquireErr);
+
+    const releaseErr = new Error("unlock failed");
+    const onReleaseError = vi.fn();
+    const failingRelease = {
+      tryAcquire: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockRejectedValue(releaseErr),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    await expect(withAdvisoryLock("queue-drain", failingRelease, async () => {}, onReleaseError)()).rejects.toBe(releaseErr);
+    expect(onReleaseError).toHaveBeenCalledExactlyOnceWith("queue-drain", releaseErr);
+  });
 });
 
 describe("Node scheduler", () => {

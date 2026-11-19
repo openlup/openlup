@@ -3,6 +3,7 @@ import type { DataGatewayPort } from "../../../src/domains/platform-runtime/port
 import type { CheckoutCommandRuntimeResult } from "../../../src/domains/commerce/runtimePorts.js";
 import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
+import { LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER } from "../../adapters/localReferenceStoreAdapter.js";
 import { createReferenceCheckoutHandler } from "../../domains/commerce/referenceCheckoutHandler.js";
 import { resolveSubscriptionPaymentMethodStatus } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
 
@@ -10,16 +11,12 @@ const ingestPaymentEvent = vi.fn();
 const applyPaymentResult = vi.fn();
 const confirmSubscriptionActivation = vi.fn();
 const upsertFromWebhook = vi.fn();
-const persistCheckoutCommand = vi.fn();
 vi.mock("../../adapters/supabase/payment/paymentWebhookGateway.js", () => ({
   createPaymentWebhookControlPortViaGateway: () => ({ ingestPaymentEvent, applyPaymentResult, confirmSubscriptionActivation }),
   createPaymentWebhookMethodRefPortViaGateway: () => ({ upsertFromWebhook }),
 }));
-vi.mock("../../adapters/supabase/configuratorIntentPersistence.js", () => ({
-  createSupabaseConfiguratorIntentPersistencePort: () => ({ persistCheckoutCommand }),
-}));
 
-import { assertNoRecordedOutcomeChange, createCapturedReferenceCheckoutHandler, readCapturedCheckoutEvidence, resumeRecordedCheckout, settleCapturedCheckout } from "./capturedCheckout.js";
+import { createCapturedReferenceCheckoutHandler, readCapturedCheckoutEvidence, settleCapturedCheckout } from "./capturedCheckout.js";
 
 const ids = {
   order: "11111111-1111-4111-8111-111111111111",
@@ -77,6 +74,55 @@ function gateway(outcome: "captured" | "refused", override: Record<string, unkno
   return { asService: (work) => work(client), asActor: vi.fn() } as DataGatewayPort;
 }
 
+function preparedCheckoutGateway(receipt: unknown) {
+  const finalizedOrder = { orderId: ids.order, clientId: ids.client, mode: "subscription_cycle", total: { amountMinor: 1490, currency: command.currency } };
+  const orderDraft = { quoteSnapshot: { quote: { currency: command.currency } } };
+  const readIssuedAttempt = vi.fn();
+  const rpc = vi.fn(async (name: string, _args: unknown) => {
+    if (name === "public_record_checkout_attempt") {
+      return { data: { allowed: true, attempts_by_ip: 1, attempts_by_email: 1 }, error: null };
+    }
+    if (name === "commerce_configurator_replay_checkout_command") return { data: receipt, error: null };
+    throw new Error(`Unexpected checkout RPC ${name}`);
+  });
+  const client = { rpc, from(table: string) {
+    const filters: Record<string, string> = {};
+    return { select: () => ({
+      eq(column: string, value: string) { filters[column] = value; return this; },
+      async limit() {
+        return { data: [{
+          provider: LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER,
+          request_payload: { source: "reference_store.local.payment_simulator.v1", runtimeIdempotencyKey: command.idempotencyKey },
+          response_payload: { outcome: "refused" },
+        }], error: null };
+      },
+      async single() {
+        readIssuedAttempt(table);
+        if (table === "commerce_idempotency_keys") {
+          const response_payload = filters.scope === "commerce.checkout_order_finalize" ? { finalizedOrder } : { orderDraft };
+          return { data: { status: "completed", response_payload }, error: null };
+        }
+        if (table === "commerce_payment_attempts") {
+          return { data: {
+            id: ids.attempt, payment_intent_id: ids.intent, status: "failed", payment_id: ids.payment, provider: LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER,
+            idempotency_key: `${command.idempotencyKey}:payment-execution:prepare-attempt`, amount_cents: 1490, currency: command.currency,
+            created_at: "2026-09-23T12:00:00.000Z",
+            request_payload: { source: "reference_store.local.payment_simulator.v1", runtimeIdempotencyKey: command.idempotencyKey },
+            response_payload: { outcome: "refused" },
+          }, error: null };
+        }
+        return { data: {
+          id: ids.intent, order_id: ids.order, active_attempt_id: ids.attempt, status: "failed",
+          subscription_id: ids.subscription, target_kind: "subscription_cycle", payment_id: ids.payment,
+          amount_cents: 1490, currency: command.currency,
+        }, error: null };
+      },
+    }) };
+  } };
+  const db = { asService: (work: (client: unknown) => Promise<unknown>) => work(client) } as DataGatewayPort;
+  return { db, rpc, readIssuedAttempt };
+}
+
 describe("captured reference checkout", () => {
   it("requires disposable-profile proof before opening a service gateway", async () => {
     const asService = vi.fn();
@@ -84,8 +130,22 @@ describe("captured reference checkout", () => {
     await createCapturedReferenceCheckoutHandler({
       gateway: { asService, asActor: vi.fn() } as unknown as DataGatewayPort,
       outcome: "captured", assertDisposable: async () => { throw new Error("not disposable"); },
+      verifyAccessToken: vi.fn(),
     })({ method: "POST", body: { command }, headers: {}, query: {} } as HttpRequest, response);
     expect(response.status).toHaveBeenCalledWith(503);
+    expect(asService).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unconfirmed selected session before opening a service gateway", async () => {
+    const asService = vi.fn();
+    const verifyAccessToken = vi.fn().mockResolvedValue({ principalId: ids.client, email: command.customer.email, emailVerified: false });
+    const response = { status: vi.fn().mockReturnThis(), json: vi.fn().mockReturnThis(), setHeader: vi.fn() } as unknown as HttpResponse;
+    await createCapturedReferenceCheckoutHandler({
+      gateway: { asService, asActor: vi.fn() } as unknown as DataGatewayPort,
+      outcome: "captured", assertDisposable: async () => {}, verifyAccessToken,
+    })({ method: "POST", body: { command }, headers: { authorization: "Bearer synthetic-session" }, query: {} } as HttpRequest, response);
+    expect(verifyAccessToken).toHaveBeenCalledWith("synthetic-session");
+    expect(response.status).toHaveBeenCalledWith(401);
     expect(asService).not.toHaveBeenCalled();
   });
 
@@ -110,38 +170,44 @@ describe("captured reference checkout", () => {
     expect(ingestPaymentEvent).not.toHaveBeenCalled();
   });
 
-  it("refuses a changed operator outcome before replay can write a different attempt", async () => {
-    await expect(assertNoRecordedOutcomeChange(gateway("refused"), command, "captured"))
-      .rejects.toThrow("Reference payment outcome differs from the recorded attempt");
-    await expect(assertNoRecordedOutcomeChange(gateway("refused"), command, "refused"))
-      .resolves.toBe(true);
-  });
+  it.each([
+    { label: "keeps the outcome private when the receipt is unavailable", configuredOutcome: "captured", authorized: false, status: 409, message: "Checkout could not be resumed" },
+    { label: "refuses a changed outcome for the authorized owner", configuredOutcome: "captured", authorized: true, status: 409, message: "Reference payment outcome differs from the recorded attempt" },
+    { label: "resumes the authorized owner's recorded refusal", configuredOutcome: "refused", authorized: true, status: 200, message: null },
+  ] as const)("$label without calling the checkout identity writer", async ({ configuredOutcome, authorized, status, message }) => {
+    vi.stubEnv("OSS_REFERENCE_PAYMENT_OUTCOME", configuredOutcome);
+    try {
+      const receipt = authorized ? { idempotencyKey: command.idempotencyKey, clientId: ids.client, petId: null, addressId: ids.client, replayed: true } : null;
+      const { db, rpc, readIssuedAttempt } = preparedCheckoutGateway(receipt);
+      const json = vi.fn();
+      const response = { status: vi.fn().mockReturnThis(), json, setHeader: vi.fn() } as unknown as HttpResponse;
+      const verifyAccessToken = vi.fn().mockResolvedValue({ principalId: ids.client, email: command.customer.email, emailVerified: true });
+      await createCapturedReferenceCheckoutHandler({
+        gateway: db, outcome: configuredOutcome, assertDisposable: async () => {}, verifyAccessToken,
+      })({
+        method: "POST", body: { command }, headers: { authorization: "Bearer synthetic-session" }, query: {},
+      } as HttpRequest, response);
 
-  it("revalidates the original command before resuming a prepared attempt", async () => {
-    const receipt = { finalizedOrder: { orderId: ids.order, clientId: ids.client, mode: "subscription_cycle", total: { amountMinor: 1490, currency: command.currency } } };
-    const draft = { orderDraft: { quoteSnapshot: { quote: { currency: command.currency } } } };
-    const reads: string[] = [];
-    const client = { from: (table: string) => {
-      const filters: Record<string, string> = {};
-      return { select: () => ({
-        eq(column: string, value: string) { filters[column] = value; return this; },
-        async single() {
-          reads.push(`${table}:${filters.scope ?? filters.idempotency_key ?? filters.id}`);
-          if (table === "commerce_idempotency_keys") return { data: { status: "completed", response_payload: filters.scope === "commerce.checkout_order_finalize" ? receipt : draft }, error: null };
-          if (table === "commerce_payment_attempts") return { data: { id: ids.attempt, payment_intent_id: ids.intent, status: "processing" }, error: null };
-          return { data: { id: ids.intent, order_id: ids.order, active_attempt_id: ids.attempt, status: "processing" }, error: null };
-        },
-      }) };
-    } };
-    const db = { asService: (work: (client: unknown) => Promise<unknown>) => work(client) } as DataGatewayPort;
-    persistCheckoutCommand.mockRejectedValueOnce(new Error("canonical command fingerprint conflict"));
-    await expect(resumeRecordedCheckout(db, command)).rejects.toThrow("canonical command fingerprint conflict");
-    expect(reads).toEqual([]);
-    persistCheckoutCommand.mockResolvedValueOnce({ idempotencyKey: command.idempotencyKey, clientId: ids.client, subjectId: null, shippingAddressId: ids.client, replayed: true });
-    const resumed = await resumeRecordedCheckout(db, command);
-    expect(persistCheckoutCommand).toHaveBeenCalledWith(command);
-    expect(resumed.runtime.runtime.payment).toMatchObject({ paymentIntentId: ids.intent, paymentAttemptId: ids.attempt });
-    expect(reads).toHaveLength(4);
+      expect(response.status).toHaveBeenCalledWith(status);
+      if (message) {
+        expect(json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ code: "CONFLICT", message }) }));
+      } else {
+        expect(json).toHaveBeenCalledWith(expect.objectContaining({
+          data: expect.objectContaining({ orderId: ids.order, paymentAttemptId: ids.attempt, paymentStatus: "failed", replayed: true }),
+        }));
+      }
+      expect(rpc.mock.calls.map(([name]) => name)).toEqual(["public_record_checkout_attempt", "commerce_configurator_replay_checkout_command"]);
+      expect(rpc).toHaveBeenLastCalledWith("commerce_configurator_replay_checkout_command", {
+        p_command: { ...command, authenticatedUserId: ids.client },
+      });
+      if (authorized) {
+        expect(rpc.mock.invocationCallOrder[1]).toBeLessThan(readIssuedAttempt.mock.invocationCallOrder[0]);
+      } else {
+        expect(readIssuedAttempt).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("resumes at each durable payment-control step after a lost HTTP response", async () => {

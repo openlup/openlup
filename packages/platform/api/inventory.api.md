@@ -66,266 +66,6 @@ export interface InventoryBindings {
 /** Select one store only. Factories declare bindings, never discover or activate a host. */
 export declare function createInventoryBindings(deps: InventoryBindingDependencies): InventoryBindings;
 ```
-## dist/inventory/contracts/forecast.d.ts
-
-```ts
-export interface InventoryProviderStockLine {
-    skuId: string;
-    sku: string;
-    forSaleQuantity: number;
-    lastSyncedAt: string;
-    staleAfter: string;
-}
-export interface InventoryHardReservationLine {
-    skuId: string;
-    quantity: number;
-}
-/** Structural inputs for dated subscription stock coverage; validation belongs to the caller. */
-export interface SubscriptionForecastProviderStockLine {
-    skuId: string;
-    sku: string;
-    forSaleQuantity: number;
-    lastSyncedAt: string;
-    staleAfter: string;
-}
-export interface SubscriptionForecastHardReservationLine {
-    skuId: string;
-    quantity: number;
-}
-export interface SubscriptionForecastStockLine {
-    skuId: string;
-    sku: string;
-    fulfillable: boolean;
-    locationStatus: string;
-    safetyStock: number;
-}
-export interface SubscriptionForecastDemandLine {
-    skuId: string;
-    sku: string;
-    quantity: number;
-    dueAt: string;
-    status: string;
-}
-export interface SubscriptionForecastSupplyLine {
-    skuId: string;
-    quantity: number;
-    expectedAt: string;
-    status: string;
-}
-export interface SubscriptionForecastCalculationInput {
-    generatedAt: string;
-    horizonDays: number;
-    protectionDays: number;
-    providerCurrent: SubscriptionForecastProviderStockLine[];
-    openHardReservations: SubscriptionForecastHardReservationLine[];
-    stock: SubscriptionForecastStockLine[];
-    demand: SubscriptionForecastDemandLine[];
-    supply: SubscriptionForecastSupplyLine[];
-}
-export interface SubscriptionForecastCounts {
-    activeSubscriptionCount: number;
-    excludedSubscriptionCount: number;
-}
-export interface SubscriptionForecastSku {
-    skuId: string;
-    sku: string;
-    providerCurrentForSale: number | null;
-    providerStockLastSyncedAt: string | null;
-    providerStockStaleAfter: string | null;
-    stockStatus: "missing" | "stale" | "fresh";
-    openHardReservations: number;
-    safetyStock: number;
-    sellableNow: number;
-    activeSubscriptionDemand30: number;
-    activeSubscriptionDemand45: number;
-    activeSubscriptionDemand60: number;
-    plannedSupply: number;
-    coverageDays: number | null;
-    shortageDate: string | null;
-    horizonMissingQty: number;
-    protectionMissingQty: number;
-    missingQty: number;
-    recommendedProductionQty: number;
-}
-export interface SubscriptionForecastTotals extends SubscriptionForecastCounts {
-    missingProviderStockSkuCount: number;
-    staleProviderStockSkuCount: number;
-    horizonShortageSkuCount: number;
-    protectionShortageSkuCount: number;
-    shortageSkuCount: number;
-    recommendedProductionQty: number;
-}
-```
-## dist/inventory/contracts/index.d.ts
-
-```ts
-export type { InventoryReservationStatus, AdminInventoryStockRequest, AdminInventoryReservationsRequest, AdminInventoryStockAdjustmentRequest, AdminInventorySubscriptionForecastRequest, InventoryStockListResponse, InventoryReservationsListResponse, InventoryStockAdjustmentResponse, InventorySubscriptionForecastResponse, InventorySubscriptionForecastSku, InventoryForecastDemandLine, InventoryForecastSupplyLine, InventoryForecastResponse, } from "./inventory.js";
-export type { NewPurchaseStockRow, NewPurchaseStockMode, NewPurchaseStockAvailabilityOptions } from "./newPurchaseStock.js";
-export type { CheckoutReservationLifetimePolicy, ReservationPolicyInput, ReservationPolicy, AutomaticRenewalReservationResult } from "./reservation.js";
-export type { InventoryProviderStockLine, InventoryHardReservationLine, SubscriptionForecastCalculationInput, SubscriptionForecastCounts, SubscriptionForecastSku, SubscriptionForecastTotals } from "./forecast.js";
-export type { RenewalStockProtectionPolicy } from "./renewalStockProtection.js";
-```
-## dist/inventory/contracts/inventory.d.ts
-
-```ts
-/** Inventory wire DTOs. Runtime validation belongs to the server entry. */
-export type InventoryReservationStatus = "reserved" | "released" | "consumed" | "expired";
-export type AdminInventoryStockRequest = {
-    page: number;
-    pageSize: number;
-    includeZero: boolean;
-    skuId?: string | undefined;
-    locationId?: string | undefined;
-};
-export type AdminInventoryReservationsRequest = {
-    page: number;
-    pageSize: number;
-    status?: "reserved" | "released" | "consumed" | "expired" | undefined;
-    orderId?: string | undefined;
-};
-export type AdminInventoryStockAdjustmentRequest = {
-    idempotencyKey: string;
-    skuId: string;
-    locationId: string;
-    quantityDelta: number;
-    reason: string;
-    lotId?: string | null | undefined;
-    note?: string | undefined;
-};
-export type AdminInventorySubscriptionForecastRequest = {
-    horizonDays: number;
-    protectionDays: number;
-};
-export type InventoryStockListResponse = {
-    contractVersion: "inventory.v0";
-    stock: {
-        skuId: string;
-        sku: string;
-        locationId: string;
-        locationCode: string;
-        locationKind: "internal_warehouse" | "third_party_logistics" | "supplier" | "quarantine" | "virtual";
-        locationStatus: "active" | "inactive";
-        fulfillable: boolean;
-        lotId: string | null;
-        lotCode: string | null;
-        lotStatus: "expired" | "available" | "quarantined" | "recalled" | null;
-        expiresAt: string | null;
-        onHand: number;
-        reserved: number;
-        unavailable: number;
-        incoming: number;
-        safetyStock: number;
-        availableNow: number;
-    }[];
-    totalCount: number;
-    page: number;
-    pageSize: number;
-};
-export type InventoryReservationsListResponse = {
-    contractVersion: "inventory.v0";
-    reservations: {
-        id: string;
-        orderId: string;
-        subscriptionCycleId: string | null;
-        status: "reserved" | "released" | "consumed" | "expired";
-        kind: "checkout_payment_window" | "subscription_retry_window" | "manual_ops";
-        expiresAt: string | null;
-        createdAt: string;
-    }[];
-    totalCount: number;
-    page: number;
-    pageSize: number;
-};
-export type InventoryStockAdjustmentResponse = {
-    contractVersion: "inventory.v0";
-    replayed: boolean;
-};
-export type InventorySubscriptionForecastResponse = {
-    contractVersion: "inventory.v0";
-    generatedAt: string;
-    stockMasterProvider: string;
-    horizonDays: number;
-    protectionDays: number;
-    skus: {
-        skuId: string;
-        sku: string;
-        providerCurrentForSale: number | null;
-        providerStockLastSyncedAt: string | null;
-        providerStockStaleAfter: string | null;
-        stockStatus: "fresh" | "stale" | "missing";
-        openHardReservations: number;
-        safetyStock: number;
-        sellableNow: number;
-        activeSubscriptionDemand30: number;
-        activeSubscriptionDemand45: number;
-        activeSubscriptionDemand60: number;
-        plannedSupply: number;
-        coverageDays: number | null;
-        shortageDate: string | null;
-        horizonMissingQty: number;
-        protectionMissingQty: number;
-        missingQty: number;
-        recommendedProductionQty: number;
-    }[];
-    totals: {
-        activeSubscriptionCount: number;
-        excludedSubscriptionCount: number;
-        missingProviderStockSkuCount: number;
-        staleProviderStockSkuCount: number;
-        horizonShortageSkuCount: number;
-        protectionShortageSkuCount: number;
-        shortageSkuCount: number;
-        recommendedProductionQty: number;
-    };
-};
-export type InventorySubscriptionForecastSku = {
-    skuId: string;
-    sku: string;
-    providerCurrentForSale: number | null;
-    providerStockLastSyncedAt: string | null;
-    providerStockStaleAfter: string | null;
-    stockStatus: "fresh" | "stale" | "missing";
-    openHardReservations: number;
-    safetyStock: number;
-    sellableNow: number;
-    activeSubscriptionDemand30: number;
-    activeSubscriptionDemand45: number;
-    activeSubscriptionDemand60: number;
-    plannedSupply: number;
-    coverageDays: number | null;
-    shortageDate: string | null;
-    horizonMissingQty: number;
-    protectionMissingQty: number;
-    missingQty: number;
-    recommendedProductionQty: number;
-};
-export type InventoryForecastDemandLine = {
-    subscriptionId: string;
-    subscriptionCycleId: string | null;
-    skuId: string;
-    sku: string;
-    quantity: number;
-    dueAt: string;
-    status: "planned" | "payment_pending" | "paid" | "retry_scheduled" | "skipped" | "cancelled";
-};
-export type InventoryForecastSupplyLine = {
-    skuId: string;
-    quantity: number;
-    expectedAt: string;
-    status: "planned" | "cancelled" | "received";
-};
-export type InventoryForecastResponse = {
-    contractVersion: "inventory.v0";
-    shortages: {
-        skuId: string;
-        sku: string;
-        dueAt: string;
-        demandQuantity: number;
-        availableOrExpectedQuantity: number;
-        missingQuantity: number;
-    }[];
-};
-```
 ## dist/inventory/contracts/newPurchaseStock.d.ts
 
 ```ts
@@ -438,7 +178,7 @@ export { createPostgresStockAvailability } from "./postgresStockAvailability.js"
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
-export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } from "./renewalStockProtection.js";
+export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting, previewRenewalStockProtection, renewalStockProtectionPreviewResult, type RenewalStockProtectionPreviewConnection } from "./renewalStockProtection.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -727,6 +467,7 @@ export {};
 ```ts
 import { z } from "zod";
 import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
+declare const key = "inventory_renewal_protection";
 /** @experimental Discovery metadata for the installed renewal stock protection policy. */
 export declare function describeRenewalStockProtectionSetting(): {
     readonly key: "inventory_renewal_protection";
@@ -737,6 +478,25 @@ export declare function describeRenewalStockProtectionSetting(): {
     readonly schema: z.ZodObject<{
         revision: z.ZodString;
         renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+    readonly previewSchema: z.ZodObject<{
+        existingReservations: z.ZodLiteral<"unchanged">;
+        newPurchaseAvailability: z.ZodEnum<{
+            unchanged: "unchanged";
+            "equal-or-lower": "equal-or-lower";
+            "equal-or-higher": "equal-or-higher";
+            undetermined: "undetermined";
+        }>;
+        skus: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            source: z.ZodEnum<{
+                missing: "missing";
+                provider: "provider";
+            }>;
+            stale: z.ZodBoolean;
+            currentAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+            proposedAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strict>>;
     }, z.core.$strict>;
     readonly rules: readonly [{
         readonly code: "inventory_renewal_protection_policy_invalid";
@@ -776,8 +536,8 @@ export declare function describeRenewalStockProtectionSetting(): {
         readonly impact: "operations";
     };
     readonly runtime: {
-        readonly level: "read-only";
-        readonly reason: "The editor reads the installed horizon. Apply changes with the installer at deployment.";
+        readonly level: "preview";
+        readonly reason: "Preview is available. Apply changes with the installer at deployment.";
     };
     readonly change: {
         readonly operation: "installRenewalStockProtectionPolicy";
@@ -795,6 +555,103 @@ export declare function installRenewalStockProtectionPolicy(db: Executor, policy
 export declare function readRenewalStockProtectionPolicy(db: Executor): Promise<RenewalStockProtectionPolicy>;
 /** @experimental Read an explicit installed override, preserving absence. */
 export declare function readRenewalStockProtectionOverride(db: Executor): Promise<RenewalStockProtectionPolicy | undefined>;
+declare const validationResult: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    state: z.ZodLiteral<"valid">;
+    value: z.ZodObject<{
+        revision: z.ZodString;
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    state: z.ZodLiteral<"invalid">;
+    code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
+    rule: z.ZodString;
+    hint: z.ZodString;
+    remediation: z.ZodObject<{
+        retry: z.ZodBoolean;
+        action: z.ZodString;
+        command: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>], "state">;
+export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    key: z.ZodLiteral<"inventory_renewal_protection">;
+    asOf: z.ZodISODateTime;
+    current: z.ZodObject<{
+        revision: z.ZodString;
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+    proposed: z.ZodJSONSchema;
+    difference: z.ZodNullable<z.ZodObject<{
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>>;
+    validation: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"valid">;
+        value: z.ZodObject<{
+            revision: z.ZodString;
+            renewalProtectionDays: z.ZodInt;
+        }, z.core.$strict>;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodLiteral<"invalid">;
+        code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
+        rule: z.ZodString;
+        hint: z.ZodString;
+        remediation: z.ZodObject<{
+            retry: z.ZodBoolean;
+            action: z.ZodString;
+            command: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>], "state">;
+    effect: z.ZodObject<{
+        existingReservations: z.ZodLiteral<"unchanged">;
+        newPurchaseAvailability: z.ZodEnum<{
+            unchanged: "unchanged";
+            "equal-or-lower": "equal-or-lower";
+            "equal-or-higher": "equal-or-higher";
+            undetermined: "undetermined";
+        }>;
+        skus: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            source: z.ZodEnum<{
+                missing: "missing";
+                provider: "provider";
+            }>;
+            stale: z.ZodBoolean;
+            currentAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+            proposedAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>;
+    uncertainty: z.ZodString;
+}, z.core.$strict>;
+type Validation = z.infer<typeof validationResult>;
+type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
+type PreviewRefusal = {
+    schemaVersion: 1;
+    refusal: Omit<Extract<Validation, {
+        state: "invalid";
+    }>, "state" | "code"> & {
+        code: string;
+        path: readonly string[];
+    };
+};
+type RefusePreview = (code: string, detail?: {
+    path: readonly string[];
+    hint: string;
+}) => PreviewRefusal;
+/** @experimental A host-owned pool and stock source for read-only preview. */
+export interface RenewalStockProtectionPreviewConnection {
+    db: {
+        connect(): Promise<Executor & {
+            release(error?: boolean): void;
+        }>;
+    };
+    sourceKey: string;
+}
+/** @experimental Preview installed and proposed renewal stock protection at the same observation instant. */
+export declare function previewRenewalStockProtection(settingKey: typeof key, proposed: PreviewResult["proposed"], context: RenewalStockProtectionPreviewConnection & {
+    asOf: string;
+    skus: readonly string[];
+    refuse: RefusePreview;
+}): Promise<PreviewResult | PreviewRefusal>;
 export {};
 ```
 ## dist/inventory/reservationPolicy.d.ts

@@ -2,6 +2,7 @@ import {
   createPostgresRoleFreeTransactionLane,
   type PostgresDataGatewayEnv,
   type PostgresDataGatewayOptions,
+  type PostgresRoleFreeTransactionLane,
 } from "../data/index.js";
 import type {
   TransactionalDeliveryReceipt,
@@ -46,7 +47,10 @@ function receipt(data: unknown): TransactionalDeliveryReceipt {
 export function createPostgresTransactionalDeliveryStore(
   env: PostgresDataGatewayEnv,
   options: PostgresDataGatewayOptions = {},
-  createTransactionLane: typeof createPostgresRoleFreeTransactionLane = createPostgresRoleFreeTransactionLane,
+  createTransactionLane: (
+    env: PostgresDataGatewayEnv,
+    options?: PostgresDataGatewayOptions,
+  ) => PostgresRoleFreeTransactionLane = createPostgresRoleFreeTransactionLane,
 ): PostgresTransactionalDeliveryStore {
   const transactions = createTransactionLane(env, options);
   const call = <T>(work: (client: PostgresTransactionalDeliveryStoreClient) => Promise<T>): Promise<T> =>

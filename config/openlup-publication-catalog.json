@@ -1494,6 +1494,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123149000_native_durable_capture_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
       "class": "public-output"
     },
@@ -4910,6 +4914,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123149000_native_durable_capture_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261123150000_catalog_publication.sql",
       "class": "public-output"
     },
@@ -6930,6 +6938,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/data/pgErrorListener.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/data/postgresGateway.ts",
       "class": "public-output"
     },
@@ -8190,6 +8202,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/server/postgres/pgErrorListener.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/server/prelaunchAcquisitionDirect.ts",
       "class": "public-output"
     },
@@ -8223,6 +8239,10 @@
     },
     {
       "path": "packages/platform/src/migrations/packagedCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/pgErrorListener.ts",
       "class": "public-output"
     },
     {
@@ -8363,6 +8383,10 @@
     },
     {
       "path": "packages/platform/src/operations/server/settingsRead.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/toolSchema.ts",
       "class": "public-output"
     },
     {
@@ -9626,6 +9650,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/apiContractScoping.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -10558,6 +10586,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/dispatchComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
       "class": "public-output"
     },
@@ -11218,6 +11250,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsReadToolSchemas.main.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/watchdogQueue.test.ts",
       "class": "public-output"
     },
@@ -11251,6 +11287,10 @@
     },
     {
       "path": "packages/platform/test/payments/postgresPaymentTruth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/postgresProviderRail.test.ts",
       "class": "public-output"
     },
     {
@@ -11838,6 +11878,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/postgresLifecycleMessages.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
@@ -11922,23 +11966,7 @@
       "class": "public-output"
     },
     {
-      "path": "playwright.checkout.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.promotion-rollout.config.ts",
-      "class": "public-output"
-    },
-    {
       "path": "playwright.ssg.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.subscription.config.ts",
       "class": "public-output"
     },
     {
@@ -12095,6 +12123,10 @@
     },
     {
       "path": "scripts/ast-grep/rules/portable-no-industry-contracts.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/benchmarks/outbox-claim.sql",
       "class": "public-output"
     },
     {
@@ -21182,6 +21214,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/infra/soap11Reply.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/infra/stripe/buildStripeApiClientIfEnabled.test.ts",
       "class": "public-output"
     },
@@ -22363,6 +22399,10 @@
     },
     {
       "path": "src/checkout/composer/deliverySelectionFlags.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/legacyCheckoutIntentPolicy.ts",
       "class": "public-output"
     },
     {
@@ -28754,6 +28794,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123144000_checkout_account_ownership.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -28975,6 +29019,10 @@
     },
     {
       "path": "supabase/tests/communication_email_provider_event_convergence_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/configurator_intent_account_ownership_test.sql",
       "class": "public-output"
     },
     {
@@ -31083,10 +31131,6 @@
     },
     {
       "path": "tests/preview/account/identity-composition.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/preview/checkout/helpers/env.ts",
       "class": "public-output"
     },
     {
