@@ -1763,8 +1763,12 @@ integer). Excess items or page budget, duplicate variant/code and repeated
 cursor refuse the entire read. Missing verifier refuses configuration; missing
 or changed authority never falls back to legacy data or an empty success.
 Each call reads afresh; any shared promise must live within one host request.
-Current-direct consistency does not establish a publication-wide snapshot or
-qualify a publication head; that protocol remains a separate catalog boundary.
+The current-direct path returns live envelope and document facts. Hosts can
+supply the experimental `governedOffer` option to scope the read to an offer and
+purchase mode. Its `withSnapshot` callback runs on one repeatable-read connection.
+The reader joins the installed membership page to exact envelopes and verified
+documents, then returns the consulted product head and SKU revision per item.
+The governed sized offer defaults to a 1,000-item ceiling.
 
 The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under

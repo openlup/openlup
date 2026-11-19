@@ -1,3 +1,12 @@
+/** The publication and SKU revision observed by a governed quote reader.
+ * @experimental
+ */
+export interface CommerceQuoteCatalogPublication {
+  productId: string;
+  skuRevisionId: string;
+  head: { publicationId: string; revision: number; documentDigest: string };
+}
+
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
   skuId: string;
@@ -16,6 +25,10 @@ export interface CommerceQuoteCatalogItem {
     id: string | null;
     digest: string | null;
   };
+  /** Present when the configured offer reader verified the publication.
+   * @experimental
+   */
+  publication?: CommerceQuoteCatalogPublication;
 }
 
 export interface CommerceQuoteCatalogReadPort {

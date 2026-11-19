@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, installCatalogDefinitions, catalogDefinitionDigest,
-  createPostgresCatalogAdmission, type CatalogPublicationRules } from "@openlup/platform/catalog";
+  createPostgresCatalogAdmission, createPostgresCommerceQuoteCatalogReadPort, type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPublishCommand, type CatalogHeadRef,
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
@@ -389,6 +389,36 @@ it.for(["one_time","subscription"] as const)("LC6-D-118 checkout cannot replace 
   const before = await snapshot();
   await expect(port.captureCatalogAdmission(priorQuote,f.admission.heads)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
   expect(await snapshot()).toEqual(before);
+});
+
+it.for(["one_time","subscription"] as const)("LC6-D-094 and LC6-D-118 configured quote read qualifies the exact offer and stamps its head: %s", async (mode,context) => {
+  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!installed) { context.skip("Membership page comes from the predecessor installation"); return; }
+  const offerVersion = `example:quote-${randomUUID()}`, members = [{ offerVersion,admitted: true }];
+  const f = await fixture(packs[0],{ sku: { memberships: members } });
+  await fixture(packs[1],{ sku: { memberships: members,...(mode === "one_time" ? { sellableStandalone: false } : { sellableInSubscription: false }) } });
+  const verifier: string[] = [];
+  const options = {
+    maxItems: 1,
+    async verifyDocument(document: unknown, envelope: { sku: { id: string }; documentRevision: { digest: string } }) {
+      expect(digest(canonicalCatalogDraftJson(document))).toBe(envelope.documentRevision.digest);
+      verifier.push(envelope.sku.id);
+    },
+    governedOffer: {
+      offerVersion,mode,
+      async withSnapshot<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) {
+        const db = await runtime.connect();
+        try { await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); const result = await work(db); await db.query("COMMIT"); return result; }
+        catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+      },
+    },
+  };
+  const read = createPostgresCommerceQuoteCatalogReadPort(runtime,options);
+  expect(await read.listQuoteCatalogItems()).toEqual([expect.objectContaining({
+    skuId: f.sku,skuCode: f.code,variantId: f.sku,
+    publication: { productId: f.product,skuRevisionId: f.reference.skuRevisionId,head: f.head },
+  })]);
+  expect(verifier).toEqual([f.sku]);
 });
 
 it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview evidence in %s", async lane => {
@@ -2021,6 +2051,20 @@ it.each(["assertion", "port"].flatMap(path => ["absent SKU", "foreign stale scop
     } finally { await db.query("ROLLBACK"); db.release(); }
   },
 );
+
+it.each(["receipt","malformed total"] as const)("legacy draft mode keeps its original refusal before %s", async competing => {
+  const f = await legacyFixture(), request = purchaseInput(f), db = await session();
+  const routine = "commerce_create_order_draft_with_outbox";
+  delete (request.quote as { catalogAdmission?: unknown }).catalogAdmission;
+  try {
+    if (competing === "receipt") {
+      expect(await rpc(db,routine,request.args)).toMatchObject({ orderDraft: { status: "draft",replayed: false } });
+    }
+    request.draft.context.mode = "invalid";
+    if (competing === "malformed total") Object.assign(request.draft.totals.totalGross,{ amountMinor: "not-money" });
+    await expect(rpc(db,routine,request.args)).rejects.toMatchObject({ code: "22023",message: "commerce_order_draft_invalid_mode" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
 
 it.each([false,true].flatMap(promoted => ["one_time","subscription"].flatMap(mode =>
   ["stale invalid mode","absent mode","null quote lines","object quote lines"].map(change => ({ promoted,mode,change })))))(

@@ -1282,12 +1282,20 @@ export interface PostgresCommerceQuoteCatalogReadOptions {
      * CommerceQuoteCatalogReadError for a named schema or digest refusal.
      */
     verifyDocument(document: unknown, envelope: NeutralSkuEnvelopeV1): Promise<void>;
+    /** The trusted host runs the whole offer read on a single repeatable-read connection.
+     * @experimental
+     */
+    governedOffer?: {
+        offerVersion: string;
+        mode: "one_time" | "subscription";
+        withSnapshot<T>(read: (executor: PgQueryExecutor) => Promise<T>): Promise<T>;
+    };
 }
 /**
  * Strict current-direct quote facts over existing runtime SELECT grants.
  * Requires host document verification; never falls back to a legacy catalog.
- * Reads do not establish a publication-wide snapshot or qualify a publication
- * head. Each call scans afresh; hosts may share a promise within one request.
+ * The current-direct path scans afresh. The governed offer path qualifies an
+ * exact roster and its publication heads on one host-owned snapshot.
  */
 export declare function createPostgresCommerceQuoteCatalogReadPort(executor: PgQueryExecutor, options: PostgresCommerceQuoteCatalogReadOptions): CommerceQuoteCatalogReadPort;
 ```
@@ -5197,7 +5205,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123190000_catalog_admission";
     readonly catalogPath: "db/platform/migrations/20261123190000_catalog_admission.sql";
     readonly position: 153;
-    readonly sha256: "2af4afc88895396e310e8cfc2db86bd6abaa2eb567f564993a1804bed7019f82";
+    readonly sha256: "c521f7cd83c540231f50d4a3cb721592b0384e48356c8ce507a2cc33ca4ad1f0";
     readonly url: URL;
 }];
 ```
@@ -6597,6 +6605,18 @@ export declare function createCommerceQuoteBatchHandler<Request extends CreateQu
 ## dist/pricing/commerceQuoteCatalogReadPort.d.ts
 
 ```ts
+/** The publication and SKU revision observed by a governed quote reader.
+ * @experimental
+ */
+export interface CommerceQuoteCatalogPublication {
+    productId: string;
+    skuRevisionId: string;
+    head: {
+        publicationId: string;
+        revision: number;
+        documentDigest: string;
+    };
+}
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
     skuId: string;
@@ -6615,6 +6635,10 @@ export interface CommerceQuoteCatalogItem {
         id: string | null;
         digest: string | null;
     };
+    /** Present when the configured offer reader verified the publication.
+     * @experimental
+     */
+    publication?: CommerceQuoteCatalogPublication;
 }
 export interface CommerceQuoteCatalogReadPort {
     listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;

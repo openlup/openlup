@@ -377,7 +377,7 @@ CREATE FUNCTION public.catalog_admission_members(offer_version text,p_mode text,
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE page jsonb; item jsonb; sku_id uuid; cursor_id uuid; head_digest text; page_limit constant integer:=100;
  maximum_members integer:=CASE WHEN offer_version='sized.v1' THEN 1000 ELSE 500 END;
- seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
+ seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}'; projected jsonb;
 BEGIN
  IF cardinality(scope)=0 THEN RETURN members; END IF;
  IF to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NULL THEN
@@ -414,7 +414,14 @@ BEGIN
   END IF;
   cursor_id:=(page->>'nextCursor')::uuid;
  END LOOP;
- RETURN members;
+ SELECT coalesce(jsonb_object_agg(k,m||jsonb_build_object('isAddon',r.full_facts::jsonb->'isAddon',
+   'primarySkuId',p.canonical_state::jsonb#>'{product,primarySkuId}')),'{}') INTO projected
+ FROM jsonb_each(members) AS member(k,m)
+ JOIN public.catalog_sku_revisions r ON r.id::text=m->>'skuRevisionId' AND r.sku_id::text=k AND r.product_id::text=m->>'productId'
+ JOIN public.catalog_publications p ON p.id::text=m#>>'{head,publicationId}' AND p.product_id=r.product_id;
+ IF (SELECT count(*) FROM jsonb_object_keys(projected))<>(SELECT count(*) FROM jsonb_object_keys(members)) THEN
+  RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+ RETURN projected;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean) FROM PUBLIC;
@@ -423,7 +430,7 @@ REVOKE ALL ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean
 -- Legacy facts and their interpretation remain with the host.
 CREATE FUNCTION public.catalog_admission_candidate_members(p_sku_ids uuid[],p_offer_version text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE governed uuid[]; members jsonb; projected jsonb;
+DECLARE governed uuid[]; members jsonb;
 BEGIN
  SELECT coalesce(array_agg(s.id ORDER BY s.id),'{}') INTO governed FROM public.catalog_skus s
  JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY(p_sku_ids)
@@ -432,9 +439,7 @@ BEGIN
  IF cardinality(governed)>1000 OR current_setting('transaction_isolation') NOT IN ('repeatable read','serializable') THEN
   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
  members:=public.catalog_admission_members(p_offer_version,'subscription',governed,false);
- SELECT coalesce(jsonb_object_agg(k,m||jsonb_build_object('isAddon',r.full_facts::jsonb->'isAddon')),'{}') INTO projected
- FROM jsonb_each(members) AS member(k,m) JOIN public.catalog_sku_revisions r ON r.id::text=m->>'skuRevisionId' AND r.sku_id::text=k;
- RETURN jsonb_build_object('governed',to_jsonb(governed),'members',projected);
+ RETURN jsonb_build_object('governed',to_jsonb(governed),'members',members);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_candidate_members(uuid[],text) FROM PUBLIC;
@@ -723,7 +728,11 @@ BEGIN
 
   v_mode := p_order_draft_snapshot#>>'{context,mode}';
   v_currency := p_order_draft_snapshot->>'currency';
-  v_total := (p_order_draft_snapshot#>>'{totals,totalGross,amountMinor}')::bigint;
+  -- Legacy invalid mode preceded the raw total conversion. A governed
+  -- request with an invalid mode still reaches the guarded head check.
+  IF v_mode IS NULL OR v_mode IN ('one_time','subscription') THEN
+    v_total := (p_order_draft_snapshot#>>'{totals,totalGross,amountMinor}')::bigint;
+  END IF;
   v_fingerprint := md5(
     p_quote_snapshot::text || '|' || p_order_draft_snapshot::text || '|'
     || COALESCE(p_client_id::text, '')
@@ -738,7 +747,9 @@ BEGIN
     IF v_existing.request_fingerprint = v_fingerprint THEN
       RETURN jsonb_set(v_existing.response_payload, '{orderDraft,replayed}', 'true'::jsonb, false);
     END IF;
-    RAISE EXCEPTION 'commerce_order_draft_idempotency_conflict' USING ERRCODE = '23505';
+    IF v_mode IS NULL OR v_mode IN ('one_time','subscription') THEN
+      RAISE EXCEPTION 'commerce_order_draft_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
   END IF;
 
   v_catalog_evidence:=p_quote_snapshot->'catalogAdmission';
@@ -2343,4 +2354,4 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text) FROM authenticated'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_candidate_members(uuid[],text), public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean), public.catalog_admission_candidate_members(uuid[],text), public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;

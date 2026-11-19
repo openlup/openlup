@@ -8226,12 +8226,12 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "2af4afc88895396e310e8cfc2db86bd6abaa2eb567f564993a1804bed7019f82",
+      "sha256": "c521f7cd83c540231f50d4a3cb721592b0384e48356c8ce507a2cc33ca4ad1f0",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
           "beforeSha256": "687fdfb48ad2fa9400832407e0a12b5d59126df0ce06732e04e761ef6c450c8d",
-          "afterSha256": "291323b2ede36d54831b60fb88620e16f405801dcf9c125532d6f90b0eb56790"
+          "afterSha256": "83970add0d85e8d222c43d2f0d70b8f840e7c3cc3a6e37c283c9772565548134"
         },
         {
           "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8356,12 +8356,12 @@
         {
           "signature": "public.catalog_admission_members(text,text,uuid[],boolean)",
           "beforeSha256": null,
-          "afterSha256": "75149812fb8d6e91b52b878548f9c3c98824886ed9e4a817615ddcbbb7751c07"
+          "afterSha256": "e34c6c0c4bf0f6e0dd5af587e110edda4f3cf26d047826d931c35c33e52d8ae1"
         },
         {
           "signature": "public.catalog_admission_candidate_members(uuid[],text)",
           "beforeSha256": null,
-          "afterSha256": "630a7f00951e9f7afa59c9761a5bbe38b0ae7137398b40ab0c27cffe29c94680"
+          "afterSha256": "53fdde05258462c1450ca9e3ab2926e0225b50b48c02c9e5a7df2b6767231e16"
         }
       ]
     }

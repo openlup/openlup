@@ -29,19 +29,27 @@ export interface PostgresCommerceQuoteCatalogReadOptions {
    * CommerceQuoteCatalogReadError for a named schema or digest refusal.
    */
   verifyDocument(document: unknown, envelope: NeutralSkuEnvelopeV1): Promise<void>;
+  /** The trusted host runs the whole offer read on a single repeatable-read connection.
+   * @experimental
+   */
+  governedOffer?: {
+    offerVersion: string;
+    mode: "one_time" | "subscription";
+    withSnapshot<T>(read: (executor: PgQueryExecutor) => Promise<T>): Promise<T>;
+  };
 }
 
 /**
  * Strict current-direct quote facts over existing runtime SELECT grants.
  * Requires host document verification; never falls back to a legacy catalog.
- * Reads do not establish a publication-wide snapshot or qualify a publication
- * head. Each call scans afresh; hosts may share a promise within one request.
+ * The current-direct path scans afresh. The governed offer path qualifies an
+ * exact roster and its publication heads on one host-owned snapshot.
  */
 export function createPostgresCommerceQuoteCatalogReadPort(
   executor: PgQueryExecutor,
   options: PostgresCommerceQuoteCatalogReadOptions,
 ): CommerceQuoteCatalogReadPort {
-  const maxItems = options?.maxItems ?? 500;
+  const maxItems = options?.maxItems ?? (options?.governedOffer?.offerVersion === "sized.v1" ? 1000 : 500);
   if (!Number.isSafeInteger(maxItems) || maxItems < 1) {
     throw new RangeError("maxItems must be a positive safe integer");
   }
@@ -53,6 +61,8 @@ export function createPostgresCommerceQuoteCatalogReadPort(
   return {
     async listQuoteCatalogItems() {
       try {
+        const offer = options.governedOffer;
+        if (offer) return await offer.withSnapshot(db => readGovernedQuoteCatalog(db, offer, verifyDocument, maxItems));
         const items: CommerceQuoteCatalogItem[] = [];
         const seenCursors = new Set<string>();
         const seenIds = new Set<string>();
@@ -79,20 +89,7 @@ export function createPostgresCommerceQuoteCatalogReadPort(
             }
             seenIds.add(envelope.sku.id);
             seenCodes.add(envelope.sku.code);
-            items.push({
-              skuId: envelope.sku.id,
-              skuCode: envelope.sku.code,
-              variantId: envelope.sku.id,
-              productSlug: envelope.product.slug,
-              netWeightG: envelope.sku.netContent.unscaled,
-              isPrimarySku: envelope.product.primarySkuId === envelope.sku.id,
-              isAddon: envelope.sku.isAddon,
-              sellability: {
-                oneTime: envelope.sku.sellability.oneTime,
-                subscription: envelope.sku.sellability.subscription,
-              },
-              documentRevision: { id: envelope.documentRevision.id, digest: envelope.documentRevision.digest },
-            });
+            items.push(quoteCatalogItem(envelope));
           }
           const nextCursor = page.nextCursor;
           if (nextCursor !== null && (nextCursor === cursor || seenCursors.has(nextCursor))) {
@@ -104,6 +101,9 @@ export function createPostgresCommerceQuoteCatalogReadPort(
         return items;
       } catch (error) {
         if (error instanceof CommerceQuoteCatalogReadError) throw error;
+        if (options.governedOffer && error && typeof error === "object" && "code" in error && error.code === "40001") {
+          throw new CommerceQuoteCatalogReadError("catalog_authority_changed");
+        }
         if (error instanceof CatalogSkuAuthorityError) {
           throw new CommerceQuoteCatalogReadError(
             error.code === "catalog_sku_authority_primary_sku_invalid"
@@ -117,6 +117,73 @@ export function createPostgresCommerceQuoteCatalogReadPort(
       }
     },
   };
+}
+
+function quoteCatalogItem(envelope: NeutralSkuEnvelopeV1): CommerceQuoteCatalogItem {
+  return {
+    skuId: envelope.sku.id,
+    skuCode: envelope.sku.code,
+    variantId: envelope.sku.id,
+    productSlug: envelope.product.slug,
+    netWeightG: envelope.sku.netContent.unscaled,
+    isPrimarySku: envelope.product.primarySkuId === envelope.sku.id,
+    isAddon: envelope.sku.isAddon,
+    sellability: { oneTime: envelope.sku.sellability.oneTime, subscription: envelope.sku.sellability.subscription },
+    documentRevision: { id: envelope.documentRevision.id, digest: envelope.documentRevision.digest },
+  };
+}
+
+type QuoteMembership = NonNullable<CommerceQuoteCatalogItem["publication"]> & {
+  skuId: string;
+  skuCode: string;
+  productSlug: string;
+  primarySkuId: string;
+  isAddon: boolean;
+  netWeightG: number;
+  sellableStandalone: boolean;
+  sellableInSubscription: boolean;
+  document: NeutralSkuEnvelopeV1["documentRevision"];
+};
+
+async function readGovernedQuoteCatalog(
+  db: PgQueryExecutor,
+  offer: NonNullable<PostgresCommerceQuoteCatalogReadOptions["governedOffer"]>,
+  verifyDocument: PostgresCommerceQuoteCatalogReadOptions["verifyDocument"],
+  maxItems: number,
+): Promise<CommerceQuoteCatalogItem[]> {
+  const { rows: [scope] } = await db.query(`SELECT public.catalog_admission_members($1::text,$2::text,NULL,false) AS members
+    WHERE current_setting('transaction_isolation') IN ('repeatable read','serializable')`, [offer.offerVersion, offer.mode]);
+  if (!scope) throw new CommerceQuoteCatalogReadError("catalog_read_not_configured");
+  const members = scope.members as Record<string, QuoteMembership>;
+  const ids = Object.keys(members).sort();
+  if (ids.length > maxItems) throw new CommerceQuoteCatalogReadError("catalog_cardinality_exceeded");
+  const envelopes = createPostgresCatalogSkuEnvelopeReadPort(db);
+  const items: CommerceQuoteCatalogItem[] = [];
+  for (let start = 0; start < ids.length; start += PAGE_SIZE) {
+    const selected = ids.slice(start, start + PAGE_SIZE);
+    const { items: roster, nextCursor } = await envelopes.listActiveSkuEnvelopes({
+      skuCodes: selected.map(id => members[id]!.skuCode), cursor: null, limit: PAGE_SIZE,
+    });
+    if (roster.length !== selected.length || nextCursor !== null) throw new CommerceQuoteCatalogReadError("catalog_authority_changed");
+    const documents = await readCurrentDocuments(db, roster);
+    for (const [index, envelope] of roster.entries()) {
+      const member = members[envelope.sku.id];
+      const item = quoteCatalogItem(envelope);
+      const document = documents[index]!;
+      if (!member || document.product_status !== "active" || member.skuId !== item.skuId ||
+        member.skuCode !== item.skuCode || member.productId !== envelope.product.id ||
+        member.productSlug !== item.productSlug || member.primarySkuId !== envelope.product.primarySkuId ||
+        member.isAddon !== item.isAddon || member.netWeightG !== item.netWeightG ||
+        member.sellableStandalone !== item.sellability.oneTime || member.sellableInSubscription !== item.sellability.subscription ||
+        member.document.id !== item.documentRevision.id || member.document.digest !== item.documentRevision.digest ||
+        member.head.documentDigest !== item.documentRevision.digest) {
+        throw new CommerceQuoteCatalogReadError("catalog_authority_changed");
+      }
+      await verifyDocument(document.revision_document_payload, envelope);
+      items.push({ ...item, publication: { productId: member.productId, skuRevisionId: member.skuRevisionId, head: member.head } });
+    }
+  }
+  return items;
 }
 
 interface CurrentDocumentRow {

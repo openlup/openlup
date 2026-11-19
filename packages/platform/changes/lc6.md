@@ -24,6 +24,9 @@ contexts can still read the paid-cycle count for phase selection.
 Hosts discovering governed sized candidates supply a repeatable-read
 `withCandidateSnapshot`. The shared membership scan qualifies the governed
 portion of the host's candidate roster.
+The quote catalogue reader's experimental `governedOffer` option returns
+publication stamps for the verified roster. The host can retain the stamps
+for the quote's selected product heads.
 Governed edit previews return a token for their recorded evidence. Repeating a
 preview records a separate token, including when the quoted totals stay equal.
 The publisher retains its nonblocking busy refusal.
