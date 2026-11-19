@@ -7,10 +7,10 @@
     "schemaVersion": 1,
     "examples": [],
     "fallback": {"revision": "default", "abandonedCart": [{"stage": "first", "afterHours": 1}, {"stage": "gentle", "afterHours": 24}, {"stage": "last", "afterHours": 72}], "checkoutRecovery": [{"stage": "first", "afterHours": 1}, {"stage": "last", "afterHours": 20}]},
-    "absentMeans": {"description": "Checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.", "source": "host call parameters, with SQL defaults for omitted offsets", "value": {"abandonedCart": [{"stage": "first", "afterHours": 1}, {"stage": "gentle", "afterHours": 24}, {"stage": "last", "afterHours": 72}], "checkoutRecovery": null}},
+    "absentMeans": {"description": "Unpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.", "source": "host call parameters, with SQL defaults for omitted offsets", "value": {"abandonedCart": [{"stage": "first", "afterHours": 1}, {"stage": "gentle", "afterHours": 24}, {"stage": "last", "afterHours": 72}], "checkoutRecovery": null}},
     "defaultBasis": {"kind": "reference-code"},
     "whyThisDefault": "The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.",
-    "effect": {"appliesTo": "Scheduling new reminder waves.", "frozenOn": ["Enqueued messages and send receipts retain their recorded identity."], "impact": "customer-promise"},
+    "effect": {"appliesTo": "A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.", "frozenOn": ["Enqueued messages and send receipts retain their recorded identity."], "impact": "customer-promise"},
     "runtime": {"level": "read-only", "reason": "Runtime editing needs episode lineage and delivery replay evidence."},
     "change": {"operation": "installCheckoutRecoveryReminderSchedule"},
     "rules": [
