@@ -1,9 +1,27 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
-import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { canonicalCatalogDraftJson, withCatalogPublicationRules, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { catalogDraftType } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
+
+export function readStarterCatalogueRules(): Buffer {
+  try { return readFileSync(new URL('../owned/catalogue-rules.cjs', import.meta.url)); }
+  catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') throw new Error('starter_catalogue_rules_missing');
+    throw error;
+  }
+}
+
+/** The installer and operator host run from the same image built by lifecycle up. */
+export function starterCataloguePack(artifact: Uint8Array) {
+  // Keep version 1 for the shipped draft example. The immutable installer refuses a collision.
+  const version = 2 + createHash('sha256').update(canonicalCatalogDraftJson(catalogDraftType)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
+  return withCatalogPublicationRules({ id: 'starter:local-rules', namespace: 'starter', version, openlupRange: '1.x',
+    types: [{ ...catalogDraftType, version }], capabilities: {}, taxClasses: [] }, () => artifact);
+}
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {
   const hex = createHash('sha256').update(`neutral-store-demo-v1:${config.id}:${kind}:${key}`).digest('hex');

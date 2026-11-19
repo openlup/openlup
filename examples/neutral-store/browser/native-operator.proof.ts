@@ -237,6 +237,18 @@ test('native support roster, catalogue administration, replay and operator admis
   const draftReplay = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   expect((await (await draftReplay).json()).replayed).toBe(true);
+  const typeVersion = Number(created.value.record.payload.product.type.version);
+  expect(Number.isSafeInteger(typeVersion) && typeVersion > 1).toBe(true);
+  expect(sql(`SELECT count(*) FROM public.catalog_type_versions WHERE type_key='starter:item' AND version=${typeVersion}`)).toBe('1');
+  const invalidDraft = structuredClone(created.value.record.payload);
+  invalidDraft.product.sharedContent.title = '';
+  await draftForm.locator('[name=draftId]').fill(randomUUID());
+  await draftForm.locator('[name=payload]').fill(JSON.stringify(invalidDraft));
+  const reply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  expect(await (await reply).json()).toMatchObject({ ok: false, code: 'catalog_draft_payload_invalid',
+    issues: [{ path: 'product.sharedContent.title', code: 'title_required' }] });
+  await expect(draftForm.locator('.action-result')).toContainText('product.sharedContent.title');
   const draftRead = await action('operator.catalogDrafts', { action: 'get', draftId });
   expect(draftRead.value.record.revision).toBe(1);
   expect((await action('operator.catalogDrafts')).value.page.items.some((row: { draftId: string }) => row.draftId === draftId)).toBe(true);

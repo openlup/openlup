@@ -1385,9 +1385,11 @@ is `v1:<draftId>@<revision>/<publicationId>@<headRevision>`, or `/unpublished`.
 The same v1 reference format resolves v2 or v3 immutable payloads; unsupported
 payload versions refuse. The digest includes every v3 operation, its order,
 explicit eligibility, provenance, derived effects and shared-content field.
-Every reconstruction checks the current draft revision, resolves the full
-expected head including `documentDigest`, compares it with current lineage and
-checks the installed definition digest. The digest covers the parsed canonical
+Every reconstruction checks the current draft revision and resolves the supplied
+expected head. A known head change reports a conflict. For publication-aware
+drafts, an unreadable current head leaves preparation unknown unless a check
+already found an input that needs fixing. Older draft payloads report a
+dependency error when current lineage is unavailable. The digest covers the canonical
 payload, installed definition evidence and that complete expected head. No
 candidate table or cache is needed across process restarts. `validate(candidateRef)`
 reconstructs the preview; `compareCandidate` additionally checks the caller's
@@ -1403,23 +1405,35 @@ again. Follow the issue's phase and path to locate the input.
 
 ### Change a product rule
 
-Keep the rules in `owned/catalogue-rules.cjs` and their assertions in
-`owned/catalogue-rules.test.cjs`. Export the rules object described by
-`CatalogPublicationRulesModule` as `module.exports`. In the test, import the
-module with `require("./catalogue-rules.cjs")` and exercise a valid and an invalid
-example of the rule you changed.
+Edit `owned/catalogue-rules.cjs` and add a valid and an invalid example to
+`owned/catalogue-rules.test.cjs`. The starter test loads the edited bytes
+through the same `loadCatalogRules` loader used by installation.
 
 ```sh
 node --test owned/catalogue-rules.test.cjs
 ```
 
-Run that command after each edit. The test runs your current rules directly.
+Each hook starts fresh, takes JSON inputs and returns a JSON value. Bundle your
+dependencies ahead of time. Hooks cannot use `require`, Node process or
+filesystem APIs, `Date`, `Math.random`, or runtime code generation. A failed
+hook names itself and the cause. Fix the hook, then run the same test again.
+
 When the rules are ready, run `./lifecycle up` in the neutral starter. The local
 installer derives the product type version from the definitions and rules and
-installs it in the demonstration database. For an existing deployment, supply
-the self-contained build asset with `withCatalogPublicationRules` when composing
-the pack and use the regular definition installer. Include the rule dependencies
-and configuration in the build. Keep product data and tests in your application.
+installs it in the demonstration database. Open **Catalogue drafts** as an
+operator and save a draft to exercise your rules. The starter selects the local
+product type for you. You can fix an input at the path shown in the refusal and
+save again.
+
+For an existing deployment, supply the self-contained build asset with
+`withCatalogPublicationRules` when composing the pack. Use that pack for the
+regular definition installer and build the host registry from its types. The
+rules module owns content validation, so its type definition can omit an inline
+validator. Export the hooks documented by `CatalogPublicationRulesModule`.
+
+Use the named presentation fields for titles, routes, short names, advertised
+weights, media references, and accents. Keep derived SKU facts to scalar values.
+Store structured display values as typed public attributes.
 
 Render public product attributes supplied by the catalogue read model. The
 existing projection admits up to 2,048 bytes per projected text value.

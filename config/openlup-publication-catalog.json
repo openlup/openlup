@@ -2558,6 +2558,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/catalogue-rules.cjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/catalogue-rules.test.cjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/catalogue.json",
       "class": "public-output"
     },
@@ -9787,10 +9795,6 @@
     },
     {
       "path": "packages/platform/test/catalog/fixtures/categoryDocumentInput.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/catalog/fixtures/categoryMembership.ts",
       "class": "public-output"
     },
     {

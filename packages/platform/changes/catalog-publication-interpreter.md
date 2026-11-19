@@ -1,2 +1,2 @@
 - Prepare catalogue candidates through one ordered evaluator with actionable preparation and pricing diagnostics. Product rule builds attach to the existing definition installation. Published product content carries neutral facts and a document reference.
-- Migration: Existing candidate-service construction and v1 references and digests remain supported. To update rules, run your rule tests and install the updated product type through the existing install flow.
+- Migration: Existing candidate-service construction and v1 references and digests remain supported. For definition installation, attach the rules build to the pack and compose the host registry from the same pack types. Run your rule tests and install the updated product type through the existing install flow.

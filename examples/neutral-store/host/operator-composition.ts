@@ -1,9 +1,10 @@
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
-  createPostgresCatalogDraftStore, createCatalogDraftHandler, BundleRpcError,
+  createPostgresCatalogDraftStore, createCatalogDraftHandler, createCatalogProductTypeRegistry, BundleRpcError,
   evaluateBundleComposition } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
-import { catalogDraftRegistry } from '../owned/catalogue.ts';
+import { readStarterCatalogueRules, starterCataloguePack } from './editor-catalogue.ts';
+import { isRecord } from '../shared/offer.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
@@ -18,10 +19,13 @@ const only = (payload: Record<string, unknown>, keys: string[]) =>
 /** Operator identity is established by native request authentication before dispatch. */
 export function composeOperatorCapabilities(input: { executor: PgQueryExecutor; connectionString: string }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
+  const pack = starterCataloguePack(readStarterCatalogueRules());
+  const installed = pack.types[0]!;
   const catalog = createPostgresBundleCatalogStore(input.executor);
   const writer = createPostgresBundleAdminWriteStore({ connectionString: input.connectionString });
   const drafts = createCatalogDraftHandler<ActionContext>({
-    store: createPostgresCatalogDraftStore(input.executor), registry: catalogDraftRegistry,
+    store: createPostgresCatalogDraftStore(input.executor),
+    registry: createCatalogProductTypeRegistry(pack.types),
     authorizeOperator: async context => context.actor.operatorRef ? { actorId: context.actor.operatorRef } : null,
   });
   const actions: ApplicationBindings['actions'] = {};
@@ -114,12 +118,17 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     const fields = payload.action === undefined ? [] : payload.action === 'get' ? ['action', 'draftId']
       : ['action', 'draftId', 'expectedRevision', 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
+    let authored = payload.payload;
+    if (isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
+      && authored.product.type.key === installed.key && authored.product.type.version === 1) {
+      authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version: installed.version } } };
+    }
     const result = payload.action === undefined ? await drafts.list({ limit: 30 }, context)
       : payload.action === 'get' ? await drafts.get({ draftId: payload.draftId }, context)
         : await drafts.execute({ schemaVersion: 1, action: payload.action, draftId: payload.draftId,
-          expectedRevision: payload.expectedRevision, ...(payload.payload === undefined ? {} : { payload: payload.payload }),
+          expectedRevision: payload.expectedRevision, ...(authored === undefined ? {} : { payload: authored }),
           commandKey: context.commandKey }, context);
-    if ('reason' in result) return refused(`catalog_${result.reason}`);
+    if ('reason' in result) return { ...refused(`catalog_${result.reason}`), ...(result.issues?.length ? { issues: result.issues } : {}) };
     return { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
   };
   return { actions, close: () => writer.close() };

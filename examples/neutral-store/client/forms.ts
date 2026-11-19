@@ -139,6 +139,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))
           : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined));
+        if (!result.ok && result.issues?.length) append(output, renderValue(result.issues));
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
           options.onSuccess?.(result.value);

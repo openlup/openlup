@@ -5,6 +5,8 @@
     "owned/renewal.config.ts",
     "AGENTS.md",
     "owned/catalogue.ts",
+    "owned/catalogue-rules.cjs",
+    "owned/catalogue-rules.test.cjs",
     "owned/catalogue.json",
     "owned/copy.ts",
     "owned/acquisition-addresses.ts",
