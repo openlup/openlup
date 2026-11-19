@@ -40,7 +40,7 @@ export function describeRenewalStockProtectionSetting() {
       frozenOn: ["Existing reservations keep their quantities and expiry times."],
       impact: "operations",
     },
-    runtime: { level: "read-only", reason: "The starter editor still supplies its configured horizon to the stock read port." },
+    runtime: { level: "read-only", reason: "The editor reads the installed horizon. Apply changes with the installer at deployment." },
     change: { operation: "installRenewalStockProtectionPolicy" },
   } as const;
 }

@@ -1490,6 +1490,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4895,6 +4899,10 @@
     },
     {
       "path": "packages/platform/sql/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123148000_checkout_recovery_reminder_episode_pin.sql",
       "class": "public-output"
     },
     {
@@ -30015,6 +30023,10 @@
     },
     {
       "path": "tests/postgres/checkoutRecoveryRecreation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryReminderEpisodes.test.ts",
       "class": "public-output"
     },
     {
