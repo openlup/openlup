@@ -283,7 +283,8 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
             } else if (candidate !== undefined || starter != null || hasGrant) changed();
           }
         }
-        const result = await nativeCheckoutPersistence(db, policyOwner ? options.regionCode : undefined).createOrderDraft(request, replay
+        const persistence = policyOwner ? nativeCheckoutPersistence(db, options.regionCode) : createPostgresNativeCheckoutPersistence(db);
+        const result = await persistence.createOrderDraft(request, replay
           ? { clientId: identity?.clientId, catalogAdmission: replay.evidence == null ? undefined : replay.evidence as object }
           : identity);
         await db.query("COMMIT");
