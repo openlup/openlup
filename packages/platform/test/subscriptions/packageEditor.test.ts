@@ -23,10 +23,11 @@ function fixture() {
       if (sql.includes("subscription_quote_preview_record")) ledger = { quote_snapshot: values?.[7] };
       if (sql.includes("subscription_quote_preview_take")) {
         if (!values?.[4]) throw new Error("subscription_edit_quote_required");
-        return { rows: [{ preview: ledger }] };
+        return { rows: [{ preview: { id, subscription_id: id, client_id: client, action: values[3], quote_hash: values[4],
+          template_version: values[5], ...ledger } }] };
       }
-      if (sql.startsWith("SELECT id,template_version")) return { rows: [row] };
-      if (sql.startsWith("SELECT s.template_version")) return { rows: [{ template_version: 1,template_currency: "XXX",agreement_currency: "XXX",
+      if (sql.startsWith("SELECT id,template_version")) return { rows: missing ? [] : [row] };
+      if (sql.startsWith("SELECT s.template_version")) return { rows: [{ subscription_id: id,template_version: 1,template_currency: "XXX",agreement_currency: "XXX",
         accepted_lines: [{ lineId: id,variantId: id,sku: "REFILL",isAddon: false,quantity: 4,unitMinor: 100,currency: "XXX" }],
         term_lines: [{ ordinal: 1,sku: "REFILL",quantity: 4,unitMinor: 100 }] }] };
       if (sql.startsWith("SELECT s.*")) return { rows: missing ? [] : [row] };
@@ -37,7 +38,10 @@ function fixture() {
         subscriptionStatus: "active", nextCycleAt: "2026-12-01T00:00:00Z", templateVersion: 2, eventId: id } }] };
       return { rows: [] };
     } }); },
-    quoteCatalogReadPort: { listQuoteCatalogItems: async () => [{ variantId: id, skuCode: "REFILL", sellability: { subscription: true } }] },
+    quoteCatalogReadPort: { listQuoteCatalogItems: async () => [
+      { variantId: id, skuCode: "REFILL", sellability: { subscription: true } },
+      { variantId: client, skuCode: "ADDON", sellability: { subscription: true } },
+    ] },
     quotePort: { createServerAuthoritativeQuote: vi.fn(async input => {
       const lines = input.lines.map(line => ({ sku: line.sku, quantity: line.quantity, unitPriceGross: money(137), lineSubtotalGross: money(line.quantity * 137) }));
       const total = money(lines.reduce((sum, line) => sum + line.lineSubtotalGross.amountMinor, 0));
@@ -62,7 +66,8 @@ it("records a content-keyed preview with effective request, complete snapshots, 
   const record = f.calls.find(call => call.sql.includes("subscription_quote_preview_record"))!;
   expect(record.values).toEqual([id, client, id, preview.quoteHash, 1, "2026-11-05T00:15:00.000Z",
     { planDays: 20, nominalPlanDays: 20, base: request.base, addons: [], expectedTemplateVersion: 1 },
-    { editConsent: preview.editConsent, baseLines: [{ ...request.base[0], quoteLine: { sku: "REFILL", quantity: 6, unitPriceGross: money(137), lineSubtotalGross: money(822) } }], addonLines: [], compositionConstraint: null },
+    { editConsent: preview.editConsent, consentRequest: { planDays: 20, base: request.base, addons: [] },
+      baseLines: [{ ...request.base[0], quoteLine: { sku: "REFILL", quantity: 6, unitPriceGross: money(137), lineSubtotalGross: money(822) } }], addonLines: [], compositionConstraint: null },
     { currentRecurringPrice: money(400), newRecurringPrice: money(822), delta: money(422) }, "2026-11-05T00:00:00Z"]);
   const applied = await f.editor.apply(actor, "independent-apply-key", { ...request, acceptedQuoteHash: preview.quoteHash });
   expect(applied.status).toBe("applied");
@@ -72,10 +77,21 @@ it.each([
   [{ payment_blocked: true, cycle_locked: true, status: "cancelled" }, "payment_blocked"],
   [{ status: "cancelled" }, "not_active"], [{ cycle_locked: true, method_healthy: false }, "cycle_locked"],
   [{ method_healthy: false }, "missing_payment_method"], [{ next_cycle_at: "2026-11-06T00:00:00Z" }, "edit_window_closed"],
+  [{ next_cycle_at: null }, "edit_window_closed"],
 ])("reports blocker precedence %j without quoting", async (change, reason) => {
   const f = fixture(); Object.assign(f.row, change);
   expect((await f.editor.preview(actor, request)).preview).toMatchObject({ canApply: false, blockedReason: reason });
   expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+});
+it.each([
+  ["LC9-D-042", "preview"], ["LC9-D-046", "apply"],
+] as const)("%s refuses a stale supplied version before %s pricing", async (_item, phase) => {
+  const f = fixture(), stale = { ...request, expectedTemplateVersion: 2 };
+  const promise = phase === "preview" ? f.editor.preview(actor, stale)
+    : f.editor.apply(actor, "stale-consent-apply", { ...stale, acceptedQuoteHash: "a".repeat(64) });
+  await expect(promise).rejects.toThrow(/^subscription_edit_stale_template$/u);
+  expect(f.options.quotePort.createServerAuthoritativeQuote).not.toHaveBeenCalled();
+  expect(f.calls.some(call => call.sql.includes("subscription_quote_preview_record") || call.sql.includes("subscription_quote_preview_take"))).toBe(false);
 });
 it("requires a fresh equal quote before any non-replay apply and never accepts browser money", async () => {
   const f = fixture(), preview = await f.editor.preview(actor, request);
@@ -115,7 +131,7 @@ it("retains a string reprice reason but exposes only the matched durable token f
 
 it.each([
   { action: "swap_base_line", fromVariantId: id, toVariantId: id },
-  { action: "add_addon", variantId: id, qty: 2 },
+  { action: "add_addon", variantId: client, qty: 2 },
   { action: "update_plan_length", planDays: 10 },
   { action: "update_base_mix", base: [{ variantId: id, qty: 4 }] },
   { action: "update_portion", portionMode: "portion" },

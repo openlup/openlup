@@ -276,6 +276,8 @@ The native successor forward adds immutable pair provenance and four RLS-enabled
 owner-controlled storage tables. It preserves original schedule arbiters,
 composite shapes and legacy reader/replay results. Version 2 stores select
 successor generations explicitly; historical roots remain schedule lineage.
+The sized editor's shared phase guard reads a successor cycle's logical number
+from its linked generation snapshot. Unnumberable history still refuses.
 ATP retains its invoker signature. An internal stable definer aggregate returns
 only a successor hold quantity, optionally restricted to the matching subscription
 and schedule for demand credit. Only the shipped `service_role` receives execute;

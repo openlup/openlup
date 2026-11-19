@@ -5319,7 +5319,7 @@ export declare const sellableCatalogListResponseSchema: z.ZodObject<{
 
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
-import { type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
+import { type CommercePriceAuthorityQuery, type CommercePriceAuthorityReadPort, type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
 import { type NeutralSkuEnvelopeV1 } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogAcceptedReferenceV2, CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
@@ -5342,6 +5342,11 @@ export interface NeutralSkuEnvelopeV2 {
         minQuantity: number;
         options: CatalogSkuState["options"];
         attributes: CatalogSkuState["attributes"];
+        /** Effective storefront sale-unit money from the same observation. @experimental */
+        unitPrice?: {
+            amountMinor: number;
+            currency: string;
+        } | null;
     };
     documentRevision: NeutralSkuEnvelopeV1["documentRevision"];
     identifiers: NeutralSkuEnvelopeV1["identifiers"];
@@ -5352,6 +5357,10 @@ export interface CatalogServingScopeV2 {
     types: readonly CatalogProductTypeRef[];
     offerVersion: string;
     maxItems?: number;
+    /** Select the storefront market and bind its price reads to the supplied snapshot executor. @experimental */
+    priceContext?: Pick<CommercePriceAuthorityQuery, "regionCode" | "currency" | "channel"> & {
+        readPrices(db: PgQueryExecutor): CommercePriceAuthorityReadPort;
+    };
 }
 /** Current listing, detail and commerce reads share one installed authority. @experimental */
 export interface CatalogServingReadPortV2 {
@@ -5504,16 +5513,16 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly sha256: "45188d7a73aa01dc5bc57147d04c58a4d5d0bdf1af3869f89dbbd20588ceb2a0";
     readonly url: URL;
 }, {
-    readonly id: "20261122220000_subscription_edit_consent";
-    readonly catalogPath: "db/platform/migrations/20261122220000_subscription_edit_consent.sql";
+    readonly id: "20261123200000_subscription_edit_consent";
+    readonly catalogPath: "db/platform/migrations/20261123200000_subscription_edit_consent.sql";
     readonly position: 154;
-    readonly sha256: "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a";
+    readonly sha256: "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c";
     readonly url: URL;
 }, {
     readonly id: "20261123210000_catalog_successors";
     readonly catalogPath: "db/platform/migrations/20261123210000_catalog_successors.sql";
     readonly position: 155;
-    readonly sha256: "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87";
+    readonly sha256: "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65";
     readonly url: URL;
 }, {
     readonly id: "20261123230000_catalog_quantity_serving";
