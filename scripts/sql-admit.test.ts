@@ -9,7 +9,7 @@ import { needsForwardApproval } from "./agent-review-queue.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
-import { assertCoLocatedForwardApproval, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertCoLocatedForwardApproval, managedForwardPrefixSha256, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { admissionRuleFiles, capabilityHint } from "./sql-admit.ts";
 
 const CLI = resolve("scripts/sql-admit.ts");
@@ -210,5 +210,49 @@ describe("sql:admit", () => {
     const conflict = cli(f.root, ["--base", base, "--head", head, STALE]);
     expect(conflict.status).toBe(2); expect(conflict.stdout).toBe("");
     expect(conflict.stderr).toContain("head does not merge cleanly into base");
+  });
+});
+
+describe("upstream exact managed migration approval", () => {
+  const path = "supabase/migrations/20271106100000_reviewed.sql";
+  const sql = "REVOKE SELECT ON public.example FROM authenticated;\n";
+  const approve = (f: Fixture) => {
+    const value = registry();
+    value.managedExactForwards = [{ path, sha256: sqlSha256(sql),
+      prefixSha256: managedForwardPrefixSha256(f.root, f.base, path) }];
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+  };
+
+  it("admits the exact bytes from an upstream pin, including in release history", () => {
+    const f = fixture();
+    approve(f);
+    const approval = f.commit();
+    f.put(path, sql);
+    const head = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, head, path, Buffer.from(sql))).not.toThrow();
+    expect(() => assertAdmittedPlatformForward(f.root, f.base, head, path, Buffer.from(sql), true)).not.toThrow();
+  });
+
+  it("refuses a pin introduced with its migration", () => {
+    const f = fixture();
+    approve(f);
+    f.put(path, sql);
+    const head = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).toThrow(/must be approved separately/);
+  });
+
+  it("refuses a different prefix or bytes, including an expand-only substitution", () => {
+    const f = fixture();
+    approve(f);
+    const approval = f.commit();
+    f.put(path, "CREATE TABLE public.substitute (id uuid);\n");
+    const substitute = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, substitute, path,
+      readFileSync(join(f.root, path)))).toThrow("exact managed forward bytes differ");
+    f.put("supabase/migrations/20271105100000_other.sql", "CREATE TABLE public.other (id uuid);\n");
+    f.put(path, sql);
+    const drift = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, drift, path, Buffer.from(sql)))
+      .toThrow("exact managed forward managed prefix differs");
   });
 });
