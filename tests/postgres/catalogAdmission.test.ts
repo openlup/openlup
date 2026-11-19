@@ -947,17 +947,26 @@ it.for((["assertion","port","plain","promoted"] as const).flatMap(path => [false
   },
 );
 
-it.each(["assertion","port"] as const)("LC6-D-147 an eligible nonwinner is refused via %s", async path => {
-  const f = await fixture(packs[0]), input = { ...f.admission,purpose: "order" as const }, db = await session();
-  try {
-    await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
-      VALUES($1,$2,'subscription',617,statement_timestamp()-interval '1 second')`, [input.priceContextVersions[0].priceListId,f.sku]);
-    const result = path === "port" ? createPostgresCatalogAdmission().assertCurrent(db,input)
-      : rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,
-        input.offerEvidence,JSON.stringify(input.priceContextVersions),input.purpose]);
-    await expect(result).rejects.toMatchObject({ code: "40001",message: "catalog_admission_price_context_moved" });
-  } finally { await db.query("ROLLBACK"); db.release(); }
-});
+it.for((["assertion","port"] as const).flatMap(path => [false,true].map(control => ({ path,control }))))(
+  "LC6-D-147 an eligible nonwinner is refused via $path, control=$control", async ({ path,control }) => {
+    const f = await fixture(packs[0]), input = { ...f.admission,purpose: "order" as const };
+    const restore = control ? await hook(catalogAssertionSignature,"DECLARE selection jsonb;","",body => {
+      const predicate = "IF p_purpose='order' AND p_offer_evidence->'scopeSkuIds' IS NULL AND NOT (price_context ? 'base' OR price_context ? 'policy')";
+      expect(body.split(predicate)).toHaveLength(2);
+      return body.replace(predicate,"IF false");
+    }) : undefined;
+    const db = await session();
+    try {
+      await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+        VALUES($1,$2,'subscription',617,statement_timestamp()-interval '1 second')`, [input.priceContextVersions[0].priceListId,f.sku]);
+      const result = path === "port" ? createPostgresCatalogAdmission().assertCurrent(db,input)
+        : rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,
+          input.offerEvidence,JSON.stringify(input.priceContextVersions),input.purpose]);
+      if (control) await result;
+      else await expect(result).rejects.toMatchObject({ code: "40001",message: "catalog_admission_price_context_moved" });
+    } finally { await db.query("ROLLBACK"); db.release(); await restore?.(); }
+  },
+);
 
 it.for((["assertion","port"] as const).flatMap(path => [false,true].map(control => ({ path,control }))))(
   "LC6-D-057/D-060 retained add-on role keeps its exact proof via $path, control=$control", async ({ path,control }) => {
