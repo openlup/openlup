@@ -34,13 +34,12 @@ async function run(args: string[]) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    const missing = /^Option '--(database-url|sku|configuration|as-of) <value>' argument missing$/u.exec(message)?.[1];
-    const unknown = /^Unknown option '(-{1,2}[\w-]+)'\./u.exec(message)?.[1];
-    const detail = missing ? { path: [missing], hint: `Supply a value for --${missing} as shown in preview help.` }
-      : unknown ? { path: [unknown.replace(/^-{1,2}/u, '')], hint: `Unknown option ${unknown}. See preview help.` } : undefined;
-    print(previewRequested ? refuseSettingsPreview('commerce_setting_preview_input_invalid', detail)
-      : invalidSettingsCommand(), args.includes('--json'));
+    const parseError = error instanceof Error && 'code' in error ? error : undefined;
+    const [, flag, option] = /^[^']*'(-{1,2}([\w.-]+))(?: <[^'>]+>)?'/u.exec(parseError?.message ?? '') ?? [];
+    const hint = flag && (parseError?.code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE' ? `Supply a value for ${flag} as shown in preview help.`
+      : parseError?.code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION' ? `Unknown option ${flag}. See preview help.` : undefined);
+    print(previewRequested ? refuseSettingsPreview('commerce_setting_preview_input_invalid',
+      option && hint ? { path: [option], hint } : undefined) : invalidSettingsCommand(), args.includes('--json'));
     return;
   }
   const { values, positionals: [command, value, ...extra] } = parsed;

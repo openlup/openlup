@@ -104,10 +104,28 @@ it("imports unrelated operations when both settings carriers are unreadable", ()
 
 
 it.each([
+  [["--json", "--sku"], "sku", "Supply a value for --sku as shown in preview help."],
+  [["--sku", "--json"], "sku", "Supply a value for --sku as shown in preview help."],
+  [["--sku", "-1", "--json"], "sku", "Supply a value for --sku as shown in preview help."],
+  [["--sku-extra", "--json"], "sku-extra", "Unknown option --sku-extra. See preview help."],
+  [["--sku-extra=sample", "--json"], "sku-extra", "Unknown option --sku-extra. See preview help."],
+  [["-x", "--json"], "x", "Unknown option -x. See preview help."],
+  [["--json=1", "--json"], "json", "Supply a value for --json as shown in preview help."],
+] as const)("names the offending preview option for %j", (flags, option, hint) => {
+  const result = spawnSync(process.execPath, [
+    "--experimental-strip-types", "host/settings.ts", "preview", "inventory_renewal_protection", "{}", ...flags,
+  ], { cwd: "examples/neutral-store", encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout)).toMatchObject({ schemaVersion: 1, refusal: {
+    code: "commerce_setting_preview_input_invalid", path: [option], hint,
+  } });
+});
+
+it.each([
   ["inventory_renewal_protection", "{", [], "json_invalid", ["proposed"]],
   ["inventory_renewal_protection", "{}", ["--configuration", "unknown-store"], "configuration_unknown", ["configuration"]],
   ["inventory_renewal_protection", "{}", ["--as-of", "yesterday"], "input_invalid", ["asOf"]],
-  ["inventory_renewal_protection", "{}", ["--sku-extra"], "input_invalid", ["sku-extra"]],
   ["inventory_renewal_protection", "{}", ["--database-url", "https://user:private@example.invalid"], "input_invalid", ["database-url"]],
   ["inventory_renewal_protection", "{}", [], "connection_required", []],
   ["checkout_recovery_reminders", "{}", [], "unsupported", ["key"]],
@@ -122,7 +140,6 @@ it.each([
     code: `commerce_setting_preview_${reason}`, path, rule: expect.any(String),
     remediation: { action: expect.any(String), command: expect.stringContaining("host/settings.ts") },
   } });
-  if (path[0] === "sku-extra") expect(document.refusal.hint).toBe("Unknown option --sku-extra. See preview help.");
   if (reason === "configuration_unknown") {
     expect(document.refusal.hint).toContain("unknown-store");
     expect(document.refusal.hint).toMatch(/supplements.*coffee/u);
