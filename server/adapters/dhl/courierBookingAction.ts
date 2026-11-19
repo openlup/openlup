@@ -18,6 +18,7 @@ import {
   loadCarrierShipperContact,
   CARRIER_PERSISTENCE,
   createCarrierProviderEvidence,
+  createCarrierSupportCode,
   formatCarrierPickupBooking,
   makePickupIdempotencyKey,
   normalizeCarrierPickupIds,
@@ -100,7 +101,14 @@ export function createCarrierPickupBookingAction(deps: {
       idempotencyKey, request: input, requestedBy, testers, retryOf: existing,
     });
     if (!pickupId) throw unresolvedPickup();
-    await recordCourierPickupShipments(deps.client, pickupId, testers);
+    try {
+      await recordCourierPickupShipments(deps.client, pickupId, testers);
+    } catch {
+      await recordCourierPickup(deps.client, pickupId, {
+        status: "failed", retryEvidence: "not-dispatched", supportCode: createCarrierSupportCode(now(), pickupId),
+      });
+      throw pickupStoreUnavailable();
+    }
 
     let response: Awaited<ReturnType<typeof callCarrierSoap>>;
     try {
@@ -180,10 +188,7 @@ async function loadShipperContact(client: Client): Promise<{ contactPerson: stri
 }
 
 function canRetryPickup(existing: StoredCourierPickup): boolean {
-  // Older failures also included timeouts. Retry only with a stored carrier fault.
-  return existing.status === "failed" && existing.retryable && !existing.courierOrderId
-    && Boolean(existing.rawResponseExcerpt && isClientFault(existing.rawResponseExcerpt)
-      && !extractCarrierPickupOrderId(existing.rawResponseExcerpt));
+  return existing.retryable && !existing.courierOrderId;
 }
 
 function isClientFault(xml: string): boolean {
@@ -233,7 +238,7 @@ async function recordProviderFailure(
     status,
     rawResponse,
     operatorMessage: provider.operatorMessage,
-    retryable: provider.retryable,
+    retryEvidence: provider.retryable ? "carrier-refused" : undefined,
     supportCode: provider.supportCode,
   });
   return new FulfillmentProviderError(provider.message, { ...provider, retryable: stored && provider.retryable });

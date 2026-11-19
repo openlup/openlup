@@ -6,6 +6,7 @@ import {
 } from "../../../src/domains/fulfillment/ports.js";
 import { createCarrierPickupBookingAction } from "./courierBookingAction.js";
 import {
+  CARRIER_DISPLAY_NAME,
   CARRIER_NAMESPACE,
   CARRIER_PROVIDER_ID,
 } from "../../infra/dhl/adminDhlSoap.js";
@@ -119,7 +120,9 @@ describe("carrier pickup booking action", () => {
   it("fences a stale concurrent retry even when the new attempt has already failed", async () => {
     const fault = "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>";
     const fake = bookingClient({
-      existing: { status: "failed", retryable: true, raw_response_excerpt: fault },
+      existing: {
+        status: "failed", retryable: true, support_code: `${CARRIER_DISPLAY_NAME}-20400816080000-ABC123:pickup-v1:carrier-refused`,
+      },
       concurrentInitialReads: true,
       delaySecondRetryUntilOutcome: true,
     });
@@ -162,8 +165,9 @@ describe("carrier pickup booking action", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("reclaims a recorded carrier fault and refuses an old unconfirmed transport failure", async () => {
-    const fetchImpl = vi.fn().mockResolvedValueOnce(xmlResponse("<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>"))
+  it("reclaims a refusal classified from the full carrier response", async () => {
+    const fault = "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>";
+    const fetchImpl = vi.fn().mockResolvedValueOnce(xmlResponse(" ".repeat(2_001) + fault))
       .mockResolvedValueOnce(xmlResponse("<orderId>ORD-1</orderId>"));
     const fake = bookingClient();
     const action = createCarrierPickupBookingAction({
@@ -171,15 +175,38 @@ describe("carrier pickup booking action", () => {
     });
 
     await expect(action(input)).rejects.toMatchObject({ retryable: true });
+    expect(fake.pickup()).toMatchObject({
+      status: "failed", raw_response_excerpt: " ".repeat(2_000), support_code: expect.stringMatching(/:pickup-v1:carrier-refused$/u),
+    });
     await expect(action(input)).resolves.toMatchObject({ courierOrderId: "ORD-1" });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
 
-    const legacy = bookingClient({ existing: { status: "failed", retryable: true, raw_response_excerpt: "" } });
-    const legacyAction = createCarrierPickupBookingAction({
+  it("refuses a legacy failure without recorded dispatch evidence", async () => {
+    const legacy = bookingClient({ existing: {
+      status: "failed", retryable: true, support_code: `${CARRIER_DISPLAY_NAME}-20400816080000-ABC123`,
+      raw_response_excerpt: "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>",
+    } });
+    const fetchImpl = vi.fn();
+    const action = createCarrierPickupBookingAction({
       client: legacy.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
-    await expect(legacyAction(input)).rejects.toMatchObject({ retryable: false });
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await expect(action(input)).rejects.toMatchObject({ retryable: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("can retry a recorded local failure before dispatch", async () => {
+    const fake = bookingClient({ failure: "shipments" });
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
+    });
+    await expect(action(input)).rejects.toMatchObject({ details: { errorCode: "LOCAL_PICKUP_STORE_UNAVAILABLE" } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fake.pickup()).toMatchObject({ status: "failed", support_code: expect.stringMatching(/:pickup-v1:not-dispatched$/u) });
+    fake.allowShipmentWrite();
+    await expect(action(input)).resolves.toMatchObject({ courierOrderId: "ORD-1" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("reconciles a confirmed pickup after its window without another carrier call", async () => {
@@ -285,6 +312,7 @@ function bookingClient(options: {
   let currentTester = { ...tester };
   let snapshots: Record<string, unknown>[] = [];
   let testerUpdateError = options.testerUpdateError;
+  let shipmentWriteFails = options.failure === "shipments";
   let replaceBeforeUpdate = false;
   const replaceShipment = () => { currentTester = { ...currentTester, [CARRIER_PERSISTENCE.shipmentDispatchId]: "REPLACEMENT" }; };
   let reads = 0;
@@ -353,7 +381,7 @@ function bookingClient(options: {
         update: (values: Record<string, unknown>) => { updateValues = values; return query; },
         upsert: (row: Record<string, unknown>, conflict: { ignoreDuplicates?: boolean }) => {
           if (table === CARRIER_PERSISTENCE.pickupShipmentTable) {
-            if (options.failure === "shipments") return Promise.resolve({ error });
+            if (shipmentWriteFails) return Promise.resolve({ error });
             if (!Array.isArray(row)) throw new Error("Expected snapshot rows");
             snapshots = row;
             return Promise.resolve({ error: null });
@@ -371,6 +399,7 @@ function bookingClient(options: {
     pickup: () => pickup as Record<string, unknown> | null,
     testerStatus: () => currentTester.status,
     allowTesterUpdate: () => { testerUpdateError = undefined; },
+    allowShipmentWrite: () => { shipmentWriteFails = false; },
     replaceShipment,
     replaceBeforeUpdate: () => { replaceBeforeUpdate = true; },
   };

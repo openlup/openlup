@@ -22,7 +22,7 @@ export const CARRIER_PERSISTENCE = {
   repairEmailSource: "repair-dhl-courier-pickup",
   shipmentEmailSource: "create-dhl-shipment",
   labelBucket: "dhl-labels",
-  pickupSelection: "id, updated_at, courier_order_id, shipments_count, status, operator_message, retryable, support_code, raw_response_excerpt",
+  pickupSelection: "id, updated_at, courier_order_id, shipments_count, status, operator_message, retryable, support_code",
   pickupShipmentSelection: "tester_id,tracking_number_snapshot,dhl_shipment_id_snapshot,dhl_shipment_date_snapshot",
   testerSelection: "id, first_name, last_name, status, tracking_number, label_url, dhl_shipment_id, dhl_shipment_date",
 } as const;
@@ -213,6 +213,11 @@ export function createCarrierProviderEvidence(message: string, timestamp: string
 }
 
 type PickupStatus = "pending" | "succeeded" | "failed" | "indeterminate";
+export type PickupRetryEvidence = "carrier-refused" | "not-dispatched";
+
+// A database-side support code written by this adapter carries retry provenance.
+// Provider response excerpts are truncated and older writers did not serialize attempts.
+const retryEvidenceSuffix = /:pickup-v1:(carrier-refused|not-dispatched)$/u;
 export type StoredCourierPickup = {
   id: string;
   updatedAt: string;
@@ -223,7 +228,6 @@ export type StoredCourierPickup = {
   retryable: boolean;
   confirmedResponse: boolean;
   supportCode: string | null;
-  rawResponseExcerpt: string | null;
 };
 
 export async function findCourierPickup(client: Client, idempotencyKey: string): Promise<StoredCourierPickup | null> {
@@ -238,6 +242,7 @@ export async function findCourierPickup(client: Client, idempotencyKey: string):
     typeof row.id !== "string" || typeof row.updated_at !== "string" || !Number.isFinite(Date.parse(row.updated_at))
     || (status !== "pending" && status !== "succeeded" && status !== "failed" && status !== "indeterminate")
   ) throw pickupStoreUnavailable();
+  const code = typeof row.support_code === "string" ? row.support_code : null;
   return {
     id: row.id,
     updatedAt: row.updated_at,
@@ -245,11 +250,10 @@ export async function findCourierPickup(client: Client, idempotencyKey: string):
     courierOrderId: typeof row.courier_order_id === "string" ? row.courier_order_id : null,
     shipmentsCount: typeof row.shipments_count === "number" ? row.shipments_count : 0,
     operatorMessage: typeof row.operator_message === "string" ? row.operator_message : null,
-    retryable: row.retryable === true,
+    retryable: status === "failed" && row.retryable === true && Boolean(code && retryEvidenceSuffix.test(code)),
     // Before confirmation checked the HTTP outcome, success writes left this NULL.
     confirmedResponse: status === "succeeded" && row.retryable === false,
-    supportCode: typeof row.support_code === "string" ? row.support_code : null,
-    rawResponseExcerpt: typeof row.raw_response_excerpt === "string" ? row.raw_response_excerpt : null,
+    supportCode: code?.replace(retryEvidenceSuffix, "") ?? null,
   };
 }
 
@@ -268,7 +272,7 @@ export async function recordCourierPickup(client: Client, pickupId: string, inpu
   status: Exclude<PickupStatus, "pending">;
   courierOrderId?: string;
   operatorMessage?: string;
-  retryable?: boolean;
+  retryEvidence?: PickupRetryEvidence;
   supportCode?: string;
   rawResponse?: string;
 }): Promise<boolean> {
@@ -277,8 +281,9 @@ export async function recordCourierPickup(client: Client, pickupId: string, inpu
       status: input.status,
       courier_order_id: input.courierOrderId ?? null,
       operator_message: input.operatorMessage ?? null,
-      retryable: input.status === "succeeded" ? false : input.retryable ?? null,
-      support_code: input.supportCode ?? null,
+      retryable: Boolean(input.retryEvidence),
+      support_code: input.retryEvidence && input.supportCode
+        ? `${input.supportCode}:pickup-v1:${input.retryEvidence}` : input.supportCode ?? null,
       raw_response_excerpt: input.rawResponse?.slice(0, 2000) ?? null,
     }).eq("id", pickupId).eq("status", "pending").select("id").maybeSingle();
     return !error && data?.id === pickupId;
