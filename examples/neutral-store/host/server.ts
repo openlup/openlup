@@ -4,11 +4,10 @@ import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
-import { isOperation, operations } from '../shared/api.ts';
+import { isOperation, operations, publicCatalogueItem } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { bindRegisteredCatalogue, starterCatalogue } from './catalogue-selection.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
-import type { NeutralSkuEnvelopeV2 } from '@openlup/platform/catalog';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
@@ -73,7 +72,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     return;
   }
   if (url.pathname === '/api/config' && request.method === 'GET') {
-    sendJson(response, 200, { config, ...(bindings.catalogueEnabled?.() ? { catalogueAuthority: 'publication' } : {}),
+    sendJson(response, 200, { config, ...((bindings.catalogueEnabled?.() ?? Boolean(bindings.catalogue)) ? { catalogueAuthority: 'publication' } : {}),
       catalogueDraftType: { key: registration.draftType.key, version: registration.draftType.version },
       artifact: { kind: 'local-candidate', setVersion: null, verified: false } });
     return;
@@ -125,12 +124,6 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
   } catch {
     sendJson(response, 404, { ok: false, code: 'starter_asset_unavailable' });
   }
-}
-
-function publicCatalogueItem(item: NeutralSkuEnvelopeV2) {
-  const { id, code, netContent, grossMass, title, options, attributes, sellability } = item.sku;
-  return { product: item.product, sku: { id, code, netContent, grossMass, title, options, attributes, sellability },
-    publication: item.acceptedReference.publicationHead };
 }
 
 async function body(request: IncomingMessage): Promise<unknown> {

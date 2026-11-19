@@ -77,7 +77,7 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
       limits: { maximumPlanDays: Math.max(...choices(config.subscriptionOffers.classic.days)),maximumBaseLines: values.maximumBaseLines,
         maximumAddonLines: values.maximumAddonLines,maximumQuantity: values.maximumQuantity } });
     const sized = createPostgresSizedEditor({ ...sizedHostPorts(config,now,db,context.catalogueQuote),quotePort: ports.quotePort,
-      ...('catalogueEvidence' in ports ? { catalogueEvidence: ports.catalogueEvidence } : {}),policy: values.sized,withTransaction: transaction(false),now });
+      ...('readCatalogAdmission' in ports ? { readCatalogAdmission: ports.readCatalogAdmission } : {}),policy: values.sized,withTransaction: transaction(false),now });
     const dispatched = createOfferDispatchedSubscriptionEditor({ classic,sized,
       readBinding: (_actor,id) => owned(db,context,id) });
     return { ...dispatched,sized,ports };

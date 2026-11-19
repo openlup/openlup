@@ -20,15 +20,17 @@ export function safeMinor(value: bigint, code: string): number {
 
 /** Additive complete reader; the existing partial/frozen-price readers retain their contracts. */
 export async function readCompleteEditBaseline(db: SubscriptionQueryExecutor, subscriptionId: string): Promise<EditAgreementBaseline> {
-  const state = (await db.query(`SELECT s.template_version,s.currency_code AS template_currency,t.currency_code AS agreement_currency,
+  const { rows } = await db.query(`SELECT s.template_version,s.id AS subscription_id,s.currency_code AS template_currency,t.currency_code AS agreement_currency,
     (SELECT jsonb_agg(jsonb_build_object('lineId',l.id,'variantId',l.variant_id,'sku',k.sku,'isAddon',l.is_addon,
       'quantity',l.quantity,'unitMinor',l.unit_price_minor,'currency',l.currency_code) ORDER BY l.sort_order,l.variant_id)
      FROM public.subscription_lines l LEFT JOIN public.catalog_skus k ON k.id=l.variant_id WHERE l.subscription_id=s.id) AS accepted_lines,
     (SELECT jsonb_agg(jsonb_build_object('ordinal',r.line_ordinal,'sku',r.sku,'quantity',r.quantity,'unitMinor',r.unit_amount_minor)
       ORDER BY r.line_ordinal) FROM public.subscription_renewal_term_lines r WHERE r.subscription_id=s.id) AS term_lines
-    FROM public.subscriptions s LEFT JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1::uuid`, [subscriptionId]).catch(error => { throw new Error("dependency_unavailable", { cause: error }); })).rows[0];
+    FROM public.subscriptions s LEFT JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id WHERE s.id=$1::uuid`, [subscriptionId]).catch(error => { throw new Error("dependency_unavailable", { cause: error }); });
   const missing = "agreement_baseline_unavailable";
-  if (!state) throw new Error(missing);
+  if (rows.length !== 1) throw new Error(missing);
+  const [state] = rows;
+  if (state.subscription_id !== subscriptionId.toLowerCase()) throw new Error(missing);
   const currency = state.agreement_currency;
   if (typeof currency !== "string" || !/^[A-Z]{3}$/u.test(currency) || typeof state.template_currency !== "string" || !/^[A-Z]{3}$/u.test(state.template_currency)) {
     throw new Error("agreement_currency_unavailable");
@@ -36,7 +38,9 @@ export async function readCompleteEditBaseline(db: SubscriptionQueryExecutor, su
   if (currency !== state.template_currency) throw new Error("agreement_currency_mismatch");
   const accepted = state.accepted_lines as Record<string, unknown>[] | null, terms = state.term_lines as Record<string, unknown>[] | null;
   if (!Array.isArray(accepted) || !accepted.length || !Array.isArray(terms) || terms.length !== accepted.length) throw new Error(missing);
+  if ([...accepted,...terms].some(line => !line || typeof line !== "object" || Array.isArray(line))) throw new Error(missing);
   if (new Set(accepted.map(line => line.sku)).size !== accepted.length || new Set(accepted.map(line => line.variantId)).size !== accepted.length
+    || new Set(accepted.map(line => line.lineId)).size !== accepted.length
     || new Set(terms.map(line => line.sku)).size !== terms.length || new Set(terms.map(line => line.ordinal)).size !== terms.length) throw new Error(missing);
   const lines = terms.map(term => {
     const line = accepted.find(line => line.sku === term.sku);

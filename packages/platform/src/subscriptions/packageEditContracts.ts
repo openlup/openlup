@@ -1,14 +1,22 @@
 import type { PackageEditMoney, PackageEditQuoteLine, SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
 export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
 
-/** Captures trusted evidence for the normalized preview. The apply owner rechecks it transactionally. @experimental */
-export type SubscriptionEditCatalogueEvidence = (input: {
-  subscriptionId: string; lane: "classic" | "exact" | "sized"; cadenceDays: number; optIn?: boolean;
+/** Read the selected revisions and exact price entries from trusted server state.
+ * The editor supplies the normalized desired set under its subscription lock.
+ * @experimental
+ */
+export type ReadSubscriptionEditCatalogAdmission = (db: SubscriptionQueryExecutor, input: {
+  subscriptionId: string; lane: "classic" | "exact" | "sized" | "legacy"; cadenceDays: number;
   lines: readonly { variantId: string; qty: number; isAddon: boolean }[];
-}) => Promise<object>;
+}) => Promise<{
+  heads: readonly { productId: string; head: CatalogAcceptedReferenceV2["publicationHead"] }[];
+  skuRevisions: readonly { reference: CatalogAcceptedReferenceV2; quantity: number }[];
+  priceContextVersions: readonly { skuId: string; priceListId: string; entryId: string; entry: Record<string, unknown> }[];
+} | null>;
 
 /** Trusted host ports; neither identity nor price evidence comes from a browser. */
 export interface PackageEditSubscription {
@@ -47,7 +55,7 @@ export interface PackageEditQuotePorts {
 export interface PackageEditLimits { maximumPlanDays: number; maximumBaseLines: number; maximumAddonLines: number; maximumQuantity: number }
 export interface PackageEditorOptions extends PackageEditQuotePorts {
   /** @experimental */
-  catalogueEvidence?: SubscriptionEditCatalogueEvidence;
+  readCatalogAdmission?: ReadSubscriptionEditCatalogAdmission;
   /** Required only for the exact portion lever. */
   portionModes?: SubscriptionPortionModes;
   /** One connection through commit/rollback; authorization precedes this factory. */

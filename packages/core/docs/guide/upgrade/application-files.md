@@ -118,7 +118,10 @@ under an application maintenance window.
 The step upgrades the released defaults of `owned/catalogue.ts` and
 `owned/copy.ts` together. It validates both files before applying the exact
 candidate bytes. If either owned file contains a customization, merge the
-registration and catalogue label changes into your own files. A repeated
-invocation after a successful upgrade performs no writes. The extracted
+registration and catalogue label changes into your own files. The step also
+recognizes the earlier unmodified registry and updates it on its own if the
+catalogue labels already match. Register another pack by adding its
+configuration, pack, draft type and offer version to the same owned registry.
+A repeated invocation after a successful upgrade performs no writes. The extracted
 starter's `test/catalogue-upgrade.test.ts` runs in the released consumer's
 application test phase and checks these cases.

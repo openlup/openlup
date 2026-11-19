@@ -25,7 +25,14 @@ function retainedRegistry(types: CatalogProductTypeRegistry | undefined) {
   };
 }
 
-export const starterCatalogue = authored.starterCatalogue ?? retainedRegistry(authored.catalogDraftRegistry);
+function registeredCatalogue() {
+  if (!Object.hasOwn(authored, 'starterCatalogue')) return retainedRegistry(authored.catalogDraftRegistry);
+  const registry = authored.starterCatalogue;
+  if (typeof registry?.list !== 'function' || typeof registry.select !== 'function') throw new Error('starter_catalogue_registration_invalid');
+  return registry;
+}
+
+export const starterCatalogue = registeredCatalogue();
 export type StarterCatalogueSelection = ReturnType<typeof starterCatalogue.select>;
 export const selectCatalogueConfiguration = (id?: string) => starterCatalogue.select(id).configuration;
 

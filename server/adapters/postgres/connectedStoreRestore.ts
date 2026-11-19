@@ -5,6 +5,7 @@ import {
   type CompatiblePostgresPacket,
 } from "@openlup/platform/portability";
 import { deriveOidcPrincipalId } from "@openlup/platform/identity";
+import { requireHistoricalProtocolBinding, type HistoricalSuccessorProtocolBinding } from "@openlup/platform/subscriptions";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
@@ -296,6 +297,8 @@ export async function restoreConnectedNativeStore(input: {
   installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation;
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
+  /** @experimental */
+  historicalSuccessorBindings?: readonly HistoricalSuccessorProtocolBinding[];
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
   const packet = copyCapture(input.packet), fresh = copyCapture(input.freshTarget);
   const installation = structuredClone(input.installation);
@@ -303,6 +306,17 @@ export async function restoreConnectedNativeStore(input: {
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
+  for (const row of source.get("subscription_successor_proposals")?.rows ?? []) {
+    try {
+      const { request } = JSON.parse(row) as { request: Record<string, unknown> };
+      if (!Object.hasOwn(request, "historicalBinding")) continue;
+      const { authorityRef, ...binding } = request.historicalBinding as HistoricalSuccessorProtocolBinding;
+      const installed = requireHistoricalProtocolBinding(binding, input.historicalSuccessorBindings ?? []);
+      if (installed.authorityRef !== authorityRef) fail("invalid_input", "subscription_successor_proposals");
+    } catch {
+      fail("invalid_input", "subscription_successor_proposals");
+    }
+  }
   const client = await input.owner.connect().catch(() => { throw new PostgresTransferError("database_unavailable"); });
   let locked = false, unlockFailed = false;
   let result: { captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number } | undefined;

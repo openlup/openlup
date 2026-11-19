@@ -1,4 +1,5 @@
 import type { StoreConfig } from './config.ts';
+import type { NeutralSkuEnvelopeV2 } from '@openlup/platform/catalog';
 
 /** Host operations compose existing public ports; this is an application wire contract. */
 export const operations = [
@@ -33,6 +34,14 @@ export interface AppConfigurationResponse {
   catalogueAuthority?: 'publication';
   catalogueDraftType: import('@openlup/platform/catalog/contracts').CatalogProductTypeRef;
   artifact: { kind: 'local-candidate'; setVersion: string | null; verified: false };
+}
+
+export function publicCatalogueItem(item: NeutralSkuEnvelopeV2) {
+  const { id, code, netContent, grossMass, title, options, attributes, sellability } = item.sku;
+  const unitPrice = item.sku.unitPrice ?? null;
+  return { product: item.product, sku: { id, code, netContent, grossMass, title, options, attributes, unitPrice,
+    sellability: { ...sellability, oneTime: unitPrice !== null && sellability.oneTime, subscription: unitPrice !== null && sellability.subscription } },
+    publication: item.acceptedReference.publicationHead };
 }
 
 export function isOperation(value: string): value is Operation {

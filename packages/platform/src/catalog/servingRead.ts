@@ -1,5 +1,6 @@
 import type { PgQueryExecutor } from "../data/index.js";
-import { CommerceQuoteCatalogReadError, type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
+import { CommercePriceAuthorityError, CommerceQuoteCatalogReadError, createCommercePriceAuthorityPort,
+  type CommercePriceAuthorityQuery, type CommercePriceAuthorityReadPort, type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
 import { canonicalizeCatalogQuantity } from "@openlup/core/catalog";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { CatalogSkuAuthorityError, assertPrimaryUnitGtinAuthority, type NeutralSkuEnvelopeV1 } from "./contracts/foundation.js";
@@ -29,6 +30,8 @@ export interface NeutralSkuEnvelopeV2 {
     minQuantity: number;
     options: CatalogSkuState["options"];
     attributes: CatalogSkuState["attributes"];
+    /** Effective storefront sale-unit money from the same observation. @experimental */
+    unitPrice?: { amountMinor: number; currency: string } | null;
   };
   documentRevision: NeutralSkuEnvelopeV1["documentRevision"];
   identifiers: NeutralSkuEnvelopeV1["identifiers"];
@@ -40,6 +43,10 @@ export interface CatalogServingScopeV2 {
   types: readonly CatalogProductTypeRef[];
   offerVersion: string;
   maxItems?: number;
+  /** Select the storefront market and bind its price reads to the supplied snapshot executor. @experimental */
+  priceContext?: Pick<CommercePriceAuthorityQuery, "regionCode" | "currency" | "channel"> & {
+    readPrices(db: PgQueryExecutor): CommercePriceAuthorityReadPort;
+  };
 }
 
 /** Current listing, detail and commerce reads share one installed authority. @experimental */
@@ -82,6 +89,37 @@ function checkedCursor(cursor: string | null): z.infer<typeof cursorSchema> | nu
   }
 }
 
+async function priceStorefront(db: PgQueryExecutor, context: NonNullable<CatalogServingScopeV2["priceContext"]>, items: ServingItem[]) {
+  if (!items.some(item => item.selectable)) return items;
+  const { readPrices, ...market } = context;
+  const priceAuthority = createCommercePriceAuthorityPort(readPrices(db));
+  const clock = (await db.query('SELECT transaction_timestamp() AS "atTime"')).rows[0]?.atTime;
+  if (!(clock instanceof Date) || !Number.isFinite(clock.getTime())) return fail("catalog_authority_unavailable");
+  const atTime = clock.toISOString();
+  async function price(variantId: string, mode: CommercePriceAuthorityQuery["mode"], sellable: boolean) {
+    if (!sellable) return null;
+    try {
+      const { unitPriceMinor: amountMinor } = await priceAuthority.resolvePrice({ ...market, variantId, mode, atTime });
+      if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) return fail("catalog_authority_unavailable");
+      return { amountMinor, currency: market.currency };
+    } catch (error) {
+      if (error instanceof CommercePriceAuthorityError && (error.code === "active_price_list_not_found" || error.code === "base_price_not_found"
+        || error.code === "legacy_subscription_price_not_found" || error.code === "subscription_price_policy_not_effective")) return null;
+      throw error;
+    }
+  }
+  // Read the effective price again for each snapshot. A price boundary can
+  // move while the immutable publication head remains the same.
+  return Promise.all(items.map(async item => {
+    const { envelope } = item, { sku } = envelope;
+    const [oneTime, subscription] = await Promise.all([
+      price(sku.id, "one_time", sku.sellability.oneTime), price(sku.id, "subscription", sku.sellability.subscription),
+    ]);
+    return { ...item, envelope: { ...envelope, sku: { ...sku, unitPrice: oneTime ?? subscription,
+      sellability: { ...sku.sellability, oneTime: oneTime !== null, subscription: subscription !== null } } } };
+  }));
+}
+
 export function createCatalogServingReader<Context>(deps: CatalogPublicationDependencies<Context>, load: LoadPublication, scope: CatalogServingScopeV2): CatalogServingReadPortV2 {
   const maxItems = scope.maxItems ?? 500;
   if (!Number.isSafeInteger(maxItems) || maxItems < 1 || maxItems > 5_000) fail("catalog_cardinality_exceeded");
@@ -94,7 +132,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
   if (!types.length || definitions.size !== types.length || !offerVersion || offerVersion.length > 240) fail("catalog_read_not_configured");
   const projections = new Map<string, { key: string; items: ServingItem[] }>();
 
-  async function observe(slug: string | null) {
+  async function observe(slug: string | null, priceContext?: CatalogServingScopeV2["priceContext"]) {
     try {
       return await deps.transactions.run(async db => {
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -205,7 +243,10 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
           projections.set(product.id, { key, items: structuredClone(projected) });
           for (const item of projected) items.set(item.envelope.sku.id, item);
         }
-        return { version, items: [...items.values()].sort((a, b) => a.envelope.sku.id < b.envelope.sku.id ? -1 : 1) };
+        const ordered = [...items.values()].sort((a, b) => a.envelope.sku.id < b.envelope.sku.id ? -1 : 1);
+        if (!priceContext) return { version, items: ordered };
+        const priced = await priceStorefront(db, priceContext, ordered);
+        return { version: publicationDigest([version, priced.map(({ envelope: { sku } }) => [sku.unitPrice ?? null, sku.sellability])]), items: priced };
       });
     } catch (error) {
       if (error instanceof CommerceQuoteCatalogReadError) throw error;
@@ -228,7 +269,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
     async list({ limit, cursor }) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) return fail("catalog_cursor_invalid");
       const anchor = checkedCursor(cursor);
-      const { version, items } = await observe(null);
+      const { version, items } = await observe(null, scope.priceContext);
       if (anchor && anchor[0] !== version) return fail("catalog_authority_changed");
       const offset = anchor ? items.findIndex(item => item.envelope.sku.id === anchor[1]) + 1 : 0;
       if (anchor && !offset) return fail("catalog_cursor_invalid");
@@ -238,7 +279,7 @@ export function createCatalogServingReader<Context>(deps: CatalogPublicationDepe
     },
     async detail(slug) {
       if (!slugSchema.safeParse(slug).success) return fail("catalog_cursor_invalid");
-      const { version, items } = await observe(slug);
+      const { version, items } = await observe(slug, scope.priceContext);
       return { version, items: items.some(item => item.selectable) ? items.map(item => item.envelope) : [] };
     },
     async listQuoteCatalogItems() {

@@ -74,6 +74,58 @@ export function productPage(context: PageContext): HTMLElement {
       quantity.wrapper, add, output));
 }
 
+function publishedProducts(context: PageContext, slug: string | null): HTMLElement {
+  const shell = el('section', { 'aria-live': 'polite' }, el('p', {}, context.t('loading')));
+  const route = slug === null ? '/api/catalogue' : '/api/catalogue/' + encodeURIComponent(slug);
+  async function load() {
+    let cursor: string | null = null;
+    const cards: HTMLElement[] = [];
+    do {
+      const response = await fetch(cursor === null ? route : route + '?cursor=' + encodeURIComponent(cursor),
+        { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000) });
+      if (response.status === 404) { shell.replaceChildren(el('h1', {}, context.t('notFound'))); return; }
+      if (!response.ok) throw new Error('starter_dependency_unavailable');
+      const page: unknown = await response.json();
+      if (!isRecord(page) || !Array.isArray(page.items)) throw new Error('starter_response_invalid');
+      for (const item of page.items) cards.push(publishedProduct(context, slug, item));
+      const next = typeof page.nextCursor === 'string' ? page.nextCursor : null;
+      if (next !== null && (next === cursor || slug !== null || !page.items.length || cards.length > 5_000)) throw new Error('starter_response_invalid');
+      cursor = next;
+    } while (cursor !== null);
+    shell.replaceChildren(...cards);
+  }
+  void load().catch(() => shell.replaceChildren(refusal(context, 'starter_dependency_unavailable', context.t('loading'))));
+  return shell;
+}
+
+function publishedProduct(context: PageContext, slug: string | null, item: unknown): HTMLElement {
+  if (!isRecord(item) || !isRecord(item.product) || typeof item.product.slug !== 'string'
+    || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(item.product.slug) || !isRecord(item.sku) || typeof item.sku.code !== 'string'
+    || typeof item.sku.title !== 'string' || !isRecord(item.sku.sellability)) throw new Error('starter_response_invalid');
+  const { code, title, unitPrice, sellability } = item.sku;
+  let price: string | null = null;
+  if (unitPrice !== null && unitPrice !== undefined) {
+    if (!isRecord(unitPrice) || typeof unitPrice.amountMinor !== 'number' || !Number.isSafeInteger(unitPrice.amountMinor)
+      || unitPrice.amountMinor < 0 || typeof unitPrice.currency !== 'string' || !/^[A-Z]{3}$/.test(unitPrice.currency)) throw new Error('starter_response_invalid');
+    price = new Intl.NumberFormat(context.locale, { style: 'currency', currency: unitPrice.currency }).format(unitPrice.amountMinor / 100);
+  }
+  const output = el('div', { role: 'status' });
+  return el('article', { class: 'panel' },
+    el(slug === null ? 'h2' : 'h1', {}, link(title, productPath(item.product.slug, context.locale))),
+    price === null ? null : el('p', { class: 'product-price' }, price),
+    price !== null && (sellability.oneTime === true || sellability.subscription === true) ? button(context.t('buy'), () => {
+      const cart = context.getCart();
+      if (cart.lines.reduce((sum, line) => sum + line.quantity, 0) >= context.config.offer.maxUnits) {
+        output.replaceChildren(refusal(context, 'maximum_units', context.t('maximum_units'))); return;
+      }
+      const line = cart.lines.find(item => item.sku === code);
+      if (line) line.quantity++;
+      else cart.lines.push({ sku: code, quantity: 1 });
+      context.setCart(cart);
+      output.replaceChildren(link(context.t('cartSaved'), routes.cart[context.locale]));
+    }) : null, output);
+}
+
 export function builderPage(context: PageContext): HTMLElement {
   if (context.governedCatalogue) return el('section', {}, el('h1', {}, context.t('chooseProducts')), publishedProducts(context, null));
   const config = context.config;
@@ -172,49 +224,6 @@ export function cartPage(context: PageContext): HTMLElement {
     result, link(context.t('builder'), routes.builder[context.locale]));
   save();
   return page;
-}
-
-function publishedProducts(context: PageContext, slug: string | null): HTMLElement {
-  const shell = el('section', { 'aria-live': 'polite' }, el('p', {}, context.t('loading')));
-  const route = slug ? '/api/catalogue/' + encodeURIComponent(slug) : '/api/catalogue';
-  const load = async () => {
-    const nodes: HTMLElement[] = [];
-    let cursor: string | null = null;
-    do {
-      const response: Response = await fetch(cursor ? route + '?cursor=' + encodeURIComponent(cursor) : route,
-        { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(10000) });
-      if (response.status === 404) { shell.replaceChildren(el('h1', {}, context.t('notFound'))); return; }
-      if (!response.ok) throw new Error('starter_dependency_unavailable');
-      const page: unknown = await response.json();
-      if (!isRecord(page) || !Array.isArray(page.items)) throw new Error('starter_response_invalid');
-      for (const item of page.items) {
-        if (!isRecord(item) || !isRecord(item.product) || typeof item.product.title !== 'string' || typeof item.product.slug !== 'string'
-          || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(item.product.slug) || !isRecord(item.sku) || typeof item.sku.code !== 'string'
-          || typeof item.sku.title !== 'string' || !isRecord(item.sku.sellability)) throw new Error('starter_response_invalid');
-        const sku = item.sku.code;
-        const output = el('div', { role: 'status' });
-        nodes.push(el('article', { class: 'panel' }, el(slug ? 'h1' : 'h2', {},
-          link(item.sku.title, productPath(item.product.slug, context.locale))),
-          item.sku.sellability.oneTime || item.sku.sellability.subscription ? button(context.t('buy'), () => {
-            const cart = context.getCart();
-            if (cart.lines.reduce((sum, line) => sum + line.quantity, 0) >= context.config.offer.maxUnits) {
-              output.replaceChildren(refusal(context, 'maximum_units', context.t('maximum_units'))); return;
-            }
-            const previous = cart.lines.find(line => line.sku === sku);
-            if (previous) previous.quantity++;
-            else cart.lines.push({ sku, quantity: 1 });
-            context.setCart(cart);
-            output.replaceChildren(link(context.t('cartSaved'), routes.cart[context.locale]));
-          }) : null, output));
-      }
-      const next = typeof page.nextCursor === 'string' ? page.nextCursor : null;
-      if (next !== null && (next === cursor || slug !== null || !page.items.length || nodes.length > 5_000)) throw new Error('starter_response_invalid');
-      cursor = next;
-    } while (cursor !== null);
-    shell.replaceChildren(...nodes);
-  };
-  void load().catch(() => shell.replaceChildren(refusal(context, 'starter_dependency_unavailable', context.t('loading'))));
-  return shell;
 }
 
 function modeFields(context: PageContext, cart: Cart) {

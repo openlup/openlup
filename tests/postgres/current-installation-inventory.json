@@ -4,7 +4,7 @@
       "legacy": {
         "count": 159,
         "exactTailCount": 49,
-        "objectInventorySha256": "f3071e8c9a736445ffadc546f20e906bfc9549d67c395de12a59faddc8f65b47",
+        "objectInventorySha256": "ddc6420d4fcd063b5b58793748834707633e89d1583c31f110b5006530107193",
         "tail": [
           {
             "file": "db/platform/migrations/20261124010000_catalog_adoption.sql",
@@ -20,11 +20,11 @@
           },
           {
             "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-            "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+            "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
           },
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
-            "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
+            "sha256": "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c"
           },
           {
             "file": "db/platform/migrations/20261122210000_catalog_admission.sql",
@@ -647,7 +647,7 @@
       "bootstrap": {
         "count": 164,
         "exactTailCount": 49,
-        "objectInventorySha256": "5d873ea0a8771ebe9dfa298f1d437248c632362f11102aa97e58c1571b97fe9e",
+        "objectInventorySha256": "25dce813b136d583a49a9b85d2604fe71eb25f45bff2561e2210a8cb5a68d6a9",
         "tail": [
           {
             "file": "db/platform/migrations/20261124010000_catalog_adoption.sql",
@@ -663,11 +663,11 @@
           },
           {
             "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-            "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+            "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
           },
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
-            "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
+            "sha256": "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c"
           },
           {
             "file": "db/platform/migrations/20261122210000_catalog_admission.sql",
@@ -1310,7 +1310,7 @@
       "separate": {
         "count": 164,
         "exactTailCount": 49,
-        "objectInventorySha256": "c3c3c28cea3f5c87693cf970ac5a783c06a478e57d3fdfaa73772a71d0a733a8",
+        "objectInventorySha256": "ebfd2a5ce57df7de1be4a5461df11c5a8e4ab4e4a00d3c1178f104a24aa0f23a",
         "tail": [
           {
             "file": "db/platform/migrations/20261124010000_catalog_adoption.sql",
@@ -1326,11 +1326,11 @@
           },
           {
             "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-            "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+            "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
           },
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
-            "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
+            "sha256": "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c"
           },
           {
             "file": "db/platform/migrations/20261122210000_catalog_admission.sql",
@@ -1973,7 +1973,7 @@
       "admin-managed": {
         "count": 163,
         "exactTailCount": 49,
-        "objectInventorySha256": "962e9f1f4cdf2947c6e78ff39a2c4afd7ccce83a15aaf62e03bcc3a20e283c13",
+        "objectInventorySha256": "e1ceee5e2cac36ca5b735fc6084c8a839cc9d9f732f3c9a36f72895703d4d023",
         "tail": [
           {
             "file": "db/platform/migrations/20261124010000_catalog_adoption.sql",
@@ -1989,11 +1989,11 @@
           },
           {
             "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-            "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+            "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
           },
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
-            "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
+            "sha256": "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c"
           },
           {
             "file": "db/platform/migrations/20261122210000_catalog_admission.sql",
@@ -2632,7 +2632,7 @@
       "admin-operator": {
         "count": 163,
         "exactTailCount": 49,
-        "objectInventorySha256": "458f4c14d266261b5240845b9d1ae74a6b39c939b23616672709832e89d8d9cc",
+        "objectInventorySha256": "26d2514f68b70b78af18b0233f36f2d9bee15d3fae2932503b3f641d0da5b170",
         "tail": [
           {
             "file": "db/platform/migrations/20261124010000_catalog_adoption.sql",
@@ -2648,11 +2648,11 @@
           },
           {
             "file": "db/platform/migrations/20261123210000_catalog_successors.sql",
-            "sha256": "09219702c3f236eafd1fd57ec9718d7d9f2e4906c475674f17be1a0278533a87"
+            "sha256": "81845043ae2713bed4426c0033ee3294352c9c7cfed11b44ef75750b27177b65"
           },
           {
-            "file": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
-            "sha256": "29b331e4764fbb195e0e112fcefc81d1c07a06e624ec45cd1278f4575447834a"
+            "file": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
+            "sha256": "2a36bf958d527bcbae5f8e7ba8150a15c2248c5509d69cdf93037988960e167c"
           },
           {
             "file": "db/platform/migrations/20261122210000_catalog_admission.sql",

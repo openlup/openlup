@@ -73,8 +73,8 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
       return { coreLines,constraint: { ...constraint,data: { ...constraint.data,value: lever.value } } };
     },
   };
-  const catalogueEvidence: Parameters<typeof import('@openlup/platform/subscriptions').createPostgresPackageEditor>[0]['catalogueEvidence'] =
-    governed && roster ? async ({ subscriptionId, lane, cadenceDays, optIn, lines }) => {
+  const readCatalogAdmission: Parameters<typeof import('@openlup/platform/subscriptions').createPostgresPackageEditor>[0]['readCatalogAdmission'] =
+    governed && roster ? async (connection, { subscriptionId, lane, cadenceDays, lines }) => {
       const items = await roster();
       const priced = await quotePort.createServerAuthoritativeQuote({ mode: 'subscription', cadenceDays, promoCodes: [],
         lines: lines.map(line => {
@@ -83,13 +83,12 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
           return { sku: item.skuCode, quantity: line.qty, modeAtLine: 'subscription', isAddon: line.isAddon };
         }) });
       const proof = await governed.buildAdmission(priced, items, { mode: 'subscription', purpose: 'account', cadenceDays,
-        offerEvidence: { subscriptionId, lane, offerVersion: lane === 'sized' ? 'sized.v1' : governed.offerVersion,
-          ...(optIn === undefined ? {} : { optIn }) } });
-      await governed.admission.assertCurrent(db, proof);
+        offerEvidence: { subscriptionId, lane, offerVersion: lane === 'sized' ? 'sized.v1' : governed.offerVersion } });
+      await governed.admission.assertCurrent(connection, proof);
       return proof;
     } : undefined;
   return { catalogueRegistration: registration,quoteCatalogReadPort,quotePort,constraintMapper,compositionRulesPort,
-    ...(catalogueEvidence ? { catalogueEvidence } : { admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') }) };
+    ...(readCatalogAdmission ? { readCatalogAdmission } : { admitSubscriptionTerms: starterTermsAdmission(db,config,'classic') }) };
 }
 
 /** A seeded synthetic profile is shared by this demonstration's owned customer subjects.
