@@ -41,7 +41,7 @@ INSERT INTO public.outbox_events (
 SELECT
   now() - interval '90 days' + n * interval '1 second',
   now() - interval '90 days',
-  now() - interval '89 days',
+  now() - interval '90 days' + (n + 60) * interval '1 second',
   'synthetic', md5((n % 1000)::text)::uuid, 'synthetic.target',
   'history-' || n, 'processed', '{}'::jsonb,
   jsonb_build_object('retentionCompactedAt', now() - interval '1 day')

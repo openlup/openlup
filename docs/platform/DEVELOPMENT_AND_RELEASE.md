@@ -133,15 +133,27 @@ run each variant three times.
 ```sh
 benchmark_container=$(docker run --rm --detach --network none \
   --env POSTGRES_HOST_AUTH_METHOD=trust \
-  --mount "type=bind,source=$PWD,target=/repo,readonly" postgres:17)
-trap 'docker stop "$benchmark_container" >/dev/null' EXIT
-benchmark_log_dir=$(mktemp -d)
-until docker exec "$benchmark_container" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+  --mount "type=bind,source=$PWD,target=/repo,readonly" postgres:17) || exit 1
+trap 'docker stop "$benchmark_container" >/dev/null 2>&1 || true' EXIT
+benchmark_log_dir=$(mktemp -d) || exit 1
+
+# The entrypoint's temporary initialization server only listens on a Unix socket.
+ready_attempts=0
+until docker exec "$benchmark_container" pg_isready -h 127.0.0.1 -t 1 -U postgres >/dev/null 2>&1; do
+  ready_attempts=$((ready_attempts + 1))
+  if [ "$ready_attempts" -ge 30 ] ||
+    [ "$(docker inspect --format '{{.State.Running}}' "$benchmark_container" 2>/dev/null)" != true ]; then
+    printf '%s\n' 'Disposable PostgreSQL did not become ready over TCP.' >&2
+    docker logs "$benchmark_container" >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 for terminal_rows in 10000 100000; do
   for replicate in 1 2 3; do
     for variant in baseline prior pair; do
-      docker exec "$benchmark_container" psql -X -U postgres \
+      docker exec "$benchmark_container" psql -X -h 127.0.0.1 -U postgres \
         -v history_rows="$terminal_rows" -v variant="$variant" \
         -f /repo/scripts/benchmarks/outbox-claim.sql \
         >"$benchmark_log_dir/$terminal_rows-$replicate-$variant.log" 2>&1 || exit 1
@@ -165,12 +177,12 @@ after the synthetic drain.
 
 | Terminal rows | Variant | Drain in ms | Events per second | Index MiB |
 | ---: | --- | ---: | ---: | ---: |
-| 10,000 | Baseline | 387.52 | 2,580 | 5.27 |
-| 10,000 | Prior | 372.39 | 2,685 | 7.39 |
-| 10,000 | Pair | 292.50 | 3,419 | 9.05 |
-| 100,000 | Baseline | 267.28 | 3,741 | 17.49 |
-| 100,000 | Prior | 234.27 | 4,269 | 19.65 |
-| 100,000 | Pair | 248.25 | 4,028 | 21.34 |
+| 10,000 | Baseline | 425.01 | 2,353 | 5.26 |
+| 10,000 | Prior | 363.11 | 2,754 | 7.38 |
+| 10,000 | Pair | 302.40 | 3,307 | 9.05 |
+| 100,000 | Baseline | 285.23 | 3,506 | 17.52 |
+| 100,000 | Prior | 239.26 | 4,180 | 19.65 |
+| 100,000 | Pair | 254.71 | 3,926 | 21.34 |
 
 The oldest ready target was 41 days and 16 hours. The compacted terminal
 rows averaged 214 bytes per row. The planner used the extra ready-claim
