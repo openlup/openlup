@@ -55,7 +55,8 @@ export function checkTarballEntries(entry: PackageEntry, entries: readonly Tarba
     if (path.endsWith(".map") && !declarationMap) { finding(path, "sourcemap", "only declaration maps to shipped source may ship"); continue; }
     // Closed documentation sample, copied and checked by the installed consumer; tracked-byte admission still applies.
     const catalogueSample = entry.name === "@openlup/core" && /^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/catalogue\.json$/u.test(path);
-    if (!catalogueSample && (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path))) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
+    const settingsData = entry.name === "@openlup/platform" && /^(?:settings-catalog|settings-refusals)\.json$/u.test(path);
+    if (!catalogueSample && !settingsData && (FORBIDDEN_CONTENT.test(declarationMap ? path.slice(0, -4) : path) || !ALLOWED_CONTENT.test(path))) { finding(path, "package-content-allowlist", "this file kind does not ship; remove it from the package"); continue; }
     const derived = DERIVED.exec(path);
     if (derived) {
       const stem = `${entry.directory}/src/${derived[1]}`;

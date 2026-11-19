@@ -1,0 +1,17 @@
+[
+  {
+    "key": "identity.magicLinkRegistration",
+    "domain": "identity",
+    "goal": "Register a new account through a magic link.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The native sign-in port admits existing accounts only.",
+    "effect": {"appliesTo": "The native sign-in port admits existing accounts only.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The native sign-in port admits existing accounts only."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#identitymagiclinkregistration"},
+    "rules": []
+  }
+]

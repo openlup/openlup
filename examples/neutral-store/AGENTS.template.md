@@ -125,3 +125,13 @@ installation step installs it; start only reads and refuses
 `starter_installed_policy_drift` on revision or value mismatch. Apply the native
 policy migration and deliberately install a changed policy before restarting.
 New-purchase requests must use the installed horizon and cannot waive protection.
+
+## Change a business setting
+
+From the starter application root, run `npm run --silent settings -- list` to find the
+key by goal. For example, run
+`npm run --silent settings -- list --goal "renewal stock protection horizon"`, then
+`npm run --silent settings -- show inventory_renewal_protection --json`. Check the
+owner, allowed values, effect and frozen records before changing configuration.
+See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
+for the read path and refusal guidance.

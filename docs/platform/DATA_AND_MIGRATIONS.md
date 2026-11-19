@@ -4457,8 +4457,10 @@ search paths, owners and ACLs are preserved; the integer-only checkout wrapper
 is unchanged. The new restricted SECURITY DEFINER
 `commerce_checkout_recovery_reminder_schedule()` validates the installed
 `checkout_recovery_reminders` setting with `search_path = pg_catalog, pg_temp`.
-Absence returns the historical 1/24/72 and 1/20 waves; malformed data raises
-`checkout_recovery_reminder_schedule_invalid` before writes. No policy is seeded
+With no row, the schedule helper returns nominal stages and hours. Abandoned
+cart enqueue uses the 1, 24 and 72 hour waves. Checkout recovery enqueue uses
+the host call offsets, with SQL defaults of 1 and 20 hours for omitted offsets.
+Malformed data raises `checkout_recovery_reminder_schedule_invalid` before writes. No policy is seeded
 and no pending event is rewritten. See the [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
 for stage routes, timing precedence, predecessor gates and hour-derived keys.
 The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderSchedule.test.ts)

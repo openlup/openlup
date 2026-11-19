@@ -215,6 +215,19 @@ describe("release:bump", () => {
     expect(result).not.toContain("Unconsumed change."); expect(paths).toContain(page);
   });
 
+  it("carries the starter settings command into the released Core changelog and guide", () => {
+    const { root } = setFixture();
+    const fragment = "packages/core/changes/settings-discovery-starter.md";
+    const notes = readFileSync(resolve(fragment), "utf8");
+    writeFileSync(join(root, fragment), notes);
+    git(root, "add", fragment);
+    bumpSet(root, "0.9.0");
+    const released = readFileSync(join(root, "packages/core/CHANGELOG.md"), "utf8");
+    expect(released.slice(released.indexOf("## [0.9.0]"))).toContain(notes.trimEnd());
+    expect(readFileSync(join(root, page), "utf8")).toContain(notes.trimEnd());
+    expect(existsSync(join(root, fragment))).toBe(false);
+  });
+
   it("prepares the set and consumes fragments without a previous core tag", () => {
     const { root } = setFixture(); git(root, "tag", "-d", "openlup-core-v0.7.0");
     expect(bumpSet(root, "0.9.0")).toContain(page);

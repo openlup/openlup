@@ -66,7 +66,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("test:scoped", "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test"),
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
-  { path: "examples/neutral-store/package.json", digest: "sha256-9e02b27ca2e171d50f113a29b41438c593a4c78100c64c6adb384de32311340c" },
+  { path: "examples/neutral-store/package.json", digest: "sha256-6a781a1a684a4a871654ec01945d61ec16d2781f36979f7dbbac7a456ac1544c" },
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6" },
   { path: "packages/outbox/package.json", digest: "sha256-c1989ac91260eb152a27b461f4eee0db11f04d9f17cccedc9bf41958ca0d3ef6" },

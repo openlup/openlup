@@ -1,0 +1,32 @@
+[
+  {
+    "key": "promotions.freeShippingBasis",
+    "domain": "promotions",
+    "goal": "Choose the subtotal basis for free shipping.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Native threshold decisions use a fixed basis.",
+    "effect": {"appliesTo": "Native threshold decisions use a fixed basis.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "Native threshold decisions use a fixed basis."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis"},
+    "rules": []
+  },
+  {
+    "key": "promotions.promotionCompatibilityGroups",
+    "domain": "promotions",
+    "goal": "Combine promotion codes using compatibility groups.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The adjustment engine needs additional combination rules.",
+    "effect": {"appliesTo": "The adjustment engine needs additional combination rules.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The adjustment engine needs additional combination rules."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionspromotioncompatibilitygroups"},
+    "rules": []
+  }
+]
