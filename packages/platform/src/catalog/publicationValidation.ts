@@ -577,7 +577,10 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") throw error;
       lineage = { head: undefined, unavailable: true };
     }
-    const requestedHead = lineage.expectedHead ?? input.expectedHead;
+    const expected = input.expectedHead, completion = lineage.expectedHead;
+    if (completion !== undefined && !matchesPublicationHead(expected, completion)) publicationRefuse("head_conflict", "conflict");
+    const requestedHead = expected && completion && expected.documentDigest === undefined
+      ? { ...expected, documentDigest: completion.documentDigest } : expected;
     const current = lineage.head;
     if (current !== undefined && !matchesPublicationHead(requestedHead, current)) publicationRefuse("head_conflict", "conflict");
     knownHead = requestedHead === null ? null : requestedHead.documentDigest === undefined ? current

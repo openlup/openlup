@@ -775,6 +775,55 @@ it("rules install rejects executable bytes that differ from the declared digest"
   await expect(compileCatalogPublication(data)).resolves.toHaveProperty("product.id", data.record.productId);
 });
 
+it.each([
+  { field: "publicationId", stale: "50000000-0000-4000-8000-000000000002" },
+  { field: "revision", stale: 2 },
+  { field: "documentDigest", stale: "d".repeat(64) },
+])("T-1 a reader cannot replace the caller's $field", async ({ field, stale }) => {
+  const data = await revision();
+  const actual = data.expectedHead!;
+  const expectedHead = { ...actual, [field]: stale };
+  const readCurrentHead = vi.fn(async () => ({ head: actual, expectedHead: actual, unavailable: false }));
+  const presentationReadiness = vi.fn(ready);
+  await expect(facade(data).prepareCandidate({
+    draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead,
+  })).rejects.toMatchObject({ code: "head_conflict" });
+  for (const mode of ["first-decision", "compile"] as const) {
+    await expect(compileCatalogPublication({
+      ...data, expectedHead, readCurrentHead, observations: { presentationReadiness },
+    }, mode)).rejects.toMatchObject({ code: "head_conflict", outcome: "conflict" });
+  }
+  expect(readCurrentHead).toHaveBeenCalledTimes(2);
+  expect(presentationReadiness).not.toHaveBeenCalled();
+});
+
+it("T-1 the facade completes a partial head before requesting evidence", async () => {
+  const data = await revision();
+  const expectedHead = data.expectedHead!;
+  const readEvidence = vi.fn<CatalogCandidatePublicationDeps["readEvidence"]>(async () => data.evidence);
+  const resolveHead = vi.fn<CatalogCandidateDeps["resolveHead"]>(async () => expectedHead);
+  const currentHead = vi.fn<CatalogCandidateDeps["currentHead"]>(async () => ({
+    outcome: "found", head: expectedHead, documentRef: "example:document", observations: [],
+  }));
+  const service = facade(data, { readEvidence }, false, data.record, currentHead, undefined, resolveHead);
+  const prepared = await service.prepareCandidate({
+    draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead,
+  });
+  expect(prepared.preparation?.structural.outcome).toBe("staged");
+  resolveHead.mockClear();
+  readEvidence.mockClear();
+  expect(await service.validate(prepared.candidateRef)).toEqual(prepared);
+  expect(resolveHead).toHaveBeenCalledExactlyOnceWith({
+    publicationId: expectedHead.publicationId, revision: expectedHead.revision,
+  });
+  expect(readEvidence).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ expectedHead }));
+  readEvidence.mockClear();
+  currentHead.mockRejectedValueOnce(new Error("synthetic current head timeout"));
+  const unavailable = await service.validate(prepared.candidateRef);
+  expect(unavailable.issues).toEqual([{ code: "publication_head_unavailable", path: "publication" }]);
+  expect(readEvidence).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ expectedHead }));
+});
+
 it("Q-PRICE-READ-ALIASES-SEALED-EFFECT discards a price reader mutation", async () => {
   const data = input();
   withPrice(data);
