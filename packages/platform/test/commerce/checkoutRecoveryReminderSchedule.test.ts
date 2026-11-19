@@ -29,7 +29,7 @@ it('defaults only for absence, returns independent values, and explicitly instal
   expect(await readCheckoutRecoveryReminderSchedule({ query })).toEqual(defaults);
   const custom = { ...defaults, revision: 'owned-1', checkoutRecovery: [{ stage: 'last', afterHours: 48 }] } as const;
   await installCheckoutRecoveryReminderSchedule({ query }, custom);
-  expect(query.mock.lastCall?.[1]).toEqual(['checkout_recovery_reminders', JSON.stringify(custom)]);
+  expect(query).toHaveBeenLastCalledWith('SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)', ['checkout_recovery_reminders', JSON.stringify(custom)]);
   query.mockResolvedValueOnce({ rows: [{ value_text: JSON.stringify(custom) }] });
   expect(await readCheckoutRecoveryReminderSchedule({ query })).toEqual(custom);
 });

@@ -1529,8 +1529,6 @@ hosted admission from local results. The supervisor follows the sequence below.
 
 Follow this sequence within the accountable human's actual submission and merge
 authority. Review evidence grants no merge, release, settings or credential rights.
-Prefer deleting a rule to adding one: a new control needs a concrete failure
-that required CI and the change's own review would miss.
 
 1. **Branch and worktree.** Start from fresh `main` in a dedicated task worktree;
    use the configured repository helper, or ordinary `git worktree`. Continue in
@@ -1558,6 +1556,21 @@ that required CI and the change's own review would miss.
 3. **Describe the task in the PR description.** Record the finite outcome, scope
    and exclusions, acceptance criteria, risk, actual delivery authority and
    evidence. Keep this record current through fixes and handoffs.
+
+   Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
+   wrapper, setting, test harness or process step), record the current requirement
+   or reachable failure it serves and the smallest adequate alternative considered.
+   Prefer removing the cause, deleting a rule, using an existing seam or default, or
+   documenting a limit. A new process control needs a concrete failure that required
+   CI and the change's own review would miss. Preserve correctness, required
+   compatibility and proof when simplifying.
+
+   For changes to public APIs, starters or examples, reader docs, errors, CLI,
+   configuration and settings, or extension points, record the DX impact for the
+   affected task, including the concepts, steps and files an adopter or their coding
+   agent must handle. Minimize adopter-visible concepts, keep internal mechanisms
+   private, name the cause and fix in errors, and write adopter docs around tasks.
+   Keep the adopter's local edit-and-test loop fast.
 4. **Sign, push and open ready for review.** Commit with DCO sign-off, push and
    open the ready pull request within submission authority. End its description
    with the author's `Signed-off-by:` line: the queue uses it as the merge-commit
@@ -1578,8 +1591,10 @@ that required CI and the change's own review would miss.
      retains its higher floor.
 
    A blocker is a correctness or security bug, or a direct contradiction of the
-   rules or acceptance criteria. A fail-closed edge case, style or wording is
-   advice and never blocks. By default, counted reviews use a fresh local CLI
+   rules or acceptance criteria. Treat unjustified adopter-visible concepts or
+   steps, leaked internals and unactionable errors as material findings that block.
+   State the concrete cost. A fail-closed edge case, style or wording alone is
+   advice. By default, counted reviews use a fresh local CLI
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
    task complexity. This assignment is a default, not a fixed rule.
@@ -1592,10 +1607,24 @@ that required CI and the change's own review would miss.
    candidate to have had its full floor of complete reviews; after a FAIL from
    delta reviews only, the next candidate takes a full review. Close every
    blocking finding explicitly and return to PASS when review succeeds.
+
+   Count every review round. A repair cycle fails to converge if a finding of an
+   already-seen class reappears on another path, the number of material findings
+   fails to fall, or the repair introduces a regression. After two consecutive
+   non-converging cycles on the same change, stop repairing and regroup. Get an
+   independent design analysis from fresh context that identifies the component
+   owning each violated invariant, the root cause per class, the smallest design
+   that makes each class impossible on every path, what survives, a PR split sized
+   for review and the DX impact. Take any change in scope, design or contract to
+   the accountable human before implementing the regrouped approach once. If it
+   still fails on a material finding, stop and give the accountable human options.
 8. **When main moves.** With no conflict, do nothing: the review carries over and
    does not expire. On a conflict, merge `origin/main`, resolve it and review only
    the resolution; verified derived carriers retain coverage as described below. Post a receipt for the resulting head. Never force-push or
    rebase a reviewed candidate.
+
+When a change merges or stops, add a one-line self-retro to the task record with
+the measured delay or defect, the simplification found, or `none`.
 
 For a repository whose `origin` tracks OpenLup, ordinary worktree setup is:
 
