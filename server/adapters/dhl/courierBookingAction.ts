@@ -62,17 +62,17 @@ export function createCarrierPickupBookingAction(deps: {
   return async (input: BookCourierInput): Promise<BookCourierOutput> => {
     const requestedBy = await authenticatedAdmin(deps.client, input.accessToken);
     const testerIds = validateInput(input);
-    const idempotencyKey = makePickupIdempotencyKey(
-      testerIds,
-      input.pickupDate,
-      input.pickupTimeFrom,
-      input.pickupTimeTo,
-    );
-    const existing = await findCourierPickup(deps.client, idempotencyKey);
+    const testers = await loadTesters(deps.client, testerIds);
+    const keyFor = (ids: string[]) => makePickupIdempotencyKey(ids, input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo);
+    const idempotencyKey = keyFor(testers.map(tester => tester.id));
+    const legacyKey = keyFor(testerIds);
+    const existing = await findCourierPickup(deps.client, idempotencyKey)
+      ?? (legacyKey !== idempotencyKey ? await findCourierPickup(deps.client, legacyKey) : null);
     const replay = existing?.status === "succeeded";
     if (existing && (replay ? !existing.confirmedResponse : !canRetryPickup(existing))) throw unresolvedPickup(existing);
     if (!replay) assertPickupWindow(input, now());
-    const testers = await loadTesters(deps.client, testerIds, replay);
+    const issue = validateCarrierPickupTesters(testers, testerIds, replay);
+    if (issue) throw new FulfillmentPreflightError(issue);
     if (existing && replay) {
       return reconcileExisting({
         client: deps.client,
@@ -170,15 +170,10 @@ function assertPickupWindow(input: BookCourierInput, timestamp?: string) {
   if (issue) throw new FulfillmentPreflightError(issue);
 }
 
-async function loadTesters(client: Client, ids: string[], allowShipped: boolean): Promise<CourierPickupTester[]> {
-  const { data, error } = await client.from("testers")
-    .select(CARRIER_PERSISTENCE.testerSelection)
-    .in("id", ids);
-  if (error || !data) throw new FulfillmentPreflightError("Brak testerów z etykietami do zamówienia kuriera");
-  const testers = data as CourierPickupTester[];
-  const issue = validateCarrierPickupTesters(testers, ids, allowShipped);
-  if (issue) throw new FulfillmentPreflightError(issue);
-  return testers;
+async function loadTesters(client: Client, ids: string[]): Promise<CourierPickupTester[]> {
+  const { data, error } = await client.from("testers").select(CARRIER_PERSISTENCE.testerSelection).in("id", ids);
+  if (error || data?.length !== ids.length) throw new FulfillmentPreflightError("Brak testerów z etykietami do zamówienia kuriera");
+  return data;
 }
 
 async function loadShipperContact(client: Client): Promise<{ contactPerson: string; contactPhone: string }> {

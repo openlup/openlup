@@ -3,6 +3,7 @@ import { SaxesParser, type SaxesAttributeNS, type SaxesTagNS } from "saxes";
 const envelopeNamespace = "http://schemas.xmlsoap.org/soap/envelope/";
 const encodingNamespace = "http://schemas.xmlsoap.org/soap/encoding/";
 const declarationNamespace = "http://www.w3.org/2000/xmlns/";
+const trimXmlSpace = (text: string) => text.replace(/^[ \t\r\n]+|[ \t\r\n]+$/gu, "");
 const faultFields = ["faultcode", "faultstring", "faultactor", "detail"];
 
 type ResultContract = { namespace: string; response: string; result: string };
@@ -10,7 +11,7 @@ type Outcome = { kind: "accepted"; ids: string[] } | { kind: "client_refusal"; r
 
 function supportedEncoding(attribute: SaxesAttributeNS): boolean {
   return attribute.uri === envelopeNamespace && attribute.local === "encodingStyle"
-    && ["", encodingNamespace].includes(attribute.value.trim());
+    && ["", encodingNamespace].includes(trimXmlSpace(attribute.value));
 }
 
 function validLiteralAttributes(tag: SaxesTagNS, allowLanguage = false): boolean {
@@ -94,7 +95,7 @@ export function readSoap11Reply(xml: string, contract: ResultContract): Outcome 
 
   function collectText(text: string) {
     if (depth <= 2 || (section === "body" && (depth === 3 || (member === "result" && depth === 4)))) {
-      if (text.trim()) invalidate();
+      if (/[^ \t\r\n]/u.test(text)) invalidate();
       return;
     }
     if (section === "body" && ((member === "fault" && depth === 4) || (member === "result" && depth === 5))) {
@@ -106,7 +107,7 @@ export function readSoap11Reply(xml: string, contract: ResultContract): Outcome 
   parser.on("closetag", () => {
     if (section === "body" && member === "fault" && depth === 4) {
       if (lastFaultField === 0) {
-        const code = /^(?:([\w.-]+):)?Client$/u.exec(fieldText.trim());
+        const code = /^(?:([\w.-]+):)?Client$/u.exec(trimXmlSpace(fieldText));
         clientCode = Boolean(code && parser.resolve(code[1] ?? "") === envelopeNamespace);
       } else if (lastFaultField === 1) reason = fieldText.trim();
     }

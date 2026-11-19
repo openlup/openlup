@@ -96,8 +96,9 @@ describe("carrier pickup booking action", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("admits only one booking when two reads both report no previous attempt", async () => {
-    const fake = bookingClient({ concurrentInitialReads: true });
+  it.each([false, true])("admits only one booking for concurrent requests, with UUID alias %s", async useAlias => {
+    const canonical = "3a373c59-f01e-4b99-b42c-1f54c0b1705d";
+    const fake = bookingClient({ concurrentInitialReads: true, testerId: canonical });
     const response = deferred<ReturnType<typeof xmlResponse>>();
     const started = deferred<void>();
     const fetchImpl = vi.fn(() => {
@@ -108,9 +109,12 @@ describe("carrier pickup booking action", () => {
       client: fake.client, fetchImpl: fetchImpl as never, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
-    const bookings = [action(input), action(input)];
+    const bookings = [
+      action({ ...input, testerIds: [canonical] }),
+      action({ ...input, testerIds: [useAlias ? canonical.toUpperCase() : canonical] }),
+    ];
     await started.promise;
-    expect(fake.pickup()).toMatchObject({ status: "pending" });
+    expect(fake.pickup()).toMatchObject({ status: "pending", idempotency_key: expect.stringContaining(canonical) });
     await expect(Promise.race(bookings)).rejects.toMatchObject({ retryable: false });
     response.resolve(xmlResponse(bookingReceipt()));
     expect(await Promise.allSettled(bookings)).toEqual(expect.arrayContaining([{
@@ -290,6 +294,7 @@ describe("carrier pickup booking action", () => {
       "<item>", '<item xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="invalid">',
     )],
     ["a comment", bookingReceipt().replace("<item>ORD-1</item>", "<!-- <item>ORD-1</item> -->")],
+    ["non-XML whitespace", bookingReceipt().replace("<bookCourierResult>", "<bookCourierResult>&#160;")],
     ["incomplete XML", bookingReceipt().replace("</SOAP-ENV:Body>", "")],
     ["inconsistent fault detail", clientRefusalEnvelope("<![CDATA[Incomplete]]>").replace(
       "</SOAP-ENV:Fault>", "<detail><orderId>ORD-1</orderId></detail></SOAP-ENV:Fault>",
@@ -369,10 +374,11 @@ function bookingClient(options: {
   concurrentInitialReads?: boolean;
   delaySecondRetryUntilOutcome?: boolean;
   statusBeforeUpdate?: string;
+  testerId?: string;
 } = {}) {
   const pendingRow = { id: "pickup-1", updated_at: "2040-08-16T08:00:00Z" };
   let pickup = options.existing ? { ...pendingRow, ...options.existing } : null;
-  let currentTester = { ...tester };
+  let currentTester = { ...tester, id: options.testerId ?? tester.id };
   let snapshots: Record<string, unknown>[] = [];
   let testerUpdateError = options.testerUpdateError;
   let shipmentWriteFails = options.failure === "shipments";
