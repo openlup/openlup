@@ -21,7 +21,7 @@ export const CARRIER_PERSISTENCE = {
   repairEmailSource: "repair-dhl-courier-pickup",
   shipmentEmailSource: "create-dhl-shipment",
   labelBucket: "dhl-labels",
-  pickupSelection: "courier_order_id, shipments_count, status, operator_message, support_code, raw_response_excerpt",
+  pickupSelection: "id, updated_at, courier_order_id, shipments_count, status, operator_message, retryable, support_code, raw_response_excerpt",
   pickupShipmentSelection: "tester_id,tracking_number_snapshot,dhl_shipment_id_snapshot,dhl_shipment_date_snapshot",
   testerSelection: "id, first_name, last_name, status, tracking_number, label_url, dhl_shipment_id, dhl_shipment_date",
 } as const;
@@ -65,11 +65,6 @@ export type CourierPickupTester = {
 
 type Client = { from: (table: string) => any };
 
-export type StoredCourierPickup = {
-  status: "succeeded" | "indeterminate"; courierOrderId: string | null; shipmentsCount: number;
-  operatorMessage: string | null; supportCode: string | null; rawResponseExcerpt: string | null;
-};
-
 export async function loadCarrierShipperContact(client: Client): Promise<{
   contactPerson: string;
   contactPhone: string;
@@ -91,54 +86,6 @@ export async function loadCarrierShipperContact(client: Client): Promise<{
 export const makePickupIdempotencyKey = (ids: string[], date: string, from: string, to: string) =>
   [CARRIER_PERSISTENCE.bookingIdempotencyPrefix, date, from, to, [...ids].sort().join(",")].join("|");
 
-export async function findCourierPickup(client: Client, idempotencyKey: string): Promise<StoredCourierPickup | null> {
-  try {
-    const result = await client.from(CARRIER_PERSISTENCE.pickupTable)
-      .select(CARRIER_PERSISTENCE.pickupSelection)
-      .eq(CARRIER_PERSISTENCE.idempotencyKey, idempotencyKey)
-      .maybeSingle();
-    const row = result.data;
-    if (row?.status !== "succeeded" && row?.status !== "indeterminate") return null;
-    return { status: row.status, courierOrderId: typeof row.courier_order_id === "string" ? row.courier_order_id : null,
-      shipmentsCount: typeof row.shipments_count === "number" ? row.shipments_count : 0,
-      operatorMessage: typeof row.operator_message === "string" ? row.operator_message : null,
-      supportCode: typeof row.support_code === "string" ? row.support_code : null,
-      rawResponseExcerpt: typeof row.raw_response_excerpt === "string" ? row.raw_response_excerpt : null };
-  } catch { return null; }
-}
-
-export async function recordCourierPickup(client: Client, input: {
-  status: "succeeded" | "failed" | "indeterminate";
-  idempotencyKey: string; courierOrderId?: string | null;
-  pickupDate: string; pickupTimeFrom: string; pickupTimeTo: string;
-  additionalInfo: string; requestedBy: string;
-  testers: CourierPickupTester[];
-  operatorMessage?: string; retryable?: boolean;
-  supportCode?: string; rawResponse?: string;
-}): Promise<string | null> {
-  try {
-    const result = await client.from(CARRIER_PERSISTENCE.pickupTable).upsert({
-      status: input.status, idempotency_key: input.idempotencyKey,
-      courier_order_id: input.courierOrderId ?? null, pickup_date: input.pickupDate,
-      pickup_time_from: input.pickupTimeFrom, pickup_time_to: input.pickupTimeTo,
-      shipments_count: input.testers.length, additional_info: input.additionalInfo || null,
-      requested_by: input.requestedBy, operator_message: input.operatorMessage ?? null,
-      retryable: input.retryable ?? null, support_code: input.supportCode ?? null,
-      raw_response_excerpt: input.rawResponse?.slice(0, 2000) ?? null,
-    }, { onConflict: CARRIER_PERSISTENCE.idempotencyKey }).select("id").single();
-    const id = typeof result.data?.id === "string" ? result.data.id : null;
-    if (!id) return null;
-    await client.from(CARRIER_PERSISTENCE.pickupShipmentTable).upsert(input.testers.map((tester) => ({
-      [CARRIER_PERSISTENCE.pickupId]: id,
-      tester_id: tester.id,
-      tracking_number_snapshot: tester.tracking_number,
-      [CARRIER_PERSISTENCE.shipmentDispatchIdSnapshot]: tester[CARRIER_PERSISTENCE.shipmentDispatchId],
-      [CARRIER_PERSISTENCE.shipmentDateSnapshot]: tester[CARRIER_PERSISTENCE.shipmentDate],
-    })), { onConflict: "pickup_id,tester_id" });
-    return id;
-  } catch { return null; }
-}
-
 export async function reconcileShippedTesters(
   client: Client,
   testers: CourierPickupTester[],
@@ -148,6 +95,7 @@ export async function reconcileShippedTesters(
 ): Promise<string[]> {
   const failed: string[] = [];
   for (const tester of testers) {
+    if (tester.status === "shipped") continue;
     const { error } = await client.from("testers")
       .update({ status: "shipped", status_updated_at: timestamp })
       .eq("id", tester.id);
@@ -158,9 +106,9 @@ export async function reconcileShippedTesters(
   return failed;
 }
 
-export function validateCarrierPickupTesters(testers: CourierPickupTester[], ids: string[]): string | null {
+export function validateCarrierPickupTesters(testers: CourierPickupTester[], ids: string[], allowShipped = false): string | null {
   if (testers.length !== ids.length) return "Nie znaleziono wszystkich wybranych testerów";
-  if (testers.some((tester) => tester.status !== "packing")) {
+  if (testers.some((tester) => tester.status !== "packing" && !(allowShipped && tester.status === "shipped"))) {
     return `Kurier ${CARRIER_DISPLAY_NAME} może być zamówiony tylko dla paczek w pakowaniu`;
   }
   const hasIncompleteShipment = testers.some(
@@ -246,45 +194,6 @@ export function createCarrierSupportCode(timestamp: string, seed: string): strin
 export function classifyCarrierProviderMessage(message: string) {
   const match = message.match(/Po przesyłkę o id\s+([A-Z0-9-]+)\s+jest już zamówiony kurier/i);
   return match ? { reason: "already_booked" as const, blockingShipmentId: match[1] } : null;
-}
-
-export function makeCourierPickupEvidence(input: {
-  status: "failed" | "succeeded" | "indeterminate";
-  idempotencyKey: string;
-  courierOrderId?: string | null;
-  pickupDate: string;
-  pickupTimeFrom: string;
-  pickupTimeTo: string;
-  additionalInfo: string;
-  requestedBy: string;
-  testers: CourierPickupTester[];
-  operatorMessage?: string;
-  retryable?: boolean;
-  supportCode?: string;
-  rawResponse?: string;
-}) {
-  return input;
-}
-
-export function makeCourierPickupEvidenceFromRequest(input: {
-  status: "failed" | "succeeded" | "indeterminate";
-  request: { pickupDate: string; pickupTimeFrom: string; pickupTimeTo: string; additionalInfo: string };
-  testers: CourierPickupTester[];
-  idempotencyKey: string;
-  requestedBy: string;
-  courierOrderId?: string | null;
-  operatorMessage?: string;
-  retryable?: boolean;
-  supportCode?: string;
-  rawResponse?: string;
-}) {
-  return makeCourierPickupEvidence({
-    status: input.status, idempotencyKey: input.idempotencyKey, courierOrderId: input.courierOrderId,
-    pickupDate: input.request.pickupDate, pickupTimeFrom: input.request.pickupTimeFrom,
-    pickupTimeTo: input.request.pickupTimeTo, additionalInfo: input.request.additionalInfo,
-    requestedBy: input.requestedBy, testers: input.testers, operatorMessage: input.operatorMessage,
-    retryable: input.retryable, supportCode: input.supportCode, rawResponse: input.rawResponse,
-  });
 }
 
 export function createCarrierProviderEvidence(message: string, timestamp: string, retryable: boolean) {
