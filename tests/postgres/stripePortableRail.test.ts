@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresProviderPaymentRail, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup,
-  createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
+  createPostgresPaymentWebhookControlPort, createCheckoutRecoveryPaymentResolver, verifyPaymentAttemptNow } from "@openlup/platform/payments";
 import { createStripePaymentAdapter, type StripePaymentAdapterConfig } from "@openlup/platform/payments/stripe";
 import { createScriptedPaymentFake } from "@openlup/platform/payments/testing";
 import { activateNativePurchaseWithRenewal, createNativeRenewalCodec, createNativeSubscriptionBinding,
@@ -78,6 +78,74 @@ function signed(type: string, object: Record<string, unknown>, id = `evt_${rando
   const stamp = Math.floor(Date.parse(time) / 1000), digest = createHmac("sha256", secret).update(`${stamp}.${rawBody.toString()}`).digest("hex");
   return { rawBody, headers: { "stripe-signature": `t=${stamp},v1=${digest}` }, receivedAt: time };
 }
+
+it("acknowledges a verified capture for an OMS-closed checkout without applying paid or saved-method effects", async () => {
+  const order = randomUUID(), methodRef = `review_method_${randomUUID()}`;
+  const providerPaymentId = `pi_review_${randomUUID()}`;
+  const composed = createPostgresProviderPaymentRail({
+    executor: env.runtime, adapter: rail.adapter, mode: rail.mode, truth,
+    resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => ({ clientId }),
+  });
+  await env.owner.query(`WITH created AS (
+    INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor)
+    VALUES($1,$2,'pending_payment','XXX',200) RETURNING id)
+    INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+    SELECT id,$3,1,1,200,200 FROM created`, [order, clientId, sku]);
+  const intent = (await composed.control.createIntent({
+    idempotencyKey: `review-intent:${order}`, targetKind: "one_time_order", orderId: order, amountMinor: 200,
+    currency: "XXX", channelKey: composed.provider, metadata: {}, at: time,
+  })).id;
+  const attemptInput = {
+    paymentIntentId: intent, providerIdempotencyKey: `review-provider:${order}`, providerRequestFingerprint: "a".repeat(64),
+  };
+  const attempt = await composed.control.prepareProviderAttempt({
+    ...attemptInput, idempotencyKey: `review-prepare:${order}`, provider: composed.provider,
+    providerFlow: "one_time_payment", paymentMethodRef: null, requestPayload: {},
+  });
+  await composed.control.finalizeProviderAttempt({
+    ...attemptInput, idempotencyKey: `review-finalize:${order}`, paymentAttemptId: attempt.paymentAttemptId,
+    providerAttemptId: providerPaymentId, providerSessionId: null, attemptStatus: "processing", nextActionKind: null,
+    requestPayload: {}, responsePayload: { providerCall: true },
+  });
+  await composed.control.applyPaymentResult({
+    idempotencyKey: `review-decline:${order}`, paymentIntentId: intent,
+    paymentEventId: null, resultStatus: "failed", occurredAt: time, failureReason: "declined",
+  });
+  const cancel = () => call(env.runtime, "oms_cancel_unpaid_order_owned", [`review-cancel:${order}`, order, "buyer_cancelled", null, {}, time]);
+  expect(await cancel()).toMatchObject({ status: "cancelled", replayed: false });
+  const capture = signed("payment_intent.succeeded", {
+    ...payment(providerPaymentId, "succeeded"), amount_received: 200, payment_method: methodRef,
+    setup_future_usage: "off_session", metadata: { paymentIntentId: intent, clientId },
+  });
+  const received = await composed.ingress.receive(capture);
+  expect(received).toMatchObject({ status: 200 });
+  expect(await composed.ingress.receive(capture)).toMatchObject({ status: 200, data: { replayed: true } });
+  const stored = await composed.readAttempt(intent);
+  expect(stored).toMatchObject({ captureReviewRequired: true, settlementStatus: "cancelled" });
+  if (!stored) throw new Error("Expected the owned payment attempt");
+  const snapshot = {
+    orderId: stored.orderId, orderClientId: clientId, orderMode: "one_time", paymentIntentId: intent,
+    intentStatus: stored.intentStatus, paymentAttemptId: stored.paymentAttempt.id, paymentId: stored.paymentAttempt.paymentId,
+    attemptStatus: stored.paymentAttempt.status, provider: stored.paymentAttempt.provider,
+    providerAttemptId: stored.paymentAttempt.providerAttemptId, providerSessionId: stored.paymentAttempt.providerSessionId,
+    intentProviderPaymentId: null, amountMinor: stored.amountMinor, currency: stored.currency,
+    localUpdatedAt: time, captureReviewRequired: stored.captureReviewRequired,
+  };
+  expect(await verifyPaymentAttemptNow({
+    snapshot, applyPort: composed.reconciliation, providers: {}, now: () => new Date(time),
+  })).toMatchObject({ status: "manual_review", applied: false });
+  const recovery = createCheckoutRecoveryPaymentResolver({
+    readPort: { readVerifiableAttempt: async () => snapshot }, applyPort: composed.reconciliation, providers: {},
+  });
+  expect(await recovery.resolve({ orderId: order, paymentIntentId: intent })).toEqual({ kind: "manual_review" });
+  expect(await createPostgresPaymentMethodStore(env.runtime).read(composed.provider, methodRef)).toBeNull();
+  expect(await cancel()).toMatchObject({ status: "cancelled", replayed: true });
+  expect((await env.owner.query(`SELECT
+    (SELECT count(*)::int FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured' AND review_required_at IS NOT NULL) AS review,
+    (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS paid,
+    (SELECT count(*)::int FROM public.outbox_events WHERE aggregate_id=$2 AND event_type='commerce.order.paid') AS paid_events`,
+  [intent, order])).rows).toEqual([{ review: 1, paid: 0, paid_events: 0 }]);
+});
 function executionRequest() {
   return { attemptRef: `purchase-attempt:${orderId}`, intentRef: intentId, fingerprint: "f".repeat(64),
     providerIdempotencyKey: `purchase-provider:${orderId}`, money: { amountMinor: 200, currency: "XXX" }, mode: "test" as const,
@@ -123,6 +191,25 @@ it("captures signed evidence, records the saved method, then attaches the paid p
       shippingAmountMinor: 0, acquisitionRef: null } });
   expect(active.renewalAttachment).toBe("complete"); subscriptionId = String(active.activation.subscriptionId);
   expect(await createPostgresPaymentMethodStore(env.runtime).read(rail.provider, currentMethod)).toMatchObject({ subscription_id: subscriptionId });
+});
+it("acknowledges a completed historical capture through the shipping native rail using one read", async () => {
+  // Keep the original paid receipt and model the additive column on a migrated row.
+  const stored = (await env.owner.query(`UPDATE public.payment_provider_attempt_evidence SET captured_amount_basis=NULL
+    WHERE settlement_intent_id=$1 AND event_type='payment.succeeded'
+    RETURNING id,provider_event_id`, [intentId])).rows[0];
+  const queries: string[] = [];
+  const rejectMethodLookup = async () => { throw new Error("historical_capture_must_not_resolve_methods"); };
+  const composed = createPostgresProviderPaymentRail({
+    executor: { query(sql, values) { queries.push(sql); return env.runtime.query(sql, values); } },
+    adapter: rail.adapter, mode: rail.mode, truth, resolveMethodOwner: rejectMethodLookup, resolveSavedMethodOwner: rejectMethodLookup,
+  });
+  const redelivery = signed("payment_intent.succeeded", { ...remote, status: "succeeded", setup_future_usage: "off_session",
+    metadata: { paymentIntentId: intentId, clientId, mode: "subscription_cycle" } }, stored.provider_event_id);
+  expect(await composed.ingress.receive(redelivery)).toMatchObject({
+    status: 200, data: { paymentEventId: stored.id, replayed: true },
+  });
+  expect(queries).toHaveLength(1);
+  expect(queries[0]).toContain("public.commerce_payment_control_completed_capture_receipt");
 });
 it("runs an off-session saved-method renewal through the installed runtime role", async () => {
   time = firstDue;
@@ -344,12 +431,36 @@ describe("exact local-intent search after uncertain dispatch", () => {
     expect(await createPostgresRetryStore(env.runtime).read(fixture.operation)).toMatchObject({ retryAttempt: 1, state: "waiting", caseId: expect.any(String) });
     expect((await env.owner.query("SELECT count(*)::int n FROM public.subscription_dunning_cases WHERE subscription_id=$1", [fixture.subscription])).rows[0].n).toBe(1);
   });
-  it("settles late success on that original attempt through the existing waiting-state recovery owner", async () => {
+  it("recovers the waiting retry once when a verified late success races authenticated readback", async () => {
     const event = signed("payment_intent.succeeded", { id: "pi_found", amount: 200, amount_received: 200, currency: "xxx",
       metadata: { paymentIntentId: prepared.settlementIntentId } });
-    expect(await rail.ingress.receive(event)).toMatchObject({ status: 200 });
+    const attempt = (await rail.readAttempt(prepared.settlementIntentId))!;
+    const [webhook, readback] = await Promise.all([
+      rail.ingress.receive(event),
+      rail.reconciliation.applyTerminalResult({
+        idempotencyKey: `late-readback:${fixture.operation}`, expectedOrderId: prepared.orderId,
+        expectedPaymentIntentId: prepared.settlementIntentId, expectedPaymentAttemptId: attempt.paymentAttempt.id,
+        expectedPaymentId: attempt.paymentAttempt.paymentId, provider: rail.provider, providerPaymentId: "pi_found",
+        localStatus: attempt.paymentAttempt.status, providerStatus: "succeeded", resultStatus: "succeeded", occurredAt: time,
+        failureReason: null, checkedAt: time,
+        payload: { observedMoney: { amountMinor: 200, currency: "XXX" }, providerOccurredAt: time, capturedAmountBasis: "provider_capture_v1" },
+      }),
+    ]);
+    expect(webhook).toMatchObject({ status: 200 });
+    expect(["corrected", "ignored"]).toContain(readback.correctionStatus);
     expect(await rail.ingress.receive(event)).toMatchObject({ status: 200, data: { replayed: true } });
     expect(await createPostgresRetryStore(env.runtime).read(fixture.operation)).toMatchObject({ state: "recovered", retryAttempt: 1 });
+    expect((await env.owner.query(`SELECT
+      (SELECT count(*)::int FROM public.subscription_retry_receipts r JOIN public.subscription_retry_obligations o
+        ON o.id=r.obligation_id WHERE o.renewal_operation_id=$2 AND r.kind='recovery') AS recoveries,
+      (SELECT count(*)::int FROM public.payment_provider_transitions WHERE settlement_intent_id=$1
+        AND transition_kind='business_result' AND to_status='succeeded') AS results,
+      (SELECT count(*)::int FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded') AS settlements,
+      (SELECT status FROM public.payment_provider_states WHERE id=$1) AS provider_status,
+      (SELECT provider_payment_id FROM public.payment_provider_states WHERE id=$1) AS provider_ref`,
+    [prepared.settlementIntentId, fixture.operation])).rows[0]).toEqual({
+      recoveries: 1, results: 1, settlements: 1, provider_status: "succeeded", provider_ref: "pi_found",
+    });
     fake.assertDrained();
   });
 });

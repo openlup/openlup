@@ -20,7 +20,7 @@ CREATE FUNCTION pg_temp.check_provider_finality(terminal text) RETURNS SETOF tex
 DECLARE
  c uuid:=gen_random_uuid();s uuid:=gen_random_uuid();cy uuid:=gen_random_uuid();o uuid:=gen_random_uuid();
  i uuid;a uuid;e uuid;pay uuid;success uuid;k text:='finality:'||s;r jsonb;before_state jsonb;
- t timestamptz:='2026-11-13T12:00:00Z';st text;writer text;key text;label text;fingerprint text;
+ t timestamptz:='2026-11-13T12:00:00Z';st text;writer text;key text;label text;fingerprint text;reviewed_state jsonb;
 BEGIN
  INSERT INTO public.clients(id,email) VALUES(c,c||'@example.invalid');
  PERFORM pg_temp.provider_subscription_order(s,cy,o,c,'active');
@@ -33,10 +33,8 @@ BEGIN
  UPDATE public.commerce_settlement_intents SET status='cancelled' WHERE id=i;
  UPDATE public.payment_provider_states SET status='cancelled' WHERE id=i;
  before_state:=pg_temp.finality_snapshot(s);
- success:=(public.payment_provider_event_ingest('card_rail',k||':success','payment.succeeded','pi_'||s,i,a,12999,'XXX',true,'{}')#>>'{paymentEvent,id}')::uuid;
- RETURN NEXT throws_ok(format('SELECT pg_temp.provider_apply(%L,%L,%L,%L,%L,NULL)',k||':late-success',i,success,'succeeded',t),
-   '22023','payment_control_result_terminal_intent',terminal||': success rejection unchanged');
- RETURN NEXT is(pg_temp.finality_snapshot(s),before_state,terminal||': rejected success leaves business untouched');
+ success:=(public.payment_provider_event_ingest('card_rail',k||':success','payment.succeeded','pi_'||s,i,a,12999,'XXX',true,
+  jsonb_build_object('__paymentTruth',jsonb_build_object('fingerprint',repeat('e',64),'capturedAmountBasis','provider_capture_v1')))#>>'{paymentEvent,id}')::uuid;
  FOREACH st IN ARRAY ARRAY['failed','expired'] LOOP
   FOREACH writer IN ARRAY ARRAY['renewal','webhook'] LOOP
    key:=k||':'||st||':'||writer;label:=terminal||'/'||st||'/'||writer;e:=NULL;
@@ -53,9 +51,6 @@ BEGIN
     AND to_status=st AND reason='ignored_failure_terminalized_cycle'),1::bigint,label||': transition evidence');
    RETURN NEXT is((SELECT status FROM public.payment_provider_receipts WHERE scope='commerce.payment_result.apply' AND idempotency_key=key),'completed',label||': completed idempotency evidence');
    RETURN NEXT is(pg_temp.finality_snapshot(s),before_state,label||': cycle/order/retries/schedule/lifecycle/events/dunning unchanged');
-   RETURN NEXT throws_ok(format('SELECT pg_temp.provider_apply(%L,%L,%L,%L,%L,NULL)',key||':late-success',i,success,'succeeded',t),
-    '22023','payment_control_result_terminal_intent',label||': success after ignored failure still rejected');
-   RETURN NEXT is(pg_temp.finality_snapshot(s),before_state,label||': rejected late success leaves business final');
    IF e IS NOT NULL THEN
     RETURN NEXT is((SELECT processing_status FROM public.payment_provider_attempt_evidence WHERE id=e),'ignored',label||': inbound failure evidence acknowledged');
    END IF;
@@ -64,6 +59,25 @@ BEGIN
    RETURN NEXT is(r#>>'{paymentResult,replayed}','true',label||': same key replays');
    RETURN NEXT is((SELECT request_fingerprint FROM public.payment_provider_receipts WHERE scope='commerce.payment_result.apply' AND idempotency_key=key),fingerprint,label||': fingerprint unchanged');
   END LOOP;
+ END LOOP;
+ r:=pg_temp.provider_apply(k||':late-success',i,success,'succeeded',t,NULL);
+ RETURN NEXT is(r#>>'{paymentResult,kind}','ignored_success_requiring_review',terminal||': capture retained for review');
+ RETURN NEXT is((SELECT count(*) FROM public.payment_truth_events e WHERE e.settlement_intent_id=i
+   AND e.source_evidence->>'sourceReference'=success::text AND e.state='open' AND e.outcome='captured'
+   AND e.review_required_at IS NOT NULL AND e.settlement_transition_id IS NULL),1::bigint,terminal||': exact durable review without settlement');
+ RETURN NEXT is(pg_temp.finality_snapshot(s),before_state,terminal||': reviewed success leaves business untouched');
+ SELECT jsonb_build_array(p_attempt,p_state) INTO reviewed_state FROM public.payment_provider_attempts p_attempt
+  JOIN public.payment_provider_states p_state ON p_state.id=p_attempt.settlement_intent_id WHERE p_attempt.id=a;
+ FOREACH st IN ARRAY ARRAY['failed','expired'] LOOP
+  key:=k||':reviewed:'||st;label:=terminal||'/reviewed/'||st;
+  r:=pg_temp.provider_apply(key,i,NULL,st,t,'late_decline','authorization_refused','fixture');
+  RETURN NEXT is(r#>>'{paymentResult,kind}','ignored_failure_protected_state',label||': late failure leaves review authoritative');
+  RETURN NEXT is((SELECT jsonb_build_array(p_attempt,p_state) FROM public.payment_provider_attempts p_attempt
+    JOIN public.payment_provider_states p_state ON p_state.id=p_attempt.settlement_intent_id WHERE p_attempt.id=a),
+    reviewed_state,label||': provider state, attempt and classification unchanged');
+  RETURN NEXT is(pg_temp.finality_snapshot(s),before_state,label||': no lifecycle or business changes');
+  r:=pg_temp.provider_apply(key,i,NULL,st,t,'late_decline','authorization_refused','fixture');
+  RETURN NEXT is(r#>>'{paymentResult,replayed}','true',label||': exact negative receipt replays');
  END LOOP;
 END; $$;
 SELECT * FROM pg_temp.check_provider_finality('cancelled');

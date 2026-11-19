@@ -1,3 +1,4 @@
+import { capturedAmountMinor } from "./intentMapper.js";
 import { failureEvidencePayload } from "./paymentFailureEvidence.js";
 import { declineFromError, declinedExecutionFacts } from "./executionDecline.js";
 import { noIssuerWasAsked } from "./stripeIntentConfirmationEvidence.js";
@@ -137,12 +138,15 @@ export function parseStripePaymentWebhookEvent(rawPayload: Record<string, unknow
   const data = readObject(rawPayload, "data");
   const object = readObject(data, "object");
   const providerPaymentId = readString(object, "id");
-  const amount = readOptionalNumber(object, "amount_received") ?? readOptionalNumber(object, "amount");
+  const canonicalEventType = canonicalStripeEventType(eventType, object);
+  const amount = canonicalEventType === "payment.succeeded"
+    ? capturedAmountMinor(object.amount_received) ?? undefined
+    : readOptionalNumber(object, "amount_received") ?? readOptionalNumber(object, "amount");
   const currency = readOptionalString(object, "currency")?.toUpperCase();
 
   return {
     provider_event_id: eventId,
-    event_type: canonicalStripeEventType(eventType, object),
+    event_type: canonicalEventType,
     payment_provider_id: providerPaymentId,
     amount_minor: amount,
     next_action_kind: nextActionKindFromStripe({

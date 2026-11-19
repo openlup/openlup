@@ -324,7 +324,8 @@ beforeAll(async()=>{
     const provider=label==="unprofiled"?"unprofiled-provider":profiles.find(p=>(p.refund_kind==="cumulative-snapshot")===(label==="snapshot"))!.provider;
     const f:Fixture=(await owner.query("SELECT pg_temp.reconciliation_fixture($1,$2,$3) f",[provider,c.subscription??false,c.state!=="prepared"])).rows[0].f;
     f.key=`profile-proof:${randomUUID()}`;
-    if(c.state==="paid"||c.state==="failed")await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,$3,$4,NULL)",[f.key+":initial",f.intent,c.state==="paid"?"succeeded":"failed",at]);
+    if (c.state === "paid") await owner.query("SELECT pg_temp.provider_capture($1::jsonb,$2,$3)", [f, f.key + ":initial", at]);
+    else if (c.state === "failed") await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'failed',$3,NULL)", [f.key + ":initial", f.intent, at]);
     if(c.group===interactive){
       await attempt(f,"request_payload=request_payload||'{\"source\":\"commerce.runtime.provider-attempt.prepare.v0\"}'");
       const kind=c.subscription?"subscription_initial":"one_time";
@@ -368,6 +369,8 @@ beforeAll(async()=>{
       p.expected=c.group===renewal?"prepared_attempt_absence_reopen_provider_not_supported":"interactive_prepared_attempt_reopen_provider_not_supported";
     probes.set(key,p);
   }
+  // This witness compares issued profile bodies even when later forwards replace them.
+  await owner.query(newDDL);
   genericBefore=await genericDefinitions();
   handoffDDL=(await owner.query("SELECT pg_get_functiondef('public.payment_reconciliation_open_dunning_from_failed_result(text,uuid,text,text,timestamptz,text,uuid,text,text)'::regprocedure) body")).rows[0].body;
   const withoutWatchdog=matrix.filter(m=>m.c.name==="watchdog_evidence_missing").map(m=>probes.get(m.key)!.args[1]);
@@ -453,7 +456,7 @@ beforeAll(async()=>{
   for(const policy of additions){
     const make=async(subscription=false,finalized=true):Promise<Fixture>=>(await owner.query("SELECT pg_temp.reconciliation_fixture($1,$2,$3) f",[policy.provider,subscription,finalized])).rows[0].f;
     const paid=await make(),claim=await make(),renewalFixture=await make(true,false),interactiveFixture=await make(false,false),inline=await make();
-    await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'succeeded',$3,NULL)",[`third:${paid.intent}`,paid.intent,at]);
+    await owner.query("SELECT pg_temp.provider_capture($1::jsonb,$2,$3)", [paid, `third:${paid.intent}`, at]);
     await owner.query("SELECT pg_temp.provider_apply($1,$2,NULL,'failed',$3,NULL)",[`third-failed:${inline.intent}`,inline.intent,at]);
     await attempt(claim,"provider_session_id='session-reference'");
     for(const f of [claim,renewalFixture,interactiveFixture]){await attempt(f,"created_at=$2,updated_at=$2",[old]);await state(f,"created_at=$2,updated_at=$2",[old]);}

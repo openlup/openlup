@@ -205,3 +205,41 @@ export function buildTpayTransactionPayload(input: TpayTransactionCreateInput): 
     },
   };
 }
+
+/** Webhook settlement requires positive paid money. */
+export function paidMajorToMinor(value: unknown): number | null {
+  const minor = readPaidMajor(value);
+  return minor !== null && minor > 0 ? minor : null;
+}
+
+/** Keep explicit zero in authenticated readback and preserve the rail's precision. */
+function readPaidMajor(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const match = /^([0-9]+)(?:[.,]([0-9]{1,2}))?$/u.exec(String(value).trim());
+  if (!match) return null;
+  const minor = Number(match[1] + (match[2] ?? "").padEnd(2, "0"));
+  return Number.isSafeInteger(minor) ? minor : null;
+}
+
+function readPaidMinor(value: unknown): number | null {
+  const minor = typeof value === "string" && /^[0-9]+$/u.test(value.trim()) ? Number(value) : value;
+  return typeof minor === "number" && Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+}
+
+export function readPaidAmountMinor(
+  transaction: Record<string, unknown>,
+  payments: Record<string, unknown>,
+): number | null {
+  // The authenticated transaction DTO reports paid money in payments.amountPaid.
+  // Preserve older explicitly paid aliases when that DTO field is absent.
+  for (const key of ["amountPaid", "paidAmount"]) {
+    if (Object.hasOwn(payments, key)) return readPaidMajor(payments[key]);
+  }
+  for (const key of ["paidAmountMinor", "tr_paid_minor"]) {
+    if (Object.hasOwn(transaction, key)) return readPaidMinor(transaction[key]);
+  }
+  for (const key of ["paidAmount", "amountPaid", "tr_paid"]) {
+    if (Object.hasOwn(transaction, key)) return readPaidMajor(transaction[key]);
+  }
+  return null;
+}

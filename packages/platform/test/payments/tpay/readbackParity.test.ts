@@ -42,7 +42,8 @@ it.each(statuses)("projects donor $label readback for both purposes and all paid
         const normalized = await donor.readPayment({ providerPaymentId: identity.providerPaymentRef, attempt, purpose });
         const recovery = await donor.readRecoveryPayment({ providerPaymentId: identity.providerPaymentRef, attempt, purpose });
         expect(normalized, label).toEqual(recovery.status);
-        expect(normalized, label).toMatchObject({ status: row.kind, amountMinor: Math.round(Number(amount.paidAmount) * 100),
+        const amountMinor = Math.round(Number(amount.paidAmount) * 100);
+        expect(normalized, label).toMatchObject({ status: row.kind, amountMinor,
           occurredAt: row.occurredAt });
         expect(recovery, label).toMatchObject({ identityMatches: true, configuredMoneyMatches: true,
           manualReviewRequired: row.label === "chargeback" });
@@ -58,7 +59,8 @@ it.each(statuses)("projects donor $label readback for both purposes and all paid
           ? { ...base, kind: "unknown", reason: "indeterminate" }
           : { ...base, kind: normalized.status, observedMoney: normalized.status === "succeeded"
             ? { amountMinor: normalized.amountMinor, currency: normalized.currency } : expectedMoney,
-          providerOccurredAt: normalized.occurredAt };
+          providerOccurredAt: normalized.occurredAt,
+          ...(normalized.status === "succeeded" ? { capturedAmountBasis: "provider_capture_v1" } : {}) };
         const fetchImpl = vi.fn<TpayPaymentAdapterConfig["http"]["fetchImpl"]>(async url => {
           expect(["https://api.example.test/oauth/auth", "https://api.example.test/transactions/api-1"]).toContain(url);
           return { ok: true, status: 200, text: async () => "", json: async () => url.endsWith("/oauth/auth")
@@ -95,6 +97,7 @@ function terminalAmountMismatch(
   attempt: ClaimedPaymentAttempt,
   status: ProviderReconciliationStatus,
 ): string | null {
+  if (status.status === "succeeded" && status.amountMinor === null) return "provider_amount_missing";
   if (status.amountMinor !== null && status.amountMinor !== attempt.amountMinor) {
     return "provider_amount_mismatch";
   }

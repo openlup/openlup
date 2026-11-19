@@ -195,7 +195,8 @@ FROM (
     NULL, NULL, 33972,
     (SELECT currency_code FROM public.commerce_settlement_intents WHERE id = (SELECT intent_id FROM _dz)),
     true,
-    '{"provider":"card_rail","amountMinor":33972}'::jsonb
+    jsonb_build_object('provider','card_rail','amountMinor',33972,
+      '__paymentTruth',jsonb_build_object('fingerprint',repeat('d',64),'capturedAmountBasis','provider_capture_v1'))
   ) AS e
 ) s;
 

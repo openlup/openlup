@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { PostgresPaymentTruthOptions } from "./contracts/truth.js";
+import { CAPTURE_REVIEW_RESULT_KIND, PROTECTED_FAILURE_RESULT_KIND } from "./paymentProviderReconciliationEvidence.js";
 import { paymentPayloadFingerprint, paymentSourceFingerprint } from "./paymentTruth.js";
 import type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
 import { createPostgresProviderPaymentControlPort } from "./postgresProviderControl.js";
@@ -12,6 +13,11 @@ const receipt = z.object({ paymentEvent: z.object({ id: z.guid(), paymentIntentI
 export function createPostgresPaymentWebhookControlPort(db: PaymentProviderExecutor, options: PostgresPaymentTruthOptions): PaymentWebhookControlPort {
   const control = createPostgresProviderPaymentControlPort(db, options);
   return {
+    async findCompletedHistoricalCapture(input) {
+      const row = (await db.query("SELECT public.commerce_payment_control_completed_capture_receipt($1,$2,$3,$4) AS event_id",
+        [input.provider, input.providerEventId, input.providerPaymentId, input.legacyFingerprint])).rows[0];
+      return z.guid().nullable().parse(row?.event_id);
+    },
     async ingestPaymentEvent(input) {
       const payloadFingerprint = paymentPayloadFingerprint(input.rawPayload);
       const normalized = input.rawPayload.openlupEvidence;
@@ -47,7 +53,10 @@ export function createPostgresPaymentWebhookControlPort(db: PaymentProviderExecu
           ELSE $10::jsonb END) AS response`,
         [input.provider, input.providerEventId, input.eventType, input.providerPaymentId, input.paymentIntentId ?? null,
           input.paymentAttemptId ?? null, input.amountMinor ?? null, input.currency ?? null, true,
-          JSON.stringify({ ...input.rawPayload, __paymentTruth: { fingerprint: eventFingerprint, evidence: sourceEvidence } })],
+          JSON.stringify({ ...input.rawPayload, __paymentTruth: {
+            fingerprint: eventFingerprint, evidence: sourceEvidence,
+            capturedAmountBasis: input.capturedAmountBasis,
+          } })],
       )).rows[0]?.response);
       if (!parsed.success) throw new Error("payment_event_receipt_unavailable");
       const event = parsed.data.paymentEvent;
@@ -66,7 +75,8 @@ export function createPostgresPaymentWebhookControlPort(db: PaymentProviderExecu
       return z.object({ setupEventProcessed: z.object({ updated: z.boolean() }) }).parse(value).setupEventProcessed;
     },
     async applyPaymentResult(input) {
-      return { replayed: (await control.applyPaymentResult(input)).replayed };
+      const { replayed, kind } = await control.applyPaymentResult(input);
+      return kind === CAPTURE_REVIEW_RESULT_KIND || kind === PROTECTED_FAILURE_RESULT_KIND ? { replayed, kind } : { replayed };
     },
   };
 }

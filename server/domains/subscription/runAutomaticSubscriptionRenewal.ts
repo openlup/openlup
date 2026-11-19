@@ -231,6 +231,9 @@ async function readAndApplyProviderOutcome(
     amountMinor: operation.cycleSnapshot.totalAmountMinor,
     currency: operation.cycleSnapshot.currency,
   });
+  if (observed.status === "succeeded" && (observed.amountMinor === null || !observed.currency?.trim())) {
+    return automaticRenewalResult(operation, "awaiting_provider", "provider_capture_money_incomplete");
+  }
   if (observed.amountMinor !== null && observed.amountMinor !== operation.cycleSnapshot.totalAmountMinor) {
     throw new Error("subscription_renewal_provider_amount_mismatch");
   }
