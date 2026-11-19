@@ -21,7 +21,7 @@ import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, assertCatalogPublicationAuthorship, assertCatalogPublicationPreparation,
   compileCatalogPublicationEffects, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected,
-  catalogPublicationMediaIssue, type CatalogPublicationDocument } from "./publicationValidation.js";
+  catalogPublicationMediaIssue, catalogPublicationPresentation, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publication_id,result::jsonb AS result";
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -523,8 +523,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const mediaBySku = new Map(prepared.payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
         const verifiedMedia = new Set<string>();
         const retainedByCode = new Map(preliminary.skus.map(sku => [sku.code, sku]));
-        const presentationEffect = prepared.payload.publication.operations.findLast(op => op.op === "set_product_presentation");
-        const mediaRef = (presentationEffect ? presentationEffect.presentation : preliminary.product?.presentation)?.mediaRef;
+        const mediaRef = catalogPublicationPresentation(prepared.payload.publication.operations, preliminary.product?.presentation ?? null)?.mediaRef;
         async function checkActivationSources(liveSkus: RetainedState["liveSkus"]) {
           const { activationCodes, selectedSources } = selectActivationSources(liveSkus);
           for (const code of activationCodes) {

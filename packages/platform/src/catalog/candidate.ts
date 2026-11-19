@@ -11,7 +11,7 @@ import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
-import { catalogPublicationMediaIssue, catalogPublicationPreparationIssues, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
+import { catalogPublicationMediaIssue, catalogPublicationPreparationIssues, catalogPublicationPresentation, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
   type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
 import { z } from "./validation.js";
 
@@ -86,7 +86,6 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     }
     if (!payload.product.documentRevision) hard.push({ path: "product.documentRevision", code: "document_reference_missing" });
     if (!rules || head && !deps.readPublicationState) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
-    const authoredPresentation = payload.publication.operations.findLast(op => op.op === "set_product_presentation");
     let compiled: ReturnType<typeof compileCatalogPublication> | undefined;
     if (hard.length === 0 && rules) {
       try {
@@ -101,7 +100,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
       }
     }
     const presentation = compiled ? compiled.product.presentation
-      : authoredPresentation ? authoredPresentation.presentation : payload.product.sharedContent.presentation;
+      : catalogPublicationPresentation(payload.publication.operations, payload.product.sharedContent.presentation);
     if (presentation !== null) {
       let result: unknown;
       try { result = await deps.presentationReadiness?.(record.productId, presentation); } catch { /* Evidence is unknown. */ }

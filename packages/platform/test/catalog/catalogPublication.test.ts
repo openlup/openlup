@@ -810,7 +810,7 @@ it.each([
   ["active", "draft", true, ["set_sku_status"]],
   ["active", "active", true, []],
   ["draft", "draft", false, []],
-] as const)("CD-CAT-43 generates the donor promotion set for %s product, %s SKU, positive eligibility %s", (product, sku, enabling, expected) => {
+] as const)("draft compilation generates the required promotion set for %s product, %s SKU, positive eligibility %s", (product, sku, enabling, expected) => {
   const data = publicationWithSecondary();
   const primary = data.skus.find(row => row.code === "ARTICLE")!;
   primary.status = "active"; primary.sellableStandalone = true;

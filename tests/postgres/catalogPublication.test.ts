@@ -3203,7 +3203,7 @@ it.each([
   expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
 });
 
-it.each(["null", "unchanged"] as const)("CD-CAT-43 preserves storefront and projection for %s presentation over two revisions", async reading => {
+it.each(["null", "unchanged"] as const)("publication preserves storefront and projection for %s presentation over two revisions", async reading => {
   await inPriceDatabase(async () => {
     const data = await priceDraft();
     const target = realPriceAuthority(), capability = (await target.authorize(null))!;
@@ -3240,7 +3240,7 @@ it.each(["null", "unchanged"] as const)("CD-CAT-43 preserves storefront and proj
   });
 });
 
-it.each(["missing SKU promotion", "missing product promotion"] as const)("CD-CAT-43 refuses an atomic activation batch with %s", async missing => {
+it.each(["missing SKU promotion", "missing product promotion"] as const)("publication refuses an atomic activation batch with %s", async missing => {
   await inPriceDatabase(async () => {
     const data = await priceDraft(), payload = structuredClone(data.payload);
     payload.publication.operations = payload.publication.operations.filter(op => op.op !== "set_product_status"

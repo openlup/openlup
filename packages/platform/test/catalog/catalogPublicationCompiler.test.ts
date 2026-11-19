@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { compileCatalogPublication, type CatalogPublicationCompileInput } from "../../src/catalog/publicationValidation.js";
 import { input } from "./fixtures/publicationInput.js";
 
-it("CD-CAT-43 delegates opaque document decoding and SKU facts to the installed rules", () => {
+it("publication delegates opaque document decoding and SKU facts to the installed rules", () => {
   const source = input();
   const decodeDocument = vi.fn((canonicalText: string) => ({ ...JSON.parse(canonicalText), installed: true }));
   const canonicalizeDocument = (value: unknown) => {
