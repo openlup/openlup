@@ -416,17 +416,28 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_order_basket_v2(uuid,jsonb,boolean) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_quoted_edit_basket_v2(p_lines jsonb,p_sized boolean) RETURNS jsonb
+CREATE FUNCTION public.catalog_quoted_edit_evidence_v2(p_lines jsonb,p_sized boolean) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE lines jsonb; basket jsonb;
 BEGIN
  IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN RETURN NULL; END IF;
- RETURN public.catalog_retained_basket_v2((SELECT jsonb_agg(jsonb_build_object('variantId',l->'variantId',
+ SELECT jsonb_agg(jsonb_build_object('variantId',l->'variantId',
   'sku',CASE WHEN p_sized THEN l#>'{quoteLine,sku}' ELSE to_jsonb(k.sku) END,
-  'quantity',CASE WHEN p_sized THEN l->'qty' ELSE l->'quantity' END))
-  FROM jsonb_array_elements(p_lines) l LEFT JOIN public.catalog_skus k ON to_jsonb(k.id)=l->'variantId'));
+  'quantity',CASE WHEN p_sized THEN l->'qty' ELSE l->'quantity' END,
+  'unitAmountMinor',CASE WHEN p_sized THEN l#>'{quoteLine,unitPriceGross,amountMinor}' ELSE l->'unitPriceMinor' END,
+  'isAddon',l->'isAddon'))
+ INTO lines FROM jsonb_array_elements(p_lines) l
+ LEFT JOIN public.catalog_skus k ON k.id=CASE WHEN NOT p_sized AND l->>'variantId' ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
+  THEN (l->>'variantId')::uuid END;
+ basket:=public.catalog_retained_basket_v2(lines);
+ IF basket IS NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements(lines) l
+    WHERE NOT public.catalog_renewal_integer_v3(l->'unitAmountMinor',0)
+     OR jsonb_typeof(l->'isAddon') IS DISTINCT FROM 'boolean') THEN RETURN NULL; END IF;
+ RETURN jsonb_build_object('basket',basket,'roles',(SELECT jsonb_object_agg(l->>'sku',l-ARRAY['sku','variantId'])
+    FROM jsonb_array_elements(lines) l));
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_quoted_edit_basket_v2(jsonb,boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_quoted_edit_evidence_v2(jsonb,boolean) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_acceptance_roster_valid_v2(p_acceptance jsonb,p_basket jsonb) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -457,11 +468,15 @@ CREATE FUNCTION public.catalog_edit_evidence_v2(p_event public.subscription_even
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE payload jsonb:=p_event.payload; edit_action text:=payload->>'action'; preview public.subscription_quote_previews;
  old_quote public.subscription_edit_quotes; edited jsonb; quoted jsonb; proposed jsonb; hash text; basis integer;
+ edited_roles jsonb;
 BEGIN
  IF edit_action IS NULL OR p_event.event_type<>'subscription.customer_self_service.'||edit_action THEN RETURN NULL; END IF;
  IF payload ? 'linePricing' THEN
   edited:=public.catalog_retained_basket_v2(payload->'linePricing');
   IF edited IS NULL THEN RETURN NULL; END IF;
+  SELECT jsonb_object_agg(coalesce(l->>'sku',l->>'skuCode'),jsonb_build_object('quantity',coalesce(l->'quantity',l->'qty'),
+    'unitAmountMinor',l->'unitAmountMinor','isAddon',l->'isAddon'))
+  INTO edited_roles FROM jsonb_array_elements(payload->'linePricing') l;
  END IF;
  IF payload ? 'quotePreviewId' THEN
   SELECT * INTO preview FROM public.subscription_quote_previews q
@@ -473,10 +488,11 @@ BEGIN
   IF edit_action='update_package_template' THEN
    IF jsonb_typeof(preview.quote_snapshot->'baseLines') IS DISTINCT FROM 'array'
     OR jsonb_typeof(preview.quote_snapshot->'addonLines') IS DISTINCT FROM 'array' THEN RETURN NULL; END IF;
-   proposed:=(preview.quote_snapshot->'baseLines')||(preview.quote_snapshot->'addonLines');
+   SELECT jsonb_agg(l||jsonb_build_object('isAddon',i>jsonb_array_length(preview.quote_snapshot->'baseLines')) ORDER BY i)
+   INTO proposed FROM jsonb_array_elements((preview.quote_snapshot->'baseLines')||(preview.quote_snapshot->'addonLines')) WITH ORDINALITY x(l,i);
   ELSE proposed:=preview.quote_snapshot->'lines'; END IF;
-  quoted:=public.catalog_quoted_edit_basket_v2(proposed,true);
-  IF quoted IS NULL OR quoted IS DISTINCT FROM edited THEN RETURN NULL; END IF;
+  quoted:=public.catalog_quoted_edit_evidence_v2(proposed,true);
+  IF quoted IS NULL OR quoted->'basket' IS DISTINCT FROM edited OR quoted->'roles' IS DISTINCT FROM edited_roles THEN RETURN NULL; END IF;
   hash:=preview.quote_hash; basis:=preview.template_version;
  ELSE
   SELECT * INTO old_quote FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=p_event.id
@@ -486,38 +502,17 @@ BEGIN
    basis:=old_quote.expected_template_version;
    IF hash IS DISTINCT FROM old_quote.quote_hash OR (payload ? 'quoteHash' AND payload->>'quoteHash' IS DISTINCT FROM hash)
     OR (SELECT count(*) FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=p_event.id)<>1 THEN RETURN NULL; END IF;
-   quoted:=public.catalog_quoted_edit_basket_v2(old_quote.proposed_lines,false);
-   IF quoted IS NULL OR (edited IS NOT NULL AND quoted IS DISTINCT FROM edited) THEN RETURN NULL; END IF;
+   quoted:=public.catalog_quoted_edit_evidence_v2(old_quote.proposed_lines,false);
+   IF quoted IS NULL OR (edited IS NOT NULL AND (quoted->'basket' IS DISTINCT FROM edited
+      OR quoted->'roles' IS DISTINCT FROM edited_roles)) THEN RETURN NULL; END IF;
   ELSIF payload ? 'quoteHash' OR payload#>'{payload,acceptedQuoteHash}' IS NOT NULL THEN RETURN NULL;
-  ELSE quoted:=edited; END IF;
+  ELSIF edited IS NOT NULL THEN quoted:=jsonb_build_object('basket',edited); END IF;
  END IF;
  IF quoted IS NULL THEN RETURN NULL; END IF;
- RETURN jsonb_build_object('basket',quoted,'basis',basis,'quoteHash',hash,'actorId',preview.actor_id,
-  'commandKey',preview.accepted_idempotency_key);
+ RETURN quoted||jsonb_build_object('basis',basis,'quoteHash',hash,'commandKey',preview.accepted_idempotency_key);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_edit_evidence_v2(public.subscription_events,boolean) FROM PUBLIC;
-
-CREATE FUNCTION public.catalog_edit_consumed_basis_v2(p_event public.subscription_events,p_basis integer) RETURNS boolean
-LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE evidence jsonb:=public.catalog_edit_evidence_v2(p_event,false);
-BEGIN
- IF evidence->'basis' IS DISTINCT FROM to_jsonb(p_basis) THEN RETURN false; END IF;
- IF p_event.payload->>'quoteHash'=evidence->>'quoteHash' AND NOT (p_event.payload ? 'quotePreviewId')
-  AND p_event.payload#>'{payload,acceptedQuoteHash}' IS NULL
-  AND p_event.payload->'templateVersion'=to_jsonb(p_basis::bigint+1) THEN RETURN true; END IF;
- RETURN EXISTS(SELECT 1 FROM public.subscription_command_receipts r
-  JOIN public.subscriptions s ON s.id=r.subscription_id AND s.client_id=r.client_id
-  WHERE r.subscription_id=p_event.subscription_id AND r.quote_hash=evidence->>'quoteHash'
-   AND (evidence->>'actorId' IS NULL OR r.actor_id::text=evidence->>'actorId')
-   AND (evidence->>'commandKey' IS NULL OR r.idempotency_key=evidence->>'commandKey')
-   AND p_event.idempotency_key='command:'||encode(sha256(convert_to(r.actor_id::text||':'||r.idempotency_key,'UTF8')),'hex')
-   AND r.status='applied' AND r.command->>'action'=p_event.payload->>'action' AND r.result->>'action'=p_event.payload->>'action'
-   AND r.result->'subscriptionId'=to_jsonb(r.subscription_id) AND r.result->'eventId'=to_jsonb(p_event.id)
-   AND r.result->'templateVersion'=to_jsonb(p_basis::bigint+1));
-END;
-$$;
-REVOKE ALL ON FUNCTION public.catalog_edit_consumed_basis_v2(public.subscription_events,integer) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_renewal_integer_v3(p_value jsonb,p_min bigint,p_max bigint DEFAULT 9007199254740991) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -548,42 +543,147 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_renewal_lines_v3(jsonb,boolean) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_full_graduation_lines_v2(p_payload jsonb,p_graduation jsonb) RETURNS boolean
+CREATE FUNCTION public.catalog_full_graduation_lines_v2(p_payload jsonb,p_graduation jsonb,p_subscription uuid,p_latest boolean) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE before_lines jsonb:=p_payload->'before'; final_lines jsonb:=p_payload->'lines';
- pricing jsonb:=p_payload->'linePricing'; marker jsonb:=p_graduation->'lines'; roster jsonb;
+ pricing jsonb:=p_payload->'linePricing'; marker jsonb:=p_graduation->'lines'; carried jsonb:=p_payload->'carriedAddonSkus';
+ line jsonb; sku_code text; role jsonb; roles jsonb; prior_version integer:=(p_payload->>'basisTemplateVersion')::integer;
+ actual_carried jsonb:='[]';
 BEGIN
  IF jsonb_typeof(marker) IS DISTINCT FROM 'array' OR NOT public.catalog_renewal_lines_v3(before_lines)
-  OR NOT public.catalog_renewal_lines_v3(final_lines,true) THEN RETURN false; END IF;
- roster:=public.catalog_retained_basket_v2(final_lines);
- IF roster IS NULL OR roster IS DISTINCT FROM public.catalog_retained_basket_v2(pricing)
-  OR public.catalog_retained_basket_v2(before_lines) IS NULL THEN RETURN false; END IF;
- RETURN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(marker) m WHERE NOT EXISTS(
-  SELECT 1 FROM jsonb_array_elements(final_lines) l JOIN jsonb_array_elements(pricing) p ON p->'sku'=l->'sku'
-  WHERE l->'sku'=m->'sku' AND l->'quantity'=m->'qty'
-   AND l->'unitAmountMinor'=m#>'{quoteLine,unitPriceGross,amountMinor}'
-   AND p->'isAddon'=m->'isAddon' AND p->'unitAmountMinor'=l->'unitAmountMinor'))
- AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(final_lines) l WHERE NOT EXISTS(
-  SELECT 1 FROM jsonb_array_elements(marker) m WHERE m->'sku'=l->'sku')
-  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(before_lines) b JOIN jsonb_array_elements(pricing) p ON p->'sku'=b->'sku'
-   WHERE b->'sku'=l->'sku' AND b->'quantity'=l->'quantity' AND b->'unitAmountMinor'=l->'unitAmountMinor'
-    AND p->'isAddon'='true'::jsonb AND p->'unitAmountMinor'=l->'unitAmountMinor'));
+  OR NOT public.catalog_renewal_lines_v3(final_lines,true) OR public.catalog_retained_basket_v2(before_lines) IS NULL
+  OR public.catalog_retained_basket_v2(final_lines) IS NULL OR jsonb_typeof(pricing) IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(marker))
+  OR public.catalog_retained_basket_v2(marker) IS NULL
+  OR (jsonb_array_length(pricing)>0 AND public.catalog_retained_basket_v2(pricing) IS NULL)
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(pricing) p WHERE NOT EXISTS(
+    SELECT 1 FROM jsonb_array_elements(final_lines) l WHERE p->'sku'=l->'sku' AND p->'quantity'=l->'quantity'
+     AND p->'unitAmountMinor'=l->'unitAmountMinor'))
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(marker) m WHERE NOT EXISTS(
+    SELECT 1 FROM jsonb_array_elements(final_lines) l JOIN jsonb_array_elements(pricing) p ON p->'sku'=l->'sku'
+    WHERE l->'sku'=m->'sku' AND l->'quantity'=m->'qty'
+     AND l->'unitAmountMinor'=m#>'{quoteLine,unitPriceGross,amountMinor}'
+     AND p->'isAddon'=m->'isAddon')) THEN RETURN false; END IF;
+
+ IF prior_version>1 THEN roles:=public.subscription_catalog_basis_transition(p_subscription,prior_version-1)->'roles'; END IF;
+ FOR line IN SELECT value FROM jsonb_array_elements(final_lines) l
+  WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(marker) m WHERE m->'sku'=l.value->'sku')
+ LOOP
+  sku_code:=line->>'sku';
+  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(before_lines) b WHERE b-'lineOrdinal'=line-'lineOrdinal') THEN RETURN false; END IF;
+  actual_carried:=actual_carried||jsonb_build_array(sku_code);
+  role:=NULL;
+  IF jsonb_typeof(roles)='object' THEN
+   IF roles->sku_code->'quantity' IS DISTINCT FROM line->'quantity'
+    OR roles->sku_code->'unitAmountMinor' IS DISTINCT FROM line->'unitAmountMinor' THEN RETURN false; END IF;
+   role:=roles->sku_code->'isAddon';
+  END IF;
+  -- Before a further edit, a matching template row was preserved by graduation.
+  IF p_latest AND role IS NULL THEN
+   SELECT to_jsonb(l.is_addon) INTO role FROM public.subscription_lines l JOIN public.catalog_skus k ON k.id=l.variant_id
+   WHERE l.subscription_id=p_subscription AND k.sku=sku_code AND to_jsonb(l.quantity)=line->'quantity'
+    AND to_jsonb(l.unit_price_minor)=line->'unitAmountMinor';
+  END IF;
+  IF role='false'::jsonb OR (carried IS NULL AND role IS DISTINCT FROM 'true'::jsonb) THEN RETURN false; END IF;
+ END LOOP;
+ IF carried IS NOT NULL AND (jsonb_typeof(carried) IS DISTINCT FROM 'array'
+  OR jsonb_array_length(carried)<>jsonb_array_length(actual_carried) OR NOT carried @> actual_carried) THEN RETURN false; END IF;
+ RETURN true;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_full_graduation_lines_v2(jsonb,jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_full_graduation_lines_v2(jsonb,jsonb,uuid,boolean) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_graduation_consumed_v2(p_subscription uuid,p_basis integer,p_graduation jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
- SELECT count(*)=1 FROM public.subscription_events e
- WHERE e.subscription_id=p_subscription AND (
-  (e.event_type='subscription.starter_graduated' AND e.payload->'templateVersion'=to_jsonb(p_basis::bigint+1)
-   AND e.payload->'mode'='"full"'::jsonb AND e.payload->'basisTemplateVersion'=to_jsonb(p_basis)
-   AND e.payload->'cadenceDays'=p_graduation->'cadenceDays'
-   AND e.idempotency_key ~ ('^(system:)*starter-graduation:'||p_subscription::text||':'||p_basis::text||'$')
-   AND public.catalog_full_graduation_lines_v2(e.payload,p_graduation))
-  OR (e.event_type LIKE 'subscription.customer_self_service.%' AND public.catalog_edit_consumed_basis_v2(e,p_basis)));
+-- The subscription owner's accepted command is the transition evidence. The
+-- actor who saved a preview may differ from the actor whose command applied it.
+CREATE FUNCTION public.subscription_catalog_basis_transition(p_subscription uuid,p_basis integer) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE event public.subscription_events; evidence jsonb; result jsonb; candidate jsonb; marker jsonb;
+ current_version integer; latest_only boolean; before_basket jsonb; basket jsonb; kind text;
+BEGIN
+ SELECT template_version INTO current_version FROM public.subscriptions WHERE id=p_subscription;
+ IF NOT FOUND OR p_basis<1 OR p_basis>=current_version THEN RETURN '{"outcome":"missing"}'::jsonb; END IF;
+ latest_only:=current_version::bigint=p_basis::bigint+1;
+
+ FOR event IN SELECT e.* FROM public.subscription_events e WHERE e.subscription_id=p_subscription AND (
+  (e.event_type IN ('subscription.starter_graduated','subscription.starter_cadence_normalized')
+    AND e.payload->'templateVersion'=to_jsonb(p_basis::bigint+1))
+  OR e.event_type LIKE 'subscription.customer_self_service.%')
+ LOOP
+  before_basket:=NULL;
+  IF event.event_type LIKE 'subscription.customer_self_service.%' THEN
+   evidence:=public.catalog_edit_evidence_v2(event,false);
+   IF evidence->'basis' IS DISTINCT FROM to_jsonb(p_basis) THEN CONTINUE; END IF;
+   IF NOT (event.payload->>'quoteHash'=evidence->>'quoteHash' AND NOT (event.payload ? 'quotePreviewId')
+    AND event.payload#>'{payload,acceptedQuoteHash}' IS NULL
+    AND event.payload->'templateVersion'=to_jsonb(p_basis::bigint+1)) IS TRUE
+    AND NOT EXISTS(SELECT 1 FROM public.subscription_command_receipts r
+     JOIN public.subscriptions s ON s.id=r.subscription_id AND s.client_id=r.client_id
+     WHERE r.subscription_id=p_subscription AND r.quote_hash=evidence->>'quoteHash'
+      AND (evidence->>'commandKey' IS NULL OR r.idempotency_key=evidence->>'commandKey')
+      AND event.idempotency_key='command:'||encode(sha256(convert_to(r.actor_id::text||':'||r.idempotency_key,'UTF8')),'hex')
+      AND r.status='applied' AND r.result->>'status'='applied'
+      AND r.command->'clientId'=to_jsonb(r.client_id) AND r.command->'subscriptionId'=to_jsonb(r.subscription_id)
+      AND r.command->>'action'=event.payload->>'action' AND r.result->>'action'=event.payload->>'action'
+      AND r.result->'subscriptionId'=to_jsonb(r.subscription_id) AND r.result->'eventId'=to_jsonb(event.id)
+      AND r.result->'templateVersion'=to_jsonb(p_basis::bigint+1)) THEN CONTINUE; END IF;
+   basket:=evidence->'basket';
+   kind:='edit';
+  ELSE
+   -- Starter terms belong to the purchase attachment, including its saved basis.
+   SELECT a.purchase_facts#>'{renewalTerms,starterPack}' INTO marker
+   FROM public.subscription_renewal_attachments a WHERE a.subscription_id=p_subscription AND a.completed_at IS NOT NULL;
+   IF marker->'schemaVersion' IS DISTINCT FROM '"1"'::jsonb
+    OR NOT public.catalog_renewal_integer_v3(marker->'basisTemplateVersion',1,p_basis)
+    OR NOT public.catalog_renewal_integer_v3(marker#>'{graduation,cadenceDays}',1,2147483647)
+    OR event.payload->'basisTemplateVersion' IS DISTINCT FROM marker->'basisTemplateVersion'
+    OR event.payload->'cadenceDays' IS DISTINCT FROM marker#>'{graduation,cadenceDays}' THEN CONTINUE; END IF;
+   IF event.event_type='subscription.starter_graduated' THEN
+    IF marker->'basisTemplateVersion' IS DISTINCT FROM to_jsonb(p_basis)
+     OR event.payload->>'mode' IS DISTINCT FROM 'full'
+     OR event.idempotency_key !~ ('^(system:)*starter-graduation:'||p_subscription::text||':'||p_basis::text||'$')
+     OR NOT public.catalog_full_graduation_lines_v2(event.payload,marker->'graduation',p_subscription,latest_only)
+    THEN CONTINUE; END IF;
+    kind:='graduation';
+   ELSE
+    IF event.payload->>'mode' IS DISTINCT FROM 'cadence_only'
+     OR event.idempotency_key !~ ('^(system:)*starter-cadence-normalize:'||p_subscription::text||':'||(marker->>'basisTemplateVersion')||'$')
+     OR NOT public.catalog_renewal_lines_v3(event.payload->'lines')
+     OR event.payload->'before' IS DISTINCT FROM event.payload->'lines' THEN CONTINUE; END IF;
+    kind:='cadence';
+   END IF;
+   before_basket:=public.catalog_retained_basket_v2(event.payload->'before');
+   basket:=public.catalog_retained_basket_v2(event.payload->'lines');
+  END IF;
+  IF basket IS NULL THEN CONTINUE; END IF;
+  IF result IS NOT NULL THEN RETURN '{"outcome":"ambiguous"}'::jsonb; END IF;
+  candidate:=jsonb_build_object('outcome','proved','eventId',event.id,'kind',kind,'from',p_basis,
+    'to',p_basis::bigint+1,'basket',basket);
+  IF kind='edit' THEN candidate:=candidate||jsonb_build_object('roles',evidence->'roles'); END IF;
+  result:=CASE WHEN before_basket IS NULL THEN candidate ELSE candidate||jsonb_build_object('before',before_basket) END;
+ END LOOP;
+ RETURN coalesce(result,'{"outcome":"missing"}'::jsonb);
+END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_graduation_consumed_v2(uuid,integer,jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.subscription_catalog_basis_transition(uuid,integer) FROM PUBLIC;
+
+CREATE FUNCTION public.subscription_catalog_purchase_handoff(p_subscription uuid,p_version integer,p_purchase jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE transition jsonb; expected jsonb:=p_purchase;
+BEGIN
+ IF p_version IS NULL OR p_version<1 OR expected IS NULL THEN RETURN false; END IF;
+ FOR basis IN 1..p_version-1 LOOP
+  transition:=public.subscription_catalog_basis_transition(p_subscription,basis);
+  IF transition->>'outcome'<>'proved' OR (transition ? 'before' AND transition->'before' IS DISTINCT FROM expected)
+  THEN RETURN false; END IF;
+  expected:=transition->'basket';
+ END LOOP;
+ RETURN expected IS NOT DISTINCT FROM (SELECT jsonb_object_agg(l.sku,l.quantity) FROM public.subscription_renewal_term_lines l
+                  WHERE l.subscription_id=p_subscription)
+  AND expected IS NOT DISTINCT FROM (SELECT jsonb_object_agg(k.sku,l.quantity) FROM public.subscription_lines l
+                JOIN public.catalog_skus k ON k.id=l.variant_id WHERE l.subscription_id=p_subscription);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.subscription_catalog_purchase_handoff(uuid,integer,jsonb) FROM PUBLIC;
 
 -- A nullable legacy revision never erases a known identity. This is one unpaginated
 -- query for archive and impact. It takes no commerce row or advisory locks.
@@ -642,8 +742,7 @@ BEGIN
  FOR item IN SELECT o.id,o.metadata,o.catalog_acceptance,o.total_amount_minor,a.subscription_id,s.template_version,t.purchase_facts,
   a.state='active' AND t.completed_at IS NOT NULL AND t.subscription_id=a.subscription_id
    AND EXISTS(SELECT 1 FROM public.subscription_renewal_terms r WHERE r.subscription_id=a.subscription_id)
-   AND EXISTS(SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=a.subscription_id)
-   AND EXISTS(SELECT 1 FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=a.subscription_id) AS handed_off
+   AS handed_off
   FROM public.commerce_orders o
   LEFT JOIN public.subscription_activations a ON a.order_id=o.id
   LEFT JOIN public.subscription_renewal_attachments t ON t.order_id=o.id
@@ -659,13 +758,7 @@ BEGIN
   IF item.handed_off THEN
    purchase_basket:=public.catalog_retained_basket_v2(item.purchase_facts->'lines',true);
    IF purchase_basket IS DISTINCT FROM basket THEN unknown:=true;
-   ELSIF (purchase_basket IS DISTINCT FROM (
-      SELECT jsonb_object_agg(l.sku,l.quantity) FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=item.subscription_id)
-     OR purchase_basket IS DISTINCT FROM (
-      SELECT jsonb_object_agg(k.sku,l.quantity) FROM public.subscription_lines l JOIN public.catalog_skus k ON k.id=l.variant_id
-      WHERE l.subscription_id=item.subscription_id))
-    AND (item.template_version<=1 OR NOT public.catalog_graduation_consumed_v2(
-     item.subscription_id,1,item.purchase_facts#>'{renewalTerms,starterPack,graduation}')) THEN unknown:=true;
+   ELSIF NOT public.subscription_catalog_purchase_handoff(item.subscription_id,item.template_version,purchase_basket) THEN unknown:=true;
    END IF;
    CONTINUE;
   END IF;
@@ -804,7 +897,7 @@ BEGIN
   IF unknown THEN CONTINUE; END IF;
   basis:=(marker->>'basisTemplateVersion')::integer;
   IF basis<>item.template_version THEN
-   IF basis<item.template_version AND public.catalog_graduation_consumed_v2(item.subscription_id,basis,graduation) THEN CONTINUE; END IF;
+   IF basis<item.template_version AND public.subscription_catalog_basis_transition(item.subscription_id,basis)->>'kind' IN ('edit','graduation') THEN CONTINUE; END IF;
    unknown:=true; CONTINUE;
   END IF;
   IF sku.sku=ANY(codes) THEN

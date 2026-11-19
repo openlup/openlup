@@ -130,6 +130,7 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
   const original = z.array(z.object({ lineOrdinal: integer, sku: z.string(), quantity: integer, unitAmountMinor: amount }).strict()).parse(row.lines);
   const prices = currentPricing(row, original, terms!);
   let finalLines = original, finalPricing = prices;
+  let carriedAddonSkus: string[] = [];
   if (full) {
     const template = await db.query(`SELECT k.sku,l.is_addon,l.sort_order FROM public.subscription_lines l
       JOIN public.catalog_skus k ON k.id=l.variant_id WHERE l.subscription_id=$1::uuid`, [id]);
@@ -140,7 +141,8 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
       unitAmountMinor: amount.parse(subscriptionRecord(line.quoteLine.unitPriceGross).amountMinor), isAddon: line.isAddon, quoteLine: line.quoteLine }));
     const unique = new Set(next.map(line => line.sku));
     if (unique.size !== next.length || next.some(line => addons.has(line.sku))) throw new Error("subscription_starter_graduation_invalid_lines");
-    const needed = [...unique, ...addons];
+    carriedAddonSkus = [...addons];
+    const needed = [...unique, ...carriedAddonSkus];
     const known = await db.query("SELECT sku,id FROM public.catalog_skus WHERE sku=ANY($1::text[])", [needed]);
     if (known.rows.length !== needed.length) throw new Error("subscription_starter_graduation_unknown_sku");
     const ids = new Map(known.rows.map(value => [String(value.sku), String(value.id)]));
@@ -181,6 +183,7 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     VALUES($1::uuid,$2,$3,$4::jsonb)`, [id, eventType, eventKey,
     JSON.stringify({ mode, basisTemplateVersion: marker.basisTemplateVersion, templateVersion: Number(row.template_version) + 1,
       cadenceDays: marker.graduation.cadenceDays, before: original, lines: finalLines, linePricing: finalPricing,
+      ...(full ? { carriedAddonSkus } : {}),
       ...(full && marker.graduation.sizeConstraint ? { sizeConstraint: marker.graduation.sizeConstraint } : {}),
       priceAgreementPolicy: { kind: "lock_until_edit", proration: "none", cycleEffect: "future_unlocked_cycles_only" } })]);
   return true;

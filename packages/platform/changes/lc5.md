@@ -30,6 +30,11 @@ these carriers install no application binding. Keep the newer readers while
 retained rows reference these versions. No agreement, quantity, money or cycle
 schedule is rewritten.
 
+A completed purchase attachment reconciles the accepted purchase against
+both subscription rosters through versioned edit and graduation results. Full
+graduation records the add-ons it carried, including those without a stored
+price. Missing or contradictory lineage leaves the obligation unknown.
+
 Order evidence reconciles accepted quotes, item quantities and retained
 references. Separate ordinals for the same SKU contribute to the same quantity.
 The deferred order check validates acceptance against the completed item ledger,

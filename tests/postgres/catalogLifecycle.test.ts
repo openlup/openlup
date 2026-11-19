@@ -1,5 +1,6 @@
 import { createNativeCatalogRenewalCodecV2, createPostgresRenewalSettlementPort, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { createHash, randomUUID } from "node:crypto";
+import { graduateNativeRenewal } from "../../packages/platform/src/subscriptions/nativeRenewalTerms.js";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it } from "vitest";
@@ -195,10 +196,12 @@ it.each([
   expect((await db.query("SELECT count(*) FROM public.catalog_publications")).rows).toEqual(before);
 });
 
-async function archive(f: Awaited<ReturnType<typeof seed>>) {
+async function archive(f: Awaited<ReturnType<typeof seed>>, skuCode?: string) {
   const payload = structuredClone(f.payload);
   payload.product.sharedContent.catalogAction = "revise";
-  payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: payload.product.slug!, expectedState: "draft", state: "archived", children: [] }];
+  payload.publication.operations = skuCode
+    ? [{ op: "set_sku_lifecycle", skuCode, expectedState: "draft", state: "archived" }]
+    : [{ op: "set_product_lifecycle", productSlug: payload.product.slug!, expectedState: "draft", state: "archived", children: [] }];
   if (!("receipt" in f.first.result)) throw new Error("Missing first head");
   return (await publish(payload, 1, f.first.result.receipt.head)).result;
 }
@@ -313,6 +316,87 @@ it.each(["attachment", "provisional order", "paid order", "unbound cycle", "froz
   }
   expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "unknown", reason: "catalog_obligation_evidence_unknown" });
   if (!kind.endsWith("acceptance")) expect(await archive(f)).toMatchObject({ reason: "catalog_obligation_evidence_unknown" });
+});
+it.each([
+  ["cadence retained", 1, false, "none"],
+  ["cadence retained one roster lost", 1, false, "template"],
+  ["cadence retained both rosters lost", 1, false, "both"],
+  ["cadence retained after another edit", 2, false, "both"],
+  ["replacement at version two", 1, true, "none"],
+  ["replacement after another edit", 2, true, "none"],
+  ["replacement with stale renewal roster", 2, true, "renewal"],
+] as const)("LC5-C3-O versioned owner handoff: %s", async (_name, edits, replaces, drift) => {
+  const f = await seed({ other: true });
+  const target = { id: f.payload.skus[1]!.id, code: f.payload.skus[1]!.code! };
+  const primary = { id: f.sku, code: f.code };
+  const original = [primary, target];
+  const orderId = await order(f, "fulfilled"), { leaf } = await replacement(f, orderId);
+  await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,617,617)", [orderId, target.id]);
+  await db.query("UPDATE public.commerce_orders SET total_amount_minor=1234 WHERE id=$1", [orderId]);
+  await db.query("INSERT INTO public.fulfillment_parcel_lines(shipment_id,order_item_id,sku_id,sku,quantity) SELECT $1,id,$2,$3,quantity FROM public.commerce_order_items WHERE order_id=$4 AND sku_id=$2", [leaf, target.id, target.code, orderId]);
+  await db.query("UPDATE public.fulfillment_shipments SET status='delivered',delivered_at=statement_timestamp() WHERE id=$1", [leaf]);
+  const clock = (await db.query("SELECT statement_timestamp() AS now,statement_timestamp()+interval '1 hour' AS expiry")).rows[0];
+  const lines = original.map((sku,index) => ({ lineOrdinal: index+1, sku: sku.code, quantity: 1, unitAmountMinor: 617 }));
+  const purchase = { currency: "XXX", stockSourceKey: "synthetic", settlementChannelKey: "sandbox",
+    unattendedChargeAuthorizedAt: clock.now, authorizationRef: "synthetic", payerAccountRef: null, methodRef: "synthetic",
+    methodEvidenceRef: "synthetic", templateId: "synthetic", cadenceDays: 28, shippingAmountMinor: 0, acquisitionRef: null, lines };
+  const priceList = randomUUID();
+  await db.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic handoff','AA','XXX')", [priceList]);
+  await db.query("UPDATE public.subscriptions SET currency_code='XXX',price_list_id=$2 WHERE id=$1", [f.subscription,priceList]);
+  await db.query("INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at) VALUES($1,$2,$3,28,'active',$4,$5,$6,statement_timestamp())", [orderId,f.client,f.subscription,"a".repeat(64),`active:${orderId}`,`declare:${orderId}`]);
+  await db.query("SELECT public.subscription_register_renewal_purchase($1,$2::jsonb)", [orderId,JSON.stringify(purchase)]);
+  await db.query("SELECT public.subscription_complete_renewal_attachment($1)", [orderId]);
+  for (const [index,sku] of original.entries()) {
+    await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,$3,617,'XXX')", [f.subscription,sku.id,index]);
+  }
+  expect(await obligations(target.id)).toMatchObject({ outcome: "complete", obligations: expect.arrayContaining([
+    expect.objectContaining({ family: "template", sourceId: f.subscription })]) });
+  await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1') ON CONFLICT(key) DO UPDATE SET value_text='1'");
+  const previewActor = randomUUID(), applyActor = randomUUID(), action = "update_package_template";
+  let lastEvent: string | undefined;
+  for (let basis = 1; basis <= edits; basis++) {
+    const roster = replaces ? [primary] : original;
+    const base = roster.map(sku => ({ variantId: sku.id, qty: 1 })), addons: never[] = [];
+    const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+    const baseLines = roster.map(sku => ({ variantId: sku.id, qty: 1,
+      quoteLine: { sku: sku.code, quantity: 1, unitPriceGross: money(617), lineSubtotalGross: money(617) } }));
+    const quoteHash = createHash("sha256").update(`${orderId}:${basis}`).digest("hex");
+    const planDays = 28 + basis, compositionConstraint = { kind: "plan_days", value: planDays };
+    const request = { planDays, base, addons };
+    const snapshot = { baseLines, addonLines: [], compositionConstraint };
+    const currentTotal = basis === 1 ? 1234 : roster.length * 617, newTotal = roster.length * 617;
+    const totals = { currentRecurringPrice: money(currentTotal), newRecurringPrice: money(newTotal), delta: money(newTotal-currentTotal) };
+    await db.query("SELECT public.subscription_quote_preview_record($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11)", [
+      previewActor,f.client,f.subscription,action,quoteHash,basis,clock.expiry,JSON.stringify(request),JSON.stringify(snapshot),JSON.stringify(totals),clock.now]);
+    const accepted = { ...request, expectedTemplateVersion: basis, acceptedQuoteHash: quoteHash };
+    const result = (await db.query("SELECT public.subscription_package_edit_apply($1,$2,$3,$4,$5::jsonb,$6) AS result", [
+      applyActor,f.client,`handoff:${orderId}:${basis}`,f.subscription,JSON.stringify({ ...accepted, request: accepted, ...snapshot, ...totals }),clock.now])).rows[0].result;
+    expect(result).toMatchObject({ status: "applied", templateVersion: basis+1 });
+    lastEvent = result.eventId;
+    expect((await db.query("SELECT public.subscription_catalog_basis_transition($1,$2) AS result", [f.subscription,basis])).rows[0].result)
+      .toMatchObject({ outcome: "proved", eventId: lastEvent, kind: "edit", from: basis, to: basis+1,
+        basket: Object.fromEntries(roster.map(sku => [sku.code,1])) });
+  }
+  if (drift === "template" || drift === "both") {
+    await db.query("DELETE FROM public.subscription_lines WHERE subscription_id=$1 AND variant_id=$2", [f.subscription,target.id]);
+  }
+  if (drift === "both") await db.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 AND sku=$2", [f.subscription,target.code]);
+  if (drift === "renewal") await db.query("UPDATE public.subscription_renewal_term_lines SET sku=$2 WHERE subscription_id=$1", [f.subscription,target.code]);
+  async function attemptArchive(path: "parent" | "sku") {
+    await db.query("SAVEPOINT archive_handoff");
+    try { return await archive(f, path === "sku" ? target.code : undefined); }
+    finally { await db.query("ROLLBACK TO SAVEPOINT archive_handoff"); await db.query("RELEASE SAVEPOINT archive_handoff"); }
+  }
+  if (drift !== "none") {
+    expect(await obligations(target.id)).toEqual({ schemaVersion: 2, outcome: "unknown", reason: "catalog_obligation_evidence_unknown" });
+    expect(await attemptArchive("parent")).toMatchObject({ reason: "catalog_obligation_evidence_unknown" });
+    expect(await attemptArchive("sku")).toMatchObject({ reason: "catalog_obligation_evidence_unknown" });
+  } else if (replaces) {
+    expect(await obligations(target.id)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
+    expect(await attemptArchive("parent")).toMatchObject({ reason: "catalog_archive_refuses_outstanding_obligations" });
+    expect(await attemptArchive("sku")).toMatchObject({ reason: "catalog_archive_barrier_unavailable" });
+  } else expect(await obligations(target.id)).toMatchObject({ outcome: "complete", obligations: expect.arrayContaining([
+    expect.objectContaining({ family: "template", sourceId: f.subscription })]) });
 });
 async function saveOrderQuote(id: string, lines: readonly { sku: string; quantity: number }[]) {
   const payload = { orderDraft: { orderId: `order_${id}`, quoteSnapshot: { quote: { lines } } } };
@@ -448,7 +532,8 @@ function graduationFacts(basis: number, sku: string) {
         quoteLine: { unitPriceGross: { amountMinor: 617 }, lineSubtotalGross: { amountMinor: 1851 } } }] } } } };
 }
 it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "accepted package edit", "historical graduation",
-  "wrong graduation quantity", "wrong graduation ordinal", "missing graduation ordinal", "unproven graduation addon", "carried graduation addon", "empty edit basket",
+  "wrong graduation quantity", "wrong graduation ordinal", "missing graduation ordinal", "unproven graduation addon", "carried graduation addon", "unpriced graduation addon",
+  "prior core graduation addon", "lost historic graduation addon", "empty edit basket",
   "malformed marker", "partial delivery receipt", "foreign graduation key", "contradictory edit"] as const)(
   "LC5-A-022 LC5-A-023 graduation obligation verifies %s", async path => {
   const f = await seed({ other: path.includes("graduation addon") || path === "accepted package edit" }), id = randomUUID();
@@ -475,18 +560,26 @@ it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "ac
       sku: f.code, quantity, unitAmountMinor: 617 };
     const addon = { lineOrdinal: 2, sku: "OTHER", quantity: 1, unitAmountMinor: 100 };
     const lines = path.includes("graduation addon") ? [core, addon] : [core];
-    const pricing = lines.map(({ lineOrdinal: _ordinal, ...line }) => ({ ...line, isAddon: line.sku === "OTHER",
-      quoteLine: line.sku === f.code ? facts.renewalTerms.starterPack.graduation.lines[0]!.quoteLine : {} }));
+    const provedCarry = path === "carried graduation addon" || path === "unpriced graduation addon";
+    const reportsCarry = provedCarry || path === "prior core graduation addon" || path === "lost historic graduation addon";
+    const pricing = lines.filter(line => path !== "unpriced graduation addon" || line.sku !== addon.sku)
+      .map(({ lineOrdinal: _ordinal, ...line }) => ({ ...line, isAddon: line.sku === "OTHER",
+        quoteLine: line.sku === f.code ? facts.renewalTerms.starterPack.graduation.lines[0]!.quoteLine : {} }));
+    if (reportsCarry) await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+      VALUES($1,$2,1,1,$3,100,'XXX')`, [f.subscription,f.payload.skus[1]!.id,path !== "prior core graduation addon"]);
     await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.starter_graduated',$3,$4::jsonb)", [event,f.subscription,key,
       JSON.stringify({ mode: "full", basisTemplateVersion: basis, templateVersion: basis+1, cadenceDays: 28,
-        before: [{ ...core, lineOrdinal: 1 }, ...(path === "carried graduation addon" ? [addon] : [])], lines, linePricing: pricing })]);
-    await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
-    if (path !== "historical graduation" && path !== "carried graduation addon") expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
+        before: [{ ...core, lineOrdinal: 1 }, ...(reportsCarry ? [addon] : [])], lines, linePricing: pricing })]);
+    if (path === "lost historic graduation addon") {
+      await db.query("DELETE FROM public.subscription_lines WHERE subscription_id=$1", [f.subscription]);
+      await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
+    }
+    if (path !== "historical graduation" && !provedCarry) expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
     else expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
     return;
   }
   if (path === "accepted sized edit" || path === "accepted package edit" || path === "accepted classic receipt") {
-    const preview = randomUUID(), actorId = randomUUID(), key = `sized:${event}`;
+    const preview = randomUUID(), actorId = randomUUID(), previewActorId = randomUUID(), key = `sized:${event}`;
     const eventKey = `command:${createHash("sha256").update(`${actorId}:${key}`).digest("hex")}`;
     const action = path === "accepted package edit" ? "update_package_template" : "update_bundle", quoteHash = "c".repeat(64);
     const classic = path === "accepted classic receipt";
@@ -507,7 +600,7 @@ it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "ac
           (SELECT occurred_at FROM public.subscription_events WHERE id=$7))`,
       [f.subscription,`quote:${event}`,"b".repeat(64),quoteHash,basis,JSON.stringify([{ variantId: f.sku, quantity: 3, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }]),event]);
     } else await db.query(`INSERT INTO public.subscription_quote_previews(id,subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,status,request_payload,quote_snapshot,totals,accepted_at,accepted_idempotency_key,accepted_event_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+interval '1 hour','accepted','{}',$8::jsonb,'{}',(SELECT occurred_at FROM public.subscription_events WHERE id=$9),$10,$9)`, [preview,f.subscription,f.client,actorId,action,quoteHash,basis,JSON.stringify(quoted),event,key]);
+      VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+interval '1 hour','accepted','{}',$8::jsonb,'{}',(SELECT occurred_at FROM public.subscription_events WHERE id=$9),$10,$9)`, [preview,f.subscription,f.client,previewActorId,action,quoteHash,basis,JSON.stringify(quoted),event,key]);
     await db.query("INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,quote_hash,result,status) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,'applied')",
       [actorId,key,f.subscription,f.client,"a".repeat(64),JSON.stringify(command),quoteHash,JSON.stringify(receipt)]);
     await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
@@ -521,6 +614,41 @@ it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "ac
   await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
   if (path !== "accepted edit") expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
   else expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
+});
+it.each(["priced", "unpriced"] as const)("LC5-C3-O retains the owner's %s carry after a subsequent edit", async pricing => {
+  const f = await seed({ other: true }), addon = f.payload.skus[1]!;
+  const orderId = randomUUID(), list = randomUUID();
+  const original = [f.code, addon.code!].map((sku,index) => ({ lineOrdinal: index+1, sku, quantity: 1, unitAmountMinor: 617 }));
+  const facts = graduationFacts(1, f.code);
+  const renewalTerms = { ...facts.renewalTerms, ...(pricing === "priced" ? { linePricing: [{
+    sku: addon.code, quantity: 1, unitAmountMinor: 617, isAddon: true, quoteLine: {},
+  }] } : {}) };
+  await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [orderId,f.client]);
+  await db.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic graduation','AA','XXX')", [list]);
+  await db.query("UPDATE public.subscriptions SET price_list_id=$2,currency_code='XXX',cadence_days=14 WHERE id=$1", [f.subscription,list]);
+  await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,statement_timestamp())",
+    [orderId,f.subscription,JSON.stringify({ renewalTerms })]);
+  await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+    VALUES($1,$2,1,0,false,617,'XXX'),($1,$3,1,1,true,617,'XXX')`, [f.subscription,f.sku,addon.id]);
+  await db.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+    VALUES($1,'XXX','example','sandbox',statement_timestamp(),'example')`, [f.subscription]);
+  await db.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscription]);
+  expect(await obligations(f.sku)).toMatchObject({ outcome: "complete", obligations: expect.arrayContaining([
+    expect.objectContaining({ family: "graduation", sourceId: orderId })]) });
+  expect(await graduateNativeRenewal(db, { subscription_id: f.subscription, template_version: 1, cadence_days: 14,
+    activation_cycle_id: randomUUID(), activation_cycle_paid: true, paid_cycle_count: 2, next_cycle_number: 2,
+    activation_order_id: orderId, currency_code: "XXX", purchase_facts: { renewalTerms }, lines: original })).toBe(true);
+  const event = (await db.query("SELECT id,payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.starter_graduated'", [f.subscription])).rows[0];
+  expect(event.payload).toMatchObject({ carriedAddonSkus: [addon.code] });
+  expect(event.payload.linePricing.map((row: { sku: string }) => row.sku)).toEqual(pricing === "priced" ? [f.code,addon.code] : [f.code]);
+  await db.query("DELETE FROM public.subscription_lines WHERE subscription_id=$1 AND variant_id=$2", [f.subscription,addon.id]);
+  await db.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 AND sku=$2", [f.subscription,addon.code]);
+  await db.query("UPDATE public.subscriptions SET template_version=3 WHERE id=$1", [f.subscription]);
+  expect((await db.query("SELECT public.subscription_catalog_basis_transition($1,1) AS result", [f.subscription])).rows[0].result)
+    .toMatchObject({ outcome: "proved", kind: "graduation", eventId: event.id, basket: { [f.code]: 3, [addon.code!]: 1 } });
+  const result = await obligations(f.sku);
+  expect(result).toMatchObject({ outcome: "complete" });
+  expect(result.obligations).not.toEqual(expect.arrayContaining([expect.objectContaining({ family: "graduation" })]));
 });
 // Standing immutable active facts exercise servicing. This fixture does not qualify activation or the later price writer.
 async function standingActive(f: Awaited<ReturnType<typeof seed>>, sellable = false, presentation = true, activeSibling = false) {
