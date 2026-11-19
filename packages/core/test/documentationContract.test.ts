@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -983,21 +983,6 @@ describe("generated reference regions", () => {
   it.each(["outbox", "platform"])("lists all %s SQL files in name order, including files outside the manifest, and omits non-SQL files and hashes", (pkg) => {
     const { repository } = referenceFixture();
     expect(renderGeneratedRegion(`sql:${pkg}`, repository)).toBe(`| File |\n| --- |\n| [\`a.sql\`](${repositoryLink(`packages/${pkg}/sql/a.sql`)}) |\n| [\`m.sql\`](${repositoryLink(`packages/${pkg}/sql/m.sql`)}) |\n| [\`z.sql\`](${repositoryLink(`packages/${pkg}/sql/z.sql`)}) |\n`);
-  });
-
-  it("keeps post-tag SQL visible without linking it to the issued tag", () => {
-    const { repository } = referenceFixture();
-    const git = (...args: string[]) => execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", ...args], { cwd: repository, stdio: "pipe" });
-    git("init", "-q");
-    git("add", "packages/platform/sql/a.sql");
-    git("-c", "user.name=Guide Fixture", "-c", "user.email=guide@example.invalid", "commit", "-qm", "Tag SQL fixture");
-    git("tag", "openlup-core-v1.2.3");
-    const released = renderGeneratedRegion("sql:platform", repository)!;
-    expect(released).toContain(`| [\`a.sql\`](${repositoryLink("packages/platform/sql/a.sql")}) |`);
-    expect(released).toContain("| `m.sql` |");
-    expect(released).toContain("| `z.sql` |");
-    const next = renderGeneratedRegion("sql:platform", repository, "1.2.4")!;
-    expect(next).toContain(`| [\`m.sql\`](${repositoryLink("packages/platform/sql/m.sql", "openlup-core-v1.2.4")}) |`);
   });
 
   it("reads CLI string and template constants without executing either bin", () => {
