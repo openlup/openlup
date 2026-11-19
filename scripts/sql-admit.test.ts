@@ -246,6 +246,22 @@ describe("upstream exact managed migration approval", () => {
     expect(() => assertCoLocatedForwardApproval(f.root, approval, cochanged)).toThrow(/machinery must be approved separately/);
   });
 
+  it.each(["edit", "delete", "executable", "registry removal"] as const)("refuses an issued migration %s in the trusted queue", tamper => {
+    const f = fixture();
+    approve(f);
+    f.commit();
+    f.put(path, sql);
+    const issued = f.commit();
+    if (tamper === "edit") f.put(path, sql + "-- changed\n");
+    else if (tamper === "delete") f.git("rm", path);
+    else if (tamper === "registry removal") f.git("rm", REVIEWED_FORWARD_PATH);
+    else f.git("update-index", "--chmod=+x", path);
+    const drift = tamper === "executable"
+      ? (f.git("commit", "-qm", "Change migration file mode"), f.git("rev-parse", "HEAD"))
+      : f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, issued, drift)).toThrow(/issued exact managed forward|requires a regular file/);
+  });
+
   it("refuses a pin introduced with its migration", () => {
     const f = fixture();
     approve(f);

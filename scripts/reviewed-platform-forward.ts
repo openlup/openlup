@@ -1033,8 +1033,18 @@ export const NATIVE_CATALOG_CONTROLS = [
 ];
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
-  if (before && after && !before.equals(after)) {
-    const prior = readForwardRegistry(before, true), candidate = readReviewedForwardRegistry(after);
+  const prior = before ? readForwardRegistry(before, true) : undefined;
+  for (const pin of prior?.managedExactForwards ?? []) {
+    const issued = blob(root, base, pin.path);
+    if (!issued) continue;
+    if (!after) throw new Error("issued exact managed forward requires its approval registry");
+    const proposed = blob(root, head, pin.path);
+    if (!proposed || !issued.equals(proposed)) {
+      throw new Error(`issued exact managed forward must retain its bytes: ${pin.path}`);
+    }
+  }
+  if (prior && after && !before!.equals(after)) {
+    const candidate = readReviewedForwardRegistry(after);
     assertNativeStoreClassTransition(prior, candidate);
     nativeStoreNewSlotTimes(root, base, prior, candidate);
     for (const [index, pin] of (prior.managedExactForwards ?? []).entries()) {
