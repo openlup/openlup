@@ -438,7 +438,7 @@ export { createPostgresStockAvailability } from "./postgresStockAvailability.js"
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
 export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 export type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
-export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting } from "./renewalStockProtection.js";
+export { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, describeRenewalStockProtectionSetting, previewRenewalStockProtection, renewalStockProtectionPreviewResult, type RenewalStockProtectionPreviewConnection } from "./renewalStockProtection.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -727,6 +727,7 @@ export {};
 ```ts
 import { z } from "zod";
 import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
+declare const key = "inventory_renewal_protection";
 /** @experimental Discovery metadata for the installed renewal stock protection policy. */
 export declare function describeRenewalStockProtectionSetting(): {
     readonly key: "inventory_renewal_protection";
@@ -737,6 +738,25 @@ export declare function describeRenewalStockProtectionSetting(): {
     readonly schema: z.ZodObject<{
         revision: z.ZodString;
         renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+    readonly previewSchema: z.ZodObject<{
+        existingReservations: z.ZodLiteral<"unchanged">;
+        newPurchaseAvailability: z.ZodEnum<{
+            unchanged: "unchanged";
+            "equal-or-lower": "equal-or-lower";
+            "equal-or-higher": "equal-or-higher";
+            undetermined: "undetermined";
+        }>;
+        skus: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            source: z.ZodEnum<{
+                missing: "missing";
+                provider: "provider";
+            }>;
+            stale: z.ZodBoolean;
+            currentAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+            proposedAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strict>>;
     }, z.core.$strict>;
     readonly rules: readonly [{
         readonly code: "inventory_renewal_protection_policy_invalid";
@@ -776,8 +796,8 @@ export declare function describeRenewalStockProtectionSetting(): {
         readonly impact: "operations";
     };
     readonly runtime: {
-        readonly level: "read-only";
-        readonly reason: "The editor reads the installed horizon. Apply changes with the installer at deployment.";
+        readonly level: "preview";
+        readonly reason: "Preview is available. Apply changes with the installer at deployment.";
     };
     readonly change: {
         readonly operation: "installRenewalStockProtectionPolicy";
@@ -795,6 +815,103 @@ export declare function installRenewalStockProtectionPolicy(db: Executor, policy
 export declare function readRenewalStockProtectionPolicy(db: Executor): Promise<RenewalStockProtectionPolicy>;
 /** @experimental Read an explicit installed override, preserving absence. */
 export declare function readRenewalStockProtectionOverride(db: Executor): Promise<RenewalStockProtectionPolicy | undefined>;
+declare const validationResult: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    state: z.ZodLiteral<"valid">;
+    value: z.ZodObject<{
+        revision: z.ZodString;
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    state: z.ZodLiteral<"invalid">;
+    code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
+    rule: z.ZodString;
+    hint: z.ZodString;
+    remediation: z.ZodObject<{
+        retry: z.ZodBoolean;
+        action: z.ZodString;
+        command: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>], "state">;
+export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    key: z.ZodLiteral<"inventory_renewal_protection">;
+    asOf: z.ZodISODateTime;
+    current: z.ZodObject<{
+        revision: z.ZodString;
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+    proposed: z.ZodJSONSchema;
+    difference: z.ZodNullable<z.ZodObject<{
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>>;
+    validation: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"valid">;
+        value: z.ZodObject<{
+            revision: z.ZodString;
+            renewalProtectionDays: z.ZodInt;
+        }, z.core.$strict>;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodLiteral<"invalid">;
+        code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
+        rule: z.ZodString;
+        hint: z.ZodString;
+        remediation: z.ZodObject<{
+            retry: z.ZodBoolean;
+            action: z.ZodString;
+            command: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>], "state">;
+    effect: z.ZodObject<{
+        existingReservations: z.ZodLiteral<"unchanged">;
+        newPurchaseAvailability: z.ZodEnum<{
+            unchanged: "unchanged";
+            "equal-or-lower": "equal-or-lower";
+            "equal-or-higher": "equal-or-higher";
+            undetermined: "undetermined";
+        }>;
+        skus: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            source: z.ZodEnum<{
+                missing: "missing";
+                provider: "provider";
+            }>;
+            stale: z.ZodBoolean;
+            currentAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+            proposedAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>;
+    uncertainty: z.ZodString;
+}, z.core.$strict>;
+type Validation = z.infer<typeof validationResult>;
+type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
+type PreviewRefusal = {
+    schemaVersion: 1;
+    refusal: Omit<Extract<Validation, {
+        state: "invalid";
+    }>, "state" | "code"> & {
+        code: string;
+        path: readonly string[];
+    };
+};
+type RefusePreview = (code: string, detail?: {
+    path: readonly string[];
+    hint: string;
+}) => PreviewRefusal;
+/** @experimental A host-owned pool and stock source for read-only preview. */
+export interface RenewalStockProtectionPreviewConnection {
+    db: {
+        connect(): Promise<Executor & {
+            release(error?: boolean): void;
+        }>;
+    };
+    sourceKey: string;
+}
+/** @experimental Preview installed and proposed renewal stock protection at the same observation instant. */
+export declare function previewRenewalStockProtection(settingKey: typeof key, proposed: PreviewResult["proposed"], context: RenewalStockProtectionPreviewConnection & {
+    asOf: string;
+    skus: readonly string[];
+    refuse: RefusePreview;
+}): Promise<PreviewResult | PreviewRefusal>;
 export {};
 ```
 ## dist/inventory/reservationPolicy.d.ts

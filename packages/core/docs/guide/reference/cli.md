@@ -25,7 +25,7 @@ Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid
 
 <!-- generated:cli:openlup-context -->
 ```text
-Usage: openlup-context search <task> [--code] [--package-code] [--json]
+Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]
        openlup-context mcp
 Run from the application root after installing @openlup/core.
 Declaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.

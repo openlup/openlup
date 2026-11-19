@@ -139,6 +139,11 @@ GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO
 The pure validator reads no table. Direct calls without the validator grant
 raise SQLSTATE `42501`.
 
+The starter editor uses `createPostgresStockAvailability().readInstalled(skus)`.
+A running editor picks up the installed horizon on its next stock read. Use
+[Preview before changing a setting](../how-to/operate/configure-settings.md#preview-before-changing-a-setting)
+to inspect current availability by SKU and the direction of a proposed change.
+
 `createPostgresStockAvailability().readPort.read` admits only `horizonDays` equal
 to the installed value and no excluded order; otherwise it retains
 `native_stock_read_options_unsupported`. Set the `horizonDays` option on

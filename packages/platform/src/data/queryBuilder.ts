@@ -272,7 +272,12 @@ export class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>>
 export class PgGatewayClient {
   constructor(private readonly client: PgQueryExecutor) {}
 
-  query(text: string, values?: unknown[]) { return this.client.query(text, values); }
+  query<Row extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<{ rows: Row[] }> {
+    return this.client.query(text, values ? [...values] : undefined) as Promise<{ rows: Row[] }>;
+  }
 
   from<T = Record<string, unknown>>(table: string): PgQueryBuilder<T> {
     return new PgQueryBuilder<T>(this.client, table);

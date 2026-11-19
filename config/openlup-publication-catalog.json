@@ -6982,6 +6982,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/data/pgErrorListener.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/data/postgresGateway.ts",
       "class": "public-output"
     },
@@ -8242,6 +8246,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/server/postgres/pgErrorListener.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/server/prelaunchAcquisitionDirect.ts",
       "class": "public-output"
     },
@@ -8275,6 +8283,10 @@
     },
     {
       "path": "packages/platform/src/migrations/packagedCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/pgErrorListener.ts",
       "class": "public-output"
     },
     {
@@ -10642,6 +10654,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/dispatchComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
       "class": "public-output"
     },
@@ -11342,6 +11358,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/postgresProviderRail.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/preparedAttempt.test.ts",
       "class": "public-output"
     },
@@ -11926,6 +11946,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/postgresLifecycleMessages.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
@@ -12010,23 +12034,7 @@
       "class": "public-output"
     },
     {
-      "path": "playwright.checkout.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.promotion-rollout.config.ts",
-      "class": "public-output"
-    },
-    {
       "path": "playwright.ssg.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.subscription.config.ts",
       "class": "public-output"
     },
     {
@@ -21259,6 +21267,10 @@
     },
     {
       "path": "server/infra/resend/transactionalFulfillmentEmailRenderers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/infra/soap11Reply.ts",
       "class": "public-output"
     },
     {
@@ -31163,10 +31175,6 @@
     },
     {
       "path": "tests/preview/account/identity-composition.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/preview/checkout/helpers/env.ts",
       "class": "public-output"
     },
     {

@@ -1,4 +1,5 @@
 import { TypeOverrides } from "pg";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -6,9 +7,13 @@ import {
   createPostgresDataGateway,
   createPostgresGatewayTypeOverrides,
   createPostgresRoleFreeTransactionLane,
+  createPostgresTransactionRunner,
   postgresTimestampTzToRfc3339,
   resolvePostgresDataGatewayEnv,
-} from "../../src/data/postgresGateway.js";
+  type PgQueryExecutor,
+  type PostgresRoleFreeTransactionLane,
+  type SqlExecutor,
+} from "../../src/data/index.js";
 
 interface RecordedClient {
   queries: Array<{ text: string; values?: unknown[] }>;
@@ -179,5 +184,131 @@ describe("createPostgresDataGateway", () => {
       "postgres://x",
     );
     expect(resolvePostgresDataGatewayEnv({}).connectionString).toBe("");
+  });
+
+  it("attaches a single non-throwing idle error listener on EventEmitter pools for both gateway and role-free lane", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { pool } = stubPool();
+      const emitterPool = Object.assign(new EventEmitter(), pool);
+      const gw = createPostgresDataGateway(
+        { connectionString: "postgres://secret-user:secret-pass@host/db" },
+        { poolFactory: () => emitterPool as unknown as typeof pool },
+      );
+      await gw.asService(async () => null);
+      await gw.asService(async () => null);
+      expect(emitterPool.listenerCount("error")).toBe(1);
+
+      const idleError = Object.assign(new Error("connection terminated unexpectedly"), { code: "57P01" });
+      expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(String(errorSpy.mock.calls[0]?.[0])).toContain("57P01");
+      expect(String(errorSpy.mock.calls[0]?.[0])).not.toContain("secret-pass");
+
+      const seen: Error[] = [];
+      const { pool: lanePool } = stubPool();
+      const laneEmitter = Object.assign(new EventEmitter(), lanePool);
+      const lane = createPostgresRoleFreeTransactionLane(
+        { connectionString: "postgres://host/db" },
+        {
+          poolFactory: () => laneEmitter as unknown as typeof lanePool,
+          onPoolError: (error) => {
+            seen.push(error);
+            throw new Error("callback boom");
+          },
+        },
+      );
+      await lane.run(async () => null);
+      expect(laneEmitter.listenerCount("error")).toBe(1);
+      expect(() => laneEmitter.emit("error", idleError)).not.toThrow();
+      expect(seen).toEqual([idleError]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("supports non-owning borrowed pool on role-free lane and gateway without calling pool.end()", async () => {
+    const end = vi.fn(async () => {});
+    const { pool, client } = stubPool();
+    const borrowed = Object.assign(pool, { end });
+
+    const lane = createPostgresRoleFreeTransactionLane<import("../../src/data/index.js").PgGatewayClient>(
+      { connectionString: "" },
+      { pool: borrowed },
+    );
+    const untypedLane: PostgresRoleFreeTransactionLane = createPostgresRoleFreeTransactionLane(
+      { connectionString: "" },
+      { pool: borrowed },
+    );
+    expect(typeof untypedLane.run).toBe("function");
+
+    await lane.run(async (db) => {
+      const asSql: SqlExecutor = db;
+      const asPg: PgQueryExecutor = db;
+      await asSql.query("SELECT 1", ["a"]);
+      await asPg.query("SELECT 2", ["b"]);
+    });
+    await lane.close();
+    expect(end).not.toHaveBeenCalled();
+    expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "SELECT 1", "SELECT 2", "COMMIT"]);
+    expect(client.released).toBe(true);
+
+    expect(() => createPostgresRoleFreeTransactionLane(
+      { connectionString: "postgres://x" },
+      { pool: borrowed, poolFactory: () => borrowed },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+  });
+
+  it("wraps a borrowed pool in createPostgresTransactionRunner with commit, rollback and non-owning semantics", async () => {
+    const end = vi.fn(async () => {});
+    const { pool, client } = stubPool();
+    const borrowed = Object.assign(pool, { end });
+    const runner = createPostgresTransactionRunner(borrowed);
+
+    await expect(runner.withTransaction(async (db) => {
+      await db.query("SELECT 42", [1]);
+      return "ok";
+    })).resolves.toBe("ok");
+    expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "SELECT 42", "COMMIT"]);
+    expect(client.released).toBe(true);
+
+    client.queries.length = 0;
+    client.released = false;
+    await expect(runner.withTransaction(async () => {
+      throw new Error("tx boom");
+    })).rejects.toThrow("tx boom");
+    expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "ROLLBACK"]);
+    expect(client.released).toBe(true);
+    expect(end).not.toHaveBeenCalled();
+  });
+
+  it("leaves ownedPoolPromise unset on synchronous poolFactory throws while preserving 1.x async rejection on close()", async () => {
+    const { pool } = stubPool();
+    let syncAttempts = 0;
+    const syncLane = createPostgresRoleFreeTransactionLane(
+      { connectionString: "postgres://x" },
+      {
+        poolFactory: () => {
+          syncAttempts += 1;
+          if (syncAttempts === 1) throw new Error("transient sync init failure");
+          return pool;
+        },
+      },
+    );
+    await expect(syncLane.run(async () => "nope")).rejects.toThrow("transient sync init failure");
+    await expect(syncLane.close()).resolves.toBeUndefined();
+    await expect(syncLane.run(async () => "recovered")).resolves.toBe("recovered");
+    expect(syncAttempts).toBe(2);
+
+    const asyncLane = createPostgresRoleFreeTransactionLane(
+      { connectionString: "postgres://x" },
+      {
+        poolFactory: async () => {
+          throw new Error("synthetic async unavailable");
+        },
+      },
+    );
+    await expect(asyncLane.run(async () => "nope")).rejects.toThrow("synthetic async unavailable");
+    await expect(asyncLane.close()).rejects.toThrow("synthetic async unavailable");
   });
 });

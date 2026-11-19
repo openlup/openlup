@@ -112,6 +112,6 @@ async function erasePostgresIdentity(db: PgQueryExecutor, subject: ResolvedPriva
   }
 }
 export function createPostgresPrivacyUnitOfWork(env: PostgresDataGatewayEnv, options: PostgresDataGatewayOptions = {}) {
-  const lane = createPostgresRoleFreeTransactionLane(env, options);
-  return { run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => lane.run(db => work(db as PgQueryExecutor)), close: lane.close };
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
+  return { run: <T>(work: (context: PgQueryExecutor) => Promise<T>) => lane.run(work), close: lane.close };
 }

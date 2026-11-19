@@ -137,6 +137,17 @@ export function createPostgresFulfillmentProviderIntake(input: NativeFulfillment
       readLocalFulfillmentStatus: async ref => (await readState(ref))?.status ?? null,
       latestStatusOccurredAt: async ref => (await readState(ref))?.latestOccurredAt ?? null,
       readHandedOverAt: async ref => (await readState(ref))?.handedOverAt ?? null,
+      readLocalState: async ref => {
+        const state = await readState(ref);
+        return state
+          ? {
+            status: state.status,
+            latestOccurredAt: state.latestOccurredAt,
+            handedOverAt: state.handedOverAt,
+            carrier: { carrierRef: state.carrierRef, serviceRef: state.serviceRef },
+          }
+          : null;
+      },
     },
     lifecycle: {
       findDispatchRef, acknowledgeDispatchAcceptance, recordStatusEvidence, effects, keys: input.keys,

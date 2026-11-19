@@ -51,8 +51,8 @@ async function invitation(db: PgQueryExecutor, id: string): Promise<Row | null> 
 
 /** Owner-authority lane, never the actor gateway. One transaction per command. */
 export function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv, options: PostgresDataGatewayOptions = {}): OperatorInvitationStore & { close(): Promise<void> } {
-  const lane = createPostgresRoleFreeTransactionLane(env, options);
-  const run = <T>(work: (db: PgQueryExecutor) => Promise<T>) => lane.run((db) => work(db as PgQueryExecutor));
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
+  const run = <T>(work: (db: PgQueryExecutor) => Promise<T>) => lane.run(work);
   return {
     issue(input) {
       assertOperatorInvitationTtl(input.ttlSeconds);
@@ -119,12 +119,11 @@ export function createDirectOperatorInvitationStore(env: PostgresDataGatewayEnv,
 
 /** Principal creation commits independently; an invitation failure leaves it reusable. */
 export function createDirectOperatorIdentityDirectory(env: PostgresDataGatewayEnv, options: PostgresDataGatewayOptions = {}) {
-  const lane = createPostgresRoleFreeTransactionLane(env, options);
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
   return {
     ensurePrincipal(input: { email: string; redirectTo: string }): Promise<{ principalId: string; created: boolean }> {
       const email = input.email.trim().toLowerCase();
-      return lane.run(async (executor) => {
-        const db = executor as PgQueryExecutor;
+      return lane.run(async (db) => {
         await db.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [`operator_invitation:${email}`]);
         const matches = (await db.query("SELECT principal_id FROM public.platform_human_principals WHERE lower(btrim(email)) = $1", [email])).rows;
         if (matches.length > 1) throw invitationFailure("IDENTITY_CONFLICT");

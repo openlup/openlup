@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "../data/index.js";
+import {
+  createPostgresRoleFreeTransactionLane,
+  type PgQueryExecutor,
+  type PostgresDataGatewayOptions,
+} from "../data/index.js";
 import { acceptDirectOperatorInvitationInTransaction } from "./directOperatorInvitationStore.js";
 import { operatorChallengeRequestSchema } from "./contracts/operatorAuth.js";
 import type { OperatorIdentityStore } from "./operatorPorts.js";
@@ -7,9 +11,12 @@ const fingerprint = (email: string) => createHash("sha256").update(email.trim().
 const allowed = (role: unknown) => role === "admin" || role === "distributor";
 
 /** Dedicated owner lane: no actor gateway, customer writes or machine grants. */
-export function createPostgresOperatorIdentityStore(env: { connectionString: string }): OperatorIdentityStore {
-  const lane = createPostgresRoleFreeTransactionLane(env);
-  const run = <T>(work: (db: PgQueryExecutor) => Promise<T>) => lane.run(db => work(db as PgQueryExecutor));
+export function createPostgresOperatorIdentityStore(
+  env: { connectionString: string },
+  options: PostgresDataGatewayOptions = {},
+): OperatorIdentityStore {
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
+  const run = <T>(work: (db: PgQueryExecutor) => Promise<T>) => lane.run(work);
   async function safeStore(db: PgQueryExecutor) {
     // Includes privileges inherited via memberships/default ACLs, not just explicit grants.
     const unsafe = (await db.query(`SELECT EXISTS (
