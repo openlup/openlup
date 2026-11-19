@@ -110,7 +110,12 @@ CREATE FUNCTION public.catalog_publication_pointer_fence() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE cap_fingerprint text; capabilities integer;
 BEGIN
- IF NEW.current_document_revision_id IS NOT DISTINCT FROM OLD.current_document_revision_id THEN RETURN NEW; END IF;
+ IF (CASE WHEN NEW.publication_facts IS NOT NULL
+  AND (TG_OP='INSERT' OR NEW.id IS DISTINCT FROM OLD.id OR NEW.publication_facts IS DISTINCT FROM OLD.publication_facts)
+  THEN NOT public.catalog_publication_carriers_valid(NEW.publication_facts,NEW.id) ELSE false END) THEN
+  RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
+ END IF;
+ IF TG_OP='INSERT' OR NEW.current_document_revision_id IS NOT DISTINCT FROM OLD.current_document_revision_id THEN RETURN NEW; END IF;
  SELECT min(c.command_fingerprint),count(*)::integer INTO cap_fingerprint,capabilities
   FROM public.catalog_publication_pointer_capabilities c
   WHERE c.transaction_id=pg_current_xact_id() AND c.product_id=NEW.id AND c.revision_id=NEW.current_document_revision_id;
@@ -123,7 +128,7 @@ BEGIN
  RETURN NEW;
 END;
 $$;
-CREATE TRIGGER catalog_products_publication_pointer_fence BEFORE UPDATE OF current_document_revision_id ON public.catalog_products FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_pointer_fence();
+CREATE TRIGGER catalog_products_publication_pointer_fence BEFORE INSERT OR UPDATE OF current_document_revision_id, publication_facts, id ON public.catalog_products FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_pointer_fence();
 ALTER TABLE public.catalog_publication_heads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.catalog_publications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.catalog_sku_revisions ENABLE ROW LEVEL SECURITY;
@@ -421,10 +426,10 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_presentation_valid(jsonb) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_publication_carriers_valid(p_value jsonb) RETURNS boolean
+CREATE FUNCTION public.catalog_publication_carriers_valid(p_value jsonb,p_product uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
  WITH RECURSIVE nodes(key,value) AS (
-  SELECT NULL::text,p_value
+  SELECT NULL::text,CASE WHEN p_product IS NOT NULL AND jsonb_typeof(p_value)='object' THEN p_value-'document' ELSE p_value END
   UNION ALL
   SELECT item.key,item.value FROM nodes n CROSS JOIN LATERAL (
    SELECT field.key,field.value FROM jsonb_each(CASE WHEN jsonb_typeof(n.value)='object' THEN n.value ELSE '{}'::jsonb END) field
@@ -433,8 +438,23 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS 
   ) item
  )
  SELECT NOT EXISTS (SELECT 1 FROM nodes WHERE translate(lower(key),'_','') IN ('document','documentpayload','canonicaltext'))
+  AND CASE WHEN p_product IS NULL OR p_value IS NULL OR NOT (p_value ? 'document') THEN true
+   WHEN jsonb_typeof(document) IS DISTINCT FROM 'object' THEN false
+   ELSE (document ?& ARRAY['id','productId','revisionNo','schemaId','documentRef','sourceRef','digest']
+    AND document-ARRAY['id','productId','revisionNo','schemaId','documentRef','sourceRef','digest']='{}'::jsonb
+    AND document->'productId'=to_jsonb(p_product)
+    AND jsonb_typeof(document->'id')='string'
+    AND document->>'id' ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
+    AND CASE WHEN jsonb_typeof(document->'revisionNo')='number' AND document->>'revisionNo' ~ '^[1-9][0-9]{0,9}$'
+      THEN (document->>'revisionNo')::numeric<=2147483647 ELSE false END
+    AND jsonb_typeof(document->'digest')='string' AND document->>'digest' ~ '^[0-9a-f]{64}$'
+    AND public.catalog_publication_text_valid(document->'schemaId',240,true)
+    AND public.catalog_publication_text_valid(document->'documentRef',240,true)
+    AND public.catalog_publication_text_valid(document->'sourceRef',240,true)) IS TRUE
+  END
+ FROM (SELECT p_value->'document' AS document) reference
 $$;
-REVOKE ALL ON FUNCTION public.catalog_publication_carriers_valid(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_carriers_valid(jsonb,uuid) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_content_problem(p_content jsonb) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -645,19 +665,7 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
  END IF;
 
- IF jsonb_typeof(product->'document') IS DISTINCT FROM 'object'
-  OR NOT ((product->'document') ?& ARRAY['id','productId','revisionNo','schemaId','documentRef','sourceRef','digest'])
-  OR (product->'document') - ARRAY['id','productId','revisionNo','schemaId','documentRef','sourceRef','digest'] <> '{}'::jsonb
-  OR product #> '{document,productId}' IS DISTINCT FROM to_jsonb(p_product)
-  OR jsonb_typeof(product #> '{document,id}') IS DISTINCT FROM 'string'
-  OR product #>> '{document,id}' !~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
-  OR (CASE WHEN jsonb_typeof(product #> '{document,revisionNo}')='number' AND product #>> '{document,revisionNo}' ~ '^[1-9][0-9]{0,9}$'
-     THEN (product #>> '{document,revisionNo}')::numeric>2147483647 ELSE true END)
-  OR jsonb_typeof(product #> '{document,digest}') IS DISTINCT FROM 'string'
-  OR product #>> '{document,digest}' !~ '^[0-9a-f]{64}$'
-  OR public.catalog_publication_text_valid(product #> '{document,schemaId}',240,true) IS DISTINCT FROM true
-  OR public.catalog_publication_text_valid(product #> '{document,documentRef}',240,true) IS DISTINCT FROM true
-  OR public.catalog_publication_text_valid(product #> '{document,sourceRef}',240,true) IS DISTINCT FROM true THEN
+ IF NOT public.catalog_publication_carriers_valid(jsonb_build_object('document',product->'document'),p_product) THEN
   RAISE EXCEPTION 'catalog_publication_document_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_document_invalid';
  END IF;
  -- Content has been checked by field. The document reference contains only its exact identity.

@@ -5768,7 +5768,7 @@
             "searchPath": "pg_catalog, public"
           },
           {
-            "signature": "public.catalog_publication_carriers_valid(jsonb)",
+            "signature": "public.catalog_publication_carriers_valid(jsonb,uuid)",
             "searchPath": "pg_catalog, public"
           },
           {
@@ -5810,7 +5810,7 @@
           {
             "name": "catalog_products_publication_pointer_fence",
             "table": "public.catalog_products",
-            "sha256": "342f6a2618de6cb4a3fa12fe9d1316e6835ce7cbce9c815b1af1e21541e867a9"
+            "sha256": "33dc27cfb8de2d8c749360bc17e2ef1d2b35aae2ecc56e255e171fe3e2cd34eb"
           },
           {
             "name": "catalog_publications_issued",
@@ -8292,7 +8292,7 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "ef01255e833933f9de03e30158c0cd5fd01a1e9cb5c16f4bdaff939cfb179bfc",
+      "sha256": "3de961a3f873e53b86401b748029c82def68388d3a9034bbd3029635bfe8016d",
       "functions": [
         {
           "signature": "public.catalog_publication_receipt_input(text)",
@@ -8302,7 +8302,7 @@
         {
           "signature": "public.catalog_publication_pointer_fence()",
           "beforeSha256": null,
-          "afterSha256": "3d069e13a707a14c64a9d40a4fd37255c3543bde70b70ad15f19945bad2235f9"
+          "afterSha256": "7287589f98ac0b3c41606050b7bd42af5a2901660ff6168d6304d0c9da228ec0"
         },
         {
           "signature": "public.catalog_publication_max_depth()",
@@ -8360,9 +8360,9 @@
           "afterSha256": "5d6dc660039e838fb18ab6503ef6dcd04dd9c0b8134d9544df6ccc0ee34d5b41"
         },
         {
-          "signature": "public.catalog_publication_carriers_valid(jsonb)",
+          "signature": "public.catalog_publication_carriers_valid(jsonb,uuid)",
           "beforeSha256": null,
-          "afterSha256": "b95ee525645cd1bf0e4e9e76d0298ba917cebfded6e76fc863e12286ced7d8ba"
+          "afterSha256": "1bcaa9519744310fdfe362f361f56779d4854762729efa25c1faf664c1fab75d"
         },
         {
           "signature": "public.catalog_publication_content_problem(jsonb)",
@@ -8377,7 +8377,7 @@
         {
           "signature": "public.catalog_publication_manifest_text(uuid,text,text,boolean)",
           "beforeSha256": null,
-          "afterSha256": "fc72311793acebdd72a32018b03cabdd7d0020effb19350d7c3da4ba9623c4fd"
+          "afterSha256": "7415eb8c5769ef5e565feec3428269e221504a9d45fd4f85ab55d61d2a7078d3"
         },
         {
           "signature": "public.catalog_publication_assert_issued(uuid,uuid)",

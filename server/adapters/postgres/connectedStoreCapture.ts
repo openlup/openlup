@@ -216,8 +216,15 @@ export async function captureConnectedNativeStore(input: {
         }
         // Only PostgreSQL encodes row values. JS never reserializes parsed
         // bigint/numeric/timestamp values for transport.
-        const rows = (await db.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value
-          FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows.map(row => row.value);
+        const carrierCheck = table === "catalog_products"
+          ? ", t.publication_facts IS NULL OR public.catalog_publication_carriers_valid(t.publication_facts,t.id) AS carriers_valid" : "";
+        const captured = (await db.query<{ value: string; carriers_valid?: boolean }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value${carrierCheck}
+          FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows;
+        if (captured.some(row => row.carriers_valid === false)) {
+          const refusal = catalogPublicationAdmissionRefusal({ code: "23514", constraint: "catalog_publication_facts_invalid" });
+          throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
+        }
+        const rows = captured.map(row => row.value);
         count += rows.length;
         bytes += rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
         if (count > maximumRows || bytes > maximumBytes) throw new PostgresTransferError("limit_exceeded", table);
