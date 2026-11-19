@@ -113,7 +113,14 @@ BEGIN
   IF current_setting('transaction_isolation') <> 'read committed' THEN
    RAISE EXCEPTION 'catalog_publication_gtin_requires_read_committed' USING ERRCODE='0A000';
   END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended('catalog-gtin:' || ltrim(NEW.normalized_value,'0'),0));
+  IF TG_OP = 'UPDATE' THEN
+   -- The row may already be locked when this trigger starts.
+   IF NOT pg_try_advisory_xact_lock(hashtextextended('catalog-gtin-writes',0)) THEN
+    RAISE EXCEPTION 'catalog_publication_busy' USING ERRCODE='55P03';
+   END IF;
+  ELSE
+   PERFORM pg_advisory_xact_lock(hashtextextended('catalog-gtin-writes',0));
+  END IF;
   IF EXISTS (
    SELECT 1 FROM public.catalog_sku_identifiers g WHERE g.id <> NEW.id AND g.identifier_kind = 'gtin'
     AND ltrim(g.normalized_value,'0') = ltrim(NEW.normalized_value,'0')

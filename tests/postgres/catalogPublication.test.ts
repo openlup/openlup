@@ -3908,6 +3908,35 @@ it.each(["read committed", "repeatable read"] as const)("publication fences lega
   }
 });
 
+it("legacy GTIN writers accept opposite batch orders without deadlocking", async () => {
+  const left = await db.connect(), right = await db.connect(), codes = [nextGtin(), nextGtin()];
+  const writers = [`example:legacy-${randomUUID()}`, `example:legacy-${randomUUID()}`];
+  const write = (client: import("pg").PoolClient, issuer: string, values: string[]) => client.query(`
+    INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+    SELECT $1,$2,'gtin',value,'unit',1 FROM unnest($3::text[]) value`, [foreignPublished.data.skuId, issuer, values]);
+  async function finish(client: import("pg").PoolClient, issuer: string, values: string[]) {
+    try { await write(client, issuer, values); await client.query("COMMIT"); return "committed"; }
+    catch (error) { await client.query("ROLLBACK"); return error; }
+  }
+  let pending: ReturnType<typeof finish> | undefined;
+  try {
+    await left.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    await right.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    const { id } = (await right.query("SELECT pg_backend_pid() AS id")).rows[0];
+    await write(left, writers[0], [codes[0]]);
+    pending = finish(right, writers[1], [...codes].reverse());
+    await expect.poll(async () => (await db.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [id])).rows[0]?.wait_event).toBe("advisory");
+    expect(await Promise.all([finish(left, writers[0], [codes[1]]), pending])).toEqual(["committed", "committed"]);
+    expect((await db.query("SELECT id FROM public.catalog_sku_identifiers WHERE issuer=ANY($1::text[])", [writers])).rowCount).toBe(4);
+  } finally {
+    await left.query("ROLLBACK");
+    await pending;
+    await right.query("ROLLBACK");
+    await db.query("DELETE FROM public.catalog_sku_identifiers WHERE issuer=ANY($1::text[])", [writers]);
+    right.release(); left.release();
+  }
+});
+
 it("publication binds an omitted SKU to its newest authored issuance without rewriting SKU facts", async () => inPriceDatabase(async () => {
   const target = realPriceAuthority(), capability = (await target.authorize(null))!;
   const data = await priceDraft(), first = await commit(data.publication, target, capability);
