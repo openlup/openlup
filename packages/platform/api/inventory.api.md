@@ -777,7 +777,7 @@ export declare function describeRenewalStockProtectionSetting(): {
     };
     readonly runtime: {
         readonly level: "read-only";
-        readonly reason: "The starter editor still supplies its configured horizon to the stock read port.";
+        readonly reason: "The editor reads the installed horizon. Apply changes with the installer at deployment.";
     };
     readonly change: {
         readonly operation: "installRenewalStockProtectionPolicy";
