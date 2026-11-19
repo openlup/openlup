@@ -897,10 +897,12 @@ transaction-local and must be empty on capture.
 
 The publication trigger checks the exact document and draft evidence, immediate
 predecessor, roster overlay, issuance count and receipt. Work scales with the
-predecessor roster and this issue's SKU facts. An indexed parent lookup and two
-unique issuance keys seal SKU slots. Receipt, decision, head and pointer events
-use indexed lookups; a decision also verifies the bounded candidate source.
-The constraints run at commit or when the owner explicitly makes them immediate.
+predecessor roster and this issue's SKU facts, with a sort to compare the resulting
+roster in canonical order. Each SKU insert checks one row and finds its parent
+by key. The ordinal and SKU keys make each issued slot unique. Receipt, head and
+pointer events look up their associated rows by key. A decision additionally
+verifies the bounded source draft. The constraints run at commit or when the
+owner explicitly makes them immediate.
 
 Apply the complete native chain before binding native publication reads.
 A managed implementation can use the same relations, composite keys and
