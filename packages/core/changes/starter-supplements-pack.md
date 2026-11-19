@@ -14,3 +14,8 @@ application maintenance window. The existing step reconciles
 Reconcile any local conflicts manually. Keep the registry, pack and market
 files application-owned during later managed-file upgrades. Definition
 installation and publication retain their separate authority.
+
+When selecting `supplements-pack`, build the draft recipe with the selected
+registration's `supplementsCatalogueFor(selection)` from `owned/catalogue.ts`.
+The recipe uses the installed base-price list. The registration supplies the
+pack's per-line demand and capsule swap group for subscription quotes.

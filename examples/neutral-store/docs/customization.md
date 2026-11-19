@@ -176,6 +176,13 @@ Checkout and editor preview attach exact catalogue and price identities for
 the native acceptance transaction to verify. When the installed catalogue is
 selected, stock comes from the installed inventory authority.
 
+The `supplements-pack` configuration builds its authoring recipe with
+`supplementsCatalogueFor(starterCatalogue.select('supplements-pack'))` from
+`owned/catalogue.ts`. Its price operations use the list installed for that
+configuration. For subscription quotes, the pack binds each line's demand
+using its published content unit and assigns capsules to their declared swap
+group.
+
 The selected pack's declared offer version is eligible for the classic editor
 lane. Existing classic and sized subscriptions keep their own lanes. Use
 `operator.stockWait` with `view: summary`, `evidence` or `admin` for

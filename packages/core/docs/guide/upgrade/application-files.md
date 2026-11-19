@@ -119,7 +119,8 @@ The step upgrades the released defaults of `owned/catalogue.ts` and
 `owned/copy.ts` and adds the four supplements pack files and the fictional market
 table from the candidate extraction. It preflights every path before applying
 the candidate bytes and recognizes an earlier unmodified registry with current
-catalogue labels. If an owned file contains a customization, merge the changes
+catalogue labels and the earlier unmodified supplements recipe. If an owned file
+contains a customization, merge the changes
 with your local copy. Register another pack by adding its configuration, pack,
 draft type and offer version to the same owned registry. An exact repeat
 performs no writes. Subsequent managed-file upgrades preserve the pack and

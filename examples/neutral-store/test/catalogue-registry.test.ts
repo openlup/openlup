@@ -87,11 +87,14 @@ test('RP1-D-003a selects the supplements pack through the explicit LC8 binding',
   assert.equal(selected.pack?.id, 'supplements');
   assert.equal(selected.explicitOnly, true);
   assert.equal(starterCatalogue.select().pack?.id, 'starter:demonstration');
-  const binding = await bindRegisteredCatalogue(selected, transactions);
+  assert.equal(await bindRegisteredCatalogue(selected, transactions, false), undefined);
+  const binding = await bindRegisteredCatalogue(selected, transactions, true);
   assert.equal(binding.registration, selected);
   assert.equal(binding.publication.transactions, transactions);
   assert.equal(binding.readEnabled(), true);
-  assert.equal(binding.writerEnabled(), false);
+  assert.equal(binding.writerEnabled(), true);
+  assert.equal(typeof binding.observePublication, 'function');
+  assert.equal(typeof binding.publication.bindHumanTransaction, 'function');
   await assert.rejects(bindRegisteredCatalogue(starterCatalogue.select(), transactions), { message: 'starter_catalogue_registration_invalid' });
 });
 

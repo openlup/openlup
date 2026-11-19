@@ -11,7 +11,7 @@ import { createCatalogSubscriptionProfileBinding } from '@openlup/platform/subsc
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { installStarterCatalogueDefinitions } from '../../examples/neutral-store/installation/install.ts';
 import { starterCatalogue } from '../../examples/neutral-store/owned/catalogue.ts';
-import { initialDrafts, initialPublications } from '../../examples/catalog-packs/supplements/catalogue.ts';
+import { supplementsCatalogue } from '../../examples/catalog-packs/supplements/catalogue.ts';
 import { upgrade } from '../../examples/catalog-packs/supplements/fixtures.ts';
 import { pack } from '../../examples/catalog-packs/supplements/pack.ts';
 import { policy } from '../../examples/catalog-packs/supplements/policy.ts';
@@ -23,6 +23,7 @@ import {
 let container: PostgresContainer | undefined;
 let owner: Pool;
 const actorId = randomUUID();
+const { initialDrafts, initialPublications } = supplementsCatalogue('00000000-0000-4000-8000-000000000100');
 const registry = starterCatalogue.select('supplements-pack').types;
 const draftHandler = () => createCatalogDraftHandlerV5({
   store: createPostgresCatalogDraftStoreV5(owner), registry,

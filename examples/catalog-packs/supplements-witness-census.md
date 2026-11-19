@@ -48,6 +48,11 @@ agreement rows against the composed installation with installed packages.
 | | RP1-D-008c | Repeat v2 mapping from the extracted source | Identical authored data and digests |
 | | RP1-D-007c | Two-line purchase, renewal and explicit successor comparison | 7,000 / 7,000 / 7,280 XTS minor, 0 shipping and tax, 28 days |
 
+| Rehearsal ruling | Isolating input | Expected installed owner result |
+| --- | --- | --- |
+| G1-D6 | Approve and publish the capsule recipe against the selected installation; use an absent list in the control candidate | The installed list receives the active capsule's 2,800 XTS minor base price and the replay returns the publication receipt. The absent list returns `price_list_not_found` and creates no SKU. |
+| G1-D7 | Quote one of each for 28 days; omit only the powder line's demand in the control | Both lines independently cover 28 days and the native quote issues an acceptance capability. The control returns `demand_unit_mismatch`. |
+
 ## Frozen bookends
 
 - Compatible package range `^1.3.0` targets the first minor after 1.2.0.
@@ -84,6 +89,6 @@ The recipe first saves v3 drafts, then supplies v4 revisions for publication.
 That preserves the lifecycle authority required by withdrawal without
 reinterpreting the stored v3 drafts. The authored price command uses the
 existing gross base writer; the synthetic subscription price is derived
-with the existing zero-discount policy. Source references are
-`supplements/catalogue.ts:70-141`, `supplements/fixtures.ts:8-49` and
-`supplements/policy.ts:14-63`.
+with the existing zero-discount policy. The starter resolves its price list
+and per-line demand in `../neutral-store/owned/catalogue.ts`. The witness
+`../../tests/postgres/neutralStoreQuote.test.ts` uses the installed owners.

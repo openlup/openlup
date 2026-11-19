@@ -6,7 +6,6 @@ import {
 import { itemType } from './pack.ts';
 import type { Format } from './policy.ts';
 
-export const priceListId = '00000000-0000-4000-8000-000000000100';
 export const offerVersion = 'supplements:regular@1';
 
 export const proposedTaxonomy = {
@@ -32,7 +31,7 @@ type Input = {
   unitPriceMinor: number;
 };
 
-function draft({ suffix, slug, format, title, skuCode, gtin, grossGrams, unitPriceMinor }: Input) {
+function draft({ suffix, slug, format, title, skuCode, gtin, grossGrams, unitPriceMinor }: Input, priceListId: string) {
   const productId = identity(suffix);
   const skuId = identity(suffix + 1);
   const evidence = `fixture:supplements/${slug}/1`;
@@ -91,15 +90,6 @@ function draft({ suffix, slug, format, title, skuCode, gtin, grossGrams, unitPri
     netContent: format === 'capsule' ? capsules : gram('140'), payload: catalogDraftPayloadV3Schema.parse(payload) };
 }
 
-const capsule = draft({ suffix: 10, slug: 'capsule', format: 'capsule', title: 'Fixture capsules',
-  skuCode: 'G1-CAPS-56', gtin: '0000000010108', grossGrams: '92', unitPriceMinor: 2800 });
-const powder = draft({ suffix: 20, slug: 'powder', format: 'powder', title: 'Fixture powder',
-  skuCode: 'G1-POWDER-140', gtin: '0000000010207', grossGrams: '172', unitPriceMinor: 4200 });
-const next = draft({ suffix: 30, slug: 'capsule-next', format: 'capsule', title: 'Fixture successor capsules',
-  skuCode: 'G1-CAPS-NEXT-56', gtin: '0000000010306', grossGrams: '96', unitPriceMinor: 3080 });
-
-export const initialDrafts = [capsule, powder] as const;
-
 /** Revise the stored v3 drafts to the lifecycle dialect before approving publication. */
 function lifecycleRelease(payload: CatalogDraftPayloadV3): CatalogDraftPayloadV4 {
   const operations = payload.publication.operations.filter(operation =>
@@ -113,24 +103,37 @@ function lifecycleRelease(payload: CatalogDraftPayloadV3): CatalogDraftPayloadV4
   ] } });
 }
 
-export const initialPublications = initialDrafts.map(({ payload }) => lifecycleRelease(payload));
+/** Build typed drafts for the adopter's installed price list. */
+export function supplementsCatalogue(priceListId: string) {
+  const capsule = draft({ suffix: 10, slug: 'capsule', format: 'capsule', title: 'Fixture capsules',
+    skuCode: 'G1-CAPS-56', gtin: '0000000010108', grossGrams: '92', unitPriceMinor: 2800 }, priceListId);
+  const powder = draft({ suffix: 20, slug: 'powder', format: 'powder', title: 'Fixture powder',
+    skuCode: 'G1-POWDER-140', gtin: '0000000010207', grossGrams: '172', unitPriceMinor: 4200 }, priceListId);
+  const next = draft({ suffix: 30, slug: 'capsule-next', format: 'capsule', title: 'Fixture successor capsules',
+    skuCode: 'G1-CAPS-NEXT-56', gtin: '0000000010306', grossGrams: '96', unitPriceMinor: 3080 }, priceListId);
 
-const capsuleProduct = capsule.payload.product;
-export const withdrawal = catalogDraftPayloadV4Schema.parse({
-  schemaVersion: 4,
-  product: { ...capsuleProduct, sharedContent: { ...capsuleProduct.sharedContent, catalogAction: 'revise' } },
-  skus: capsule.payload.skus.map(({ priceOperations: _priceOperations, ...sku }) => sku),
-  publication: { kind: 'release', evidence: {}, operations: [
-    { op: 'set_product_lifecycle', productSlug: capsuleProduct.slug,
-      expectedState: 'active', state: 'withdrawn', children: [{ skuCode: capsule.skuCode, expectedState: 'active' }] },
-  ] },
-});
+  const initialDrafts = [capsule, powder] as const;
 
-const nextRelease = lifecycleRelease(next.payload);
-const successorPayload: CatalogDraftPayloadV5 = {
-  ...nextRelease,
-  schemaVersion: 5,
-  publication: { ...nextRelease.publication, operations: nextRelease.publication.operations.map(operation =>
-    operation.op === 'create_sku' ? { ...operation, successorOf: capsule.skuId } : operation) },
-};
-export const successor = { ...next, payload: catalogDraftPayloadV5Schema.parse(successorPayload) };
+  const initialPublications = initialDrafts.map(({ payload }) => lifecycleRelease(payload));
+
+  const capsuleProduct = capsule.payload.product;
+  const withdrawal = catalogDraftPayloadV4Schema.parse({
+    schemaVersion: 4,
+    product: { ...capsuleProduct, sharedContent: { ...capsuleProduct.sharedContent, catalogAction: 'revise' } },
+    skus: capsule.payload.skus.map(({ priceOperations: _priceOperations, ...sku }) => sku),
+    publication: { kind: 'release', evidence: {}, operations: [
+      { op: 'set_product_lifecycle', productSlug: capsuleProduct.slug,
+        expectedState: 'active', state: 'withdrawn', children: [{ skuCode: capsule.skuCode, expectedState: 'active' }] },
+    ] },
+  });
+
+  const nextRelease = lifecycleRelease(next.payload);
+  const successorPayload: CatalogDraftPayloadV5 = {
+    ...nextRelease,
+    schemaVersion: 5,
+    publication: { ...nextRelease.publication, operations: nextRelease.publication.operations.map(operation =>
+      operation.op === 'create_sku' ? { ...operation, successorOf: capsule.skuId } : operation) },
+  };
+  const successor = { ...next, payload: catalogDraftPayloadV5Schema.parse(successorPayload) };
+  return { initialDrafts, initialPublications, withdrawal, successor };
+}

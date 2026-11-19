@@ -169,17 +169,7 @@ const shippingScript = String.raw`
 // The child measured at most 2.703 s; retain its separate 20 s deadline.
 for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
   const caseStarted = performance.now();
-  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
-  containers.push(container);
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
-  const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
-  for (const role of ['starter_runtime','starter_restore']) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
-  const selection = { generation: 'qualified-v2',roleMode: 'installer-managed',migrationLogin: 'postgres',bootstrapLogin: 'postgres',runtimeLogin: 'starter_runtime',restoreLogin: 'starter_restore' } as const;
-  const migration = new Pool({ connectionString: container.connectionString,options: migrations.qualifiedPostgresStartupOptions(selection) });pools.push(migration);
-  const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: container.connectionString }, { installation: selection,poolFactory: () => migration });
-  await runner.apply();expect((await runner.status()).pending).toEqual([]);
-  await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
-  const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
+  const { ownerUrl, runtimeUrl } = await installQuoteDatabase(`${configuration}-${multiSize ? "multi" : "single"}`);
   const probe = createServer();
   await new Promise<void>(resolve => probe.listen(0,'127.0.0.1',resolve));
   const address = probe.address();
@@ -353,13 +343,13 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl,runtimeUrl })};\n${script}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
   catch (error) { throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Starter quote child failed',{ cause: error }); }
   expect(JSON.parse(output.trim())).toMatchObject({ configuration,unit: 1420,subtotal: 4260,second: 3958,capabilityRefused: true,secondPromiseRefresh: true,retainedCapture: true });
-  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${shippingScript.replaceAll('\\`','`')}`);
+  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl,runtimeUrl })};\n${shippingScript.replaceAll('\\`','`')}`);
   const shippingRun = () => execFileSync(process.execPath,['--experimental-strip-types','shipping-scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000,stdio: 'pipe' });
   let shippingOutput: string;
   try { shippingOutput = shippingRun(); }
@@ -380,4 +370,222 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
     } finally { writeFileSync(mutation.path,original); }
   }
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
+}, 95_000);
+
+async function installQuoteDatabase(name: string) {
+  const password = 'synthetic-conformance';
+  const container = await runPostgresContainer({ name: `starter-quote-${name}-${process.pid}`, database: 'neutral_store', password });
+  containers.push(container);
+  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
+  const ownerUrl = container.connectionString;
+  const owner = new Pool({ connectionString: ownerUrl });
+  pools.push(owner);
+  for (const role of ['starter_runtime', 'starter_restore']) {
+    await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
+  }
+  const selection = { generation: 'qualified-v2', roleMode: 'installer-managed', migrationLogin: 'postgres',
+    bootstrapLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
+  const migration = new Pool({ connectionString: ownerUrl, options: migrations.qualifiedPostgresStartupOptions(selection) });
+  pools.push(migration);
+  const runner = migrations.createPlatformPostgresMigrationRunner({ connectionString: ownerUrl },
+    { installation: selection, poolFactory: () => migration });
+  await runner.apply();
+  expect((await runner.status()).pending).toEqual([]);
+  await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
+  const runtime = new URL(ownerUrl);
+  runtime.username = 'starter_runtime';
+  runtime.password = password;
+  return { ownerUrl, runtimeUrl: runtime.toString() };
+}
+
+it.each(['D6', 'D7'] as const)('G1-%s installed supplements publication and per-line quote', async defect => {
+  const script = String.raw`
+    import assert from 'node:assert/strict';
+    import { createHash, randomUUID } from 'node:crypto';
+    import pg from 'pg';
+    import { canonicalCatalogDraftJson, catalogDefinitionDigest, createPostgresCatalogPublication } from '@openlup/platform/catalog';
+    import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
+    import { starterCatalogue, supplementsCatalogueFor } from './application/owned/catalogue.ts';
+    import { bindRegisteredCatalogue } from './application/host/catalogue-selection.ts';
+    import { bindStarterCatalogue } from './application/host/catalogue-binding.ts';
+    import { dispatchAction, pendingBindings } from './application/host/bindings.ts';
+    import { applyRegisteredDemoSeed } from './application/installation/install.ts';
+    import { createNativeQuoteService, quoteFailure } from './application/host/quote-composition.ts';
+    import { installedAcquisitionPredecessors } from './application/host/acquisition-predecessors.ts';
+
+    const registration = starterCatalogue.select('supplements-pack');
+    const config = registration.configuration;
+    const { initialPublications, initialDrafts, successor } = supplementsCatalogueFor(registration);
+    const owner = new pg.Pool({ connectionString: fixture.ownerUrl });
+    const runtime = new pg.Pool({ connectionString: fixture.runtimeUrl });
+    const actorId = randomUUID();
+    const operators = createPostgresOperatorIdentityStore({ connectionString: fixture.runtimeUrl });
+    const transactions = { async run(work) {
+      const db = await owner.connect();
+      try {
+        await db.query('BEGIN');
+        const result = await work(db);
+        await db.query('COMMIT');
+        return result;
+      } catch (error) {
+        await db.query('ROLLBACK');
+        throw error;
+      } finally { db.release(); }
+    } };
+    const authorizeHuman = async ({ actor }) => {
+      const member = actor.principalRef === actorId && actor.operatorRef === actorId
+        ? await operators.findMembership(actorId) : null;
+      return member?.role === 'admin' && member.membershipState === 'active'
+        ? { ok: true, userId: actorId, role: 'admin', isMachineActor: false } : { ok: false };
+    };
+    const quoteService = createNativeQuoteService(runtime, installedAcquisitionPredecessors(), { current: 'fixture-only-acceptance-key-00000000000000' });
+    const assemble = options => {
+      const bindings = pendingBindings();
+      bindings.actions['offer.validate'] = async (payload, context) => {
+        try { return { ok: true, value: quoteService.public(await quoteService.quote(payload, context)) }; }
+        catch (error) {
+          const code = quoteFailure(error);
+          if (code === 'starter_quote_unavailable') console.error(error);
+          return { ok: false, code };
+        }
+      };
+      return Object.assign(bindings, bindStarterCatalogue({ db: owner, options, actions: bindings.actions, authorizeHuman }));
+    };
+    try {
+      const install = await owner.connect();
+      try { await applyRegisteredDemoSeed(config, { connection: install, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => {} }); }
+      finally { install.release(); }
+      const lists = (await owner.query('SELECT id, currency FROM public.price_lists')).rows;
+      assert.equal(lists.length, 1);
+      const [{ id: listId, currency }] = lists;
+      assert.equal(currency, 'XTS');
+      assert.deepEqual((await owner.query('SELECT price_list_id, discount_bps, rounding_quantum_minor FROM public.subscription_price_policy_revisions')).rows,
+        [{ price_list_id: listId, discount_bps: 0, rounding_quantum_minor: 10 }]);
+      assert.deepEqual([...initialPublications, successor.payload].map(payload => payload.skus[0].priceOperations[0].unitPriceMinor), [2800, 4200, 3080]);
+      const frozenWrongList = '00000000-0000-4000-8000-000000000100';
+      const skuCodes = ['G1-CAPS-56', 'G1-POWDER-140', 'G1-CAPS-NEXT-56'];
+      assert.deepEqual((await owner.query('SELECT sku FROM public.catalog_skus WHERE sku=ANY($1::text[])', [skuCodes])).rows, []);
+      assert.deepEqual((await owner.query('SELECT id FROM public.catalog_publications')).rows, []);
+
+      // Real native readiness inputs for a disposable installation. Run the installed guard unchanged.
+      await owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XTS') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+      await owner.query('SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()');
+      const bundle = { id: 'fixture:bundle-baseline', name: 'Synthetic bundle', status: 'active',
+        trigger_type: 'automatic', code: null, discount_type: 'percentage', discount_value: 5, applies_to_kind: 'order_total',
+        applies_to_payload: { cart_mode: 'one_time' }, stacking_rule: 'stackable_with_any', eligibility: { min_cart_minor: 12000 },
+        region_availability: ['ZZ'], valid_from: '2000-01-01T00:00:00.000Z', valid_to: null, redemption_limit_global: null,
+        redemption_limit_per_customer: null, promotion_engine_version: 'promotion-engine.v1', benefit_lane: 'product',
+        benefit_kind: 'percentage', benefit_value_bps: 500, benefit_value_minor: null, v2_mirror_of: null };
+      await owner.query('INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES($1,$2,true)', [bundle.id, bundle]);
+      await owner.query('INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata) '
+        + "VALUES('platform-watchdog','worker',true,'success',statement_timestamp(),'{\"promotionReady\":true}'),('promotion-claim-sweep','worker',true,'success',statement_timestamp(),'{}') "
+        + "ON CONFLICT(job_name) DO UPDATE SET enabled=true,last_status='success',last_success_at=statement_timestamp(),metadata=excluded.metadata");
+      const result = (await owner.query('SELECT public.commerce_offer_policy_v2_readiness() AS guard')).rows[0].guard;
+      assert.equal(result.ready, true, JSON.stringify(result));
+      await owner.query('INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,$2)', [actorId, 'pack-publisher@example.invalid']);
+      await owner.query('INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) '
+        + "VALUES($1,'admin','active','legacy',clock_timestamp())", [actorId]);
+
+      const options = await bindRegisteredCatalogue(registration, transactions);
+      // Use the installed catalogue owner for governed data. Quotes still use the restricted commerce pool.
+      const authoring = assemble(options);
+      const operator = { customerRef: null, principalRef: actorId, operatorRef: actorId };
+      const perform = (action, command, commandKey = randomUUID()) =>
+        dispatchAction(authoring, 'operator.catalogPublication', { action, command }, { config, actor: operator, commandKey });
+      async function publish({ draftId, skuId }, payload, expectedRevision) {
+        const draft = await perform('draft', { schemaVersion: payload.schemaVersion, draftId,
+          action: expectedRevision ? 'revise' : 'create', expectedRevision, payload });
+        assert.equal(draft.ok, true, JSON.stringify(draft));
+        const candidateRef = 'v1:' + draftId + '@' + draft.value.record.revision + '/unpublished';
+        const definition = { ...payload.product.type, definitionDigest: catalogDefinitionDigest(registration.types.resolve(payload.product.type)) };
+        const candidateDigest = createHash('sha256').update(canonicalCatalogDraftJson(['catalog-candidate', 1, payload, [definition], null])).digest('hex');
+        const productId = payload.product.id;
+        const approved = await perform('decide', { schemaVersion: 2, action: 'approve', productId,
+          candidateRef, candidateDigest, reason: 'Approve the installed fixture candidate' });
+        assert.equal(approved.value?.outcome, 'committed', JSON.stringify(approved));
+        const command = { productId, candidateRef, candidateDigest, expectedHead: null,
+          changes: [{ variantId: skuId, expectedRevision: 0, state: 'active' }] };
+        const key = randomUUID();
+        const publication = await perform('publish', command, key);
+        return { publication, replay: () => perform('publish', command, key) };
+      }
+      const [capsule, powder] = initialDrafts;
+      if (fixture.defect === 'D6') {
+        const wrong = structuredClone(initialPublications[0]);
+        wrong.skus[0].priceOperations[0].priceListId = frozenWrongList;
+        assert.deepEqual((await publish(capsule, wrong, 0)).publication, { ok: false, code: 'price_list_not_found' });
+        assert.deepEqual((await owner.query('SELECT sku FROM public.catalog_skus WHERE sku=$1', [capsule.skuCode])).rows, []);
+      }
+
+      const accepted = await publish(capsule, initialPublications[0], fixture.defect === 'D6' ? 1 : 0);
+      assert.equal(accepted.publication.value?.outcome, 'committed', 'D6 selected-list publication: ' + JSON.stringify(accepted.publication));
+      assert.deepEqual((await accepted.replay()).value, { outcome: 'replayed', receipt: accepted.publication.value.receipt });
+      const prices = (await owner.query('SELECT s.status, p.price_list_id, p.unit_price_minor, p.mode FROM public.price_entries p '
+        + 'JOIN public.catalog_skus s ON s.id=p.variant_id WHERE s.id=$1 AND p.active', [capsule.skuId])).rows;
+      assert.deepEqual(prices, [{ status: 'active', price_list_id: listId, unit_price_minor: 2800, mode: 'one_time' }]);
+      if (fixture.defect === 'D7') {
+        const second = await publish(powder, initialPublications[1], 0);
+        assert.equal(second.publication.value?.outcome, 'committed', JSON.stringify(second.publication));
+        const publisher = createPostgresCatalogPublication({ ...options.publication, registry: registration.types, authorizeHuman });
+        const listed = await publisher.serving(registration.scope).list({ cursor: null, limit: 2 });
+        assert.deepEqual(listed.items.map(({ sku }) => sku.code), ['G1-CAPS-56', 'G1-POWDER-140']);
+        const shopper = { config, actor: { customerRef: null, operatorRef: null }, commandKey: randomUUID() };
+        const payload = { email: 'pack-buyer@example.invalid', acquisitionCapability: 'subscription-acquisition.v1',
+          cart: { schemaVersion: 1, configuration: config.id, mode: 'subscription', cadenceDays: 28,
+            lines: [{ sku: capsule.skuCode, quantity: 1 }, { sku: powder.skuCode, quantity: 1 }] } };
+        const quote = target => dispatchAction(target, 'offer.validate', payload, shopper);
+        const view = await quote(authoring);
+        assert.equal(view.ok, true, 'D7 profiled quote: ' + JSON.stringify(view));
+        assert.equal(typeof view.value.quoteAcceptance, 'string');
+        assert.deepEqual(view.value.expectedTotal, { currency: 'XTS', amountMinor: 7000 });
+        assert.equal(view.value.discountMinor, 0);
+        assert.equal(view.value.secondTotalMinor, 7000);
+        const observed = view.value.quote.catalogAdmission.skuRevisions.map(({ quantity, reference }) => {
+          assert.equal(typeof reference.subscriptionProfile.digest, 'string');
+          const { unit, unscaled, scale } = reference.netContent;
+          const daily = { 'supplements:capsule': 2, 'openlup:g': 5 }[unit];
+          return [reference.skuCode, Number(unscaled) * quantity / (10 ** scale * daily)];
+        });
+        assert.deepEqual(observed, [['G1-CAPS-56', 28], ['G1-POWDER-140', 28]]);
+        const roster = await authoring.catalogue.listQuoteCatalogItems();
+        const demands = roster.map(item => {
+          const profile = options.profileLine({ id: item.variantId, capacity: item.netContent }, item);
+          return [item.skuCode, profile.demand.perDay.unit, profile.demand.perDay.unscaled, profile.swapGroupKey ?? null];
+        });
+        assert.deepEqual(demands, [['G1-CAPS-56', 'openlup:piece', '2', 'supplements:capsules'], ['G1-POWDER-140', 'openlup:g', '5', null]]);
+        const withoutPowderDemand = assemble({ ...options, profileLine: (line, item) =>
+          item.skuCode === powder.skuCode ? {} : options.profileLine(line, item) });
+        assert.deepEqual(await quote(withoutPowderDemand), { ok: false, code: 'demand_unit_mismatch' });
+      }
+    } finally {
+      await runtime.end();
+      await owner.end();
+    }
+  `;
+  async function runWitness(suffix: string) {
+    const fixture = { ...await installQuoteDatabase(`supplements-pack-${defect.toLowerCase()}${suffix}`), defect };
+    writeFileSync(join(consumer, 'supplements-pack.mjs'), `const fixture = ${JSON.stringify(fixture)};\n${script}`);
+    try {
+      execFileSync(process.execPath, ['--experimental-strip-types', 'supplements-pack.mjs'],
+        { cwd: consumer, encoding: 'utf8', timeout: 30_000, stdio: 'pipe' });
+    } catch (error) {
+      throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Installed supplements witness failed', { cause: error });
+    }
+  }
+  await runWitness('');
+
+  const registration = join(consumer, 'application/owned/catalogue.ts');
+  const original = readFileSync(registration, 'utf8');
+  const fixed = defect === 'D6' ? 'supplementsCatalogue(priceListFor(selection.configuration))'
+    : /^ {4}profileLine\(_line, \{ netContent \}\) \{[\s\S]*?\n {4}\},\n/mu;
+  const reverted = original.replace(fixed, defect === 'D6' ? "supplementsCatalogue('00000000-0000-4000-8000-000000000100')" : '');
+  expect(reverted).not.toEqual(original);
+  try {
+    writeFileSync(registration, reverted);
+    await expect(runWitness('-reverted')).rejects.toThrow(defect === 'D6'
+      ? /D6 selected-list publication: .*price_list_not_found/u
+      : /D7 profiled quote: .*demand_unit_mismatch/u);
+  } finally {
+    writeFileSync(registration, original);
+  }
 }, 95_000);
