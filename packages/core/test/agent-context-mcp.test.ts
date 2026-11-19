@@ -167,6 +167,7 @@ describe("installed context MCP protocol", () => {
     expect(response.tools.map((tool: { name: string }) => tool.name)).toEqual(["search_openlup_context", "read_openlup_file"]);
     expect(response.tools[0].inputSchema).toEqual({ type: "object", properties: {
       task: { type: "string" }, includeApplicationCode: { type: "boolean", default: false }, includePackageCode: { type: "boolean", default: false },
+      limit: { type: "integer", minimum: 1, maximum: 50, default: 8 },
     }, required: ["task"], additionalProperties: false });
     expect(response.tools[1].inputSchema).toEqual({ type: "object", properties: {
       path: { type: "string" }, startLine: { type: "integer", minimum: 1 }, endLine: { type: "integer", minimum: 1 },
@@ -221,6 +222,8 @@ describe("installed context MCP protocol", () => {
     request("tools/call"), request("tools/call", { name: "search_openlup_context" }),
     call("absent", {}), search({ task: 1 }), search({}), search({ task: "retry", extra: true }),
     search({ task: "retry", includeApplicationCode: "true" }), search({ task: "retry", includePackageCode: 1 }),
+    search({ task: "retry", limit: 0 }), search({ task: "retry", limit: 51 }),
+    search({ task: "retry", limit: 1.5 }), search({ task: "retry", limit: "5" }),
     call("read_openlup_file", { path: 1 }), call("read_openlup_file", {}),
     read(undefined, { startLine: 0 }), read(undefined, { endLine: -1 }), read(undefined, { startLine: 1.5 }),
     read(undefined, { endLine: "2" }), read(undefined, { extra: true }),
@@ -298,6 +301,13 @@ describe("MCP installed context search", () => {
     const empty = (await result(root, search({ task: "unmatchedNeedle" }))).result;
     expect(empty.content[0].text).toContain("does not prove a public seam is absent");
     expect(empty.isError).toBeUndefined();
+
+    mkdirSync(join(root, prefix, "dist"), { recursive: true });
+    for (let index = 0; index < 10; index++) {
+      writeFileSync(join(root, prefix, "dist", `m${index}.d.ts`), "export declare const McpLimitNeedle: number;\n");
+    }
+    const expanded = (await result(root, search({ task: "McpLimitNeedle", limit: 10 }))).result;
+    expect(expanded.structuredContent.hits).toHaveLength(10);
   });
 
   it("returns installed-package and task failures as tool errors", async () => {
