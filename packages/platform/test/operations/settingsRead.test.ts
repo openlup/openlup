@@ -2,9 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
 import { explainSetting, listSettings, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
-import {
-  settingsListRequest, settingsListResult, settingsShowRequest, settingsShowResult,
-} from "../../src/operations/server/settingsCatalog.js";
+import { loadSettingsCatalogue, settingsListRequest } from "../../src/operations/server/settingsCatalog.js";
 import { z } from "zod";
 
 describe("renewal stock policy descriptor", () => {
@@ -147,17 +145,18 @@ describe("settings show", () => {
 
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
   const [list, show] = settingsReadTools;
+  const { listResult, showRequest, showResult } = loadSettingsCatalogue();
   expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show"]);
   for (const [tool, request] of [
-    [list, settingsListRequest], [show, settingsShowRequest],
+    [list, settingsListRequest], [show, showRequest],
   ] as const) {
     expect(tool.annotations).toEqual({ readOnlyHint: true });
     expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
   }
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
-  expect(settingsListResult.parse(listSettings({ goal: "inventory buffer" })).entries.map(entry => entry.key)).toEqual([key]);
-  expect(settingsShowResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
+  expect(listResult.parse(listSettings({ goal: "inventory buffer" })).entries.map(entry => entry.key)).toEqual([key]);
+  expect(showResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
     properties: { renewalProtectionDays: { minimum: 1, maximum: 3660 } },
   });
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
