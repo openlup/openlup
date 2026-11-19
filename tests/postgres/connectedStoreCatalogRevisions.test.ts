@@ -272,11 +272,15 @@ it("LC5-D-016 LC5-D-068 LC5-D-069 LC5-A-033 transfer governed facts, nullable bi
   ) INSERT INTO public.commerce_order_items(id,order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
     SELECT $3,id,$4,1,3,617,1851 FROM created`, [order,customer,line,sku.facts.id]);
   await held.owner.query("UPDATE public.commerce_orders SET catalog_acceptance=$2::jsonb WHERE id=$1", [order,acceptance]);
+  const emptyOrder = randomUUID();
+  await held.owner.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,metadata,catalog_acceptance) VALUES($1,$2,'XXX',0,$3::jsonb,$4::jsonb)",
+    [emptyOrder,customer,JSON.stringify({ orderDraftSnapshot: { lines: [{ sku: sku.facts.code, quantity: 1 }] } }),acceptance]);
   const pricing = { action: "update_bundle", linePricing: [{ sku: sku.facts.code, quantity: 3, unitAmountMinor: 617, isAddon: false, quoteLine: {} }] };
   await held.owner.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle','synthetic:accepted-edit',$2::jsonb,$3::jsonb)", [subscription,JSON.stringify(pricing),acceptance]);
   const captured = await captureStoreJourney(held.owner,"lifecycle-source"), before = await journeyCensus(held.owner);
   expect(await restore(target.owner,captured)).toMatchObject({ replayed: false });
   expect(await journeyCensus(target.owner)).toEqual(before);
+  expect((await target.owner.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [emptyOrder])).rows).toEqual([{ catalog_acceptance: acceptance }]);
   expect(await publicationAuthority(target.owner).readbackV3(history.first)).toEqual(page);
   expect(await publicationAuthority(target.owner).readbackV3(history.second)).toMatchObject({ outcome: "page", head: history.second });
   const reader = publicationAuthority(target.owner, true), scope = reader.authorizeReadScope(undefined);

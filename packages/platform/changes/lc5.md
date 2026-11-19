@@ -30,6 +30,12 @@ these carriers install no application binding. Keep the newer readers while
 retained rows reference these versions. No agreement, quantity, money or cycle
 schedule is rewritten.
 
+Order evidence reconciles accepted quotes, item quantities and retained
+references. Separate ordinals for the same SKU contribute to the same quantity.
+The deferred order check validates acceptance against the completed item ledger,
+including when the order header was written first. Governed renewal admission
+checks the frozen wire before the native reader replays it.
+
 Native transfer retains authoritative lifecycle and acceptance bytes through
 existing row inventories and restores revisions before subscription bindings.
 The generic row utility continues to refuse INSERT-guarded acceptance tables;

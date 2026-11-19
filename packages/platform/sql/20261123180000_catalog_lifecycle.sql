@@ -335,7 +335,7 @@ CREATE TRIGGER catalog_publication_heads_lifecycle_admit BEFORE INSERT OR UPDATE
 
 -- Resolve retained lines once. Supported historic flat baskets remain readable;
 -- a native versioned carrier must also agree with its nested line copies.
-CREATE FUNCTION public.catalog_retained_basket_v2(p_basket jsonb) RETURNS jsonb
+CREATE FUNCTION public.catalog_retained_basket_v2(p_basket jsonb,p_order_ordinals boolean DEFAULT false) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE item jsonb; code text; qty jsonb; identity jsonb; basket jsonb:='{}';
 BEGIN
@@ -347,7 +347,7 @@ BEGIN
    OR (item ? 'quantity' AND item ? 'qty' AND item->'quantity' IS DISTINCT FROM item->'qty')
    OR jsonb_typeof(coalesce(item->'sku',item->'skuCode')) IS DISTINCT FROM 'string' THEN RETURN NULL; END IF;
   code:=coalesce(item->>'sku',item->>'skuCode'); qty:=coalesce(item->'quantity',item->'qty');
-  IF code IS NULL OR code !~ '^[A-Za-z0-9._:-]{1,160}$' OR basket ? code
+  IF code IS NULL OR code !~ '^[A-Za-z0-9._:-]{1,160}$' OR (NOT p_order_ordinals AND basket ? code)
    OR jsonb_typeof(qty) IS DISTINCT FROM 'number' OR qty::text !~ '^[1-9][0-9]{0,9}$' THEN RETURN NULL; END IF;
   IF qty::text::bigint>2147483647 THEN RETURN NULL; END IF;
   IF item ?| ARRAY['variantId','skuId'] THEN
@@ -355,12 +355,12 @@ BEGIN
    IF identity IS NULL OR (item ? 'variantId' AND item->'variantId' IS DISTINCT FROM identity)
     OR (item ? 'skuId' AND item->'skuId' IS DISTINCT FROM identity) THEN RETURN NULL; END IF;
   END IF;
-  basket:=basket||jsonb_build_object(code,qty);
+  basket:=basket||jsonb_build_object(code,coalesce((basket->>code)::bigint,0)+qty::text::bigint);
  END LOOP;
  RETURN basket;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_retained_basket_v2(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_retained_basket_v2(jsonb,boolean) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_retained_basket_codes_v2(p_basket jsonb) RETURNS text[]
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -368,9 +368,9 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 $$;
 REVOKE ALL ON FUNCTION public.catalog_retained_basket_codes_v2(jsonb) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_frozen_basket_codes_v2(p_snapshot jsonb) RETURNS text[]
+CREATE FUNCTION public.catalog_frozen_basket_codes_v2(p_snapshot jsonb,p_fingerprint text DEFAULT NULL) RETURNS text[]
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE codes text[]; item jsonb;
+DECLARE codes text[];
 BEGIN
  IF jsonb_typeof(p_snapshot) IS DISTINCT FROM 'object' THEN RETURN NULL; END IF;
  IF p_snapshot ? 'frozenRevision' AND (
@@ -380,33 +380,34 @@ BEGIN
  codes:=public.catalog_retained_basket_codes_v2(p_snapshot->'lines');
  IF codes IS NULL THEN RETURN NULL; END IF;
  IF p_snapshot->>'frozenRevision'='native.purchase-renewal.v3' THEN
-  FOR item IN SELECT value FROM jsonb_array_elements(p_snapshot->'lines') LOOP
-   IF item - ARRAY['lineOrdinal','sku','quantity','unitAmountMinor'] <> '{}'::jsonb
-    OR jsonb_typeof(item->'sku') IS DISTINCT FROM 'string' OR jsonb_typeof(item->'quantity') IS DISTINCT FROM 'number'
-    OR jsonb_typeof(item->'lineOrdinal') IS DISTINCT FROM 'number' OR item->>'lineOrdinal' !~ '^[1-9][0-9]*$'
-    OR jsonb_typeof(item->'unitAmountMinor') IS DISTINCT FROM 'number' OR item->>'unitAmountMinor' !~ '^(0|[1-9][0-9]*)$' THEN RETURN NULL; END IF;
-  END LOOP;
+  IF NOT public.catalog_renewal_lines_v3(p_snapshot->'lines')
+   OR (p_fingerprint IS NOT NULL AND (NOT public.catalog_frozen_wire_valid_v3(p_snapshot,p_fingerprint)
+    OR NOT public.catalog_acceptance_roster_valid_v2(p_snapshot->'catalogAcceptance',public.catalog_retained_basket_v2(p_snapshot->'lines'))))
+  THEN RETURN NULL; END IF;
  END IF;
  RETURN codes;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_frozen_basket_codes_v2(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_frozen_basket_codes_v2(jsonb,text) FROM PUBLIC;
 
 -- Reconcile every stored line copy with the owner item ledger when it exists.
 -- An initial order insert can carry a complete authored snapshot before items.
 CREATE FUNCTION public.catalog_order_basket_v2(p_order uuid,p_metadata jsonb,p_initial boolean) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE basket jsonb; snapshot jsonb; candidate jsonb; has_items boolean;
+DECLARE basket jsonb; snapshot jsonb; candidate jsonb; receipt jsonb; has_items boolean;
 BEGIN
  SELECT count(*)>0,CASE WHEN bool_and(sku IS NOT NULL) THEN jsonb_object_agg(sku,quantity) FILTER (WHERE sku IS NOT NULL) END
  INTO has_items,basket FROM (
   SELECT k.sku,sum(i.quantity) AS quantity FROM public.commerce_order_items i
   LEFT JOIN public.catalog_skus k ON k.id=i.sku_id WHERE i.order_id=p_order GROUP BY k.sku) items;
  IF basket IS NULL AND (has_items OR NOT p_initial) THEN RETURN NULL; END IF;
+ SELECT r.response_payload INTO receipt FROM public.commerce_order_draft_receipts r WHERE r.order_id=p_order;
+ IF FOUND AND (receipt#>>'{orderDraft,orderId}' IS DISTINCT FROM 'order_'||p_order::text
+  OR receipt#>'{orderDraft,quoteSnapshot,quote,lines}' IS NULL) THEN RETURN NULL; END IF;
  FOREACH snapshot IN ARRAY ARRAY[p_metadata#>'{orderDraftSnapshot,lines}',p_metadata#>'{quoteSnapshot,quote,lines}',
-  p_metadata#>'{orderSnapshot,lines}',p_metadata#>'{cycleSnapshot,lines}'] LOOP
+  p_metadata#>'{orderSnapshot,lines}',p_metadata#>'{cycleSnapshot,lines}',receipt#>'{orderDraft,quoteSnapshot,quote,lines}'] LOOP
   IF snapshot IS NULL THEN CONTINUE; END IF;
-  candidate:=public.catalog_retained_basket_v2(snapshot);
+  candidate:=public.catalog_retained_basket_v2(snapshot,true);
   IF candidate IS NULL OR (basket IS NOT NULL AND candidate IS DISTINCT FROM basket) THEN RETURN NULL; END IF;
   basket:=candidate;
  END LOOP;
@@ -441,7 +442,136 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_acceptance_roster_valid_v2(jsonb,jsonb) FROM PUBLIC;
 
--- A completed edit and a full graduation have different retained owners.
+CREATE FUNCTION public.catalog_order_evidence_v2(p_order uuid,p_metadata jsonb,p_acceptance jsonb,p_header_only boolean) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE basket jsonb:=public.catalog_order_basket_v2(p_order,p_metadata,p_header_only);
+BEGIN
+ IF p_acceptance IS NOT NULL AND NOT public.catalog_acceptance_roster_valid_v2(p_acceptance,basket) THEN RETURN NULL; END IF;
+ RETURN basket;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_order_evidence_v2(uuid,jsonb,jsonb,boolean) FROM PUBLIC;
+
+-- Read the same accepted edit owners for carrier admission and handoff proof.
+CREATE FUNCTION public.catalog_edit_evidence_v2(p_event public.subscription_events,p_inserting boolean) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE payload jsonb:=p_event.payload; edit_action text:=payload->>'action'; preview public.subscription_quote_previews;
+ old_quote public.subscription_edit_quotes; edited jsonb; quoted jsonb; proposed jsonb; hash text; basis integer;
+BEGIN
+ IF edit_action IS NULL OR p_event.event_type<>'subscription.customer_self_service.'||edit_action THEN RETURN NULL; END IF;
+ IF payload ? 'linePricing' THEN
+  edited:=public.catalog_retained_basket_v2(payload->'linePricing');
+  IF edited IS NULL THEN RETURN NULL; END IF;
+ END IF;
+ IF payload ? 'quotePreviewId' THEN
+  SELECT * INTO preview FROM public.subscription_quote_previews q
+   WHERE q.id::text=payload->>'quotePreviewId' AND q.subscription_id=p_event.subscription_id AND q.action=edit_action
+    AND EXISTS(SELECT 1 FROM public.subscriptions s WHERE s.id=q.subscription_id AND s.client_id=q.client_id)
+    AND ((q.status='accepted' AND q.accepted_event_id=p_event.id AND q.accepted_at=p_event.occurred_at)
+     OR (p_inserting AND q.status='previewed'));
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  IF edit_action='update_package_template' THEN
+   IF jsonb_typeof(preview.quote_snapshot->'baseLines') IS DISTINCT FROM 'array'
+    OR jsonb_typeof(preview.quote_snapshot->'addonLines') IS DISTINCT FROM 'array' THEN RETURN NULL; END IF;
+   proposed:=(preview.quote_snapshot->'baseLines')||(preview.quote_snapshot->'addonLines');
+  ELSE proposed:=preview.quote_snapshot->'lines'; END IF;
+  quoted:=public.catalog_quoted_edit_basket_v2(proposed,true);
+  IF quoted IS NULL OR quoted IS DISTINCT FROM edited THEN RETURN NULL; END IF;
+  hash:=preview.quote_hash; basis:=preview.template_version;
+ ELSE
+  SELECT * INTO old_quote FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=p_event.id
+   AND q.subscription_id=p_event.subscription_id AND q.status='accepted' AND q.action=edit_action AND q.accepted_at=p_event.occurred_at;
+  IF FOUND THEN
+   hash:=coalesce(payload#>>'{payload,acceptedQuoteHash}',payload->>'quoteHash');
+   basis:=old_quote.expected_template_version;
+   IF hash IS DISTINCT FROM old_quote.quote_hash OR (payload ? 'quoteHash' AND payload->>'quoteHash' IS DISTINCT FROM hash)
+    OR (SELECT count(*) FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=p_event.id)<>1 THEN RETURN NULL; END IF;
+   quoted:=public.catalog_quoted_edit_basket_v2(old_quote.proposed_lines,false);
+   IF quoted IS NULL OR (edited IS NOT NULL AND quoted IS DISTINCT FROM edited) THEN RETURN NULL; END IF;
+  ELSIF payload ? 'quoteHash' OR payload#>'{payload,acceptedQuoteHash}' IS NOT NULL THEN RETURN NULL;
+  ELSE quoted:=edited; END IF;
+ END IF;
+ IF quoted IS NULL THEN RETURN NULL; END IF;
+ RETURN jsonb_build_object('basket',quoted,'basis',basis,'quoteHash',hash,'actorId',preview.actor_id,
+  'commandKey',preview.accepted_idempotency_key);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_edit_evidence_v2(public.subscription_events,boolean) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_edit_consumed_basis_v2(p_event public.subscription_events,p_basis integer) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE evidence jsonb:=public.catalog_edit_evidence_v2(p_event,false);
+BEGIN
+ IF evidence->'basis' IS DISTINCT FROM to_jsonb(p_basis) THEN RETURN false; END IF;
+ IF p_event.payload->>'quoteHash'=evidence->>'quoteHash' AND NOT (p_event.payload ? 'quotePreviewId')
+  AND p_event.payload#>'{payload,acceptedQuoteHash}' IS NULL
+  AND p_event.payload->'templateVersion'=to_jsonb(p_basis::bigint+1) THEN RETURN true; END IF;
+ RETURN EXISTS(SELECT 1 FROM public.subscription_command_receipts r
+  JOIN public.subscriptions s ON s.id=r.subscription_id AND s.client_id=r.client_id
+  WHERE r.subscription_id=p_event.subscription_id AND r.quote_hash=evidence->>'quoteHash'
+   AND (evidence->>'actorId' IS NULL OR r.actor_id::text=evidence->>'actorId')
+   AND (evidence->>'commandKey' IS NULL OR r.idempotency_key=evidence->>'commandKey')
+   AND p_event.idempotency_key='command:'||encode(sha256(convert_to(r.actor_id::text||':'||r.idempotency_key,'UTF8')),'hex')
+   AND r.status='applied' AND r.command->>'action'=p_event.payload->>'action' AND r.result->>'action'=p_event.payload->>'action'
+   AND r.result->'subscriptionId'=to_jsonb(r.subscription_id) AND r.result->'eventId'=to_jsonb(p_event.id)
+   AND r.result->'templateVersion'=to_jsonb(p_basis::bigint+1));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_edit_consumed_basis_v2(public.subscription_events,integer) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_integer_v3(p_value jsonb,p_min bigint,p_max bigint DEFAULT 9007199254740991) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT CASE WHEN jsonb_typeof(p_value)='number' THEN p_value::numeric BETWEEN p_min AND p_max
+  AND trunc(p_value::numeric)=p_value::numeric ELSE false END
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_integer_v3(jsonb,bigint,bigint) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_keys_v3(p_value jsonb,p_required text[],p_optional text[] DEFAULT ARRAY[]::text[]) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT coalesce(jsonb_typeof(p_value)='object' AND p_value ?& p_required AND p_value-(p_required||p_optional)='{}'::jsonb,false)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_keys_v3(jsonb,text[],text[]) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_lines_v3(p_lines jsonb,p_sequential boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+ RETURN jsonb_array_length(p_lines) BETWEEN 1 AND 100 AND NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(p_lines) WITH ORDINALITY l(body,ordinal)
+  WHERE NOT public.catalog_renewal_keys_v3(l.body,ARRAY['lineOrdinal','sku','quantity','unitAmountMinor'])
+   OR NOT public.catalog_renewal_integer_v3(l.body->'lineOrdinal',1)
+   OR NOT public.catalog_renewal_integer_v3(l.body->'quantity',1)
+   OR NOT public.catalog_renewal_integer_v3(l.body->'unitAmountMinor',0)
+   OR jsonb_typeof(l.body->'sku') IS DISTINCT FROM 'string' OR l.body->>'sku'=''
+   OR (p_sequential AND l.body->'lineOrdinal' IS DISTINCT FROM to_jsonb(l.ordinal)));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_lines_v3(jsonb,boolean) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_full_graduation_lines_v2(p_payload jsonb,p_graduation jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE before_lines jsonb:=p_payload->'before'; final_lines jsonb:=p_payload->'lines';
+ pricing jsonb:=p_payload->'linePricing'; marker jsonb:=p_graduation->'lines'; roster jsonb;
+BEGIN
+ IF jsonb_typeof(marker) IS DISTINCT FROM 'array' OR NOT public.catalog_renewal_lines_v3(before_lines)
+  OR NOT public.catalog_renewal_lines_v3(final_lines,true) THEN RETURN false; END IF;
+ roster:=public.catalog_retained_basket_v2(final_lines);
+ IF roster IS NULL OR roster IS DISTINCT FROM public.catalog_retained_basket_v2(pricing)
+  OR public.catalog_retained_basket_v2(before_lines) IS NULL THEN RETURN false; END IF;
+ RETURN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(marker) m WHERE NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(final_lines) l JOIN jsonb_array_elements(pricing) p ON p->'sku'=l->'sku'
+  WHERE l->'sku'=m->'sku' AND l->'quantity'=m->'qty'
+   AND l->'unitAmountMinor'=m#>'{quoteLine,unitPriceGross,amountMinor}'
+   AND p->'isAddon'=m->'isAddon' AND p->'unitAmountMinor'=l->'unitAmountMinor'))
+ AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(final_lines) l WHERE NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(marker) m WHERE m->'sku'=l->'sku')
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(before_lines) b JOIN jsonb_array_elements(pricing) p ON p->'sku'=b->'sku'
+   WHERE b->'sku'=l->'sku' AND b->'quantity'=l->'quantity' AND b->'unitAmountMinor'=l->'unitAmountMinor'
+    AND p->'isAddon'='true'::jsonb AND p->'unitAmountMinor'=l->'unitAmountMinor'));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_full_graduation_lines_v2(jsonb,jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_graduation_consumed_v2(p_subscription uuid,p_basis integer,p_graduation jsonb) RETURNS boolean
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
  SELECT count(*)=1 FROM public.subscription_events e
@@ -450,28 +580,8 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
    AND e.payload->'mode'='"full"'::jsonb AND e.payload->'basisTemplateVersion'=to_jsonb(p_basis)
    AND e.payload->'cadenceDays'=p_graduation->'cadenceDays'
    AND e.idempotency_key ~ ('^(system:)*starter-graduation:'||p_subscription::text||':'||p_basis::text||'$')
-   AND public.catalog_retained_basket_v2(e.payload->'lines') IS NOT NULL
-   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_graduation->'lines') marker
-    WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(e.payload->'lines') actual
-     WHERE actual->'sku'=marker->'sku' AND actual->'quantity'=marker->'qty'
-      AND actual->'unitAmountMinor'=marker#>'{quoteLine,unitPriceGross,amountMinor}')))
-  OR (e.event_type='subscription.customer_self_service.update_bundle' AND e.payload->'templateVersion'=to_jsonb(p_basis::bigint+1)
-   AND e.payload->>'action'='update_bundle' AND EXISTS(SELECT 1 FROM public.subscription_edit_quotes q
-    WHERE q.accepted_event_id=e.id AND q.subscription_id=p_subscription AND q.status='accepted'
-     AND q.expected_template_version=p_basis AND q.accepted_at=e.occurred_at AND q.quote_hash=e.payload->>'quoteHash'
-     AND public.catalog_quoted_edit_basket_v2(q.proposed_lines,false) IS NOT NULL))
-  OR EXISTS(SELECT 1 FROM public.subscription_quote_previews q
-   JOIN public.subscription_command_receipts r ON r.actor_id=q.actor_id AND r.idempotency_key=q.accepted_idempotency_key
-    AND r.subscription_id=q.subscription_id AND r.client_id=q.client_id AND r.quote_hash=q.quote_hash
-   WHERE q.accepted_event_id=e.id AND q.subscription_id=p_subscription AND q.status='accepted'
-    AND q.template_version=p_basis AND q.accepted_at=e.occurred_at AND e.payload->>'quotePreviewId'=q.id::text
-    AND e.payload->>'action'=q.action AND e.event_type='subscription.customer_self_service.'||q.action
-    AND e.idempotency_key='command:'||encode(sha256(convert_to(q.actor_id::text||':'||q.accepted_idempotency_key,'UTF8')),'hex')
-    AND r.status='applied' AND r.command->>'action'=q.action AND r.result->>'action'=q.action
-    AND r.result->'subscriptionId'=to_jsonb(p_subscription) AND r.result->'eventId'=to_jsonb(e.id)
-    AND r.result->'templateVersion'=to_jsonb(p_basis::bigint+1)
-    AND public.catalog_quoted_edit_basket_v2(q.quote_snapshot->'lines',true)=public.catalog_retained_basket_v2(e.payload->'linePricing'))
- );
+   AND public.catalog_full_graduation_lines_v2(e.payload,p_graduation))
+  OR (e.event_type LIKE 'subscription.customer_self_service.%' AND public.catalog_edit_consumed_basis_v2(e,p_basis)));
 $$;
 REVOKE ALL ON FUNCTION public.catalog_graduation_consumed_v2(uuid,integer,jsonb) FROM PUBLIC;
 
@@ -489,6 +599,7 @@ BEGIN
   'public.subscriptions'::regclass,'public.subscription_lines'::regclass,'public.subscription_renewal_terms'::regclass,'public.subscription_renewal_term_lines'::regclass,
   'public.subscription_activations'::regclass,'public.subscription_renewal_attachments'::regclass,'public.subscription_renewal_operations'::regclass,
   'public.subscription_renewal_outcomes'::regclass,'public.subscription_cycles'::regclass,'public.commerce_orders'::regclass,'public.commerce_order_items'::regclass,
+  'public.commerce_order_draft_receipts'::regclass,
   'public.commerce_settlement_intents'::regclass,'public.commerce_order_holds'::regclass,'public.fulfillment_inventory_reservations'::regclass,
   'public.fulfillment_shipments'::regclass,'public.fulfillment_parcel_reservation_sets'::regclass,'public.fulfillment_parcel_lines'::regclass,
   'public.subscription_stock_wait_cases'::regclass,'public.subscription_events'::regclass,'public.subscription_edit_quotes'::regclass,
@@ -528,7 +639,7 @@ BEGIN
  END LOOP;
  -- The pending order and its activation/attachment are alternative entry points
  -- to the same handoff. An attachment marker alone is insufficient.
- FOR item IN SELECT o.id,o.metadata,o.catalog_acceptance,a.subscription_id,s.template_version,t.purchase_facts,
+ FOR item IN SELECT o.id,o.metadata,o.catalog_acceptance,o.total_amount_minor,a.subscription_id,s.template_version,t.purchase_facts,
   a.state='active' AND t.completed_at IS NOT NULL AND t.subscription_id=a.subscription_id
    AND EXISTS(SELECT 1 FROM public.subscription_renewal_terms r WHERE r.subscription_id=a.subscription_id)
    AND EXISTS(SELECT 1 FROM public.subscription_lines l WHERE l.subscription_id=a.subscription_id)
@@ -540,19 +651,21 @@ BEGIN
   WHERE a.state<>'compensated'
    OR (a.order_id IS NULL AND o.renewal_operation_id IS NULL AND o.status='pending_payment'
     AND (o.catalog_acceptance IS NOT NULL OR o.metadata#>'{quoteSnapshot,quote,lines}' IS NOT NULL
-      OR o.metadata#>'{orderDraftSnapshot,lines}' IS NOT NULL OR o.metadata#>'{orderSnapshot,lines}' IS NOT NULL))
+      OR o.metadata#>'{orderDraftSnapshot,lines}' IS NOT NULL OR o.metadata#>'{orderSnapshot,lines}' IS NOT NULL
+      OR EXISTS(SELECT 1 FROM public.commerce_order_draft_receipts r WHERE r.order_id=o.id)))
  LOOP
-  basket:=public.catalog_order_basket_v2(item.id,item.metadata,false);
-  IF basket IS NULL OR (item.catalog_acceptance IS NOT NULL AND
-   NOT public.catalog_acceptance_roster_valid_v2(item.catalog_acceptance,basket)) THEN unknown:=true; CONTINUE; END IF;
+  basket:=public.catalog_order_evidence_v2(item.id,item.metadata,item.catalog_acceptance,item.total_amount_minor=0);
+  IF basket IS NULL THEN unknown:=true; CONTINUE; END IF;
   IF item.handed_off THEN
-   IF item.template_version=1 THEN
-    purchase_basket:=public.catalog_retained_basket_v2(item.purchase_facts->'lines');
-    IF purchase_basket IS DISTINCT FROM basket OR purchase_basket IS DISTINCT FROM (
+   purchase_basket:=public.catalog_retained_basket_v2(item.purchase_facts->'lines',true);
+   IF purchase_basket IS DISTINCT FROM basket THEN unknown:=true;
+   ELSIF (purchase_basket IS DISTINCT FROM (
       SELECT jsonb_object_agg(l.sku,l.quantity) FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=item.subscription_id)
      OR purchase_basket IS DISTINCT FROM (
       SELECT jsonb_object_agg(k.sku,l.quantity) FROM public.subscription_lines l JOIN public.catalog_skus k ON k.id=l.variant_id
-      WHERE l.subscription_id=item.subscription_id) THEN unknown:=true; END IF;
+      WHERE l.subscription_id=item.subscription_id))
+    AND (item.template_version<=1 OR NOT public.catalog_graduation_consumed_v2(
+     item.subscription_id,1,item.purchase_facts#>'{renewalTerms,starterPack,graduation}')) THEN unknown:=true;
    END IF;
    CONTINUE;
   END IF;
@@ -564,8 +677,9 @@ BEGIN
   AND c.status IN ('planned','payment_pending','retry_scheduled')
   AND NOT EXISTS(SELECT 1 FROM public.commerce_orders o WHERE o.subscription_cycle_id=c.id AND o.status<>'cancelled'
    AND (o.status<>'pending_payment' OR o.catalog_acceptance IS NOT NULL OR o.metadata#>'{quoteSnapshot,quote,lines}' IS NOT NULL
-    OR o.metadata#>'{orderDraftSnapshot,lines}' IS NOT NULL OR o.metadata#>'{orderSnapshot,lines}' IS NOT NULL))) THEN unknown:=true; END IF;
- FOR item IN SELECT op.id,op.subscription_id,op.cycle_snapshot FROM public.subscription_renewal_operations op
+    OR o.metadata#>'{orderDraftSnapshot,lines}' IS NOT NULL OR o.metadata#>'{orderSnapshot,lines}' IS NOT NULL
+    OR EXISTS(SELECT 1 FROM public.commerce_order_draft_receipts r WHERE r.order_id=o.id)))) THEN unknown:=true; END IF;
+ FOR item IN SELECT op.id,op.subscription_id,op.cycle_snapshot,op.operation_fingerprint FROM public.subscription_renewal_operations op
   JOIN public.subscriptions s ON s.id=op.subscription_id
   WHERE op.state NOT IN ('succeeded','refused')
    OR EXISTS(SELECT 1 FROM public.subscription_cycles c WHERE c.renewal_operation_id=op.id AND c.status IN ('planned','payment_pending','retry_scheduled'))
@@ -579,15 +693,14 @@ BEGIN
       AND (r.outcome<>'refused' OR r.reason IS NULL OR r.reason NOT IN ('inventory_unavailable','reservation_expired') OR r.external_ref IS NOT NULL
        OR r.operation_fingerprint<>op.operation_fingerprint OR r.event_key NOT IN (op.identity_key||':inventory',op.identity_key||':reservation-expired'))))
  LOOP
-  codes:=public.catalog_frozen_basket_codes_v2(item.cycle_snapshot);
-  IF codes IS NULL THEN unknown:=true;
+  codes:=public.catalog_frozen_basket_codes_v2(item.cycle_snapshot,item.operation_fingerprint);
+ IF codes IS NULL THEN unknown:=true;
   ELSIF sku.sku=ANY(codes) THEN
    obligations:=obligations||jsonb_build_array(jsonb_build_object('family','frozen_renewal','sourceId',item.id,'subscriptionId',item.subscription_id,'skuId',sku.id,'skuCode',sku.sku,'skuRevisionId',NULL));
   END IF;
  END LOOP;
  IF EXISTS(SELECT 1 FROM public.commerce_orders o WHERE o.status IN ('paid','fulfillment_pending','fulfilled')
-  AND (public.catalog_order_basket_v2(o.id,o.metadata,false) IS NULL OR (o.catalog_acceptance IS NOT NULL AND
-   NOT public.catalog_acceptance_roster_valid_v2(o.catalog_acceptance,public.catalog_order_basket_v2(o.id,o.metadata,false))))) THEN unknown:=true; END IF;
+  AND public.catalog_order_evidence_v2(o.id,o.metadata,o.catalog_acceptance,false) IS NULL) THEN unknown:=true; END IF;
  -- The order item (never order status) owns the unit of discharge.
  FOR item IN SELECT DISTINCT o.id,c.subscription_id FROM public.commerce_orders o
   LEFT JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
@@ -615,12 +728,15 @@ BEGIN
   JOIN public.commerce_orders o ON o.id=p.order_id LEFT JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
   WHERE p.delivered_at IS NULL AND NOT EXISTS(SELECT 1 FROM public.fulfillment_shipments next WHERE next.replaces_shipment_id=p.id)
  LOOP
-  IF item.attributed IS DISTINCT FROM true THEN unknown:=true;
+  IF item.attributed IS DISTINCT FROM true OR NOT EXISTS(
+   SELECT 1 FROM public.fulfillment_shipments p JOIN public.commerce_orders o ON o.id=p.order_id
+    WHERE p.id=item.id AND public.catalog_order_evidence_v2(o.id,o.metadata,o.catalog_acceptance,false) IS NOT NULL
+  ) THEN unknown:=true;
   ELSIF item.matches THEN
    obligations:=obligations||jsonb_build_array(jsonb_build_object('family','replacement','sourceId',item.id,'subscriptionId',item.subscription_id,'skuId',sku.id,'skuCode',sku.sku,'skuRevisionId',NULL));
   END IF;
  END LOOP;
- FOR item IN SELECT w.id,w.subscription_id,w.cycle_snapshot,
+ FOR item IN SELECT w.id,w.subscription_id,w.cycle_snapshot,w.fingerprint,
   op.subscription_id=w.subscription_id AND op.scheduled_at=w.scheduled_at AND op.cycle_number=w.cycle_number
     AND op.cycle_snapshot=w.cycle_snapshot AND op.operation_fingerprint=w.fingerprint AND op.identity_key=w.identity_key AS bound,
   w.state='resumed' AND EXISTS(
@@ -632,11 +748,11 @@ BEGIN
     AND EXISTS(SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.status='settled')
     AND EXISTS(SELECT 1 FROM public.fulfillment_inventory_reservations r WHERE r.renewal_operation_id=w.renewal_operation_id AND r.status='consumed')
     AND NOT EXISTS(SELECT 1 FROM public.commerce_order_holds h WHERE h.order_id=o.id AND h.status='active')
-    AND public.catalog_order_basket_v2(o.id,o.metadata,false)=public.catalog_retained_basket_v2(w.cycle_snapshot->'lines')) AS handed_off
+    AND public.catalog_order_evidence_v2(o.id,o.metadata,o.catalog_acceptance,false)=public.catalog_retained_basket_v2(w.cycle_snapshot->'lines')) AS handed_off
   FROM public.subscription_stock_wait_cases w LEFT JOIN public.subscription_renewal_operations op ON op.id=w.renewal_operation_id
   WHERE w.state IN ('waiting','stock_secured','resumed')
  LOOP
-  codes:=public.catalog_frozen_basket_codes_v2(item.cycle_snapshot);
+  codes:=public.catalog_frozen_basket_codes_v2(item.cycle_snapshot,item.fingerprint);
   IF item.bound IS DISTINCT FROM true OR codes IS NULL THEN unknown:=true;
   ELSIF NOT item.handed_off AND sku.sku=ANY(codes) THEN
    obligations:=obligations||jsonb_build_array(jsonb_build_object('family','stock_wait','sourceId',item.id,'subscriptionId',item.subscription_id,'skuId',sku.id,'skuCode',sku.sku,'skuRevisionId',NULL));
@@ -1170,35 +1286,6 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_acceptance_assert_v2(jsonb) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_renewal_integer_v3(p_value jsonb,p_min bigint,p_max bigint DEFAULT 9007199254740991) RETURNS boolean
-LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
- SELECT CASE WHEN jsonb_typeof(p_value)='number' THEN p_value::numeric BETWEEN p_min AND p_max
-  AND trunc(p_value::numeric)=p_value::numeric ELSE false END
-$$;
-REVOKE ALL ON FUNCTION public.catalog_renewal_integer_v3(jsonb,bigint,bigint) FROM PUBLIC;
-
-CREATE FUNCTION public.catalog_renewal_keys_v3(p_value jsonb,p_required text[],p_optional text[] DEFAULT ARRAY[]::text[]) RETURNS boolean
-LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
- SELECT coalesce(jsonb_typeof(p_value)='object' AND p_value ?& p_required AND p_value-(p_required||p_optional)='{}'::jsonb,false)
-$$;
-REVOKE ALL ON FUNCTION public.catalog_renewal_keys_v3(jsonb,text[],text[]) FROM PUBLIC;
-
-CREATE FUNCTION public.catalog_renewal_lines_v3(p_lines jsonb,p_sequential boolean DEFAULT false) RETURNS boolean
-LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-BEGIN
- IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN RETURN false; END IF;
- RETURN jsonb_array_length(p_lines) BETWEEN 1 AND 100 AND NOT EXISTS(
-  SELECT 1 FROM jsonb_array_elements(p_lines) WITH ORDINALITY l(body,ordinal)
-  WHERE NOT public.catalog_renewal_keys_v3(l.body,ARRAY['lineOrdinal','sku','quantity','unitAmountMinor'])
-   OR NOT public.catalog_renewal_integer_v3(l.body->'lineOrdinal',1)
-   OR NOT public.catalog_renewal_integer_v3(l.body->'quantity',1)
-   OR NOT public.catalog_renewal_integer_v3(l.body->'unitAmountMinor',0)
-   OR jsonb_typeof(l.body->'sku') IS DISTINCT FROM 'string' OR l.body->>'sku'=''
-   OR (p_sequential AND l.body->'lineOrdinal' IS DISTINCT FROM to_jsonb(l.ordinal)));
-END;
-$$;
-REVOKE ALL ON FUNCTION public.catalog_renewal_lines_v3(jsonb,boolean) FROM PUBLIC;
-
 CREATE FUNCTION public.catalog_renewal_ref_v3(p_value jsonb,p_nullable boolean DEFAULT false) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
  SELECT coalesce((jsonb_typeof(p_value)='string' AND p_value<>'""'::jsonb)
@@ -1320,14 +1407,9 @@ BEGIN
  IF NEW.catalog_acceptance IS NOT NULL THEN
   PERFORM public.catalog_acceptance_assert_v2(NEW.catalog_acceptance);
   IF TG_TABLE_NAME='commerce_orders' THEN
-   basket:=public.catalog_order_basket_v2(NEW.id,NEW.metadata,TG_OP='INSERT');
+   basket:=public.catalog_order_evidence_v2(NEW.id,NEW.metadata,NEW.catalog_acceptance,TG_OP='INSERT' OR NEW.total_amount_minor=0);
   ELSIF TG_TABLE_NAME='subscription_events' THEN
-   basket:=public.catalog_retained_basket_v2(NEW.payload->'linePricing');
-   IF NOT (NEW.payload ? 'linePricing') THEN
-    SELECT public.catalog_quoted_edit_basket_v2(q.proposed_lines,false) INTO basket
-    FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=NEW.id
-     AND q.subscription_id=NEW.subscription_id AND q.status='accepted' AND q.quote_hash=NEW.payload->>'quoteHash';
-   END IF;
+   basket:=public.catalog_edit_evidence_v2(NEW,TG_OP='INSERT')->'basket';
   ELSIF TG_TABLE_NAME='subscription_renewal_operations' THEN
    IF NEW.cycle_snapshot->>'frozenRevision' IS DISTINCT FROM 'native.purchase-renewal.v3' THEN
     RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023';
@@ -1335,8 +1417,9 @@ BEGIN
    codes:=public.catalog_frozen_basket_codes_v2(NEW.cycle_snapshot);
    IF codes IS NOT NULL THEN basket:=public.catalog_retained_basket_v2(NEW.cycle_snapshot->'lines'); END IF;
   END IF;
-  IF TG_TABLE_NAME IN ('commerce_orders','subscription_events','subscription_renewal_operations')
-   AND NOT public.catalog_acceptance_roster_valid_v2(NEW.catalog_acceptance,basket) THEN
+  IF (TG_TABLE_NAME='commerce_orders' AND basket IS NULL)
+   OR (TG_TABLE_NAME IN ('subscription_events','subscription_renewal_operations')
+    AND NOT public.catalog_acceptance_roster_valid_v2(NEW.catalog_acceptance,basket)) THEN
    RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
   END IF;
   IF TG_TABLE_NAME='subscription_renewal_operations' THEN
@@ -1359,6 +1442,73 @@ CREATE TRIGGER commerce_orders_catalog_acceptance_admit BEFORE INSERT OR UPDATE 
 CREATE TRIGGER subscription_events_catalog_acceptance_admit BEFORE INSERT OR UPDATE OF catalog_acceptance ON public.subscription_events FOR EACH ROW EXECUTE FUNCTION public.catalog_acceptance_record_admit_v2();
 CREATE TRIGGER subscription_renewal_terms_catalog_acceptance_admit BEFORE INSERT OR UPDATE OF catalog_acceptance ON public.subscription_renewal_terms FOR EACH ROW EXECUTE FUNCTION public.catalog_acceptance_record_admit_v2();
 CREATE TRIGGER subscription_renewal_operations_catalog_acceptance_admit BEFORE INSERT OR UPDATE OF catalog_acceptance,cycle_snapshot ON public.subscription_renewal_operations FOR EACH ROW EXECUTE FUNCTION public.catalog_acceptance_record_admit_v2();
+CREATE OR REPLACE FUNCTION public.commerce_order_assert_line_sum()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_order_id uuid;
+  v_declared bigint;
+  v_sum bigint;
+  v_acceptance jsonb;
+  v_metadata jsonb;
+BEGIN
+  -- Branching statements rather than one CASE expression on purpose: the procedural language
+  -- compiles an expression into a single query, so every record field named in any arm must exist
+  -- on every row type the trigger can see, and the two row types here differ.
+  IF TG_TABLE_NAME = 'commerce_orders' THEN
+    v_order_id := NEW.id;
+  ELSIF TG_OP = 'DELETE' THEN
+    v_order_id := OLD.order_id;
+  ELSE
+    v_order_id := NEW.order_id;
+  END IF;
+
+  SELECT total_amount_minor, metadata, catalog_acceptance INTO v_declared, v_metadata, v_acceptance
+    FROM public.commerce_orders
+   WHERE id = v_order_id;
+  -- The order is gone: a cascade took it, and there is nothing left to be consistent with.
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT COALESCE(sum(line_amount_minor), 0) INTO v_sum
+    FROM public.commerce_order_items
+   WHERE order_id = v_order_id;
+
+  SELECT v_sum + COALESCE(sum(CASE
+    WHEN kind = 'shipping_charge' THEN amount_minor
+    WHEN kind = 'promotion_discount' AND scope = 'shipping' THEN -amount_minor
+    ELSE 0 END), 0) INTO v_sum
+    FROM public.commerce_order_adjustments
+   WHERE order_id = v_order_id;
+
+  IF v_sum IS DISTINCT FROM COALESCE(v_declared, 0) THEN
+    RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514',
+      DETAIL = format('order %s declares %s and its lines sum to %s',
+                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);
+  END IF;
+
+  -- The existing deferred owner sees the completed item ledger, even when
+  -- the header and its items were written in separate statements.
+  IF v_acceptance IS NOT NULL AND public.catalog_order_evidence_v2(v_order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
+    RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+  END IF;
+  IF TG_TABLE_NAME='commerce_order_items' AND TG_OP='UPDATE' THEN
+    IF OLD.order_id IS DISTINCT FROM NEW.order_id THEN
+      SELECT total_amount_minor, metadata, catalog_acceptance INTO v_declared, v_metadata, v_acceptance
+      FROM public.commerce_orders WHERE id=OLD.order_id;
+      IF v_acceptance IS NOT NULL AND public.catalog_order_evidence_v2(OLD.order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
+        RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
 CREATE FUNCTION public.subscription_renewal_purchase_terms_v2(p_subscription_id uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE old_terms jsonb; acceptance jsonb;

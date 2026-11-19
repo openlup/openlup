@@ -3,10 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it } from "vitest";
-import { createPostgresCatalogPublication, installCatalogDefinitions, catalogDefinitionDigest, assertCatalogAcceptedReferenceV2, catalogAcceptedReferenceV2Schema, createCatalogProductTypeRegistry, type CatalogPublicationRules } from "@openlup/platform/catalog";
+import { createPostgresCatalogPublication, installCatalogDefinitions, catalogDefinitionDigest, assertCatalogAcceptedReferenceV2, catalogAcceptedReferenceV2Schema, catalogDraftCommandV4Schema, createCatalogProductTypeRegistry, type CatalogPublicationRules } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogHeadRef, type CatalogPublishCommand, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 const productId = "10000000-0000-4000-8000-000000000001", skuId = "20000000-0000-4000-8000-000000000001";
+const legacySkuId = "20000000-0000-4000-0000-000000000001";
 const draftId = "30000000-0000-4000-8000-000000000001", documentId = "40000000-0000-4000-8000-000000000001";
 const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }], netContentUnits: ["openlup:g"], dimensions: [{ key: "finish", kind: "choice" as const, values: ["matte", "gloss"] }],
   axes: [{ key: "finish", attributeKey: "finish" }],
@@ -213,7 +214,8 @@ async function frozen(f: Awaited<ReturnType<typeof seed>>, sku = f.code) {
 }
 
 it.each(["attachment", "provisional order", "paid order", "unbound cycle", "frozen basket identity", "wait basket identity",
-  "replacement roster", "contradictory resumed wait"] as const)(
+  "replacement roster", "contradictory resumed wait", "later attachment", "provisional receipt", "paid receipt",
+  "replacement receipt", "provisional acceptance", "paid acceptance", "provisional repeated SKU", "paid repeated SKU"] as const)(
   "LC5-PRE obligation sources refuse uncertain %s evidence", async kind => {
   const f = await seed({ other: true }), other = f.payload.skus[1]!;
   const unrelated = { ...f, sku: other.id, code: other.code! };
@@ -230,10 +232,14 @@ it.each(["attachment", "provisional order", "paid order", "unbound cycle", "froz
         SELECT $1,subscription_id,$2,id,scheduled_at,cycle_number,'waiting','{}',cycle_snapshot,operation_fingerprint,identity_key,'[]'
         FROM public.subscription_renewal_operations WHERE id=$3`, [randomUUID(),f.client,id]);
     }
-  } else if (kind === "replacement roster") {
+  } else if (kind === "replacement roster" || kind === "replacement receipt") {
     const id = await order(unrelated,"cancelled");
     await replacement(unrelated,id);
-    await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,0,0)", [id,f.sku]);
+    if (kind === "replacement roster") {
+      await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,0,0)", [id,f.sku]);
+    } else {
+      await saveOrderQuote(id, [f.code, unrelated.code].map(sku => ({ sku, quantity: 1 })));
+    }
   } else if (kind === "contradictory resumed wait") {
     const id = await order(unrelated,"fulfilled"), operation = await frozen(f, unrelated.code);
     await db.query("UPDATE public.commerce_order_items SET quantity=3,line_amount_minor=1851 WHERE order_id=$1", [id]);
@@ -253,10 +259,28 @@ it.each(["attachment", "provisional order", "paid order", "unbound cycle", "froz
     await db.query(`INSERT INTO public.subscription_stock_wait_cases(id,subscription_id,client_id,renewal_operation_id,scheduled_at,cycle_number,state,due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits,order_id,cycle_id,fulfillment_id)
       SELECT $1,subscription_id,$2,id,scheduled_at,cycle_number,'resumed','{}',cycle_snapshot,$3,identity_key,'[]',$4,$5,$6
       FROM public.subscription_renewal_operations WHERE id=$7`, [wait,f.client,"b".repeat(64),id,cycle,shipment,operation]);
+  } else if (kind.endsWith("acceptance") || kind.endsWith("repeated SKU")) {
+    const provisional = kind.startsWith("provisional");
+    const standing = await standingActive(f);
+    const id = await order(f, provisional ? "pending_payment" : "paid");
+    await db.query("UPDATE public.commerce_orders SET catalog_acceptance=$2::jsonb WHERE id=$1", [id,JSON.stringify({ schemaVersion: 2, lines: [standing.accepted] })]);
+    if (kind.endsWith("acceptance")) {
+      // A pre-existing contradiction reaches O before any deferred write check.
+      await db.query("UPDATE public.commerce_order_items SET sku_id=$2 WHERE order_id=$1", [id,other.id]);
+    } else {
+      await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,617,617)", [id,f.sku]);
+      await db.query("UPDATE public.commerce_orders SET total_amount_minor=1234 WHERE id=$1", [id]);
+      const lines = [{ sku: f.code, quantity: 1 }, { sku: f.code, quantity: 1 }];
+      await saveOrderQuote(id, lines);
+      await db.query("UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1",[id,JSON.stringify({ orderDraftSnapshot: { lines } })]);
+      expect(await obligations(f.sku)).toMatchObject({ outcome: "complete",
+        obligations: [expect.objectContaining({ sourceId: id, family: provisional ? "pending_activation" : "outstanding_order" })] });
+      return;
+    }
   } else {
-    const id = await order(unrelated, kind === "provisional order" ? "pending_payment" : "fulfilled");
+    const id = await order(unrelated, kind.startsWith("provisional") ? "pending_payment" : "fulfilled");
     const lines = [f, unrelated].map((line,index) => ({ lineOrdinal: index+1, sku: line.code, quantity: 1, unitAmountMinor: 617 }));
-    if (kind === "attachment") {
+    if (kind === "attachment" || kind === "later attachment") {
       const { leaf } = await replacement(unrelated,id);
       await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,617,617)", [id,f.sku]);
       await db.query("UPDATE public.commerce_orders SET total_amount_minor=1234 WHERE id=$1", [id]);
@@ -268,13 +292,21 @@ it.each(["attachment", "provisional order", "paid order", "unbound cycle", "froz
       await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,'XXX','example','sandbox',clock_timestamp(),'example')", [f.subscription]);
       await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2,$2,1,617)", [f.subscription,other.code]);
       await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,1,617,'XXX')", [f.subscription,other.id]);
+      if (kind === "later attachment") await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
+    } else if (kind.endsWith("receipt")) {
+      await saveOrderQuote(id,lines);
     } else {
       await db.query("UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1", [id,JSON.stringify({ quoteSnapshot: { quote: { lines } } })]);
     }
   }
   expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "unknown", reason: "catalog_obligation_evidence_unknown" });
-  expect(await archive(f)).toMatchObject({ reason: "catalog_obligation_evidence_unknown" });
+  if (!kind.endsWith("acceptance")) expect(await archive(f)).toMatchObject({ reason: "catalog_obligation_evidence_unknown" });
 });
+async function saveOrderQuote(id: string, lines: readonly { sku: string; quantity: number }[]) {
+  const payload = { orderDraft: { orderId: `order_${id}`, quoteSnapshot: { quote: { lines } } } };
+  await db.query("INSERT INTO public.commerce_order_draft_receipts(idempotency_key,request_fingerprint,order_id,response_payload) VALUES($1,$2,$3,$4::jsonb)",
+    [`synthetic:${id}`,"a".repeat(32),id,JSON.stringify(payload)]);
+}
 it.each(["active", "paused"])("template obligation blocks archive: %s including legacy NULL", async status => {
   const f = await seed();
   await db.query("UPDATE public.subscriptions SET status=$2 WHERE id=$1", [f.subscription, status]);
@@ -403,10 +435,11 @@ function graduationFacts(basis: number, sku: string) {
       graduation: { cadenceDays: 28, lines: [{ sku, qty: 3, sortOrder: 0, isAddon: false,
         quoteLine: { unitPriceGross: { amountMinor: 617 }, lineSubtotalGross: { amountMinor: 1851 } } }] } } } };
 }
-it.each(["accepted edit", "accepted sized edit", "historical graduation", "wrong graduation quantity", "empty edit basket",
+it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "accepted package edit", "historical graduation",
+  "wrong graduation quantity", "wrong graduation ordinal", "missing graduation ordinal", "unproven graduation addon", "carried graduation addon", "empty edit basket",
   "malformed marker", "partial delivery receipt", "foreign graduation key", "contradictory edit"] as const)(
   "LC5-A-022 LC5-A-023 graduation obligation verifies %s", async path => {
-  const f = await seed(), id = randomUUID();
+  const f = await seed({ other: path.includes("graduation addon") || path === "accepted package edit" }), id = randomUUID();
   await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [id,f.client]);
   const basis = (await db.query("SELECT template_version FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].template_version;
   const facts = graduationFacts(basis, f.code);
@@ -423,29 +456,45 @@ it.each(["accepted edit", "accepted sized edit", "historical graduation", "wrong
   await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
   expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
   const event = randomUUID();
-  if (path === "historical graduation" || path === "foreign graduation key" || path === "wrong graduation quantity") {
+  if (path.includes("graduation")) {
     const key = `${path === "foreign graduation key" ? "external:" : ""}starter-graduation:${f.subscription}:${basis}`;
     const quantity = path === "wrong graduation quantity" ? 1 : 3;
+    const core = { lineOrdinal: path === "missing graduation ordinal" ? undefined : path === "wrong graduation ordinal" ? 2 : 1,
+      sku: f.code, quantity, unitAmountMinor: 617 };
+    const addon = { lineOrdinal: 2, sku: "OTHER", quantity: 1, unitAmountMinor: 100 };
+    const lines = path.includes("graduation addon") ? [core, addon] : [core];
+    const pricing = lines.map(({ lineOrdinal: _ordinal, ...line }) => ({ ...line, isAddon: line.sku === "OTHER",
+      quoteLine: line.sku === f.code ? facts.renewalTerms.starterPack.graduation.lines[0]!.quoteLine : {} }));
     await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.starter_graduated',$3,$4::jsonb)", [event,f.subscription,key,
       JSON.stringify({ mode: "full", basisTemplateVersion: basis, templateVersion: basis+1, cadenceDays: 28,
-        lines: [{ lineOrdinal: 1, sku: f.code, quantity, unitAmountMinor: 617 }] })]);
+        before: [{ ...core, lineOrdinal: 1 }, ...(path === "carried graduation addon" ? [addon] : [])], lines, linePricing: pricing })]);
     await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
-    if (path !== "historical graduation") expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
+    if (path !== "historical graduation" && path !== "carried graduation addon") expect(await obligations(f.sku)).toMatchObject({ outcome: "unknown" });
     else expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
     return;
   }
-  if (path === "accepted sized edit") {
+  if (path === "accepted sized edit" || path === "accepted package edit" || path === "accepted classic receipt") {
     const preview = randomUUID(), actorId = randomUUID(), key = `sized:${event}`;
     const eventKey = `command:${createHash("sha256").update(`${actorId}:${key}`).digest("hex")}`;
-    const action = "update_bundle", quoteHash = "c".repeat(64);
+    const action = path === "accepted package edit" ? "update_package_template" : "update_bundle", quoteHash = "c".repeat(64);
+    const classic = path === "accepted classic receipt";
     const quoteLine = { sku: f.code, quantity: 3, unitPriceGross: { amountMinor: 617 } };
-    const quoted = { lines: [{ variantId: f.sku, qty: 3, sortOrder: 0, isAddon: false, quoteLine }] };
+    const lines = [{ variantId: f.sku, qty: 3, sortOrder: 0, isAddon: false, quoteLine }];
     const pricing = [{ sku: f.code, quantity: 3, unitAmountMinor: 617, isAddon: false, quoteLine }];
-    const eventFacts = { action, quotePreviewId: preview, linePricing: pricing, payload: {} };
     const command = { clientId: f.client, subscriptionId: f.subscription, action, payload: { acceptedQuoteHash: quoteHash, expectedTemplateVersion: basis } };
+    const addonQuoteLine = { sku: "OTHER", quantity: 1, unitPriceGross: { amountMinor: 100 } };
+    const quoted = action === "update_package_template" ? { baseLines: lines, addonLines: [{ variantId: f.payload.skus[1]!.id, qty: 1, quoteLine: addonQuoteLine }] } : { lines };
+    if (action === "update_package_template") pricing.push({ sku: "OTHER", quantity: 1, unitAmountMinor: 100, isAddon: true, quoteLine: addonQuoteLine });
+    const eventFacts = classic ? { action, payload: command.payload } : { action, quotePreviewId: preview, linePricing: pricing, payload: {} };
     const receipt = { status: "applied", subscriptionId: f.subscription, action, templateVersion: basis+1, eventId: event };
-    await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.customer_self_service.update_bundle',$3,$4::jsonb)", [event,f.subscription,eventKey,JSON.stringify(eventFacts)]);
-    await db.query(`INSERT INTO public.subscription_quote_previews(id,subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,status,request_payload,quote_snapshot,totals,accepted_at,accepted_idempotency_key,accepted_event_id)
+    await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,$3,$4,$5::jsonb)", [event,f.subscription,`subscription.customer_self_service.${action}`,eventKey,JSON.stringify(eventFacts)]);
+    if (classic) {
+      await db.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,quote_hash,expected_template_version,
+        proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,status,expires_at,accepted_event_id,accepted_at)
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,28,0,1851,'XXX','accepted',clock_timestamp()+interval '1 hour',$7,
+          (SELECT occurred_at FROM public.subscription_events WHERE id=$7))`,
+      [f.subscription,`quote:${event}`,"b".repeat(64),quoteHash,basis,JSON.stringify([{ variantId: f.sku, quantity: 3, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }]),event]);
+    } else await db.query(`INSERT INTO public.subscription_quote_previews(id,subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,status,request_payload,quote_snapshot,totals,accepted_at,accepted_idempotency_key,accepted_event_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+interval '1 hour','accepted','{}',$8::jsonb,'{}',(SELECT occurred_at FROM public.subscription_events WHERE id=$9),$10,$9)`, [preview,f.subscription,f.client,actorId,action,quoteHash,basis,JSON.stringify(quoted),event,key]);
     await db.query("INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,quote_hash,result,status) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,'applied')",
       [actorId,key,f.subscription,f.client,"a".repeat(64),JSON.stringify(command),quoteHash,JSON.stringify(receipt)]);
@@ -516,6 +565,42 @@ it.each(["order", "edit"] as const)("LC5-PRE A3 refuses a valid retained tuple f
   }
   await db.query("ROLLBACK TO SAVEPOINT wrong_acceptance");
 });
+it.each(["order at commit", "edit matches only event", "edit matches only preview"] as const)("LC5-PRE2 acceptance reconciles both owners for %s", async path => {
+  const f = await seed({ other: true }), standing = await standingActive(f);
+  const other = f.payload.skus[1]!;
+  let reference = standing.accepted;
+  if (path === "edit matches only preview") {
+    const page = await authority.readbackV3(standing.head);
+    if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+    const chosen = page.items.find(item => item.facts.id === other.id)!;
+    reference = { ...reference, skuId: chosen.facts.id, skuCode: chosen.facts.code, skuRevisionId: chosen.reference.revisionId,
+      netContent: chosen.facts.netContent, optionDigest: chosen.facts.optionDigest };
+  }
+  const acceptance = JSON.stringify({ schemaVersion: 2, lines: [reference] });
+  const sku = f.code, id = randomUUID();
+  await db.query("SAVEPOINT contradictory_acceptance");
+  if (path === "order at commit") {
+    const metadata = { orderDraftSnapshot: { lines: [{ sku, quantity: 1 }] } };
+    await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,metadata,catalog_acceptance) VALUES($1,$2,'XXX',617,$3::jsonb,$4::jsonb)",
+      [id,f.client,JSON.stringify(metadata),acceptance]);
+    await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,1,1,617,617)",[id,other.id]);
+    await expect.soft(db.query("SET CONSTRAINTS trg_commerce_orders_line_sum, trg_commerce_order_items_line_sum IMMEDIATE"))
+      .rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
+  } else {
+    const preview = randomUUID(), action = "update_bundle";
+    const payload = { action, quotePreviewId: preview, linePricing: [{ sku, quantity: 1, unitAmountMinor: 617, isAddon: false, quoteLine: {} }] };
+    await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.customer_self_service.update_bundle',$3,$4::jsonb)",
+      [id,f.subscription,`edit:${id}`,JSON.stringify(payload)]);
+    await db.query(`INSERT INTO public.subscription_quote_previews(id,subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,status,request_payload,quote_snapshot,totals,accepted_at,accepted_idempotency_key,accepted_event_id)
+      VALUES($1,$2,$3,$4,$5,$6,1,clock_timestamp()+interval '1 hour','accepted','{}',$7::jsonb,'{}',
+        (SELECT occurred_at FROM public.subscription_events WHERE id=$8),$9,$8)`,
+      [preview,f.subscription,f.client,randomUUID(),action,"b".repeat(64),JSON.stringify({ lines: [{ variantId: other.id, qty: 1, quoteLine: { sku: other.code } }] }),id,`accept:${id}`]);
+    await expect.soft(db.query("UPDATE public.subscription_events SET catalog_acceptance=$2::jsonb WHERE id=$1",[id,acceptance]))
+      .rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
+  }
+  await db.query("ROLLBACK TO SAVEPOINT contradictory_acceptance");
+});
+
 function withdrawal(f: Awaited<ReturnType<typeof seed>>): CatalogDraftPayloadV4 {
   const payload = structuredClone(f.payload); payload.product.sharedContent.catalogAction = "revise";
   payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: payload.product.slug!, expectedState: "active", state: "withdrawn", children: [{ skuCode: f.code, expectedState: "active" }] }];
@@ -664,6 +749,31 @@ it.each([
   const committed = await apply(valid);
   expect(committed).toMatchObject({ outcome: "committed" });
   expect(await apply(valid)).toEqual({ ...committed, outcome: "replayed" });
+});
+
+it.each([
+  ["UTF-16 order", ["𐀀", "\uE000"], "example:policy", true],
+  ["UTF-8-only order", ["\uE000", "𐀀"], "example:policy", false],
+  ["tab-prefixed policy", [], "\texample:policy", false],
+  ["tab-prefixed command key", [], "example:policy", false],
+  ["tab-prefixed authored asset", [], "example:policy", false],
+] as const)("LC5-PRE2 storage and draft codecs agree for %s", async (edge, assets, policy, admitted) => {
+  const { payload } = input();
+  payload.publication.evidence = { media: [{ skuCode: "ARTICLE", mediaRef: "example:media", assetRefs: [...assets], revisionDigest: "b".repeat(64) }] };
+  payload.skus[0]!.demandPolicyRef = policy;
+  if (edge === "tab-prefixed authored asset") payload.skus[0]!.assetRefs = ["\texample:asset"];
+  const commandKey = edge === "tab-prefixed command key" ? "\tdraft:unicode" : "draft:unicode";
+  const draft = { schemaVersion: 4, action: "create", draftId, commandKey, expectedRevision: 0, payload };
+  const text = canonicalCatalogDraftJson(draft), hash = createHash("sha256").update(text).digest("hex");
+  expect(catalogDraftCommandV4Schema.safeParse(draft).success).toBe(admitted);
+  const apply = async () => (await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result",[text,hash])).rows[0].result;
+  const result = await apply();
+  expect(result.outcome).toBe(admitted ? "committed" : "validation_issue");
+  const stored = (await db.query("SELECT payload FROM public.catalog_draft_revisions WHERE draft_id=$1",[draftId])).rows;
+  if (admitted) {
+    expect(catalogDraftCommandV4Schema.parse({ ...draft, payload: stored[0].payload })).toEqual(draft);
+    expect(await apply()).toEqual({ ...result, outcome: "replayed" });
+  } else expect(stored).toEqual([]);
 });
 
 it.each((["parent", "sku"] as const).flatMap(path => ([
@@ -911,10 +1021,13 @@ it.each([
   ["LC5-D-014", "sku version"],
   ["LC5-A-003", "live identity"],
   ["LC5-PRE-L1B-2", "legacy envelope with governed product"],
+  ["LC5-PRE2-A-2", "legacy envelope with legacy product and governed roster"],
   ["LC5-PRE-L1A-3", "noncanonical manifest"],
   ["LC5-PRE-L1B-3", "noncanonical sku"],
   ["LC5-PRE-L1B-3", "scalar option"],
   ["LC5-PRE-L1A-2", "empty logistics"],
+  ["LC5-PRE2-A-3", "tabbed membership"],
+  ["LC5-PRE2-B-3", "bad GTIN checksum"],
   ["LC5-PRE-L1B-4", "live product projection"],
 ] as const)("stored authority %s refuses %s", async (_rule, defect) => {
   const f = await seed(), standing = await standingActive(f);
@@ -933,11 +1046,16 @@ it.each([
     return;
   }
   await db.query("SAVEPOINT authority_mutation");
-  if (defect === "manifest version" || defect === "product projection" || defect === "legacy envelope with governed product" || defect === "noncanonical manifest") {
+  if (defect === "manifest version" || defect === "product projection" || defect.startsWith("legacy envelope") || defect === "noncanonical manifest") {
     const manifest = JSON.parse(publication.canonical_state);
     if (defect === "manifest version") manifest.product.schemaVersion = 2;
     if (defect === "product projection") manifest.product.status = "draft";
-    if (defect === "legacy envelope with governed product") manifest.schemaVersion = 2;
+    if (defect.startsWith("legacy envelope")) manifest.schemaVersion = 2;
+    if (defect === "legacy envelope with legacy product and governed roster") {
+      delete manifest.product.schemaVersion;
+      delete manifest.product.lifecycleState;
+      delete manifest.product.definitionDigest;
+    }
     const text = (defect === "noncanonical manifest" ? " " : "") + canonicalCatalogDraftJson(manifest);
     await expect(db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
       SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id FROM public.catalog_publications WHERE id=$5`,
@@ -948,6 +1066,8 @@ it.each([
     if (defect === "duplicate membership") facts.memberships = [{ offerVersion: "example:offer@1", admitted: true }, { offerVersion: "example:offer@1", admitted: false }];
     if (defect === "scalar option") facts.options = { finish: "matte" };
     if (defect === "empty logistics") facts.logisticsRef = "";
+    if (defect === "tabbed membership") facts.memberships = [{ offerVersion: "\texample:offer@1", admitted: true }];
+    if (defect === "bad GTIN checksum") facts.identifiers[0].value = "5901234123458";
     const text = (defect === "noncanonical sku" ? " " : "") + canonicalCatalogDraftJson(facts);
     await expect(db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,3,$4,$5,$6)",
       [randomUUID(),f.sku,f.product,publication.id,text,createHash("sha256").update(text).digest("hex")]))
@@ -955,6 +1075,27 @@ it.each([
   }
   await db.query("ROLLBACK TO SAVEPOINT authority_mutation");
   expect(await assertCatalogAcceptedReferenceV2(db, standing.accepted)).toEqual(standing.accepted);
+});
+
+it("LC5-PRE2 mixed-version head refuses an already retained predecessor envelope with governed references", async () => {
+  const f = await seed(), standing = await standingActive(f), id = randomUUID();
+  const original = (await db.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1",[standing.head.publicationId])).rows[0].canonical_state;
+  const manifest = JSON.parse(original);
+  manifest.schemaVersion = 2;
+  delete manifest.product.schemaVersion;
+  delete manifest.product.lifecycleState;
+  delete manifest.product.definitionDigest;
+  const bytes = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(bytes).digest("hex");
+  await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_record_admit");
+  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+    SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
+    FROM public.catalog_publications WHERE id=$5`,[id,`synthetic:${id}`,bytes,digest,standing.head.publicationId]);
+  await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_record_admit");
+  await db.query("SAVEPOINT mixed_head");
+  await expect(db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=3 WHERE product_id=$1",[f.product,id]))
+    .rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
+  await db.query("ROLLBACK TO SAVEPOINT mixed_head");
+  expect(await authority.reads.current(f.product)).toMatchObject({ outcome: "found",head: standing.head });
 });
 
 it.each([
@@ -968,8 +1109,8 @@ it.each([
   expect((await db.query("SHOW extra_float_digits")).rows).toEqual([{ extra_float_digits: "0" }]);
 });
 
-it.each(["empty logistics", "scalar option", "noncanonical sibling"] as const)(
-  "LC5-PRE shared authority refuses an off-page %s on R3, R4, A1 and O", async fault => {
+it.each(["empty logistics", "scalar option", "noncanonical sibling", "tabbed membership", "bad GTIN checksum", "UTF-16 memberships"] as const)(
+  "LC5-PRE shared authority and codecs agree on %s on R3, R4, A1 and O", async fault => {
   const f = await seed({ other: true }), standing = await standingActive(f);
   const stored = (await db.query("SELECT * FROM public.catalog_publications WHERE id=$1", [standing.head.publicationId])).rows[0];
   const manifest = JSON.parse(stored.canonical_state), [bad, good] = manifest.skus;
@@ -977,6 +1118,10 @@ it.each(["empty logistics", "scalar option", "noncanonical sibling"] as const)(
   const goodFacts = JSON.parse((await db.query("SELECT full_facts FROM public.catalog_sku_revisions WHERE id=$1", [good.revisionId])).rows[0].full_facts);
   if (fault === "empty logistics") facts.logisticsRef = "";
   if (fault === "scalar option") facts.options = { finish: "matte" };
+  if (fault === "tabbed membership") facts.memberships = [{ offerVersion: "\texample:offer@1", admitted: true }];
+  if (fault === "bad GTIN checksum") facts.identifiers[0].value = String(facts.identifiers[0].value).slice(0,-1) + "0";
+  const admissible = fault === "UTF-16 memberships";
+  if (admissible) facts.memberships = ["𐀀", "\uE000"].map(offerVersion => ({ offerVersion, admitted: false }));
   const text = (fault === "noncanonical sibling" ? " " : "") + canonicalCatalogDraftJson(facts);
   const output = randomUUID(), revision = randomUUID(), digest = createHash("sha256").update(text).digest("hex");
   Object.assign(bad, { revisionId: revision, revision: 3, digest });
@@ -985,13 +1130,18 @@ it.each(["empty logistics", "scalar option", "noncanonical sibling"] as const)(
     SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
     FROM public.catalog_publications WHERE id=$5`, [output,`example:${output}`,canonical,createHash("sha256").update(canonical).digest("hex"),stored.id]);
   // A persisted bad sibling isolates the downstream guards from write admission.
-  await db.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_record_admit");
+  if (!admissible) await db.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_record_admit");
   await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,3,$4,$5,$6)",
     [revision,bad.skuId,f.product,output,text,digest]);
-  await db.query("ALTER TABLE public.catalog_sku_revisions ENABLE TRIGGER catalog_sku_revisions_record_admit");
+  if (!admissible) await db.query("ALTER TABLE public.catalog_sku_revisions ENABLE TRIGGER catalog_sku_revisions_record_admit");
   const head = { ...standing.head, publicationId: output, revision: 3 };
   const cursor = Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts", productId: f.product, highWater: 3, before: 1 })).toString("base64url");
   const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
+  if (admissible) {
+    const page = await authority.readbackV3(head);
+    expect(page).toMatchObject({ outcome: "page", items: [{ facts: { memberships: facts.memberships } }, expect.anything()] });
+    return;
+  }
   expect.soft(await authority.readbackV3(head,cursor)).toEqual(refusal);
   acceptsRetainedRead = true;
   const scope = authority.authorizeReadScope(null);
@@ -1243,18 +1393,25 @@ it("LC5-D-067 a late projection mismatch never appends a publication, receipt or
 
 it("LC5-A-028 native freezes persist exact accepted lines and replay after reconnect", async () => {
   const f = await seed(), standing = await standingActive(f), cycle = randomUUID(), orderId = randomUUID();
+  const retained = await appendLegacyAcceptedSku(f,standing.accepted);
+  f.sku = retained.skuId;
+  f.code = retained.skuCode;
   await db.query("UPDATE public.subscriptions SET started_at=clock_timestamp()-interval '28 days',next_cycle_at=date_trunc('milliseconds',clock_timestamp())-interval '1 second' WHERE id=$1", [f.subscription]);
   await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) SELECT $1,id,started_at,'paid' FROM public.subscriptions WHERE id=$2", [cycle,f.subscription]);
   await db.query("WITH o AS (INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'paid','XXX',1851) RETURNING id) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) SELECT id,$4,1,3,617,1851 FROM o", [orderId,f.client,cycle,f.sku]);
   await db.query("INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at) VALUES($1,$2,$3,28,'active',$4,$5,$6,clock_timestamp())", [orderId,f.client,f.subscription,"a".repeat(64),`active:${orderId}`,`declare:${orderId}`]);
-  await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code,catalog_sku_revision_id) VALUES($1,$2,3,0,617,'XXX',$3)", [f.subscription,f.sku,standing.accepted.skuRevisionId]);
-  const acceptance = { schemaVersion: 2, lines: [standing.accepted] };
+  await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,3,0,617,'XXX')", [f.subscription,f.sku]);
+  const acceptance = { schemaVersion: 2, lines: [retained] };
   await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [f.subscription,JSON.stringify(acceptance)]);
   await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,3,617)", [f.subscription,f.code]);
   const preparationTerms = graduationFacts(1,f.code);
   preparationTerms.renewalTerms.starterPack.delivery2 = { discountBps: 500, discountMinor: 100, basisSubtotalMinor: 1851 };
   await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,clock_timestamp())",
     [orderId,f.subscription,JSON.stringify({ templateId: "synthetic", shippingAmountMinor: 149, acquisitionRef: null, ...preparationTerms })]);
+  const destination = randomUUID();
+  await db.query("INSERT INTO public.commerce_destinations(id,client_id,address) VALUES($1,$2,$3::jsonb)", [destination,f.client,
+    JSON.stringify({ recipientName: "Synthetic Buyer", line1: "1 Synthetic Lane", city: "Synthetic", postalCode: "00000", country: "ZZ" })]);
+  await db.query("INSERT INTO public.commerce_destination_bindings(subscription_id,destination_id) VALUES($1,$2)", [f.subscription,destination]);
   // Fixture installation commits before the business transaction takes commerce locks.
   await db.query("COMMIT"); db.release(true); db = await pool.connect(); await db.query("BEGIN");
   const now = (await db.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).rows[0].value;
@@ -1263,21 +1420,15 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
   if (!due) throw new Error("Missing recorded due subscription");
   const previousRevision = (await db.query("SELECT id FROM public.catalog_sku_revisions WHERE sku_id=$1 AND revision=1", [f.sku])).rows[0].id;
   const bind = async (revision: string) => db.query("UPDATE public.subscription_lines SET catalog_sku_revision_id=$2 WHERE subscription_id=$1", [f.subscription,revision]);
-  await bind(previousRevision);
-  await expect.soft(builder.buildCycleSnapshots(due)).rejects.toThrow("subscription_catalog_binding_mismatch");
-  await bind(standing.accepted.skuRevisionId);
-  const snapshot = await builder.buildCycleSnapshots(due), store = createPostgresRenewalStore(db,codec);
+  const snapshot = await builder.buildCycleSnapshots(due);
   expect(snapshot.frozenRevision).toBe("native.purchase-renewal.v3");
   expect(snapshot.pricingSnapshot).toMatchObject({ totalAmountMinor: 1900, discountAmountMinor: 100, shippingAmountMinor: 149 });
   const wire = codec.encode(snapshot);
-  await bind(previousRevision);
-  await db.query("SAVEPOINT catalog_refreeze");
-  await expect.soft(builder.claimDue({ snapshot, workerId: "synthetic", now })).rejects.toThrow("subscription_catalog_binding_mismatch");
-  await db.query("ROLLBACK TO SAVEPOINT catalog_refreeze");
-  await bind(standing.accepted.skuRevisionId);
-  for (const fault of ["different nested basket", "different accepted roster", "wrong fingerprint", "missing fingerprint", "extra key"] as const) {
+  for (const fault of ["different nested basket", "different accepted roster", "wrong fingerprint", "missing fingerprint", "extra key",
+    "rehashed total", "rehashed agreement policy", "rehashed nested key", "rehashed cycle counter", "rehashed shipping terms"] as const) {
     const changed = structuredClone(wire) as Record<string, unknown> & {
       frozenFingerprint?: string; lines: { sku: string }[]; templateSnapshot: { lines: { sku: string }[] }; orderSnapshot: { lines: { sku: string }[] };
+      pricingSnapshot: Record<string, unknown>; cycle: Record<string, unknown>;
     };
     const wrongLines = fault === "different nested basket" || fault === "different accepted roster";
     if (wrongLines) changed.orderSnapshot.lines[0]!.sku = "FOREIGN";
@@ -1292,21 +1443,40 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
       changed.unexpected = true;
       changed.frozenFingerprint = createHash("sha256").update(canonicalCatalogDraftJson(changed)).digest("hex");
     }
+    if (fault === "rehashed total") changed.totalAmountMinor = changed.pricingSnapshot.totalAmountMinor = 1901;
+    if (fault === "rehashed agreement policy") changed.pricingSnapshot.agreementPolicy = "invalid";
+    if (fault === "rehashed nested key") changed.pricingSnapshot.extra = true;
+    if (fault === "rehashed cycle counter") changed.cycle.logicalCycleNumber = 0;
+    if (fault === "rehashed shipping terms") changed.pricingSnapshot.shippingTerms = { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 149, freeThresholdMinor: 0 };
+    let claimHash = codec.fingerprint(snapshot);
+    if (fault.startsWith("rehashed")) {
+      delete changed.frozenFingerprint;
+      claimHash = changed.frozenFingerprint = createHash("sha256").update(canonicalCatalogDraftJson(changed)).digest("hex");
+      expect.soft(() => codec.decode(changed),fault).toThrow();
+    }
     await db.query("SAVEPOINT governed_basket");
     await expect.soft(db.query(`INSERT INTO public.subscription_renewal_operations(subscription_id,scheduled_at,cycle_number,identity_key,
       operation_fingerprint,cycle_snapshot,claim_token,claimed_by,claimed_at,lease_expires_at)
       VALUES($1,$2,1,$3,$4,$5::jsonb,$6,'synthetic',clock_timestamp(),clock_timestamp()+interval '1 minute')`,
-    [f.subscription,due.scheduledAt,codec.identity(snapshot),codec.fingerprint(snapshot),JSON.stringify(changed),randomUUID()]))
+    [f.subscription,due.scheduledAt,codec.identity(snapshot),claimHash,JSON.stringify(changed),randomUUID()]),fault)
       .rejects.toMatchObject({ code: "22023", message: wrongLines ? "catalog_acceptance_line_mismatch" : "catalog_acceptance_snapshot_mismatch" });
     await db.query("ROLLBACK TO SAVEPOINT governed_basket");
   }
-  const claim = await store.claimDue({ snapshot, workerId: "synthetic", now });
+  await bind(previousRevision);
+  await expect.soft(builder.buildCycleSnapshots(due)).rejects.toThrow("subscription_catalog_binding_mismatch");
+  await db.query("SAVEPOINT catalog_refreeze");
+  await expect.soft(builder.claimDue({ snapshot, workerId: "synthetic", now })).rejects.toThrow("subscription_catalog_binding_mismatch");
+  await db.query("ROLLBACK TO SAVEPOINT catalog_refreeze");
+  await bind(retained.skuRevisionId);
+  expect.soft(await builder.buildCycleSnapshots(due)).toEqual(snapshot);
+  const claim = await builder.claimDue({ snapshot, workerId: "synthetic", now });
+  const boundSnapshot = codec.withDestination!(snapshot,destination);
   const rows = (await db.query("SELECT cycle_snapshot,catalog_acceptance FROM public.subscription_renewal_operations WHERE id=$1", [claim.operationId])).rows;
   expect(rows[0].catalog_acceptance).toEqual(acceptance);
-  expect(rows[0].cycle_snapshot).toEqual(codec.encode(snapshot));
+  expect(rows[0].cycle_snapshot).toEqual(codec.encode(boundSnapshot));
   await db.query("COMMIT"); db.release(true); db = await pool.connect(); await db.query("BEGIN");
   const reconnected = createPostgresRenewalStore(db,createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value)));
-  expect(await reconnected.claimDue({ snapshot, workerId: "synthetic", now })).toMatchObject({ operationId: claim.operationId, replayed: true });
+  expect(await reconnected.claimDue({ snapshot: boundSnapshot, workerId: "synthetic", now })).toMatchObject({ operationId: claim.operationId, replayed: true });
   await db.query("SAVEPOINT immutable_snapshot");
   await expect(db.query("UPDATE public.subscription_renewal_operations SET cycle_snapshot=jsonb_set(cycle_snapshot,'{totalAmountMinor}','1') WHERE id=$1", [claim.operationId])).rejects.toMatchObject({ code: "55000", message: "catalog_acceptance_snapshot_immutable" });
   await db.query("ROLLBACK TO SAVEPOINT immutable_snapshot");
@@ -1323,3 +1493,26 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
   expect(money).toEqual([{ total: 1900, items: 1751, shipping: 149 }]);
   expect(await settlement.prepareRenewal(prepare)).toMatchObject({ replayed: true, orderId: prepared.orderId });
 });
+
+async function appendLegacyAcceptedSku(f: Awaited<ReturnType<typeof seed>>, reference: CatalogAcceptedReferenceV2): Promise<CatalogAcceptedReferenceV2> {
+  const skuCode = "LEGACY-ARTICLE";
+  const original = (await db.query("SELECT full_facts FROM public.catalog_sku_revisions WHERE id=$1",[reference.skuRevisionId])).rows[0].full_facts;
+  const facts = { ...JSON.parse(original), id: legacySkuId, code: skuCode };
+  const skuBytes = canonicalCatalogDraftJson(facts), skuDigest = createHash("sha256").update(skuBytes).digest("hex");
+  const publicationId = randomUUID(), priorRevision = randomUUID(), currentRevision = randomUUID();
+  const stored = (await db.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1",[reference.publicationHead.publicationId])).rows[0].canonical_state;
+  const manifest = JSON.parse(stored);
+  manifest.skus.unshift({ skuId: legacySkuId, revisionId: currentRevision, revision: 2, digest: skuDigest });
+  const bytes = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(bytes).digest("hex");
+  await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Legacy article')",[legacySkuId,f.product,skuCode]);
+  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+    SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
+    FROM public.catalog_publications WHERE id=$5`,[publicationId,`synthetic:${publicationId}`,bytes,digest,reference.publicationHead.publicationId]);
+  await db.query(`INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest)
+    VALUES($1,$2,$3,1,$4,$5,$6),($7,$2,$3,2,$8,$5,$6)`,
+    [priorRevision,legacySkuId,f.product,reference.publicationHead.publicationId,skuBytes,skuDigest,currentRevision,publicationId]);
+  const result = { ...reference, skuId: legacySkuId, skuCode, skuRevisionId: currentRevision,
+    publicationHead: { ...reference.publicationHead, publicationId, revision: reference.publicationHead.revision+1 } };
+  expect(await assertCatalogAcceptedReferenceV2(db,result)).toEqual(result);
+  return result;
+}

@@ -613,7 +613,7 @@
       },
       {
         "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-        "sha256": "688740b486344296eba2e16d26101e9cb9d040b1c5e4a9add5e8d5570214ae8a"
+        "sha256": "e96afbc9f2b3f78a8f5c3c294858014602362472a3ae9bd1cc3e0d02498e2343"
       }
     ],
     "objectInventorySha256": "69a55fd744ecf28502ab47f0faf2602afe99eccbf402ddf7945c56bd61252017",
@@ -1249,7 +1249,7 @@
         },
         {
           "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-          "sha256": "688740b486344296eba2e16d26101e9cb9d040b1c5e4a9add5e8d5570214ae8a"
+          "sha256": "e96afbc9f2b3f78a8f5c3c294858014602362472a3ae9bd1cc3e0d02498e2343"
         }
       ],
       "objectInventorySha256": {
@@ -1889,7 +1889,7 @@
         },
         {
           "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-          "sha256": "688740b486344296eba2e16d26101e9cb9d040b1c5e4a9add5e8d5570214ae8a"
+          "sha256": "e96afbc9f2b3f78a8f5c3c294858014602362472a3ae9bd1cc3e0d02498e2343"
         }
       ],
       "objectInventorySha256": {
@@ -2662,7 +2662,7 @@
     {
       "file": "20261123180000_catalog_lifecycle.sql",
       "source": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-      "sha256": "688740b486344296eba2e16d26101e9cb9d040b1c5e4a9add5e8d5570214ae8a"
+      "sha256": "e96afbc9f2b3f78a8f5c3c294858014602362472a3ae9bd1cc3e0d02498e2343"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
