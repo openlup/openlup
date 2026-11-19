@@ -11,15 +11,14 @@ import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { z } from "./validation.js";
 import { CatalogPublicationError, publicationDiagnostic, publicationIssue } from "./publicationError.js";
 import { readPublicationDraftEnvelope, type PublicationDraftRecord } from "./publicationIntent.js";
-import type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
-import { catalogPublicationClaim, evaluateCatalogPublication } from "./publicationValidation.js";
-import { publicationRulesFor, resolvePublicationRules } from "./publicationRules.js";
+import { publicationHeadSchema as headSchema, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
+import { evaluateCatalogPublication } from "./publicationValidation.js";
+import { resolvePublicationRules } from "./publicationRules.js";
 
 import { CatalogCandidateError, type CatalogCandidateDeps } from "./candidate.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
-const headSchema = z.object({ publicationId: id, revision, documentDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 const querySchema = z.object({ draftId: id, draftRevision: revision, expectedHead: headSchema.nullable() }).strict();
 const referencePattern = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u;
 /** Decodes the released candidate reference for the facade and command admission.
@@ -73,8 +72,10 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       let current: CatalogPublicationReadResult | undefined;
       try { current = await deps.currentHead(record.productId); }
       catch { if (!preparePublication) return refuse("candidate_dependency_unavailable"); }
-      const headKnown = current?.outcome === "found" || current?.outcome === "unpublished";
-      if (headKnown && !equal(current?.outcome === "found" ? headSchema.parse(current.head) : null, expectedHead))
+      const head = current?.outcome === "found" ? headSchema.safeParse(current.head).data
+        : current?.outcome === "unpublished" ? null : undefined;
+      const headKnown = head !== undefined;
+      if (headKnown && !equal(head, expectedHead))
         return refuse("head_conflict");
       if (!headKnown && !preparePublication) return refuse("candidate_dependency_unavailable");
       const definitionDrift = () => refuse("catalog_definition_drift",
@@ -84,15 +85,15 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       const registryDigest = catalogDefinitionDigest(definition);
       const installed = await deps.installedDefinitionDigest(payload.product.type);
       if (installed !== registryDigest) return definitionDrift();
-      const handle = publication?.rules ?? publicationRulesFor(definition);
+      const evaluation = publication?.evaluation ?? { evaluatedAt: record.createdAt };
       let preparation: CatalogCandidatePreview["preparation"];
       const issues: CatalogDraftIssue[] = [];
       if (record.status !== "open") issues.push({ path: "draft", code: "draft_abandoned" });
       if (payload.schemaVersion === 1) issues.push({ path: "payload.schemaVersion", code: "candidate_requires_payload_v2" });
       else if (payload.schemaVersion === 2) {
         const validationPayload = JSON.parse(canonicalCatalogDraftJson(payload)) as CatalogDraftPayloadV2;
-        const rules = handle && resolvePublicationRules(handle, definition.validatorRef);
         try {
+          const rules = resolvePublicationRules(definition, evaluation);
           const validation = await validateCatalogDraftV2(validationPayload, { resolve: () => ({
             ...definition, validateContent: rules?.validateContent ?? (() => []),
           }) }, deps.attributeReferences);
@@ -104,7 +105,8 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
           preparation = { structural: { outcome, issues: details }, activation: { outcome, issues: details } };
         } catch (error) {
           if (!(error instanceof CatalogPublicationError)) throw error;
-          const issue = publicationDiagnostic(error, "structural", "product.sharedContent", definition.key);
+          const issue = publicationDiagnostic(error, "structural",
+            error.code === "catalog_publication_rules_binding_mismatch" ? "product.type" : "product.sharedContent", definition.key);
           issues.push({ code: issue.code, path: issue.path });
           preparation = { structural: { outcome: "blocked-input", issues: [issue] }, activation: { outcome: "blocked-input", issues: [issue] } };
         }
@@ -122,18 +124,20 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         }
       }
       if (preparePublication) {
-        let evidence = null;
-        try { evidence = await publication?.readEvidence({ candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead }) ?? null; }
-        catch { /* This observation is unavailable. Candidate-local checks still run. */ }
         const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
-          expectedHead, evidence, rules: handle, observations: publication,
+          expectedHead, evaluation, observations: publication,
           attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
         if (result.failure?.code === "candidate_invalid") return refuse("candidate_invalid");
         const structural = result.structural.map(issue => issue.diagnostic);
-        if (!headKnown) structural.push({ path: "publication", code: "publication_head_unavailable" });
+        if (!headKnown) structural.push(publicationIssue("publication_head_unavailable", "structural", "publication", definition.key));
         const blocked = result.structural.some(issue => issue.outcome !== "dependency_unavailable");
         const activationBlocked = result.activationIssues.some(issue => issue.outcome !== "dependency_unavailable");
         const activation = [...structural, ...result.activationIssues.map(issue => issue.diagnostic)];
+        const first = result.failure?.diagnostic;
+        if (first?.phase === "activation") {
+          activation.splice(activation.indexOf(first), 1);
+          activation.unshift(first);
+        }
         preparation = { structural: { outcome: blocked ? "blocked-input" : structural.length ? "unknown" : "staged", issues: structural },
           activation: { outcome: blocked || activationBlocked ? "blocked-input" : activation.length ? "unknown"
             : result.activating ? "ready" : "pending", issues: [...activation, ...result.pending] } };

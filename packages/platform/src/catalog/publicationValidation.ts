@@ -10,10 +10,10 @@ import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
 import { CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse } from "./publicationError.js";
-import { assertPublishedFacts, assertPublishedPresentation, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, publicationContent,
-  publicationDigest, publicationJson, publicationReadinessReasons, publicationReadinessVerdict } from "./publicationCodec.js";
-import { resolvePublicationRules, ruleProduct, ruleSku, type CatalogPublicationRulesHandle } from "./publicationRules.js";
-import type { CatalogPublicationRulesModule } from "./catalogPublicationRules.js";
+import { assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, publicationContent,
+  publicationDigest, publicationJson, publicationReadinessVerdict } from "./publicationCodec.js";
+import { resolvePublicationRules, ruleProduct, ruleSku } from "./publicationRules.js";
+import type { CatalogPublicationRulesModule, CatalogRulesContext } from "./catalogPublicationRules.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { validateCatalogAttributes } from "./attributeValidation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
@@ -21,9 +21,9 @@ import type { CatalogCandidateIssue } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
-import type { CatalogPublicationEvidence, CatalogPublicationDraftEvidence, CatalogPublicationDocument, CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
+import { publicationHeadSchema, type CatalogPublicationEvidence, type CatalogPublicationDraftEvidence, type CatalogPublicationDocument, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { isLifecycleOperation, lifecycleTransition, publicationIntent, readPublicationDraftRecord,
-  type PublicationDraftRecord, type PublicationIntent, type PublicationLifecycleOperation, type PublicationOperation } from "./publicationIntent.js";
+  lifecycleEvidenceSchema, lifecycleWithdrawalOnly, type PublicationDraftRecord, type PublicationIntent, type PublicationLifecycleOperation, type PublicationOperation } from "./publicationIntent.js";
 import { enablesSku, requiredPromotions, sealedPresentation } from "./publicationDraft.js";
 
 export interface CatalogPublicationCompileInput {
@@ -31,12 +31,12 @@ export interface CatalogPublicationCompileInput {
   definition: CatalogProductTypeDefinition;
   installedDefinitionDigest: string;
   expectedHead: CatalogHeadRef | null;
-  evidence: CatalogPublicationEvidence | null;
-  rules?: CatalogPublicationRulesHandle | undefined;
+  evidence?: CatalogPublicationEvidence | null;
+  evaluation?: CatalogRulesContext;
   attributeReferences?: CatalogAttributeReferencePort | undefined;
   validatePrices?: ((payload: CatalogDraftPayloadV2) => Promise<readonly CatalogDraftIssue[]>) | undefined;
   capacity?: number;
-  observations?: Pick<CatalogCandidatePublicationDeps, "presentationReadiness" | "verifyMedia" | "assessActivation"> | undefined;
+  observations?: Partial<Pick<CatalogCandidatePublicationDeps, "readEvidence" | "presentationReadiness" | "verifyMedia" | "assessActivation">> | undefined;
 }
 export function catalogPublicationClaim(record: PublicationDraftRecord): CatalogDraftClaimV3 {
   return { draftId: record.draftId, revision: record.revision, commandKey: record.commandKey, fingerprint: record.fingerprint };
@@ -208,7 +208,7 @@ function assertSkuCreationDocument(operation: Extract<PublicationOperation, { op
 
 function assertMaterializedSkuSource(sku: CatalogPublishedSku | undefined, source: CatalogDraftPayloadV3["skus"][number]) {
   need(sku && sku.id === source.id && sku.productId === source.productId
-    && equal(source.netContent, sku.netContent) && equal(source.options, sku.options), "catalog_publication_operation_source_mismatch");
+    && source.netContent && equal(source.netContent, sku.netContent) && equal(source.options, sku.options), "catalog_publication_operation_source_mismatch");
 }
 
 function skuCreationFacts(operation: Extract<PublicationOperation, { op: "create_sku" }>,
@@ -259,7 +259,8 @@ function assertDerivedSource(operation: Extract<PublicationOperation, { op: "set
 }
 
 function publicationAuthorship(record: PublicationDraftRecord, payload: PublicationIntent,
-  retained: readonly CatalogPublicationDraftEvidence[], rules: CatalogPublicationRulesModule | undefined, missingEvidence: boolean) {
+  retained: readonly CatalogPublicationDraftEvidence[], materialized: ReadonlyMap<string, CatalogPublishedSku>,
+  rules: CatalogPublicationRulesModule | undefined, missingEvidence: boolean) {
   const slug = payload.product.slug!;
   const explicit = payload.publication.evidence.drafts ?? [];
   const sources = [record, ...retained.map(entry => entry.record)];
@@ -268,9 +269,12 @@ function publicationAuthorship(record: PublicationDraftRecord, payload: Publicat
   const declared = new Set(explicit.map(claim => claim.draftId));
   const registrations = new Map(payload.publication.operations.flatMap(operation =>
     operation.op === "register_document_revision" ? [[operation.revisionId, operation] as const] : []));
-  const proven = new Map(retained.map(entry => [entry.record, entry.head]));
+  const proven = new Map(retained.map(entry => [entry.record, entry]));
   function requireCurrent(source: PublicationDraftRecord) {
-    const head = proven.get(source);
+    const entry = proven.get(source);
+    need(entry && receiptMatches(entry, record) && equal(source.payload.product.type, payload.product.type),
+      "catalog_publication_source_mismatch");
+    const head = entry?.head;
     need(head?.draftId === source.draftId && head.productId === source.productId
       && head.revision === source.revision && head.status === "open", "catalog_publication_draft_advanced");
   }
@@ -283,7 +287,11 @@ function publicationAuthorship(record: PublicationDraftRecord, payload: Publicat
     });
     const acting = candidates.filter(row => row.source === record || declared.has(row.source.draftId));
     if (!allowRetained) need(acting.length <= 1, "catalog_publication_operation_source_ambiguous");
-    const selected = acting[0] ?? (allowRetained ? candidates[0] : undefined);
+    const actual = materialized.get(code);
+    // Select the materialized identity before using history's recency order.
+    const preferred = allowRetained ? [...acting].sort((left, right) => comparePublicationText(left.source.draftId, right.source.draftId))[0] : acting[0];
+    const selected = preferred ?? (allowRetained ? candidates.find(row =>
+      row.sku.id === actual?.id && row.sku.productId === actual.productId && row.source.productId === actual.productId) : undefined);
     if (!selected) {
       if (missingEvidence) return undefined;
       return publicationRefuse(missingReason);
@@ -382,12 +390,12 @@ function boundDrafts(record: PublicationDraftRecord, payload: PublicationIntent,
     const source = readPublicationDraftRecord(entry.record);
     if (!source) return publicationRefuse("catalog_publication_read_invalid", "dependency_unavailable");
     const key = `${source.draftId}@${source.revision}`;
-    need(!seen.has(key) && receiptMatches(entry, record) && equal(source.payload.product.type, payload.product.type),
-      "catalog_publication_source_mismatch");
+    need(!seen.has(key), "catalog_publication_source_mismatch");
     seen.add(key);
     const candidate = source.draftId === record.draftId && source.revision === record.revision;
     const explicit = payload.publication.evidence.drafts?.find(claim => claim.draftId === source.draftId && claim.revision === source.revision);
     if (candidate || explicit) {
+      need(receiptMatches(entry, record) && equal(source.payload.product.type, payload.product.type), "catalog_publication_source_mismatch");
       need(equal(candidate ? catalogPublicationClaim(record) : explicit, entry.receipt), "catalog_publication_source_mismatch");
       if (explicit) need(equal(explicit, entry.receipt), "catalog_publication_source_mismatch");
       need(entry.head?.draftId === source.draftId && entry.head.productId === source.productId
@@ -430,10 +438,35 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     return { compiled: undefined, structural, activationIssues, activating, pending, failure };
   }
 
+
   async function planPublication() {
-    const { record, definition, expectedHead, observations, rules: handle } = input;
+    let admitted!: Awaited<ReturnType<typeof admit>>;
+    let bound!: Awaited<ReturnType<typeof bindEvidence>>;
+    // Donor: P is supabase/migrations/20261012074153_catalog_propagation_product_publication.sql.
+    // M is supabase/migrations/20261012074151_catalog_propagation_membership.sql.
+    // T is src/overlays/velipet/data/catalog/catalogPropagationDraftCompiler.ts (15ef3b8cf).
+    // Phase                    Modes               Donor at 15ef3b8cf
+    const phases = [
+      { run: async () => { admitted = await admit(); } },                                       // Admit                   all  P:420–442,482–485,745–747,808–809
+      { run: async () => { bound = await bindEvidence(admitted); } },               // Bind reads              all  P:508–594
+      { run: () => bound.bindSources() },                                           // Saved-operation sources all  P:595–672
+      { run: () => bound.checkPhysicalSources() },                                  // Media and identity      all  P:674–691, T:106–117
+      { run: () => bound.checkActivationSources(), activation: true },               // Activation sources      P:502,548–558,683–697, T:133–152
+      { run: () => bound.applyPrefixes() },                                         // Ordered effects         all  P:815–929, M:91–98
+      { run: () => bound.checkStructuralResult() },                                 // Structural result       all  P:940–954
+      { run: () => bound.checkActivationResult(), activation: true },                // Activation result       P:955–969
+    ];
+    for (const phase of phases) if (!phase.activation || mode !== "first-decision") await phase.run();
+    if (mode === "preview") bound.addPending();
+    return bound.result();
+  }
+
+  async function admit() {
+    const { record, definition } = input;
+    position.path = "product.type";
     need(input.installedDefinitionDigest === catalogDefinitionDigest(definition), "catalog_definition_drift");
-    const rules = handle && resolvePublicationRules(handle, definition.validatorRef, mode !== "preview");
+    const rules = resolvePublicationRules(definition, input.evaluation ?? { evaluatedAt: record.createdAt }, mode !== "preview");
+    position.path = "product";
     need(record.payload.schemaVersion === 3 || record.payload.schemaVersion === 4, "catalog_publication_source_invalid");
     let canonicalPayload: string;
     try { canonicalPayload = canonicalCatalogDraftJson(record.payload); }
@@ -444,42 +477,82 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     const intent = publicationIntent(record.payload);
     if (!intent) return publicationRefuse("candidate_invalid");
     const payload = intent;
-    const governed = payload.schemaVersion === 4;
+    const governedIntent = payload.schemaVersion === 4;
+    const withdrawalOnly = governedIntent && lifecycleWithdrawalOnly(payload);
     need(equal(payload.product.type, { key: definition.key, version: definition.version }), "catalog_definition_drift");
     const contextualIssue = (issue: CatalogDraftIssue, skus: readonly { code?: string }[] = payload.skus) =>
       publicationIssue(issue.code, "structural", issue.path,
         skus[Number(/^(?:skus\.|\/skus\/)(\d+)/u.exec(issue.path)?.[1])]?.code ?? definition.key);
-    const authoredIssues = catalogPublicationPreparationIssues(payload, { definition, rules: rules ?? {} });
+    const authoredIssues = catalogPublicationPreparationIssues(payload, { definition, rules: withdrawalOnly ? {} : rules ?? {} });
     if (authoredIssues.length) {
-      structural.push(...authoredIssues.map(issue => ({ diagnostic: contextualIssue(issue), outcome: "validation_issue" as const })));
-      return;
+      const first = contextualIssue(authoredIssues[0]!);
+      throw new CatalogPublicationError(first.code, "validation_issue", first);
     }
-    let evidence = input.evidence;
-    let retained: CatalogPublicationDraftEvidence[] = [];
-    if (evidence) {
-      try {
-        if ((evidence.product !== null && !catalogPublishedProductSchema.safeParse(evidence.product).success)
-          || evidence.skus.some(sku => !catalogPublishedSkuSchema.safeParse(sku).success)
-          || evidence.documents.some(document => !catalogDocumentRevisionRefSchema.safeParse(document.reference).success))
-          publicationRefuse("catalog_publication_read_invalid", "dependency_unavailable");
-        retained = boundDrafts(record, payload, evidence);
-      } catch (error) {
-        if (!(error instanceof CatalogPublicationError) || error.outcome !== "dependency_unavailable") throw error;
-        structural.push(missing(error.code, "publication"));
-        evidence = null;
-      }
-    }
-    const missingState = expectedHead !== null && evidence === null;
-    const retainedState = evidence ?? { product: null, skus: [], documents: [], documentRevisionHighWater: 0 };
-    if (!rules || !input.evidence) structural.push(missing("publication_preparation_unavailable", "publication"));
-    if (governed && expectedHead && (!evidence?.lifecycle || evidence.skus.some(sku => !evidence.lifecycle!.skus[sku.code])))
-      structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication"));
+    position.path = "product.sharedContent.presentation";
+    assertPublishedPresentation(payload.product.sharedContent.presentation, definition.key);
     const { publication: _publication, skus: intentSkus, ...base } = payload;
     const validationPayload: CatalogDraftPayloadV2 = { ...base, schemaVersion: 2,
       skus: intentSkus.map(({ demandPolicyRef: _policy, ...sku }) => sku) };
+    position.path = "product.sharedContent";
+    const validation = await validateCatalogDraftV2(validationPayload, { resolve: () => ({ ...definition,
+      validateContent: !withdrawalOnly && rules ? rules.validateContent : () => [] }) }, input.attributeReferences);
+    const draftIssues = validation.valid ? validation.readiness.publication.issues : validation.issues;
+    if (!validation.valid) {
+      const refusal = draftIssues.find(issue => issue.code !== "attribute_reference_unresolved");
+      if (refusal) {
+        const diagnostic = contextualIssue(refusal);
+        throw new CatalogPublicationError(refusal.code, "validation_issue", diagnostic);
+      }
+    }
+    return { payload, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue, validationPayload, draftIssues };
+  }
+
+  async function bindEvidence({ payload, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue,
+    validationPayload, draftIssues }: Awaited<ReturnType<typeof admit>>) {
+    const { record, definition, expectedHead, observations } = input;
+    position.path = "publication";
+    const evidence = input.evidence === undefined ? await observe(() => observations?.readEvidence?.({
+      candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead,
+    }) ?? Promise.resolve(undefined)) ?? null : input.evidence;
+    let retained: CatalogPublicationDraftEvidence[] = [];
+    let sourceReadAvailable = false;
+    const head = evidence && publicationHeadSchema.nullable().safeParse(evidence.head);
+    const recordedProduct = evidence && catalogPublishedProductSchema.nullable().safeParse(evidence.product);
+    const recordedSkus = evidence && Array.isArray(evidence.skus) && evidence.skus.every(sku => catalogPublishedSkuSchema.safeParse(sku).success);
+    const recordedDocuments = evidence && Array.isArray(evidence.documents);
+    const highWaterAvailable = evidence && Number.isSafeInteger(evidence.documentRevisionHighWater) && evidence.documentRevisionHighWater >= 0;
+    if (head?.success && !equal(head.data, expectedHead)) publicationRefuse("head_conflict", "conflict");
+    if (evidence && (!head?.success || !recordedProduct?.success || !recordedSkus || !recordedDocuments || !highWaterAvailable))
+      structural.push(missing("catalog_publication_read_invalid", "publication"));
+    if (evidence) {
+      try {
+        if (!Array.isArray(evidence.drafts)) publicationRefuse("catalog_publication_read_invalid", "dependency_unavailable");
+        retained = boundDrafts(record, payload, evidence);
+        sourceReadAvailable = true;
+      } catch (error) {
+        if (!(error instanceof CatalogPublicationError) || error.outcome !== "dependency_unavailable") throw error;
+        if (!structural.some(issue => issue.diagnostic.code === error.code))
+          structural.push(missing(error.code, "publication"));
+      }
+    }
+    const missingState = expectedHead !== null && (!recordedProduct?.data || !recordedSkus);
+    const retainedState = {
+      product: recordedProduct?.data ?? null,
+      skus: recordedSkus ? evidence.skus : [],
+      documents: recordedDocuments ? evidence.documents : [],
+      documentRevisionHighWater: highWaterAvailable ? evidence.documentRevisionHighWater : 0,
+    };
+    if (!rules || !evidence) structural.push(missing("publication_preparation_unavailable", "publication"));
+    const governedState = evidence?.lifecycle;
+    const states = governedState && lifecycleEvidenceSchema.safeParse(governedState).data;
+    const governed = governedIntent || governedState !== undefined;
+    const lifecycleAvailable = !expectedHead || Boolean(states && retainedState.skus.every(sku => states.skus[sku.code]));
+    if (governed && !lifecycleAvailable)
+      structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication"));
+    if (!governedIntent && states && lifecycleAvailable) publicationRefuse("catalog_lifecycle_raw_status_fenced");
     const priceOperations = payload.skus.flatMap(sku => sku.priceOperations ?? []);
     async function checkPrices() {
-      if (mode === "first-decision" || !priceOperations.length) return;
+      if (!priceOperations.length) return;
       const prices = await observe(() => input.validatePrices?.({
         ...validationPayload, product: { ...validationPayload.product, sharedContent: publicationContent(payload.product.sharedContent) },
       }) ?? Promise.resolve(undefined));
@@ -496,29 +569,22 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
         }
       }
     }
-    position.path = "product.sharedContent";
-    const validation = await validateCatalogDraftV2(validationPayload, { resolve: () => ({ ...definition,
-      validateContent: rules ? content => rules.validateContent(content) : () => [] }) }, input.attributeReferences);
-    const draftIssues = validation.valid ? validation.readiness.publication.issues : validation.issues;
     const unresolved = unresolvedPublicationDraftIssues(draftIssues, retainedState);
     for (const issue of unresolved) {
       if (issue.code === "attribute_reference_unresolved"
         || missingState && (issue.code === "primary_sku_missing" || issue.code === "sku_missing")) {
         structural.push(missing("publication_evidence_unavailable", issue.path));
       } else {
-        structural.unshift({ diagnostic: contextualIssue(issue), outcome: "validation_issue" });
-        return;
+        const diagnostic = contextualIssue(issue);
+        throw new CatalogPublicationError(issue.code, "validation_issue", diagnostic);
       }
     }
     need(record.productId === payload.product.id && record.status === "open", "catalog_publication_source_invalid");
     need(canonicalCatalogDraftJson(record.payload) === canonicalPayload, "catalog_publication_source_mismatch");
-    if (evidence) {
-      need(equal(evidence.head, expectedHead) && (evidence.product?.document?.digest ?? null) === (expectedHead?.documentDigest ?? null),
-        "catalog_publication_source_mismatch");
-      need(Number.isSafeInteger(evidence.documentRevisionHighWater) && evidence.documentRevisionHighWater >= 0
-        && evidence.documents.every(row => row.reference.revisionNo <= evidence.documentRevisionHighWater), "catalog_publication_source_mismatch");
-    }
-    need(retainedState.skus.length === 0 || retainedState.product !== null, "catalog_publication_source_invalid");
+    position.path = "publication";
+    if (head?.success && recordedProduct?.success)
+      need((retainedState.product?.document?.digest ?? null) === (expectedHead?.documentDigest ?? null), "catalog_publication_source_mismatch");
+    need(missingState || retainedState.skus.length === 0 || retainedState.product !== null, "catalog_publication_source_invalid");
     need(retainedState.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
     const retainedIds = new Set<string>(), retainedCodes = new Set<string>();
     for (const sku of retainedState.skus) {
@@ -537,8 +603,8 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     const affected = catalogPublicationAffected(payload);
     const originalById = new Map(retainedState.skus.map(sku => [sku.id, sku] as const));
     const skus = new Map(retainedState.skus.map(sku => [sku.code, structuredClone(sku)]));
-    const documents = retainedState.documents.map(document => structuredClone(document));
-    const authorship = publicationAuthorship(record, payload, retained, rules, !evidence);
+    const documents: CatalogPublicationDocument[] = [];
+    const authorship = publicationAuthorship(record, payload, retained, skus, rules, !sourceReadAvailable);
     const created = new Set<string>(), identities = new Set<string>();
     const combination = (options: CatalogPublishedSku["options"]) => Buffer.from(canonicalizeCatalogCombinationV2({
       definition: input.definition, axes: payload.product.dimensions, options,
@@ -553,78 +619,153 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
       need(product.primarySkuId === payload.product.primarySkuId, "current_primary_mismatch");
     const authoredDocument = payload.product.documentRevision;
     need(authoredDocument, "document_reference_missing");
+    type DocumentRef = CatalogPublicationDocument["reference"];
     const documentsById = new Map<string, CatalogPublicationDocument>();
-    const documentsByRevision = new Map<number, CatalogPublicationDocument>();
-    for (const document of documents) {
-      const retainedReference = document.reference;
-      const parsed = catalogDocumentRevisionRefSchema.safeParse(retainedReference);
-      need(parsed.success && document.reference.productId === payload.product.id
-        && !documentsById.has(document.reference.id) && !documentsByRevision.has(document.reference.revisionNo),
-      "catalog_publication_document_source_mismatch");
-      documentsById.set(document.reference.id, document);
-      documentsByRevision.set(document.reference.revisionNo, document);
-      if (rules) checkedDocument(document.canonicalText, document.reference, slug, rules);
+    const referencesByRevision = new Map<number, DocumentRef>();
+    const referencesById = new Map<string, DocumentRef>();
+    const addReference = (reference: DocumentRef) => {
+      referencesById.set(reference.id, reference);
+      referencesByRevision.set(reference.revisionNo, reference);
+    };
+    function readDocuments() {
+      position.path = "product.documentRevision";
+      const current = product?.document;
+      for (const document of retainedState.documents) {
+        const parsed = catalogDocumentRevisionRefSchema.safeParse(document?.reference);
+        if (!parsed.success) {
+          structural.push(missing("catalog_publication_read_invalid", position.path));
+          continue;
+        }
+        const reference = parsed.data;
+        need(reference.productId === payload.product.id && (!highWaterAvailable || reference.revisionNo <= retainedState.documentRevisionHighWater)
+          && !referencesById.has(reference.id) && !referencesByRevision.has(reference.revisionNo), "catalog_publication_document_source_mismatch");
+        if (current && (current.id === reference.id || current.revisionNo === reference.revisionNo))
+          need(equal(current, reference), "catalog_publication_document_source_mismatch");
+        addReference(reference);
+        if (typeof document.canonicalText !== "string" || createHash("sha256").update(document.canonicalText).digest("hex") !== reference.digest) continue;
+        if (rules && !withdrawalOnly) checkedDocument(document.canonicalText, reference, slug, rules);
+        const selected = { ...document, reference };
+        documents.push(selected);
+        documentsById.set(reference.id, selected);
+      }
+      if (current) addReference(current);
     }
     function knownProduct(): CatalogPublishedProduct { return product ?? publicationRefuse("catalog_publication_v3_compile_product_absent"); }
     const knownSku = (code: string) => prefixSku(skus, code);
-    function documentAt(no: number): CatalogPublicationDocument {
-      return documentsByRevision.get(no) ?? publicationRefuse("catalog_publication_v3_compile_document_absent");
-    }
-    function selectedDocument(reference: CatalogPublishedProduct["document"] | undefined): CatalogPublicationDocument | undefined {
+    function selectedDocument(reference: CatalogPublishedProduct["document"] | undefined, needed = !withdrawalOnly): CatalogPublicationDocument | undefined {
       if (!reference) return;
       const selected = documentsById.get(reference.id);
-      if (selected) need(equal(selected.reference, reference), "catalog_publication_document_source_mismatch");
-      else if (!structural.some(issue => issue.diagnostic.code === "catalog_publication_document_bytes_unavailable"))
+      if (!selected && needed && !structural.some(issue => issue.diagnostic.code === "catalog_publication_document_bytes_unavailable"))
         structural.push(missing("catalog_publication_document_bytes_unavailable", "product.documentRevision"));
       return selected;
     }
-    const beforeDocument = selectedDocument(product?.document);
     const currentDocument = () => selectedDocument(knownProduct().document);
+    readDocuments();
+    const beforeReference = product?.document;
     const media = new Map(payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
     const verifiedMedia: CatalogDraftMediaClaimV3[] = [];
     const authoredPresentation = payload.product.sharedContent.presentation;
     const readRoute = async (presentation: CatalogPublicationFacts) => {
-      assertPublishedPresentation(presentation);
+      assertPublishedPresentation(presentation, definition.key);
       const verdict = publicationReadinessVerdict.safeParse(await observe(() => observations?.presentationReadiness?.(record.productId, structuredClone(presentation)) ?? Promise.resolve(undefined)));
       if (!verdict.success) structural.push(missing("catalog_publication_presentation_unavailable", "product.sharedContent.presentation"));
       else if (!verdict.data.ready) publicationRefuse(verdict.data.reasons[0]!);
     };
-    for (const [code, claim] of media) {
-      const source = authorship.sku(code, true, "catalog_publication_media_evidence_mismatch");
-      if (!source && missingState) continue;
-      if (source && source.source !== record) assertMaterializedSkuSource(skus.get(code), source.sku);
-      need(source && !catalogPublicationMediaIssue(source.payload.product.sharedContent.presentation.mediaRef, source.sku.assetRefs ?? [], claim),
-        "catalog_publication_media_evidence_mismatch");
-    }
-    activating = affected.enabling.size > 0 || payload.publication.operations.some(op => op.op === "restore_product" || op.op === "restore_sku");
+
+    const savedSources = new Map<number, NonNullable<ReturnType<typeof authorship.skuOperation>>>();
+    const savedDocuments = new Map<number, CatalogPublicationDocument>();
     const activationCodes = new Set(affected.enabling);
-    for (const sku of skus.values()) {
-      if (sku.status === "active" && (sku.sellableStandalone || sku.sellableInSubscription) && affected.source(sku.code))
-        activationCodes.add(sku.code);
+    const matchedPhysicalSources = new Set<CatalogDraftPayloadV3["skus"][number]>();
+    function bindPhysicalSource(code: string | undefined, source: CatalogDraftPayloadV3["skus"][number]) {
+      if (matchedPhysicalSources.has(source)) return;
+      assertMaterializedSkuSource(code === undefined ? undefined : skus.get(code), source);
+      matchedPhysicalSources.add(source);
     }
-    if (mode !== "first-decision") {
+    function atOperation(index: number, operation: PublicationOperation) {
+      position.path = `publication.operations.${index}`;
+      position.subject = "skuCode" in operation ? operation.skuCode : definition.key;
+    }
+    function bindSources() {
+      for (const [index, operation] of payload.publication.operations.entries()) {
+        atOperation(index, operation);
+        if ("productSlug" in operation) authorship.productOperation(operation);
+        if (isLifecycleOperation(operation)) continue;
+        if (operation.op === "set_derived_sku_facts") {
+          if (!missingState) assertDerivedSource(operation, skus.get(operation.skuCode), authoredDocument?.revisionNo);
+        } else if ("skuCode" in operation) {
+          const source = authorship.skuOperation(operation);
+          if (source) {
+            savedSources.set(index, source);
+            if (operation.op === "create_sku") assertSkuCreationDocument(operation, source.payload.product.documentRevision);
+          }
+        }
+        if (operation.op === "register_document_revision") {
+          const selected = authorship.document(operation);
+          if (selected) savedDocuments.set(index, selected);
+        }
+        if (operation.op === "create_sku" || operation.op === "set_derived_sku_facts") assertPublishedFacts(operation.facts);
+      }
+    }
+    function checkPhysicalSources() {
+      for (const [code, claim] of media) {
+        position.path = "publication.evidence.media";
+        position.subject = code;
+        const source = authorship.sku(code, true, "catalog_publication_media_evidence_mismatch");
+        if (!source && missingState) continue;
+        if (source && source.source !== record) bindPhysicalSource(code, source.sku);
+        need(source && !catalogPublicationMediaIssue(source.payload.product.sharedContent.presentation.mediaRef, source.sku.assetRefs ?? [], claim),
+          "catalog_publication_media_evidence_mismatch");
+      }
+      for (const [index, sku] of payload.skus.entries()) {
+        const actual = sku.code && skus.get(sku.code);
+        const idMatch = originalById.get(sku.id);
+        if (!actual && !idMatch) continue;
+        position.path = `skus.${index}`;
+        position.subject = sku.code ?? sku.id;
+        bindPhysicalSource(sku.code, sku);
+      }
+      activating = affected.enabling.size > 0 || payload.publication.operations.some(op => op.op === "restore_product" || op.op === "restore_sku");
+      for (const [index, operation] of payload.publication.operations.entries()) {
+        if (operation.op !== "set_eligibility" || !enablesSku(operation) || missingState) continue;
+        const source = savedSources.get(index);
+        if (!source) continue;
+        atOperation(index, operation);
+        bindPhysicalSource(operation.skuCode, source.sku);
+      }
+      for (const sku of skus.values()) {
+        if (sku.status === "active" && (sku.sellableStandalone || sku.sellableInSubscription) && affected.source(sku.code))
+          activationCodes.add(sku.code);
+      }
+    }
+    async function checkActivationSources() {
+      const proposed = [...payload.publication.operations].reverse().find(operation => operation.op === "set_product_presentation");
+      const presentation = proposed?.op === "set_product_presentation" ? proposed.presentation : product?.presentation;
       for (const code of activationCodes) {
+        if (missingState) continue;
+        position.path = "skus";
+        position.subject = code;
         const source = authorship.sku(code, true);
         if (!source) continue;
-        if (!missingState) assertMaterializedSkuSource(skus.get(code), source.sku);
+        bindPhysicalSource(code, source.sku);
         need(source.sku.netContent, "catalog_publication_operation_source_mismatch");
         assertCatalogPublicationGrossMass(source.sku.netContent!, source.sku.grossMass ?? null, definition);
+        position.path = "publication.evidence.media";
+        const problem = catalogPublicationMediaIssue(presentation?.mediaRef, source.sku.assetRefs ?? [], media.get(code));
+        if (problem === "media_readiness_unknown")
+          activationIssues.push(unavailable(publicationIssue("catalog_publication_media_validation_unavailable", "activation", position.path, code)));
+        else need(!problem, "catalog_publication_media_readiness_unproven");
       }
+      position.path = "publication.evidence.media";
       for (const [code, claim] of media) {
+        position.subject = code;
         const accepted = await observe(() => observations?.verifyMedia?.(structuredClone(claim), expectedHead) ?? Promise.resolve(undefined));
         if (accepted === true) verifiedMedia.push(claim);
         else if (accepted === false) publicationRefuse("catalog_publication_media_readiness_unproven");
-        else structural.push(missing("catalog_publication_media_validation_unavailable", `publication.evidence.media.${code}`));
+        else structural.push(missing("catalog_publication_media_validation_unavailable", position.path));
       }
     }
-    const writesPresentation = payload.publication.operations.some(operation => operation.op === "set_product_presentation");
-    if (!writesPresentation) {
-      const authoredRoute = Object.keys(authoredPresentation).length > 0;
-      if (authoredRoute) await readRoute(authoredPresentation);
-      if (product?.presentation && (!authoredRoute || !equal(product.presentation, authoredPresentation))) await readRoute(product.presentation);
-    }
-    let productState = evidence?.lifecycle?.product;
-    const skuStates = new Map(Object.entries(evidence?.lifecycle?.skus ?? {}));
+    let productState = states?.product;
+    const skuStates = new Map(Object.entries(states?.skus ?? {}));
     let lastChildWithdrawn = false;
     function applyLifecycle(operation: PublicationLifecycleOperation) {
       const restored = operation.op === "restore_product" || operation.op === "restore_sku";
@@ -667,265 +808,283 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
       row.status = after === "withdrawn" ? "active" : after;
     }
     let highWater = retainedState.documentRevisionHighWater;
-    let createdProduct: CatalogPublishedProduct | undefined;
-    const createdSkus = new Map<string, CatalogPublishedSku>();
-    for (const [index, operation] of payload.publication.operations.entries()) {
-      position.path = `publication.operations.${index}`;
-      position.subject = "skuCode" in operation ? operation.skuCode : definition.key;
-      if ("productSlug" in operation) authorship.productOperation(operation);
-      if (isLifecycleOperation(operation)) {
-        if (!missingState) applyLifecycle(operation);
-        continue;
+    async function applyPrefixes() {
+      const writesPresentation = payload.publication.operations.some(operation => operation.op === "set_product_presentation");
+      position.path = "product.sharedContent.presentation";
+      position.subject = definition.key;
+      if (!writesPresentation) {
+        const authoredRoute = !withdrawalOnly && Object.keys(authoredPresentation).length > 0;
+        if (authoredRoute) await readRoute(authoredPresentation);
+        if (!withdrawalOnly && product?.presentation && (!authoredRoute || !equal(product.presentation, authoredPresentation))) await readRoute(product.presentation);
       }
-      const source = "skuCode" in operation && operation.op !== "set_derived_sku_facts" ? authorship.skuOperation(operation) : undefined;
-      const entry = operation.op === "register_document_revision" ? authorship.document(operation) : undefined;
-      if (operation.op === "create_sku" && source) assertSkuCreationDocument(operation, source.payload.product.documentRevision);
-      if (operation.op === "set_product_presentation" && operation.presentation !== null) {
-        if (!missingState) knownProduct();
-        await readRoute(operation.presentation);
-      }
-      if (operation.op === "create_sku" || operation.op === "set_derived_sku_facts") assertPublishedFacts(operation.facts);
-      if (missingState || "skuCode" in operation && !source && operation.op !== "set_derived_sku_facts") continue;
-      if (operation.op === "create_product") {
-        need(product === null && operation.productId === payload.product.id, "catalog_publication_v3_compile_product_conflict");
-        product = { id: operation.productId, slug, name: operation.name, status: "draft", type: payload.product.type,
-          axes: [...payload.product.dimensions], attributes: payload.product.attributes ?? {}, primarySkuId: null, document: null,
-          presentation: null, source: claim, content: publicationContent(payload.product.sharedContent) };
-        if (governed) productState = "draft";
-        if (mode === "compile") createdProduct = structuredClone(product);
-      } else if (operation.op === "register_document_revision") {
-        if (!entry) continue;
-        knownProduct();
-        const byId = documentsById.get(operation.revisionId), byRevision = documentsByRevision.get(operation.revisionNo);
-        if (byId || byRevision) need(byId === byRevision && equal(byId, entry), "catalog_publication_v3_compile_document_conflict");
-        else {
-          need(operation.revisionNo === highWater + 1, "catalog_publication_document_revision_sequence");
-          documents.push(entry);
-          documentsById.set(entry.reference.id, entry);
-          documentsByRevision.set(entry.reference.revisionNo, entry);
-          highWater++;
+      for (const [index, operation] of payload.publication.operations.entries()) {
+        atOperation(index, operation);
+        if (isLifecycleOperation(operation)) {
+          if (!missingState) applyLifecycle(operation);
+          continue;
         }
-        registered.add(entry.reference.id);
-      } else if (operation.op === "move_document_pointer") {
-        const document = documentAt(operation.documentRevisionNo);
-        need(document.reference.productId === knownProduct().id && equal(payload.product.documentRevision, document.reference), "catalog_publication_document_source_mismatch");
-        knownProduct().document = document.reference;
-        if (registered.has(document.reference.id)) moved.add(document.reference.id);
-      } else if (operation.op === "create_sku") {
-        need(!skus.has(operation.skuCode) && ![...skus.values()].some(sku => sku.id === operation.skuId), "catalog_publication_v3_compile_sku_conflict");
-        const sku = skuCreationFacts(operation, source!, knownProduct().id);
-        existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing.options)));
-        const identity = combination(sku.options);
-        need(!existingCombinations.has(identity), "duplicate_combination");
-        assertSkuCreationDocument(operation, source!.payload.product.documentRevision, knownProduct().document);
-        existingCombinations.add(identity);
-        const selected = currentDocument();
-        if (rules && selected) need(equal(documentSkuFacts(selected, sku, rules), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
-        skus.set(sku.code, sku); created.add(sku.code);
-        if (governed) {
-          const demandPolicyRef = incoming.get(sku.code)?.demandPolicyRef;
-          skuStates.set(sku.code, { state: "draft", ...(demandPolicyRef === undefined ? {} : { demandPolicyRef }) });
+        const source = savedSources.get(index);
+        const entry = savedDocuments.get(index);
+        if (operation.op === "set_product_presentation" && operation.presentation !== null) {
+          if (!missingState) knownProduct();
+          await readRoute(operation.presentation);
         }
-        if (mode === "compile") createdSkus.set(sku.code, structuredClone(sku));
-      } else if (operation.op === "create_identifier") {
-        const sku = knownSku(operation.skuCode);
-        need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
-        const { op: _op, skuCode: _code, ...identifier } = operation;
-        if (identifier.scheme === "gs1:gtin") {
-          need(isValidGtin(identifier.value) && !gtins.has(identifier.value.padStart(14, "0")), "catalog_publication_v3_compile_identifier_conflict");
-          gtins.add(identifier.value.padStart(14, "0"));
-        }
-        need(!identifier.isPrimary || identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit" && !sku.identifiers.some(value => value.isPrimary), "catalog_publication_identifier_primary_invalid");
-        applySkuPrefix(sku, operation, rules);
-      } else if (operation.op === "set_primary_sku") {
-        const sku = knownSku(operation.skuCode);
-        need(sku.productId === knownProduct().id && source!.sku.id === sku.id, "catalog_publication_v3_compile_primary_foreign");
-        need(knownProduct().primarySkuId === null || knownProduct().primarySkuId === sku.id, "catalog_publication_v3_compile_primary_immutable");
-        need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
-        knownProduct().primarySkuId = sku.id;
-      } else if (operation.op === "set_product_status") {
-        if (operation.status === "active") need(knownProduct().document !== null && knownProduct().primarySkuId !== null, "catalog_publication_v3_compile_product_incomplete");
-        knownProduct().status = operation.status;
-      } else if (operation.op === "set_eligibility") {
-        const sku = knownSku(operation.skuCode);
-        const on = operation.sellableStandalone || operation.sellableInSubscription;
-        const materialized = originalById.get(sku.id);
-        if (on && mode === "first-decision") assertMaterializedSkuSource(materialized, source!.sku);
-        if (on && governed) {
-          const state = skuStates.get(sku.code)?.state;
-          if (productState === undefined || state === undefined) {
-            structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
-            continue;
+        if (missingState || "skuCode" in operation && !source && operation.op !== "set_derived_sku_facts") continue;
+        if (operation.op === "create_product") {
+          need(product === null && operation.productId === payload.product.id, "catalog_publication_v3_compile_product_conflict");
+          product = { id: operation.productId, slug, name: operation.name, status: "draft", type: payload.product.type,
+            axes: [...payload.product.dimensions], attributes: payload.product.attributes ?? {}, primarySkuId: null, document: null,
+            presentation: null, source: claim, content: publicationContent(payload.product.sharedContent) };
+          if (governed) productState = "draft";
+        } else if (operation.op === "register_document_revision") {
+          if (!entry) continue;
+          knownProduct();
+          const byId = referencesById.get(operation.revisionId), byRevision = referencesByRevision.get(operation.revisionNo);
+          if (byId || byRevision) {
+            const previous = documentsById.get(operation.revisionId);
+            need(byId === byRevision && equal(byId, entry.reference) && (!previous || equal(previous, entry)), "catalog_publication_v3_compile_document_conflict");
+          } else {
+            if (highWaterAvailable || expectedHead === null)
+            need(operation.revisionNo === highWater + 1, "catalog_publication_document_revision_sequence");
+            addReference(entry.reference);
+            highWater++;
           }
-          need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
+          if (!documentsById.has(entry.reference.id)) documents.push(entry);
+          documentsById.set(entry.reference.id, entry);
+          registered.add(entry.reference.id);
+        } else if (operation.op === "move_document_pointer") {
+          const reference = referencesByRevision.get(operation.documentRevisionNo)
+            ?? publicationRefuse("catalog_publication_v3_compile_document_absent");
+          need(reference.productId === knownProduct().id && equal(payload.product.documentRevision, reference), "catalog_publication_document_source_mismatch");
+          knownProduct().document = reference;
+          if (registered.has(reference.id)) moved.add(reference.id);
+        } else if (operation.op === "create_sku") {
+          need(!skus.has(operation.skuCode) && ![...skus.values()].some(sku => sku.id === operation.skuId), "catalog_publication_v3_compile_sku_conflict");
+          const sku = skuCreationFacts(operation, source!, knownProduct().id);
+          existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing.options)));
+          const identity = combination(sku.options);
+          need(!existingCombinations.has(identity), "duplicate_combination");
+          assertSkuCreationDocument(operation, source!.payload.product.documentRevision, knownProduct().document);
+          existingCombinations.add(identity);
+          const selected = currentDocument();
+          if (rules && selected) need(equal(documentSkuFacts(selected, sku, rules), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
+          skus.set(sku.code, sku); created.add(sku.code);
+          if (governed) {
+            const demandPolicyRef = incoming.get(sku.code)?.demandPolicyRef;
+            skuStates.set(sku.code, { state: "draft", ...(demandPolicyRef === undefined ? {} : { demandPolicyRef }) });
+          }
+        } else if (operation.op === "create_identifier") {
+          const sku = knownSku(operation.skuCode);
+          need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
+          const { op: _op, skuCode: _code, ...identifier } = operation;
+          if (identifier.scheme === "gs1:gtin") {
+            need(isValidGtin(identifier.value) && !gtins.has(identifier.value.padStart(14, "0")), "catalog_publication_v3_compile_identifier_conflict");
+            gtins.add(identifier.value.padStart(14, "0"));
+          }
+          need(!identifier.isPrimary || identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit" && !sku.identifiers.some(value => value.isPrimary), "catalog_publication_identifier_primary_invalid");
+          applySkuPrefix(sku, operation, rules);
+        } else if (operation.op === "set_primary_sku") {
+          const sku = knownSku(operation.skuCode);
+          need(sku.productId === knownProduct().id && source!.sku.id === sku.id, "catalog_publication_v3_compile_primary_foreign");
+          need(knownProduct().primarySkuId === null || knownProduct().primarySkuId === sku.id, "catalog_publication_v3_compile_primary_immutable");
+          need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
+          knownProduct().primarySkuId = sku.id;
+        } else if (operation.op === "set_product_status") {
+          if (operation.status === "active") need(knownProduct().document !== null && knownProduct().primarySkuId !== null, "catalog_publication_v3_compile_product_incomplete");
+          knownProduct().status = operation.status;
+        } else if (operation.op === "set_eligibility") {
+          const sku = knownSku(operation.skuCode);
+          const on = operation.sellableStandalone || operation.sellableInSubscription;
+          const materialized = originalById.get(sku.id);
+          if (on && governed) {
+            const state = skuStates.get(sku.code)?.state;
+            if (productState === undefined || state === undefined) {
+              structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
+              continue;
+            }
+            need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
+          }
+          need(!on || sku.status !== "archived" && materialized?.status !== "archived", "catalog_publication_v3_compile_sku_archived");
+          applySkuPrefix(sku, operation, rules);
+        } else if (operation.op === "set_sku_status") {
+          const sku = knownSku(operation.skuCode);
+          if (operation.status === "archived") need(!sku.sellableStandalone && !sku.sellableInSubscription && knownProduct().primarySkuId !== sku.id, "catalog_publication_v3_compile_archive_refused");
+          else need(payload.publication.operations.some(other => other.op === "set_eligibility" && other.skuCode === sku.code
+            && (other.sellableStandalone || other.sellableInSubscription)), "catalog_publication_activation_requires_explicit_eligibility");
+          applySkuPrefix(sku, operation, rules);
+        } else if (operation.op === "set_offer_membership") {
+          const sku = knownSku(operation.skuCode);
+          applySkuPrefix(sku, operation, rules);
+        } else if (operation.op === "set_product_presentation") {
+          knownProduct().presentation = operation.presentation;
+        } else if (operation.op === "set_sku_metadata") {
+          const sku = knownSku(operation.skuCode);
+          applySkuPrefix(sku, operation, rules);
+        } else if (operation.op === "set_derived_sku_facts") {
+          const sku = knownSku(operation.skuCode);
+          need(knownProduct().document?.revisionNo === operation.documentRevisionNo, "catalog_publication_derived_source_mismatch");
+          const selected = currentDocument();
+          if (rules && selected) need(equal(documentSkuFacts(selected, sku, rules), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
+          applySkuPrefix(sku, operation, rules);
+        } else { const _exhaustive: never = operation; publicationRefuse("catalog_publication_operation_invalid"); }
+        knownProduct();
+      }
+    }
+    let assembled: Awaited<ReturnType<typeof structuralResult>>;
+    async function checkStructuralResult() { assembled = await structuralResult(); }
+    async function structuralResult() {
+      position.path = "product";
+      if (missingState) return;
+      position.subject = definition.key;
+      const result = knownProduct();
+      if (lastChildWithdrawn) need(productState === "withdrawn"
+        && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
+      "catalog_lifecycle_last_active_child");
+      if (payload.product.documentRevision) need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
+      if (retainedState.product?.document && !equal(retainedState.product.document, authoredDocument) && !moved.has(authoredDocument!.id))
+        publicationRefuse("catalog_publication_v3_document_reference_stale", "conflict");
+      const afterDocument = currentDocument();
+      if (!withdrawalOnly && rules && afterDocument && payload.product.sharedContent.document !== undefined)
+        need(matchesAuthoredDocument(payload.product.sharedContent.document, afterDocument.canonicalText, rules), "catalog_publication_document_source_mismatch");
+      const productOverlay = { attributes: payload.product.attributes ?? result.attributes, axes: payload.product.dimensions };
+      if (withdrawalOnly) need(equal(productOverlay, { attributes: result.attributes, axes: result.axes })
+        && equal(payload.product.sharedContent.presentation, result.content.presentation), "catalog_lifecycle_withdrawal_overlay_refused");
+      else {
+        Object.assign(result, productOverlay);
+        result.content = publicationContent(payload.product.sharedContent);
+        result.source = claim;
+      }
+      for (const [code, authored] of incoming) {
+        const sku = skus.get(code!);
+        need(sku, "catalog_publication_sku_effect_missing");
+        if (created.has(code!)) need(authored.identifiers?.every(identifier =>
+          sku!.identifiers.some(stored => matchesAuthoredIdentifier(identifier, stored))), "catalog_publication_identifier_effect_missing");
+        if (authored.logisticsRef) need(sku!.logisticsRef === authored.logisticsRef, "catalog_publication_metadata_effect_missing");
+      }
+      for (const intent of payload.product.sharedContent.offerMemberships)
+        need(skus.get(intent.skuCode)?.memberships.some(row => row.offerVersion === intent.offerVersion && row.admitted === intent.admitted),
+          "catalog_publication_membership_effect_missing");
+      const productPhysicalChange = retainedState.product !== null && !equal(
+        [retainedState.product.type, retainedState.product.axes, retainedState.product.attributes, retainedState.product.document],
+        [result.type, result.axes, result.attributes, result.document]);
+      for (const sku of skus.values()) {
+        position.path = "skus";
+        position.subject = sku.code;
+        const draft = incoming.get(sku.code);
+        if (draft && !created.has(sku.code)) {
+          const policyUnchanged = draft.demandPolicyRef === undefined || draft.demandPolicyRef === skuStates.get(sku.code)?.demandPolicyRef;
+          if (!withdrawalOnly) need(policyUnchanged, "sku_identity_change_requires_new_sku");
+          for (const identifier of draft.identifiers ?? []) {
+            need(sku.identifiers.some(stored => identifier.scheme === "gs1:gtin" && stored.scheme === "gs1:gtin"
+              ? isValidGtin(identifier.value) && identifier.value.padStart(14, "0") === stored.value.padStart(14, "0")
+              : matchesAuthoredIdentifier(identifier, stored)), "catalog_publication_identifier_source_mismatch");
+          }
+          const overlay = { attributes: draft.attributes ?? sku.attributes, grossMass: draft.grossMass ?? sku.grossMass, assetRefs: draft.assetRefs ?? sku.assetRefs };
+          if (withdrawalOnly) need(policyUnchanged && equal(overlay, { attributes: sku.attributes, grossMass: sku.grossMass, assetRefs: sku.assetRefs })
+            && (draft.logisticsRef === undefined || draft.logisticsRef === sku.logisticsRef), "catalog_lifecycle_withdrawal_overlay_refused");
+          else Object.assign(sku, overlay);
         }
-        need(!on || sku.status !== "archived" && materialized?.status !== "archived", "catalog_publication_v3_compile_sku_archived");
-        applySkuPrefix(sku, operation, rules);
-      } else if (operation.op === "set_sku_status") {
-        const sku = knownSku(operation.skuCode);
-        if (operation.status === "archived") need(!sku.sellableStandalone && !sku.sellableInSubscription && knownProduct().primarySkuId !== sku.id, "catalog_publication_v3_compile_archive_refused");
-        else need(payload.publication.operations.some(other => other.op === "set_eligibility" && other.skuCode === sku.code
-          && (other.sellableStandalone || other.sellableInSubscription)), "catalog_publication_activation_requires_explicit_eligibility");
-        applySkuPrefix(sku, operation, rules);
-      } else if (operation.op === "set_offer_membership") {
-        const sku = knownSku(operation.skuCode);
-        applySkuPrefix(sku, operation, rules);
-      } else if (operation.op === "set_product_presentation") {
-        knownProduct().presentation = operation.presentation;
-      } else if (operation.op === "set_sku_metadata") {
-        const sku = knownSku(operation.skuCode);
-        applySkuPrefix(sku, operation, rules);
-      } else if (operation.op === "set_derived_sku_facts") {
-        const sku = knownSku(operation.skuCode);
-        const original = originalById.get(sku.id);
-        assertDerivedSource(operation, original, authoredDocument?.revisionNo);
-        need(knownProduct().document?.revisionNo === operation.documentRevisionNo, "catalog_publication_derived_source_mismatch");
-        const selected = currentDocument();
-        if (rules && selected) need(equal(documentSkuFacts(selected, sku, rules), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
-        applySkuPrefix(sku, operation, rules);
-      } else { const _exhaustive: never = operation; publicationRefuse("catalog_publication_operation_invalid"); }
-      knownProduct();
-    }
-    position.path = "product";
-    if (missingState) { await checkPrices(); return; }
-    const result = knownProduct();
-    if (lastChildWithdrawn) need(productState === "withdrawn"
-      && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
-    "catalog_lifecycle_last_active_child");
-    if (payload.product.documentRevision) need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
-    if (retainedState.product?.document && !equal(retainedState.product.document, authoredDocument) && !moved.has(authoredDocument!.id))
-      publicationRefuse("catalog_publication_v3_document_reference_stale", "conflict");
-    const afterDocument = currentDocument();
-    if (rules && afterDocument && payload.product.sharedContent.document !== undefined)
-      need(matchesAuthoredDocument(payload.product.sharedContent.document, afterDocument.canonicalText, rules), "catalog_publication_document_source_mismatch");
-    result.attributes = payload.product.attributes ?? result.attributes; result.axes = [...payload.product.dimensions];
-    result.content = publicationContent(payload.product.sharedContent); result.source = claim;
-    for (const [code, authored] of incoming) {
-      const sku = skus.get(code!);
-      need(sku, "catalog_publication_sku_effect_missing");
-      if (created.has(code!)) need(authored.identifiers?.every(identifier =>
-        sku!.identifiers.some(stored => matchesAuthoredIdentifier(identifier, stored))), "catalog_publication_identifier_effect_missing");
-      if (authored.logisticsRef) need(sku!.logisticsRef === authored.logisticsRef, "catalog_publication_metadata_effect_missing");
-    }
-    for (const intent of payload.product.sharedContent.offerMemberships)
-      need(skus.get(intent.skuCode)?.memberships.some(row => row.offerVersion === intent.offerVersion && row.admitted === intent.admitted),
-        "catalog_publication_membership_effect_missing");
-    const productPhysicalChange = retainedState.product !== null && !equal(
-      [retainedState.product.type, retainedState.product.axes, retainedState.product.attributes, retainedState.product.document],
-      [result.type, result.axes, result.attributes, result.document]);
-    for (const sku of skus.values()) {
-      position.path = "skus";
-      position.subject = sku.code;
-      const draft = incoming.get(sku.code);
-      if (draft && !created.has(sku.code)) {
-        need(draft.id === sku.id && draft.productId === sku.productId && equal(draft.netContent, sku.netContent)
-          && equal(draft.options, sku.options) && (draft.demandPolicyRef === undefined || draft.demandPolicyRef === skuStates.get(sku.code)?.demandPolicyRef), "sku_identity_change_requires_new_sku");
-        for (const identifier of draft.identifiers ?? []) {
-          need(sku.identifiers.some(stored => identifier.scheme === "gs1:gtin" && stored.scheme === "gs1:gtin"
-            ? isValidGtin(identifier.value) && identifier.value.padStart(14, "0") === stored.value.padStart(14, "0")
-            : matchesAuthoredIdentifier(identifier, stored)), "catalog_publication_identifier_source_mismatch");
+        const before = originalById.get(sku.id);
+        if (!withdrawalOnly && before && rules && afterDocument && (productPhysicalChange || !equal(
+          [before.netContent, before.options, before.attributes, before.facts, before.grossMass, before.assetRefs],
+          [sku.netContent, sku.options, sku.attributes, sku.facts, sku.grossMass, sku.assetRefs]))) {
+          const beforeDocument = selectedDocument(beforeReference);
+          if (beforeDocument) need(rules.classifySkuChange(ruleSku(before), ruleSku(sku), {
+            beforeProduct: ruleProduct(retainedState.product!), afterProduct: ruleProduct(result),
+            beforeDocument: beforeDocument.canonicalText, afterDocument: afterDocument.canonicalText,
+          }) === "compatible", "sku_identity_change_requires_new_sku");
         }
-        const after = { ...sku, attributes: draft.attributes ?? sku.attributes, grossMass: draft.grossMass ?? sku.grossMass, assetRefs: draft.assetRefs ?? sku.assetRefs };
-        Object.assign(sku, after);
+        need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
+        catalogPublicationIntegralGrams(sku.netContent, input.definition);
+        if (!withdrawalOnly && rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
+          "catalog_publication_v3_compile_derived_facts_mismatch");
+        if (governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
+          const state = skuStates.get(sku.code)?.state;
+          if (productState === undefined || state === undefined) structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
+          else need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
+        }
+        const key = combination(sku.options);
+        need(!identities.has(key), "duplicate_combination"); identities.add(key);
+        publicationJson(catalogPublishedSkuSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
+        assertPublishedSkuDocumentExclusion(sku, result.document);
       }
-      const before = originalById.get(sku.id);
-      if (before && rules && afterDocument && beforeDocument && (productPhysicalChange || !equal(
-        [before.netContent, before.options, before.attributes, before.facts, before.grossMass, before.assetRefs],
-        [sku.netContent, sku.options, sku.attributes, sku.facts, sku.grossMass, sku.assetRefs]))) {
-        need(rules.classifySkuChange(ruleSku(before), ruleSku(sku), { beforeProduct: ruleProduct(retainedState.product!), afterProduct: ruleProduct(result),
-          beforeDocument: beforeDocument.canonicalText, afterDocument: afterDocument.canonicalText }) === "compatible", "sku_identity_change_requires_new_sku");
-      }
-      need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
-      catalogPublicationIntegralGrams(sku.netContent, input.definition);
-      if (rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
-        "catalog_publication_v3_compile_derived_facts_mismatch");
-      if (governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
-        const state = skuStates.get(sku.code)?.state;
-        need((productState === undefined || productState === "active") && (state === undefined || state === "active"),
-          "catalog_lifecycle_fresh_sale_refused");
-      }
-      const key = combination(sku.options);
-      need(!identities.has(key), "duplicate_combination"); identities.add(key);
-      publicationJson(catalogPublishedSkuSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
-    }
-    position.path = "product";
-    position.subject = definition.key;
-    const retainedAttributes = [...skus.values()].filter(sku => incoming.get(sku.code)?.attributes === undefined);
-    if (retainedAttributes.length || payload.product.attributes === undefined && Object.keys(result.attributes).length) {
-      const validation = await validateCatalogAttributes(definition, { productAttributes: result.attributes,
-        skus: retainedAttributes.map(({ id, attributes }) => ({ id, attributes })) }, input.attributeReferences);
-      if (!validation.valid) {
-        for (const issue of validation.issues) {
-          if (issue.code === "attribute_reference_unresolved") structural.push(missing("publication_evidence_unavailable", issue.path));
-          else throw new CatalogPublicationError(issue.code, "validation_issue", contextualIssue(issue, retainedAttributes));
+      position.path = "product";
+      position.subject = definition.key;
+      const retainedAttributes = [...skus.values()].filter(sku => incoming.get(sku.code)?.attributes === undefined);
+      if (retainedAttributes.length || payload.product.attributes === undefined && Object.keys(result.attributes).length) {
+        const validation = await validateCatalogAttributes(definition, { productAttributes: result.attributes,
+          skus: retainedAttributes.map(({ id, attributes }) => ({ id, attributes })) }, input.attributeReferences);
+        if (!validation.valid) {
+          for (const issue of validation.issues) {
+            if (issue.code === "attribute_reference_unresolved") structural.push(missing("publication_evidence_unavailable", issue.path));
+            else throw new CatalogPublicationError(issue.code, "validation_issue", contextualIssue(issue, retainedAttributes));
+          }
         }
       }
+      need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
+      need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
+      need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
+      const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
+      need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
+      const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
+      need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
+        "catalog_publication_activation_effect_missing");
+      const published = decodePublishedProduct(result);
+      if (!withdrawalOnly && rules && afterDocument) {
+        const [refusal] = rules.validateProduct(ruleProduct(published), [...skus.values()].map(ruleSku), documents.map(document => document.canonicalText));
+        if (refusal) publicationRefuse(refusal);
+      }
+      const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      const lifecycle = governed && productState ? { product: productState, skus: Object.fromEntries([...skuStates].sort()) } : undefined;
+      const changed = original !== publicationJson(materialState(result, sorted)) || Boolean(lifecycle && !equal(lifecycle, evidence?.lifecycle ?? null));
+      for (const sku of sorted) {
+        const before = originalById.get(sku.id);
+        // An omitted derived cache effect has this publication's draft/receipt as
+        // its effect provenance. Keep the retained physical/media source available.
+        if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
+      }
+      if (!changed && retainedState.product) { result.source = retainedState.product.source; result.content = retainedState.product.content; }
+      need(changed || structural.some(isUnavailable) || payload.publication.kind === "compensation" && payload.publication.operations.length > 0, "catalog_publication_v3_compile_change_noop");
+      const operations = payload.publication.operations;
+      const priced = sorted.filter(affected.priced);
+      const compiled = { product: { ...published, source: result.source, content: result.content }, skus: sorted, documents, operations,
+        priceOperations, changed, lifecycle,
+        pricedSkuCodes: priced.map(sku => sku.code), activationSourceCodes: [...activationCodes], activating };
+      return { compiled, primary, priced };
     }
-    need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
-    need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
-    need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
-    const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
-    need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
-    const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
-    need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
-      "catalog_publication_activation_effect_missing");
-    if (rules && afterDocument) {
-      const issues = rules.validateProduct(ruleProduct(result), [...skus.values()].map(ruleSku), documents.map(document => document.canonicalText));
-      const verdict = publicationReadinessReasons.safeParse(issues);
-      if (!verdict.success) return publicationRefuse("catalog_publication_adopter_validation_failed");
-      if (verdict.data.length) publicationRefuse(verdict.data[0]!);
-    }
-    const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    const lifecycle = governed && productState ? { product: productState, skus: Object.fromEntries([...skuStates].sort()) } : undefined;
-    const changed = original !== publicationJson(materialState(result, sorted)) || Boolean(lifecycle && !equal(lifecycle, evidence?.lifecycle ?? null));
-    for (const sku of sorted) {
-      const before = originalById.get(sku.id);
-      // An omitted derived cache effect has this publication's draft/receipt as
-      // its effect provenance. Keep the retained physical/media source available.
-      if (before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
-    }
-    if (!changed && retainedState.product) { result.source = retainedState.product.source; result.content = retainedState.product.content; }
-    need(changed || structural.some(isUnavailable) || payload.publication.kind === "compensation" && payload.publication.operations.length > 0, "catalog_publication_v3_compile_change_noop");
-    const operations = payload.publication.operations;
-    const priced = sorted.filter(affected.priced);
-    const compiled = { product: catalogPublishedProductSchema.parse(result), skus: sorted, documents, operations, createdProduct, createdSkus,
-      priceOperations, changed, lifecycle,
-      pricedSkuCodes: priced.map(sku => sku.code), activationSourceCodes: [...activationCodes], activating };
-    if (mode === "first-decision") return compiled;
 
-    // Late observations run after structural evaluation. Unknown observations
-    // accumulate so that a later definite refusal still wins.
-    position.phase = "activation";
-    position.path = "publication.evidence.media";
-    for (const sku of sorted) if (activationCodes.has(sku.code)) {
-      position.subject = sku.code;
-      const problem = catalogPublicationMediaIssue(result.presentation?.mediaRef, sku.assetRefs, media.get(sku.code));
-      if (problem === "media_readiness_unknown")
-        activationIssues.push(missing("catalog_publication_media_validation_unavailable", position.path));
-      else need(!problem, "catalog_publication_media_readiness_unproven");
+    async function checkActivationResult() {
+      position.phase = "activation";
+      position.path = "skus";
+      position.subject = definition.key;
+      if (!assembled) { await checkPrices(); return; }
+      const { compiled, primary, priced } = assembled;
+      const { product: result, operations } = compiled;
+      await checkPrices();
+      position.path = "skus";
+      for (const sku of priced) {
+        position.subject = sku.code;
+        need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
+        assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition);
+        need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
+          && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
+      }
+      position.subject = definition.key;
+      if (operations.some(operation => operation.op === "set_product_status" && operation.status === "active"
+        || operation.op === "set_product_lifecycle" && operation.state === "active" || operation.op === "restore_product")) {
+        need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
+        need(result.presentation, "catalog_publication_v3_presentation_required");
+      }
+      if (activating || priced.length) {
+        const verdict = publicationReadinessVerdict.safeParse(await observe(() =>
+          observations?.assessActivation?.(structuredClone({ product: compiled.product, skus: compiled.skus }), expectedHead, structuredClone(verifiedMedia)) ?? Promise.resolve(undefined)));
+        if (!verdict.success) activationIssues.push(missing("activation_unknown", "publication"));
+        else if (!verdict.data.ready) publicationRefuse(verdict.data.reasons[0]!);
+      }
     }
-    await checkPrices();
-    position.path = "skus";
-    for (const sku of priced) {
-      position.subject = sku.code;
-      need(sku.status !== "archived", "catalog_publication_v3_compile_sku_archived");
-      assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition);
-      need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
-        && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
-    }
-    position.subject = definition.key;
-    if (operations.some(operation => operation.op === "set_product_status" && operation.status === "active"
-      || operation.op === "set_product_lifecycle" && operation.state === "active" || operation.op === "restore_product")) {
-      need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
-      need(result.presentation, "catalog_publication_v3_presentation_required");
-    }
-    if (activating || priced.length) {
-      const verdict = publicationReadinessVerdict.safeParse(await observe(() =>
-        observations?.assessActivation?.(structuredClone({ product: compiled.product, skus: compiled.skus }), expectedHead, structuredClone(verifiedMedia)) ?? Promise.resolve(undefined)));
-      if (!verdict.success) activationIssues.push(missing("activation_unknown", "publication"));
-      else if (!verdict.data.ready) publicationRefuse(verdict.data.reasons[0]!);
-    }
-    if (mode === "preview" && !activating && !priced.length) {
+    function addPending() {
+      if (!assembled || activating || assembled.priced.length) return;
+      const result = assembled.compiled.product;
       for (const [index, sku] of payload.skus.entries()) {
         const path = `skus.${index}`;
         if (!sku.grossMass) pending.push({ path: `${path}.grossMass`, code: "gross_mass_missing" });
@@ -937,7 +1096,8 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
         if (mediaIssue) pending.push({ path: `${path}.assetRefs`, code: mediaIssue });
       }
     }
-    return compiled;
+    return { bindSources, checkPhysicalSources, checkActivationSources, applyPrefixes, checkStructuralResult, checkActivationResult,
+      addPending, result: () => assembled?.compiled };
   }
 }
 

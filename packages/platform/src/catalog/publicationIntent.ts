@@ -6,6 +6,8 @@ import { catalogDraftSummarySchema } from "./draftSchemas.js";
 import { catalogDraftProductV2Schema, catalogDraftSkuV2Schema } from "./draftV2Schemas.js";
 
 const state = z.enum(["draft", "active", "withdrawn", "archived"]);
+export const lifecycleEvidenceSchema = z.object({ product: state,
+  skus: z.record(z.string(), z.object({ state, demandPolicyRef: z.string().min(1).optional() }).strict()) }).strict();
 const destination = z.enum(["active", "withdrawn", "archived"]);
 const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
 const slug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
@@ -30,6 +32,14 @@ export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "p
 export type PublicationDraftRecord = Omit<CatalogDraftPublicationStoredRecord, "payload"> & {
   payload: CatalogDraftPublicationStoredRecord["payload"] | (PublicationIntent & { schemaVersion: 4 });
 };
+
+export function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean {
+  const { operations } = payload.publication;
+  return operations.length > 0 && operations.every(operation =>
+    (operation.op === "set_product_lifecycle" || operation.op === "set_sku_lifecycle") && operation.state === "withdrawn"
+    || operation.op === "set_eligibility" && !operation.sellableStandalone && !operation.sellableInSubscription)
+    && !payload.skus.some(sku => sku.priceOperations?.length);
+}
 
 const v4Wire = z.object({ schemaVersion: z.literal(4),
   product: catalogDraftProductV2Schema.extend({ sharedContent: z.unknown() }).strict(),

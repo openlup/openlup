@@ -4,7 +4,7 @@ import type { CatalogDraftPayloadV3 } from "../../../src/catalog/contracts/draft
 import { createCatalogProductTypeRegistry } from "../../../src/catalog/productTypeSchemas.js";
 import { catalogPublicationClaim, compileCatalogPublication, type CatalogPublicationCompileInput } from "../../../src/catalog/publicationValidation.js";
 import type { CatalogPublicationEvidence } from "../../../src/catalog/publicationEvidence.js";
-import { loadCatalogPublicationRules } from "../../../src/catalog/publicationRules.js";
+import { withCatalogPublicationRules } from "../../../src/catalog/catalogPublicationRules.js";
 import { catalogDefinitionDigest } from "../../../src/catalog/catalogDefinitionDigest.js";
 
 const productId = "10000000-0000-4000-8000-000000000001", skuId = "20000000-0000-4000-8000-000000000001";
@@ -30,14 +30,13 @@ module.exports = {
 };`;
 export function setupRules(source: string | Uint8Array = artifact) {
   const bytes = typeof source === "string" ? Buffer.from(source) : source;
-  const validatorRef = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-  const rules = loadCatalogPublicationRules(validatorRef, bytes);
-  const registry = createCatalogProductTypeRegistry([{ key: "example:article", version: 1,
-    units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
-    netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef,
-    validateContent: () => [{ path: "", code: "legacy_validator_must_not_run" }] }]);
+  const pack = withCatalogPublicationRules({ id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: {}, taxClasses: [], types: [{ key: "example:article", version: 1,
+      units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
+      netContentUnits: ["openlup:g"], dimensions: [], axes: [] }] }, () => bytes);
+  const registry = createCatalogProductTypeRegistry(pack.types);
   const definition = registry.resolve({ key: "example:article", version: 1 })!;
-  return { rules, registry, definition, installedDefinitionDigest: catalogDefinitionDigest(definition) };
+  return { registry, definition, installedDefinitionDigest: catalogDefinitionDigest(definition) };
 }
 const prepared = setupRules();
 

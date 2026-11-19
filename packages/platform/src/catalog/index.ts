@@ -80,5 +80,5 @@ export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 
 export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
-export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack } from "./catalogPublicationRules.js";
+export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";

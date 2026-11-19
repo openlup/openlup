@@ -4,40 +4,68 @@ import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/p
 import type { CatalogProductTypeInput, CatalogProductTypeRef } from "./contracts/productTypes.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
-import type { CatalogPublicationRulesModule, CatalogPublicationRulesPack } from "./catalogPublicationRules.js";
+import type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import { CatalogPublicationError, publicationRefuse } from "./publicationError.js";
 
-declare const handleBrand: unique symbol;
+import { z } from "./validation.js";
+import { publishedFactsSchema, publicationReadinessReasons } from "./publicationCodec.js";
 
-/** @internal */
-export interface CatalogPublicationRulesHandle { readonly [handleBrand]: true }
+type Hook = keyof CatalogPublicationRulesModule;
+const issueCode = z.string().regex(/^[a-z][a-z0-9_]{0,159}$/u);
+const relativePath = z.string().max(240).regex(/^(?:[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)*)?$/u);
+const documentField = z.string().min(1).max(240).refine(value => value.trim() === value && !/[\p{Cc}\p{Cs}]/u.test(value));
+const documentIdentity = z.object({ schemaId: documentField, documentRef: documentField, productSlug: documentField,
+  revisionNo: z.number().int().min(1).max(2_147_483_647), name: z.string().min(1).max(500).refine(value => !/[\p{Cc}\p{Cs}]/u.test(value)).optional() }).strict();
+const results = {
+  validateContent: [z.array(z.object({ path: relativePath, code: issueCode }).strict()).max(100),
+    "Return an array of field issues with relative paths and reason codes, or [] when the content is valid."],
+  validateProduct: [publicationReadinessReasons, "Return an array of reason codes, or [] when the product is valid."],
+  inspectDocument: [documentIdentity.extend({ canonicallyEncoded: z.boolean() }).nullable(),
+    "Return the document identity and its canonicality flag, or null for an invalid document."],
+  identifyDocument: [documentIdentity.nullable(), "Return the document identity, or null for an invalid document."],
+  matchesDocument: [z.boolean(), "Return true or false to report whether the documents match."],
+  deriveSkuFacts: [publishedFactsSchema, "Return a record of scalar SKU facts."],
+  classifySkuChange: [z.enum(["compatible", "material", "inconclusive"]), "Return compatible, material or inconclusive."],
+  validateMembershipChange: [z.boolean(), "Return true or false to accept or refuse the membership change."],
+  validateSkuAmounts: [z.boolean(), "Return true or false to accept or refuse the SKU quantity."],
+} satisfies Record<Hook, readonly [z.ZodType, string]>;
+const localContext: CatalogRulesContext = Object.freeze({ evaluatedAt: null });
 
 const requiredHooks = ["validateContent", "validateProduct", "inspectDocument", "matchesDocument", "identifyDocument",
   "deriveSkuFacts", "classifySkuChange"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
 const optionalHooks = ["validateMembershipChange", "validateSkuAmounts"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
-const handles = new WeakMap<CatalogPublicationRulesHandle, {
-  validatorRef: `sha256:${string}`; bytes: Buffer; rules: CatalogPublicationRulesModule;
-}>();
-const boundValidators = new WeakMap<CatalogProductTypeInput["validateContent"], CatalogPublicationRulesHandle>();
+type Binding = {
+  validatorRef: `sha256:${string}`; bytes: Buffer;
+  rules(evaluation: CatalogRulesContext): CatalogPublicationRulesModule;
+};
+const boundValidators = new WeakMap<CatalogProductTypeInput["validateContent"], Binding>();
 const referenceFor = (bytes: Uint8Array): `sha256:${string}` => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 const realmLimits = ["Date", "Math.random", "require", "process"] as const;
 
-function runRule<T>(hook: string, invoke: () => T | undefined): T {
+function runRule<T>(hook: Hook | "module", invoke: () => T): T {
+  const [schema, shape] = hook === "module" ? [undefined, "Export the required hooks from the self-contained rules build."]
+    : results[hook];
   let value: T | undefined;
   let cause: NonNullable<CatalogCandidateIssue["cause"]> = "undefined_result";
-  let fix = "Return a JSON value from the hook.";
+  let fix = shape;
   try { value = invoke(); }
   catch (error) {
     const message = error && typeof error === "object" && "message" in error ? error.message : undefined;
     const limit = realmLimits.find(name => `catalog_rule_limit:${name}` === message);
     const dynamicCode = typeof message === "string" && /^(?:Code generation from strings disallowed|Wasm code generation disallowed)/u.test(message);
     cause = limit || dynamicCode ? "realm_limit" : "throw";
-    fix = limit || dynamicCode
-      ? `Remove ${limit ?? "dynamic code generation"} from the hook and use its supplied inputs.`
-      : "Handle the input and return the result required by the hook.";
+    if (limit || dynamicCode) fix = `Remove ${limit ?? "dynamic code generation"} from the hook and use its supplied inputs.`;
   }
-  if (value !== undefined) return value;
+  if (value !== undefined) {
+    if (!schema) return value;
+    // Decode the realm's result before any JSON conversion can change its type.
+    try {
+      const decoded = schema.safeParse(value);
+      if (decoded.success) return decoded.data as T;
+    } catch { /* A value that could not be decoded is an invalid hook result. */ }
+    cause = "invalid_result";
+  }
   const code = "catalog_publication_rule_failed";
   throw new CatalogPublicationError(code, "validation_issue", { code, path: hook, hook, cause,
     message: `Product rule ${hook} failed. ${fix}` });
@@ -58,34 +86,33 @@ export function bindCatalogPublicationRules(pack: CatalogPublicationRulesPack,
       if (!type.validateContent) return publicationRefuse("catalog_publication_rules_module_invalid");
       return { ...type, validateContent: type.validateContent };
     }
-    const handle = loadCatalogPublicationRules(type.validatorRef, artifact);
-    const { validatorRef, rules } = handles.get(handle)!;
-    boundValidators.set(rules.validateContent, handle);
-    return Object.freeze({ ...type, validatorRef, validateContent: rules.validateContent });
+    const binding = loadCatalogPublicationRules(type.validatorRef, artifact);
+    const validateContent = binding.rules(localContext).validateContent;
+    boundValidators.set(validateContent, binding);
+    return Object.freeze({ ...type, validatorRef: binding.validatorRef, publicationRules: true as const, validateContent });
   });
   return Object.freeze({ ...pack, types: Object.freeze(types) });
 }
 
-export function readPublicationRulesAsset(artifact: Uint8Array): Readonly<CatalogPublicationRulesModule> {
-  return handles.get(loadCatalogPublicationRules(undefined, artifact))!.rules;
+export function readPublicationRulesAsset(artifact: Uint8Array, evaluation = localContext): Readonly<CatalogPublicationRulesModule> {
+  return loadCatalogPublicationRules(undefined, artifact).rules(evaluation);
 }
 
-/** @internal */
-export function publicationRulesFor(definition: CatalogProductTypeInput): CatalogPublicationRulesHandle | undefined {
-  return boundValidators.get(definition.validateContent);
+/** @internal Only the selected definition can resolve its installed executable. */
+export function resolvePublicationRules(definition: CatalogProductTypeInput, evaluation: CatalogRulesContext, recheck = false) {
+  const binding = boundValidators.get(definition.validateContent);
+  if (!binding && !definition.publicationRules) return undefined;
+  if (!binding || binding.validatorRef !== definition.validatorRef || recheck && referenceFor(binding.bytes) !== definition.validatorRef)
+    return publicationRefuse("catalog_publication_rules_binding_mismatch");
+  return binding.rules(evaluation);
 }
 
-/** @internal */
 export function verifyCatalogRulesAtInstall(pack: CatalogPackInput): void {
-  for (const type of pack.types) {
-    const handle = publicationRulesFor(type);
-    if (!handle) return publicationRefuse("catalog_publication_rules_binding_mismatch");
-    resolvePublicationRules(handle, type.validatorRef, true);
-  }
+  for (const type of pack.types) resolvePublicationRules(type, localContext, true);
 }
 
 /** @internal Load trusted JavaScript rules from the verified byte snapshot. */
-export function loadCatalogPublicationRules(expectedRef: string | undefined, artifact: Uint8Array): CatalogPublicationRulesHandle {
+export function loadCatalogPublicationRules(expectedRef: string | undefined, artifact: Uint8Array): Binding {
   const bytes = Buffer.from(artifact);
   const validatorRef = referenceFor(bytes);
   if (expectedRef !== undefined && validatorRef !== expectedRef)
@@ -97,7 +124,7 @@ export function loadCatalogPublicationRules(expectedRef: string | undefined, art
     // This is an installation boundary for trusted bundles.
     const script = new Script(`(() => {
       "use strict";
-      const parse = JSON.parse, stringify = JSON.stringify;
+      const parse = JSON.parse;
       const refuseLimit = name => ({ get: () => { throw new Error("catalog_rule_limit:" + name); } });
       for (const name of ["Date", "require", "process"]) Object.defineProperty(globalThis, name, refuseLimit(name));
       Object.defineProperty(Math, "random", refuseLimit("Math.random"));
@@ -112,28 +139,25 @@ ${source}
       if (!${JSON.stringify(requiredHooks)}.every(available)) throw new Error("rules");
       return Object.freeze({
         available,
-        invoke: (key, args) => stringify(Reflect.apply(hooks[key], exported, parse(args))),
+        invoke: (key, args) => Reflect.apply(hooks[key], exported, parse(args)),
       });
     })()`);
     type Dispatch = {
       available(key: string): boolean;
-      invoke(key: string, args: string): string | undefined;
+      invoke(key: Hook, args: string): unknown;
     };
     const instantiate = (): Dispatch => script.runInNewContext(Object.create(null), { contextCodeGeneration: { strings: false, wasm: false } });
     const probe = instantiate();
-    const rules = Object.fromEntries([...requiredHooks, ...optionalHooks].filter(key => probe.available(key))
-      .map(key => [key, (...args: unknown[]) => runRule(key, () => {
-        const text = instantiate().invoke(key, JSON.stringify(args));
-        return text === undefined ? undefined : JSON.parse(text) as unknown;
-      })]));
-    const handle = Object.freeze({}) as CatalogPublicationRulesHandle;
-    handles.set(handle, { validatorRef, bytes, rules: Object.freeze(rules) as unknown as CatalogPublicationRulesModule });
-    return handle;
+    const available = [...requiredHooks, ...optionalHooks].filter(key => probe.available(key));
+    return { validatorRef, bytes, rules: evaluation => {
+      const context = { ...evaluation };
+      return Object.freeze(Object.fromEntries(available.map(key => [key, (...args: unknown[]) =>
+        runRule(key, () => {
+          // Each method receives the same explicit final argument, including local use.
+          const arity = { validateContent: 1, validateProduct: 3, validateMembershipChange: 2, inspectDocument: 1,
+            matchesDocument: 2, identifyDocument: 1, validateSkuAmounts: 1, deriveSkuFacts: 2, classifySkuChange: 3 }[key];
+          return instantiate().invoke(key, JSON.stringify([...args.slice(0, arity), args[arity] ?? context]));
+        })]))) as unknown as CatalogPublicationRulesModule;
+    } };
   });
-}
-
-export function resolvePublicationRules(handle: CatalogPublicationRulesHandle, validatorRef: string | undefined, recheck = false): CatalogPublicationRulesModule {
-  const binding = handles.get(handle);
-  if (!binding || binding.validatorRef !== validatorRef || recheck && referenceFor(binding.bytes) !== validatorRef) return publicationRefuse("catalog_publication_rules_binding_mismatch");
-  return binding.rules;
 }

@@ -1224,21 +1224,31 @@ import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogProductTypeInput, CatalogProductTypeRef, CatalogDraftIssue } from "./contracts/productTypes.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
+/** Explicit inputs shared by every hook in one evaluation.
+ * @experimental
+ */
+export interface CatalogRulesContext {
+    /** The fixed evaluation instant, or null for a local check without a timestamp. */
+    readonly evaluatedAt: string | null;
+    readonly locale?: string;
+    readonly timeZone?: string;
+}
 /** Export this interface as module.exports in a self-contained publication rules bundle.
+ * Hooks must be pure and use only their supplied arguments.
  * @experimental
  */
 export interface CatalogPublicationRulesModule {
     /** Check the supplied draft content and return field paths and stable reason codes. */
-    validateContent(content: unknown): readonly CatalogDraftIssue[];
+    validateContent(content: unknown, evaluation?: CatalogRulesContext): readonly CatalogDraftIssue[];
     /** Check the effective product and SKU roster with their document text. Return stable reason codes. */
-    validateProduct(product: RulesProduct, skus: readonly RulesSku[], documents: readonly string[]): readonly string[];
+    validateProduct(product: RulesProduct, skus: readonly RulesSku[], documents: readonly string[], evaluation?: CatalogRulesContext): readonly string[];
     /** Return whether the selected membership change is allowed for this SKU. */
     validateMembershipChange?(sku: Readonly<RulesSku>, change: {
         offerVersion: string;
         admitted: boolean;
-    }): boolean;
+    }, evaluation?: CatalogRulesContext): boolean;
     /** Check document text and report its identity and exact canonicality. Return null for an invalid document. */
-    inspectDocument(canonicalText: string): {
+    inspectDocument(canonicalText: string, evaluation?: CatalogRulesContext): {
         schemaId: string;
         documentRef: string;
         productSlug: string;
@@ -1247,9 +1257,9 @@ export interface CatalogPublicationRulesModule {
         canonicallyEncoded: boolean;
     } | null;
     /** Return whether the authored document and the selected document text describe the same canonical value. */
-    matchesDocument(document: unknown, canonicalText: string): boolean;
+    matchesDocument(document: unknown, canonicalText: string, evaluation?: CatalogRulesContext): boolean;
     /** Return the authored document identity and optional display name, or null for invalid input. */
-    identifyDocument(document: unknown): {
+    identifyDocument(document: unknown, evaluation?: CatalogRulesContext): {
         schemaId: string;
         documentRef: string;
         productSlug: string;
@@ -1260,16 +1270,16 @@ export interface CatalogPublicationRulesModule {
     validateSkuAmounts?(sku: {
         code: string;
         netGrams: string;
-    }): boolean;
+    }, evaluation?: CatalogRulesContext): boolean;
     /** Return scalar published SKU facts derived from the selected document and SKU. */
-    deriveSkuFacts(canonicalText: string, sku: RulesSku): CatalogPublicationFacts;
+    deriveSkuFacts(canonicalText: string, sku: RulesSku, evaluation?: CatalogRulesContext): CatalogPublicationFacts;
     /** Classify a change to an existing SKU using the before and after product and document. */
     classifySkuChange(before: RulesSku, after: RulesSku, context: {
         beforeProduct: RulesProduct;
         afterProduct: RulesProduct;
         beforeDocument: string | null;
         afterDocument: string;
-    }): "compatible" | "material" | "inconclusive";
+    }, evaluation?: CatalogRulesContext): "compatible" | "material" | "inconclusive";
 }
 /** A pack can omit an inline validator when its type supplies a rules build.
  * @experimental
@@ -1286,7 +1296,7 @@ export declare function withCatalogPublicationRules(pack: CatalogPublicationRule
 /** Load a rules build for local tests under the same execution limits as installation.
  * @experimental
  */
-export declare function loadCatalogRules(artifact: Uint8Array): Readonly<CatalogPublicationRulesModule>;
+export declare function loadCatalogRules(artifact: Uint8Array, evaluation?: CatalogRulesContext): Readonly<CatalogPublicationRulesModule>;
 ```
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
@@ -1869,7 +1879,7 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
     subject?: string;
     message?: string;
     hook?: string;
-    cause?: "throw" | "undefined_result" | "realm_limit";
+    cause?: "throw" | "undefined_result" | "realm_limit" | "invalid_result";
 }
 /** @experimental */
 export interface CatalogCandidatePreview {
@@ -2882,6 +2892,10 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
     axes?: readonly CatalogAxisDefinition[];
     /** @experimental */
     validatorRef?: string;
+    /** Set by the rules build helper when this definition has installed publication rules.
+     * @experimental
+     */
+    publicationRules?: true;
     /** @experimental */
     subscriptionProfileRef?: CatalogProductTypeRef;
     /** @experimental */
@@ -4008,7 +4022,7 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
-export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack } from "./catalogPublicationRules.js";
+export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
@@ -4284,6 +4298,7 @@ export declare const catalogDefinitionMetadataSchema: z.ZodObject<{
         labels: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodString>>;
     }, z.core.$strict>>>;
     validatorRef: z.ZodOptional<z.ZodString>;
+    publicationRules: z.ZodOptional<z.ZodLiteral<true>>;
     subscriptionProfileRef: z.ZodOptional<z.ZodObject<{
         key: z.ZodString;
         version: z.ZodNumber;

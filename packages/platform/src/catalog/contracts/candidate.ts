@@ -10,7 +10,7 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
   subject?: string;
   message?: string;
   hook?: string;
-  cause?: "throw" | "undefined_result" | "realm_limit";
+  cause?: "throw" | "undefined_result" | "realm_limit" | "invalid_result";
 }
 /** @experimental */
 export interface CatalogCandidatePreview {

@@ -1435,7 +1435,11 @@ through the same `loadCatalogRules` loader used by installation.
 node --test owned/catalogue-rules.test.cjs
 ```
 
-Each hook starts fresh, takes JSON inputs and returns a JSON value. Bundle your
+Each hook starts fresh, takes JSON inputs and returns the value specified in its
+reference. Write pure rules that use only their arguments. When a rule needs the
+time, locale or time zone, use the supplied evaluation context. Pass the locale
+and time zone explicitly when formatting. Local tests can supply a fixed context
+as the second argument to `loadCatalogRules`. Bundle your
 dependencies ahead of time. Hooks cannot use `require`, Node process or
 filesystem APIs, `Date`, `Math.random`, or runtime code generation. A failed
 hook names itself and the cause. Fix the hook, then run the same test again.
@@ -1443,9 +1447,11 @@ hook names itself and the cause. Fix the hook, then run the same test again.
 When the rules are ready, run `./lifecycle up` in the neutral starter. The local
 installer derives the product type version from the definitions and rules and
 installs it in the demonstration database. Open **Catalogue drafts** as an
-operator and save a draft to exercise your rules. The starter selects the local
-product type for you. You can fix an input at the path shown in the refusal and
-save again.
+operator. Choose **Load draft example**, save it, then choose **Prepare saved
+draft** with the saved draft ID and revision. The starter selects the installed
+type. Fix a refusal at the shown path and save again. The local preparation
+report can wait for publication evidence. Editing rules and restarting changes
+new examples while earlier saved drafts keep their own rules.
 
 For an existing deployment, supply the self-contained build asset with
 `withCatalogPublicationRules` when composing the pack. Use that pack for the
@@ -1454,7 +1460,9 @@ rules module owns content validation, so its type definition can omit an inline
 validator. Export the hooks documented by `CatalogPublicationRulesModule`.
 
 Use the named presentation fields for titles, routes, short names, advertised
-weights, media references, and accents. Keep derived SKU facts to scalar values.
+weights, media references, and accents. List advertised weights in ascending
+order without duplicates. Keep derived SKU facts to scalar values, and use
+display text distinct from the authored document text.
 Store structured display values as typed public attributes.
 
 Render public product attributes supplied by the catalogue read model. The

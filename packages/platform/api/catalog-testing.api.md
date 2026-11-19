@@ -632,7 +632,7 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
     subject?: string;
     message?: string;
     hook?: string;
-    cause?: "throw" | "undefined_result" | "realm_limit";
+    cause?: "throw" | "undefined_result" | "realm_limit" | "invalid_result";
 }
 /** @experimental */
 export interface CatalogCandidatePreview {
@@ -1645,6 +1645,10 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
     axes?: readonly CatalogAxisDefinition[];
     /** @experimental */
     validatorRef?: string;
+    /** Set by the rules build helper when this definition has installed publication rules.
+     * @experimental
+     */
+    publicationRules?: true;
     /** @experimental */
     subscriptionProfileRef?: CatalogProductTypeRef;
     /** @experimental */

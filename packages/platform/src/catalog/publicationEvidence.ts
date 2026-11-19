@@ -3,7 +3,11 @@ import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
 import type { PublicationDraftRecord, PublicationLifecycleState } from "./publicationIntent.js";
-import type { CatalogPublicationRulesHandle } from "./publicationRules.js";
+import type { CatalogRulesContext } from "./catalogPublicationRules.js";
+import { z } from "./validation.js";
+
+export const publicationHeadSchema = z.object({ publicationId: z.guid().refine(value => value === value.toLowerCase()),
+  revision: z.number().int().min(1).max(2_147_483_647), documentDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 
 /** @experimental */
 export interface CatalogPublicationDocument {
@@ -29,16 +33,18 @@ export interface CatalogPublicationEvidence {
   documents: readonly CatalogPublicationDocument[];
   /** Highest saved revision number, independent of which document bytes were selected. */
   documentRevisionHighWater: number;
-  /** Selected sources, including the candidate. Retained sources are ordered newest first. */
+  /** Selected sources, including the candidate. Retained sources are ordered by descending publication sequence, then by draft ID. */
   drafts: readonly CatalogPublicationDraftEvidence[];
-  lifecycle?: { product: PublicationLifecycleState; skus: Readonly<Record<string, { state: PublicationLifecycleState; demandPolicyRef?: string }>> };
+  /** Omit for a confirmed historic head. Null means the authoritative state could not be read. */
+  lifecycle?: { product: PublicationLifecycleState; skus: Readonly<Record<string, { state: PublicationLifecycleState; demandPolicyRef?: string }>> } | null;
 }
 
 /** Observations supplied by the host's read owners.
  * @experimental
  */
 export interface CatalogCandidatePublicationDeps {
-  rules: CatalogPublicationRulesHandle;
+  /** Share a fixed instant and any required locale or time zone across observations. */
+  evaluation?: CatalogRulesContext;
   readEvidence(request: { candidate: CatalogDraftClaimV3; productId: string; expectedHead: CatalogHeadRef | null }): Promise<CatalogPublicationEvidence | null>;
   presentationReadiness?: (productId: string, presentation: CatalogPublicationFacts) =>
     Promise<{ ready: boolean; reasons: readonly string[] } | null>;
