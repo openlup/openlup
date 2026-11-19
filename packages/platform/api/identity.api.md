@@ -341,6 +341,152 @@ export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
 export declare const OIDC_FAILURE_CODES: readonly ["OIDC_CONFIGURATION_INVALID", "OIDC_DISCOVERY_UNAVAILABLE", "OIDC_DISCOVERY_INVALID", "OIDC_JWKS_UNAVAILABLE", "OIDC_JWKS_INVALID", "OIDC_JWKS_REFRESH_RATE_LIMITED", "OIDC_JWT_LIBRARY_UNAVAILABLE", "OIDC_TOKEN_INVALID", "OIDC_KID_UNKNOWN", "OIDC_ISSUER_MISMATCH", "OIDC_AUDIENCE_MISMATCH", "OIDC_TOKEN_EXPIRED", "OIDC_TOKEN_NOT_ACTIVE", "OIDC_TOKEN_LIFETIME_INVALID", "OIDC_SUBJECT_INVALID", "OIDC_EMAIL_INVALID", "OIDC_EMAIL_UNVERIFIED", "OIDC_NATIVE_SESSION_REQUIRED"];
 export type OidcFailureCode = typeof OIDC_FAILURE_CODES[number];
 ```
+## dist/identity/contracts/operatorAuth.d.ts
+
+```ts
+export interface OperatorSession {
+    accessToken: string;
+    expiresAt: string;
+    user: {
+        id: string;
+        email: string;
+    };
+}
+export interface OperatorChallengeRequest {
+    email: string;
+}
+export interface OperatorChallengeVerification {
+    token: string;
+}
+export interface OperatorBrowserAuthPort {
+    getSession(): Promise<OperatorSession | null>;
+    requestChallenge(email: string): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession>;
+    signOut(): Promise<void>;
+    onAuthStateChange(listener: (session: OperatorSession | null) => void): () => void;
+}
+/** Strict parsers keep the contracts entry independent of the server validator. */
+export interface OperatorSchema<T> {
+    parse(value: unknown): T;
+    safeParse(value: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: Error;
+    };
+}
+export declare const operatorChallengeRequestSchema: OperatorSchema<OperatorChallengeRequest>;
+export declare const operatorChallengeVerificationSchema: OperatorSchema<OperatorChallengeVerification>;
+export declare const operatorSessionSchema: OperatorSchema<OperatorSession>;
+```
+## dist/identity/contracts/operatorInvitations.d.ts
+
+```ts
+/** Pending invitations confer no authority; only accepted native memberships do. */
+export type OperatorRole = "admin" | "distributor";
+export type OperatorMembershipState = "invited" | "active" | "expired" | "revoked";
+export type OperatorInvitationOutcome = "INVITATION_CREATED" | "ALREADY_INVITED" | "INVITATION_REISSUED";
+export type OperatorInvitationConflict = "MEMBERSHIP_ALREADY_ACTIVE" | "INVITATION_ROLE_CONFLICT" | "IDENTITY_CONFLICT" | "MANAGED_REINVITE_UNSUPPORTED";
+export interface OperatorInvitation {
+    principalId: string;
+    invitationId: string;
+    membershipState: "invited";
+    role: OperatorRole;
+    invitedAt: string;
+    expiresAt: string;
+}
+export interface OperatorInvitationResult extends OperatorInvitation {
+    code: OperatorInvitationOutcome;
+    message?: string;
+}
+export interface OperatorMembershipSnapshot {
+    principalId: string;
+    membershipState: OperatorMembershipState;
+    role: OperatorRole;
+}
+export type OperatorInvitationAcceptance = {
+    code: "ACTIVATED" | "ALREADY_ACTIVE";
+    role: OperatorRole;
+} | {
+    code: "INVITATION_EXPIRED" | "INVITATION_REVOKED" | "NO_INVITATION";
+};
+/** Managed invitations activate membership immediately; no pending attempt is stored. */
+export interface ManagedOperatorMembershipResult {
+    principalId: string;
+    membershipState: "active";
+    role: OperatorRole;
+    code: "MEMBERSHIP_CREATED" | "ALREADY_ACTIVE";
+    message?: string;
+}
+export type OperatorInviteResult = OperatorInvitationResult | ManagedOperatorMembershipResult;
+```
+## dist/identity/contracts/privacy.d.ts
+
+```ts
+import type { OperatorSchema } from "./operatorAuth.js";
+export type PrivacySubjectRef = {
+    kind: "contact";
+    contactId: string;
+} | {
+    kind: "principal";
+    principalId: string;
+};
+export type PrivacyJson = null | boolean | number | string | PrivacyJson[] | {
+    [key: string]: PrivacyJson;
+};
+export interface PersonalDataObligation {
+    owner: string;
+    resource: string;
+    disposition: "erase" | "retain" | "unresolved";
+    reasonCode: string;
+    remote: boolean;
+}
+export interface PersonalDataDocument {
+    contributorId: string;
+    version: string;
+    data: PrivacyJson;
+    coverage: {
+        complete: boolean;
+        included: string[];
+        unavailable: string[];
+    };
+    obligations: PersonalDataObligation[];
+}
+export interface ErasureReceipt {
+    version: "identity.erasure.v1";
+    erasureId: string;
+    completedAt: string;
+    outcome: "ERASED" | "ALREADY_ERASED";
+    obligations: PersonalDataObligation[];
+}
+export interface PrivacyEraseRequest {
+    subject: PrivacySubjectRef;
+    idempotencyKey: string;
+}
+export interface PrivacyExport {
+    format: "personal-data.v1";
+    generatedAt: string;
+    subject: PrivacySubjectRef;
+    documents: PersonalDataDocument[];
+    missingContributors: string[];
+    erasure: ErasureReceipt | null;
+}
+export declare const privacySubjectSchema: OperatorSchema<PrivacySubjectRef>;
+export declare const personalDataObligationSchema: OperatorSchema<PersonalDataObligation>;
+export declare const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument>;
+export declare const erasureReceiptSchema: OperatorSchema<ErasureReceipt>;
+export declare const privacyExportRequestSchema: OperatorSchema<{
+    subject: PrivacySubjectRef;
+}>;
+export declare const privacyEraseRequestSchema: OperatorSchema<PrivacyEraseRequest>;
+export declare const privacyExportResponseSchema: OperatorSchema<PrivacyExport>;
+export declare const privacyEraseResponseSchema: OperatorSchema<ErasureReceipt>;
+declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
+export type PrivacyRefusalCode = typeof refusalCodes[number];
+export declare const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode>;
+export {};
+```
 ## dist/identity/contribution.d.ts
 
 ```ts

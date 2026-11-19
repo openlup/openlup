@@ -185,7 +185,7 @@ export interface InvoiceDeliveryPort {
 
 ```ts
 /** Frozen host facts; no catalogue, registry or country-policy reread on retry.
- * Carrier: donor providerPorts snapshot and invoiceContracts LocalInvoiceSnapshot;
+ * Carrier: prior providerPorts snapshot and invoiceContracts LocalInvoiceSnapshot;
  * native invoicing_install_facts adds dates/refs/policyVersion and explicit totals.
  */
 export interface InvoiceSeller {
@@ -492,7 +492,7 @@ export interface InvoiceHostPorts {
     /** Authenticate and authorize ownership before reading artifacts. Safe projection
      * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
      * Found is a complete owned projection; incomplete reads return unknown.
-     * Carrier: donor document history + customer download ticket owner/lineage.
+     * Carrier: prior document history and customer download ticket ownership and lineage.
      */
     accountHistory: {
         read(input: {
@@ -603,7 +603,7 @@ export interface InvoiceIdentity {
     readonly correctionRef: string | null;
     readonly parentProviderDocumentRef: string | null;
 }
-/** Document rows and donor delivery/history carriers need no issue-duty metadata.
+/** Document rows and existing delivery/history carriers need no issue-duty metadata.
  * @consumer Host artifacts, clearance, delivery and authorized download adapters.
  */
 export interface InvoiceDocumentIdentity {
@@ -679,7 +679,7 @@ export type InvoiceReadbackResult = {
 } | InvoiceUnsupported;
 /** Correction bridge: positive immutable BEFORE facts, explicit zero AFTER,
  * stable correctionRef and parent proof. Retry requires exact recovery before I/O.
- * Carrier: donor createFullCorrection options and accountingProviderSnapshot.
+ * Carrier: prior createFullCorrection options and accountingProviderSnapshot.
  * @consumer A4 conforming correction bridge and issue/readback adapters.
  */
 export interface InvoiceProviderPort {

@@ -14,7 +14,7 @@ export interface InvoiceIdentity {
   readonly correctionRef: string | null;
   readonly parentProviderDocumentRef: string | null;
 }
-/** Document rows and donor delivery/history carriers need no issue-duty metadata.
+/** Document rows and existing delivery/history carriers need no issue-duty metadata.
  * @consumer Host artifacts, clearance, delivery and authorized download adapters.
  */
 export interface InvoiceDocumentIdentity {
@@ -66,7 +66,7 @@ export type InvoiceReadbackResult =
   | InvoiceUnsupported;
 /** Correction bridge: positive immutable BEFORE facts, explicit zero AFTER,
  * stable correctionRef and parent proof. Retry requires exact recovery before I/O.
- * Carrier: donor createFullCorrection options and accountingProviderSnapshot.
+ * Carrier: prior createFullCorrection options and accountingProviderSnapshot.
  * @consumer A4 conforming correction bridge and issue/readback adapters.
  */
 export interface InvoiceProviderPort {
