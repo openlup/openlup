@@ -168,7 +168,7 @@ if (command === 'candidate') {
 } else if (command === 'ownership') {
   process.stdout.write(await readFile(resolve(root, 'ownership.json'), 'utf8'));
 } else {
-  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | browser [Playwright selection flags] | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | upgrade-catalogue <application-root> | ownership\n');
+  process.stderr.write('Usage: ./lifecycle candidate <core.tgz> <outbox.tgz> <platform.tgz> | up [--configuration <id>] | browser [--configuration <id> --catalogue-publication on] [Playwright selection flags] | care --configuration <id> --database-url <runtime-url> | renewal --configuration <id> --database-url <runtime-url> | down | verify | upgrade <args> | upgrade-catalogue <application-root> | ownership\n');
   process.exitCode = 2;
 }
 
@@ -186,13 +186,28 @@ async function databaseBrowserRecipe(argv) {
   const { default: pg } = await import('pg');
   const { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } = await import('@openlup/platform/migrations');
   const { starterCatalogue, selectCatalogueConfiguration: selectConfiguration } = await import('./host/catalogue-selection.ts');
-  const projects = argv.flatMap((arg, index) => {
+  const { parseHostArguments } = await import('./shared/config.ts');
+  const hostArgs = [], playwrightArgs = [];
+  for (let index = 0; index < argv.length; index++) {
+    if (['--configuration', '--catalogue-publication'].includes(argv[index])) {
+      hostArgs.push(argv[index], argv[++index]);
+    } else playwrightArgs.push(argv[index]);
+  }
+  const projects = playwrightArgs.flatMap((arg, index) => {
     if (arg.startsWith('--project=')) return [arg.slice('--project='.length)];
-    if (arg === '--project') return [argv[index + 1] ?? ''];
+    if (arg === '--project') return [playwrightArgs[index + 1] ?? ''];
     return [];
   });
-  const selected = projects.length ? [...new Set(projects)].map(id => selectConfiguration(id)) : starterCatalogue.list().filter(entry => !entry.explicitOnly).map(entry => entry.configuration);
-  const { applyRegisteredDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
+  // This fixed local shape only validates the options. Each host receives its own disposable endpoint below.
+  const { configuration, cataloguePublication } = parseHostArguments([
+    ...hostArgs, '--database-url', 'postgresql://starter_runtime@127.0.0.1/neutral_store',
+  ]);
+  if (cataloguePublication && !configuration) throw new Error('starter_browser_configuration_required');
+  if (configuration && projects.some(id => id !== configuration)) throw new Error('starter_browser_configuration_mismatch');
+  const selected = configuration ? [selectConfiguration(configuration)]
+    : projects.length ? [...new Set(projects)].map(id => selectConfiguration(id))
+    : starterCatalogue.list().filter(entry => !entry.explicitOnly).map(entry => entry.configuration);
+  const { applyDemoSeed, applyRegisteredDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
   const containers = [], hosts = [], pools = [];
@@ -242,7 +257,8 @@ async function databaseBrowserRecipe(argv) {
       if ((await runner.status()).pending.length)
         throw new Error('starter_database_browser_installation_incomplete');
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-      await applyRegisteredDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => { } });
+      const seed = cataloguePublication ? applyDemoSeed : applyRegisteredDemoSeed;
+      await seed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => { } });
       const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       const state = resolve(directory, config.id);
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -256,7 +272,8 @@ async function databaseBrowserRecipe(argv) {
       const port = address.port;
       await new Promise(done => probe.close(() => done()));
       const host = spawn(process.execPath, ['--experimental-strip-types', resolve(application, 'host/server.ts'),
-        '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring], { cwd: state, stdio: ['ignore', 'pipe', 'pipe'] });
+        '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring,
+        ...(cataloguePublication ? ['--catalogue-publication', 'on'] : [])], { cwd: state, stdio: ['ignore', 'pipe', 'pipe'] });
       hosts.push(host);
       let logs = '';
       host.stdout?.on('data', value => { logs += value.toString(); });
@@ -278,11 +295,11 @@ async function databaseBrowserRecipe(argv) {
       await writeFile(resolve(state, 'host.private.log'), logs, { mode: 0o600 });
       if (!ready)
         throw new Error('starter_database_browser_host_unavailable');
-      entries.push({ id: config.id, baseURL, runtimeUrl, ownerUrl, state });
+      entries.push({ id: config.id, baseURL, cataloguePublication, runtimeUrl, ownerUrl, state });
     }
-    await writeFile(resolve(application, '.context/database-ui-hosts.json'), JSON.stringify(entries.map(({ id, baseURL }) => ({ id, baseURL }))), { mode: 0o600 });
+    await writeFile(resolve(application, '.context/database-ui-hosts.json'), JSON.stringify(entries.map(({ id, baseURL, cataloguePublication }) => ({ id, baseURL, cataloguePublication }))), { mode: 0o600 });
     await writeFile(resolve(directory, 'fixtures.json'), JSON.stringify(entries), { mode: 0o600 });
-    await child('npx', ['--no', '--', 'playwright', 'test', '--config', 'playwright.database.config.ts', '--workers', '1', ...argv]);
+    await child('npx', ['--no', '--', 'playwright', 'test', '--config', 'playwright.database.config.ts', '--workers', '1', ...playwrightArgs]);
   }
   finally {
     for (const host of hosts) {

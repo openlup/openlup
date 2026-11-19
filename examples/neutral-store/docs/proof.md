@@ -556,6 +556,22 @@ unchanged purchase witnesses still require a native database host to pass.
 The manual host recipes below run the purchase baseline with that group excluded.
 They do not qualify subscription care; use `./lifecycle browser` for that gate.
 
+### Run the installed catalogue journey
+
+From a starter extraction with the matching candidate tarballs installed, run
+the publication-enabled pack on one disposable PostgreSQL database.
+
+```sh
+./lifecycle browser --configuration supplements-pack --catalogue-publication on browser/catalogue-g1.spec.ts
+```
+
+The recipe resolves the configuration through the starter registry. It enables
+the host's publication reads for this run and uses the installed catalogue
+writer with a verified test operator. Playwright reports the ordered steps and
+keeps traces, screenshots and video off. The independent expectations live in
+`browser/catalogue-g1.expectations.ts`. A refused or missing installed port
+leaves the corresponding step incomplete.
+
 Default Playwright starts database-less previews for navigation and visible
 refusals. Those hosts cannot qualify purchase. The separate database-backed
 config uses the unchanged required purchase spec and disables trace, screenshot

@@ -1,8 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { starterCatalogue } from './host/catalogue-selection.ts';
-const configurationIds = new Set(starterCatalogue.list().map(entry => entry.configuration.id));
 import type { SubscriptionProofOptions } from './browser/subscription-native-fixture.ts';
+const configurationIds = new Set(starterCatalogue.list().map(entry => entry.configuration.id));
 
 // The proof wrapper starts installed/seeded PostgreSQL hosts with --database-url.
 // No implicit fallback to the database-less preview or a running developer host.
@@ -18,5 +18,7 @@ export default defineConfig<SubscriptionProofOptions>({
   testDir: './browser', testMatch: ['journey.spec.ts', 'acquisition.spec.ts', ...editorProofs], workers: 1, fullyParallel: false,
   use: { headless: true, trace: 'off', screenshot: 'off', video: 'off' },
   // Captured request bodies contain private capabilities; never persist traces.
-  projects: hosts.map(host => ({ name: host.id, use: { baseURL: host.baseURL,...(typeof host.composeProject === 'string' ? { composeProject: host.composeProject } : {}) } })),
+  projects: hosts.map(host => ({ name: host.id,
+    ...(host.cataloguePublication === true ? { testMatch: 'catalogue-g1.spec.ts' } : {}),
+    use: { baseURL: host.baseURL,...(typeof host.composeProject === 'string' ? { composeProject: host.composeProject } : {}) } })),
 });

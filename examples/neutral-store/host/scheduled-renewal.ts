@@ -18,7 +18,7 @@ import { createPaidMailHost } from './paid-mail.ts';
 import { renewalPolicy } from '../owned/renewal-policy.ts';
 
 /** One invocation from the existing lifecycle command; construction starts no scheduler. */
-export async function runScheduledRenewal(connectionString: string, config: StoreConfig) {
+export async function runScheduledRenewal(connectionString: string, config: StoreConfig, now = () => new Date().toISOString()) {
   assertRenewalConfig(config.renewal);
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
@@ -43,14 +43,14 @@ export async function runScheduledRenewal(connectionString: string, config: Stor
     }
     const catalogue = await installedHistory(), codec = createNativeCatalogRenewalCodecV2(reference => catalogAcceptedReferenceV2Schema.parse(reference));
     const sandbox = composeRenewalSandbox({ executor: pool, withTransaction, codec, config: config.renewal,
-      now: () => new Date().toISOString(), failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
+      now, failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
       recoveredTemplate: config.purchase.sandbox.recoveryTemplateSlug, recoveryPath: config.purchase.sandbox.recoveryUrlPath });
     const binding = createRenewalJob({ config: config.renewal, withSession, beforeRun: sandbox.refresh, afterRun: renewalPolicy,
       native: { executor: pool, withTransaction, codec, settlement: db => createPostgresRenewalSettlementPort(db, codec, withTransaction),
         inventory: createPostgresRenewalReservationPort(pool), paymentRails: sandbox.paymentRails,
         policy: sandbox.policy, retry: sandbox.retry, failureTemplate: config.purchase.sandbox.dunningTemplateSlug,
         recoveryPath: config.purchase.sandbox.recoveryUrlPath, workerId: `starter:${config.id}`,
-        now: () => new Date().toISOString(), catalogue,
+        now, catalogue,
         async readiness(schema) {
           const history = await installedHistory();
           const present = await Promise.all(schema.objects.map(async object => {

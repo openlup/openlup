@@ -16,6 +16,7 @@ import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
 import { installStarterCatalogueDefinitions } from '../installation/install.ts';
 import { starterQuoteCatalogue } from '../host/editor-catalogue.ts';
 import { parseHostArguments } from '../shared/config.ts';
+import { catalogueG1Expectations as observer } from '../browser/catalogue-g1.expectations.ts';
 
 const configuredEntries = starterCatalogue.list().filter(({ configuration }) => Object.hasOwn(configurations, configuration.id));
 for (const entry of configuredEntries) test(`MC5-N-005 ${entry.configuration.id} drives boot, authoring, install and read composition`, async () => {
@@ -134,6 +135,13 @@ test('catalogue_transport_matrix RP2-D-002 projects the selected runtime pack an
       requiredChecks,
     }));
     assert.deepEqual(subject, expected);
+    const authored = subject.packs[0].drafts.flatMap(({ skus }: { skus: unknown[] }) => skus);
+    for (const fixture of [observer.capsules, observer.powder, observer.successor]) {
+      const sku = authored.find((candidate: { code: string }) => candidate.code === fixture.sku);
+      assert.ok(sku, fixture.sku);
+      assert.deepEqual([sku.netContent.unit, sku.netContent.unscaled, sku.netContent.scale, sku.attributes.format],
+        [fixture.net.unit, String(fixture.net.amount), 0, fixture.format]);
+    }
     const inert = spawnSync(process.execPath, [bin,
       'catalogue', 'check', '--packs', subjectPath, '--json'], { cwd: app, encoding: 'utf8' });
     assert.equal(inert.status, 2, inert.stdout);

@@ -2222,6 +2222,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/browser/catalogue-g1.expectations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/browser/catalogue-g1.spec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/browser/dev-loop.proof.ts",
       "class": "public-output"
     },

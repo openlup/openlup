@@ -149,6 +149,8 @@
     "shared/offer-estimate.ts",
     "shared/quote-config.ts",
     "browser/acquisition.spec.ts",
+    "browser/catalogue-g1.expectations.ts",
+    "browser/catalogue-g1.spec.ts",
     "client/quote-acceptance.ts",
     "host/quote-secret.ts",
     "test/acquisition-quote.test.ts",
