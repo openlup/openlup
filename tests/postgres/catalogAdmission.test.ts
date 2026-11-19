@@ -1072,7 +1072,7 @@ async function laterHead(db: PoolClient, f: Fixture, input: CatalogAdmissionInpu
   await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [f.product,next.id,next.revision]);
   Object.assign(input.heads[0].head, { publicationId: next.id,revision: Number(next.revision) });
 }
-async function admissionCase(row: AdmissionRow) {
+async function admissionCase(row: AdmissionRow & { port?: boolean }) {
   const f = await fixture(packs[0],row.standing); await row.before?.(f); const db = await session();
   const input: CatalogAdmissionInput = { ...structuredClone(f.admission),heads: structuredClone(f.admission.heads),purpose: row.account ? "account" : "order",
     offerEvidence: { offerVersion: "classic",...(row.account ? { subscriptionId: f.subscription,lane: "classic" as const } : {}) } };
@@ -1080,9 +1080,10 @@ async function admissionCase(row: AdmissionRow) {
   try {
     await db.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscription]);
     await row.change(db,f,input); before = await snapshot();
-    const call = rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,
-      JSON.stringify(input.offerEvidence),JSON.stringify(input.priceContextVersions),input.purpose]);
-    if (row.message === null) expect(await call).toBe("");
+    const call = row.port ? createPostgresCatalogAdmission().assertCurrent(db,input)
+      : rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,
+        JSON.stringify(input.offerEvidence),JSON.stringify(input.priceContextVersions),input.purpose]);
+    if (row.message === null) expect(await call).toBe(row.port ? undefined : "");
     else await expect(call).rejects.toMatchObject({ message: row.message,code: row.code ?? "22023" });
   } finally { await db.query("ROLLBACK"); db.release(); }
   expect(await snapshot()).toEqual(before);
@@ -1130,6 +1131,8 @@ const boundaryRows: AdmissionRow[] = [
   { name: "offer-membership",message: orderRefused,code: "55000",change: (_d,_f,i) => { i.offerEvidence.offerVersion = "unadmitted"; } },
 ];
 it.each(boundaryRows)("admission A1 $name", admissionCase);
+it.each(boundaryRows.filter(row => ["code-boundary","mode-null","mode-enum","sku-present","selection-object","head-keys"].includes(row.name))
+  .map(row => ({ ...row,port: true })))("admission port A1 $name", admissionCase);
 it.each<AdmissionRow>([
   { name: "reference-reader",message: "catalog_accepted_reference_mismatch",change: (_d,_f,i) => { Object.assign(i.skuRevisions[0].reference,{ optionDigest: "0".repeat(64) }); } },
 ])("admission A7 $name", admissionCase);
@@ -1154,6 +1157,7 @@ const priceRows: AdmissionRow[] = [
   { name: "entry-exact",message: priceMoved,code: "40001",change: (_d,_f,i) => { Object.assign(i.priceContextVersions[0].entry,{ unit_price_minor: 618 }); } },
 ];
 it.each(priceRows)("admission A8 $name", admissionCase);
+it.each(priceRows.map(row => ({ ...row,port: true })))("admission port A8 $name", admissionCase);
 it.each<AdmissionRow>([
   { name: "list-valid-from",message: priceMoved,code: "40001",change: async (d,_f,i) => { await d.query("UPDATE public.price_lists SET valid_from=clock_timestamp()+interval '1 day' WHERE id=$1", [i.priceContextVersions[0].priceListId]); } },
   { name: "list-valid-to",message: priceMoved,code: "40001",change: async (d,_f,i) => { await d.query("UPDATE public.price_lists SET valid_to=clock_timestamp()-interval '1 minute' WHERE id=$1", [i.priceContextVersions[0].priceListId]); } },
@@ -2226,6 +2230,15 @@ it.each([false,true])("CD-CAT-23 legacy opaque quote field during acquisition, c
   });
   try { await expect(run()).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" }); }
   finally { await restore(); }
+});
+
+it("LC6-D-152 removing the scoped purchase binder definer fails qualified activation", async () => {
+  const signature = "public.catalog_admission_bind_purchase(uuid,uuid)";
+  await pool.query(`ALTER FUNCTION ${signature} SECURITY INVOKER`);
+  try {
+    await expect(acquisitionCase({ offerVersion: "sized.v1",result: "qualified runtime" }))
+      .rejects.toMatchObject({ code: "42501",message: "permission denied for function catalog_admission_frozen_order" });
+  } finally { await pool.query(`ALTER FUNCTION ${signature} SECURITY DEFINER`); }
 });
 
 it.each([
