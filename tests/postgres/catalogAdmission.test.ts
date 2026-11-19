@@ -453,7 +453,7 @@ describe.each(membershipPages)("LC6-D-091 and LC6-D-097 $name", row => {
       FROM generate_series(cardinality(seen_ids)+1,cardinality(seen_ids)+100) n),
      'nextCursor','00000000-0000-0000-0000-'||lpad((cardinality(seen_ids)+100)::text,12,'0'));
     END IF;`;
-    const restore = await hook("public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",membershipReadBoundary,extension,body => {
+    const restore = await hook("public.catalog_admission_members(text,text,uuid[],boolean)",membershipReadBoundary,extension,body => {
       if (!control || !("predicate" in row)) return body;
       expect(body.split(row.predicate)).toHaveLength(2);
       return body.replace(row.predicate,"");
@@ -1595,11 +1595,12 @@ it.each(["first open ordinal","next after closed ordinal","different marker basi
   },
 );
 
-it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","repeat after same-money publication"] as const)(
+it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","repeat after same-money publication","candidate offer scope","candidate document drift"] as const)(
   "LC6-D-067 and LC6-D-132 shipped sized preview and apply keep the owned price: %s", async (action,test) => {
     const optIn = action === "opt in unchanged" || action === "opt in with historical entry" || action === "repeat after same-money publication";
     const graduation = action === "numbered graduation";
-    if (optIn && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
+    const discovery = action === "candidate offer scope" || action === "candidate document drift";
+    if ((optIn || discovery) && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
       test.skip("Membership page comes from the predecessor installation"); return;
     }
     const f = await fixture(packs[0]), setup = await pool.connect();
@@ -1608,6 +1609,9 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
     const constraint = { kind: "unit_count",value: coreQuantity,dailyNeed: 1 };
     try {
       if (!optIn) expect(await (await edit(f,"sized")).invoke(setup)).toMatchObject({ status: "applied" });
+      const outsideOffer = discovery
+        ? await fixture(packs[1], { sku: { memberships: [{ offerVersion: "classic", admitted: true }] } })
+        : undefined;
       await setup.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,'Legacy article','active')", [product,`legacy-${product}`]);
       await setup.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g) VALUES($1,$2,$3,'Legacy article','active',true,true,true,100)", [variantId,product,code]);
       const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
@@ -1665,6 +1669,15 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
           catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
         },
+        async withCandidateSnapshot(work) {
+          const db = await runtime.connect();
+          try {
+            await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+            const result = await work(db);
+            await db.query("COMMIT");
+            return result;
+          } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+        },
         policy: { minimumCoreUnits: 1,maximumCoreLines: 3,maximumAddonLines: 3,maximumQuantity: 99,allowedCadences: [28],maximumExclusions: 8,maximumCatalogExclusions: 16,fixedThroughCycle: 2,graduationCycle: 3,
           portionModes: { full: { mode: "full",factor: 1 },reduced: { mode: "reduced",factor: 0.5 } } },
         async readFacts(db,context) {
@@ -1672,8 +1685,14 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           return { subscriptionId: context.subscriptionId,clientId: context.clientId,subjectRef: context.subscriptionId,exclusions: [],snapshot: (row.composition_constraint ?? {}) as Record<string, unknown> };
         },
         async readCatalog(db) {
-          return (await db.query("SELECT * FROM public.catalog_skus WHERE id=ANY($1::uuid[])", [[f.sku,variantId]])).rows.map(row => ({ variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
-            sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: 100,demandPerUnit: 28,documentRevisionId: String(row.id),documentDigest: digest(String(row.id)),verified: true,exclusions: [],sellableNow: 100 }));
+          const ids = [f.sku,variantId,...(outsideOffer ? [outsideOffer.sku] : [])];
+          return (await db.query("SELECT * FROM public.catalog_skus WHERE id=ANY($1::uuid[])", [ids])).rows.map(row => {
+            const current = discovery && row.id === f.sku && action !== "candidate document drift";
+            return { variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
+              sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: 100,demandPerUnit: 28,
+              documentRevisionId: current ? f.value.product.documentRevision!.id : String(row.id),
+              documentDigest: current ? f.head.documentDigest : digest(String(row.id)),verified: true,exclusions: [],sellableNow: 100 };
+          });
         },
         async resolveOptInNeed() { expect(optIn).toBe(true); return { dailyNeed: 1,snapshot: { dailyNeed: 1 } }; },
         async assertCurrentFacts(db,context,expected,need,catalog) {
@@ -1685,6 +1704,15 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
         },
         proposePortion: async ({ current }) => current.map(({ variantId,qty }) => ({ variantId,qty })),
       });
+      if (discovery) {
+        if (action === "candidate document drift") {
+          await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
+        } else {
+          const result = await editor.candidates(actor,f.subscription);
+          expect(result.catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort());
+        }
+        return;
+      }
       const request: Parameters<typeof editor.preview>[1] = optIn ? {
         subscriptionId: f.subscription,action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,
         resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: 1 }],optInToSized: true } },

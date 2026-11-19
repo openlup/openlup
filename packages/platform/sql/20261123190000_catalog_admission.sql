@@ -372,15 +372,80 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text) FROM PUBLIC;
 
 
+-- Walk the predecessor's membership page once for all native producers.
+CREATE FUNCTION public.catalog_admission_members(offer_version text,p_mode text,scope uuid[],p_require_all boolean)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE page jsonb; item jsonb; sku_id uuid; cursor_id uuid; head_digest text; page_limit constant integer:=100;
+ maximum_members integer:=CASE WHEN offer_version='sized.v1' THEN 1000 ELSE 500 END;
+ seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
+BEGIN
+ IF cardinality(scope)=0 THEN RETURN members; END IF;
+ IF to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NULL THEN
+  RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+ LOOP
+  page:=public.catalog_offer_memberships_page(offer_version,cursor_id,page_limit,p_mode,head_digest);
+  IF page->>'protocol' IS DISTINCT FROM 'governed' OR NOT coalesce(page->>'headDigest' ~ '^[0-9a-f]{64}$',false)
+   OR (head_digest IS NOT NULL AND page->>'headDigest' IS DISTINCT FROM head_digest)
+   OR jsonb_typeof(page->'items') IS DISTINCT FROM 'array' THEN
+   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+  IF jsonb_array_length(page->'items')>page_limit
+   OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members THEN
+   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+  head_digest:=page->>'headDigest';
+  FOR item IN SELECT value FROM jsonb_array_elements(page->'items') LOOP
+   sku_id:=CASE WHEN pg_input_is_valid(item->>'skuId','uuid') THEN (item->>'skuId')::uuid END;
+   IF sku_id IS NULL OR nullif(item->>'skuCode','') IS NULL OR sku_id=ANY(seen_ids) OR item->>'skuCode'=ANY(seen_codes)
+    OR (p_mode='one_time' AND item->'sellableStandalone' IS DISTINCT FROM 'true'::jsonb)
+    OR (p_mode='subscription' AND item->'sellableInSubscription' IS DISTINCT FROM 'true'::jsonb)
+    OR (cardinality(seen_ids)>0 AND sku_id<=seen_ids[cardinality(seen_ids)]) THEN
+    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+   seen_ids:=array_append(seen_ids,sku_id); seen_codes:=array_append(seen_codes,item->>'skuCode');
+   IF scope IS NULL OR sku_id=ANY(scope) THEN members:=members||jsonb_build_object(sku_id::text,item); END IF;
+  END LOOP;
+  IF page->>'nextCursor' IS NOT NULL AND (
+    jsonb_array_length(page->'items')<>page_limit
+    OR NOT coalesce(pg_input_is_valid(page->>'nextCursor','uuid'),false)
+    OR page->>'nextCursor' IS DISTINCT FROM seen_ids[cardinality(seen_ids)]::text) THEN
+   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+  EXIT WHEN scope IS NOT NULL AND scope <@ seen_ids;
+  IF page->>'nextCursor' IS NULL THEN
+   IF p_require_all THEN RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+   EXIT;
+  END IF;
+  cursor_id:=(page->>'nextCursor')::uuid;
+ END LOOP;
+ RETURN members;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean) FROM PUBLIC;
+
+-- Only the governed portion of a host discovery roster is publication scoped.
+-- Legacy facts and their interpretation remain with the host.
+CREATE FUNCTION public.catalog_admission_candidate_members(p_sku_ids uuid[],p_offer_version text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE governed uuid[]; members jsonb; projected jsonb;
+BEGIN
+ SELECT coalesce(array_agg(s.id ORDER BY s.id),'{}') INTO governed FROM public.catalog_skus s
+ JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY(p_sku_ids)
+ AND (s.publication_facts->'schemaVersion'='3'::jsonb OR p.publication_facts->'schemaVersion'='3'::jsonb);
+ IF cardinality(governed)=0 THEN RETURN jsonb_build_object('governed',to_jsonb(governed),'members','{}'::jsonb); END IF;
+ IF cardinality(governed)>1000 OR current_setting('transaction_isolation') NOT IN ('repeatable read','serializable') THEN
+  RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+ members:=public.catalog_admission_members(p_offer_version,'subscription',governed,false);
+ SELECT coalesce(jsonb_object_agg(k,m||jsonb_build_object('isAddon',r.full_facts::jsonb->'isAddon')),'{}') INTO projected
+ FROM jsonb_each(members) AS member(k,m) JOIN public.catalog_sku_revisions r ON r.id::text=m->>'skuRevisionId' AND r.sku_id::text=k;
+ RETURN jsonb_build_object('governed',to_jsonb(governed),'members',projected);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_candidate_members(uuid[],text) FROM PUBLIC;
+
 -- One evidence builder for native quote and preview producers. The membership
 -- page is provided by the governed publication reads forward. An installation
 -- without that forward cannot produce governed evidence.
 CREATE FUNCTION public.catalog_admission_build_evidence(p_lines jsonb,p_mode text,p_binding jsonb,p_purpose text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; page jsonb; item jsonb; line jsonb;
- member jsonb; offer_version text; cursor_id uuid; head_digest text; quoted_heads jsonb;
- page_limit constant integer:=100; maximum_members integer;
- seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}';
+DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; line jsonb;
+ member jsonb; offer_version text; quoted_heads jsonb; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
  retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean;
 BEGIN
@@ -411,40 +476,8 @@ BEGIN
     FROM jsonb_array_elements(baseline) a WHERE a->>'variantId'=l->>'skuId' AND a->'isAddon'=coalesce(l->'isAddon','false'::jsonb));
  END IF;
  offer_version:=CASE WHEN p_purpose='order' THEN public.catalog_price_setup_order_offer_version(p_binding->'quoteSnapshot') ELSE p_binding->>'offerVersion' END;
- maximum_members:=CASE WHEN offer_version='sized.v1' THEN 1000 ELSE 500 END;
  IF cardinality(scope)>0 THEN
- IF to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NULL THEN
-  RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
- LOOP
-  page:=public.catalog_offer_memberships_page(offer_version,cursor_id,page_limit,p_mode,head_digest);
-  IF page->>'protocol' IS DISTINCT FROM 'governed' OR NOT coalesce(page->>'headDigest' ~ '^[0-9a-f]{64}$',false)
-   OR (head_digest IS NOT NULL AND page->>'headDigest' IS DISTINCT FROM head_digest)
-   OR jsonb_typeof(page->'items') IS DISTINCT FROM 'array' THEN
-   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-  IF jsonb_array_length(page->'items')>page_limit
-   OR cardinality(seen_ids)+jsonb_array_length(page->'items')>maximum_members THEN
-   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-  head_digest:=page->>'headDigest';
-  FOR item IN SELECT value FROM jsonb_array_elements(page->'items') LOOP
-   sku_id:=CASE WHEN pg_input_is_valid(item->>'skuId','uuid') THEN (item->>'skuId')::uuid END;
-   IF sku_id IS NULL OR nullif(item->>'skuCode','') IS NULL OR sku_id=ANY(seen_ids) OR item->>'skuCode'=ANY(seen_codes)
-    OR (p_mode='one_time' AND item->'sellableStandalone' IS DISTINCT FROM 'true'::jsonb)
-    OR (p_mode='subscription' AND item->'sellableInSubscription' IS DISTINCT FROM 'true'::jsonb)
-    OR (cardinality(seen_ids)>0 AND sku_id<=seen_ids[cardinality(seen_ids)]) THEN
-    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-   seen_ids:=array_append(seen_ids,sku_id); seen_codes:=array_append(seen_codes,item->>'skuCode');
-   IF sku_id=ANY(scope) THEN members:=members||jsonb_build_object(sku_id::text,item); END IF;
-  END LOOP;
-  IF page->>'nextCursor' IS NOT NULL AND (
-    jsonb_array_length(page->'items')<>page_limit
-    OR NOT coalesce(pg_input_is_valid(page->>'nextCursor','uuid'),false)
-    OR page->>'nextCursor' IS DISTINCT FROM seen_ids[cardinality(seen_ids)]::text) THEN
-   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-  EXIT WHEN scope <@ seen_ids;
-  IF page->>'nextCursor' IS NULL THEN
-   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
-  cursor_id:=(page->>'nextCursor')::uuid;
- END LOOP;
+  members:=public.catalog_admission_members(offer_version,p_mode,scope,true);
  END IF;
  FOR line IN SELECT value FROM jsonb_array_elements(desired) LOOP
   requested:=coalesce(line#>'{quoteLine,catalogFacts}',line->'catalogFacts');
@@ -2310,4 +2343,4 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text) FROM authenticated'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_candidate_members(uuid[],text), public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;

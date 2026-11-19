@@ -2959,6 +2959,10 @@ export interface SizedHostPorts {
 export interface SizedEditorOptions extends SizedHostPorts {
     policy: SizedEditPolicy;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Runs governed candidate discovery on one repeatable-read connection.
+     * @experimental
+     */
+    withCandidateSnapshot?<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     now(): string;
 }
 ```

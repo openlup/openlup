@@ -5848,6 +5848,14 @@
           {
             "signature": "public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_members(text,text,uuid[],boolean)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_candidate_members(uuid[],text)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8218,7 +8226,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "e2d8665e4a68eb7692cbe9b938afc1728e9763be31aa4c7bb390e1f7ad721ee0",
+      "sha256": "2af4afc88895396e310e8cfc2db86bd6abaa2eb567f564993a1804bed7019f82",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8298,7 +8306,7 @@
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "c8d351066315e416a5736434fb51f5e1a9c85921ba7e0860fa237e3c66aa4edd"
+          "afterSha256": "4fd547c049b519e55d5513c3c948801febda486a57015b0b0d202c542643ff53"
         },
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
@@ -8344,6 +8352,16 @@
           "signature": "public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer)",
           "beforeSha256": null,
           "afterSha256": "14aab9f2d92c4e93062c0e5e4c61533b2a780467bba6c78d11db0034fd8325d4"
+        },
+        {
+          "signature": "public.catalog_admission_members(text,text,uuid[],boolean)",
+          "beforeSha256": null,
+          "afterSha256": "75149812fb8d6e91b52b878548f9c3c98824886ed9e4a817615ddcbbb7751c07"
+        },
+        {
+          "signature": "public.catalog_admission_candidate_members(uuid[],text)",
+          "beforeSha256": null,
+          "afterSha256": "630a7f00951e9f7afa59c9761a5bbe38b0ae7137398b40ab0c27cffe29c94680"
         }
       ]
     }

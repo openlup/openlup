@@ -1462,10 +1462,17 @@ The experimental `createPostgresCatalogAdmission()` supplies
 Native writers use the same assertion after replay and commerce prelocking. The
 trusted preview ledgers build and store immutable SKU references, consulted
 product heads, offer membership and exact owner price-row evidence. The native
-checkout wrapper's experimental `captureCatalogAdmission(quoteSnapshot)` reads
-the catalogue membership page in a repeatable-read transaction. Pass the result
+checkout wrapper's experimental `captureCatalogAdmission(quoteSnapshot, quoteTimeHeads)`
+checks the trusted quote's product heads against the catalogue membership page
+in a repeatable-read transaction. Pass the result
 through the wrapper's server-only identity argument alongside the original
 server quote.
+
+Governed sized candidate discovery uses the configured offer's membership page
+and verifies the host facts against the member's SKU and document. Supply the
+experimental `withCandidateSnapshot` transaction on the sized editor for a
+repeatable-read candidate scope. The existing transaction continues to serve
+editor writes.
 
 Governed draft acceptance freezes the configured offer and proof on the draft.
 Captured-payment activation applies the binding and first renewal attachment

@@ -2,13 +2,41 @@ import { z } from "zod";
 import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
 import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
-import type { SizedEditorOptions } from "./sizedEditPorts.js";
+import type { SizedCatalogFact, SizedEditorOptions } from "./sizedEditPorts.js";
 import { createSizedEditContextScope, isSizedOptIn, normalizeSizedEdit, readSizedEditContext } from "./sizedEditContext.js";
 import { assertSizedPolicy } from "./sizedComposition.js";
 import { assertSizedSubjectFacts, quoteSizedEdit, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { mapPackageEditError } from "./packageEditErrors.js";
 import { hasBoundPackageEditQuote, recordedPackageEditQuoteHash } from "./classicPackageQuote.js";
+
+interface CandidateMembership {
+  skuCode: string;
+  isAddon: boolean;
+  document: { id: string; digest: string };
+}
+
+async function scopeCatalogCandidates(db: SubscriptionQueryExecutor, catalog: SizedCatalogFact[]) {
+  if (!catalog.length) return catalog;
+  const { rows } = await db.query(`SELECT to_regprocedure('public.catalog_admission_candidate_members(uuid[],text)') IS NOT NULL AS installed`);
+  if (!rows[0]?.installed) return catalog;
+  const scoped = (await db.query("SELECT public.catalog_admission_candidate_members($1::uuid[],'sized.v1') AS scope",
+    [catalog.map(fact => fact.variantId)])).rows[0]?.scope as { governed: string[]; members: Record<string,CandidateMembership> };
+  const governed = new Set(scoped.governed);
+  const seen = new Set<string>();
+  return catalog.filter(fact => {
+    const id = fact.variantId.toLowerCase();
+    if (!governed.has(id)) return true;
+    const member = scoped.members[id];
+    if (!member) return false;
+    if (seen.has(id) || !fact.verified || !fact.sellable || member.skuCode !== fact.sku || member.isAddon !== fact.isAddon ||
+      member.document.id !== fact.documentRevisionId || member.document.digest !== fact.documentDigest) {
+      throw Object.assign(new Error("catalog_publication_head_moved"), { code: "40001" });
+    }
+    seen.add(id);
+    return true;
+  });
+}
 
 /** The host composes this alongside its existing classic binding. One callback owns one connection through commit. */
 export function createPostgresSizedEditor(options: SizedEditorOptions) {
@@ -84,7 +112,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
   }
   return {
     async candidates(actor: PackageEditActor, id: string, optIn = false) {
-      return options.withTransaction(async db => {
+      const read = async (db: SubscriptionQueryExecutor) => {
         await owned(db, actor, id);
         const context = await scope(db, actor)(id, optIn), facts = await options.readFacts(db, context, "candidate");
         assertSizedSubjectFacts(facts, context, policy);
@@ -94,8 +122,10 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
           context.compositionConstraint = { kind: "unit_count", value: context.lines.filter(line => !line.isAddon).reduce((total, line) => total + line.qty, 0), dailyNeed: need.dailyNeed,
             ...(context.compositionConstraint?.mode === policy.portionModes.reduced.mode ? { mode: policy.portionModes.reduced.mode, portionFactor: policy.portionModes.reduced.factor } : {}) };
         }
-        return { context, catalog: sizedCandidateCompatibility(await options.readCatalog(db, context), facts) };
-      });
+        const catalog = await scopeCatalogCandidates(db, await options.readCatalog(db, context));
+        return { context, catalog: sizedCandidateCompatibility(catalog, facts) };
+      };
+      return options.withCandidateSnapshot ? options.withCandidateSnapshot(read) : options.withTransaction(read);
     },
     async preview(actor: PackageEditActor, input: SizedEditRequest): Promise<SizedEditPreview> {
       const parsed = parse(input);
