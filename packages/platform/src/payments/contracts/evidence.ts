@@ -57,6 +57,10 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
   attemptRef: string | null;
   outcome: "succeeded" | "failed" | "pending" | "refunded" | "disputed";
   money: PaymentMoney | null;
+  /** Attests that a verified success used the provider’s collected-money field. Excluded from event identity. */
+  capturedAmountBasis?: "provider_capture_v1";
+  /** Receipt lookup only for a verified event whose prior normalization used different money. */
+  historicalCaptureFingerprint?: string;
   refusal?: PaymentRefusalEnvelope;
   refund?: PaymentRefundObservation;
 };
@@ -109,6 +113,7 @@ export type PaymentReadbackEnvelope = {
   purpose: ProviderReadPurpose;
 } & (
   | { kind: "succeeded" | "failed" | "pending"; observedMoney: PaymentMoney; providerOccurredAt: string | null;
+      capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
       refusal?: PaymentRefusalEnvelope; handoff?: PaymentMethodHandoff }
   | { kind: "unknown"; reason: "timeout" | "truncated" | "indeterminate" }
   | { kind: "absent"; evidence: Extract<PaymentAbsenceEnvelope, { kind: "absent" }>["evidence"] }

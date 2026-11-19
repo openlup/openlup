@@ -185,7 +185,8 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
             || observed.currency !== input.expectedMoney.currency.toUpperCase())) return unknown(base);
           return { ...base, kind: observed.status, observedMoney: { amountMinor: input.expectedMoney.amountMinor,
             currency: input.expectedMoney.currency.toUpperCase() },
-            providerOccurredAt: observed.occurredAt };
+            providerOccurredAt: observed.occurredAt,
+            ...(observed.capturedAmountBasis ? { capturedAmountBasis: observed.capturedAmountBasis } : {}) };
         } catch { return unknown(base); }
       },
     },
@@ -253,7 +254,21 @@ function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "l
         operationId: `${event.payment_provider_id}:chargeback`, originalPaymentMoney: { amountMinor: originalAmount, currency: money.currency } } } : {}),
     };
   }
+  // The old receipt fell back to the requested amount. This alternate
+  // identity is restricted to reading a completed historical receipt.
+  const priorPaid = payload.paidAmount || payload.transactionAmount;
+  const priorAmount = typeof priorPaid === "string" ? Math.round(Number(priorPaid.replace(",", ".")) * 100) : NaN;
+  const priorCurrency = payload.currency ?? supportedCurrencies[0];
+  const historicalCaptureFingerprint = evidence.kind === "money" && evidence.outcome === "succeeded"
+    && Number.isSafeInteger(priorAmount) && priorAmount > 0 && priorAmount !== evidence.money?.amountMinor
+    && typeof priorCurrency === "string" && /^[A-Za-z]{3}$/u.test(priorCurrency)
+    ? createHash("sha256").update(JSON.stringify({ ...evidence,
+      money: { amountMinor: priorAmount, currency: priorCurrency.toUpperCase() } })).digest("hex")
+    : undefined;
   return { ...evidence, fingerprint: createHash("sha256").update(JSON.stringify(evidence)).digest("hex"),
+    ...(historicalCaptureFingerprint ? { historicalCaptureFingerprint } : {}),
+    ...(evidence.kind === "money" && evidence.outcome === "succeeded" && evidence.money
+      ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerAuditPayload: payload };
 }
 

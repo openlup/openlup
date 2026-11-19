@@ -1,41 +1,18 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { settingDescriptorSchema as descriptor, settingRefusalSchema } from "./toolSchema.js";
 
 export const settingsVersion = 1;
 const packageData = (name: string): unknown =>
   JSON.parse(readFileSync(new URL(`../../../${name}`, import.meta.url), "utf8"));
 
-const catalogue = z.strictObject({
-  schemaVersion: z.literal(settingsVersion),
-  entries: z.array(z.record(z.string(), z.unknown()).and(z.object({ key: z.string() }))),
-  searchTerms: z.record(z.string(), z.string()),
-}).parse(packageData("settings-catalog.json"));
-
-const refusalData = z.strictObject({
-  schemaVersion: z.literal(settingsVersion),
-  refusals: z.array(z.object({ code: z.string() }).passthrough()),
-}).parse(packageData("settings-refusals.json"));
-
-export const { searchTerms } = catalogue;
-
-const keySchema = z.enum(catalogue.entries.map(entry => entry.key));
 export const settingsListRequest = z.strictObject({ goal: z.string().trim().min(1).optional() });
-export const settingsShowRequest = z.strictObject({ key: keySchema });
-const runtimeSchema = z.union([
-  z.strictObject({ level: z.literal("ready") }),
-  z.strictObject({ level: z.enum(["read-only", "preview"]), reason: z.string() }),
-]);
-const summarySchema = z.strictObject({
-  key: keySchema,
-  goal: z.string(),
-  kind: z.enum(["installed", "code", "callback", "cap", "invariant"]),
-  runtime: runtimeSchema,
-  change: z.union([
-    z.strictObject({ operation: z.string() }),
-    z.strictObject({ file: z.string(), symbol: z.string() }),
-    z.strictObject({ reference: z.string() }),
-  ]),
-});
+
+let catalogue: ReturnType<typeof readSettingsCatalogue> | undefined;
+export function loadSettingsCatalogue() {
+  return catalogue ??= readSettingsCatalogue();
+}
+
 const observedValue = z.strictObject({
   state: z.literal("override"),
   value: z.json(),
@@ -47,36 +24,29 @@ const observationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), absentMeans: z.string(), source: z.string(), value: z.json() }),
   z.strictObject({ state: z.literal("offline") }),
 ]);
-export const settingsListResult = z.strictObject({
-  schemaVersion: z.literal(settingsVersion),
-  entries: z.array(summarySchema),
-});
-export const settingsShowResult = z.strictObject({
-  schemaVersion: z.literal(settingsVersion),
-  setting: summarySchema.extend({
-    domain: z.string(),
-    schemaVersion: z.number(),
-    schema: z.record(z.string(), z.json()).nullable(),
-    previewSchema: z.record(z.string(), z.json()).nullable(),
-    rules: z.array(z.strictObject({ code: z.string(), path: z.array(z.string()), description: z.string() })),
-    examples: z.array(z.strictObject({ value: z.json(), code: z.string().optional() })),
-    fallback: z.json(),
-    absentMeans: z.strictObject({ description: z.string(), source: z.string(), value: z.json() }).optional(),
-    defaultBasis: z.strictObject({ kind: z.enum(["neutral", "reference-code", "reference-live"]) }),
-    whyThisDefault: z.string(),
-    effect: z.strictObject({ appliesTo: z.string(), frozenOn: z.array(z.string()), impact: z.enum(["money", "customer-promise", "operations"]) }),
-  }),
-  observation: observationSchema,
-});
+function readSettingsCatalogue() {
+  const { entries, searchTerms } = z.strictObject({
+    schemaVersion: z.literal(settingsVersion),
+    entries: z.array(descriptor),
+    searchTerms: z.record(z.string(), z.string()),
+  }).parse(packageData("settings-catalog.json"));
+  const { refusals } = z.strictObject({
+    schemaVersion: z.literal(settingsVersion),
+    refusals: z.array(z.object({ code: z.string() }).passthrough()),
+  }).parse(packageData("settings-refusals.json"));
+  const refusalSchema = settingRefusalSchema(refusals.map(({ code }) => code));
+  const byCode = new Map(z.array(refusalSchema).parse(refusals).map(refusal => [refusal.code, refusal]));
 
-export const settingRefusalSchema = z.strictObject({
-  code: z.enum(refusalData.refusals.map(refusal => refusal.code)),
-  path: z.array(z.string()),
-  rule: z.string(),
-  hint: z.string(),
-  remediation: z.strictObject({ retry: z.boolean(), action: z.string(), command: z.string() }),
-});
-export const settingsRefusalResult = z.strictObject({ refusal: settingRefusalSchema });
-
-export const settingsCatalogue = z.array(settingsShowResult.shape.setting).parse(catalogue.entries);
-export const settingRefusals = z.array(settingRefusalSchema).parse(refusalData.refusals);
+  const key = z.enum(entries.map(entry => entry.key));
+  const summary = descriptor.pick({ key: true, goal: true, kind: true, runtime: true, change: true }).extend({ key });
+  const { domain, schema, previewSchema, rules, examples, fallback, absentMeans, defaultBasis, whyThisDefault, effect } = descriptor.shape;
+  // Keep the existing show contract and its field order in CLI and MCP JSON.
+  const setting = summary.extend({
+    domain, schemaVersion: z.number(), schema: schema.unwrap(), previewSchema: previewSchema.unwrap(),
+    rules, examples, fallback, absentMeans, defaultBasis, whyThisDefault, effect,
+  });
+  const showRequest = z.strictObject({ key });
+  const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
+  const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
+  return { entries: z.array(setting).parse(entries), searchTerms, byCode, refusalSchema, showRequest, showResult, listResult };
+}

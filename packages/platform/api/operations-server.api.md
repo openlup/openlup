@@ -1616,6 +1616,7 @@ export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export { explainSetting, invalidSettingsCommand, listSettings, settingsReadTools, showSetting, type SettingReader } from "./settingsRead.js";
+export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -1833,6 +1834,94 @@ export declare const settingsReadTools: readonly [{
     };
 }];
 export {};
+```
+## dist/operations/server/toolSchema.d.ts
+
+```ts
+import { z, type ZodType } from "zod";
+/** Project a tool contract as inline Draft 7 JSON Schema. */
+export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
+/** @experimental Describe the data written to and loaded from the settings catalogue. */
+export declare const settingDescriptorSchema: z.ZodObject<{
+    key: z.ZodString;
+    domain: z.ZodString;
+    kind: z.ZodEnum<{
+        code: "code";
+        installed: "installed";
+        callback: "callback";
+        cap: "cap";
+        invariant: "invariant";
+    }>;
+    goal: z.ZodString;
+    schemaVersion: z.ZodLiteral<1>;
+    schema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
+    previewSchema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
+    rules: z.ZodArray<z.ZodObject<{
+        code: z.ZodString;
+        path: z.ZodArray<z.ZodString>;
+        description: z.ZodString;
+    }, z.core.$strict>>;
+    examples: z.ZodArray<z.ZodObject<{
+        value: z.ZodJSONSchema;
+        code: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+    fallback: z.ZodJSONSchema;
+    absentMeans: z.ZodOptional<z.ZodObject<{
+        description: z.ZodString;
+        source: z.ZodString;
+        value: z.ZodJSONSchema;
+    }, z.core.$strict>>;
+    defaultBasis: z.ZodObject<{
+        kind: z.ZodEnum<{
+            "reference-code": "reference-code";
+            neutral: "neutral";
+            "reference-live": "reference-live";
+        }>;
+    }, z.core.$strict>;
+    whyThisDefault: z.ZodString;
+    effect: z.ZodObject<{
+        appliesTo: z.ZodString;
+        frozenOn: z.ZodArray<z.ZodString>;
+        impact: z.ZodEnum<{
+            operations: "operations";
+            money: "money";
+            "customer-promise": "customer-promise";
+        }>;
+    }, z.core.$strict>;
+    runtime: z.ZodUnion<readonly [z.ZodObject<{
+        level: z.ZodLiteral<"ready">;
+    }, z.core.$strict>, z.ZodObject<{
+        level: z.ZodEnum<{
+            preview: "preview";
+            "read-only": "read-only";
+        }>;
+        reason: z.ZodString;
+    }, z.core.$strict>]>;
+    change: z.ZodUnion<readonly [z.ZodObject<{
+        operation: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        file: z.ZodString;
+        symbol: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        reference: z.ZodString;
+    }, z.core.$strict>]>;
+}, z.core.$strict>;
+/** @experimental Schema shared by packaged settings projections and their data reader. */
+export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObject<{
+    code: z.ZodEnum<{
+        [x: string]: string;
+    }>;
+    path: z.ZodArray<z.ZodString>;
+    rule: z.ZodString;
+    hint: z.ZodString;
+    remediation: z.ZodObject<{
+        retry: z.ZodBoolean;
+        action: z.ZodString;
+        command: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+/** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
+export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown>;
 ```
 ## dist/operations/validation.d.ts
 

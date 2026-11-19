@@ -1,3 +1,4 @@
+import { readPaidAmountMinor } from "./tpayTransactionPayload.js";
 import type {
   ProviderReconciliationStatus,
 } from "./donorContracts.js";
@@ -36,7 +37,11 @@ export function createTpayPaymentReconciliationProvider(
     },
     async readPayment(input) {
       const transaction = await client.getTransaction(input.providerPaymentId);
-      return normalizeTpayTransaction(transaction);
+      const status = normalizeTpayTransaction(transaction);
+      if (status.status === "succeeded" && !tpayIdentityMatches(transaction, input.providerPaymentId)) {
+        throw new Error("tpay_readback_payment_identity_mismatch");
+      }
+      return status;
     },
   };
 }
@@ -93,16 +98,20 @@ export function normalizeTpayTransaction(
     ? lastRefusal(payments.attempts, "paymentErrorCode") ?? lastRefusal(payments.errors, "errorCode")
     : null;
   const status = refusal ? "failed" as const : statusFromField;
+  const amountMinor = status === "succeeded" ? readPaidAmountMinor(transaction, payments) : readAmountMinor(transaction);
+  const configuredAmountMinor = status === "succeeded" && amountMinor === null ? readConfiguredAmountMinor(transaction) : null;
   return {
     status,
+    ...(configuredAmountMinor !== null ? { configuredAmountMinor } : {}),
+    ...(status === "succeeded" && amountMinor !== null && amountMinor > 0 ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerStatus,
     occurredAt: refusal?.occurredAt ?? readDate(transaction),
     failureReason: refusal
       ? `tpay_decline_${refusal.code}`
       : status === "failed" ? `tpay_${providerStatus}` : null,
-    amountMinor: readAmountMinor(transaction),
+    amountMinor,
     currency: readCurrency(transaction),
-    rawPayload: sanitizedTpayTransaction(transaction, providerStatus, refusal),
+    rawPayload: sanitizedTpayTransaction(transaction, providerStatus, amountMinor, refusal),
   };
 }
 
@@ -254,6 +263,7 @@ function readCurrency(transaction: Record<string, unknown>): string | null {
 function sanitizedTpayTransaction(
   transaction: Record<string, unknown>,
   providerStatus: string,
+  amountMinor: number | null,
   refusal: AttemptRefusal | null = null,
 ): Record<string, unknown> {
   return {
@@ -270,7 +280,7 @@ function sanitizedTpayTransaction(
     title: readOptionalString(transaction, "title") ?? readOptionalString(transaction, "tr_id"),
     status: providerStatus,
     requestIdPresent: Boolean(readOptionalString(transaction, "requestId")),
-    amountMinorPresent: readAmountMinor(transaction) !== null,
+    amountMinorPresent: amountMinor !== null,
     currency: readCurrency(transaction),
   };
 }

@@ -4,6 +4,9 @@ import type {
   ProviderReconciliationStatusKind,
 } from "./contracts/reconciliation.js";
 
+export const CAPTURE_REVIEW_RESULT_KIND = "ignored_success_requiring_review";
+export const PROTECTED_FAILURE_RESULT_KIND = "ignored_failure_protected_state";
+
 export function evidencePayload(
   attempt: ClaimedPaymentAttempt,
   providerStatus: ProviderReconciliationStatus,
@@ -24,6 +27,10 @@ export function evidencePayload(
     normalizedStatus: providerStatus.status,
     failureReason: providerStatus.failureReason,
     amountMinorPresent: providerStatus.amountMinor !== null,
+    ...(providerStatus.status === "succeeded" ? {
+      amountMinor: providerStatus.amountMinor,
+      ...(providerStatus.capturedAmountBasis ? { capturedAmountBasis: providerStatus.capturedAmountBasis } : {}),
+    } : {}),
     currency: providerStatus.currency,
     providerPayload: providerStatus.rawPayload,
     ...extra,
@@ -34,8 +41,17 @@ export function terminalAmountMismatch(
   attempt: ClaimedPaymentAttempt,
   status: ProviderReconciliationStatus,
 ): string | null {
+  if (status.status === "succeeded" && status.amountMinor === null) {
+    return "provider_amount_missing";
+  }
   if (status.amountMinor !== null && status.amountMinor !== attempt.amountMinor) {
     return "provider_amount_mismatch";
+  }
+  if (status.status === "succeeded" && status.capturedAmountBasis !== "provider_capture_v1") {
+    return "provider_capture_amount_unconfirmed";
+  }
+  if (status.status === "succeeded" && !status.currency?.trim()) {
+    return "provider_currency_missing";
   }
   if (status.currency && status.currency.toUpperCase() !== attempt.currency.toUpperCase()) {
     return "provider_currency_mismatch";

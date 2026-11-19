@@ -11,6 +11,7 @@ describe("normalizeStripeWebhookEvent", () => {
         object: {
           id: "pi_1",
           status: "succeeded",
+          amount: 5990,
           amount_received: 4990,
           currency: "eur",
           client_secret: "must_not_be_copied",
@@ -31,6 +32,15 @@ describe("normalizeStripeWebhookEvent", () => {
       reusableMethod: null,
     });
     expect(JSON.stringify(event)).not.toContain("must_not_be_copied");
+  });
+
+  it.each([undefined, 0, 49.9])("leaves captured money unknown when amount_received is %s", amount_received => {
+    const event = normalizeStripeWebhookEvent({
+      id: "evt_unasserted_capture",
+      type: "payment_intent.succeeded",
+      data: { object: { id: "pi_unknown", amount: 4990, amount_received, currency: "eur" } },
+    });
+    expect(event).toMatchObject({ amountMinor: null, rawPayload: { amountMinor: null } });
   });
 
   it("maps payment_intent.payment_failed and payment_intent.canceled to payment.failed", () => {

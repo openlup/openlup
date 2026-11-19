@@ -146,3 +146,19 @@ for (const table of carried) {
     expect(await journeyCensus(target.owner)).toEqual(before);
   }, 105_000);
 }
+
+it("carries a reminder episode pin byte-exactly and replays restore", async () => {
+  const { id } = (await source.owner.query("SELECT id FROM public.commerce_orders")).rows[0];
+  await source.owner.query(`INSERT INTO public.commerce_reminder_episodes(order_id,kind,schedule)
+    VALUES($1,'checkout_recovery','[{"stage":"first","afterHours":1,"offsetSeconds":1800},{"stage":"last","afterHours":20,"offsetSeconds":21600}]')`, [id]);
+  try {
+    const captured = await captureStoreJourney(source.owner, "reminder-episode-source");
+    const before = captured.owned.find(table => table.table === "commerce_reminder_episodes")?.rows;
+    expect(before).toHaveLength(1);
+    expect(await restore(captured)).toMatchObject({ replayed: false });
+    expect((await journeyCensus(target.owner)).commerce_reminder_episodes).toEqual(before);
+    expect(await restore(captured)).toMatchObject({ replayed: true });
+  } finally {
+    await source.owner.query("DELETE FROM public.commerce_reminder_episodes WHERE order_id=$1", [id]);
+  }
+}, 105_000);

@@ -1490,6 +1490,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261123149000_native_durable_capture_evidence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4895,6 +4903,14 @@
     },
     {
       "path": "packages/platform/sql/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123149000_native_durable_capture_evidence.sql",
       "class": "public-output"
     },
     {
@@ -8350,6 +8366,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/toolSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/validation.ts",
       "class": "public-output"
     },
@@ -11199,6 +11219,10 @@
     },
     {
       "path": "packages/platform/test/operations/settingsRead.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/settingsReadToolSchemas.main.json",
       "class": "public-output"
     },
     {
@@ -28730,6 +28754,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123144000_checkout_account_ownership.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -28951,6 +28979,10 @@
     },
     {
       "path": "supabase/tests/communication_email_provider_event_convergence_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/configurator_intent_account_ownership_test.sql",
       "class": "public-output"
     },
     {
@@ -30015,6 +30047,10 @@
     },
     {
       "path": "tests/postgres/checkoutRecoveryRecreation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/checkoutRecoveryReminderEpisodes.test.ts",
       "class": "public-output"
     },
     {

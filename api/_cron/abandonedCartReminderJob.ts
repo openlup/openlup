@@ -42,8 +42,15 @@ function bearerToken(req: VercelRequest): string | null {
   return header?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? null;
 }
 
-function safeMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 180);
+function safeMessage(error: unknown, connectionString?: string): string {
+  const fields = error !== null && typeof error === "object" ? error as { message?: unknown; hint?: unknown } : {};
+  const message = typeof fields.message === "string" ? fields.message
+    : typeof error === "string" ? error : "abandoned_cart_reminder_failed";
+  const hint = typeof fields.hint === "string" ? fields.hint : "";
+  const report = hint ? `${message}\n${hint}` : message;
+  const redacted = (connectionString ? report.replaceAll(connectionString, "[redacted]") : report)
+    .replace(/\bpostgres(?:ql)?:\/\/[^\s"'<>]+/giu, "[redacted]");
+  return hint ? redacted : redacted.slice(0, 180);
 }
 
 function isProductionVercelRuntime(env: Env): boolean {
@@ -97,7 +104,7 @@ export async function runAbandonedCartReminderCron(
       result = await context.abandonedReminders.enqueue(ENQUEUE_LIMIT, context.runtimeBaseUrl);
     } catch (error) {
       ok = false;
-      reason = safeMessage(error);
+      reason = safeMessage(error, env.DATABASE_URL?.trim());
     }
 
     const enqueued = result.enqueued1h + result.enqueued24h + result.enqueued72h;
@@ -140,7 +147,7 @@ export async function runAbandonedCartReminderCron(
           finishJobRun(client, name, runId, status, summary, metadata),
       );
     } catch (error) {
-      console.error("[abandoned-cart-reminder] finish_job_run_failed", safeMessage(error));
+      console.error("[abandoned-cart-reminder] finish_job_run_failed", safeMessage(error, env.DATABASE_URL?.trim()));
     }
 
     return {
