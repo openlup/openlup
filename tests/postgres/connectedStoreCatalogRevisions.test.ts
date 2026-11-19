@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { actorId, fixture, graph, insertGraph, installPublicationActors, json, transaction } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -143,3 +145,53 @@ it("refuses a changed staged product at the guarded pointer update and rolls bac
   expect(changed).toBe(true);
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 }, 65_000);
+
+it("restores reordered sealed history and recovers the original publication after reconnect", async () => {
+  await installPublicationActors(source.owner);
+  const data = fixture();
+  const { first, second, receipt } = await transaction(source.owner, async db => {
+    const first = await graph(db, data);
+    const receipt = await insertGraph(db, first);
+    const second = await graph(db, data, first.head);
+    await insertGraph(db, second);
+    return { first, second, receipt };
+  });
+  const captured = await captureStoreJourney(source.owner, "catalog-publication-source");
+  const tampered = structuredClone(captured);
+  const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;
+  const originalRow = revisions.rows[0]!;
+  const row = JSON.parse(originalRow) as { canonical_state: string; digest: string };
+  const manifest = JSON.parse(row.canonical_state) as { product: { document: { sourceRef: string } } };
+  manifest.product.document.sourceRef = "example:wrong-source";
+  row.canonical_state = json(manifest);
+  row.digest = createHash("sha256").update(row.canonical_state).digest("hex");
+  // Let PostgreSQL encode the row exactly as capture/restore does.
+  revisions.rows[0] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
+    (SELECT set_config('TimeZone','UTC',true)) zone,
+    jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb) x`, [JSON.stringify(row)])).rows[0]!.value;
+  rehash(tampered);
+  const pristine = await journeyCensus(target.owner);
+  await expect(restore(target.owner, tampered)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  captured.owned.reverse();
+  for (const table of captured.owned) table.rows.reverse();
+  rehash(captured);
+  expect(await restore(target.owner, captured)).toEqual({ captureSha256: captured.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
+  expect(await journeyCensus(target.owner)).toEqual(await journeyCensus(source.owner));
+  const reader = createPostgresCatalogPublicationReads({
+    transactions: { run: work => transaction(target.owner, work) },
+    authorizeHuman: async () => ({ ok: true, userId: actorId, role: "admin", isMachineActor: false }),
+  });
+  const actor = (await reader.authorize(null))!;
+  expect(await reader.readbackV2(first.head)).toMatchObject({ outcome: "page", head: first.head });
+  expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: second.head });
+  expect(await reader.receipt({ productId: data.productId, commandKey: first.commandKey }, actor)).toEqual({ outcome: "found", receipt });
+});
+
+function rehash(value: ConnectedNativeStoreCapture) {
+  const { sha256: _previous, ...body } = value;
+  value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+}

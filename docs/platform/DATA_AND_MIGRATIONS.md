@@ -883,6 +883,31 @@ requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
 transactions and exact-prefix/replay behavior remain.
 
+### Sealed native catalog publication history
+
+Position 155 adds the
+[`catalog_publication` forward](../../db/platform/migrations/20261123150000_catalog_publication.sql).
+The publication, SKU revisions, operator receipts, and candidate decisions are
+immutable retained history. The head holds the latest issue for each governed
+product. Native transfer carries all five tables and restores them through the
+same deferred constraints as owner inserts. It carries the existing document value through an explicit column
+projection. A document enters publication by its exact reference and the
+opaque bytes of its original draft operation. Pointer capabilities are
+transaction-local and must be empty on capture.
+
+The publication trigger checks the exact document and draft evidence, immediate
+predecessor, roster overlay, issuance count and receipt. Work scales with the
+predecessor roster and this issue's SKU facts. An indexed parent lookup and two
+unique issuance keys seal SKU slots. Receipt, decision, head and pointer events
+use indexed lookups; a decision also verifies the bounded candidate source.
+The constraints run at commit or when the owner explicitly makes them immediate.
+
+Apply the complete native chain before binding native publication reads.
+A managed implementation can use the same relations, composite keys and
+deferred checks, with owner-only writes under row-level security and
+session-derived human membership. Category-specific storage remains with the
+adopter. The managed rail does not supply this feature.
+
 Managed risk keeps
 its existing frozen baseline functions, grants and RLS. Native risk uses invoker
 functions and host-provisioned permissions, with no production role/grant model

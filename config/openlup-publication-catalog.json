@@ -1478,6 +1478,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4859,6 +4863,10 @@
     },
     {
       "path": "packages/platform/sql/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123150000_catalog_publication.sql",
       "class": "public-output"
     },
     {
@@ -14071,6 +14079,14 @@
     },
     {
       "path": "server/adapters/postgres/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/catalogPublicationReads.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/catalogPublicationWire.ts",
       "class": "public-output"
     },
     {
@@ -29843,6 +29859,14 @@
     },
     {
       "path": "tests/postgres/catalogDraftV2.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublication.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationFixture.ts",
       "class": "public-output"
     },
     {

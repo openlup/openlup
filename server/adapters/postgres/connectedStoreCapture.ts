@@ -1,3 +1,4 @@
+import { catalogPublicationAdmissionRefusal } from "./catalogPublicationReads.js";
 import { createHash } from "node:crypto";
 import {
   captureCompatiblePostgresRows, PostgresTransferError,
@@ -40,6 +41,10 @@ const owned = [
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   // Authoritative draft history and identity reservations, including abandoned drafts.
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
+  // AUTHORITATIVE immutable publications, complete SKU revisions, scoped receipts and approval decisions.
+  // The transient catalog_publication_pointer_capabilities table stays outside this profile;
+  // the existing unknown-nonempty refusal requires it to be empty, rather than carrying authority.
+  "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "subscription_lines",
   "communication_event_bindings", "communication_event_receipts", "communication_event_erasures",
@@ -83,6 +88,19 @@ export const connectedNativeStoreTables = [...compatible, ...owned] as const;
 
 type OwnedTable = typeof owned[number];
 type Column = { name: string; type: string };
+const documentRevisionColumns = new Set([
+  "id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",
+  "source_ref", "provenance", "digest", "created_at",
+]);
+
+// Capture and restore use the same closed document projection to compare the
+// packet's PostgreSQL encoding.
+export function connectedStoreRowSource(table: string, columns: readonly Column[]): string {
+  if (table !== "catalog_product_document_revisions") return `public.${identifier(table)}`;
+  if (columns.some(column => !documentRevisionColumns.has(column.name))) throw new PostgresTransferError("schema_conflict", table);
+  return `(SELECT ${columns.map(column => identifier(column.name)).join(",")} FROM public.catalog_product_document_revisions)`;
+}
+
 export interface ConnectedStoreOwnedRows {
   table: OwnedTable;
   columns: Column[];
@@ -177,6 +195,12 @@ export async function captureConnectedNativeStore(input: {
         emptyOutsideProfile.push(`${relation.schema}.${relation.table}`);
         outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
       }
+      await db.query(`SELECT public.catalog_publication_assert_issued(p.product_id,p.id)
+        FROM public.catalog_publications p`);
+      await db.query(`SELECT public.catalog_publication_assert_receipt(r.scope_id,r.command_key)
+        FROM public.catalog_operator_receipts r`);
+      await db.query(`SELECT public.catalog_publication_assert_head(h.product_id,true)
+        FROM public.catalog_publication_heads h`);
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
       const tables: ConnectedStoreOwnedRows[] = [];
@@ -191,7 +215,7 @@ export async function captureConnectedNativeStore(input: {
         // Only PostgreSQL encodes row values. JS never reserializes parsed
         // bigint/numeric/timestamp values for transport.
         const rows = (await db.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value
-          FROM public.${identifier(table)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows.map(row => row.value);
+          FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows.map(row => row.value);
         count += rows.length;
         bytes += rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
         if (count > maximumRows || bytes > maximumBytes) throw new PostgresTransferError("limit_exceeded", table);
@@ -206,6 +230,8 @@ export async function captureConnectedNativeStore(input: {
     });
   } catch (error) {
     if (error instanceof PostgresTransferError) throw error;
+    const refusal = catalogPublicationAdmissionRefusal(error);
+    if (refusal) throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
     throw new PostgresTransferError("database_unavailable");
   }
 }
