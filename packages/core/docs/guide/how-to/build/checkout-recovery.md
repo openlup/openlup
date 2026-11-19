@@ -85,12 +85,12 @@ you change the offsets; use the content contract in the
 `@openlup/platform/communications/contracts`.
 
 Wrap automatic-wave mail with `withCheckoutRecoverySendEvidence(emailPort,
-recovery)` from `@openlup/platform/communications`. When the schedule has a
-first wave, the final wave requires a confirmed first-wave acceptance receipt for
-the same delivery profile; an installed schedule with only a `last` stage has no
-predecessor gate. A
-processed outbox event alone is insufficient. A captured transport's receipt
-proves acceptance by that transport only; never reuse its profile to claim
+recovery)` from `@openlup/platform/communications`. When the episode's effective
+schedule has a first wave, the final wave requires a confirmed first-wave
+acceptance receipt for the same delivery profile. A schedule with only a `last`
+stage can send it without a predecessor. A processed outbox event alone is
+insufficient. A captured transport's receipt proves acceptance by that
+transport only. Never reuse its profile to claim
 network delivery. The receipt fingerprint binds event, recipient reference,
 template and delivery profile. The wrapper classifies the send outcome before
 recording confirmed acceptance, leaving other mail methods and deduplication
@@ -126,13 +126,12 @@ the durable sweep marker together with compensated activation.
 
 ## Install reminder stages and hours
 
-In 1.2.0, the native reminder-schedule forward adds
-`installCheckoutRecoveryReminderSchedule` and `readCheckoutRecoveryReminderSchedule`
+Use `installCheckoutRecoveryReminderSchedule` and `readCheckoutRecoveryReminderSchedule`
 in `@openlup/platform/commerce/server`, with the
 `CheckoutRecoveryReminderSchedule` type in `@openlup/platform/commerce/contracts`.
-Apply the matching complete catalogue before using them. Installation is an
-explicit operation on your write-capable installation connection; runtime reads
-never install. The `checkout_recovery_reminders` commerce setting contains a
+Apply the complete native catalogue, including the episode pin forward. Install
+explicitly on your write-capable installation connection. The
+`checkout_recovery_reminders` commerce setting contains a
 nonblank `revision` and two nonempty arrays: `abandonedCart` admits `first`,
 `gentle`, `last`; `checkoutRecovery` admits `first`, `last`. Each entry has exactly
 `stage` and `afterHours`. Hours are strictly increasing positive integers up to
@@ -140,11 +139,22 @@ nonblank `revision` and two nonempty arrays: `abandonedCart` admits `first`,
 missing keys, malformed JSON and invalid values refuse with
 `checkout_recovery_reminder_schedule_invalid` before enqueue writes.
 
-Without an installed row, abandoned-cart waves use 1, 24 and 72 hours.
-Checkout-recovery eligibility uses the host call offsets. SQL supplies 1 hour
-for an omitted first offset and 20 hours for an omitted final offset. The
-read helper returns the nominal schedule with revision `default`. New
-payloads carry `stage` alongside `reminderHours`.
+A reminder episode belongs to one order and one kind, either checkout recovery
+or abandoned cart. The producer chooses timing in this order:
+
+- **Pinned episode.** The pin supplies the stages, hours and effective offsets
+  for follow-ups, even after a schedule change or removal.
+- **New episode.** The first created wave pins the live timing. An installed
+  schedule supplies the stages and hours. With no installed row, checkout
+  recovery uses the host's offsets, with SQL defaults of 1 and 20 hours for
+  omitted offsets, and abandoned carts use 1, 24 and 72 hours. A change therefore
+  applies to episodes whose first wave is created afterward.
+- **Older unpinned episode.** An episode with a preexisting wave and no pin uses
+  live timing, including the same fallback when the row is absent. It receives
+  no backfilled pin.
+
+The read helper returns the installed schedule or the nominal schedule with
+revision `default`. New payloads carry `stage` alongside `reminderHours`.
 Renderers use the explicit stage; old payloads without it retain their previous
 hour mapping and rendered bytes. Unknown stages refuse through the handler's
 existing payload-error policy.
@@ -164,9 +174,9 @@ order even if you later change its configured hour. A wave created under a
 custom schedule still consumes its recorded stage after the schedule row is removed.
 Checkout waves written before stage labels were added use the historical first
 and last hour mapping.
-An unlabeled wave at any other hour consumes both stages. With an installed
-schedule, a compacted checkout wave consumes both stages because retention
-removed its stage label. With no installed schedule, compacted checkout waves
+An unlabeled wave at any other hour consumes both stages. While a schedule row
+is installed, a compacted checkout wave consumes both stages because retention
+removed its stage label. With no installed row, compacted checkout waves
 use the historical hour mapping. Abandoned-cart stages remain identifiable
 through their event types after compaction.
 
@@ -192,37 +202,59 @@ GRANT EXECUTE ON FUNCTION public.commerce_install_checkout_recovery_reminder_sch
 TO schedule_installer;
 ```
 
-Each order and reminder kind keeps the timing it started with. A change
-applies to episodes that create their first wave after the change. An episode
-started without an installed row keeps the checkout host offsets or cart
-defaults used for its first wave.
+A changed install counts each blocking order once. Both blocker predicates
+require an order in `pending_payment` and no pin for the wave's kind:
 
-The installer reports `checkout_recovery_schedule_change_blocked_open_episodes`
-with the number of blocking orders when a pending order has a wave from
-before pinning. Old checkout episodes block regardless of age. Old cart
-episodes block while they have a valid draft receipt and no settlement intent.
-When `./lifecycle up` reports `checkout_recovery_schedule_change_blocked_open_episodes`,
-the current schedule stays in effect and you can retry after the blocking
-orders are paid, cancelled, or their carts are no longer eligible.
+- **Checkout recovery.** The order has a checkout-recovery wave recognized by
+  the stage classifier. Compacted waves count. Operator and buyer link events
+  are outside this predicate. Order age does not affect it.
+- **Abandoned cart.** The order has an abandoned-cart wave on the `1h`, `24h` or
+  `72h` event route, at least one non-invalidated draft receipt and no settlement
+  intent. The guard does not check current consent or enqueue eligibility.
+
+A pin for one kind exempts only that kind. If neither predicate matches any
+order, the guard allows the changed install.
+
+When the guard refuses, PostgreSQL returns SQLSTATE `55000` and the message
+`checkout_recovery_schedule_change_blocked_open_episodes (N blocking orders)`.
+The separate `HINT` says the current schedule stays in effect and tells you when
+to retry. `installCheckoutRecoveryReminderSchedule` propagates the original
+database error with its code, message and hint. The starter's `./lifecycle up`
+shows the database message and count on stderr and omits the database hint.
+The outer command also reports `starter_installation_failed`.
+
+The current schedule stays in effect. Retry after the blocking orders are paid
+or cancelled. An abandoned cart also stops blocking when all its draft receipts
+are invalidated or it has a settlement intent.
 
 The host checkout window, activity, consent and payment gates, and token expiry
 still apply. For example, a 48-hour final checkout reminder needs a host window
 longer than 48 hours. Keep the request-policy offsets valid even when an
 installed schedule supplies timing.
 
-If your legacy cart reminder job runs under its own database role, run this
-grant as the database owner once after applying the episode pin migration.
-Replace `cart_runtime` with the role that runs the job.
+If your legacy cart reminder job runs under its own database role, keep that
+role's `EXECUTE` on `public.commerce_enqueue_abandoned_cart_reminders(integer)`.
+After applying the episode pin migration, run this grant once as the database
+owner. Replace `cart_runtime` with the role that runs the job.
 
 ```sql
 GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) TO cart_runtime;
 ```
 
-If the grant is missing, the job reports
-`checkout_recovery_cart_runtime_grant_required` and gives the command for its
-role. The built-in runtime role already has the grant. The cart job can enqueue
+The built-in runtime role already has the grant. The cart job can enqueue
 without access to episode rows or settings. The TypeScript read helper still
-needs settings SELECT.
+needs settings `SELECT`.
+
+If the role can call the entry point but lacks the helper grant, PostgreSQL
+refuses before writing with SQLSTATE `42501` and message
+`checkout_recovery_cart_runtime_grant_required`. The separate `HINT` is the
+exact `GRANT EXECUTE` statement for the calling role, quoted as needed. Run
+that statement as the database owner, then retry the job.
+
+The native cart cron returns HTTP 502 with the message, a newline and the full
+grant in `body.reason`. If it successfully records the failed run, the same
+text appears in the run's `error` and `metadata.reason` fields in
+`platform_job_runs`.
 
 ## Give an operator a payment link
 

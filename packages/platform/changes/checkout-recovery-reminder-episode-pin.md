@@ -1,10 +1,11 @@
 Apply the reminder episode pin migration before using the updated producers.
-A reminder episode keeps the timing it started with. Changes affect episodes
-that create their first wave after the change.
+A pinned episode retains its starting timing. A changed schedule supplies
+timing for episodes whose first wave is created after the change.
 
-Pending episodes with preexisting waves and no pin keep their current schedule
-and can refuse an install with `checkout_recovery_schedule_change_blocked_open_episodes`.
-Retry when the blocking orders close or their cart eligibility ends. Use
+Older episodes with preexisting waves and no pin read the live schedule
+and can block changes with `checkout_recovery_schedule_change_blocked_open_episodes`.
+See **Install reminder stages and hours** for the blocker conditions and
+when to retry. Use
 `READ COMMITTED` for changes and producers to avoid
 `checkout_recovery_schedule_isolation_unsupported`.
 

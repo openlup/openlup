@@ -187,7 +187,7 @@ it('names malformed installed data and rolls back before either producer writes'
 });
 it('tells a separate cart runtime which grant to apply before it can enqueue and pin a wave', async () => {
   await db.query('CREATE ROLE schedule_runtime NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
-  // This is the complete preexisting invoker-producer privilege set; no policy-table access.
+  // This fixture grants the old entry-point and relation privileges. It initially withholds both helper grants.
   await db.query(`GRANT USAGE ON SCHEMA public TO schedule_runtime;
     GRANT SELECT ON public.commerce_orders,public.clients,public.customer_communication_preferences,public.commerce_order_draft_receipts,
       public.commerce_settlement_intents,public.outbox_events TO schedule_runtime;
