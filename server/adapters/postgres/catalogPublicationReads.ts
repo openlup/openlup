@@ -50,7 +50,7 @@ const sqlRefusals = {
   catalog_publication_approval_state_valid: ["publication_approval_state_invalid", "The approved product details are invalid. Prepare and approve the product again."],
   catalog_publication_post_state_changed: ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."],
   catalog_publication_roster_limit: ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."],
-  catalog_publication_facts_invalid: ["publication_facts_invalid", "The SKU facts contain an unsupported field. Keep the document in its designated field and prepare the product again."],
+  catalog_publication_facts_invalid: ["publication_facts_invalid", "The saved facts contain an unsupported field. Keep the document in its designated field and prepare the product again."],
   catalog_publication_receipt_input_invalid: ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Re-export the original result and retry the restore."],
   catalog_publication_committed_at_valid: ["publication_time_invalid", "The publication date is out of range. Re-export a result dated between years 0001 and 9999."],
   catalog_publication_decided_at_valid: ["publication_decision_time_invalid", "The approval date is out of range. Re-export a decision dated between years 0001 and 9999."],

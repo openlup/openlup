@@ -714,6 +714,14 @@ it.each(["object", "serialized", "nested"] as const)("refuses a %s document carr
 });
 
 it("refuses a document carrier in the existing published SKU attributes field", async () => {
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    issue.facts.attributes = { document_payload: JSON.parse(issue.canonicalText) };
+    await insertGraph(db, issue);
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_facts_invalid" });
+});
+
 it("uses the same depth 48 boundary for SQL admission and the TypeScript detail page", async () => {
   const { rows: [{ max_depth: maxDepth } = {}] } = await pool.query<{ max_depth: number }>(
     "SELECT public.catalog_publication_max_depth() AS max_depth",

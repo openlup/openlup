@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
 import { actorId, decisionReceipt, decisionRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -117,6 +117,36 @@ it("refuses another product's revision at the pointer foreign key and rolls back
     constraint: "catalog_products_current_document_revision_same_product_fkey" });
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 }, 60_000);
+
+it("refuses a document carrier on the first legacy SKU projection write and during restore", async () => {
+  expect(packet.owned.find(entry => entry.table === "catalog_publications")!.rows).toEqual([]);
+  const { rows: [placed] } = await source.owner.query<{ id: string; row: string; facts: string }>(
+    "SELECT s.id, (to_jsonb(s) || jsonb_build_object('publication_facts', p.facts))::text AS row, p.facts::text AS facts "
+    + "FROM public.catalog_skus s JOIN public.catalog_products c ON c.id=s.product_id "
+    + "JOIN public.catalog_product_document_revisions d ON d.id=c.current_document_revision_id "
+    + "CROSS JOIN LATERAL (SELECT jsonb_build_object('document', d.document_payload) AS facts) p "
+    + "WHERE c.id=$1", [products[0]],
+  );
+  if (!placed) throw new Error("Legacy SKU fixture is missing");
+  const refused = await transaction(source.owner, db => db.query(
+    "UPDATE public.catalog_skus SET publication_facts=$2 WHERE id=$1", [placed.id, placed.facts],
+  )).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(refused)).toMatchObject({ reason: "publication_facts_invalid" });
+  expect((await source.owner.query("SELECT publication_facts FROM public.catalog_skus WHERE id=$1", [placed.id])).rows)
+    .toEqual([{ publication_facts: null }]);
+
+  const pristine = await journeyCensus(target.owner);
+  const edited = structuredClone(packet);
+  const table = edited.owned.find(entry => entry.table === "catalog_skus")!;
+  const index = table.rows.findIndex(row => JSON.parse(row).id === placed.id);
+  expect(index).toBeGreaterThanOrEqual(0);
+  table.rows[index] = placed.row;
+  rehash(edited);
+  await expect(restore(target.owner, edited)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_facts_invalid" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+}, 65_000);
 
 it("preserves a null document pointer and a null primary SKU without changing product rows", async () => {
   expect(await restore()).toMatchObject({ replayed: false });

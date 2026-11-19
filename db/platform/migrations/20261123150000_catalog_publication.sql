@@ -421,7 +421,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_presentation_valid(jsonb) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_publication_facts_valid(p_value jsonb) RETURNS boolean
+CREATE FUNCTION public.catalog_publication_carriers_valid(p_value jsonb) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
  WITH RECURSIVE nodes(key,value) AS (
   SELECT NULL::text,p_value
@@ -432,10 +432,9 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS 
    SELECT NULL::text,item.value FROM jsonb_array_elements(CASE WHEN jsonb_typeof(n.value)='array' THEN n.value ELSE '[]'::jsonb END) item
   ) item
  )
- SELECT jsonb_typeof(p_value)='object'
-  AND NOT EXISTS (SELECT 1 FROM nodes WHERE translate(lower(key),'_','') IN ('document','documentpayload','canonicaltext'))
+ SELECT NOT EXISTS (SELECT 1 FROM nodes WHERE translate(lower(key),'_','') IN ('document','documentpayload','canonicaltext'))
 $$;
-REVOKE ALL ON FUNCTION public.catalog_publication_facts_valid(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_carriers_valid(jsonb) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_content_problem(p_content jsonb) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -444,7 +443,7 @@ BEGIN
  IF NOT public.catalog_publication_presentation_valid(p_content->'presentation') THEN RETURN 'presentation'; END IF;
  FOREACH field IN ARRAY ARRAY['offerMemberships','requestedModes','publicationSkus'] LOOP
   items := p_content->field;
-  IF jsonb_array_length(items)>10000
+  IF NOT public.catalog_publication_carriers_valid(items) OR jsonb_array_length(items)>10000
    OR EXISTS (SELECT 1 FROM jsonb_array_elements(items) item GROUP BY item->>'skuCode' HAVING count(*)>1)
    OR EXISTS (
     SELECT 1 FROM jsonb_array_elements(items) item
@@ -464,7 +463,7 @@ BEGIN
          AND public.catalog_publication_text_valid(item->'title',500,true)
          AND CASE WHEN jsonb_typeof(item->'minQuantity')='number' AND item->>'minQuantity' ~ '^[1-9][0-9]{0,9}$'
            THEN (item->>'minQuantity')::numeric<=2147483647 ELSE false END
-         AND jsonb_typeof(item->'isAddon')='boolean' AND public.catalog_publication_facts_valid(item->'facts')
+         AND jsonb_typeof(item->'isAddon')='boolean' AND jsonb_typeof(item->'facts')='object'
       END) IS DISTINCT FROM true
    ) THEN RETURN field; END IF;
  END LOOP;
@@ -541,7 +540,7 @@ BEGIN
   OR public.catalog_publication_text_valid(body #> '{source,commandKey}',240,true) IS DISTINCT FROM true THEN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
  END IF;
- IF public.catalog_publication_facts_valid(body->'facts') IS DISTINCT FROM true THEN
+ IF jsonb_typeof(body->'facts') IS DISTINCT FROM 'object' OR NOT public.catalog_publication_carriers_valid(body) THEN
   RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
  END IF;
  IF public.catalog_publication_text_valid(body->'title',500,false) IS DISTINCT FROM true THEN
@@ -655,6 +654,10 @@ BEGIN
   OR public.catalog_publication_text_valid(product #> '{document,documentRef}',240,true) IS DISTINCT FROM true
   OR public.catalog_publication_text_valid(product #> '{document,sourceRef}',240,true) IS DISTINCT FROM true THEN
   RAISE EXCEPTION 'catalog_publication_document_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_document_invalid';
+ END IF;
+ -- Content has been checked by field. The document reference contains only its exact identity.
+ IF NOT public.catalog_publication_carriers_valid(manifest #- '{product,document}' #- '{product,content}') THEN
+  RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
  END IF;
  RETURN p_text;
 EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
@@ -905,6 +908,12 @@ BEGIN
    RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
   END IF;
   PERFORM public.catalog_publication_assert_issued(NEW.product_id,NEW.id);
+ WHEN 'catalog_skus' THEN
+  IF NEW.publication_facts IS NULL OR
+   (TG_OP='UPDATE' AND NEW.publication_facts IS NOT DISTINCT FROM OLD.publication_facts) THEN RETURN NULL; END IF;
+  IF NOT public.catalog_publication_carriers_valid(NEW.publication_facts) THEN
+   RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
+  END IF;
  WHEN 'catalog_operator_receipts' THEN
   PERFORM public.catalog_publication_assert_receipt(NEW.scope_id,NEW.command_key);
  WHEN 'catalog_publication_decisions' THEN
@@ -940,6 +949,7 @@ REVOKE ALL ON FUNCTION public.catalog_publication_admit() FROM PUBLIC;
 
 CREATE CONSTRAINT TRIGGER catalog_publications_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publications DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_sku_revisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_sku_revisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_sku_admit();
+CREATE CONSTRAINT TRIGGER catalog_skus_publication_facts_admitted AFTER INSERT OR UPDATE ON public.catalog_skus DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_receipts_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_operator_receipts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_decisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_heads_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_heads DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
