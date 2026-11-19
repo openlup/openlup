@@ -156,18 +156,27 @@ describe("self-contained catalogue preview", () => {
     f.setHead({ ...head, revision: 2 });
     await expect(f.service.validate(headed.candidateRef)).rejects.toMatchObject({ code: "head_conflict" });
   });
-  it.each(["immutable", "current", "draft"] as const)("classifies an unavailable %s lineage lookup in the released facade", async lookup => {
+  it.each([
+    { id: "Q-LEGACY-IMMUTABLE-MISSING", lookup: "immutable", code: "head_conflict" },
+    { id: "Q-LEGACY-LATEST-MISSING", lookup: "draft", code: "candidate_invalid" },
+    { id: "an immutable lookup timeout", lookup: "immutable-timeout", code: "candidate_dependency_unavailable" },
+    { id: "a current head timeout", lookup: "current", code: "candidate_dependency_unavailable" },
+    { id: "a latest draft timeout", lookup: "draft-timeout", code: "candidate_dependency_unavailable" },
+  ])("classifies $id in the released facade", async ({ lookup, code }) => {
     const f = setup(), head = { publicationId: listId, revision: 1, documentDigest: "c".repeat(64) };
     f.setHead(head);
     const query = { draftId, draftRevision: 1, expectedHead: head };
     const preview = await f.service.prepareCandidate(query);
     const readDraft = f.deps.readDraft;
+    const timedOut = async () => { throw new Error("synthetic lineage timeout"); };
     if (lookup === "immutable") f.deps.resolveHead = async () => null;
-    if (lookup === "current") f.deps.currentHead = async () => { throw new Error("synthetic current head timeout"); };
-    if (lookup === "draft") f.deps.readDraft = async (id, revision) => revision === undefined ? null : readDraft(id, revision);
-    await expect(f.service.prepareCandidate(query)).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
-    await expect(f.service.validate(preview.candidateRef)).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
-    await expect(f.service.compareCandidate({ ...preview, expectedHead: head })).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
+    if (lookup === "immutable-timeout") f.deps.resolveHead = timedOut;
+    if (lookup === "current") f.deps.currentHead = timedOut;
+    if (lookup === "draft" || lookup === "draft-timeout")
+      f.deps.readDraft = async (id, revision) => revision !== undefined ? readDraft(id, revision) : lookup === "draft" ? null : timedOut();
+    await expect(f.service.prepareCandidate(query)).rejects.toMatchObject({ code });
+    await expect(f.service.validate(preview.candidateRef)).rejects.toMatchObject({ code });
+    await expect(f.service.compareCandidate({ ...preview, expectedHead: head })).rejects.toMatchObject({ code });
   });
   it("keeps the exact donor price command grammar and refuses unknown payload versions", () => {
     expect(catalogDraftPriceOperationV2Schema.parse(operation)).toEqual(operation);

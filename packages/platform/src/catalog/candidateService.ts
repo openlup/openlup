@@ -38,7 +38,7 @@ const refuse = (code: CatalogCandidateError["code"], message?: string): never =>
   if (message) error.message = message;
   throw error;
 };
-/** Map failed reads and unusable results to unavailable before any lineage comparison. */
+/** Keep returned values distinct from a rejected lineage read. */
 async function readLineage<T>(read: () => Promise<T | undefined>): Promise<T | undefined> {
   try { return await read(); } catch { return undefined; }
 }
@@ -92,13 +92,20 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       let identityPayload = payload;
       if (!payload?.product?.type) return refuse("candidate_invalid");
       const referenceHead = reference.head;
-      const observedHead = referenceHead === null ? undefined : await readLineage(async () =>
-        headSchema.safeParse(await deps.resolveHead(referenceHead)).data);
-      const expectedHead = referenceHead === null ? null : expected ?? observedHead ?? referenceHead;
-      let identityHead = expectedHead;
+      let identityHead = referenceHead;
       const readHeadLineage = async (legacy = false) => {
-        const latest = await readLineage(async () => readPublicationDraftEnvelope(await deps.readDraft(record.draftId)) ?? undefined);
-        if (latest && (latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status)) {
+        const resolved = referenceHead === null ? undefined : await readLineage(() => deps.resolveHead({ ...referenceHead }));
+        const observedHead = headSchema.safeParse(resolved).data;
+        if (legacy && referenceHead !== null) {
+          if (resolved === undefined) return refuse("candidate_dependency_unavailable");
+          if (!observedHead || !matchesPublicationHead(referenceHead, observedHead)) return refuse("head_conflict");
+        }
+        const fullHead = referenceHead === null ? undefined : expected ?? observedHead;
+        const expectedHead = fullHead ?? referenceHead;
+        identityHead = expectedHead;
+        const latestRead = await readLineage(() => deps.readDraft(record.draftId));
+        const latest = legacy ? latestRead : readPublicationDraftEnvelope(latestRead) ?? undefined;
+        if (latest !== undefined && (!latest || latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status)) {
           if (legacy) return refuse("candidate_invalid");
           throw new CatalogPublicationError("catalog_publication_draft_advanced", "conflict",
             publicationIssue("catalog_publication_draft_advanced", "structural", "draft", payload.product.type.key));
@@ -116,7 +123,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         }
         const unavailable = latest === undefined || head === undefined || referenceHead !== null && observedHead === undefined;
         if (legacy && unavailable) return refuse("candidate_dependency_unavailable");
-        return { head, unavailable };
+        return { head, unavailable, expectedHead: fullHead };
       };
       // Older drafts keep the released lineage checks. Publication admission runs before lineage is compared.
       if (!preparePublication) await readHeadLineage(true);
@@ -167,8 +174,8 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         preparation = unknownPreparation(definition.key);
       } else if (preparePublication) {
         const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
-          expectedHead, evaluation, observations: publication,
-          readCurrentHead: () => readHeadLineage(),
+          expectedHead: referenceHead === null ? null : expected ?? referenceHead,
+          evaluation, observations: publication, readCurrentHead: () => readHeadLineage(),
           attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
         if (result.failure?.code === "head_conflict"
           || (result.failure?.code === "candidate_invalid" && !result.failure.diagnostic?.message)) return refuse(result.failure.code);

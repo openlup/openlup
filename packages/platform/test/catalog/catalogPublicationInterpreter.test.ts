@@ -154,15 +154,22 @@ function replaceDocument(data: Fixture, retained = false) {
 }
 const movedHead = { publicationId: "50000000-0000-4000-8000-000000000007", revision: 4, documentDigest: "e".repeat(64) };
 const beforeRoute = { readiness: routeConflict, routeCalls: [0, 0, 0] } as const;
+function bindCallbackForAnotherType(data: Fixture) {
+  const { validateContent: _rule, publicationRules: _installed, ...type } = data.definition;
+  const pack = withCatalogPublicationRules({ id: "example:paired-rules", namespace: "example", version: 1, openlupRange: "1.x",
+    taxClasses: [], capabilities: {}, types: [type, { ...type, key: "example:other" }] }, () => Buffer.from(artifact));
+  data.definition = { ...data.definition, validateContent: pack.types[1]!.validateContent };
+  data.registry = { resolve: () => data.definition };
+}
 const cases: Case[] = [
-  { id: "a callback verified for another type cannot bind the selected definition", arrange(data) {
-    const { validateContent: _rule, publicationRules: _installed, ...type } = data.definition;
-    const pack = withCatalogPublicationRules({ id: "example:paired-rules", namespace: "example", version: 1, openlupRange: "1.x",
-      taxClasses: [], capabilities: {}, types: [type, { ...type, key: "example:other" }] }, () => Buffer.from(artifact));
-    data.definition = { ...data.definition, validateContent: pack.types[1]!.validateContent };
-    data.registry = { resolve: () => data.definition };
-  }, expected: reason("catalog_publication_rules_binding_mismatch"), evidenceCalls: 0, ...beforeRoute,
-  diagnostic: { phase: "structural", path: "product.type", subject: "example:article" } },
+  { id: "a callback verified for another type cannot bind the selected definition", arrange: bindCallbackForAnotherType,
+    expected: reason("catalog_publication_rules_binding_mismatch"), evidenceCalls: 0, ...beforeRoute,
+    diagnostic: { phase: "structural", path: "product.type", subject: "example:article" } },
+  { id: "Q-CROSS-TYPE-HEADED-GATE", fixture: "revision", arrange: bindCallbackForAnotherType, draftAdvanced: true,
+    resolveHead: async () => { throw new Error("synthetic immutable head timeout"); },
+    currentHead: async () => { throw new Error("synthetic current head timeout"); },
+    expected: reason("catalog_publication_rules_binding_mismatch"), evidenceCalls: 0, ...beforeRoute,
+    diagnostic: { phase: "structural", path: "product.type", subject: "example:article" } },
   { id: "retained activation media cannot be removed from the proposed presentation", fixture: "revision", arrange(data) {
     const retained = structuredClone(input().record);
     retained.draftId = "30000000-0000-4000-8000-000000000003";
@@ -501,20 +508,25 @@ const cases: Case[] = [
   }, media: async () => true, expected: reason("catalog_publication_source_mismatch") },
   { id: "A-10 installed rules keep their configured refusal", rulesAsset: artifact.replace("validateProduct: () => []", 'validateProduct: () => ["package_unsupported"]'),
     expected: reason("package_unsupported"), diagnostic: { path: "product", phase: "structural", subject: "example:article" } },
-  ...([false, true] as const).map((partial): Case => ({
-    id: partial ? "M-ATTRIBUTE-BOUND-WITH-MALFORMED-SIBLING" : "A-12 omitted SKU attributes keep the effective projection byte bound",
-    fixture: "revision", arrange(data) {
-      data.definition = { ...data.definition, attributes: [{ key: "label", scope: "variant", public: true,
+  ...([
+    { scope: "variant", complete: "A-12 omitted SKU attributes keep the effective projection byte bound",
+      partial: "M-ATTRIBUTE-BOUND-WITH-MALFORMED-SIBLING", path: "/skus/0/attributes/label", subject: "ARTICLE" },
+    { scope: "product", complete: "Q-PRODUCT-ATTRIBUTE-CONTROL", partial: "Q-PRODUCT-ATTRIBUTE-MALFORMED-SIBLING",
+      path: "/productAttributes/label", subject: "example:article" },
+  ] as const).flatMap(({ scope, complete, partial, path, subject }) => [complete, partial].map((id): Case => ({
+    id, fixture: "revision", arrange(data) {
+      data.definition = { ...data.definition, attributes: [{ key: "label", scope, public: true,
         valueType: { kind: "text", maxLength: 2048 }, required: false, cardinality: { min: 0, max: 1 },
         filterable: false, facetable: false, displayOrder: 0, labels: {} }] };
       data.registry = { resolve: () => data.definition };
       data.installedDefinitionDigest = catalogDefinitionDigest(data.definition);
-      data.evidence.skus[0]!.attributes = { label: "é".repeat(1025) };
-      if (partial) data.evidence.skus.unshift(null as never);
+      const retained = scope === "product" ? data.evidence.product! : data.evidence.skus[0]!;
+      retained.attributes = { label: "é".repeat(1025) };
+      if (id === partial) data.evidence.skus.unshift(null as never);
     },
     expected: reason("attribute_projection_text_too_large"), routeCalls: [1, 1, 1],
-    outcome: "blocked-input", diagnostic: { phase: "structural", path: "/skus/0/attributes/label", subject: "ARTICLE" },
-  })),
+    outcome: "blocked-input", diagnostic: { phase: "structural", path, subject },
+  }))),
   { id: "D-034 publication fact intent names an incoming SKU", arrange: data => {
     data.payload.product.sharedContent.publicationSkus.push({ ...data.payload.product.sharedContent.publicationSkus[0]!, skuCode: "STRAY" });
   }, expected: reason("intent_sku_absent") },
@@ -685,7 +697,9 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
     if (latestReadRejects) return rejectLatest();
     return { ...data.record, revision: data.record.revision + 1 };
   }) : undefined;
-  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current, readDraft, resolveHead);
+  const immutableHead = resolveHead && vi.fn(resolveHead);
+  const decisionHead = resolveHead && vi.fn(async () => ({ head: data.expectedHead, unavailable: true }));
+  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current, readDraft, immutableHead);
   const checkRouteCalls = (expectedCalls?: number) => {
     if (expectedCalls !== undefined) expect(observations.presentationReadiness).toHaveBeenCalledTimes(expectedCalls);
     observations.presentationReadiness.mockClear();
@@ -699,7 +713,10 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   expect(await service.compareCandidate({ ...preview, expectedHead: data.expectedHead })).toEqual(preview);
   checkRouteCalls(routeCalls?.[0]);
   if (evidenceCalls !== undefined) expect(readEvidence).toHaveBeenCalledTimes(evidenceCalls);
-  if (substitute && current) expect(current).not.toHaveBeenCalled();
+  if (expected[0] === "catalog_publication_rules_binding_mismatch") {
+    if (immutableHead) expect(immutableHead).not.toHaveBeenCalled();
+    if (current) expect(current).not.toHaveBeenCalled();
+  }
   if (draftAdvanced) expect(readDraft?.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
   expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
@@ -715,7 +732,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
     const result = compileCatalogPublication({ ...data, record, evidence, observations,
       ...(latestReadRejects && { readCurrentHead: rejectLatest }),
-      ...(resolveHead && { readCurrentHead: async () => ({ head: data.expectedHead, unavailable: true }) }),
+      ...(decisionHead && { readCurrentHead: decisionHead }),
       ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
     const decisionReason = expected[index + 1];
     if (decisionReason) await expect(result).rejects.toMatchObject({ code: decisionReason,
@@ -733,6 +750,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
     }
     checkRouteCalls(routeCalls?.[index + 1]);
   }
+  if (decisionHead && expected[0] === "catalog_publication_rules_binding_mismatch") expect(decisionHead).not.toHaveBeenCalled();
   expect(canonicalCatalogDraftJson(record.payload)).toBe(before);
   if (priceListRefusal) expect(preview.preparation?.structural.issues).toContainEqual({ code: "price_list_not_found", phase: "pricing",
     path: "skus.0.priceOperations.0", subject: priceList,
@@ -755,6 +773,24 @@ it("rules install rejects executable bytes that differ from the declared digest"
   expect(() => loadCatalogPublicationRules(declared, Buffer.from(alternate))).toThrow(/attach the build to the product type/);
   await expect(compileCatalogPublication({ ...data, ...setupRules(alternate) })).rejects.toMatchObject({ code: "title_required" });
   await expect(compileCatalogPublication(data)).resolves.toHaveProperty("product.id", data.record.productId);
+});
+
+it("Q-PRICE-READ-ALIASES-SEALED-EFFECT discards a price reader mutation", async () => {
+  const data = input();
+  withPrice(data);
+  const validatePrices = vi.fn<NonNullable<CatalogCandidateDeps["validatePrices"]>>(async payload => {
+    const price = payload.skus[0]!.priceOperations![0]!;
+    expect(price.unitPriceMinor).toBe(100);
+    price.unitPriceMinor = 101;
+    return [];
+  });
+  for (const mode of ["first-decision", "compile"] as const) {
+    const effects = await compileCatalogPublication({ ...data, validatePrices }, mode);
+    expect(effects.priceOperations).toMatchObject([{ unitPriceMinor: 100 }]);
+  }
+  expect(validatePrices).toHaveBeenCalledTimes(1);
+  expect(validatePrices.mock.calls[0]?.[0].skus[0]?.priceOperations?.[0]?.unitPriceMinor).toBe(101);
+  expect(data.payload.skus[0]?.priceOperations?.[0]?.unitPriceMinor).toBe(100);
 });
 
 it("a supplied invalid optional hook refuses before the installer executor", async () => {

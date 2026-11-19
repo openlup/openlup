@@ -32,7 +32,8 @@ export interface CatalogPublicationCompileInput {
   definition: CatalogProductTypeDefinition;
   installedDefinitionDigest: string;
   expectedHead: CatalogHeadRef | null;
-  readCurrentHead?: () => Promise<{ head: CatalogHeadRef | null | undefined; unavailable: boolean }>;
+  /** A facade can resolve the full expected head after admission. */
+  readCurrentHead?: () => Promise<{ head: CatalogHeadRef | null | undefined; unavailable: boolean; expectedHead?: CatalogHeadRef | undefined }>;
   evidence?: CatalogPublicationEvidence | null;
   evaluation?: CatalogRulesContext;
   attributeReferences?: CatalogAttributeReferencePort | undefined;
@@ -568,7 +569,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
 
   async function bindEvidence({ payload, content, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue,
     validationPayload, draftIssues }: Awaited<ReturnType<typeof admit>>) {
-    const { record, definition, expectedHead: requestedHead, observations } = input;
+    const { record, definition, observations } = input;
     position.path = "publication";
     let lineage: Awaited<ReturnType<NonNullable<typeof input.readCurrentHead>>>;
     try { lineage = await input.readCurrentHead?.() ?? { head: undefined, unavailable: Boolean(input.readCurrentHead) }; }
@@ -576,6 +577,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") throw error;
       lineage = { head: undefined, unavailable: true };
     }
+    const requestedHead = lineage.expectedHead ?? input.expectedHead;
     const current = lineage.head;
     if (current !== undefined && !matchesPublicationHead(requestedHead, current)) publicationRefuse("head_conflict", "conflict");
     knownHead = requestedHead === null ? null : requestedHead.documentDigest === undefined ? current
@@ -628,9 +630,9 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const priceOperations = payload.skus.flatMap(sku => sku.priceOperations ?? []);
     async function checkPrices() {
       if (!priceOperations.length) return;
-      const prices = z.array(z.object({ path: z.string(), code: z.string() })).safeParse(await observe(() => input.validatePrices?.({
+      const prices = z.array(z.object({ path: z.string(), code: z.string() })).safeParse(await observe(() => input.validatePrices?.(structuredClone({
         ...validationPayload, product: { ...validationPayload.product, sharedContent: content },
-      }) ?? Promise.resolve(undefined)));
+      })) ?? Promise.resolve(undefined)));
       if (!prices.success) structural.push(missing("price_validation_unavailable", "skus"));
       else {
         for (const issue of prices.data) {
@@ -1077,7 +1079,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       position.path = "product";
       position.subject = definition.key;
       if (missingState) {
-        await checkRetainedAttributes(retainedState.skus);
+        await checkRetainedAttributes(retainedState.skus, payload.product.attributes ?? retainedState.product?.attributes);
         return;
       }
       const result = knownProduct();
