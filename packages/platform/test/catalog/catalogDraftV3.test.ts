@@ -92,8 +92,7 @@ it("catalog_candidate_digest_covers_v3_publication_inputs", async () => {
     currentHead: async () => ({ outcome: "unpublished" as const }), resolveHead: async () => null, validatePrices: async () => [] };
   const service = createCatalogCandidateService(deps), query = { draftId, draftRevision: 1, expectedHead: null };
   const original = await service.prepareCandidate(query);
-  expect(original.preparation?.structural.outcome).toBe("blocked-input");
-  expect(original.issues.map(issue => issue.code)).toContain("document_reference_missing");
+  expect(original.issues).toEqual([]);
   expect(await createCatalogCandidateService(deps).validate(original.candidateRef)).toEqual(original);
   const mutations: ((value: CatalogDraftPayloadV3) => void)[] = [
     value => { value.publication.operations.reverse(); },
