@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createPostgresStockAvailability } from "./postgresStockAvailability.js";
 import { installedPolicy } from "./installedPolicy.js";
 import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
 
@@ -10,6 +11,7 @@ const policySchema = () => z.strictObject({
   renewalProtectionDays: z.int().min(1).max(3660),
 });
 const schema = policySchema();
+const policyRule = "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660.";
 const hasRevision = (value: RenewalStockProtectionPolicy) => value.revision.trim().length > 0;
 
 /** @experimental Discovery metadata for the installed renewal stock protection policy. */
@@ -21,10 +23,11 @@ export function describeRenewalStockProtectionSetting() {
     goal: "Set the renewal stock protection horizon used to calculate stock available to new purchases.",
     schemaVersion: 1,
     schema: policySchema(),
+    previewSchema: previewEffectSchema(),
     rules: [{
       code,
       path: [],
-      description: "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660.",
+      description: policyRule,
       check: hasRevision,
     }],
     examples: [
@@ -40,7 +43,7 @@ export function describeRenewalStockProtectionSetting() {
       frozenOn: ["Existing reservations keep their quantities and expiry times."],
       impact: "operations",
     },
-    runtime: { level: "read-only", reason: "The starter editor still supplies its configured horizon to the stock read port." },
+    runtime: { level: "preview", reason: "Runtime changes require a shared write path and proof that rollback restores a prior value and an absent setting." },
     change: { operation: "installRenewalStockProtectionPolicy" },
   } as const;
 }
@@ -71,4 +74,139 @@ export async function readRenewalStockProtectionPolicy(db: Executor): Promise<Re
 /** @experimental Read an explicit installed override, preserving absence. */
 export async function readRenewalStockProtectionOverride(db: Executor): Promise<RenewalStockProtectionPolicy | undefined> {
   return store(db).readOverride();
+}
+
+const previewEffectSchema = () => z.strictObject({
+  existingReservations: z.literal("unchanged"),
+  newPurchaseAvailability: z.enum(["equal-or-lower", "equal-or-higher", "unchanged", "undetermined"]),
+  skus: z.array(z.strictObject({
+    sku: z.string(),
+    source: z.enum(["provider", "local", "missing"]),
+    stale: z.boolean(),
+    currentAvailableForNewPurchases: z.number().nullable(),
+    proposedAvailableForNewPurchases: z.number().nullable().optional(),
+  })),
+});
+
+const remediationSchema = z.strictObject({ retry: z.boolean(), action: z.string(), command: z.string() });
+const validationResult = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("valid"), value: policySchema() }),
+  z.strictObject({
+    state: z.literal("invalid"),
+    code: z.literal(code), path: z.array(z.string()), rule: z.string(), hint: z.string(), remediation: remediationSchema,
+  }),
+]);
+
+export const renewalStockProtectionPreviewResult = z.strictObject({
+  schemaVersion: z.literal(1),
+  key: z.literal(key),
+  asOf: z.iso.datetime(),
+  current: policySchema(),
+  proposed: z.json(),
+  difference: z.strictObject({ renewalProtectionDays: z.int() }).nullable(),
+  mode: z.null(),
+  revisionNo: z.null(),
+  validation: z.strictObject({
+    typescript: validationResult,
+    postgres: z.discriminatedUnion("state", [
+      ...validationResult.options,
+      z.strictObject({ state: z.literal("unavailable"), remediation: remediationSchema }),
+    ]),
+  }),
+  effect: previewEffectSchema(),
+  uncertainty: z.string(),
+});
+
+type Validation = z.infer<typeof validationResult>;
+type PostgresValidation = z.infer<typeof renewalStockProtectionPreviewResult>["validation"]["postgres"];
+type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
+
+const invalidPolicy: Validation = {
+  state: "invalid", code, path: ["proposed"], rule: policyRule,
+  hint: "Check the value schema and examples for inventory_renewal_protection.",
+  remediation: {
+    retry: true,
+    action: "Correct the proposed value and repeat the preview.",
+    command: "node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json",
+  },
+};
+
+function validateProposed(proposed: unknown): Validation {
+  try {
+    return { state: "valid", value: validateRenewalStockProtection(proposed) };
+  } catch {
+    return invalidPolicy;
+  }
+}
+
+async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"]): Promise<PostgresValidation> {
+  try {
+    const { rows } = await db.query("SELECT public.inventory_renewal_protection_validate($1::jsonb) AS value", [JSON.stringify(proposed)]);
+    return { state: "valid", value: policySchema().parse(rows[0]?.value) };
+  } catch (error) {
+    if (typeof error !== "object" || error === null || !("code" in error)) throw error;
+    if (error.code === "22023" || error.code === "22P05") return invalidPolicy;
+    if (error.code !== "42501" && error.code !== "42883") throw error;
+    return {
+      state: "unavailable",
+      remediation: {
+        retry: true,
+        action: "Check that the validator is installed and use a connection authorized to execute it.",
+        command: "node --experimental-strip-types host/settings.ts preview --help",
+      },
+    };
+  }
+}
+
+/** @experimental A host-owned pool and stock source for read-only preview. */
+export interface RenewalStockProtectionPreviewConnection {
+  db: { connect(): Promise<Executor & { release(error?: boolean): void }> };
+  sourceKey: string;
+}
+
+/** @experimental Preview installed and proposed renewal stock protection at the same observation instant. */
+export async function previewRenewalStockProtection(
+  settingKey: typeof key,
+  proposed: PreviewResult["proposed"],
+  context: RenewalStockProtectionPreviewConnection & { asOf: string; skus: readonly string[] },
+): Promise<PreviewResult> {
+  const typescript = validateProposed(proposed);
+  const client = await context.db.connect();
+  let releaseWithError = true;
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const current = await readRenewalStockProtectionPolicy(client);
+    const stock = createPostgresStockAvailability(client, { sourceKey: context.sourceKey, now: () => context.asOf });
+    const rows = await stock.readInstalled(context.skus);
+    // A PostgreSQL refusal aborts the transaction. Perform validation after the snapshot reads.
+    const postgres = await validateInPostgres(client, proposed);
+    const accepted = postgres.state === "unavailable" ? typescript : postgres;
+    const days = accepted.state === "valid"
+      ? accepted.value.renewalProtectionDays - current.renewalProtectionDays
+      : null;
+    return renewalStockProtectionPreviewResult.parse({
+      schemaVersion: 1, key: settingKey, asOf: context.asOf, current, proposed,
+      difference: days === null ? null : { renewalProtectionDays: days },
+      mode: null, revisionNo: null,
+      validation: { typescript, postgres },
+      effect: {
+        existingReservations: "unchanged",
+        newPurchaseAvailability: days === null ? "undetermined"
+          : days > 0 ? "equal-or-lower" : days < 0 ? "equal-or-higher" : "unchanged",
+        skus: [...rows.values()].map(row => ({
+          sku: row.sku, source: row.source, stale: row.stale,
+          currentAvailableForNewPurchases: row.source === "missing" ? null : row.availableForNewPurchases,
+          proposedAvailableForNewPurchases: null,
+        })),
+      },
+      uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change. Mode and revision number are not available yet.",
+    });
+  } finally {
+    try {
+      await client.query("ROLLBACK");
+      releaseWithError = false;
+    } finally {
+      client.release(releaseWithError);
+    }
+  }
 }

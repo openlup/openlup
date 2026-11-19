@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
+import { toolInputSchema } from "../../src/operations/index.js";
+import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
-import { explainSetting, listSettings, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
+import { explainSetting, listSettings, previewSetting, settingsPreviewRequest, settingsReadTools, showSetting, type SettingPreviewer } from "../../src/operations/server/settingsRead.js";
 import {
-  settingsListRequest, settingsListResult, settingsShowRequest, settingsShowResult,
+  settingsListRequest, settingsListResult, settingsShowRequest, settingsShowResult, refusalSchema,
 } from "../../src/operations/server/settingsCatalog.js";
 import { z } from "zod";
 
@@ -145,14 +146,19 @@ describe("settings show", () => {
 });
 
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
-  const [list, show] = settingsReadTools;
-  expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show"]);
+  const [list, show, preview] = settingsReadTools;
+  expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show", "settings__preview"]);
   for (const [tool, request] of [
-    [list, settingsListRequest], [show, settingsShowRequest],
+    [list, settingsListRequest], [show, settingsShowRequest], [preview, settingsPreviewRequest],
   ] as const) {
     expect(tool.annotations).toEqual({ readOnlyHint: true });
     expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
   }
+  expect(preview.description).toMatch(/before any change.*remediation/);
+  expect(preview.outputSchema).toEqual({
+    type: "object",
+    ...toolInputSchema(z.union([renewalStockProtectionPreviewResult, z.strictObject({ refusal: refusalSchema })]), "output"),
+  });
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
   expect(settingsListResult.parse(listSettings({ goal: "inventory buffer" })).entries.map(entry => entry.key)).toEqual([key]);
@@ -163,4 +169,67 @@ it("projects read-only MCP inputs and results from the settings read contracts",
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
     remediation: expect.objectContaining({ command: "node --experimental-strip-types host/settings.ts list", retry: true }),
   }) });
+});
+
+
+const previewKey = "inventory_renewal_protection";
+const installed = { revision: "existing", renewalProtectionDays: 14 };
+const asOf = new Date(0).toISOString();
+
+function previewConnection(postgres: { value: unknown } | { code: string }) {
+  const release = vi.fn();
+  const query = vi.fn().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ value_text: JSON.stringify(installed) }] });
+  if ("code" in postgres) query.mockRejectedValueOnce(postgres);
+  else query.mockResolvedValueOnce({ rows: [postgres] });
+  query.mockResolvedValueOnce({ rows: [] });
+  const preview: SettingPreviewer<Awaited<ReturnType<typeof previewRenewalStockProtection>>> = (proposed, input) =>
+    previewRenewalStockProtection(previewKey, proposed, {
+      ...input, sourceKey: "fixture", db: { connect: async () => ({ query, release }) },
+    });
+  return { release, query, previewers: { [previewKey]: preview } };
+}
+
+it.each([[7, "equal-or-higher"], [14, "unchanged"], [21, "equal-or-lower"]])(
+  "reports the qualitative direction for a proposed horizon of %i days", async (renewalProtectionDays, direction) => {
+    const proposed = { revision: "candidate", renewalProtectionDays };
+    const connection = previewConnection({ value: proposed });
+    expect(await previewSetting({ key: previewKey, proposed, asOf }, connection.previewers)).toMatchObject({
+      current: installed, proposed, difference: { renewalProtectionDays: renewalProtectionDays - 14 },
+      effect: { existingReservations: "unchanged", newPurchaseAvailability: direction, skus: [] },
+    });
+    expect(connection.release).toHaveBeenCalledWith(false);
+  },
+);
+
+it("reports TypeScript validation when PostgreSQL validator execution is denied", async () => {
+  const proposed = { revision: "candidate", renewalProtectionDays: 21 };
+  const connection = previewConnection({ code: "42501" });
+  expect(await previewSetting({ key: previewKey, proposed, asOf }, connection.previewers)).toMatchObject({
+    validation: {
+      typescript: { state: "valid", value: proposed },
+      postgres: { state: "unavailable", remediation: { retry: true, action: expect.stringContaining("authorized") } },
+    },
+  });
+  expect(connection.query).toHaveBeenLastCalledWith("ROLLBACK");
+  expect(connection.release).toHaveBeenCalledWith(false);
+});
+
+it("reports both invalid outcomes without a quantified difference or a change direction", async () => {
+  const proposed = { revision: "candidate", renewalProtectionDays: 0 };
+  const invalid = { state: "invalid", code: "inventory_renewal_protection_policy_invalid", remediation: { retry: true } };
+  expect(await previewSetting({ key: previewKey, proposed, asOf }, previewConnection({ code: "22023" }).previewers)).toMatchObject({
+    proposed, difference: null,
+    validation: { typescript: invalid, postgres: invalid },
+    effect: { newPurchaseAvailability: "undetermined" },
+  });
+});
+
+it("refuses offline preview and names the connected invocation", async () => {
+  expect(await previewSetting({ key: previewKey, proposed: installed })).toMatchObject({
+    refusal: { code: "commerce_setting_preview_connection_required", remediation: {
+      command: expect.stringContaining("preview <key> '<value>' --database-url <read-capable-url>"),
+    } },
+  });
+  expect(await previewSetting({ key: "checkout_recovery_reminders", proposed: installed }))
+    .toMatchObject({ refusal: { code: "commerce_setting_preview_unsupported" } });
 });

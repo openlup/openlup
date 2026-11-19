@@ -604,8 +604,8 @@
         "impact": "operations"
       },
       "runtime": {
-        "level": "read-only",
-        "reason": "The starter editor still supplies its configured horizon to the stock read port."
+        "level": "preview",
+        "reason": "Runtime changes require a shared write path and proof that rollback restores a prior value and an absent setting."
       },
       "change": {
         "operation": "installRenewalStockProtectionPolicy"
@@ -629,7 +629,72 @@
         ],
         "additionalProperties": false
       },
-      "previewSchema": null,
+      "previewSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "existingReservations": {
+            "type": "string",
+            "const": "unchanged"
+          },
+          "newPurchaseAvailability": {
+            "type": "string",
+            "enum": [
+              "equal-or-lower",
+              "equal-or-higher",
+              "unchanged",
+              "undetermined"
+            ]
+          },
+          "skus": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sku": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "provider",
+                    "local",
+                    "missing"
+                  ]
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "currentAvailableForNewPurchases": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "proposedAvailableForNewPurchases": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "sku",
+                "source",
+                "stale",
+                "currentAvailableForNewPurchases"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "existingReservations",
+          "newPurchaseAvailability",
+          "skus"
+        ],
+        "additionalProperties": false
+      },
       "rules": [
         {
           "code": "inventory_renewal_protection_policy_invalid",
@@ -1691,5 +1756,485 @@
     "promotions": "discount rules, offer adjustments",
     "shipping": "delivery destination, address details",
     "subscriptions": "recurring orders, renewals"
+  },
+  "previewOutputSchema": {
+    "type": "object",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "anyOf": [
+      {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "key": {
+            "type": "string",
+            "const": "inventory_renewal_protection"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "current": {
+            "type": "object",
+            "properties": {
+              "revision": {
+                "type": "string"
+              },
+              "renewalProtectionDays": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3660
+              }
+            },
+            "required": [
+              "revision",
+              "renewalProtectionDays"
+            ],
+            "additionalProperties": false
+          },
+          "proposed": {
+            "$ref": "#/definitions/__schema0"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "renewalProtectionDays": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "renewalProtectionDays"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "type": "null"
+          },
+          "revisionNo": {
+            "type": "null"
+          },
+          "validation": {
+            "type": "object",
+            "properties": {
+              "typescript": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "valid"
+                      },
+                      "value": {
+                        "type": "object",
+                        "properties": {
+                          "revision": {
+                            "type": "string"
+                          },
+                          "renewalProtectionDays": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 3660
+                          }
+                        },
+                        "required": [
+                          "revision",
+                          "renewalProtectionDays"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "invalid"
+                      },
+                      "code": {
+                        "type": "string",
+                        "const": "inventory_renewal_protection_policy_invalid"
+                      },
+                      "path": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "rule": {
+                        "type": "string"
+                      },
+                      "hint": {
+                        "type": "string"
+                      },
+                      "remediation": {
+                        "type": "object",
+                        "properties": {
+                          "retry": {
+                            "type": "boolean"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "retry",
+                          "action",
+                          "command"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "code",
+                      "path",
+                      "rule",
+                      "hint",
+                      "remediation"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "postgres": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "valid"
+                      },
+                      "value": {
+                        "type": "object",
+                        "properties": {
+                          "revision": {
+                            "type": "string"
+                          },
+                          "renewalProtectionDays": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 3660
+                          }
+                        },
+                        "required": [
+                          "revision",
+                          "renewalProtectionDays"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "invalid"
+                      },
+                      "code": {
+                        "type": "string",
+                        "const": "inventory_renewal_protection_policy_invalid"
+                      },
+                      "path": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "rule": {
+                        "type": "string"
+                      },
+                      "hint": {
+                        "type": "string"
+                      },
+                      "remediation": {
+                        "type": "object",
+                        "properties": {
+                          "retry": {
+                            "type": "boolean"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "retry",
+                          "action",
+                          "command"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "code",
+                      "path",
+                      "rule",
+                      "hint",
+                      "remediation"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "const": "unavailable"
+                      },
+                      "remediation": {
+                        "type": "object",
+                        "properties": {
+                          "retry": {
+                            "type": "boolean"
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "retry",
+                          "action",
+                          "command"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "state",
+                      "remediation"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "typescript",
+              "postgres"
+            ],
+            "additionalProperties": false
+          },
+          "effect": {
+            "type": "object",
+            "properties": {
+              "existingReservations": {
+                "type": "string",
+                "const": "unchanged"
+              },
+              "newPurchaseAvailability": {
+                "type": "string",
+                "enum": [
+                  "equal-or-lower",
+                  "equal-or-higher",
+                  "unchanged",
+                  "undetermined"
+                ]
+              },
+              "skus": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sku": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "local",
+                        "missing"
+                      ]
+                    },
+                    "stale": {
+                      "type": "boolean"
+                    },
+                    "currentAvailableForNewPurchases": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "proposedAvailableForNewPurchases": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sku",
+                    "source",
+                    "stale",
+                    "currentAvailableForNewPurchases"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "existingReservations",
+              "newPurchaseAvailability",
+              "skus"
+            ],
+            "additionalProperties": false
+          },
+          "uncertainty": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "key",
+          "asOf",
+          "current",
+          "proposed",
+          "difference",
+          "mode",
+          "revisionNo",
+          "validation",
+          "effect",
+          "uncertainty"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "refusal": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "commerce_setting_unknown",
+                  "commerce_setting_refusal_unknown",
+                  "commerce_setting_read_input_invalid",
+                  "commerce_setting_read_unavailable",
+                  "commerce_setting_runtime_not_ready",
+                  "commerce_setting_preview_unsupported",
+                  "commerce_setting_preview_connection_required",
+                  "commerce_setting_preview_unavailable",
+                  "inventory_renewal_protection_policy_invalid",
+                  "checkout_recovery_policy_invalid"
+                ]
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rule": {
+                "type": "string"
+              },
+              "hint": {
+                "type": "string"
+              },
+              "remediation": {
+                "type": "object",
+                "properties": {
+                  "retry": {
+                    "type": "boolean"
+                  },
+                  "action": {
+                    "type": "string"
+                  },
+                  "command": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "retry",
+                  "action",
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "code",
+              "path",
+              "rule",
+              "hint",
+              "remediation"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "refusal"
+        ],
+        "additionalProperties": false
+      }
+    ],
+    "definitions": {
+      "__schema0": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/__schema0"
+            }
+          },
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/definitions/__schema0"
+            }
+          }
+        ]
+      }
+    }
   }
 }

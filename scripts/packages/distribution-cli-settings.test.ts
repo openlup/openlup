@@ -53,3 +53,38 @@ it("refuses an extracted starter without the settings script", () => {
   const { directory } = fixture();
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });
+
+it.each([false, true])("upgrades the preview CLI and editor while preserving the reconciled guide through apply and replay, customized=%s", customized => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const settings = "host/settings.ts", editor = "host/editor-ports.ts";
+  const base = "# App guide\n\n## Change a business setting\n\nRun the settings CLI.\n";
+  const preview = "\nBefore changing renewal stock protection, run a connected, read-only preview.\n\nRun `npm run --silent settings -- preview`.\n";
+  const local = "\n## Local operations\n\nUse our adoption checklist.\n";
+  const ownership = { managed: ["package.json", "ownership.json", settings, editor], owned: ["AGENTS.md"], generated: [] };
+  write("ownership.json", ownership); candidate("ownership.json", ownership);
+  for (const [path, from, to] of [
+    [settings, "console.log('show');", "console.log('Preview before any change.');"],
+    [editor, "const method = 'readPort.read';", "const method = 'readInstalled';"],
+  ]) {
+    write(path!, from); candidate(path!, to);
+  }
+  write("AGENTS.md", base + (customized ? local : ""));
+  candidate("AGENTS.md", base + preview);
+  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
+  migrateStarterOwned(app, target, from, to);
+  migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(base + preview + (customized ? local : ""));
+  expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
+  expect(() => assertCompleteStarter(app, to)).toThrow("incomplete_application_upgrade");
+  write("from.json", from); write("to.json", to);
+  const apply = () => spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+    "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+  const first = apply();
+  expect(first.status, first.stderr).toBe(0);
+  expect(JSON.parse(first.stdout).applied).toEqual([editor, settings]);
+  const replay = apply();
+  expect(replay.status, replay.stderr).toBe(0);
+  expect(JSON.parse(replay.stdout).applied).toEqual([]);
+  expect(() => assertCompleteStarter(app, to)).not.toThrow();
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(base + preview + (customized ? local : ""));
+});

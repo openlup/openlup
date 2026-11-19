@@ -1365,6 +1365,7 @@ export * from "./alertPagingPolicy.js";
 export * from "./alertThrottlePolicy.js";
 export * from "./errors.js";
 export * from "./clients.js";
+export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 ```
 ## dist/operations/schemas.d.ts
 
@@ -1615,7 +1616,7 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
-export { explainSetting, invalidSettingsCommand, listSettings, settingsReadTools, showSetting, type SettingReader } from "./settingsRead.js";
+export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -1758,7 +1759,7 @@ export declare function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, C
 ## dist/operations/server/settingsRead.d.ts
 
 ```ts
-import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
+import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { z } from "zod";
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type ListResult = {
@@ -1814,6 +1815,21 @@ export declare function explainSetting(codeOrKey: string): {
 export declare function invalidSettingsCommand(): {
     refusal: SettingRefusal;
 };
+export declare const settingsPreviewRequest: z.ZodObject<{
+    key: z.ZodString;
+    proposed: z.ZodJSONSchema;
+    skus: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    asOf: z.ZodOptional<z.ZodISODateTime>;
+}, z.core.$strict>;
+/** @experimental A domain preview bound by the host to its intended store. */
+export type SettingPreviewer<Result> = (proposed: JsonValue, input: {
+    asOf: string;
+    skus: readonly string[];
+}) => Promise<Result>;
+/** @experimental Shared dispatcher for CLI and MCP preview. */
+export declare function previewSetting<Result = never>(input: unknown, previewers?: Readonly<Record<string, SettingPreviewer<Result>>>): Promise<Result | {
+    refusal: SettingRefusal;
+}>;
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
@@ -1831,8 +1847,39 @@ export declare const settingsReadTools: readonly [{
     readonly annotations: {
         readonly readOnlyHint: true;
     };
+}, {
+    readonly name: "settings__preview";
+    readonly description: "Call before any change to the setting. Use settings__show for the value schema. When a refusal is returned or SQL validation is unavailable, read remediation.";
+    readonly inputSchema: Record<string, unknown>;
+    readonly outputSchema: Record<string, unknown>;
+    readonly annotations: {
+        readonly readOnlyHint: true;
+    };
 }];
 export {};
+```
+## dist/operations/toolSchema.d.ts
+
+```ts
+import { z, type ZodType } from "zod";
+/** Project a tool contract as inline Draft 7 JSON Schema. */
+export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
+/** @experimental Schema shared by packaged settings projections and their data reader. */
+export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObject<{
+    code: z.ZodEnum<{
+        [x: string]: string;
+    }>;
+    path: z.ZodArray<z.ZodString>;
+    rule: z.ZodString;
+    hint: z.ZodString;
+    remediation: z.ZodObject<{
+        retry: z.ZodBoolean;
+        action: z.ZodString;
+        command: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+/** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
+export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown>;
 ```
 ## dist/operations/validation.d.ts
 

@@ -128,6 +128,11 @@ ATP callers need no settings-table SELECT. The TypeScript policy reader still
 requires SELECT on `commerce_settings` to return revision and days. Qualified
 installations supply both privileges through their service-role binding.
 
+The starter editor uses `createPostgresStockAvailability().readInstalled(skus)`.
+A running editor picks up the installed horizon on its next stock read. Use
+[Preview before changing a setting](../how-to/operate/configure-settings.md#preview-before-changing-a-setting)
+to inspect current availability by SKU and the direction of a proposed change.
+
 `createPostgresStockAvailability().readPort.read` admits only `horizonDays` equal
 to the installed value and no excluded order; otherwise it retains
 `native_stock_read_options_unsupported`. Set the `horizonDays` option on

@@ -1053,8 +1053,17 @@ For native hosts that want the installed horizon on each read, use
 `createPostgresStockAvailability(executor, { sourceKey, now }).readInstalled(skus)`.
 It sends a single batched query for a nonempty list. The native SQL stock read
 resolves the horizon in the same statement snapshot as stock and renewal demand.
-An empty list returns an empty map. Hosts supplying an explicit horizon can
-continue to use `readPort.read` and its existing option checks.
+An empty list returns an empty map. The starter subscription editor reads the
+installed horizon on each stock read. The explicit `readPort.read` still refuses
+requests that supply a different horizon.
+
+`previewRenewalStockProtection` uses a host pool on a read-only snapshot and
+validates the proposed value in TypeScript and PostgreSQL. Use the
+[settings preview](../core/docs/guide/how-to/operate/configure-settings.md#preview-before-changing-a-setting)
+to inspect current stock for named SKUs, how the proposed horizon could affect
+new purchase availability, and which records retain their terms. Availability
+under the proposed horizon is pending; existing reservations keep their
+quantities and expiry times.
 
 Apply `20261125010000_inventory_renewal_protection_validation.sql` from the
 complete native catalogue. The existing horizon reader now calls

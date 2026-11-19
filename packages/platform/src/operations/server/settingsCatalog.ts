@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { settingRefusalSchema } from "../index.js";
 
 export const settingsVersion = 1;
 const packageData = (name: string): unknown =>
@@ -9,6 +10,7 @@ const catalogue = z.strictObject({
   schemaVersion: z.literal(settingsVersion),
   entries: z.array(z.record(z.string(), z.unknown()).and(z.object({ key: z.string() }))),
   searchTerms: z.record(z.string(), z.string()),
+  previewOutputSchema: z.record(z.string(), z.unknown()),
 }).parse(packageData("settings-catalog.json"));
 
 const refusalData = z.strictObject({
@@ -16,7 +18,7 @@ const refusalData = z.strictObject({
   refusals: z.array(z.object({ code: z.string() }).passthrough()),
 }).parse(packageData("settings-refusals.json"));
 
-export const { searchTerms } = catalogue;
+export const { searchTerms, previewOutputSchema } = catalogue;
 
 const keySchema = z.enum(catalogue.entries.map(entry => entry.key));
 export const settingsListRequest = z.strictObject({ goal: z.string().trim().min(1).optional() });
@@ -69,14 +71,6 @@ export const settingsShowResult = z.strictObject({
   observation: observationSchema,
 });
 
-export const settingRefusalSchema = z.strictObject({
-  code: z.enum(refusalData.refusals.map(refusal => refusal.code)),
-  path: z.array(z.string()),
-  rule: z.string(),
-  hint: z.string(),
-  remediation: z.strictObject({ retry: z.boolean(), action: z.string(), command: z.string() }),
-});
-export const settingsRefusalResult = z.strictObject({ refusal: settingRefusalSchema });
-
+export const refusalSchema = settingRefusalSchema(refusalData.refusals.map(({ code }) => code));
 export const settingsCatalogue = z.array(settingsShowResult.shape.setting).parse(catalogue.entries);
-export const settingRefusals = z.array(settingRefusalSchema).parse(refusalData.refusals);
+export const settingRefusals = z.array(refusalSchema).parse(refusalData.refusals);

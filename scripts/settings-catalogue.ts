@@ -3,7 +3,8 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operations/contracts";
-import { describeRenewalStockProtectionSetting } from "@openlup/platform/inventory";
+import { settingsToolOutputSchema, settingRefusalSchema } from "@openlup/platform/operations";
+import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
 import { toolInputSchema } from "../mcp/_core/toolFromContract.ts";
 
 type SourceDescriptor = Omit<SettingDescriptor, "schema" | "previewSchema"> & {
@@ -154,6 +155,31 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     hint: "Read the key's runtime reason and existing change mechanism.",
     remediation: { retry: false, action: "Review the catalogue for the key's documented change mechanism.", command: "node --experimental-strip-types host/settings.ts list" },
   },
+  {
+    code: "commerce_setting_preview_unsupported",
+    path: ["key"],
+    rule: "Connected preview requires a key with an executable preview.",
+    hint: "Check the runtime level in the catalogue.",
+    remediation: { retry: false, action: "Read the key's documented effect and change mechanism.", command: settingCommand("<key>") },
+  },
+  {
+    code: "commerce_setting_preview_connection_required",
+    path: [],
+    rule: "Preview reads live settings and stock from the intended store.",
+    hint: "Use the connected form of preview.",
+    remediation: {
+      retry: true,
+      action: "Connect to the intended store with a read-capable URL and include the SKUs you want to inspect.",
+      command: "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json",
+    },
+  },
+  {
+    code: "commerce_setting_preview_unavailable",
+    path: ["key"],
+    rule: "Preview requires a valid installed policy and accessible stock reads.",
+    hint: "Check the intended store's connection, installed value, and read access.",
+    remediation: { retry: true, action: "Verify the installed value and read access before repeating preview.", command: settingCommand("<key>", true) },
+  },
   ...descriptors.flatMap(entry => entry.rules.map(rule => ({
     code: rule.code,
     path: rule.path,
@@ -178,6 +204,8 @@ const paths = {
 
 export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<string, string>> {
   const descriptors = readSettingDescriptors(root);
+  const refusals = settingRefusals(descriptors);
+  const previewOutputSchema = settingsToolOutputSchema(renewalStockProtectionPreviewResult, settingRefusalSchema(refusals.map(({ code }) => code)));
   const settingsCatalogue = [...descriptors]
     .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
     .map(describeSetting);
@@ -195,22 +223,24 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       entry.goal,
       `Search terms include ${settingSynonyms(entry)}.`,
       "",
+      "```sh",
+      settingCommand(entry.key),
+      "```",
+      "",
       `- Owner **${entry.domain}** · kind **${entry.kind}** · runtime **${entry.runtime.level}**`,
+      ...("reason" in entry.runtime ? [`- ${entry.runtime.reason}`] : []),
+      `- Frozen on: ${entry.effect.frozenOn.join(" ") || "No records named."}`,
       `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
       `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
       `- ${entry.whyThisDefault}`,
       ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
       "",
-      "```sh",
-      settingCommand(entry.key),
-      "```",
-      "",
     ]),
   ].join("\n");
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   return {
-    [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms }),
-    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals: settingRefusals(descriptors) }),
+    [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms, previewOutputSchema }),
+    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals }),
     [paths.guide]: guide,
   };
 }

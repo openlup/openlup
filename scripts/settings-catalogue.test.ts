@@ -69,7 +69,8 @@ it("runs each connected refusal remediation through the connected CLI branch", (
 });
 
 it("advertises settings results that the pinned MCP SDK accepts", () => {
-  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools).toHaveLength(2);
+  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools.map(tool => tool.name))
+    .toEqual(["settings__list", "settings__show", "settings__preview"]);
 });
 
 it("refuses unknown descriptor fields, including nested metadata, and a mismatched domain", () => {
@@ -81,4 +82,19 @@ it("refuses unknown descriptor fields, including nested metadata, and a mismatch
   expect(() => parseSettingData(withEntry({ ...entry, effect: { ...entry!.effect, extra: true } }), "shipping"))
     .toThrow("Unrecognized key");
   expect(() => parseSettingData(contents, "fulfillment")).toThrow("Descriptor does not belong to fulfillment");
+});
+
+it("the offline starter CLI refuses preview and prints the connected command", () => {
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", "host/settings.ts", "preview",
+    "inventory_renewal_protection", '{"revision":"candidate","renewalProtectionDays":21}', "--json"],
+  { cwd: "examples/neutral-store", encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    schemaVersion: 1,
+    refusal: {
+      code: "commerce_setting_preview_connection_required",
+      remediation: { command: expect.stringContaining("--database-url <read-capable-url>") },
+    },
+  });
 });

@@ -79,6 +79,35 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
+const settingsHeading = "\n## Change a business setting\n";
+const previewGuidance = "\nBefore changing renewal stock protection, run a connected, read-only preview.";
+
+function hasSettingsPreview(snapshot: ReturnType<typeof starterUpgradeSnapshot>): boolean {
+  return snapshot.files["host/settings.ts"]?.includes("Preview before any change.") ?? false;
+}
+
+function sectionEnd(guide: string, start: number): number {
+  const next = guide.indexOf("\n## ", start + settingsHeading.length);
+  return next < 0 ? guide.length : next;
+}
+
+function reconcileSettingsPreviewGuide(app: string, target: string): void {
+  const path = "AGENTS.md";
+  const previous = readFileSync(join(app, path), "utf8");
+  const start = previous.indexOf(settingsHeading);
+  assert(start >= 0, "starter settings guidance missing from predecessor");
+  const end = sectionEnd(previous, start);
+  if (previous.slice(start, end).includes(previewGuidance)) return;
+  const candidate = readFileSync(join(target, path), "utf8");
+  const targetStart = candidate.indexOf(settingsHeading);
+  const targetEnd = sectionEnd(candidate, targetStart);
+  const previewStart = candidate.indexOf(previewGuidance, targetStart);
+  assert(targetStart >= 0 && previewStart >= targetStart && previewStart < targetEnd, "starter preview guidance missing from target");
+  const paragraph = candidate.slice(previewStart, targetEnd);
+  const prefix = previous.slice(0, end);
+  writeFileSync(join(app, path), prefix + (prefix.endsWith("\n") ? "" : "\n") + paragraph + previous.slice(end));
+}
+
 /** Packaged pristine-file migrations, before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
   // The next set is not numbered yet. Its managed locale contract identifies
@@ -112,6 +141,7 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
     }
     assert(JSON.parse(to.files["package.json"]).scripts.settings, "starter settings command missing from target");
   }
+  if (hasSettingsPreview(to) && !hasSettingsPreview(from)) reconcileSettingsPreviewGuide(app, target);
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
   if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;
@@ -146,7 +176,19 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
-  phase("migrate-owned-contracts", () => migrateStarterOwned(app, pair.to, from, to));
+  phase("migrate-owned-contracts", () => {
+    const preserveLocalGuide = hasSettingsPreview(to) && !hasSettingsPreview(from)
+      && !(from.version === "1.1.0" && Object.hasOwn(to.files, "shared/locales.ts"));
+    const path = join(app, "AGENTS.md");
+    const local = "\n## Local operations\n\nUse the adoption checklist before maintenance.\n";
+    if (preserveLocalGuide) writeFileSync(path, readFileSync(path, "utf8") + local);
+    migrateStarterOwned(app, pair.to, from, to);
+    if (preserveLocalGuide) {
+      const migrated = readFileSync(path, "utf8");
+      assert(migrated.includes(local) && migrated.includes(previewGuidance), "reconciled starter guide lost local or preview instructions");
+      owned["AGENTS.md"] = Buffer.from(migrated);
+    }
+  });
   phase("customize-owned", () => {
     const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
     for (const [path, before, after] of [
@@ -193,6 +235,14 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   phase("resume", () => { const resumed = run("apply"); assert(resumed.files.some((file: { action: string }) => file.action === "already-applied")); });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); });
+  if (hasSettingsPreview(to) && !hasSettingsPreview(from)) {
+    phase("settings-preview-upgrade", () => {
+      for (const path of ["host/settings.ts", "host/editor-ports.ts"]) {
+        assert.equal(readFileSync(join(app, path), "utf8"), to.files[path], `starter preview upgrade did not apply ${path}`);
+      }
+      assert(readFileSync(join(app, "AGENTS.md"), "utf8").includes(previewGuidance));
+    });
+  }
   const checkOwned = () => { for (const [path, bytes] of Object.entries(owned)) assert.deepEqual(readFileSync(join(app, path)), bytes, `owned customization changed: ${path}`); };
   checkOwned(); rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkOwned(); });
@@ -378,6 +428,7 @@ export function proveSettingsDiscovery(app: string): void {
   const run = (name: string, args: string[]) =>
     execFileSync(name, args, { cwd: app, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const key = "inventory_renewal_protection", goal = "renewal stock protection horizon";
+  const previewSupported = readFileSync(join(app, "host/settings.ts"), "utf8").includes("Preview before any change.");
   const guide = join(app, "AGENTS.md");
   const guideBytes = readFileSync(guide, "utf8");
   const heading = "\n## Change a business setting\n";
@@ -403,6 +454,10 @@ export function proveSettingsDiscovery(app: string): void {
     assert.match(result.setting.effect.appliesTo, /Future available-to-promise/);
     assert(result.setting.effect.frozenOn.some((item: string) => item.includes("Existing reservations")));
     assert.equal(result.observation.state, "offline");
+    if (previewSupported) {
+      assert.equal(result.setting.runtime.level, "preview");
+      assert(result.setting.previewSchema.properties.skus.items.properties.proposedAvailableForNewPurchases);
+    }
   };
 
   try {
@@ -422,6 +477,7 @@ export function proveSettingsDiscovery(app: string): void {
     assert(direct("explain", "commerce_setting_unknown").includes("commerce_setting_unknown"));
     const lines = readFileSync(entry.file, "utf8").split("\n").slice(entry.start - 1, entry.end);
     assert(lines.includes(`${directCommand} show ${key} --json`), "catalogue entry did not lead to show");
+    if (previewSupported) assert(lines.some(line => line.includes("Frozen on: Existing reservations")));
     show(direct);
   } finally {
     writeFileSync(guide, guideBytes);
@@ -448,6 +504,21 @@ export function proveSettingsDiscovery(app: string): void {
     const help = settings(command, "--help");
     assert(help.includes("Examples:"));
     assert(help.includes(`${npmCommand} show ${key} --json`));
+  }
+  if (previewSupported) {
+    assert(section.includes(previewGuidance));
+    assert(section.includes(`${npmCommand} preview ${key} `));
+    assert(settings("preview", "--help").includes("Preview before any change."));
+    const proposed = JSON.stringify({ revision: "store-1", renewalProtectionDays: 21 });
+    const offline = spawnSync(npm, [...npmArgs, "preview", key, proposed, "--json"], { cwd: app, env, encoding: "utf8" });
+    assert.equal(offline.status, 1);
+    assert.equal(offline.stderr, "");
+    const { refusal: previewRefusal } = JSON.parse(offline.stdout);
+    assert.equal(previewRefusal.code, "commerce_setting_preview_connection_required");
+    assert(previewRefusal.remediation.command.includes("--database-url <read-capable-url>"));
+    const offlineText = spawnSync(npm, [...npmArgs, "preview", key, proposed], { cwd: app, env, encoding: "utf8" });
+    assert.equal(offlineText.status, 1);
+    assert(offlineText.stdout.includes(previewRefusal.remediation.command));
   }
   for (const file of ["settings-catalog.json", "settings-refusals.json"]) {
     const data = JSON.parse(readFileSync(join(app, "node_modules/@openlup/platform", file), "utf8"));

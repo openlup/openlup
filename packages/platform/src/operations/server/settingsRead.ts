@@ -1,7 +1,8 @@
-import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
+import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
+import { settingsToolOutputSchema, toolInputSchema } from "../index.js";
 import {
   settingRefusals, settingsCatalogue, settingsListRequest, settingsListResult,
-  settingsShowRequest, settingsShowResult, settingsVersion, settingsRefusalResult, searchTerms,
+  settingsShowRequest, settingsShowResult, settingsVersion, refusalSchema, previewOutputSchema, searchTerms,
 } from "./settingsCatalog.js";
 import { z } from "zod";
 
@@ -96,29 +97,58 @@ export function invalidSettingsCommand(): { refusal: SettingRefusal } {
   return refuse("commerce_setting_read_input_invalid");
 }
 
-const toolSchema = (schema: z.ZodType, io: "input" | "output" = "input"): Record<string, unknown> =>
-  z.toJSONSchema(schema, { target: "draft-07", io, reused: "inline" });
-
-// Keep the derived result union and advertise the object root required by MCP.
-const outputSchema = (result: z.ZodType): Record<string, unknown> => ({
-  type: "object",
-  ...toolSchema(z.union([result, settingsRefusalResult]), "output"),
+export const settingsPreviewRequest = z.strictObject({
+  key: z.string().min(1),
+  proposed: z.json(),
+  skus: z.array(z.string().trim().min(1)).max(200).optional(),
+  asOf: z.iso.datetime().optional(),
 });
+
+/** @experimental A domain preview bound by the host to its intended store. */
+export type SettingPreviewer<Result> = (proposed: JsonValue, input: {
+  asOf: string; skus: readonly string[];
+}) => Promise<Result>;
+
+/** @experimental Shared dispatcher for CLI and MCP preview. */
+export async function previewSetting<Result = never>(
+  input: unknown, previewers: Readonly<Record<string, SettingPreviewer<Result>>> = {},
+): Promise<Result | { refusal: SettingRefusal }> {
+  const parsed = settingsPreviewRequest.safeParse(input);
+  if (!parsed.success) return invalidSettingsCommand();
+  const { key, proposed, skus = [], asOf = new Date().toISOString() } = parsed.data;
+  const setting = settingsCatalogue.find(entry => entry.key === key);
+  if (!setting) return refuse("commerce_setting_unknown");
+  if (setting.previewSchema === null) return refuse("commerce_setting_preview_unsupported");
+  const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
+  if (!preview) return refuse("commerce_setting_preview_connection_required");
+  try {
+    return await preview(proposed, { skus: [...new Set(skus)], asOf });
+  } catch {
+    return refuse("commerce_setting_preview_unavailable");
+  }
+}
 
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export const settingsReadTools = [
   {
     name: "settings__list",
     description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.",
-    inputSchema: toolSchema(settingsListRequest),
-    outputSchema: outputSchema(settingsListResult),
+    inputSchema: toolInputSchema(settingsListRequest),
+    outputSchema: settingsToolOutputSchema(settingsListResult, refusalSchema),
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__show",
     description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.",
-    inputSchema: toolSchema(settingsShowRequest),
-    outputSchema: outputSchema(settingsShowResult),
+    inputSchema: toolInputSchema(settingsShowRequest),
+    outputSchema: settingsToolOutputSchema(settingsShowResult, refusalSchema),
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "settings__preview",
+    description: "Call before any change to the setting. Use settings__show for the value schema. When a refusal is returned or SQL validation is unavailable, read remediation.",
+    inputSchema: toolInputSchema(settingsPreviewRequest),
+    outputSchema: previewOutputSchema,
     annotations: { readOnlyHint: true },
   },
 ] as const;

@@ -65,6 +65,43 @@
       }
     },
     {
+      "code": "commerce_setting_preview_unsupported",
+      "path": [
+        "key"
+      ],
+      "rule": "Connected preview requires a key with an executable preview.",
+      "hint": "Check the runtime level in the catalogue.",
+      "remediation": {
+        "retry": false,
+        "action": "Read the key's documented effect and change mechanism.",
+        "command": "node --experimental-strip-types host/settings.ts show <key> --json"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_connection_required",
+      "path": [],
+      "rule": "Preview reads live settings and stock from the intended store.",
+      "hint": "Use the connected form of preview.",
+      "remediation": {
+        "retry": true,
+        "action": "Connect to the intended store with a read-capable URL and include the SKUs you want to inspect.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_unavailable",
+      "path": [
+        "key"
+      ],
+      "rule": "Preview requires a valid installed policy and accessible stock reads.",
+      "hint": "Check the intended store's connection, installed value, and read access.",
+      "remediation": {
+        "retry": true,
+        "action": "Verify the installed value and read access before repeating preview.",
+        "command": "node --experimental-strip-types host/settings.ts show <key> --database-url <read-capable-url> --json"
+      }
+    },
+    {
       "code": "inventory_renewal_protection_policy_invalid",
       "path": [],
       "rule": "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660.",

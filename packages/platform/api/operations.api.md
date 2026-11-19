@@ -626,6 +626,7 @@ export * from "./alertPagingPolicy.js";
 export * from "./alertThrottlePolicy.js";
 export * from "./errors.js";
 export * from "./clients.js";
+export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 ```
 ## dist/operations/schemas.d.ts
 
@@ -768,6 +769,29 @@ export declare const platformControlPlaneMutationResponseSchema: z.ZodObject<{
     revision: z.ZodNullable<z.ZodNumber>;
     recordedAt: z.ZodString;
 }, z.core.$strip>;
+```
+## dist/operations/toolSchema.d.ts
+
+```ts
+import { z, type ZodType } from "zod";
+/** Project a tool contract as inline Draft 7 JSON Schema. */
+export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
+/** @experimental Schema shared by packaged settings projections and their data reader. */
+export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObject<{
+    code: z.ZodEnum<{
+        [x: string]: string;
+    }>;
+    path: z.ZodArray<z.ZodString>;
+    rule: z.ZodString;
+    hint: z.ZodString;
+    remediation: z.ZodObject<{
+        retry: z.ZodBoolean;
+        action: z.ZodString;
+        command: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+/** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
+export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown>;
 ```
 ## dist/operations/validation.d.ts
 

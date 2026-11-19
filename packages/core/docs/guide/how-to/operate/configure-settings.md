@@ -35,6 +35,33 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, run
 `node --experimental-strip-types host/settings.ts explain checkout_recovery_reminders`.
 
+## Preview before changing a setting
+
+From the extracted starter, preview the proposed inventory policy against the
+intended store. Pass the value as JSON and repeat `--sku` for each SKU to inspect.
+
+```sh
+node --experimental-strip-types host/settings.ts preview inventory_renewal_protection '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
+```
+
+Use `--configuration <id>` to select a stock source when the app has multiple
+configurations. Use `--as-of <UTC-ISO-instant>` to repeat an observation at the
+same instant. The host can also compose the read-only MCP definition
+`settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
+Bind the inventory key to `previewRenewalStockProtection` from
+`@openlup/platform/inventory` using the intended store's pool and stock source.
+Both surfaces report the current and proposed policy, validation by TypeScript
+and PostgreSQL, and the effect on reservations and new purchases. Preview makes
+no changes to the database. The current read requires settings and stock access.
+If the connection cannot execute the PostgreSQL validator, read its remediation.
+The TypeScript validation result is still available.
+
+A longer horizon can only leave availability for new purchases equal or lower.
+A shorter horizon can only leave it equal or higher. Existing reservations
+keep their quantities and expiry times. The result includes current availability
+for the named SKUs and leaves `effect.skus[].proposedAvailableForNewPurchases`
+null pending a proposed-horizon read. Mode and revision number are unavailable.
+
 ## Modes and runtime levels
 
 A domain keeps an executable descriptor in code and exports it from a
@@ -48,8 +75,9 @@ invariant (`invariant`) has no editable setting value.
 
 `read-only` covers discovery. `preview` allows inspection of a proposed
 change, and `ready` requires qualification for runtime changes. The current
-catalogue entries use `read-only` and give the reason and existing change
-mechanism for each key.
+catalogue gives the runtime level, reason and existing change mechanism for
+each key. Renewal stock protection is at `preview`; the host installer still
+owns changes.
 
 ## Refusals
 
@@ -63,6 +91,9 @@ recheck command and whether retrying can help.
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
+| `commerce_setting_preview_connection_required` | Repeat preview with a read-capable connection to the intended store. |
+| `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
+| `commerce_setting_preview_unavailable` | Verify the installed value, store connection and read access. |
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
