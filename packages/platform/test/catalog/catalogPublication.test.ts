@@ -845,6 +845,11 @@ it("returns a full-fact page at the exact UTF-8 byte limit and resumes with the 
       if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) return { rows: [{ product_id: product.id,
         revision: head.revision, canonical_state: canonicalState, digest: digest(canonicalState), document_id: ref.id, document_digest: ref.digest,
         revision_no: ref.revisionNo, schema_id: ref.schemaId, document_ref: ref.documentRef, source_ref: ref.sourceRef, canonical_text: document.canonicalText }] };
+      if (sql.startsWith("SELECT to_regprocedure(")) return { rows: [{ installed: true }] };
+      if (sql.startsWith("SELECT public.catalog_publication_roster_resolved(")) {
+        expect(params).toEqual([product.id, canonicalState]);
+        return { rows: [{ valid: true }] };
+      }
       const ids = params?.[1] as string[];
       if (sql.startsWith("SELECT id,sku_id,revision,digest,octet_length")) return { rows: stored.filter(row => ids.includes(row.id)) };
       if (sql.startsWith("SELECT id,full_facts")) {
