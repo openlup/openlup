@@ -11,7 +11,7 @@ import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
-import { catalogPublicationMediaIssue, catalogPublicationPreparationIssues, catalogPublicationPresentation, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
+import { catalogPublicationMediaIssue, catalogPublicationPreparationIssues, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
   type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
 import { z } from "./validation.js";
 
@@ -99,8 +99,9 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
         else unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
       }
     }
-    const presentation = compiled ? compiled.product.presentation
-      : catalogPublicationPresentation(payload.publication.operations, payload.product.sharedContent.presentation);
+    let presentation = compiled ? compiled.product.presentation : payload.product.sharedContent.presentation;
+    if (!compiled) for (const operation of payload.publication.operations)
+      if (operation.op === "set_product_presentation") presentation = operation.presentation;
     if (presentation !== null) {
       let result: unknown;
       try { result = await deps.presentationReadiness?.(record.productId, presentation); } catch { /* Evidence is unknown. */ }

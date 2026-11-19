@@ -113,13 +113,6 @@ const need = (condition: unknown, reason: string): void => { if (!condition) pub
 const sealedPresentation = (presentation: CatalogPublicationFacts | null): CatalogPublicationFacts => presentation ?? {};
 
 type PublicationEligibility = Extract<PublicationOperation, { op: "set_eligibility" }>;
-export function catalogPublicationPresentation(operations: readonly PublicationOperation[], current: CatalogPublicationFacts | null) {
-  let presentation = current;
-  for (const operation of operations)
-    if (operation.op === "set_product_presentation") presentation = operation.presentation;
-  return presentation;
-}
-
 function enablesSku(operation: PublicationOperation): operation is PublicationEligibility {
   return operation.op === "set_eligibility" && (operation.sellableStandalone || operation.sellableInSubscription);
 }

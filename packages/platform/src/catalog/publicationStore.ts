@@ -21,7 +21,7 @@ import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, assertCatalogPublicationAuthorship, assertCatalogPublicationPreparation,
   compileCatalogPublicationEffects, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected,
-  catalogPublicationMediaIssue, catalogPublicationPresentation, type CatalogPublicationDocument } from "./publicationValidation.js";
+  catalogPublicationMediaIssue, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publication_id,result::jsonb AS result";
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -523,7 +523,6 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const mediaBySku = new Map(prepared.payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
         const verifiedMedia = new Set<string>();
         const retainedByCode = new Map(preliminary.skus.map(sku => [sku.code, sku]));
-        const mediaRef = catalogPublicationPresentation(prepared.payload.publication.operations, preliminary.product?.presentation ?? null)?.mediaRef;
         async function checkActivationSources(liveSkus: RetainedState["liveSkus"]) {
           const { activationCodes, selectedSources } = selectActivationSources(liveSkus);
           for (const code of activationCodes) {
@@ -534,6 +533,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
               && String(sku.net_weight_g) === catalogPublicationIntegralGrams(authored.netContent, prepared.definition)
               && equal(sku.option_values, authored.options), "catalog_publication_operation_source_mismatch");
             assertCatalogPublicationGrossMass(authored!.netContent!, authored!.grossMass ?? null, prepared.definition);
+            const mediaRef = source!.payload.product.sharedContent.presentation?.mediaRef;
             const assets = authored!.assetRefs ?? retainedByCode.get(code)?.assetRefs ?? [];
             const claim = mediaBySku.get(code);
             require(!catalogPublicationMediaIssue(mediaRef, assets, claim), "catalog_publication_media_readiness_unproven");
