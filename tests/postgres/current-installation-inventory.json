@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 155,
-        "exactTailCount": 45,
-        "objectInventorySha256": "821fa1c0fc356b684186513e06b74ad8448121b2461cf7ce748656d90051cfb4",
+        "count": 156,
+        "exactTailCount": 46,
+        "objectInventorySha256": "3a2cb70cbcb840d15028b05b2543bc2762f4845236562cfb03b3035668ff6092",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
+            "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
+          },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
             "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
@@ -629,10 +633,14 @@
         ]
       },
       "bootstrap": {
-        "count": 160,
-        "exactTailCount": 45,
-        "objectInventorySha256": "8353402142cd09520369f5bc08ae22056895eecfbe3de37c30e012f917aaa0c2",
+        "count": 161,
+        "exactTailCount": 46,
+        "objectInventorySha256": "11013262ba6102106f95f02a178a77909037e026d0d93c9d1b06fcbd55b9635f",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
+            "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
+          },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
             "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
@@ -1276,10 +1284,14 @@
         ]
       },
       "separate": {
-        "count": 160,
-        "exactTailCount": 45,
-        "objectInventorySha256": "b840eb360a4e341260642d6c115d38915d680c0824be98c1f96dfbaaa882b71c",
+        "count": 161,
+        "exactTailCount": 46,
+        "objectInventorySha256": "1e21bc3660743feee67c13d6525e7b89991a3b13472c752c786176eaac1c15ee",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
+            "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
+          },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
             "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
@@ -1923,10 +1935,14 @@
         ]
       },
       "admin-managed": {
-        "count": 159,
-        "exactTailCount": 45,
-        "objectInventorySha256": "e618b0f770a1f55f0f83f2afd6bd54a7b4294fc6e763f76a3813eb007068152f",
+        "count": 160,
+        "exactTailCount": 46,
+        "objectInventorySha256": "64d77deda97dca7127cc4c49ecbeef2175711966b04f77e632f7fee6bc5e74fc",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
+            "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
+          },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
             "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
@@ -2566,10 +2582,14 @@
         ]
       },
       "admin-operator": {
-        "count": 159,
-        "exactTailCount": 45,
-        "objectInventorySha256": "8101210ae18adbf2c090d0c101bc6cd6a1849e2a1033fded5f8ba36d58dd09e5",
+        "count": 160,
+        "exactTailCount": 46,
+        "objectInventorySha256": "f3581d1d0255a5686d9adbd66a9d6580b3a86a1eb01643f7aa59628ffa0064ee",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
+            "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
+          },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
             "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
