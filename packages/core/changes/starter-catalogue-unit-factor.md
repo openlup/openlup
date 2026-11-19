@@ -7,9 +7,9 @@
   `owned/catalogue.ts` and `owned/catalogue.json`. Keep your local type and
   unit identities, actual conversion ratios, and content validator. Use the
   TypeScript definitions as the source for metadata also declared in JSON.
-  Keep or add the `catalogDraftTypeRefs` export for the starter's parity test.
-  Derive one `{ key, version }` per authored type from the same `types` array
-  you pass to create the registry.
+  Export your definitions as `catalogDraftTypes` and build the registry from
+  that array. Edit `catalogDraftTypes` for all type changes because the
+  lookup-only registry prevents the test from detecting types added elsewhere.
 - Apply the managed-file upgrade and run the starter's test suite to check for
   drift. A missing factor is allowed at startup, while an invalid declared
   factor can cause registry construction to refuse. No database or

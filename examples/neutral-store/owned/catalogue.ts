@@ -1,7 +1,7 @@
 import { createCatalogProductTypeRegistry, type CatalogProductTypeInput } from '@openlup/platform/catalog';
 
 /** Fictional authoring type, shared by both configurations; no publication authority. */
-const types: CatalogProductTypeInput[] = [{
+export const catalogDraftTypes: readonly CatalogProductTypeInput[] = [{
   key: 'starter:item', version: 1, dimensions: [],
   units: [{ code: 'starter:each', dimension: 'count', integral: true,
     factor: { canonicalUnit: 'openlup:piece', unscaled: '1', scale: 0 } }],
@@ -10,5 +10,4 @@ const types: CatalogProductTypeInput[] = [{
     && 'title' in content && typeof content.title === 'string' && content.title.trim()
     ? [] : [{ path: 'title', code: 'title_required' }],
 }];
-export const catalogDraftTypeRefs = types.map(({ key, version }) => ({ key, version }));
-export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);
+export const catalogDraftRegistry = createCatalogProductTypeRegistry(catalogDraftTypes);

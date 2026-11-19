@@ -581,13 +581,14 @@ administer catalogue drafts and bundle composition, target prices and activation
 through native writers. Neither draft authoring nor bundle activation adds a
 product to the starter's configured storefront or checkout selection.
 
-Replace the fictional `starter:item@1` registry and content validator in
-`owned/catalogue.ts` for your application.
+Edit or replace the exported `catalogDraftTypes` array in `owned/catalogue.ts`
+to define your application's types and content validators. Build the registry
+from that array.
 Mirror the type key and version, unit codes, dimension, integrality, factor,
 `netContentUnits` and `dimensions` in the `owned/catalogue.json` pack so the
 starter's npm `test` script can report any differences.
-Keep the `catalogDraftTypeRefs` export when replacing the registry because it
-lists the authored types for that check.
+Edit `catalogDraftTypes` for all type changes because the lookup-only registry
+prevents the test from detecting types added elsewhere.
 Draft payloads cannot install
 executable validators. The operator can create, revise, abandon, list and read
 drafts; the host supplies the actor and command key. Provision and deactivate

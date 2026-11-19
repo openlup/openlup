@@ -267,7 +267,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     try {
       const refusal = runContracts(starterCatalogueTest);
       expect(refusal.status, refusal.error?.message ?? refusal.stdout + refusal.stderr).toBe(1);
-      expect(refusal.stdout).toContain("Export catalogDraftTypeRefs from owned/catalogue.ts");
+      expect(refusal.stdout).toContain("Export the types array that builds the registry as catalogDraftTypes in owned/catalogue.ts");
     } finally {
       writeFileSync(join(app, cataloguePath), reconciled);
     }
