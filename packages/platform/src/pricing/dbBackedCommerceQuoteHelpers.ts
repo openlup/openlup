@@ -78,9 +78,7 @@ export function retainSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): void {
   if (line.catalogFacts?.version === "catalog_facts_v2") policyQuoteLines.set(line.catalogFacts, policyQuoteMoney(line));
 }
 
-/** Checks that the current line and its money still match the strict quote owner's result.
- * @experimental
- */
+/** Checks that the current line and its money still match the strict quote owner's result. */
 export function isAuthoritativeSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): boolean {
   const facts = line.catalogFacts;
   return facts?.version === "catalog_facts_v2" && policyQuoteLines.get(facts) === policyQuoteMoney(line);

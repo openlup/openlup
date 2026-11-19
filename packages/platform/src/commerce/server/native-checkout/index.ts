@@ -1,8 +1,9 @@
 import { z } from "zod";
 import type { PromotionRow } from "@openlup/core/promo";
 import { selectAcquisitionTerms, assertAcquisitionTermsCapability, AcquisitionTermsError, resolvedAcquisitionTermsSchema,
-  createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, isAuthoritativeSubscriptionPolicyQuoteLine, type CreateQuoteResponse,
+  createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, type CreateQuoteResponse,
   type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
+import { isAuthoritativeSubscriptionPolicyQuoteLine } from "../../../pricing/dbBackedCommerceQuoteHelpers.js";
 import { createPostgresQuoteCustomerEligibility } from "../../../promotions/index.js";
 import { commerceIdempotencyKeySchema } from "../../contractPrimitives.js";
 import type { CommerceOfferAvailabilityPort } from "../../contracts/availability.js";

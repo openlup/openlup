@@ -1997,9 +1997,7 @@ export interface StrictQuotePriceResolution {
 }
 type OwnerQuoteLine = CreateQuoteResponse["quote"]["lines"][number];
 export declare function retainSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): void;
-/** Checks that the current line and its money still match the strict quote owner's result.
- * @experimental
- */
+/** Checks that the current line and its money still match the strict quote owner's result. */
 export declare function isAuthoritativeSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): boolean;
 /**
  * Strict authority quotes require one exact one-time base anchor. Subscription money is either
@@ -2163,7 +2161,6 @@ export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQu
 export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStrictQuotePrice, assertSubscriptionCheapest, toGrossMinor, calculateIncludedVat, mapPricingComponent, moneyIn, sum } from "./dbBackedCommerceQuoteHelpers.js";
 export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
-export { isAuthoritativeSubscriptionPolicyQuoteLine } from "./dbBackedCommerceQuoteHelpers.js";
 export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
 export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
 export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";
