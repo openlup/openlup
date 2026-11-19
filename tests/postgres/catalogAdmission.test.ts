@@ -2835,7 +2835,7 @@ it.each([false,true].flatMap(promoted => ["one_time","subscription"].flatMap(mod
   },
 );
 
-it.each([
+const authorityControls = [
   { change: "sku-drift",predicate: "OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb",replacement: "" },
   { change: "projection-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
   { change: "sibling-role-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
@@ -2855,21 +2855,21 @@ it.each([
   { change: "null-selection",predicate: "IF jsonb_typeof(p_sku_revisions) IS DISTINCT FROM 'array' THEN\n  RAISE EXCEPTION '%',refused USING ERRCODE='22023'; END IF;",replacement: "" },
   { change: "invalid-sku",predicate: "OR NOT coalesce(pg_input_is_valid(s#>>'{reference,skuId}','uuid'),false)",replacement: "" },
   { change: "fractional-quantity",predicate: "OR NOT coalesce(s->>'quantity' ~ '^[1-9][0-9]*$' AND pg_input_is_valid(s->>'quantity','integer'),false)",replacement: "" },
-] as const)("authority control $change fails its precise witness", async ({ change,predicate,replacement }) => {
+] as const;
+it.each(authorityControls.flatMap(({ change,predicate,replacement }) => {
   const row = authorityCases.find(value => value.change === change)!;
-  let restore = async () => {};
-  try {
-    const liveHead = ["sku-drift","projection-drift","sibling-role-drift","weight-drift","unreadable"].includes(change);
-    restore = await hook(liveHead ? verifiedHeadsSignature : admissionSignature,liveHead ? "DECLARE product_id uuid;" : sharedBoundary,"",body => {
-      expect(body.split(predicate)).toHaveLength(2);
-      return body.replace(predicate,replacement);
-    });
-    const allPaths = ["projection-drift","sibling-role-drift","weight-drift","duplicate-offer-membership",
-      "inactive-sku","inactive-product","no-standalone","no-subscription"].includes(change);
-    const paths = allPaths ? authorityPaths.filter(path => authorityApplies(path,row))
-      : change === "unreadable" ? ["sized","ordinary-sized"] as const : ["plain-subscription"] as const;
-    for (const path of paths) await expect(authorityCase({ ...row,path })).rejects.toMatchObject({ name: "AssertionError" });
-  } finally { await restore(); }
+  const allPaths = ["projection-drift","sibling-role-drift","weight-drift","duplicate-offer-membership",
+    "inactive-sku","inactive-product","no-standalone","no-subscription"].includes(change);
+  const paths = allPaths ? authorityPaths.filter(path => authorityApplies(path,row))
+    : change === "unreadable" ? ["sized","ordinary-sized"] as const : ["plain-subscription"] as const;
+  return paths.map(path => ({ row,path,predicate,replacement }));
+}))("authority control $row.change fails its precise witness via $path", async ({ row,path,predicate,replacement }) => {
+  const liveHead = ["sku-drift","projection-drift","sibling-role-drift","weight-drift","unreadable"].includes(row.change);
+  const control = () => hook(liveHead ? verifiedHeadsSignature : admissionSignature,liveHead ? "DECLARE product_id uuid;" : sharedBoundary,"",body => {
+    expect(body.split(predicate)).toHaveLength(2);
+    return body.replace(predicate,replacement);
+  });
+  await expect(authorityCase({ ...row,path,control })).rejects.toMatchObject({ name: "AssertionError" });
 });
 
 async function acquisitionCase({ offerVersion,result,offerInput }: {
