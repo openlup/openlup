@@ -1276,7 +1276,7 @@ it.each(
   const sku = f.payload.skus[sibling ? 1 : 0]!, code = sku.code!;
   const prices = await seedSalePrices(sku.id);
   const payload = withdrawal(f);
-  let head = standing.head, revision = 1;
+  let head: CatalogHeadRef = standing.head, revision = 1;
   const advance = async () => {
     const result = (await publish(payload,revision++,head)).result;
     if (!("receipt" in result)) throw new Error(JSON.stringify(result));
