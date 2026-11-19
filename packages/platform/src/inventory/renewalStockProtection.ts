@@ -149,10 +149,12 @@ export interface RenewalStockProtectionPreviewConnection {
   sourceKey: string;
 }
 
+const estimateStock = "estimate proposed stock availability";
 const accessRefusals: Readonly<Record<string, string>> = {
   "read the installed policy": "commerce_setting_preview_policy_read_denied",
   "read stock availability": "commerce_setting_preview_stock_read_denied",
   "check the proposed policy": "commerce_setting_preview_validation_denied",
+  [estimateStock]: "commerce_setting_preview_stock_read_denied",
 };
 
 /** @experimental Preview installed and proposed renewal stock protection at the same observation instant. */
@@ -181,7 +183,7 @@ export async function previewRenewalStockProtection(
       const days = validation.state === "valid"
         ? validation.value.renewalProtectionDays - current.renewalProtectionDays
         : null;
-      operation = "read stock availability";
+      operation = estimateStock;
       const proposedRows = validation.state === "valid" && context.skus.length > 0
         ? parseStockReadResponse((await client.query(`SELECT public.inventory_new_purchase_stock_preview(
           $1::text,$2::jsonb,$3::timestamptz,$4::jsonb) AS response`,
@@ -220,6 +222,12 @@ export async function previewRenewalStockProtection(
     if (state === "42501" && denied) return context.refuse(denied);
     if (state === "42883" && operation === "check the proposed policy") {
       return context.refuse("commerce_setting_preview_validation_missing");
+    }
+    if (state === "42883" && operation === estimateStock) {
+      return context.refuse("commerce_setting_preview_validation_missing", {
+        path: ["proposed"],
+        hint: "Apply the database forward 20261123152000_inventory_new_purchase_stock_preview.sql, then retry.",
+      });
     }
     return context.refuse("commerce_setting_preview_unexpected", {
       path: [], hint: `Could not ${operation}.`,
