@@ -3170,6 +3170,36 @@ it.each([
   expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
 });
 
+it.each(["before creation", "after metadata", "before metadata"] as const)("first decision validates membership against the SKU prefix %s", async prefix => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  const membership = { op: "set_offer_membership" as const, ...payload.product.sharedContent.offerMemberships[0] };
+  let head: CatalogHeadRef | null = null;
+  if (prefix === "before creation") {
+    payload.publication.operations = [membership, ...payload.publication.operations.filter(op => op.op !== "set_offer_membership")];
+  } else {
+    head = (await commit(data.publication)).head;
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.skus[0].logisticsRef = "example:required-logistics";
+    const metadata = { op: "set_sku_metadata" as const, skuCode: membership.skuCode, logisticsRef: payload.skus[0].logisticsRef };
+    payload.publication.operations = prefix === "after metadata" ? [metadata, membership] : [membership, metadata];
+  }
+  const command = await save(payload, data.draftId, 1, head);
+  const deps = dependencies(), seen: (string | null)[] = [];
+  const target = createPostgresCatalogPublication({
+    ...deps, rules: { ...deps.rules, validateMembershipChange(sku) { seen.push(sku.logisticsRef); return sku.logisticsRef === "example:required-logistics"; } },
+  });
+  const capability = (await target.authorize(null))!, before = await snapshot();
+  if (prefix === "after metadata") {
+    await commit(command, target, capability);
+    expect(seen).toEqual(["example:required-logistics", "example:required-logistics"]);
+  } else {
+    expect(await target.decision(approvalCommand(command), capability)).toEqual({ outcome: "validation_issue",
+      reason: prefix === "before creation" ? "catalog_publication_v3_compile_sku_absent" : "catalog_publication_membership_change_not_allowed" });
+    expect(seen).toEqual(prefix === "before creation" ? [] : [null]);
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
 it.each((["approve", "revoke"] as const).flatMap(action => [
   { action, issue: "missing document", refusal: { outcome: "validation_issue", reason: "document_reference_missing" } },
   { action, issue: "off-head document", refusal: { outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" } },

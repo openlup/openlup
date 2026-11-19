@@ -267,6 +267,27 @@ function applyMembershipChange(rules: CatalogPublicationRules, sku: CatalogPubli
   sku.memberships.sort((a, b) => comparePublicationText(a.offerVersion, b.offerVersion));
 }
 
+function prefixSku(skus: ReadonlyMap<string, CatalogPublishedSku>, code: string): CatalogPublishedSku {
+  return skus.get(code) ?? publicationRefuse("catalog_publication_v3_compile_sku_absent");
+}
+
+function applySkuPrefix(sku: CatalogPublishedSku, operation: PublicationOperation, rules: CatalogPublicationRules) {
+  switch (operation.op) {
+    case "create_identifier": {
+      const { op: _op, skuCode: _code, ...identifier } = operation;
+      sku.identifiers.push(identifier);
+      break;
+    }
+    case "set_eligibility":
+      sku.sellableStandalone = operation.sellableStandalone; sku.sellableInSubscription = operation.sellableInSubscription;
+      break;
+    case "set_sku_status": sku.status = operation.status; break;
+    case "set_offer_membership": applyMembershipChange(rules, sku, operation); break;
+    case "set_sku_metadata": sku.logisticsRef = operation.logisticsRef; break;
+    case "set_derived_sku_facts": sku.facts = operation.facts; break;
+  }
+}
+
 function assertDerivedSource(operation: Extract<PublicationOperation, { op: "set_derived_sku_facts" }>,
   original: Pick<CatalogPublishedSku, "netContent"> | undefined, authoredRevision: number | undefined) {
   need(original && equal(original.netContent, operation.netContent) && operation.documentRevisionNo === authoredRevision,
@@ -353,22 +374,23 @@ export function assertCatalogPublicationAuthorship(input: PublicationSourceInput
   { skus: readonly CatalogPublishedSku[]; register?: boolean }) {
   const { payload } = input;
   const authored = publicationAuthorship(input);
-  const registrationSkus = input.register && input.rules.validateMembershipChange
-    ? new Map(input.skus.map(sku => [sku.code, { ...sku, memberships: [...sku.memberships] }])) : null;
+  const registrationSkus = input.register && payload.publication.operations.some(op => op.op === "set_offer_membership")
+    ? new Map(input.skus.map(sku => [sku.code, structuredClone(sku)])) : null;
   for (const operation of payload.publication.operations) {
     if ("productSlug" in operation) authored.productOperation(operation);
     if (operation.op === "register_document_revision") authored.document(operation);
     if (operation.op === "set_derived_sku_facts") {
       const actual = input.skus.find(sku => sku.code === operation.skuCode);
       assertDerivedSource(operation, actual, payload.product.documentRevision?.revisionNo);
+      if (registrationSkus?.has(operation.skuCode))
+        applySkuPrefix(prefixSku(registrationSkus, operation.skuCode), operation, input.rules);
     } else if ("skuCode" in operation) {
+      const prior = !registrationSkus ? undefined : operation.op === "set_offer_membership"
+        ? prefixSku(registrationSkus, operation.skuCode) : registrationSkus.get(operation.skuCode);
       const source = authored.skuOperation(operation);
       if (registrationSkus && operation.op === "create_sku")
         registrationSkus.set(operation.skuCode, skuCreationFacts(operation, source, payload.product.id));
-      if (registrationSkus && operation.op === "set_offer_membership") {
-        const sku = registrationSkus.get(operation.skuCode);
-        if (sku) applyMembershipChange(input.rules, sku, operation);
-      }
+      else if (prior) applySkuPrefix(prior, operation, input.rules);
     }
   }
 }
@@ -439,7 +461,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
     checkedDocument(document.canonicalText, document.reference, slug, input.rules);
   }
   function knownProduct(): CatalogPublishedProduct { return product ?? publicationRefuse("catalog_publication_v3_compile_product_absent"); }
-  function knownSku(code: string): CatalogPublishedSku { return skus.get(code) ?? publicationRefuse("catalog_publication_v3_compile_sku_absent"); }
+  const knownSku = (code: string) => prefixSku(skus, code);
   function documentAt(no: number): CatalogPublicationDocument { return documents.find(document => document.reference.revisionNo === no) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }
   function currentDocument(): CatalogPublicationDocument { return documents.find(document => document.reference.id === knownProduct().document?.id) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }
   function currentDocumentValue() {
@@ -494,7 +516,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
         gtins.add(identifier.value.padStart(14, "0"));
       }
       need(!identifier.isPrimary || identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit" && !sku.identifiers.some(value => value.isPrimary), "catalog_publication_identifier_primary_invalid");
-      sku.identifiers.push(identifier);
+      applySkuPrefix(sku, operation, input.rules);
     } else if (operation.op === "set_primary_sku") {
       const sku = knownSku(operation.skuCode), source = authorship.skuOperation(operation);
       need(sku.productId === knownProduct().id && source.sku.id === sku.id, "catalog_publication_v3_compile_primary_foreign");
@@ -513,18 +535,18 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
       "catalog_publication_operation_source_mismatch");
       need(!on || sku.status !== "archived" && !input.skus.some(value => value.id === sku.id && value.status === "archived"), "catalog_publication_v3_compile_sku_archived");
       activation ||= on;
-      sku.sellableStandalone = operation.sellableStandalone; sku.sellableInSubscription = operation.sellableInSubscription;
+      applySkuPrefix(sku, operation, input.rules);
     } else if (operation.op === "set_sku_status") {
       const sku = knownSku(operation.skuCode);
       authorship.skuOperation(operation);
       if (operation.status === "archived") need(!sku.sellableStandalone && !sku.sellableInSubscription && knownProduct().primarySkuId !== sku.id, "catalog_publication_v3_compile_archive_refused");
       else need(payload.publication.operations.some(other => other.op === "set_eligibility" && other.skuCode === sku.code
         && (other.sellableStandalone || other.sellableInSubscription)), "catalog_publication_activation_requires_explicit_eligibility");
-      sku.status = operation.status;
+      applySkuPrefix(sku, operation, input.rules);
     } else if (operation.op === "set_offer_membership") {
       const sku = knownSku(operation.skuCode);
       authorship.skuOperation(operation);
-      applyMembershipChange(input.rules, sku, operation);
+      applySkuPrefix(sku, operation, input.rules);
     } else if (operation.op === "set_product_presentation") {
       authorship.productOperation(operation);
       knownProduct().presentation = operation.presentation;
@@ -532,14 +554,14 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
     } else if (operation.op === "set_sku_metadata") {
       const sku = knownSku(operation.skuCode);
       authorship.skuOperation(operation);
-      sku.logisticsRef = operation.logisticsRef;
+      applySkuPrefix(sku, operation, input.rules);
     } else if (operation.op === "set_derived_sku_facts") {
       const sku = knownSku(operation.skuCode);
       const original = originalById.get(sku.id);
       assertDerivedSource(operation, original, authoredDocument?.revisionNo);
       need(knownProduct().document?.revisionNo === operation.documentRevisionNo, "catalog_publication_derived_source_mismatch");
       need(equal(input.rules.deriveSkuFacts(currentDocumentValue(), sku), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
-      sku.facts = operation.facts;
+      applySkuPrefix(sku, operation, input.rules);
     } else { const _exhaustive: never = operation; publicationRefuse("catalog_publication_operation_invalid"); }
     yield { operation, product: knownProduct(), skus, documents };
   }
