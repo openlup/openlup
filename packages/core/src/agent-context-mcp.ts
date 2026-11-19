@@ -17,6 +17,7 @@ const tools = [
         task: { type: "string" },
         includeApplicationCode: { type: "boolean", default: false },
         includePackageCode: { type: "boolean", default: false },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 8 },
       }, required: ["task"], additionalProperties: false,
     },
   },
@@ -111,7 +112,8 @@ function callTool(cwd: string, params: ObjectValue, hooks: ReadHooks): ObjectVal
   if (params.name === "search_openlup_context") {
     requireParams(typeof args.task === "string" &&
       ["includeApplicationCode", "includePackageCode"].every(key => args[key] === undefined || typeof args[key] === "boolean") &&
-      Object.keys(args).every(key => ["task", "includeApplicationCode", "includePackageCode"].includes(key)));
+      (args.limit === undefined || (Number.isSafeInteger(args.limit) && (args.limit as number) >= 1 && (args.limit as number) <= 50)) &&
+      Object.keys(args).every(key => ["task", "includeApplicationCode", "includePackageCode", "limit"].includes(key)));
   } else if (params.name === "read_openlup_file") {
     requireParams(typeof args.path === "string" &&
       ["startLine", "endLine"].every(key => args[key] === undefined || (Number.isSafeInteger(args[key]) && (args[key] as number) >= 1)) &&
@@ -120,7 +122,14 @@ function callTool(cwd: string, params: ObjectValue, hooks: ReadHooks): ObjectVal
   try {
     if (params.name === "search_openlup_context") {
       if ((args.task as string).length > maxTaskCharacters) throw new Error(`Search task exceeds ${maxTaskCharacters} characters`);
-      const result = searchContext(cwd, args.task as string, args.includeApplicationCode as boolean | undefined, args.includePackageCode as boolean | undefined);
+      const limit = args.limit as number | undefined;
+      const result = searchContext(
+        cwd,
+        args.task as string,
+        args.includeApplicationCode as boolean | undefined,
+        args.includePackageCode as boolean | undefined,
+        limit === undefined ? undefined : { limit },
+      );
       return {
         content: [{ type: "text", text: formatContextResult(cwd, result) }],
         structuredContent: { ...result, hits: result.hits.map(hit => ({ ...hit, file: relative(cwd, hit.file).split(sep).join("/") })) },
