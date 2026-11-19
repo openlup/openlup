@@ -90,7 +90,7 @@ export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublic
     }
     if (operation.op === "create_sku") created.add(operation.skuCode);
     if (operation.op === "create_identifier") {
-      if (!created.has(operation.skuCode)) issue("identifier precedes or lacks SKU creation");
+      if (!created.has(operation.skuCode)) issue("move the identifier after its SKU creation", ["operations", index]);
       if (operation.packagingLevel === "unit" && operation.quantity !== 1)
         issue("unit identifiers require quantity 1", ["operations", index, "quantity"]);
       else if (operation.packagingLevel === "case" && operation.quantity < 2)

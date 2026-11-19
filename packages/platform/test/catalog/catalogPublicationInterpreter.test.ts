@@ -185,6 +185,12 @@ const cases: Case[] = [
     diagnostic: { phase: "structural", path: "publication.operations.4.quantity", subject: "example:article" },
     message: packagingLevel === "unit" ? "unit identifiers require quantity 1" : "case identifiers require at least 2 units",
   })),
+  { id: "M-IDENTIFIER-BEFORE-SKU", arrange(data) {
+    const operations = data.payload.publication.operations;
+    operations.splice(3, 2, operations[4]!, operations[3]!);
+  }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
+  diagnostic: { phase: "structural", path: "publication.operations.3", subject: "example:article" },
+  message: "move the identifier after its SKU creation" },
   { id: "a repeated requested mode keeps its indexed field and fix", arrange(data) {
     data.payload.product.sharedContent.requestedModes[0]!.modes = ["one_time", "one_time"];
   }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
@@ -547,7 +553,9 @@ const cases: Case[] = [
     expected: reason("catalog_publication_draft_advanced") },
   { id: "D-032 G-5 enabling checks authored gross even when retained gross and gate are green", fixture: "revision",
     arrange: data => activate(data, "eligibility", false),
-    expected: ["catalog_publication_gross_mass_required", null, "catalog_publication_gross_mass_required"] },
+    expected: ["catalog_publication_gross_mass_required", null, "catalog_publication_gross_mass_required"],
+    diagnostic: { phase: "activation", path: "skus.0.grossMass", subject: "ARTICLE" },
+    message: "supply the gross mass for this SKU", outcome: "unknown", routeCalls: [0, 1, 0] },
   { id: "D-069 J-2 admitted membership on an already eligible SKU uses authored gross", fixture: "revision",
     arrange: data => activate(data, "membership", false),
     expected: ["catalog_publication_gross_mass_required", null, "catalog_publication_gross_mass_required"] },
@@ -566,7 +574,9 @@ const cases: Case[] = [
   }, expected: ["catalog_publication_media_validation_unavailable", null, "catalog_publication_media_validation_unavailable"] },
   { id: "D-076 H-2 positive activation never replaces rejected proof", fixture: "revision", arrange: data => {
     activate(data, "eligibility"); media(data);
-  }, media: async () => false, expected: ["catalog_publication_media_readiness_unproven", null, "catalog_publication_media_readiness_unproven"] },
+  }, media: async () => false, expected: ["catalog_publication_media_readiness_unproven", null, "catalog_publication_media_readiness_unproven"],
+  diagnostic: { phase: "activation", path: "publication.evidence.media", subject: "ARTICLE" },
+  outcome: "unknown", routeCalls: [0, 1, 0] },
   { id: "D-076 proven authored claim reaches activation", fixture: "revision", arrange: data => {
     activate(data, "eligibility"); media(data);
   }, media: async () => true, activationReady: true },
@@ -819,6 +829,47 @@ it("K-3 document-free published content round-trips while the authored draft ret
   expect(catalogPublicationManifestSchema(new Set([priorDigest])).safeParse(display(priorText)).error?.issues[0]?.path)
     .toEqual(["product", "presentation", "title"]);
   expect(catalogPublishedSkuSchema.safeParse({ ...skus[0], facts: { derived: document } }).success).toBe(false);
+});
+
+it("N-EXACT-OBJECT-COPY excludes the canonical display value from compile and the manifest", async () => {
+  const data = { ...input(), ...setupRules(artifact + `
+module.exports.identifyDocument = () => ({
+  schemaId: "example:document.v1", documentRef: "example:document", productSlug: "article",
+  revisionNo: 1, name: "Synthetic article",
+});
+module.exports.deriveSkuFacts = () => ({ derived: 12 });`) };
+  const document = { fr: "Article", en: "Item" };
+  data.payload.product.sharedContent.document = document;
+  const canonicalText = canonicalCatalogDraftJson(document);
+  const digest = createHash("sha256").update(canonicalText).digest("hex");
+  data.payload.product.documentRevision!.digest = digest;
+  operation(data, "register_document_revision", { canonicalText, digest });
+  const setShortName = (shortName: typeof document) => {
+    data.payload.product.sharedContent.presentation = { shortName };
+    operation(data, "set_product_presentation", { presentation: { shortName } });
+  };
+
+  setShortName({ en: "Item", fr: "Article" });
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({
+    code: "catalog_publication_document_text_copied", diagnostic: { path: "product.presentation.shortName" },
+  });
+
+  setShortName({ en: "Item", fr: "Example" });
+  const { product, skus } = await compileCatalogPublication(data);
+  const manifest = { schemaVersion: 2, product, skus: [{ skuId: skus[0]!.id,
+    revisionId: "50000000-0000-4000-8000-000000000002", revision: 1, digest: publicationDigest(skus[0]) }] };
+  const historicalCodec = catalogPublicationManifestSchema(new Set([digest]));
+  expect(historicalCodec.safeParse(manifest).success).toBe(true);
+  const display = (presentation: NonNullable<typeof product.presentation>) =>
+    ({ ...manifest, product: { ...product, document: input().payload.product.documentRevision!, presentation } });
+  expect(historicalCodec.safeParse(display({ shortName: { en: "Item", fr: "Article" } })).error?.issues[0])
+    .toMatchObject({ path: ["product", "presentation", "shortName"], message: "catalog_publication_document_text_copied" });
+
+  const weights = [125, 250];
+  const arrayCodec = catalogPublicationManifestSchema(new Set([publicationDigest(weights)]));
+  expect(arrayCodec.safeParse(display({ advertisedWeightsG: weights })).error?.issues[0]?.path)
+    .toEqual(["product", "presentation", "advertisedWeightsG"]);
+  expect(arrayCodec.safeParse(display({ advertisedWeightsG: [125, 500] })).success).toBe(true);
 });
 
 it("local dispatch decodes every installed hook result before transport", () => {

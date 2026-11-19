@@ -1463,8 +1463,9 @@ validator. Export the hooks documented by `CatalogPublicationRulesModule`.
 
 Use the named presentation fields for titles, routes, short names, advertised
 weights, media references, and accents. List advertised weights in ascending
-order without duplicates. Keep derived SKU facts to scalar values, and use
-display text distinct from the authored document text.
+order without duplicates. Keep derived SKU facts to scalar values. Give each
+display field its own value. Copying a whole authored document into a display
+field fails preparation, including a copy as a localized map or array.
 Store structured display values as typed public attributes.
 
 Render public product attributes supplied by the catalogue read model. The

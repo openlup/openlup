@@ -87,11 +87,16 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
 }) as z.ZodType<CatalogPublishedSku>;
 const copiedDocument = "catalog_publication_document_text_copied";
-function copiedTextPath(value: unknown, digests: ReadonlySet<string>): string[] | undefined {
-  if (!digests.size) return undefined;
+function copiedDocumentPath(value: unknown, digests: ReadonlySet<string>): string[] | undefined {
+  if (!digests.size || value === undefined) return undefined;
   if (typeof value === "string") return digests.has(createHash("sha256").update(value, "utf8").digest("hex")) ? [] : undefined;
+  try {
+    if (digests.has(publicationDigest(value))) return [];
+  } catch {
+    // A value outside the canonical JSON envelope cannot match a canonical document.
+  }
   if (value && typeof value === "object") for (const [key, child] of Object.entries(value)) {
-    const found = copiedTextPath(child, digests);
+    const found = copiedDocumentPath(child, digests);
     if (found) return [key, ...found];
   }
 }
@@ -113,18 +118,18 @@ export function assertPublishedSkuDocumentExclusion(sku: CatalogPublishedSku, do
 }
 
 function assertDocumentExclusion(value: unknown, digests: ReadonlySet<string>, field: string, subject: string): void {
-  const path = copiedTextPath(value, digests);
+  const path = copiedDocumentPath(value, digests);
   if (path) throw new CatalogPublicationError(copiedDocument, "validation_issue",
     publicationIssue(copiedDocument, "structural", [field, ...path].join("."), subject));
 }
-/** Validates exact copies against the selected document and the revision digests supplied by the caller. */
+/** Refuses exact copies of canonical values or raw text using the selected and caller-supplied revision digests. */
 export function catalogPublicationManifestSchema(documentDigests: ReadonlySet<string> = new Set()): z.ZodType<CatalogPublicationManifestV2> {
   return z.object({
     schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
     skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()),
   }).strict().superRefine((manifest, context) => {
     const selected = manifest.product.document?.digest;
-    const path = copiedTextPath(manifest.product, selected ? new Set([...documentDigests, selected]) : documentDigests);
+    const path = copiedDocumentPath(manifest.product, selected ? new Set([...documentDigests, selected]) : documentDigests);
     if (path) context.addIssue({ code: "custom", path: ["product", ...path], message: copiedDocument });
     if (!manifest.skus.every((sku, index) => index === 0 || manifest.skus[index - 1]!.skuId < sku.skuId)
       || !manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))

@@ -450,6 +450,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
   expectedHead: ExpectedPublicationHead | null;
 }, mode: PublicationMode) {
   const structural: EvaluationIssue[] = [], activationIssues: EvaluationIssue[] = [];
+  const issuesByPhase = { structural, activation: activationIssues };
   const position = { phase: "structural" as PublicationPhase, path: "product", subject: input.definition.key };
   const missing = (code: string, path: string) => unavailable(publicationIssue(code, position.phase, path, position.subject));
   const completed = { structural: false, activation: false };
@@ -463,7 +464,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
   } catch (error) {
     if (!(error instanceof CatalogPublicationError)) throw error;
     const diagnostic = publicationDiagnostic(error, position.phase, position.path, position.subject);
-    const issues = diagnostic.phase === "activation" ? activationIssues : structural;
+    const issues = issuesByPhase[diagnostic.phase === "activation" ? "activation" : "structural"];
     const issue = { diagnostic, outcome: error.outcome };
     if (isUnavailable(issue)) issues.push(issue);
     else { failure = new CatalogPublicationError(error.code, error.outcome, diagnostic); issues.unshift(issue); }
@@ -490,7 +491,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       { run: async () => { await bound.checkStructuralResult(); completed.structural = true; } }, // Structural result       all  P:940–954
       { run: async () => { await bound.checkActivationResult(); completed.activation = true; }, activation: true }, // Activation result       P:955–969
     ];
-    for (const phase of phases) if (!phase.activation || mode !== "first-decision") await phase.run();
+    for (const phase of phases) {
+      if (phase.activation && mode === "first-decision") continue;
+      position.phase = phase.activation ? "activation" : "structural";
+      await phase.run();
+    }
     if (mode === "preview") bound.addPending();
     return bound.result();
   }
@@ -597,8 +602,9 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       structural.push(missing("catalog_publication_read_invalid", "publication"));
     const sourceRead = evidence && Array.isArray(evidence.drafts) ? boundDrafts(record, payload, evidence.drafts) : undefined;
     const markSourceUnavailable = () => {
-      if (!structural.some(issue => issue.diagnostic.code === "catalog_publication_read_invalid"))
-        structural.push(missing("catalog_publication_read_invalid", "publication"));
+      const issues = issuesByPhase[position.phase];
+      if (!issues.some(issue => issue.diagnostic.code === "catalog_publication_read_invalid"))
+        issues.push(missing("catalog_publication_read_invalid", "publication"));
     };
     if (evidence && (!sourceRead || sourceRead.incomplete)) markSourceUnavailable();
     const missingProduct = requestedHead !== null && !recordedProduct?.data;
@@ -860,6 +866,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         if (!source) continue;
         bindPhysicalSource(code, source.sku);
         need(source.sku.netContent, "catalog_publication_operation_source_mismatch");
+        position.path = `skus.${source.payload.skus.indexOf(source.sku)}.grossMass`;
         assertCatalogPublicationGrossMass(source.sku.netContent!, source.sku.grossMass ?? null, definition);
         position.path = "publication.evidence.media";
         const assets = source.sku.assetRefs ?? [];
@@ -868,13 +875,13 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           && (typeof retainedReference !== "string" || retainedReference !== presentation?.mediaRef)) {
           const code = "catalog_publication_media_readiness_unproven";
           throw new CatalogPublicationError(code, "validation_issue", {
-            ...publicationIssue(code, "activation", position.path, position.subject),
+            ...publicationIssue(code, position.phase, position.path, position.subject),
             message: "Keep the selected draft's media reference in the proposed presentation.",
           });
         }
         const problem = catalogPublicationMediaIssue(presentation?.mediaRef, assets, media.get(code));
         if (problem === "media_readiness_unknown")
-          activationIssues.push(unavailable(publicationIssue("catalog_publication_media_validation_unavailable", "activation", position.path, code)));
+          activationIssues.push(missing("catalog_publication_media_validation_unavailable", position.path));
         else need(!problem, "catalog_publication_media_readiness_unproven");
       }
       position.path = "publication.evidence.media";
@@ -883,7 +890,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         const accepted = await observe(() => observations?.verifyMedia?.(structuredClone(claim), expectedHead) ?? Promise.resolve(undefined));
         if (accepted === true) verifiedMedia.push(claim);
         else if (accepted === false) publicationRefuse("catalog_publication_media_readiness_unproven");
-        else structural.push(missing("catalog_publication_media_validation_unavailable", position.path));
+        else activationIssues.push(missing("catalog_publication_media_validation_unavailable", position.path));
       }
     }
     let productState = states?.product;
@@ -1170,7 +1177,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     }
 
     async function checkActivationResult() {
-      position.phase = "activation";
       position.path = "skus";
       position.subject = definition.key;
       if (!assembled) { await checkPrices(); return; }

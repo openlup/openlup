@@ -9,6 +9,7 @@ const fixes = new Map([
   ["price_list_not_found", "Select an installed price list for this price change, then prepare the draft again."],
   ["unit_trade_identifier_missing", "Add a valid unit trade identifier to the SKU, then prepare the draft again."],
   ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."],
+  ["catalog_publication_gross_mass_required", "supply the gross mass for this SKU"],
   ["catalog_publication_presentation_invalid", "Use the supported presentation fields and keep the authored document in the draft."],
   ["catalog_publication_facts_invalid", "Use scalar SKU facts. Put structured display values in typed attributes."],
   ["catalog_publication_document_text_copied", "Replace the copied document text with the display value for this field."],
