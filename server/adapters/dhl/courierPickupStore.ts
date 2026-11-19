@@ -221,6 +221,7 @@ export type StoredCourierPickup = {
   shipmentsCount: number;
   operatorMessage: string | null;
   retryable: boolean;
+  confirmedResponse: boolean;
   supportCode: string | null;
   rawResponseExcerpt: string | null;
 };
@@ -245,6 +246,8 @@ export async function findCourierPickup(client: Client, idempotencyKey: string):
     shipmentsCount: typeof row.shipments_count === "number" ? row.shipments_count : 0,
     operatorMessage: typeof row.operator_message === "string" ? row.operator_message : null,
     retryable: row.retryable === true,
+    // Before confirmation checked the HTTP outcome, success writes left this NULL.
+    confirmedResponse: status === "succeeded" && row.retryable === false,
     supportCode: typeof row.support_code === "string" ? row.support_code : null,
     rawResponseExcerpt: typeof row.raw_response_excerpt === "string" ? row.raw_response_excerpt : null,
   };
@@ -274,7 +277,7 @@ export async function recordCourierPickup(client: Client, pickupId: string, inpu
       status: input.status,
       courier_order_id: input.courierOrderId ?? null,
       operator_message: input.operatorMessage ?? null,
-      retryable: input.retryable ?? null,
+      retryable: input.status === "succeeded" ? false : input.retryable ?? null,
       support_code: input.supportCode ?? null,
       raw_response_excerpt: input.rawResponse?.slice(0, 2000) ?? null,
     }).eq("id", pickupId).eq("status", "pending").select("id").maybeSingle();

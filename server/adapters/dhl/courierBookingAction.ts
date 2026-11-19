@@ -68,7 +68,7 @@ export function createCarrierPickupBookingAction(deps: {
     );
     const existing = await findCourierPickup(deps.client, idempotencyKey);
     const replay = existing?.status === "succeeded";
-    if (existing && !replay && !canRetryPickup(existing)) throw unresolvedPickup(existing);
+    if (existing && (replay ? !existing.confirmedResponse : !canRetryPickup(existing))) throw unresolvedPickup(existing);
     if (!replay) assertPickupWindow(input, now());
     const testers = await loadTesters(deps.client, testerIds, replay);
     if (existing && replay) {

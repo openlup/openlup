@@ -218,6 +218,36 @@ describe("carrier pickup booking action", () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
+  it("keeps legacy success without recorded confirmation out of local reconciliation", async () => {
+    const fake = bookingClient({ existing: {
+      status: "succeeded", retryable: null, courier_order_id: "ORD-1",
+      shipments_count: 1, raw_response_excerpt: "<orderId>ORD-1</orderId>",
+    } });
+    const fetchImpl = vi.fn();
+    const sendEmail = vi.fn();
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-18T08:00:00.000Z", sendEmail,
+    });
+    await expect(action(input)).rejects.toMatchObject({ retryable: false });
+    expect(fake.testerStatus()).toBe("packing");
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("keeps a later status for the same shipment when reconciliation loses a race", async () => {
+    const fake = bookingClient({ statusBeforeUpdate: "delivered" });
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const sendEmail = vi.fn();
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail,
+    });
+    await expect(action(input)).rejects.toMatchObject({ details: { errorCode: "LOCAL_STATUS_UPDATE_FAILED" } });
+    expect(fake.testerStatus()).toBe("delivered");
+    expect(fake.pickup()?.status).toBe("succeeded");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
   it.each(["before replay", "before update"])("refuses to mark a replacement shipment shipped %s", async when => {
     const fake = bookingClient({ testerUpdateError: "write failed" });
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
@@ -248,6 +278,7 @@ function bookingClient(options: {
   failure?: "read" | "claim" | "shipments" | "outcome";
   concurrentInitialReads?: boolean;
   delaySecondRetryUntilOutcome?: boolean;
+  statusBeforeUpdate?: string;
 } = {}) {
   const pendingRow = { id: "pickup-1", updated_at: "2040-08-16T08:00:00Z" };
   let pickup = options.existing ? { ...pendingRow, ...options.existing } : null;
@@ -285,6 +316,7 @@ function bookingClient(options: {
           if (table === "admin_users") return { data: { id: "admin-1" }, error: null };
           if (table === "testers" && updateValues) {
             if (replaceBeforeUpdate) replaceShipment();
+            if (options.statusBeforeUpdate) currentTester = { ...currentTester, status: options.statusBeforeUpdate };
             if (testerUpdateError) return { data: null, error };
             if (![...filters].every(([field, value]) => Object.is(currentTester[field as keyof typeof tester], value))) {
               return { data: null, error: null };
