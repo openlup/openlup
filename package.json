@@ -18,6 +18,7 @@
     "#cancel-survey-reasons": "./src/domains/subscription/exampleCancelSurveyReasons.ts",
     "#storefront-can-art": "./src/domains/catalog/exampleStorefrontCanArt.ts",
     "#checkout-terminal-route": "./src/checkout/entry/checkoutTerminalRoute.ts",
+    "#legacy-checkout-intent-policy": "./src/checkout/composer/legacyCheckoutIntentPolicy.ts",
     "#acquisition-case-routes": "./server/bff/clients/acquisitionCaseDirect.ts",
     "#tester-program-email-binding": "./server/runtime/communications/testerProgramEmailBinding.ts",
     "#auth-email-content": "./server/runtime/authEmailContentBinding.ts",
