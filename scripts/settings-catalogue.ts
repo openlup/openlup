@@ -199,7 +199,10 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       `Search terms include ${settingSynonyms(entry)}.`,
       "",
       `- Owner **${entry.domain}** · kind **${entry.kind}** · runtime **${entry.runtime.level}**`,
-      ...(entry.runtime.level === "preview" ? [`- ${entry.runtime.reason}`] : []),
+      ...(entry.runtime.level === "preview" ? [
+        `- ${entry.runtime.reason}`,
+        `- Frozen on: ${entry.effect.frozenOn.join(" ") || "No records named."}`,
+      ] : []),
       `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
       `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
       `- ${entry.whyThisDefault}`,

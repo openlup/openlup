@@ -264,6 +264,7 @@ Search terms include stock lookahead, inventory buffer, renewal allocation, avai
 
 - Owner **inventory** · kind **installed** · runtime **preview**
 - Preview is available. Apply changes with the installer at deployment.
+- Frozen on: Existing reservations keep their quantities and expiry times.
 - Default is `{"revision":"default","renewalProtectionDays":14}`.
 - Basis `reference-code` (matches the reference deployment's code).
 - Two weeks cover a typical replenishment cycle and preserve the established stock priority.
