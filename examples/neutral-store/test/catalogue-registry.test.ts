@@ -6,6 +6,38 @@ import { bindRegisteredCatalogue, starterCatalogue, selectCatalogueConfiguration
 import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
 import { installStarterCatalogueDefinitions } from '../installation/install.ts';
 import { starterQuoteCatalogue } from '../host/editor-catalogue.ts';
+import { catalogPackIssues } from '@openlup/platform/catalog';
+import type { StarterCatalogueRegistration } from '../host/catalogue-registry.ts';
+
+const articleType = { key: 'synthetic:article', version: 1, dimensions: [],
+  units: [{ code: 'openlup:piece', dimension: 'count' as const, integral: true }], netContentUnits: ['openlup:piece'],
+  validatorRef: `sha256:${'a'.repeat(64)}`, validateContent: () => [] };
+
+for (const trial of ['valid', 'invalid pack', 'duplicate configuration', 'unknown configuration'] as const) {
+  test(`G1-D1 starter registry admits one independent registration: ${trial}`, () => {
+    const source = starterCatalogue.select().configuration;
+    const first: StarterCatalogueRegistration = { configuration: source,
+      pack: { id: 'starter:test', namespace: 'starter', version: 1, openlupRange: '0.43.x', capabilities: {}, taxClasses: [],
+        types: [{ ...articleType, key: 'starter:test' }] }, draftType: { key: 'starter:test', version: 1 }, offerVersion: 'classic' };
+    const second: StarterCatalogueRegistration = { configuration: { ...source, id: trial === 'duplicate configuration' ? source.id : 'synthetic-articles' },
+      pack: { id: 'synthetic:articles', namespace: trial === 'invalid pack' ? 'unrelated' : 'synthetic', version: 1,
+        openlupRange: '0.43.x', capabilities: {}, taxClasses: [], types: [articleType] }, draftType: articleType, offerVersion: 'synthetic:offer' };
+    const register = () => createStarterCatalogueRegistry([first, second], first.configuration.id);
+    if (trial === 'invalid pack' || trial === 'duplicate configuration') {
+      if (trial === 'invalid pack') assert.equal(catalogPackIssues(second.pack)[0]?.code, 'pack_type_namespace_mismatch');
+      assert.throws(register, { message: 'starter_catalogue_registration_invalid' });
+      return;
+    }
+    const registry = register();
+    if (trial === 'unknown configuration') {
+      assert.throws(() => registry.select('absent'), { message: 'starter_configuration_unknown' });
+      return;
+    }
+    assert.deepEqual(catalogPackIssues(second.pack), []);
+    assert.equal(registry.select(second.configuration.id).pack, second.pack);
+    assert.equal(registry.select(second.configuration.id).types.resolve(articleType)?.key, articleType.key);
+  });
+}
 
 const configuredEntries = starterCatalogue.list().filter(({ configuration }) => Object.hasOwn(configurations, configuration.id));
 for (const entry of configuredEntries) test(`MC5-N-005 ${entry.configuration.id} drives boot, authoring, install and read composition`, async () => {

@@ -1909,6 +1909,23 @@ operation, so worker claim generations cannot create duplicate notices. Native
 generation-aware retry, delivery and transfer bindings require host qualification
 before activation; package construction activates nothing.
 
+`createPostgresStockWaitReads` composes server-only operator, operational and
+owned customer reads. All three use the same version 2 case projection, with
+`caseKind` identifying legacy and successor rows. Operator pages use opened time
+then case ID, and counts and SKU totals cover the entire state filter. Payment
+facts come from known orders on the page. A known order with no intent remains
+visible as missing evidence.
+
+The operational reader selects the oldest 2,000 open observations. The customer
+reader rechecks the authenticated principal's client and selects at most 100
+open cases from the account's exact subscription set. Both limits apply before
+excluding ineligible waiting rows. The health projection requires a current
+shortage, no blocker, a case check at most 30 minutes old, and a confirmed
+started notice or a started notice with fresh delivery progress. A recorded
+case opening alone supplies no delivery evidence. See the
+[package binding](../../packages/platform/README.md#stock-wait-reads) for
+authorization and snapshot requirements.
+
 Native package, exact, sized and transaction-local legacy edit previews include a versioned per-line agreement disclosure. The complete current renewal-term baseline, currency and original lane digest bind the accepted hash. Missing or ambiguous terms and unavailable currency refuse; currency differences refuse without conversion. Added and removed sides are null, while a real zero remains numeric. Existing lane pricing, historical successful replay and subscription timing stay with their owners. The legacy bridge requires one authenticated transaction connection. These additions are experimental and unbound.
 
 The native preview-prune helper accepts a retention and batch limit, returns the deleted count and retains accepted history. The recorder delegates with its existing seven-day/500-row values; deployments own any independent invocation. See the [migration note](../../packages/platform/changes/lc9.md) for installation and managed-rail limits.
@@ -1980,6 +1997,15 @@ For an introductory marker, SQL requires `subscription_sized_intro_phase`
 with JSON integer fields `fixedThroughCycle` and `graduationCycle`, matching the
 host policy. Missing or malformed configuration refuses. These settings carry
 adopter values; the package installs none.
+
+The consented sized editor selects the lowest open numbered cycle, or one past
+the highest recorded number when every cycle is closed. The paid activation
+cycle is cycle one when the activation and order identify that cycle. A renewal
+cycle uses its linked operation's recorded logical number. The underlying direct
+SQL editor retains its paid-count behavior. Wrapped editing, including candidate
+context, refuses incomplete history with
+`subscription_edit_cycle_history_unreadable`. A retained import needs complete
+cycle identity evidence before it can use this binding.
 
 The sized SQL forward adds `configured_offer_version` and service-only
 context/apply functions. Classic stays classic on entry, preview or abandonment.
@@ -2064,6 +2090,21 @@ has no event, notice or preview acceptance. Existing generic commands retain
 their separate contracts. `mapPackageEditError` distinguishes customer request
 refusals, durable apply conflicts and generic upstream failures; raw preview
 ledger failures remain upstream failures.
+
+`createPostgresClassicBundleEditor` is an experimental binding for classic
+bundle updates and resize. At the same cadence a bundle update preserves the
+base unit total. An omitted add-on set keeps the existing lines. An explicit
+empty set removes them. Resize passes the lever to the host composition port and
+records the resulting cadence and constraint. Use
+`createPostgresLegacyEditConsentBridge` for the existing legacy bundle command.
+When an edit keeps the current agreement, the preview shows the retained prices
+and `noChange.livePriceDiffers` indicates a difference in the live comparison.
+
+For a governed catalogue edit, supply `readCatalogAdmission` from the trusted
+server quote composition. It receives the complete desired set under the
+subscription lock. The recorded evidence includes the selected SKU revisions,
+publication heads and exact price-entry rows. Native acceptance verifies those
+records on the same transaction. Keep this reader off the customer request.
 
 The package-editor forward must be admitted and installed through the selected
 migration plan before this API is composed. It writes future line/cadence terms

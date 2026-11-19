@@ -18,7 +18,37 @@ export const catalogDraftRegistry = createCatalogProductTypeRegistry([{
 }]);
 `;
 
-for (const changed of ['none', 'copy', 'pack'] as const) test(`catalogue owned-file migration ${changed}`, async () => {
+const previousCatalogue = `import type { CatalogProductTypeInput } from '@openlup/platform/catalog';
+import type { CatalogPackInput } from '@openlup/platform/catalog/contracts';
+import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
+import { configurations, defaultConfigurationId } from './store.config.ts';
+
+const validateContent: CatalogProductTypeInput['validateContent'] = content => content !== null && typeof content === 'object'
+  && 'title' in content && typeof content.title === 'string' && content.title.trim()
+  ? [] : [{ path: 'title', code: 'title_required' }];
+const validatorRef = 'sha256:3833a12b67f874c6d23ef91ffd9924b6141d3aa03b96363bc7ca63aa290d2230';
+const legacyType: CatalogProductTypeInput = {
+  key: 'starter:item', version: 1, dimensions: [],
+  units: [{ code: 'starter:each', dimension: 'count', integral: true }], netContentUnits: ['starter:each'],
+  validatorRef, validateContent,
+};
+const draftType: CatalogProductTypeInput = {
+  key: legacyType.key, version: 2, dimensions: [],
+  units: [{ code: 'openlup:g', dimension: 'mass', integral: false }], netContentUnits: ['openlup:g'],
+  validatorRef, validateContent,
+};
+const demonstrationPack: CatalogPackInput = {
+  id: 'starter:demonstration', namespace: 'starter', version: 1, openlupRange: '0.43.x',
+  capabilities: { publish: false }, types: [legacyType, draftType], taxClasses: [],
+};
+
+export const starterCatalogue = createStarterCatalogueRegistry([
+  { get configuration() { return configurations.supplements!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
+  { get configuration() { return configurations.coffee!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
+], defaultConfigurationId);
+`;
+
+for (const trial of ['released defaults', 'previous registration', 'customization', 'pack conflict'] as const) test(`catalogue owned-file migration: ${trial}`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'starter-catalogue-upgrade-'));
   try {
     await mkdir(join(root, 'owned'));
@@ -29,26 +59,27 @@ for (const changed of ['none', 'copy', 'pack'] as const) test(`catalogue owned-f
     const legacyCopy = currentCopy.replace('Draft payload JSON (ignored only for abandonment)',
       'Draft payload JSON (starter:item version 1; ignored only for abandonment)').replace('JSON wersji roboczej (pomijany tylko przy porzuceniu)',
       'JSON wersji roboczej (starter:item, wersja 1; pomijany tylko przy porzuceniu)');
-    await writeFile(catalogue, releasedCatalogue);
-    await writeFile(copy, legacyCopy + (changed === 'copy' ? '\n// Application customization\n' : ''));
-    const pack = join(root, cataloguePackAdditions[0]);
-    if (changed === 'pack') {
+    await writeFile(catalogue, trial === 'previous registration' ? previousCatalogue : releasedCatalogue);
+    await writeFile(copy, trial === 'previous registration' ? currentCopy : legacyCopy + (trial === 'customization' ? '\n// Application customization\n' : ''));
+    await writeFile(other, 'maintained by the application\n');
+    if (trial === 'pack conflict') {
+      const pack = join(root, cataloguePackAdditions[0]);
       await mkdir(dirname(pack), { recursive: true });
       await writeFile(pack, 'application catalogue');
       await assert.rejects(upgradeStarterCatalogue(root), { name: 'AppUpgradeConflictError' });
       assert.equal(await readFile(pack, 'utf8'), 'application catalogue');
       assert.equal(await readFile(catalogue, 'utf8'), releasedCatalogue);
       assert.equal(await readFile(copy, 'utf8'), legacyCopy);
-    }
-    await writeFile(other, 'maintained by the application\n');
-    if (changed === 'copy') {
+    } else if (trial === 'customization') {
       await assert.rejects(upgradeStarterCatalogue(root), { message: 'starter_catalogue_upgrade_manual_merge_required' });
       assert.equal(await readFile(catalogue, 'utf8'), releasedCatalogue);
       assert.equal(await readFile(copy, 'utf8'), legacyCopy + '\n// Application customization\n');
-    } else if (changed === 'none') {
-      assert.deepEqual((await upgradeStarterCatalogue(root)).applied, [...cataloguePackAdditions, 'owned/catalogue.ts', 'owned/copy.ts'].sort());
+    } else {
+      assert.deepEqual((await upgradeStarterCatalogue(root)).applied, [
+        ...cataloguePackAdditions, 'owned/catalogue.ts', ...(trial === 'previous registration' ? [] : ['owned/copy.ts']),
+      ].sort());
       for (const path of cataloguePackAdditions) {
-        assert.equal(await readFile(join(root, path), 'utf8'), await readFile(new URL(`../${path}`, import.meta.url), 'utf8'));
+        assert.deepEqual(await readFile(join(root, path)), await readFile(new URL(`../${path}`, import.meta.url)));
       }
       assert.equal(await readFile(catalogue, 'utf8'), await readCatalogueUpgradeDefault('catalogue.ts'));
       assert.equal(await readFile(copy, 'utf8'), currentCopy);

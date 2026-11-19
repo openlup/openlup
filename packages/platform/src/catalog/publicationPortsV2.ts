@@ -23,6 +23,9 @@ export interface CatalogPublicationDependencies<Context> {
   rules: CatalogPublicationRules;
   /** Adapt the host's human authorization outcome; machine identity must be explicit. */
   authorizeHuman(context: Context): Promise<{ ok: true; userId: string; role: string; isMachineActor: boolean } | { ok: false }>;
+  /** Seat host request authority on this transaction after the native membership check.
+   * @experimental */
+  bindHumanTransaction?(db: PgQueryExecutor, verifiedActorId: string): Promise<void>;
   attributeReferences?: CatalogAttributeReferencePort;
   prices?: CatalogPublicationPriceBoundary;
   /** Resolves explicitly selected immutable profile versions and their bound policy. @experimental */

@@ -14125,6 +14125,10 @@ export declare function createOutboxOrderPaidFulfillmentHandler(deps: {
     fulfillmentPort: OrderPaidFulfillmentPort;
     riskPort?: OrderPaidRiskAssessmentPort;
     isRiskEnabled?: () => boolean;
+    /** Observe completed native fulfillment before acknowledging the paid event.
+     * @experimental
+     */
+    realizationAdmitted?: (orderUuid: string) => Promise<unknown>;
 }): OutboxHandler<AbortSignal>;
 export declare function parseOutboxPayload<T>(schema: import("zod").ZodType<T>, payload: unknown): {
     ok: true;

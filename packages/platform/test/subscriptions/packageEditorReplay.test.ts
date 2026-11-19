@@ -30,7 +30,7 @@ it("replays before re-quote or configuration and retains the originally recorded
     async withTransaction(work) { return work({ async query(sql) {
       calls.push(sql);
       if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
-      if (sql.startsWith("SELECT s.*")) return { rows: [{ id, status: "cancelled", template_version: 99, client_id: client }] };
+      if (sql.startsWith("SELECT id,template_version")) return { rows: [{ id, template_version: 99 }] };
       if (sql.includes("FROM public.subscription_command_receipts")) return { rows: [{ matches, status: "applied", result: saved }] };
       throw new Error("replay attempted a later read");
     } }); },
@@ -40,7 +40,7 @@ it("replays before re-quote or configuration and retains the originally recorded
   expect(result).toEqual({ ...saved, status: "replayed", originalStatus: "applied" });
   expect(quote).not.toHaveBeenCalled(); expect(options.quoteCatalogReadPort.listQuoteCatalogItems).not.toHaveBeenCalled();
   expect(calls.some(sql => sql.includes("subscription_package_edit_apply("))).toBe(false);
-  expect(calls[0]).toContain("SELECT s.*"); expect(calls[1]).toContain("pg_advisory_xact_lock");
+  expect(calls[0]).toContain("SELECT id,template_version"); expect(calls[1]).toContain("pg_advisory_xact_lock");
   matches = false;
   await expect(createPostgresPackageEditor(options).apply({ actorId: id, clientId: client }, "completed-package-key", {
     subscriptionId: id, planDays: 29, base: [{ variantId: id, qty: 6 }], acceptedQuoteHash: "a".repeat(64) }))

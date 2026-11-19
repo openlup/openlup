@@ -84,6 +84,7 @@
     "host/catalogue-binding.ts",
     "host/catalogue-registry.ts",
     "host/catalogue-selection.ts",
+    "host/stock-wait-reads.ts",
     "host/e-composition.ts",
     "host/healthcheck.ts",
     "host/native-composition.ts",

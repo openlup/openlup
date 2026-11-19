@@ -93,7 +93,8 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
     delta: { amountMinor: quote.totalGross.amountMinor - current.amountMinor, currency: current.currency },
     changedLines: split.changed.length, unchangedLines: split.unchanged.length, subjectFacts: facts, optInFacts };
 }
-export function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: SizedEditContext, policy: SizedEditPolicy): void {
+export function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: Pick<SizedEditContext, "clientId" | "subscriptionId">,
+  policy: Pick<SizedEditPolicy, "maximumExclusions">): void {
   if (!facts || typeof facts.clientId !== "string" || typeof facts.subscriptionId !== "string" ||
     facts.clientId.toLowerCase() !== context.clientId.toLowerCase() || facts.subscriptionId.toLowerCase() !== context.subscriptionId.toLowerCase() ||
     !facts.subjectRef || !Array.isArray(facts.exclusions) || facts.exclusions.length > policy.maximumExclusions ||

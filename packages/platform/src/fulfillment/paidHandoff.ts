@@ -44,6 +44,10 @@ export function createOutboxOrderPaidFulfillmentHandler(deps: {
   // before fulfillment; a review/block holds the order (no dispatch).
   riskPort?: OrderPaidRiskAssessmentPort;
   isRiskEnabled?: () => boolean;
+  /** Observe completed native fulfillment before acknowledging the paid event.
+   * @experimental
+   */
+  realizationAdmitted?: (orderUuid: string) => Promise<unknown>;
 }): OutboxHandler<AbortSignal> {
   return {
     ...outboxOrderPaidFulfillmentDescriptor,
@@ -86,6 +90,12 @@ export function createOutboxOrderPaidFulfillmentHandler(deps: {
 
       switch (result.kind) {
         case "completed":
+          try {
+            await deps.realizationAdmitted?.(parsed.data.orderUuid);
+          } catch {
+            return { kind: "retry", reason: "fulfillment_realization_observer_unavailable" };
+          }
+          return { kind: "processed", detail: result.detail };
         case "skipped":
           return { kind: "processed", detail: result.detail };
         case "manual_review":

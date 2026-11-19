@@ -1,6 +1,7 @@
 import type { SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedQuoteRequest, SizedRecurringQuote } from "./contracts/sizedEdit.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { ReadSubscriptionEditCatalogAdmission } from "./packageEditContracts.js";
 
 /** Host verifies its current documents and translates physical, demand and exclusion facts.
  * Retained withdrawn identities must be resolved exactly, independently of discovery. */
@@ -35,7 +36,7 @@ export interface SizedHostPorts {
 }
 export interface SizedEditorOptions extends SizedHostPorts {
   /** @experimental */
-  catalogueEvidence?: import("./packageEditContracts.js").SubscriptionEditCatalogueEvidence;
+  readCatalogAdmission?: ReadSubscriptionEditCatalogAdmission;
   policy: SizedEditPolicy;
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   now(): string;

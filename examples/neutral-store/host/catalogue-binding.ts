@@ -11,6 +11,7 @@ import type { ActionContext, ApplicationBindings } from './bindings.ts';
 import type { StarterCatalogueSelection } from './catalogue-selection.ts';
 import { choices } from '../shared/subscription-offer.ts';
 import { isRecord } from '../shared/offer.ts';
+import { bindStockWaitReads } from './stock-wait-reads.ts';
 
 type Publication = ReturnType<typeof createPostgresCatalogPublication<ActionContext>>;
 type Adoption = ReturnType<typeof createPostgresCatalogAdoption<ActionContext>>;
@@ -22,6 +23,7 @@ export interface StarterCatalogueOptions {
   registration: StarterCatalogueSelection;
   readEnabled(): boolean;
   writerEnabled(): boolean;
+  observePublication?(db: PgQueryExecutor): Promise<boolean>;
   publication: Omit<CatalogPublicationDependencies<ActionContext>, 'registry' | 'authorizeHuman' | 'subscriptionProfiles'>;
   adoptionTransaction?: Parameters<typeof createPostgresCatalogAdoption<ActionContext>>[0]['transaction'];
   successor?: Successor;
@@ -76,6 +78,7 @@ export function bindStarterCatalogue(input: {
       return actor.ok && actor.role === 'admin' && actor.isMachineActor === false ? { actorId: actor.userId } : null;
     },
   });
+  Object.assign(input.actions, bindStockWaitReads(options, input.authorizeHuman));
   return bindCataloguePorts({ serving, publisher, adoption, drafts, successor: options.successor, readEnabled, writerEnabled,
     actions: input.actions, configId: config.id,
     observeRead: async () => {
@@ -97,7 +100,9 @@ export function bindStarterCatalogue(input: {
     observeWriter: () => options.publication.transactions.run(async executor => {
       const ready = await observePostgresCatalogPrivileges(executor, {
         columns: [{ relation: 'public.catalog_publications', column: 'source_kind' }],
-        functions: ['public.platform_human_membership_is_administrator(uuid)'],
+        functions: ['public.platform_human_membership_is_administrator(uuid)',
+          ...(options.publication.bindHumanTransaction ? ['public.catalog_price_setup_require_human_admin()',
+            'public.catalog_publication_sku_reasons(uuid,boolean)', 'public.commerce_offer_policy_v2_readiness()'] : [])],
       });
       if (!ready) return state('unsupported');
       const { rows } = await executor.query(`SELECT
@@ -106,7 +111,8 @@ export function bindStarterCatalogue(input: {
         AND has_table_privilege('public.catalog_products','UPDATE')
         AND has_table_privilege('public.catalog_publication_heads','INSERT')
         AND has_table_privilege('public.catalog_operator_receipts','INSERT') AS ready`);
-      return state(rows[0]?.ready === true ? 'ready' : 'unsupported');
+      const installed = rows[0]?.ready === true && (await options.observePublication?.(executor) ?? true);
+      return state(installed ? 'ready' : 'unsupported');
     }),
     observeAdmission: async () => state(await observePostgresCatalogPrivileges(db, { functions: [
       'public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)',
@@ -241,9 +247,10 @@ export function bindCataloguePorts(input: {
       || !isRecord(payload.command)) return refused('starter_input_invalid');
     const command = { ...payload.command, commandKey: context.commandKey };
     if (payload.action === 'draft') {
-      if (!input.drafts || !input.writerEnabled()) return refused('catalog_capability_unsupported');
-      const result = await input.drafts.execute(command, context);
-      return 'reason' in result ? refused(result.reason) : success(result);
+      if (!input.drafts) return refused('catalog_capability_unsupported');
+      const draft = input.drafts;
+      const result = await runtime.use('publish', () => draft.execute(command, context));
+      return result.outcome !== 'ready' ? refused(result.reason) : 'reason' in result.value ? refused(result.value.reason) : success(result.value);
     }
     if (payload.action === 'preflight' || payload.action === 'adopt' || payload.action === 'receipt') {
       const owner = input.adoption;

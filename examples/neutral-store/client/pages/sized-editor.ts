@@ -175,7 +175,7 @@ export function sizedEditorPage(context: PageContext): HTMLElement {
   }
   void (async () => {
     try {
-      const found = (await editorAccount()).find(item => item.subscriptionId === id && item.offerVersion === (optIn ? 'classic' : 'sized.v1'));
+      const found = (await editorAccount()).find(item => item.subscriptionId === id && (item.editorLane ?? item.offerVersion) === (optIn ? 'classic' : 'sized.v1'));
       if (!found) throw new Error('subscription_unavailable');
       subscription = found; render();
       if (found.canEditUpcomingPackage) await loadCatalog(false);

@@ -1,8 +1,10 @@
 Adds experimental typed catalogue serving for native publication. The listing,
 detail, quote and editor readers resolve the same installed publication and
 document evidence. They distinguish an empty catalogue from unreadable or
-inconsistent authority. Sale-unit price selection stays with the existing price
-authority. Retained customer order and stock-wait display can carry the
+inconsistent authority. With an explicit market price context, listing and
+detail resolve effective sale-unit money using the existing price authority
+in the same database snapshot. A missing price disables the applicable
+purchase mode. Retained customer order and stock-wait display can carry the
 exact content from a versioned accepted reference; the order line and stock
 deficit still count sellable units. Structured Product data derives weight
 only from explicit mass, while the product-registration adapter uses gross

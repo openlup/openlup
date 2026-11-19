@@ -17,8 +17,9 @@ export function subscriptionEditorEntries(context: PageContext): HTMLElement {
       if (!subscription.canEditUpcomingPackage) card.append(el('p',{ role: 'alert' },notice(context,subscription.editBlockedReason ?? 'unavailable')));
       else {
         const query = `?subscription=${encodeURIComponent(subscription.subscriptionId)}`;
-        card.append(link(text(context,subscription.offerVersion === 'classic' ? 'classic' : 'sized'),
-          routes[subscription.offerVersion === 'classic' ? 'classicEdit' : 'sizedEdit'][context.locale]+query,'button-link'));
+        const classic = (subscription.editorLane ?? subscription.offerVersion) === 'classic';
+        card.append(link(text(context,classic ? 'classic' : 'sized'),
+          routes[classic ? 'classicEdit' : 'sizedEdit'][context.locale]+query,'button-link'));
         if (subscription.offerVersion === 'classic') card.append(el('div',{ 'data-testid': 'sized-invitation' },el('p',{},text(context,'invitationBody')),
           link(text(context,'invitation'),routes.sizedEdit[context.locale]+query+'&optIn=1')));
       }
