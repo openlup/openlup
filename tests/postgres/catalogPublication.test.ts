@@ -4018,8 +4018,9 @@ it.each([
   const originalRecord = (await db.query("SELECT public.catalog_draft_record($1,1) AS record", [data.draftId])).rows[0].record;
   const document = (originalRecord.payload as CatalogDraftPayloadV3).publication.operations.find(op => op.op === "register_document_revision");
   if (!document) throw new Error("Missing fixture document");
-  const checks: typeof claims = [], assessments: (readonly typeof claims[number][])[] = [];
-  const check = async (claim: typeof claims[number]) => { checks.push(claim); return claim.revisionDigest === first.publicationDigest; };
+  type MediaClaim = Parameters<CatalogPublicationDependencies<null>["verifyMedia"]>[1];
+  const checks: MediaClaim[] = [], assessments: (readonly MediaClaim[])[] = [];
+  const check = async (claim: MediaClaim) => { checks.push(claim); return claim.revisionDigest === first.publicationDigest; };
   const target = realPriceAuthority(undefined, undefined, (_db, claim) => check(claim));
   const capability = (await target.authorize(null))!, hooks = dependencies();
   const facade = createCatalogCandidateService({ registry, publicationRules: hooks.rules,
