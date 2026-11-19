@@ -312,8 +312,10 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(record.status === "open", "catalog_publication_source_mismatch");
     const payload = record.payload as CatalogDraftPayloadV3, definition = deps.registry.resolve(payload.product.type);
     require(definition && definition.validatorRef, "catalog_definition_drift");
-    const installed = await tuple(db, "SELECT definition_digest FROM public.catalog_type_versions WHERE type_key=$1 AND version=$2", [definition!.key, definition!.version]);
-    require(installed.length === 1 && installed[0]!.definition_digest === catalogDefinitionDigest(definition!), "catalog_definition_drift");
+    const installed = await tuple(db, "SELECT definition_digest,validator_ref FROM public.catalog_type_versions WHERE type_key=$1 AND version=$2", [definition!.key, definition!.version]);
+    require(installed.length === 1 && installed[0]!.definition_digest === catalogDefinitionDigest(definition!)
+      && installed[0]!.validator_ref === definition!.validatorRef && deps.rules.validatorRef === installed[0]!.validator_ref,
+    "catalog_definition_drift");
     const computed = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
       .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: installed[0]!.definition_digest }])).update(",")
       .update(canonicalCatalogDraftJson(expectedHead)).update("]").digest("hex");

@@ -10,7 +10,7 @@ export const registry = createCatalogProductTypeRegistry([{ key: "example:articl
   units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] }]);
 export const definition = registry.resolve({ key: "example:article", version: 1 })!;
-export const rules: CatalogPublicationRules = { canonicalizeDocument: canonicalCatalogDraftJson,
+export const rules: CatalogPublicationRules = { validatorRef: definition.validatorRef!, canonicalizeDocument: canonicalCatalogDraftJson,
   identifyDocument(document) {
     const { schemaVersion, id, productSlug, revisionNo, name } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number; name: string };
     return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo, name };

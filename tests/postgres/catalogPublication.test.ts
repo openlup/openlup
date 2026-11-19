@@ -35,7 +35,7 @@ function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows
     try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows, values); return result; } }); await client.query("COMMIT"); return result; }
     catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true, userId: admin, role: "admin", isMachineActor: false }),
-    rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
+    rules: { validatorRef: definition.validatorRef, canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
       const { schemaVersion, id, productSlug, revisionNo, name } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number; name: string };
       return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo, name };
     }, inspectDocument(canonicalText) {
@@ -2210,7 +2210,7 @@ it("cycle1 native candidate refuses missing validator and changed installed defi
   expect(await absent.decision(command, (await absent.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_definition_drift" });
   for (const mode of ["missing", "extra", "changed"] as const) {
     const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
-      if (sql.startsWith("SELECT definition_digest FROM public.catalog_type_versions")) {
+      if (sql.startsWith("SELECT definition_digest,validator_ref FROM public.catalog_type_versions")) {
         if (mode === "missing") rows.length = 0;
         else if (mode === "extra") rows.push(structuredClone(rows[0]));
         else rows[0].definition_digest = "c".repeat(64);
@@ -2222,6 +2222,29 @@ it("cycle1 native candidate refuses missing validator and changed installed defi
   const target = createPostgresCatalogPublication({ ...dependencies(), registry: createCatalogProductTypeRegistry([withoutValidator]) });
   expect(await target.decision(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_definition_drift" });
   expect(await snapshot()).toEqual(before);
+});
+
+it.each(["rules artifact", "installed validator reference"] as const)("decision and publication refuse a mismatched %s before interpreting the document", async mismatch => {
+  const data = await draft(), different = `sha256:${"b".repeat(64)}`;
+  let interpreted = 0;
+  const deps = dependencies((sql, _db, rows) => {
+    if (mismatch === "installed validator reference" && sql.startsWith("SELECT definition_digest,validator_ref"))
+      rows[0]!.validator_ref = different;
+  });
+  const target = createPostgresCatalogPublication({ ...deps, rules: { ...deps.rules,
+    validatorRef: mismatch === "rules artifact" ? different : deps.rules.validatorRef,
+    inspectDocument(canonicalText) { interpreted++; return deps.rules.inspectDocument(canonicalText); },
+  } });
+  const capability = (await target.authorize(null))!, before = await snapshot();
+  const refusal = { outcome: "validation_issue", reason: "catalog_definition_drift" };
+  expect(await target.decision(approvalCommand(data.publication), capability)).toEqual(refusal);
+  expect(await snapshot()).toEqual(before);
+  await approve(data.publication);
+  const approved = await snapshot();
+  expect(await target.publish(data.publication, capability)).toEqual(refusal);
+  expect(interpreted).toBe(0);
+  expect(await snapshot()).toEqual(approved);
+  expect(await authority.publish(data.publication, actor)).toMatchObject({ outcome: "committed" });
 });
 
 it("cycle1 native publication locks and verifies its installed active tax class", async () => {

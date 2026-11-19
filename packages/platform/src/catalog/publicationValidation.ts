@@ -82,6 +82,8 @@ export interface CatalogPublicationDocument {
 }
 /** @experimental */
 export interface CatalogPublicationRules {
+  /** Build-pinned artifact identity, verified against the installed type before publication. */
+  readonly validatorRef: string;
   /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
   validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
   /** Rejects a membership effect against the SKU's ordered prefix, including a no-op on a frozen roster. */
