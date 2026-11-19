@@ -31,7 +31,31 @@ export const publicationReadinessReasons = z.array(z.string().regex(/^[a-z][a-z0
 /** @experimental */
 export const publicationReadinessVerdict = z.object({ ready: z.boolean(), reasons: publicationReadinessReasons }).strict()
   .refine(({ ready, reasons }) => ready === (reasons.length === 0));
-const facts = z.record(z.string(), z.json());
+const locale = z.string().min(2).max(35).regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u);
+const localized = z.record(locale, z.string().min(1).max(500));
+const presentationSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  routePath: z.record(locale, z.string().min(1).max(500).startsWith("/")).optional(),
+  shortName: localized.optional(),
+  advertisedWeightsG: z.array(z.number().int().positive()).max(500).optional(),
+  mediaRef: ref.optional(),
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+}).strict();
+const facts = z.record(code, z.union([z.boolean(), z.number(), z.string().max(2048), z.null()]));
+const contentSchema = catalogPublicationContentSchema.superRefine((content, context) => {
+  if (!presentationSchema.safeParse(content.presentation).success)
+    context.addIssue({ code: "custom", path: ["presentation"], message: "Use the supported presentation fields" });
+  content.publicationSkus.forEach((sku, index) => {
+    if (!facts.safeParse(sku.facts).success)
+      context.addIssue({ code: "custom", path: ["publicationSkus", index, "facts"], message: "Use scalar facts" });
+  });
+});
+export function assertPublishedPresentation(input: unknown): void {
+  if (!presentationSchema.nullable().safeParse(input).success) publicationRefuse("catalog_publication_presentation_invalid");
+}
+export function assertPublishedFacts(input: unknown): void {
+  if (!facts.safeParse(input).success) publicationRefuse("catalog_publication_facts_invalid");
+}
 const attributes = catalogDraftSkuV2Schema.shape.attributes.unwrap();
 const claimSchema = z.object({ draftId: id, revision, commandKey: ref, fingerprint: digest }).strict();
 const identifierSchema = z.object({ scheme: ref, issuer: ref, value: z.string().min(1).max(128), packagingLevel: z.enum(["unit", "case"]),
@@ -54,8 +78,8 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
 export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
   id, slug: z.string().min(1), name: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
-  document: catalogDocumentRevisionRefSchema.nullable(), presentation: facts.nullable(), source: claimSchema,
-  content: catalogPublicationContentSchema,
+  document: catalogDocumentRevisionRefSchema.nullable(), presentation: presentationSchema.nullable(), source: claimSchema,
+  content: contentSchema,
 }).strict() as z.ZodType<CatalogPublishedProduct>;
 export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2> = z.object({
   schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
@@ -68,5 +92,7 @@ export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManif
 // Name every neutral field so that new draft carriers cannot become published facts.
 export function publicationContent(content: CatalogDraftSharedContentV3): CatalogPublishedContent {
   const { schemaVersion, catalogAction, presentation, offerMemberships, requestedModes, publicationSkus } = content;
+  assertPublishedPresentation(presentation);
+  for (const sku of publicationSkus) assertPublishedFacts(sku.facts);
   return { schemaVersion, catalogAction, presentation, offerMemberships, requestedModes, publicationSkus };
 }
