@@ -24,6 +24,7 @@ function fixture() {
 
 it("prints a bounded installation hint after the existing refusal and preserves unhinted stderr bytes", () => {
   const { directory, write } = fixture();
+  write("package.json", { type: "module" });
   write(starterLifecycle, readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"));
   write("browser-groups.mjs", "export const browserJourneyGroups = [];");
   write("host/healthcheck.ts", "export const applicationHealthcheck = () => undefined;");
