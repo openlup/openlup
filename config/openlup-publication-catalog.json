@@ -1474,7 +1474,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261122220000_subscription_edit_consent.sql",
+      "path": "db/platform/migrations/20261123200000_subscription_edit_consent.sql",
       "class": "public-output"
     },
     {
@@ -2547,6 +2547,10 @@
     },
     {
       "path": "examples/neutral-store/host/sessions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/host/stock-wait-reads.ts",
       "class": "public-output"
     },
     {
@@ -4890,7 +4894,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261122220000_subscription_edit_consent.sql",
+      "path": "packages/platform/sql/20261123200000_subscription_edit_consent.sql",
       "class": "public-output"
     },
     {
@@ -9362,6 +9366,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/stockWaitReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/successors.ts",
       "class": "public-output"
     },
@@ -9482,6 +9490,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresStockWaitReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresStockWaitStore.ts",
       "class": "public-output"
     },
@@ -9551,6 +9563,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/sizedParcelProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/stockWaitReadQueries.ts",
       "class": "public-output"
     },
     {
@@ -31103,6 +31119,10 @@
     },
     {
       "path": "tests/postgres/subscriptionStockWaitCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionStockWaitReads.test.ts",
       "class": "public-output"
     },
     {

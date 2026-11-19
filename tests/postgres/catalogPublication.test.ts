@@ -1,14 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { Pool } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions, createPostgresCatalogSkuEnvelopeReadPort,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { catalogPage, productPage } from "../../examples/neutral-store/client/pages/storefront.js";
+import type { PageContext } from "../../examples/neutral-store/client/context.js";
+import { copy } from "../../examples/neutral-store/owned/copy.js";
+import { fragments } from "../../examples/neutral-store/owned/fragments.js";
+import { configurations, defaultConfigurationId } from "../../examples/neutral-store/owned/store.config.js";
+import { publicCatalogueItem } from "../../examples/neutral-store/shared/api.js";
+import { emptyCart } from "../../examples/neutral-store/shared/offer.js";
+import { productPath, resolveRoute, routes } from "../../examples/neutral-store/shared/routes.js";
 
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 let db: Pool;
@@ -1640,3 +1650,143 @@ it("catalog_authoritative_page_and_projection MC5-D-019 distinguishes qualified 
   await db.query(`CREATE POLICY mc5_catalog_read_restricted ON public.catalog_publications AS RESTRICTIVE FOR SELECT TO ${role} USING (false)`);
   await expect(read()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
 });
+
+it.each(["listing", "PDP"] as const)("G1-D2 %s carries and renders the effective sale-unit price", async view => inPriceDatabase(async () => {
+  const data = await priceDraft();
+  const slug = data.payload.product.slug!;
+  data.payload.publication.operations.push({ op: "set_product_status", productSlug: slug, status: "active" });
+  const target = realPriceAuthority(undefined, async (sql, executor) => {
+    if (sql.includes("FROM public.price_entries") && sql.includes("variant_id = ANY")) {
+      const { rows } = await executor.query("SELECT current_setting('transaction_isolation') AS isolation, current_setting('transaction_read_only') AS read_only");
+      expect(rows).toEqual([{ isolation: "repeatable read", read_only: "on" }]);
+    }
+  });
+  const publication = await save(data.payload, data.draftId, 2);
+  const receipt = await commit(publication, target, (await target.authorize(null))!);
+  const expired = randomUUID();
+  await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from,valid_to)
+    VALUES($1,$2,$3,'one_time',2345,statement_timestamp()-interval '2 hours',statement_timestamp()-interval '1 hour')`, [expired, priceList, data.skuId]);
+  const { rows: entries } = await db.query<{ id: string; amountMinor: number }>(`SELECT id, unit_price_minor AS "amountMinor" FROM public.price_entries
+    WHERE variant_id=$1 AND price_list_id=$2 AND active AND valid_from<=statement_timestamp()
+    AND (valid_to IS NULL OR valid_to>statement_timestamp())`, [data.skuId, priceList]);
+  expect(entries).toHaveLength(1);
+  const serving = target.serving({ types: [definition], offerVersion: "example:offer", maxItems: 5000,
+    priceContext: { regionCode: "ZZ", currency: "XXX", channel: "D2C", readPrices: createPostgresCommercePriceAuthorityReadPort } });
+  const observe = () => view === "listing" ? serving.list({ cursor: null, limit: 500 }) : serving.detail(slug);
+  let observed: [Awaited<ReturnType<typeof observe>>, Awaited<ReturnType<typeof observe>>];
+  try {
+    const priced = await observe();
+    await db.query("UPDATE public.price_entries SET active=false WHERE id=$1", [entries[0]!.id]);
+    observed = [priced, await observe()];
+  } finally {
+    await db.query("UPDATE public.price_entries SET active=true WHERE id=$1", [entries[0]!.id]);
+    await db.query("DELETE FROM public.price_entries WHERE id=$1", [expired]);
+  }
+  const [priced, missing] = observed;
+  expect(priced.version).not.toEqual(missing.version);
+
+  const { JSDOM }: { JSDOM: new() => { window: Window & typeof globalThis } } = createRequire(import.meta.url)("jsdom");
+  const { window } = new JSDOM();
+  try {
+    vi.stubGlobal("document", window.document);
+    vi.stubGlobal("Node", window.Node);
+    const locale = "en", config = configurations[defaultConfigurationId]!;
+    const path = view === "listing" ? routes.catalog[locale] : productPath(slug, locale);
+    const endpoint = view === "listing" ? "/api/catalogue" : "/api/catalogue/" + slug;
+    const context: PageContext = { config, governedCatalogue: true, catalogueDraftType: definition,
+      locale, route: resolveRoute(path), query: new URLSearchParams(), fragments, t: key => copy[locale][key],
+      money: () => { throw new Error("Price must use the published currency"); },
+      getCart: () => emptyCart(config), setCart() {}, navigate() {} };
+    for (const [page, unitPrice] of [[priced, { amountMinor: entries[0]!.amountMinor, currency: "XXX" }], [missing, null]] as const) {
+      const item = page.items.find(candidate => candidate.sku.id === data.skuId)!;
+      const projected = publicCatalogueItem(item);
+      expect(projected).toMatchObject({ publication: receipt.head, sku: { unitPrice,
+        sellability: { oneTime: unitPrice !== null, subscription: false } } });
+      const fetch = vi.fn(async () => Response.json({ version: page.version, items: [projected], nextCursor: null }));
+      vi.stubGlobal("fetch", fetch);
+      const element = (view === "listing" ? catalogPage : productPage)(context);
+      await vi.waitFor(() => expect(element.querySelector('article')).not.toBeNull());
+      expect(fetch).toHaveBeenCalledWith(endpoint, expect.anything());
+      const displayed = element.querySelector('.product-price');
+      if (unitPrice) {
+        expect(displayed?.textContent).toEqual(new Intl.NumberFormat(locale, { style: "currency", currency: unitPrice.currency }).format(unitPrice.amountMinor / 100));
+        expect(element.querySelector('article button')).not.toBeNull();
+      } else {
+        expect(displayed).toBeNull();
+        expect(element.querySelector('article button')).toBeNull();
+      }
+    }
+  } finally {
+    vi.unstubAllGlobals();
+    window.close();
+  }
+}));
+
+it.each(['on', 'off', 'operator missing', 'executor missing grants', 'global readiness red'] as const)('G1-D3 installed starter publication %s', async mode =>
+  inPriceDatabase(async () => {
+    const { bindRegisteredCatalogue } = await import('../../examples/neutral-store/host/catalogue-selection.ts');
+    const { createStarterCatalogueRegistry } = await import('../../examples/neutral-store/host/catalogue-registry.ts');
+    const { bindStarterCatalogue } = await import('../../examples/neutral-store/host/catalogue-binding.ts');
+    const { dispatchAction, pendingBindings } = await import('../../examples/neutral-store/host/bindings.ts');
+    const { parseHostArguments } = await import('../../examples/neutral-store/shared/config.ts');
+    const configuration = configurations[defaultConfigurationId]!;
+    if (mode === 'executor missing grants') await db.query('CREATE ROLE lc8_ungranted NOLOGIN NOSUPERUSER NOBYPASSRLS');
+    const authoring = { ...dependencies(), transactions: { async run<T>(work: (sql: PgQueryExecutor) => Promise<T>) {
+      const connection = await db.connect();
+      try {
+        await connection.query('BEGIN');
+        if (mode === 'executor missing grants') await connection.query('SET LOCAL ROLE lc8_ungranted');
+        const result = await work(connection); await connection.query('COMMIT'); return result;
+      }
+      catch (error) { await connection.query('ROLLBACK'); throw error; }
+      finally { connection.release(); }
+    } } };
+    const registration = createStarterCatalogueRegistry([{ configuration, draftType: definition, offerVersion: 'example:offer',
+      pack: { id: 'example:publication', namespace: 'example', version: 1, openlupRange: '0.44.x',
+        capabilities: {}, types: [definition], taxClasses: [] } }], configuration.id).select();
+    const args = parseHostArguments(['--configuration', configuration.id, '--catalogue-publication', mode === 'off' ? 'off' : 'on',
+      '--database-url', 'postgresql://starter_runtime@127.0.0.1/neutral_store']);
+    const selected = await bindRegisteredCatalogue(registration, authoring.transactions, args.cataloguePublication === true,
+      (entry, transactions) => ({ registration: entry, writerEnabled: () => false, readEnabled: () => true, publication: {
+        rules: authoring.rules, verifyMedia: authoring.verifyMedia, transactions,
+        readiness: async () => ({ ready: false, reasons: ['catalog_capability_unsupported'] }),
+      } }));
+    const bindings = pendingBindings();
+    if (selected) Object.assign(bindings, bindStarterCatalogue({ db, options: selected, actions: bindings.actions,
+      authorizeHuman: async () => mode === 'operator missing' ? { ok: false } : authoring.authorizeHuman(null) }));
+    const data = await priceDraft();
+    data.payload.publication.operations.push({ op: 'set_product_status', productSlug: data.payload.product.slug!, status: 'active' });
+    const publication = await save(data.payload, data.draftId, 2);
+    const context = { config: configuration, actor: { customerRef: null, principalRef: admin, operatorRef: admin } };
+    const perform = (action: string, command: object, commandKey: string) =>
+      dispatchAction(bindings, 'operator.catalogPublication', { action, command }, { ...context, commandKey });
+    const decision = { schemaVersion: 2, action: 'approve', productId: publication.productId, candidateRef: publication.candidateRef,
+      candidateDigest: publication.candidateDigest, reason: 'Verified installed candidate' };
+    const approved = await perform('decide', decision, 'starter-g1-approved');
+    if (mode === 'off' || mode === 'operator missing') {
+      expect(approved).toEqual({ ok: false, code: mode === 'off' ? 'host_binding_required' : 'publisher_not_authorized' });
+      return;
+    }
+    if (mode === 'executor missing grants') {
+      expect(approved).toEqual({ ok: false, code: 'catalog_capability_unsupported' });
+      expect(await bindings.catalogueStatus?.()).toMatchObject({ capabilities: { publish: false, lifecycleWrite: false } });
+      return;
+    }
+    expect(await bindings.catalogueStatus?.()).toMatchObject({ capabilities: { publish: true, lifecycleWrite: true } });
+    expect(approved).toMatchObject({ ok: true, value: { outcome: 'committed' } });
+    const health = (await db.query("SELECT last_status FROM public.platform_job_controls WHERE job_name='platform-watchdog'")).rows[0]?.last_status;
+    if (mode === 'global readiness red') await db.query("UPDATE public.platform_job_controls SET last_status='failed' WHERE job_name='platform-watchdog'");
+    try {
+      const result = await perform('publish', publication, 'starter-g1-publish');
+      if (mode === 'on') {
+        expect(result).toMatchObject({ ok: true, value: { outcome: 'committed' } });
+        expect((await db.query('SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1', [data.skuId])).rows)
+          .toEqual([{ unit_price_minor: 1000 }]);
+      } else {
+        expect(result).toEqual({ ok: false, code: 'catalog_publication_v3_activation_readiness_failed' });
+        expect((await db.query('SELECT id FROM public.catalog_products WHERE id=$1', [data.payload.product.id])).rows).toEqual([]);
+      }
+    } finally {
+      if (mode === 'global readiness red') await db.query("UPDATE public.platform_job_controls SET last_status=$1 WHERE job_name='platform-watchdog'", [health]);
+    }
+  }));

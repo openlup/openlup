@@ -115,7 +115,7 @@ function settlement(codec: ReturnType<typeof api.createNativeRenewalCodec>, db: 
 }
 async function deps(subscriptionId: string, scenario: "succeeded" | "declined" | "ambiguous", asOf = now) {
   const codec = api.createNativeRenewalCodec(), store = api.createPostgresRenewalStore(executor, codec);
-  const rail = api.createPostgresSandboxRenewalRail(executor, { scenario, now: () => now });
+  const rail = api.createPostgresSandboxRenewalRail(executor, { scenario, now: () => asOf });
   const execute = vi.spyOn(rail, "execute");
   const lifecycle = api.createPostgresRetryLifecycleBinding({ executor, async withTransaction(work) {
     const db = await runtime.connect(); try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
@@ -448,6 +448,46 @@ it.each(["succeeded", "declined"] as const)("runs sandbox renewal %s from an ins
     expect((await runtime.query("SELECT count(*)::int n FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscriptionId])).rows[0].n).toBe(1);
   }
   expect(d.execute).toHaveBeenCalledTimes(1);
+});
+
+it.each(["paid", "declined", "skipped", "resumed"] as const)("LC9-D-053 native checkout and %s renewal have authoritative cycle numbers", async history => {
+  const f = await active();
+  const renewal = await deps(f.subscriptionId, history === "paid" ? "succeeded" : "declined");
+  const outcome = await api.runOneAutomaticSubscriptionRenewal(renewal.input, renewal.due, now);
+  expect(outcome.status).toBe(history === "paid" ? "succeeded" : "refused");
+  if (history === "skipped" || history === "resumed") {
+    const { principal_id: actor } = (await admin.query("SELECT principal_id FROM public.clients WHERE id=$1", [f.clientId])).rows[0];
+    const policy = { pauseDays: 9, pauseMonths: 2, slideMinDays: 4, slideMaxDays: 40, orderNowDelayMinutes: 17, reactivateDelayDays: 6 };
+    const pause = await rpc("subscription_command_apply", [actor, f.clientId, `numbering-pause:${f.subscriptionId}`, f.subscriptionId,
+      "pause", { pausePreset: "2_weeks" }, later, policy]);
+    expect(pause).toMatchObject({ status: "applied", subscriptionStatus: "paused" });
+    if (history === "resumed") {
+      const resume = await rpc("subscription_command_apply", [actor, f.clientId, `numbering-resume:${f.subscriptionId}`, f.subscriptionId, "resume", {}, later, policy]);
+      expect(resume).toMatchObject({ status: "applied", subscriptionStatus: "active" });
+      const dueAt = (await admin.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].next_cycle_at.toISOString();
+      const next = await deps(f.subscriptionId, "succeeded", dueAt);
+      expect((await api.runOneAutomaticSubscriptionRenewal(next.input, next.due, dueAt)).status).toBe("succeeded");
+    }
+  }
+  const result = await admin.query(`SELECT c.status,
+    CASE WHEN op.id IS NOT NULL THEN op.cycle_snapshot#>>'{cycle,logicalCycleNumber}'
+      WHEN c.status='paid' AND EXISTS (
+        SELECT 1 FROM public.subscription_activations a JOIN public.commerce_orders o ON o.id=a.order_id
+        WHERE a.subscription_id=c.subscription_id AND a.state='active' AND o.subscription_cycle_id=c.id
+      ) THEN '1' END AS logical_number,
+    op.state AS operation_state
+    FROM public.subscription_cycles c LEFT JOIN public.subscription_renewal_operations op
+      ON op.id=c.renewal_operation_id AND op.subscription_id=c.subscription_id
+    WHERE c.subscription_id=$1 ORDER BY c.scheduled_at`, [f.subscriptionId]);
+  expect(result.rows).toEqual([
+    { status: "paid", logical_number: "1", operation_state: null },
+    { status: history === "declined" ? "payment_pending" : history === "resumed" ? "skipped" : history,
+      logical_number: "2", operation_state: history === "paid" ? "succeeded" : "refused" },
+    ...(history === "resumed" ? [{ status: "paid", logical_number: "2", operation_state: "succeeded" }] : []),
+  ]);
+  await expect(rpc("subscription_sized_consent_phase", [f.clientId,f.subscriptionId])).resolves.toEqual({
+    upcomingCycle: history === "declined" ? 2 : 3, phase: "none",
+  });
 });
 
 it("a stale method selection is refused before dispatch rather than stranded as ambiguous", async () => {

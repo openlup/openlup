@@ -90,7 +90,8 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       throw new Error('starter_seed_install_role_required');
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
-    if (options?.installDefinitions && starterCatalogue.select(config.id).pack) await installStarterCatalogueDefinitions(connection, config.id);
+    const pack = options?.installDefinitions ? starterCatalogue.select(config.id).pack : null;
+    if (pack) await installStarterCatalogueDefinitions(connection, config.id);
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (id) DO UPDATE SET slug=EXCLUDED.slug, status=EXCLUDED.status,
@@ -117,7 +118,9 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, region_code=EXCLUDED.region_code,
         currency=EXCLUDED.currency, status=EXCLUDED.status, valid_from=EXCLUDED.valid_from`,
     [row.id, row.name, row.region_code, row.currency, row.status, row.valid_from]);
-    for (const row of seed.prices) {
+    // The native publication guard requires policy-owned subscription prices to be derived from the base entry.
+    const prices = pack && pack.capabilities.publish !== false ? seed.prices.filter(row => row.mode === 'one_time') : seed.prices;
+    for (const row of prices) {
       await connection.query(`INSERT INTO public.price_entries
         (id, price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active, valid_from)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,

@@ -338,3 +338,18 @@ it("catalog_adoption_verified_fact_census LC8-D-010 independent session time zon
   expect(other).toEqual(utc);
   expect(await adopt(product, other.sourceDigest)).toMatchObject({ outcome: "committed", receipt: { sourceDigest: utc.sourceDigest } });
 });
+
+it.each(['missing', 'duplicate', 'outside roster'] as const)('LC8 preserves the repaired publication successor guard for %s pairs', async fault => {
+  const fixture = await seed(), predecessor = randomUUID();
+  const pair = { successorSkuId: fixture.sku, successorOf: predecessor };
+  const state = { schemaVersion: 4, product: { id: fixture.product }, skus: [{ skuId: fixture.sku }],
+    ...(fault === 'duplicate' ? { successors: [pair, pair] } : fault === 'outside roster'
+      ? { successors: [{ ...pair, successorSkuId: randomUUID() }] } : {}) };
+  const canonical = canonicalCatalogDraftJson(state);
+  await expect(pool.query(`INSERT INTO public.catalog_publications(product_id,revision,draft_id,draft_revision,
+    candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+    VALUES($1,1,$2,1,$3,$4,$5,$6,$4,$7)`,
+    [fixture.product, randomUUID(), `fixture:${fixture.product}`, digest(canonical), fixture.document, canonical, admin]))
+    .rejects.toMatchObject({ code: '23514', message: 'catalog_publication_state_invalid' });
+  expect(await records(fixture.product)).toEqual({ publications: 0, heads: 0, revisions: 0, receipts: 0 });
+});

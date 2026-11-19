@@ -1,43 +1,26 @@
-import { z } from "zod";
-import { assertEditQuoteCurrency, buildEditConsent, hashEditConsent, takeEditConsent } from "./editConsent.js";
+import { assertEditIntent, assertEditQuoteCurrency, buildEditConsent, consentRequest, decodeEditResult, hashEditConsent, isEditContentNoop, readEditCatalogEvidence, readEditReceipt, takeEditConsent } from "./editConsent.js";
 import { readCompleteEditBaseline, type EditAgreementBaseline } from "./editConsentBaseline.js";
-import { lockUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
+import { lockUnpaidSuccessorPreview, recordUnpaidSuccessorPreview } from "./postgresSuccessorStore.js";
 import type { SuccessorCaseKind } from "./contracts/successors.js";
-import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
+import type { PackageEditActor } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
 import { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 import type { SizedEditorOptions } from "./sizedEditPorts.js";
-import { createSizedEditContextScope, isSizedOptIn, normalizeSizedEdit, readSizedEditContext } from "./sizedEditContext.js";
+import { isSizedOptIn, normalizeSizedEdit, parseSizedEditRequest, parseSuccessorSizedEditRequest, readSizedConsentPhase, readSizedEditContext, tryParseSizedEditRequest } from "./sizedEditContext.js";
 import { assertSizedPolicy } from "./sizedComposition.js";
 import { assertSizedSubjectFacts, quoteSizedEdit, sizedCandidateCompatibility } from "./sizedEditQuote.js";
-import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { mapPackageEditError } from "./packageEditErrors.js";
+import { assertEditVersion, assertFreshEditEligible, editPreviewEligibility, readEditEligibility, readOwnedEditVersion } from "./packageEditRead.js";
+
+function canNormalizeToResize(action: string) {
+  return action === "update_portion" || action === "update_base_mix" || action === "update_bundle";
+}
 
 /** The host composes this alongside its existing classic binding. One callback owns one connection through commit. */
 export function createPostgresSizedEditor(options: SizedEditorOptions) {
   assertSizedPolicy(options.policy);
   const policy = options.policy;
-  const uuid = z.uuid().transform(value => value.toLowerCase());
-  const line = z.object({ variantId: uuid, qty: z.number().int().positive() }).strict();
-  const acceptance = { subscriptionId: uuid, expectedTemplateVersion: z.number().int().positive().optional(), acceptedQuoteHash: z.string().regex(/^[a-f0-9]{64}$/u).optional() };
-  const constraint = z.record(z.string(), z.unknown());
-  const parcel = z.object({ kind: z.literal(SIZED_PARCEL_LEVER_KIND), value: z.object({ coreLines: z.array(line).min(1), optInToSized: z.literal(true).optional() }).strict() }).strict();
-  const schema = z.discriminatedUnion("action", [
-    z.object({ ...acceptance, action: z.literal("resize_bundle"), cadenceDays: z.number().int().positive(), compositionConstraint: constraint,
-      resizeLever: z.union([parcel, z.object({ kind: z.literal("portionMode"), value: z.object({ portionMode: z.string().min(1), planDays: z.number().int().positive() }).strict() }).strict()]) }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_bundle"), coreLines: z.array(line).min(1),
-      addonLines: z.array(line).optional(), cadenceDays: z.number().int().positive().optional(), compositionConstraint: constraint }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_base_mix"), base: z.array(line).min(1) }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_plan_length"), planDays: z.number().int().positive() }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_portion"), portionMode: z.string().min(1) }).strict(),
-    z.object({ ...acceptance, action: z.literal("add_addon"), variantId: uuid, qty: z.number().int().positive() }).strict(),
-    z.object({ ...acceptance, action: z.literal("update_addon_quantity"), variantId: uuid, qty: z.number().int().positive() }).strict(),
-    z.object({ ...acceptance, action: z.literal("remove_addon"), variantId: uuid }).strict(),
-  ]);
-  const parse = (request: unknown): SizedEditRequest => {
-    const result = schema.safeParse(request);
-    if (!result.success) throw new Error("subscription_reprice_invalid_request"); return result.data;
-  };
   function assertRequestLimits(request: SizedEditRequest) {
     const core = "coreLines" in request ? request.coreLines : "base" in request ? request.base
       : request.action === "resize_bundle" && request.resizeLever.kind === SIZED_PARCEL_LEVER_KIND ? request.resizeLever.value.coreLines : [];
@@ -47,97 +30,101 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
       throw new Error("subscription_reprice_invalid_request");
     }
   }
-  async function owned(db: SubscriptionQueryExecutor, actor: PackageEditActor, id: string) {
-    const row = (await db.query(`SELECT s.*,
-      EXISTS(SELECT 1 FROM public.subscription_dunning_cases WHERE subscription_id=s.id AND status='open') AS payment_blocked,
-      EXISTS(SELECT 1 FROM public.subscription_cycles c LEFT JOIN public.commerce_orders o ON o.subscription_cycle_id=c.id
-       WHERE c.subscription_id=s.id AND c.scheduled_at=s.next_cycle_at AND (c.status IN ('payment_pending','paid') OR o.status IN ('paid','fulfillment_pending','fulfilled'))) AS cycle_locked,
-      (CASE WHEN public.subscription_method_uses_recorded_refs(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now()) ELSE EXISTS(SELECT 1 FROM public.subscription_method_states ms WHERE ms.subscription_id=s.id AND ms.health_state='healthy') END) AS method_healthy
-      FROM public.subscriptions s WHERE s.id=$1::uuid AND s.client_id=$2::uuid`, [id, actor.clientId])).rows[0];
-    if (!row) throw new Error("subscription_command_forbidden");
+  function assertBinding(row: Record<string, unknown>) {
     if (row.configured_offer_version !== "classic" && row.configured_offer_version !== "sized.v1") throw new Error("subscription_edit_invalid_offer_binding");
-    return row;
   }
   async function replay(db: SubscriptionQueryExecutor, actor: PackageEditActor, key: string, request: SizedEditRequest): Promise<SizedEditApplyResult | null> {
     const { subscriptionId, ...payload } = request;
-    const prior = (await db.query(`SELECT r.*,r.command=jsonb_build_object('clientId',$1::uuid,'subscriptionId',$2::uuid,
-      'action',$3::text,'payload',$4::jsonb) AND r.quote_hash IS NOT DISTINCT FROM ($4::jsonb->>'acceptedQuoteHash') AS matches
-      FROM public.subscription_command_receipts r WHERE r.actor_id=$5::uuid AND r.idempotency_key=$6::text`,
-    [actor.clientId, subscriptionId, request.action, payload, actor.actorId, key])).rows[0];
-    if (!prior) return null;
-    if (!prior.matches || !["applied", "noop", "refused"].includes(String(prior.status))) throw new Error("subscription_command_idempotency_conflict");
-    const result = subscriptionRecord(prior.result);
-    if (prior.status === "refused") throw new Error(String(result.reason));
-    return { ...result, status: "replayed", originalStatus: prior.status } as SizedEditApplyResult;
+    const stored = await readEditReceipt(db, actor, subscriptionId, key, request.action, payload);
+    if (!stored) return null;
+    const action = canNormalizeToResize(request.action) && stored.result.action === "resize_bundle" ? "resize_bundle" : request.action;
+    return decodeEditResult(stored.rows, "result", subscriptionId, action, stored.status);
   }
-  const scope = (db: SubscriptionQueryExecutor, actor: PackageEditActor) => createSizedEditContextScope((id, optIn) => readSizedEditContext(db, actor.clientId, id, optIn));
-  async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply", retained?: EditAgreementBaseline) {
+  const phase = (db: SubscriptionQueryExecutor, actor: PackageEditActor, id: string) => readSizedConsentPhase(db,actor.clientId,id);
+  async function editContext(db: SubscriptionQueryExecutor, actor: PackageEditActor, id: string, optIn: boolean,
+    numberedPhase: Awaited<ReturnType<typeof readSizedConsentPhase>>): Promise<SizedEditContext> {
+    return { ...await readSizedEditContext(db,actor.clientId,id,optIn),numberedPhase };
+  }
+  async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply", baseline: EditAgreementBaseline, current: Record<string, unknown>) {
     if (request.expectedTemplateVersion !== undefined && request.expectedTemplateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
-    const baseline = retained ?? await readCompleteEditBaseline(db, request.subscriptionId);
-    if(typeof options.quotePort?.createServerAuthoritativeQuote!=="function")throw new Error("subscription_preview_reprice_unavailable");
+    assertEditIntent(baseline, request);
+    if (typeof options.quotePort?.createServerAuthoritativeQuote !== "function") throw new Error("subscription_preview_reprice_unavailable");
     const host: SizedEditorOptions = { ...options, quotePort: { async createServerAuthoritativeQuote(input) {
       const result = await options.quotePort.createServerAuthoritativeQuote(input);
-      if(!result?.quote)throw new Error("subscription_preview_reprice_unavailable");
+      if (!result?.quote) throw new Error("subscription_preview_reprice_unavailable");
       assertEditQuoteCurrency(baseline.currency, result.quote); return result;
     } } };
     const quote = await quoteSizedEdit({ db, context, request, point, host, policy });
-    const editConsent = buildEditConsent(baseline, quote.quoteHash, quote.lines);
+    const keepAgreement = isEditContentNoop({ lane: ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action) ? "exact" : "sized",
+      action: request.action, request, baseline, desired: quote.lines, current, cadenceDays: quote.cadenceDays,
+      constraint: quote.compositionConstraint, optIn: isSizedOptIn(request) });
+    const editConsent = buildEditConsent(baseline, quote.quoteHash, quote.lines, keepAgreement);
     return { ...quote, editConsent, quoteHash: hashEditConsent(editConsent),
       currentRecurringPrice: { amountMinor: editConsent.agreedTotalMinor, currency: editConsent.currency },
+      newRecurringPrice: { amountMinor: editConsent.newTotalMinor, currency: editConsent.currency },
       delta: { amountMinor: editConsent.subtotalDeltaMinor, currency: editConsent.currency } };
   }
-  function blocked(row: Record<string, unknown>, request: SizedEditRequest, unpaidSuccessor = false): SizedEditPreview {
-    const next = row.next_cycle_at instanceof Date ? row.next_cycle_at.toISOString() : row.next_cycle_at == null ? null : String(row.next_cycle_at);
-    const cutoff = next ? new Date(Date.parse(next) - Number(row.edit_window_hours) * 3_600_000).toISOString() : null;
-    const reason: PackageEditBlockedReason | null = row.payment_blocked ? "payment_blocked" : row.status !== "active" ? "not_active"
-      : row.cycle_locked ? "cycle_locked" : !row.method_healthy ? "missing_payment_method" : !unpaidSuccessor && cutoff && Date.parse(cutoff) <= Date.parse(options.now()) ? "edit_window_closed" : null;
-    return { preview: { subscriptionId: request.subscriptionId, action: request.action, canApply: reason === null, blockedReason: reason,
-      nextCycleAt: next, editCutoffAt: cutoff, templateVersion: Number(row.template_version) },
-    lockedCycle: { locked: reason === "cycle_locked" || reason === "payment_blocked", status: reason === "cycle_locked" ? "blocked_preflight" : reason === "payment_blocked" ? "dunning" : null },
-    futureTemplate: { templateVersion: Number(row.template_version), effectiveCycleAt: next, priceAgreementPolicy: "lock_until_edit" } };
-  }
-  async function previewFor(actor:PackageEditActor,input:SizedEditRequest,stockWait?:{caseId:string;caseKind:SuccessorCaseKind}):Promise<SizedEditPreview&{previewId?:string}> {
-      const parsed = parse(input);
-      assertRequestLimits(parsed);
-      if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
-      return options.withTransaction(async db => {
-        const row = await owned(db, actor, parsed.subscriptionId);
-        if(stockWait){
-          const eligibility=blocked(row,parsed);
-          if(!eligibility.preview.canApply&&eligibility.preview.blockedReason!=="edit_window_closed")return eligibility;
-          await lockUnpaidSuccessorPreview(db,actor,parsed.subscriptionId,stockWait);
-        }
-        await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
-        let eligibility = blocked(row, parsed);
-        if(stockWait&&(eligibility.preview.blockedReason===null||eligibility.preview.blockedReason==="edit_window_closed")){
-          eligibility=blocked(row,parsed,true);
-        }
-        if (!eligibility.preview.canApply) return eligibility;
-        const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
-        const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
-        const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request,stockWait!==undefined);
-        const priced = await quote(db, context, request, "preview", baseline), { subscriptionId: _id, ...raw } = request;
-        const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
-        const catalogAdmission = await options.catalogueEvidence?.({ subscriptionId: request.subscriptionId, lane: "sized",
-          cadenceDays: priced.cadenceDays, optIn: isSizedOptIn(parsed), lines: priced.lines });
-        const recorded=await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz) AS result",
-          [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { editConsent: priced.editConsent, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,
-              subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts,
-              ...(catalogAdmission ? { catalogAdmission } : {}) },
-            { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
-        const identity=stockWait?{previewId:z.uuid().parse(subscriptionRecord(recorded.rows[0]?.result).id)}:{};
-        return { ...preview,...identity, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
-          newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
-            newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,
-            effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
+  async function previewFor(actor: PackageEditActor, input: SizedEditRequest, stockWait?: { caseId: string; caseKind: SuccessorCaseKind }): Promise<SizedEditPreview & { previewId?: string }> {
+    const parsed = stockWait ? parseSuccessorSizedEditRequest(input) : parseSizedEditRequest(input);
+    assertRequestLimits(parsed);
+    if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
+    return options.withTransaction(async db => {
+      if (stockWait) {
+        const initial = await readEditEligibility(db, actor, parsed.subscriptionId);
+        assertBinding(initial);
+        const eligibility = editPreviewEligibility(initial, parsed.subscriptionId, parsed.action, options.now());
+        if (!eligibility.preview.canApply && eligibility.preview.blockedReason !== "edit_window_closed") return eligibility;
+        await lockUnpaidSuccessorPreview(db, actor, parsed.subscriptionId, stockWait);
+      }
+      const version = await readOwnedEditVersion(db, actor, parsed.subscriptionId, !stockWait);
+      const row = await readEditEligibility(db, actor, parsed.subscriptionId);
+      assertBinding(row);
+      const now = options.now(), expires = new Date(Date.parse(now) + 15 * 60_000).toISOString();
+      const eligibility = editPreviewEligibility(row, parsed.subscriptionId, parsed.action, now, Boolean(stockWait));
+      if (!eligibility.preview.canApply) return eligibility;
+      assertEditVersion(parsed.expectedTemplateVersion, version);
+      const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
+      const context = await editContext(db,actor,parsed.subscriptionId,isSizedOptIn(parsed),await phase(db,actor,parsed.subscriptionId));
+      const request = normalizeSizedEdit(parsed, context, policy);
+      const preview = editPreviewEligibility(row, parsed.subscriptionId, request.action, now, Boolean(stockWait));
+      const priced = await quote(db, context, request, "preview", baseline, row), { subscriptionId: _id, ...raw } = request;
+      const catalogAdmission = await readEditCatalogEvidence(db, options.readCatalogAdmission, {
+        subscriptionId: request.subscriptionId, lane: ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action) ? "exact" : "sized",
+        cadenceDays: priced.cadenceDays, lines: priced.lines, optIn: isSizedOptIn(parsed),
       });
+      const snapshot = { editConsent: priced.editConsent, consentRequest: consentRequest(parsed), catalogAdmission, lines: priced.lines,
+        cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,
+        subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts };
+      const totals = { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta };
+      const recordedAt = options.now();
+      const identity = stockWait ? { previewId: await recordUnpaidSuccessorPreview(db, { actor, subscriptionId: request.subscriptionId,
+        action: request.action, quoteHash: priced.quoteHash, templateVersion: priced.expectedTemplateVersion,
+        expiresAt: expires, request: raw, snapshot, totals, now: recordedAt }) } : {};
+      if (!stockWait) await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
+        [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash,
+          priced.expectedTemplateVersion, expires, raw, snapshot, totals, recordedAt]);
+      return { ...preview, ...identity, editConsent: priced.editConsent, quoteHash: priced.quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
+        newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
+          newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash: priced.quoteHash,
+          effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
+    });
   }
   return {
+    /** Used before binding dispatch to preserve an owned historical receipt. @experimental */
+    async replayCompleted(actor: PackageEditActor, key: string, request: unknown) {
+      const parsed = tryParseSizedEditRequest(request);
+      if (!parsed || key !== key.trim() || key.length < 8 || key.length > 180) return null;
+      return options.withTransaction(async db => {
+        await readOwnedEditVersion(db, actor, parsed.subscriptionId, false);
+        return replay(db, actor, key, parsed);
+      });
+    },
     async candidates(actor: PackageEditActor, id: string, optIn = false) {
       return options.withTransaction(async db => {
-        await owned(db, actor, id);
-        const context = await scope(db, actor)(id, optIn), facts = await options.readFacts(db, context, "candidate");
+        await readOwnedEditVersion(db,actor,id,true);
+        assertBinding(await readEditEligibility(db, actor, id));
+        const context = await editContext(db,actor,id,optIn,await phase(db,actor,id));
+        const facts = await options.readFacts(db, context, "candidate");
         assertSizedSubjectFacts(facts, context, policy);
         if (optIn && context.binding === "classic") {
           const need = await options.resolveOptInNeed(db, context);
@@ -148,52 +135,55 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         return { context, catalog: sizedCandidateCompatibility(await options.readCatalog(db, context), facts) };
       });
     },
-    preview(actor:PackageEditActor,input:SizedEditRequest):Promise<SizedEditPreview>{return previewFor(actor,input);},
+    preview(actor: PackageEditActor, input: SizedEditRequest): Promise<SizedEditPreview> {
+      return previewFor(actor, input);
+    },
     /** @experimental */
-    previewStockWaitSuccessor(actor:PackageEditActor,input:SizedEditRequest,source:{caseId:string;caseKind:SuccessorCaseKind}){return previewFor(actor,input,source);},
+    previewStockWaitSuccessor(actor: PackageEditActor, input: SizedEditRequest, source: { caseId: string; caseKind: SuccessorCaseKind }) {
+      return previewFor(actor, input, source);
+    },
     async apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult> {
-      const parsed = parse(input);
+      const parsed = parseSizedEditRequest(input);
       if (key !== key.trim() || key.length < 8 || key.length > 180) throw new Error("subscription_command_invalid_input");
       return options.withTransaction(async db => {
-        await owned(db, actor, parsed.subscriptionId);
+        await readOwnedEditVersion(db, actor, parsed.subscriptionId, false);
         await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1::uuid::text||':'||$2::text,0))", [actor.actorId, key]);
         const stored = await replay(db, actor, key, parsed);
         if (stored) return stored;
         assertRequestLimits(parsed);
-        const locked = (await db.query(`SELECT s.id,s.template_version,
-          public.subscription_renewal_purchase_terms(s.id)#>'{renewalTerms,starterPack}' AS marker,
-          (SELECT count(*) FROM public.subscription_cycles c WHERE c.subscription_id=s.id AND c.status='paid') AS paid
-          FROM public.subscriptions s WHERE s.id=$1::uuid AND s.client_id=$2::uuid FOR UPDATE`, [parsed.subscriptionId, actor.clientId])).rows[0];
-        // Resolve only graduation's effective action here; complete baseline/context validation follows take.
-        const marker = locked?.marker == null ? null : subscriptionRecord(locked.marker);
-        const graduation = marker && Number(locked?.paid) + 1 === policy.graduationCycle && locked?.template_version === marker.basisTemplateVersion;
-        const action = graduation && ["update_portion", "update_base_mix", "update_bundle"].includes(parsed.action) ? "resize_bundle" : parsed.action;
+        const version = await readOwnedEditVersion(db,actor,parsed.subscriptionId,true);
+        const row = await readEditEligibility(db, actor, parsed.subscriptionId);
+        assertBinding(row);
+        assertFreshEditEligible(row, options.now());
+        assertEditVersion(parsed.expectedTemplateVersion,version);
+        const numberedPhase = await phase(db,actor,parsed.subscriptionId);
+        const action = numberedPhase.phase === "graduation_pending" && canNormalizeToResize(parsed.action) ? "resize_bundle" : parsed.action;
         await db.query("SELECT subscription_id FROM public.subscription_renewal_terms WHERE subscription_id=$1::uuid FOR UPDATE", [parsed.subscriptionId]);
-        await takeEditConsent(db, actor, parsed.subscriptionId, action, parsed.acceptedQuoteHash, Number(locked?.template_version), key, options.now());
+        await takeEditConsent(db, actor, parsed.subscriptionId, action, parsed.acceptedQuoteHash, version, key, options.now(), consentRequest(parsed));
         const baseline = await readCompleteEditBaseline(db, parsed.subscriptionId);
-        const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
-        const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply", baseline);
+        const context = await editContext(db,actor,parsed.subscriptionId,isSizedOptIn(parsed),numberedPhase);
+        const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply", baseline, row);
         if (request.acceptedQuoteHash !== priced.quoteHash) throw new Error("subscription_reprice_quote_not_accepted");
         const addon = ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action);
         if (!addon) await options.assertCurrentFacts(db, context, priced.subjectFacts, priced.optInFacts, priced.catalogFacts);
-        const { subscriptionId: _id, ...raw } = request;
+        const { subscriptionId: _id, ...raw } = request, { subscriptionId: _submittedId, ...submitted } = parsed;
         const payload = { ...raw, request: raw, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,
           subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts, expectedTemplateVersion: priced.expectedTemplateVersion };
-        const result = subscriptionRecord((await (addon ? db.query("SELECT public.subscription_line_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz) AS result",
+        const { rows } = await (addon ? db.query("SELECT public.subscription_line_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz) AS result",
           [actor.actorId, actor.clientId, key, request.subscriptionId, request.action, payload, options.now()])
-          : db.query("SELECT public.subscription_sized_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::jsonb,$6::timestamptz) AS result",
-            [actor.actorId, actor.clientId, key, request.subscriptionId, payload, options.now()]))).rows[0]?.result);
-        if (result.status === "refused") throw new Error(String(result.reason));
-        return result as unknown as SizedEditApplyResult;
+          : db.query("SELECT public.subscription_consented_bundle_edit_apply($1::uuid,$2::uuid,$3::text,$4::uuid,$5::jsonb,$6::timestamptz,'sized',$7::jsonb) AS result",
+            [actor.actorId, actor.clientId, key, request.subscriptionId, payload, options.now(), submitted]));
+        return decodeEditResult(rows, "result", request.subscriptionId, request.action);
       });
     },
   };
 }
+type SizedEditor = ReturnType<typeof createPostgresSizedEditor>;
 /** Binding dispatch does not read sized context for lifecycle or ordinary classic operations. */
 export function createOfferDispatchedSubscriptionEditor(input: {
   readBinding(actor: PackageEditActor, id: string): Promise<"classic" | "sized.v1" | null>;
   classic: { preview(actor: PackageEditActor, request: never): Promise<unknown>; apply(actor: PackageEditActor, key: string, request: never): Promise<unknown> };
-  sized: ReturnType<typeof createPostgresSizedEditor>;
+  sized: Omit<SizedEditor, "replayCompleted" | "previewStockWaitSuccessor"> & Partial<Pick<SizedEditor, "replayCompleted">>;
 }) {
   const content = new Set(["resize_bundle", "update_bundle", "update_base_mix", "update_plan_length", "update_portion", "update_package_template", "swap_base_line", "add_addon", "remove_addon", "update_addon_quantity"]);
   async function choose(actor: PackageEditActor, request: { subscriptionId: string; action?: string }) {
@@ -209,13 +199,15 @@ export function createOfferDispatchedSubscriptionEditor(input: {
       const editor = await choose(actor, request); return editor.preview(actor, request as never);
     },
     async apply(actor: PackageEditActor, key: string, request: { subscriptionId: string; action?: string }) {
+      const previous = await input.sized.replayCompleted?.(actor, key, request);
+      if (previous) return previous;
       const editor = await choose(actor, request); return editor.apply(actor, key, request as never);
     },
   };
 }
 export function mapSizedEditError(error: unknown, phase: "preview" | "apply", action?: string) {
   const message = error instanceof Error ? error.message : typeof error === "object" && error !== null && "message" in error ? String(error.message) : String(error);
-  if (/subscription_(?:edit_invalid_intro_fixed|edit_invalid_graduation_addon|configured_offer_immutable)/u.test(message)) {
+  if (/subscription_(?:edit_invalid_intro_fixed|edit_invalid_graduation_addon|edit_cycle_history_unreadable|configured_offer_immutable)/u.test(message)) {
     return { status: 409 as const, code: "CONFLICT" as const, message: "Customer subscription action is not allowed", reason: message };
   }
   if (["subscription_edit_invalid_agreed_price", "subscription_edit_invalid_intro_marker"].includes(message)) {

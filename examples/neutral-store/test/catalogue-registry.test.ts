@@ -5,17 +5,48 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { catalogDefinitionDigest } from '@openlup/platform/catalog';
+import { catalogDefinitionDigest, catalogPackIssues } from '@openlup/platform/catalog';
+import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
 import { configurations } from '../owned/store.config.ts';
-import { catalogueConformance } from '../owned/catalogue.ts';
+import { catalogueConformance, supplementsCatalogueFor } from '../owned/catalogue.ts';
 import { offerVersion } from '../owned/catalog-packs/supplements/catalogue.ts';
-import { fixtures, requiredChecks } from '../owned/catalog-packs/supplements/fixtures.ts';
+import { requiredChecks, supplementsFixtures } from '../owned/catalog-packs/supplements/fixtures.ts';
 import { pack } from '../owned/catalog-packs/supplements/pack.ts';
 import { bindRegisteredCatalogue, starterCatalogue, selectCatalogueConfiguration } from '../host/catalogue-selection.ts';
-import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
+import { createStarterCatalogueRegistry, type StarterCatalogueRegistration } from '../host/catalogue-registry.ts';
 import { installStarterCatalogueDefinitions } from '../installation/install.ts';
-import { starterQuoteCatalogue } from '../host/editor-catalogue.ts';
+import { demoIdentifier, starterQuoteCatalogue } from '../host/editor-catalogue.ts';
 import { parseHostArguments } from '../shared/config.ts';
+
+const articleType = { key: 'synthetic:article', version: 1, dimensions: [],
+  units: [{ code: 'openlup:piece', dimension: 'count' as const, integral: true }], netContentUnits: ['openlup:piece'],
+  validatorRef: `sha256:${'a'.repeat(64)}`, validateContent: () => [] };
+
+for (const trial of ['valid', 'invalid pack', 'duplicate configuration', 'unknown configuration'] as const) {
+  test(`G1-D1 starter registry admits one independent registration: ${trial}`, () => {
+    const source = starterCatalogue.select().configuration;
+    const first: StarterCatalogueRegistration = { configuration: source,
+      pack: { id: 'starter:test', namespace: 'starter', version: 1, openlupRange: '0.43.x', capabilities: {}, taxClasses: [],
+        types: [{ ...articleType, key: 'starter:test' }] }, draftType: { key: 'starter:test', version: 1 }, offerVersion: 'classic' };
+    const second: StarterCatalogueRegistration = { configuration: { ...source, id: trial === 'duplicate configuration' ? source.id : 'synthetic-articles' },
+      pack: { id: 'synthetic:articles', namespace: trial === 'invalid pack' ? 'unrelated' : 'synthetic', version: 1,
+        openlupRange: '0.43.x', capabilities: {}, taxClasses: [], types: [articleType] }, draftType: articleType, offerVersion: 'synthetic:offer' };
+    const register = () => createStarterCatalogueRegistry([first, second], first.configuration.id);
+    if (trial === 'invalid pack' || trial === 'duplicate configuration') {
+      if (trial === 'invalid pack') assert.equal(catalogPackIssues(second.pack)[0]?.code, 'pack_type_namespace_mismatch');
+      assert.throws(register, { message: 'starter_catalogue_registration_invalid' });
+      return;
+    }
+    const registry = register();
+    if (trial === 'unknown configuration') {
+      assert.throws(() => registry.select('absent'), { message: 'starter_configuration_unknown' });
+      return;
+    }
+    assert.deepEqual(catalogPackIssues(second.pack), []);
+    assert.equal(registry.select(second.configuration.id).pack, second.pack);
+    assert.equal(registry.select(second.configuration.id).types.resolve(articleType)?.key, articleType.key);
+  });
+}
 
 const configuredEntries = starterCatalogue.list().filter(({ configuration }) => Object.hasOwn(configurations, configuration.id));
 for (const entry of configuredEntries) test(`MC5-N-005 ${entry.configuration.id} drives boot, authoring, install and read composition`, async () => {
@@ -65,11 +96,14 @@ test('RP1-D-003a selects the supplements pack through the explicit LC8 binding',
   assert.equal(selected.pack?.id, 'supplements');
   assert.equal(selected.explicitOnly, true);
   assert.equal(starterCatalogue.select().pack?.id, 'starter:demonstration');
-  const binding = await bindRegisteredCatalogue(selected, transactions);
+  assert.equal(await bindRegisteredCatalogue(selected, transactions, false), undefined);
+  const binding = await bindRegisteredCatalogue(selected, transactions, true);
   assert.equal(binding.registration, selected);
   assert.equal(binding.publication.transactions, transactions);
   assert.equal(binding.readEnabled(), true);
-  assert.equal(binding.writerEnabled(), false);
+  assert.equal(binding.writerEnabled(), true);
+  assert.equal(typeof binding.observePublication, 'function');
+  assert.equal(typeof binding.publication.bindHumanTransaction, 'function');
   await assert.rejects(bindRegisteredCatalogue(starterCatalogue.select(), transactions), { message: 'starter_catalogue_registration_invalid' });
 });
 
@@ -80,14 +114,23 @@ test('catalogue_transport_matrix RP2-D-002 projects the selected runtime pack an
   const selected = starterCatalogue.select(options.configuration);
   assert.equal(options.cataloguePublication, true);
   assert.equal(selected.pack, pack);
-  assert.deepEqual(selected.scope, { types: pack.types.map(({ key, version }) => ({ key, version })), offerVersion });
+  const { country, currency } = selected.configuration.market;
+  assert.deepEqual(selected.scope, { types: [selected.draftType], offerVersion, priceContext: {
+    regionCode: country, currency, channel: 'D2C', readPrices: createPostgresCommercePriceAuthorityReadPort,
+  } });
   assert.equal(starterCatalogue.list().filter(entry => entry.pack === pack).length, 1);
   assert.deepEqual(catalogueConformance.packs.map(entry => entry.pack), [selected.pack]);
   const transactions = { async run(): Promise<never> { throw new Error('offline binding must perform no effects'); } };
-  const binding = await bindRegisteredCatalogue(selected, transactions);
+  const binding = await bindRegisteredCatalogue(selected, transactions, options.cataloguePublication);
   assert.equal(binding.registration, selected);
   assert.equal(binding.readEnabled(), true);
-  assert.equal(binding.writerEnabled(), false);
+  assert.equal(binding.writerEnabled(), true);
+
+  const priceListId = demoIdentifier(selected.configuration, 'price-list', currency);
+  const { fixtures } = supplementsFixtures(priceListId);
+  const { initialDrafts } = supplementsCatalogueFor(selected);
+  assert.deepEqual(initialDrafts.flatMap(({ payload }) => payload.skus.flatMap(sku =>
+    sku.priceOperations?.map(operation => operation.priceListId) ?? [])), initialDrafts.map(() => priceListId));
 
   const runtimeTypes = pack.types.map(type => {
     const resolved = selected.types.resolve(type);

@@ -115,11 +115,14 @@ under an application maintenance window.
 ./lifecycle upgrade-catalogue /path/to/existing-starter
 ```
 
-The step reconciles the released defaults of `owned/catalogue.ts` and
-`owned/copy.ts` and introduces the four supplements pack files and the
-fictional market table from the candidate extraction. It validates the
-replacement and creation paths before writing. If an owned file conflicts,
-merge the catalogue changes with your local copy. An exact repeat performs no
-writes. Subsequent managed-file upgrades preserve the pack and market files as
-application-owned. The released consumer runs the extracted starter's
-`test/catalogue-upgrade.test.ts` to check these cases.
+The step upgrades the released defaults of `owned/catalogue.ts` and
+`owned/copy.ts` and adds the four supplements pack files and the fictional market
+table from the candidate extraction. It preflights every path before applying
+the candidate bytes and recognizes an earlier unmodified registry with current
+catalogue labels and the earlier unmodified supplements recipe. If an owned file
+contains a customization, merge the changes
+with your local copy. Register another pack by adding its configuration, pack,
+draft type and offer version to the same owned registry. An exact repeat
+performs no writes. Subsequent managed-file upgrades preserve the pack and
+market files as application-owned. The released consumer checks these cases
+with the extracted starter's `test/catalogue-upgrade.test.ts`.

@@ -60,7 +60,7 @@ export const customerOperations = new Set<Operation>([
   'account.billing', 'account.defaults', 'account.addresses', 'account.paymentPreference', 'account.deliveryPreference', 'subscription.savedAddress',
   'account.profile', 'account.invoiceCorrection', 'checkout.recoveryStart',
   'account.read', 'account.orders', 'account.invoice', 'account.consent',
-  'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.successor', 'subscription.address', 'return.request',
+  'subscription.command', 'subscription.preview', 'subscription.catalog', 'subscription.successor', 'subscription.stockWait', 'subscription.address', 'return.request',
 ]);
 
 export async function dispatchAction(

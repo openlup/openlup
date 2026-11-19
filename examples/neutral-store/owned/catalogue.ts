@@ -1,34 +1,47 @@
 import { canonicalCatalogDraftJson, type CatalogProductTypeInput, type CatalogPublicationTransactions } from '@openlup/platform/catalog';
-import type { CatalogPackInput } from '@openlup/platform/catalog/contracts';
+import { defineCatalogPack } from '@openlup/platform/catalog/contracts';
 import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
 import { configurations, defaultConfigurationId } from './store.config.ts';
 import type { StarterCatalogueSelection } from '../host/catalogue-selection.ts';
 import type { StarterCatalogueOptions } from '../host/catalogue-binding.ts';
-import { itemType, pack as supplements } from './catalog-packs/supplements/pack.ts';
-import { fixtures, requiredChecks } from './catalog-packs/supplements/fixtures.ts';
-import { offerVersion } from './catalog-packs/supplements/catalogue.ts';
-import { policy } from './catalog-packs/supplements/policy.ts';
+import { demoIdentifier } from '../host/editor-catalogue.ts';
+import type { StoreConfig } from '../shared/config.ts';
+import { itemType, pack as supplements, swapGroupKey } from './catalog-packs/supplements/pack.ts';
+import { requiredChecks, supplementsFixtures } from './catalog-packs/supplements/fixtures.ts';
+import { offerVersion, supplementsCatalogue } from './catalog-packs/supplements/catalogue.ts';
+import { demandFor, policy } from './catalog-packs/supplements/policy.ts';
 
 const validateContent: CatalogProductTypeInput['validateContent'] = content => content !== null && typeof content === 'object'
   && 'title' in content && typeof content.title === 'string' && content.title.trim()
   ? [] : [{ path: 'title', code: 'title_required' }];
 const validatorRef = 'sha256:3833a12b67f874c6d23ef91ffd9924b6141d3aa03b96363bc7ca63aa290d2230';
-const legacyType: CatalogProductTypeInput = {
+const legacyType = {
   key: 'starter:item', version: 1, dimensions: [],
   units: [{ code: 'starter:each', dimension: 'count', integral: true }], netContentUnits: ['starter:each'],
   validatorRef, validateContent,
-};
-const draftType: CatalogProductTypeInput = {
+} as const satisfies CatalogProductTypeInput;
+const draftType = {
   key: legacyType.key, version: 2, dimensions: [],
   units: [{ code: 'openlup:g', dimension: 'mass', integral: false }], netContentUnits: ['openlup:g'],
   validatorRef, validateContent,
-};
-const demonstrationPack: CatalogPackInput = {
+} as const satisfies CatalogProductTypeInput;
+const demonstrationPack = defineCatalogPack({
   id: 'starter:demonstration', namespace: 'starter', version: 1, openlupRange: '0.43.x',
   capabilities: { publish: false }, types: [legacyType, draftType], taxClasses: [],
-};
+});
 
-const supplementConfiguration = { ...configurations.supplements!, id: 'supplements-pack' };
+const demo = configurations.supplements!;
+const supplementConfiguration: StoreConfig = {
+  ...demo,
+  id: 'supplements-pack',
+  offer: { ...demo.offer, subscriptionDiscountBps: 0 },
+  quote: { ...demo.quote, acquisition: {
+    ...demo.quote.acquisition,
+    // Both acquisition steps use the smallest engine-supported rate, which rounds to zero on this fixture.
+    initialDiscountBps: 1,
+    delivery2DiscountBps: 1,
+  } },
+};
 
 export const starterCatalogue = createStarterCatalogueRegistry([
   { get configuration() { return configurations.supplements!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
@@ -36,19 +49,35 @@ export const starterCatalogue = createStarterCatalogueRegistry([
   { configuration: supplementConfiguration, pack: supplements, draftType: itemType, offerVersion, explicitOnly: true },
 ], defaultConfigurationId);
 
+const priceListFor = (config: StoreConfig) => demoIdentifier(config, 'price-list', config.market.currency);
+const supplementSelection = starterCatalogue.select(supplementConfiguration.id);
+
+/** Build the recipe for the explicit application configuration selected by the host. */
+export function supplementsCatalogueFor(selection: StarterCatalogueSelection) {
+  if (selection !== supplementSelection) throw new Error('starter_catalogue_registration_invalid');
+  return supplementsCatalogue(priceListFor(selection.configuration));
+}
+
 export const catalogueConformance = {
-  packs: [{ pack: starterCatalogue.select(supplementConfiguration.id).pack, ...fixtures }],
+  packs: [{ pack: supplementSelection.pack, ...supplementsFixtures(priceListFor(supplementSelection.configuration)).fixtures }],
   requiredChecks,
 };
 
-/** The explicit fixture selection seats the read lane with the host's verified runtime transaction. */
+/** The explicit fixture selection uses the host's verified runtime transaction. */
 export function bindCatalogue(selection: StarterCatalogueSelection, transactions: CatalogPublicationTransactions): StarterCatalogueOptions {
-  if (selection !== starterCatalogue.select(supplementConfiguration.id)) throw new Error('starter_catalogue_registration_invalid');
+  if (selection !== supplementSelection) throw new Error('starter_catalogue_registration_invalid');
   return {
     registration: selection,
     readEnabled: () => true,
     writerEnabled: () => false,
     profilePolicies: [policy],
+    profileLine(_line, { netContent }) {
+      if (netContent.unit === 'supplements:capsule') {
+        return { demand: demandFor('capsule', netContent), swapGroupKey };
+      }
+      if (netContent.unit === 'openlup:g') return { demand: demandFor('powder', netContent) };
+      return {};
+    },
     publication: {
       transactions,
       rules: {

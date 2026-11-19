@@ -8,3 +8,7 @@ The neutral starter can explicitly compose the installed serving and profile
 authorities. Native checkout and edit previews carry catalogue admission
 evidence into the existing transaction guards. The published catalogue, editor
 and retained service lanes have independent readiness.
+
+The starter's explicit selected-pack binding exposes guarded publication,
+admits registered offer versions into ordinary subscription editing and binds
+operator and owned-account stock-wait reads. Publication is off by default.
