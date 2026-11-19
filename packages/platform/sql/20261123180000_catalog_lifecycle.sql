@@ -65,8 +65,8 @@ REVOKE ALL ON FUNCTION public.admin_deactivate_catalog_product(uuid,text,text,te
 -- Governed publication and frozen renewal retain different object-key ordering.
 -- Their digests are over the canonical UTF-8 wire, never jsonb's display form.
 CREATE FUNCTION public.catalog_lifecycle_canonical_v3(p_value jsonb,p_renewal boolean,p_depth integer) RETURNS text
-LANGUAGE plpgsql IMMUTABLE STRICT SECURITY INVOKER SET extra_float_digits = 3 SET search_path = pg_catalog, public AS $$
-DECLARE kind text:=jsonb_typeof(p_value); result text; exponent integer;
+LANGUAGE plpgsql IMMUTABLE STRICT SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE kind text:=jsonb_typeof(p_value); result text; exponent integer; float_digits text;
 BEGIN
  IF p_depth>48 THEN RETURN NULL; END IF;
  IF kind='array' THEN
@@ -88,7 +88,12 @@ BEGIN
    IF p_value::numeric<>trunc(p_value::numeric) OR abs(p_value::numeric)>9007199254740991 THEN RETURN NULL; END IF;
    RETURN trunc(p_value::numeric)::text;
   END IF;
+  -- PostgreSQL uses its shortest float representation when this setting is
+  -- positive. Preserve the caller's format, including on exception rollback.
+  float_digits:=current_setting('extra_float_digits');
+  IF float_digits::integer<=0 THEN PERFORM set_config('extra_float_digits','1',true); END IF;
   result:=(p_value::text::double precision)::text;
+  IF float_digits::integer<=0 THEN PERFORM set_config('extra_float_digits',float_digits,true); END IF;
   IF strpos(result,'e')>0 THEN
    exponent:=split_part(result,'e',2)::integer;
    IF exponent BETWEEN -6 AND 20 THEN RETURN trim_scale(result::numeric)::text; END IF;

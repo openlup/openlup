@@ -963,7 +963,9 @@ it.each([
   { "\uffff": "BMP", "𐀀": "astral", "🙂": "supplementary", x: false },
 ])("LC5-PRE canonical stored authority matches the catalogue writer for %j", async value => {
   const text = canonicalCatalogDraftJson(value);
+  await db.query("SET LOCAL extra_float_digits=0");
   expect((await db.query("SELECT public.catalog_lifecycle_canonical_v3($1::jsonb,false,0) AS bytes", [text])).rows).toEqual([{ bytes: text }]);
+  expect((await db.query("SHOW extra_float_digits")).rows).toEqual([{ extra_float_digits: "0" }]);
 });
 
 it.each(["empty logistics", "scalar option", "noncanonical sibling"] as const)(
