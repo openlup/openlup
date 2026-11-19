@@ -51,10 +51,10 @@ export interface CatalogPublicationFailure {
   message?: string;
 }
 
-export function canonicalCatalogPublicationJson(input: unknown): string {
+export function canonicalCatalogPublicationJson(input: unknown, maxDepth = Infinity): string {
   const ancestors = new Set<object>();
   function visit(value: unknown, depth: number): unknown {
-    if (depth > 48) throw new Error("draft_json_depth");
+    if (depth > maxDepth) throw new Error("draft_json_depth");
     if (typeof value === "string") {
       if (value.includes("\u0000") || /[\uD800-\uDFFF]/u.test(value)) throw new Error("draft_json_invalid");
       return value;
@@ -67,7 +67,7 @@ export function canonicalCatalogPublicationJson(input: unknown): string {
     const keys = Reflect.ownKeys(value);
     if (keys.some((key) => typeof key !== "string" || ["__proto__", "constructor", "prototype"].includes(key))) throw new Error("draft_json_invalid");
     for (const key of keys) {
-      visit(key, depth + 1);
+      visit(key, depth);
       if (Object.getOwnPropertyDescriptor(value, key)?.get || Object.getOwnPropertyDescriptor(value, key)?.set) throw new Error("draft_json_invalid");
     }
     let result: unknown;
@@ -92,8 +92,8 @@ export class CatalogPublicationError extends Error {
   }
 }
 export const publicationRefuse = (code: string, outcome?: CatalogPublicationError["outcome"]): never => { throw new CatalogPublicationError(code, outcome); };
-export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes): string => {
-  const text = canonicalCatalogPublicationJson(input);
+export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes, maxDepth?: number): string => {
+  const text = canonicalCatalogPublicationJson(input, maxDepth);
   if (Buffer.byteLength(text) > maxBytes) publicationRefuse("catalog_publication_envelope_too_large");
   return text;
 };

@@ -120,7 +120,7 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
   // Admission seals the graph. Bind the exact document and original result
   // without replaying every issued SKU to read one retained page.
   const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,public.catalog_publication_manifest_text(p.product_id,p.canonical_state,p.digest,false) AS canonical_state,p.digest,r.result,
-    p.command_key,p.command_fingerprint,p.actor_id,
+    p.command_key,p.command_fingerprint,p.actor_id,public.catalog_publication_max_depth() AS max_depth,
     to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at,
     d.digest AS document_digest,
     jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,
@@ -132,7 +132,9 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
     WHERE p.id=$1::uuid AND ($2::uuid IS NULL OR p.product_id=$2::uuid)`, [publicationId, productId ?? null]);
   if (!rows.length) return null;
   const row = rows[0]!;
-  requireCondition(rows.length === 1 && row.id === publicationId && (productId === undefined || row.product_id === productId));
+  const maxDepth = row.max_depth as number;
+  requireCondition(rows.length === 1 && row.id === publicationId && (productId === undefined || row.product_id === productId)
+    && Number.isSafeInteger(maxDepth) && maxDepth >= 0);
   const head = headSchema.parse({ publicationId, revision: row.revision, documentDigest: row.document_digest });
   const manifest = JSON.parse(row.canonical_state as string) as CatalogPublicationManifestV2;
   requireCondition(equal(manifest.product.document, row.document_reference), "catalog_publication_document_invalid");
@@ -145,7 +147,7 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
     && receipt.committedAt === row.committed_at && publicationJson(receipt, limits.receiptBytes) === row.result,
     "catalog_publication_receipt_invalid");
   publicationJson({ outcome: "found", receipt }, limits.receiptBytes);
-  return { head, manifest, receipt };
+  return { head, manifest, receipt, maxDepth };
 }
 type Issue = NonNullable<Awaited<ReturnType<typeof verifiedIssue>>>;
 
@@ -381,7 +383,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         }
         const result = { outcome: "page" as const, schemaVersion: 2 as const, head: issue.head, product,
           items: await issueFacts(db, issue, selected), nextCursor };
-        publicationJson(result, limits.pageBytes);
+        publicationJson(result, limits.pageBytes, issue.maxDepth);
         return result;
       });
     } catch (error) { return failure(error); }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
+import type { CatalogPublicationJson } from "@openlup/platform/catalog/contracts";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
 import { CATALOG_PUBLICATION_LIMITS, type CatalogPublicationManifestV2 } from "../../server/adapters/postgres/catalogPublicationWire.js";
@@ -682,6 +683,41 @@ it.each(["object", "serialized", "nested"] as const)("refuses a %s document carr
     await insertGraph(db, issue);
   }).catch(error => error);
   expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_facts_invalid" });
+});
+
+it("refuses a document carrier in the existing published SKU attributes field", async () => {
+it("uses the same depth 48 boundary for SQL admission and the TypeScript detail page", async () => {
+  const { rows: [{ max_depth: maxDepth } = {}] } = await pool.query<{ max_depth: number }>(
+    "SELECT public.catalog_publication_max_depth() AS max_depth",
+  );
+  expect(maxDepth).toBe(48);
+  const containerAt = (depth: number, terminal: CatalogPublicationJson) =>
+    Array.from({ length: depth - 5 }).reduce<CatalogPublicationJson>(child => [child], terminal);
+  const detail = (depth: number) => ({ array: containerAt(depth, []), object: containerAt(depth, {}) });
+  const head = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    issue.facts.facts = detail(48);
+    await insertGraph(db, issue);
+    return issue.head;
+  });
+  const page = await publicationReader().readbackV2(head);
+  if (page.outcome !== "page") throw new Error(page.reason);
+  expect(page.items[0]?.facts.facts).toEqual(detail(48));
+  expect(() => json(page, maxDepth)).not.toThrow();
+  const items = page.items.map(item => ({ ...item, facts: { ...item.facts, facts: detail(49) } }));
+  expect(() => json({ ...page, items }, maxDepth)).toThrow("draft_json_depth");
+
+  const tooDeep = fixture();
+  let staged = false;
+  const refused = await transaction(pool, async db => {
+    const issue = await graph(db, tooDeep);
+    issue.facts.facts = detail(49);
+    await insertGraph(db, issue);
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  expect(catalogPublicationAdmissionRefusal(refused)).toMatchObject({ reason: "publication_revision_invalid" });
+  expect((await pool.query("SELECT id FROM public.catalog_products WHERE id=$1", [tooDeep.productId])).rows).toEqual([]);
 });
 
 it.each(["0001-01-01T00:00:00.000000Z", "9999-12-31T23:59:59.999999Z"])("admits UTC boundary %s for both timestamps", async time => {

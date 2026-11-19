@@ -141,14 +141,20 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_publication_heads, public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions, public.catalog_publication_pointer_capabilities FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_publication_heads, public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions, public.catalog_publication_pointer_capabilities FROM service_role;'; END IF; END; $$;
 
+CREATE FUNCTION public.catalog_publication_max_depth() RETURNS integer
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$ SELECT 48 $$;
+REVOKE ALL ON FUNCTION public.catalog_publication_max_depth() FROM PUBLIC;
+
 -- Canonicalize the neutral wire. Array indices sort numerically before other
 -- keys, which ECMAScript orders by UTF-16 code units. The document is opaque.
 CREATE FUNCTION public.catalog_publication_canonical(p_value jsonb, p_depth integer) RETURNS text
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE result text; number_text text; number_value numeric; original_precision text;
+ max_depth CONSTANT integer := public.catalog_publication_max_depth();
 BEGIN
- IF p_depth > 48 THEN
-  RAISE EXCEPTION 'catalog_publication_wire_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_wire_invalid';
+ -- Root depth is zero. Count values, including empty containers, but not keys.
+ IF p_depth > max_depth THEN
+  RAISE EXCEPTION 'catalog_publication_wire_invalid' USING ERRCODE='22023';
  END IF;
  CASE jsonb_typeof(p_value)
  WHEN 'object' THEN
@@ -494,6 +500,7 @@ BEGIN
    OR jsonb_typeof(body->'assetRefs') IS DISTINCT FROM 'array'
    OR jsonb_typeof(body->'logisticsRef') NOT IN ('string','null')
    OR jsonb_typeof(body->'memberships') IS DISTINCT FROM 'array'
+   -- Exact detail places each SKU at $.items[index].facts, three levels deep.
    OR public.catalog_publication_canonical(body,3)<>p_sku.full_facts
    OR encode(sha256(convert_to(p_sku.full_facts,'UTF8')),'hex')<>p_sku.digest THEN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
