@@ -31042,6 +31042,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionPublicRenewal.worker.mjs",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionPublicRenewalFixture.ts",
       "class": "public-output"
     },
