@@ -2430,6 +2430,9 @@ and `DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION`, and refuses
 `BEFORE`, `INSTEAD OF`, `FOR EACH STATEMENT`, omitted row scope, `NOT DEFERRABLE`,
 `INITIALLY IMMEDIATE`, unknown or later targets, `WHEN`, `FROM`, `REFERENCING`,
 arguments and every other constraint-trigger form.
+The installed catalogue proof checks that exact trigger's events and table and
+function bindings, both deferral flags, and its own matching new constraint.
+A prefix trigger function must remain an unchanged invoker returning `trigger`.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
