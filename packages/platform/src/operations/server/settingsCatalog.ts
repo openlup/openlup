@@ -1,8 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { settingRefusalSchema, settingsToolOutputSchema } from "./toolSchema.js";
-
-export const settingsVersion = 1;
+import { settingRefusalSchema, settingsToolOutputSchema, settingsVersion } from "./toolSchema.js";
 const packageData = (name: string): unknown =>
   JSON.parse(readFileSync(new URL(`../../../${name}`, import.meta.url), "utf8"));
 

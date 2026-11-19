@@ -1,9 +1,11 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
-import { settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
-import { loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
+import { settingsToolOutputSchema, settingsVersion, toolInputSchema } from "./toolSchema.js";
+import { loadSettingsCatalogue, settingsListRequest } from "./settingsCatalog.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
+type SettingsDocument = { schemaVersion: typeof settingsVersion };
+type RefusalResult = SettingsDocument & { refusal: SettingRefusal };
 type CatalogueEntry = ReturnType<typeof loadSettingsCatalogue>["entries"][number];
 type ListResult = {
   schemaVersion: 1;
@@ -23,14 +25,14 @@ export type SettingReader = () => Promise<
   | { refusal: string }
 >;
 
-function refuse(code: string): { refusal: SettingRefusal } {
+function refuse(code: string): RefusalResult {
   const refusal = loadSettingsCatalogue().byCode.get(code);
   if (!refusal) throw new Error(`Unknown internal settings refusal ${code}`);
-  return { refusal };
+  return { schemaVersion: settingsVersion, refusal };
 }
 
 /** @experimental List matching entries from the installed package, offline. */
-export function listSettings(input: unknown): ListResult | { refusal: SettingRefusal } {
+export function listSettings(input: unknown): ListResult | RefusalResult {
   const parsed = settingsListRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_read_input_invalid");
   const words = parsed.data.goal?.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
@@ -53,7 +55,7 @@ function absentObservation(setting: CatalogueEntry, effective?: JsonValue): Obse
     : { state: "fallback", value: setting.fallback };
 }
 
-async function observe(setting: CatalogueEntry, read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
+async function observe(setting: CatalogueEntry, read?: SettingReader): Promise<Observation | RefusalResult> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
   if ("refusal" in observed) return refuse(observed.refusal);
@@ -62,7 +64,7 @@ async function observe(setting: CatalogueEntry, read?: SettingReader): Promise<O
 }
 
 /** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
-export async function showSetting(input: unknown, readers: Readonly<Record<string, SettingReader>> = {}): Promise<ShowResult | { refusal: SettingRefusal }> {
+export async function showSetting(input: unknown, readers: Readonly<Record<string, SettingReader>> = {}): Promise<ShowResult | RefusalResult> {
   const { entries, showRequest, showResult } = loadSettingsCatalogue();
   const parsed = showRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_unknown");
@@ -78,10 +80,10 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
 }
 
 /** @experimental Explain a refusal code or the offline behavior when a key is absent. */
-export function explainSetting(codeOrKey: string): { explanation: SettingRefusal } | ShowResult | { refusal: SettingRefusal } {
+export function explainSetting(codeOrKey: string): (SettingsDocument & { explanation: SettingRefusal }) | ShowResult | RefusalResult {
   const { byCode, entries, showResult } = loadSettingsCatalogue();
   const explanation = byCode.get(codeOrKey);
-  if (explanation) return { explanation };
+  if (explanation) return { schemaVersion: settingsVersion, explanation };
   const setting = entries.find(entry => entry.key === codeOrKey);
   if (!setting) return refuse("commerce_setting_refusal_unknown");
   return showResult.parse({
@@ -92,7 +94,7 @@ export function explainSetting(codeOrKey: string): { explanation: SettingRefusal
 }
 
 /** @experimental Reuse the same refusal envelope for local CLI syntax errors. */
-export function invalidSettingsCommand(): { refusal: SettingRefusal } {
+export function invalidSettingsCommand(): RefusalResult {
   return refuse("commerce_setting_read_input_invalid");
 }
 
@@ -104,24 +106,26 @@ export const settingsPreviewRequest = z.strictObject({
 });
 
 /** @experimental A domain preview bound by the host to its intended store. */
-export type SettingPreviewer<Result> = (proposed: JsonValue, input: {
-  asOf: string; skus: readonly string[];
+export type SettingPreviewer<Result extends SettingsDocument> = (proposed: JsonValue, input: {
+  asOf: string; skus: readonly string[]; lookupRefusal: (code: string) => SettingRefusal;
 }) => Promise<Result>;
 
 /** @experimental Shared dispatcher for CLI and MCP preview. */
-export async function previewSetting<Result = never>(
+export async function previewSetting<Result extends SettingsDocument = never>(
   input: unknown, previewers: Readonly<Record<string, SettingPreviewer<Result>>> = {},
-): Promise<Result | { refusal: SettingRefusal }> {
+): Promise<Result | RefusalResult> {
   const parsed = settingsPreviewRequest.safeParse(input);
   if (!parsed.success) return invalidSettingsCommand();
-  const { key, proposed, skus = [], asOf = new Date().toISOString() } = parsed.data;
+  const { key, skus = [], asOf = new Date().toISOString() } = parsed.data;
   const setting = loadSettingsCatalogue().entries.find(entry => entry.key === key);
   if (!setting) return refuse("commerce_setting_unknown");
   if (!setting.previewSchema) return refuse("commerce_setting_preview_unsupported");
   const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
   if (!preview) return refuse("commerce_setting_preview_connection_required");
   try {
-    return await preview(proposed, { skus: [...new Set(skus)], asOf });
+    // Zod checks the request but drops own __proto__ keys when copying JSON objects.
+    const { proposed } = input as { proposed: JsonValue };
+    return await preview(proposed, { skus: [...new Set(skus)], asOf, lookupRefusal: code => refuse(code).refusal });
   } catch {
     return refuse("commerce_setting_preview_unavailable");
   }

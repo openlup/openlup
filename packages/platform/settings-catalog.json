@@ -1987,6 +1987,10 @@
       {
         "type": "object",
         "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "const": 1
+          },
           "refusal": {
             "type": "object",
             "properties": {
@@ -2049,6 +2053,7 @@
           }
         },
         "required": [
+          "schemaVersion",
           "refusal"
         ],
         "additionalProperties": false

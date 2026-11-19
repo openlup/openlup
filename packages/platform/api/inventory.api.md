@@ -817,6 +817,23 @@ export declare function installRenewalStockProtectionPolicy(db: Executor, policy
 export declare function readRenewalStockProtectionPolicy(db: Executor): Promise<RenewalStockProtectionPolicy>;
 /** @experimental Read an explicit installed override, preserving absence. */
 export declare function readRenewalStockProtectionOverride(db: Executor): Promise<RenewalStockProtectionPolicy | undefined>;
+declare const validationResult: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    state: z.ZodLiteral<"valid">;
+    value: z.ZodObject<{
+        revision: z.ZodString;
+        renewalProtectionDays: z.ZodInt;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    state: z.ZodLiteral<"invalid">;
+    code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
+    rule: z.ZodString;
+    hint: z.ZodString;
+    remediation: z.ZodObject<{
+        retry: z.ZodBoolean;
+        action: z.ZodString;
+        command: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>], "state">;
 export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     key: z.ZodLiteral<"inventory_renewal_protection">;
@@ -868,7 +885,11 @@ export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
     }, z.core.$strict>;
     uncertainty: z.ZodString;
 }, z.core.$strict>;
+type Validation = z.infer<typeof validationResult>;
 type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
+type LookupRefusal = (code: string) => Pick<Extract<Validation, {
+    state: "invalid";
+}>, "rule" | "hint" | "remediation">;
 /** @experimental A host-owned pool and stock source for read-only preview. */
 export interface RenewalStockProtectionPreviewConnection {
     db: {
@@ -882,6 +903,7 @@ export interface RenewalStockProtectionPreviewConnection {
 export declare function previewRenewalStockProtection(settingKey: typeof key, proposed: PreviewResult["proposed"], context: RenewalStockProtectionPreviewConnection & {
     asOf: string;
     skus: readonly string[];
+    lookupRefusal: LookupRefusal;
 }): Promise<PreviewResult>;
 export {};
 ```

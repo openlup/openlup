@@ -110,6 +110,7 @@ it("the offline starter CLI refuses preview and prints the connected command", (
   expect(result.status, result.stderr).toBe(1);
   expect(result.stderr).toBe("");
   expect(JSON.parse(result.stdout)).toEqual({
+    schemaVersion: 1,
     refusal: expect.objectContaining({
       code: "commerce_setting_preview_connection_required",
       remediation: expect.objectContaining({ command: expect.stringContaining("--database-url <read-capable-url>") }),
@@ -123,7 +124,7 @@ it("names the unknown configuration and the valid IDs before connecting", () => 
     "--database-url", "postgresql://[", "--json"],
   { cwd: "examples/neutral-store", encoding: "utf8" });
   expect(result.status, result.stderr).toBe(1);
-  expect(JSON.parse(result.stdout)).toMatchObject({ refusal: {
+  expect(JSON.parse(result.stdout)).toMatchObject({ schemaVersion: 1, refusal: {
     code: "commerce_setting_read_input_invalid",
     path: ["configuration"],
     hint: `Unknown configuration "unknown-store". Use one of these IDs: ${Object.keys(configurations).join(", ")}.`,

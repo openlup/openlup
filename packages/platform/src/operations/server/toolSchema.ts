@@ -1,6 +1,8 @@
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor } from "../contracts/settings.js";
 
+export const settingsVersion = 1;
+
 /** Project a tool contract as inline Draft 7 JSON Schema. */
 export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input"): Record<string, unknown> {
   return z.toJSONSchema(schema, { target: "draft-07", io, reused: "inline" });
@@ -52,6 +54,6 @@ export function settingRefusalSchema(codes: readonly string[]) {
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
 export const settingsToolOutputSchema = Object.assign(
   (result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown> =>
-    ({ type: "object", ...toolInputSchema(z.union([result, z.strictObject({ refusal })]), "output") }),
+    ({ type: "object", ...toolInputSchema(z.union([result, z.strictObject({ schemaVersion: z.literal(settingsVersion), refusal })]), "output") }),
   { descriptor: settingDescriptorSchema },
 );

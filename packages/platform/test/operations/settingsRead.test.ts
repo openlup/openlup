@@ -113,7 +113,7 @@ describe("settings show", () => {
     const result = await showSetting({ key }, {
       [key]: () => readCheckoutRecoveryReminderObservation({ query }, policy),
     });
-    expect(result).toEqual({ refusal: "explanation" in explanation && explanation.explanation });
+    expect(result).toEqual({ schemaVersion: 1, refusal: "explanation" in explanation && explanation.explanation });
   });
 
   it("reports absent reminders without guessing unknown host offsets and retains cart waves", async () => {
@@ -148,16 +148,21 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   const { listResult, showRequest, showResult, refusalSchema } = loadSettingsCatalogue();
   const [list, show, preview] = settingsReadTools;
   expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show", "settings__preview"]);
-  for (const [tool, request] of [
-    [list, settingsListRequest], [show, showRequest], [preview, settingsPreviewRequest],
+  const refusal = z.strictObject({ schemaVersion: z.literal(1), refusal: refusalSchema });
+  for (const [tool, request, result] of [
+    [list, settingsListRequest, listResult], [show, showRequest, showResult],
+    [preview, settingsPreviewRequest, renewalStockProtectionPreviewResult],
   ] as const) {
     expect(tool.annotations).toEqual({ readOnlyHint: true });
     expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
+    expect(tool.outputSchema).toEqual({
+      type: "object",
+      ...toolInputSchema(z.union([result, refusal]), "output"),
+    });
   }
   expect(preview.description).toMatch(/before any change.*remediation/);
-  expect(preview.outputSchema).toEqual({
-    type: "object",
-    ...toolInputSchema(z.union([renewalStockProtectionPreviewResult, z.strictObject({ refusal: refusalSchema })]), "output"),
+  expect(listSettings({ goal: "" })).toEqual({
+    schemaVersion: 1, refusal: expect.objectContaining({ code: "commerce_setting_read_input_invalid" }),
   });
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
@@ -165,7 +170,7 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   expect(showResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
     properties: { renewalProtectionDays: { minimum: 1, maximum: 3660 } },
   });
-  expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
+  expect(await showSetting({ key: "unknown" })).toEqual({ schemaVersion: 1, refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
     remediation: expect.objectContaining({ command: "node --experimental-strip-types host/settings.ts list", retry: true }),
   }) });
@@ -217,11 +222,11 @@ it("refuses preview with a fix when PostgreSQL validator execution is denied", a
 
 it("reports one invalid outcome without a quantified difference or a change direction", async () => {
   const proposed = { revision: "candidate", renewalProtectionDays: 0 };
-  const invalid = { state: "invalid", code: "inventory_renewal_protection_policy_invalid",
-    rule: expect.any(String), hint: expect.any(String), remediation: { retry: true } };
+  const code = "inventory_renewal_protection_policy_invalid";
+  const { rule, hint, remediation } = loadSettingsCatalogue().byCode.get(code)!;
   expect(await previewSetting({ key: previewKey, proposed, asOf }, previewConnection({ code: "22023" }).previewers)).toMatchObject({
     proposed, difference: null,
-    validation: invalid,
+    validation: { state: "invalid", code, rule, hint, remediation },
     effect: { newPurchaseAvailability: "undetermined" },
   });
 });

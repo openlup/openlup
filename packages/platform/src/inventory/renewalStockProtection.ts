@@ -113,23 +113,18 @@ export const renewalStockProtectionPreviewResult = z.strictObject({
 type Validation = z.infer<typeof validationResult>;
 type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
 
-const invalidPolicy: Validation = {
-  state: "invalid", code, rule: policyRule,
-  hint: "Check the value schema and examples for inventory_renewal_protection.",
-  remediation: {
-    retry: true,
-    action: "Correct the proposed value and repeat the preview.",
-    command: "node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json",
-  },
-};
+type LookupRefusal = (code: string) => Pick<Extract<Validation, { state: "invalid" }>, "rule" | "hint" | "remediation">;
 
-async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"]): Promise<Validation> {
+async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"], lookupRefusal: LookupRefusal): Promise<Validation> {
   try {
     const { rows } = await db.query("SELECT public.inventory_renewal_protection_validate($1::jsonb) AS value", [JSON.stringify(proposed)]);
     return { state: "valid", value: policySchema().parse(rows[0]?.value) };
   } catch (error) {
     if (typeof error !== "object" || error === null || !("code" in error)) throw error;
-    if (error.code === "22023" || error.code === "22P05") return invalidPolicy;
+    if (error.code === "22023" || error.code === "22P05") {
+      const { rule, hint, remediation } = lookupRefusal(code);
+      return { state: "invalid", code, rule, hint, remediation };
+    }
     throw error;
   }
 }
@@ -144,7 +139,7 @@ export interface RenewalStockProtectionPreviewConnection {
 export async function previewRenewalStockProtection(
   settingKey: typeof key,
   proposed: PreviewResult["proposed"],
-  context: RenewalStockProtectionPreviewConnection & { asOf: string; skus: readonly string[] },
+  context: RenewalStockProtectionPreviewConnection & { asOf: string; skus: readonly string[]; lookupRefusal: LookupRefusal },
 ): Promise<PreviewResult> {
   const client = await context.db.connect();
   let releaseWithError = true;
@@ -154,11 +149,11 @@ export async function previewRenewalStockProtection(
     const stock = createPostgresStockAvailability(client, { sourceKey: context.sourceKey, now: () => context.asOf });
     const rows = await stock.readInstalled(context.skus);
     // A PostgreSQL refusal aborts the transaction. Perform validation after the snapshot reads.
-    const validation = await validateInPostgres(client, proposed);
+    const validation = await validateInPostgres(client, proposed, context.lookupRefusal);
     const days = validation.state === "valid"
       ? validation.value.renewalProtectionDays - current.renewalProtectionDays
       : null;
-    return renewalStockProtectionPreviewResult.parse({
+    const result = renewalStockProtectionPreviewResult.parse({
       schemaVersion: 1, key: settingKey, asOf: context.asOf, current, proposed,
       difference: days === null ? null : { renewalProtectionDays: days },
       validation,
@@ -174,6 +169,8 @@ export async function previewRenewalStockProtection(
       },
       uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change.",
     });
+    // Echo the same value that was sent to PostgreSQL.
+    return { ...result, proposed };
   } finally {
     try {
       await client.query("ROLLBACK");

@@ -50,6 +50,7 @@ same instant. The host can also compose the read-only MCP definition
 `settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
 Bind the inventory key to `previewRenewalStockProtection` from
 `@openlup/platform/inventory` using the intended store's pool and stock source.
+Pass through the options supplied by `previewSetting`.
 Both surfaces report the current and proposed policy, one validation outcome,
 and the effect on reservations and new purchases. A valid result includes the
 normalized value. An invalid result explains how to correct it. Preview reads
@@ -81,8 +82,9 @@ owns changes.
 
 ## Refusals
 
-CLI and MCP return the same `refusal` object with `code`, `path`, `rule`,
-`hint` and `remediation`. Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
+CLI and MCP wrap a refusal in a document with `schemaVersion: 1`. The
+`refusal` object carries `code`, `path`, `rule`, `hint` and `remediation`.
+Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
 recheck command and whether retrying can help.
 
 | Code | Next step |

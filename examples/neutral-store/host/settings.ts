@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, showSetting, type SettingReader } from '@openlup/platform/operations/server';
 
 const help = `Usage: npm run --silent settings -- list [--goal <text>] | show <key> | preview <key> <value> | explain <refusal-code-or-key>
-Use --json for machine-readable output. Keep --silent on the npm command so stdout contains only JSON.
+Use --json for versioned output. Keep --silent on the npm command so stdout contains only JSON.
 Add --help to see these examples.
 For a connected show, pass --database-url <read-capable-url>.
 Preview before any change. Pass the proposed value as JSON and use --database-url <read-capable-url>.
@@ -89,8 +89,8 @@ async function preview(
   let sourceKey: string;
   try { sourceKey = `starter-demo:${selectConfiguration(id).id}`; }
   catch {
-    const { refusal } = invalidSettingsCommand();
-    return { refusal: { ...refusal, path: ['configuration'],
+    const result = invalidSettingsCommand();
+    return { ...result, refusal: { ...result.refusal, path: ['configuration'],
       hint: `Unknown configuration ${JSON.stringify(id)}. Use one of these IDs: ${Object.keys(configurations).join(', ')}.` } };
   }
   if (!databaseUrl) return previewSetting(input);
@@ -111,7 +111,7 @@ type Result = Awaited<ReturnType<typeof preview>> | ReturnType<typeof listSettin
 function print(result: Result, json = false) {
   if ('refusal' in result) process.exitCode = 1;
   if (json) {
-    console.log(JSON.stringify('explanation' in result ? { schemaVersion: 1, ...result } : result));
+    console.log(JSON.stringify(result));
   } else if ('refusal' in result || 'explanation' in result) {
     const { code, rule, hint, remediation } = 'refusal' in result ? result.refusal : result.explanation;
     console.log([code, rule, hint, remediation.action, remediation.command].join('\n'));

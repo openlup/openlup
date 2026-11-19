@@ -543,6 +543,7 @@ export function proveSettingsDiscovery(app: string): void {
   assert(settings("list").includes(key));
   assert(settings("list", "--goal", goal).includes(key));
   const list = JSON.parse(settings("list", "--goal", goal, "--json"));
+  assert.equal(list.schemaVersion, 1);
   assert.deepEqual(list.entries.map(({ key }: { key: string }) => key), [key]);
   assert(section.includes(`${npmCommand} show ${list.entries[0].key} --json`));
   show(settings);
@@ -550,9 +551,10 @@ export function proveSettingsDiscovery(app: string): void {
   const refused = spawnSync(npm, [...npmArgs, "show", "no_such_setting", "--json"],
     { cwd: app, env, encoding: "utf8" });
   assert.equal(refused.status, 1);
-  const { refusal } = JSON.parse(refused.stdout);
-  const explained = JSON.parse(settings("explain", refusal.code, "--json")).explanation;
-  assert.deepEqual(explained, refusal);
+  const refusalDocument = JSON.parse(refused.stdout);
+  const { refusal } = refusalDocument;
+  assert.deepEqual(refusalDocument, { schemaVersion: 1, refusal });
+  assert.deepEqual(JSON.parse(settings("explain", refusal.code, "--json")), { schemaVersion: 1, explanation: refusal });
   assert(settings("explain", refusal.code).includes(refusal.remediation.command));
   for (const command of ["list", "show", "explain"]) {
     const help = settings(command, "--help");
@@ -567,7 +569,9 @@ export function proveSettingsDiscovery(app: string): void {
     const offline = spawnSync(npm, [...npmArgs, "preview", key, proposed, "--json"], { cwd: app, env, encoding: "utf8" });
     assert.equal(offline.status, 1);
     assert.equal(offline.stderr, "");
-    const { refusal: previewRefusal } = JSON.parse(offline.stdout);
+    const previewDocument = JSON.parse(offline.stdout);
+    const { refusal: previewRefusal } = previewDocument;
+    assert.deepEqual(previewDocument, { schemaVersion: 1, refusal: previewRefusal });
     assert.equal(previewRefusal.code, "commerce_setting_preview_connection_required");
     assert(previewRefusal.remediation.command.includes("--database-url <read-capable-url>"));
     const offlineText = spawnSync(npm, [...npmArgs, "preview", key, proposed], { cwd: app, env, encoding: "utf8" });

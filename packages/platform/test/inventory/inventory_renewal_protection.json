@@ -25,5 +25,5 @@
   {"name": "negative days", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": -1}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "fractional days", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 1.5}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "above maximum days", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 3661}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
-  {"name": "additional field", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14, \"extra\": true}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"}
+  {"name": "additional field", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14, \"__proto__\": true}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"}
 ]

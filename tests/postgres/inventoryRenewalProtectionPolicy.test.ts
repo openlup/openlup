@@ -340,7 +340,7 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
     const options = { cwd: fileURLToPath(new URL("../../examples/neutral-store/", import.meta.url)), encoding: "utf8" } as const;
     const unknownKey = "unknown_setting";
     const refused = await mcp.callTool({ name: tool.name, arguments: { key: unknownKey, proposed } });
-    expect(refused.structuredContent).toMatchObject({ refusal: { code: "commerce_setting_unknown" } });
+    expect(refused.structuredContent).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_unknown" } });
     const cliRefused = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
       unknownKey, JSON.stringify(proposed), "--json"], options);
     expect(cliRefused.status, cliRefused.stderr).toBe(1);
@@ -378,6 +378,22 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
         expect(readable.stdout).toContain("New purchase availability: equal-or-lower");
       }
     }
+    const additionalField = corpus.find(({ name }) => name === "additional field")!;
+    const proposedWithAdditionalField = JSON.parse(additionalField.input);
+    expect(Object.hasOwn(proposedWithAdditionalField, "__proto__")).toBe(true);
+    const invalid = await mcp.callTool({ name: tool.name, arguments: {
+      key, proposed: proposedWithAdditionalField, asOf: instant,
+    } });
+    expect(invalid.structuredContent).toMatchObject({
+      schemaVersion: 1, validation: { state: "invalid", code: additionalField.code },
+    });
+    expect(JSON.stringify(invalid.structuredContent)).toContain(
+      `"proposed":${JSON.stringify(proposedWithAdditionalField)}`,
+    );
+    const cliInvalid = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
+      key, additionalField.input, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
+    expect(cliInvalid.status, cliInvalid.stderr).toBe(0);
+    expect(JSON.parse(cliInvalid.stdout)).toEqual(invalid.structuredContent);
   } finally {
     try {
       await mcp.close();
