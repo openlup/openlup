@@ -2,25 +2,30 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { canonicalCatalogDraftJson, withCatalogPublicationRules, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
-import { catalogDraftType } from '../owned/catalogue.ts';
+import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
 
-export function readStarterCatalogueRules(): Buffer {
+export const starterCatalogueType = { key: 'starter:item', version: 1 } as const;
+
+export function readStarterCatalogueRules(): Buffer | undefined {
   try { return readFileSync(new URL('../owned/catalogue-rules.cjs', import.meta.url)); }
   catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') throw new Error('starter_catalogue_rules_missing');
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
     throw error;
   }
 }
 
 /** The installer and operator host run from the same image built by lifecycle up. */
 export function starterCataloguePack(artifact: Uint8Array) {
+  const definition = catalogDraftRegistry.resolve(starterCatalogueType);
+  if (!definition) throw new Error('Define starter:item at version 1 in owned/catalogue.ts to install catalogue rules.');
+  const { validateContent: _legacyRule, validatorRef: _legacyRef, ...catalogueType } = definition;
   // Keep version 1 for the shipped draft example. The immutable installer refuses a collision.
-  const version = 2 + createHash('sha256').update(canonicalCatalogDraftJson(catalogDraftType)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
+  const version = 2 + createHash('sha256').update(canonicalCatalogDraftJson(catalogueType)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
   return withCatalogPublicationRules({ id: 'starter:local-rules', namespace: 'starter', version, openlupRange: '1.x',
-    types: [{ ...catalogDraftType, version }], capabilities: {}, taxClasses: [] }, () => artifact);
+    types: [{ ...catalogueType, version }], capabilities: {}, taxClasses: [] }, () => artifact);
 }
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {

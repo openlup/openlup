@@ -40,6 +40,12 @@ starting the application.
 
 ## Change a product rule
 
+If you upgraded an existing store, its draft validator still runs from
+`owned/catalogue.ts`. To try installed rules, copy `owned/catalogue-rules.cjs`
+and its test from a fresh extraction of your target starter version. Port your
+existing content checks into the bundle's `validateContent` so your store keeps
+its draft rules after switching.
+
 Edit `owned/catalogue-rules.cjs` and update the examples in
 `owned/catalogue-rules.test.cjs`. Run the test after each edit:
 

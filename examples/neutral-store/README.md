@@ -278,6 +278,12 @@ CLI when it exists. They refuse explicitly before that capability is shipped.
 They do not replace it with an application-owned upgrade engine. A real
 `openlup upgrade apply` preservation witness remains required.
 
+Existing stores keep their draft validator in `owned/catalogue.ts`. To use
+installed rules after an upgrade, copy `owned/catalogue-rules.cjs` and
+`owned/catalogue-rules.test.cjs` from a fresh extraction of the target starter.
+Move your existing content checks into the bundle, run
+`node --test owned/catalogue-rules.test.cjs`, then run `./lifecycle up`.
+
 ## Install-only fictional catalogue
 
 `./lifecycle up` calls `installation/install.ts` in a one-shot container before

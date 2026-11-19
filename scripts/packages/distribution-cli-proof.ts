@@ -79,6 +79,11 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
+/** Optional rule templates are offered by extraction. An upgrade preserves the existing draft validator. */
+export const starterOptionalCatalogueFiles: ReadonlySet<string> = new Set([
+  "owned/catalogue-rules.cjs", "owned/catalogue-rules.test.cjs",
+]);
+
 /** Packaged pristine-file migrations, before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
   // The factor migration starts after 1.2.0. Synthetic starters can omit the catalogue.
@@ -101,7 +106,7 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
     // Check the extraction inventory independently of the replacement list.
     const ownership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
     for (const path of ownership.owned) {
-      if (path === created) continue; // The CLI creates this path from the target snapshot.
+      if (path === created || (starterOptionalCatalogueFiles.has(path) && !existsSync(join(app, path)))) continue;
       assert(readFileSync(join(app, path)).equals(readFileSync(join(target, path))), `starter owned migration did not match target: ${path}`);
     }
   }

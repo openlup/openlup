@@ -8,7 +8,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
-import { editorProducts } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
@@ -124,7 +124,9 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
   return { binding, calls, stockCalls, closed: () => closed };
 }
 
-test('local rules run before installation and derive an immutable product type on demo startup', async () => {
+test('local rules run before installation and derive an immutable product type on demo startup', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
   const root = fileURLToPath(new URL('../', import.meta.url));
   // Start a standalone invocation, without inheriting the parent Node test runner context.
   const output = execFileSync(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs'],
@@ -139,7 +141,6 @@ test('local rules run before installation and derive an immutable product type o
     const { types } = JSON.parse(String(call.values?.[2]));
     return JSON.parse(types[0].canonicalDefinition);
   }
-  const bytes = await readFile(resolve(root, 'owned/catalogue-rules.cjs'));
   const first = await installed(bytes);
   assert.deepEqual(await installed(bytes), first);
   assert.equal(first.validatorRef, `sha256:${createHash('sha256').update(bytes).digest('hex')}`);

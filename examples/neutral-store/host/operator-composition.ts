@@ -3,7 +3,8 @@ import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStore, createCatalogDraftHandler, createCatalogProductTypeRegistry, BundleRpcError,
   evaluateBundleComposition } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
-import { readStarterCatalogueRules, starterCataloguePack } from './editor-catalogue.ts';
+import { catalogDraftRegistry } from '../owned/catalogue.ts';
+import { readStarterCatalogueRules, starterCataloguePack, starterCatalogueType } from './editor-catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
@@ -19,13 +20,14 @@ const only = (payload: Record<string, unknown>, keys: string[]) =>
 /** Operator identity is established by native request authentication before dispatch. */
 export function composeOperatorCapabilities(input: { executor: PgQueryExecutor; connectionString: string }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
-  const pack = starterCataloguePack(readStarterCatalogueRules());
-  const installed = pack.types[0]!;
+  const rules = readStarterCatalogueRules();
+  const pack = rules ? starterCataloguePack(rules) : undefined;
+  const installed = pack?.types[0];
   const catalog = createPostgresBundleCatalogStore(input.executor);
   const writer = createPostgresBundleAdminWriteStore({ connectionString: input.connectionString });
   const drafts = createCatalogDraftHandler<ActionContext>({
     store: createPostgresCatalogDraftStore(input.executor),
-    registry: createCatalogProductTypeRegistry(pack.types),
+    registry: pack ? createCatalogProductTypeRegistry(pack.types) : catalogDraftRegistry,
     authorizeOperator: async context => context.actor.operatorRef ? { actorId: context.actor.operatorRef } : null,
   });
   const actions: ApplicationBindings['actions'] = {};
@@ -119,8 +121,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       : ['action', 'draftId', 'expectedRevision', 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
     let authored = payload.payload;
-    if (isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
-      && authored.product.type.key === installed.key && authored.product.type.version === 1) {
+    if (installed && isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
+      && authored.product.type.key === installed.key && authored.product.type.version === starterCatalogueType.version) {
       authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version: installed.version } } };
     }
     const result = payload.action === undefined ? await drafts.list({ limit: 30 }, context)

@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  reconcileReminderInstallationTest, reminderInstallationTest, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  reconcileReminderInstallationTest, reminderInstallationTest, starterOptionalCatalogueFiles, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -244,6 +244,10 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   // Expected bytes come from the target inventory, including contracts that
   // have no runtime refusal. The customized expectation adds each local edit.
   for (const path of targetOwnership.owned) {
+    if (starterOptionalCatalogueFiles.has(path)) {
+      expect(existsSync(join(app, path)), path).toBe(false);
+      continue;
+    }
     let expected = readFileSync(join(target, path));
     const localEdit = customized ? customizations.get(path) : undefined;
     if (localEdit) {
@@ -270,10 +274,27 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     import assert from "node:assert/strict";
     import { catalogDraftRegistry } from "./owned/catalogue.ts";
     import { configurations } from "./owned/store.config.ts";
+    import { composeOperatorCapabilities } from "./host/operator-composition.ts";
     import { createApplication } from "./host/server.ts";
 
     const each = catalogDraftRegistry.resolve({ key: "starter:item", version: 1 })?.units.find(unit => unit.code === "starter:each");
     assert.deepEqual(each?.factor, { canonicalUnit: "openlup:piece", unscaled: "1", scale: 0 }, "starter:each must equal one openlup:piece");
+
+    const operator = composeOperatorCapabilities({ connectionString: "postgresql://localhost/unused", executor: {
+      async query(text) {
+        assert.match(text, /^SELECT public\\.catalog_draft_get/);
+        return { rows: [{ result: null }] };
+      },
+    } });
+    try {
+      const id = "10000000-0000-4000-8000-000000000001";
+      const result = await operator.actions["operator.catalogDrafts"]({ action: "create", draftId: id, expectedRevision: 0,
+        payload: { schemaVersion: 1, skus: [], product: { id, type: { key: "starter:item", version: 1 },
+          dimensions: [], sharedContent: { title: "" } } },
+      }, { actor: { operatorRef: id }, commandKey: "upgrade-title-rule" });
+      assert.deepEqual(result, { ok: false, code: "catalog_draft_payload_invalid",
+        issues: [{ path: "product.sharedContent.title", code: ${JSON.stringify(customized ? "local_title_required" : "title_required")} }] });
+    } finally { await operator.close(); }
 
     for (const config of Object.values(configurations)) {
       assert.deepEqual(config.checkoutRecoveryReminders, {

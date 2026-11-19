@@ -198,5 +198,5 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
   await connection.connect();
   const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
   const stock = createPostgresFulfillmentStockSyncPort(connection,{ sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
-  return { connection,stock, installRole, runtimeRole, catalogueRules, close: () => connection.end() };
+  return { connection,stock, installRole, runtimeRole, ...(catalogueRules ? { catalogueRules } : {}), close: () => connection.end() };
 }
