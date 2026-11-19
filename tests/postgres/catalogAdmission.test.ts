@@ -9,7 +9,7 @@ import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPubl
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
 import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore, createPostgresStockWaitStore } from "@openlup/platform/subscriptions";
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
-import { createPostgresPackageEditor, createPostgresSizedEditor, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
+import { createPostgresLegacyEditConsentBridge, createPostgresPackageEditor, createPostgresSizedEditor, type PackageEditorOptions, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -258,11 +258,21 @@ it("F6 reverse: preview-take refuses the old template after the edit commits", a
   } finally { await stop.release(); await e.query("ROLLBACK"); await t.query("ROLLBACK"); await restore(); e.release(); t.release(); h.release(); }
 });
 
-const admissionSignature = "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)";
+const admissionSignature = "public.catalog_edit_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text,text)";
 const sharedBoundary = "PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0));";
-async function payment(f: Fixture) {
+async function payment(f: Fixture, numbered = false) {
   const cycle = randomUUID(), order = randomUUID();
-  await pool.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3::timestamptz-interval '28 days','planned')", [cycle,f.subscription,f.at]);
+  if (numbered) {
+    await pool.query(`WITH saved AS (
+      INSERT INTO public.subscription_renewal_operations(subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,
+        cycle_snapshot,claim_token,claimed_by,claimed_at,lease_expires_at)
+      VALUES($2,$3::timestamptz-interval '28 days',1,$4,repeat('f',64),'{"cycle":{"status":"correlated","logicalCycleNumber":2}}',
+        $5,'synthetic',$3::timestamptz-interval '2 minutes',$3::timestamptz-interval '1 minute') RETURNING id,scheduled_at,operation_fingerprint
+    ) INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+      SELECT $1,$2,scheduled_at,'planned',id,operation_fingerprint FROM saved`, [cycle,f.subscription,f.at,`numbered-cycle:${randomUUID()}`,randomUUID()]);
+  } else {
+    await pool.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) VALUES($1,$2,$3::timestamptz-interval '28 days','planned')", [cycle,f.subscription,f.at]);
+  }
   await pool.query("WITH o AS (INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'pending_payment','XXX',617) RETURNING id) INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) SELECT id,$4,1,1,617,617 FROM o", [order,f.client,cycle,f.sku]);
   const options = { dunningTemplateSlug: "failed",recoveryUrlPath: "/recover",recoveryTemplateSlug: "recovered" };
   await rpc(pool,"payment_method_ref_upsert",[`method:${f.subscription}`,f.client,f.subscription,"example_rail","card",
@@ -1344,7 +1354,7 @@ it.each(["package","sized"] as const)("LC6-host-prelock-%s", async lane => {
       invoke = () => editor.apply(actor,randomUUID(),{ ...request,expectedTemplateVersion: 1,acceptedQuoteHash: preview.quoteHash });
     }
     expect(preview.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
-    const paid = await payment(f); armed = true;
+    const paid = await payment(f,lane === "sized"); armed = true;
     const editing = tracked(invoke()); await blocker(h,ep,hp);
     await p.query("SAVEPOINT host_prelock");
     const held = await tracked(p.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR SHARE NOWAIT", [f.subscription]));
@@ -1440,5 +1450,182 @@ it.each(["order", "classic", "exact", "sized", "legacy"] as const)(
       });
       expect((await pool.query("SELECT next_cycle_at, cadence_days FROM public.subscriptions WHERE id=$1", [f.subscription])).rows).toEqual(before);
     } finally { read.release(); }
+  },
+);
+
+it.each((["classic","exact","legacy","sized opt-in","sized bundle"] as const).flatMap(lane =>
+  (["valid","absent","wrong quantity","price moved","publisher first","edit before publish","payment first","edit before payment"] as const).map(change => ({ lane,change }))))(
+  "LC9-D-039/S-018/S-031 actual $lane edit handles $change", async ({ lane,change }) => {
+    const f = await fixture(packs[0]), context = await pool.connect(), publisher = await pool.connect(), observer = await pool.connect();
+    const actor = { actorId: f.actor,clientId: f.client }, key = randomUUID();
+    const wanted = lane === "exact" ? 1 : lane === "sized bundle" ? 3 : 2;
+    let reads = 0, priming = false, restore = async () => {};
+    const options: PackageEditorOptions = {
+      now: () => f.at, limits: { maximumPlanDays: 90,maximumBaseLines: 3,maximumAddonLines: 3,maximumQuantity: 99 },
+      async withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) {
+        await context.query("BEGIN");
+        try {
+          await context.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
+          const answer = await work(context); await context.query("COMMIT"); return answer;
+        } catch (error) { await context.query("ROLLBACK"); throw error; }
+      },
+      readCatalogAdmission: async (_db, input) => {
+        reads++;
+        const quantity = priming ? 2 : wanted;
+        expect(input.lines.map(line => [line.variantId,line.qty])).toEqual([[f.sku,quantity]]);
+        if (!priming && change === "absent") return null;
+        return { ...f.admission,skuRevisions: [{ reference: f.reference,quantity: !priming && change === "wrong quantity" ? quantity + 1 : quantity }] };
+      },
+      quoteCatalogReadPort: { listQuoteCatalogItems: async () => [{ variantId: f.sku,skuCode: f.code,sellability: { subscription: true } }] },
+      quotePort: { async createServerAuthoritativeQuote(request) {
+        const lines = request.lines.map(line => ({ sku: line.sku,quantity: line.quantity,unitPriceGross: money(617),lineSubtotalGross: money(617*line.quantity) }));
+        const total = money(lines.reduce((sum,line) => sum+line.lineSubtotalGross.amountMinor,0));
+        return { quote: { lines,totalGross: total,subtotalGross: total,discountTotalGross: money(0) } };
+      } },
+      constraintMapper: { toCore: value => ({ kind: "configured",version: 1,data: value ?? {} }),fromCore: value => value.data,nominalPlanDays: () => null },
+      compositionRulesPort: { validateComposition: async () => ({ ok: true }),resizeComposition: async input => ({ coreLines: input.coreLines,constraint: input.constraint }) },
+    };
+    let preview: () => Promise<string | undefined>, apply: (hash: string) => Promise<unknown>;
+    if (lane === "legacy") {
+      const editor = createPostgresLegacyEditConsentBridge(options), request = { subscriptionId: f.subscription,coreLines: [{ variantId: f.sku,qty: wanted }] };
+      preview = async () => ((await editor.preview(actor,key,request)).preview as { quoteHash?: string } | undefined)?.quoteHash;
+      apply = hash => editor.apply(actor,key,{ ...request,acceptedQuoteHash: hash });
+    } else if (lane === "sized opt-in" || lane === "sized bundle") {
+      const withTax = (line: { sku: string; quantity: number; unitPriceGross: ReturnType<typeof money>; lineSubtotalGross: ReturnType<typeof money> }) => ({
+        ...line,productSlug: f.value.product.slug!,tax: { included: true as const,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "synthetic",
+          netAmount: line.lineSubtotalGross,grossAmount: line.lineSubtotalGross,vatAmount: money(0) },
+      });
+      const original = withTax({ sku: f.code,quantity: 1,unitPriceGross: money(617),lineSubtotalGross: money(617) });
+      await pool.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at) VALUES($1,'subscription.starter_graduated',$2,$3,$4::timestamptz-interval '1 millisecond')",
+        [f.subscription,randomUUID(),{ linePricing: [{ sku: f.code,quantity: 1,unitAmountMinor: 617,isAddon: false,quoteLine: original }] },f.at]);
+      const editor = createPostgresSizedEditor({
+        now: options.now,withTransaction: options.withTransaction,readCatalogAdmission: options.readCatalogAdmission,
+        policy: { minimumCoreUnits: 1,maximumCoreLines: 3,maximumAddonLines: 3,maximumQuantity: 99,allowedCadences: [28,30],maximumExclusions: 8,
+          maximumCatalogExclusions: 16,fixedThroughCycle: 2,graduationCycle: 3,portionModes: { full: { mode: "full",factor: 1 },reduced: { mode: "reduced",factor: 0.5 } } },
+        async readFacts() { return { clientId: f.client,subscriptionId: f.subscription,subjectRef: f.subscription,exclusions: [],snapshot: {} }; },
+        async resolveOptInNeed() { return { dailyNeed: 1,snapshot: { dailyNeed: 1 } }; },
+        async readCatalog() { return [{ variantId: f.sku,sku: f.code,groupId: f.product,isAddon: false,sellable: true,physicalSize: 100,demandPerUnit: 28,
+          documentRevisionId: f.reference.skuRevisionId,documentDigest: f.head.documentDigest,verified: true,exclusions: [],sellableNow: 100 }]; },
+        async assertCurrentFacts() {}, async proposePortion() { return []; },
+        quotePort: { async createServerAuthoritativeQuote(request) {
+          const { quote } = await options.quotePort.createServerAuthoritativeQuote({ ...request,cadenceDays: request.cadenceDays ?? 28,
+            lines: request.lines.map(line => ({ ...line,modeAtLine: "subscription",isAddon: line.isAddon ?? false })) });
+          return { quote: { ...quote,lines: quote.lines.map(withTax),currency: "XXX",taxIncluded: true,discounts: [],netTotal: quote.totalGross,taxTotal: money(0) } };
+        } },
+      });
+      const optIn = { subscriptionId: f.subscription,action: "resize_bundle" as const,cadenceDays: 28,
+        compositionConstraint: { kind: "unit_count",value: 2,dailyNeed: 1 },
+        resizeLever: { kind: "subscription.sized.parcel" as const,value: { coreLines: [{ variantId: f.sku,qty: 2 }],optInToSized: true as const } } };
+      if (lane === "sized bundle") {
+        priming = true;
+        const seed = await editor.preview(actor,optIn);
+        await editor.apply(actor,randomUUID(),{ ...optIn,acceptedQuoteHash: seed.quoteHash });
+        reads = 0;
+        priming = false;
+      }
+      const request = lane === "sized opt-in" ? optIn : { ...optIn,compositionConstraint: { kind: "unit_count",value: 3,dailyNeed: 1 },
+        resizeLever: { kind: "subscription.sized.parcel" as const,value: { coreLines: [{ variantId: f.sku,qty: 3 }] } } };
+      preview = async () => (await editor.preview(actor,request)).quoteHash;
+      apply = hash => editor.apply(actor,key,{ ...request,acceptedQuoteHash: hash });
+    } else {
+      const editor = createPostgresPackageEditor(options), request = lane === "classic"
+        ? { subscriptionId: f.subscription,planDays: 28,base: [{ variantId: f.sku,qty: wanted }] }
+        : { subscriptionId: f.subscription,action: "update_plan_length" as const,planDays: 30 };
+      preview = async () => (await editor.preview(actor,request)).quoteHash;
+      apply = hash => editor.apply(actor,key,{ ...request,acceptedQuoteHash: hash });
+    }
+    const refusing = "customer_self_service_invalid_offer_membership";
+    let stop: Awaited<ReturnType<typeof gate>> | undefined;
+    const inFlight: Promise<unknown>[] = [];
+    try {
+      if (change === "wrong quantity") {
+        const before = await snapshot();
+        await expect(preview()).rejects.toThrow(new RegExp(`^${refusing}$`, "u"));
+        expect(await snapshot()).toEqual(before);
+        return;
+      }
+      const hash = (await preview())!;
+      expect(hash).toMatch(/^[a-f0-9]{64}$/u);
+      if (change === "absent" || change === "price moved") {
+        if (change === "price moved") await pool.query("UPDATE public.price_entries SET updated_at=updated_at+interval '1 second' WHERE id=$1", [f.admission.priceContextVersions[0].entryId]);
+        const before = await snapshot();
+        await expect(apply(hash)).rejects.toMatchObject({ message: change === "absent" ? "customer_self_service_invalid_catalog_anchor" : "catalog_admission_price_context_moved" });
+        expect(await snapshot()).toEqual(before);
+        return;
+      }
+      if (change === "publisher first" || change === "edit before publish") {
+        const next = await changedDocument(f), ep = await pid(context), wp = await pid(publisher), hp = await pid(observer);
+        stop = await gate(observer);
+        const barrier = stop;
+        if (change === "publisher first") {
+          let atGuard = false;
+          const publishing = tracked(publishOn(publisher,next.publication,async (sql,values) => {
+            if (!atGuard && sql.includes("pg_advisory_xact_lock(hashtextextended($1,0))") && values[0] === `catalog-lineage:${f.product}`) {
+              atGuard = true;
+              await publisher.query("SELECT pg_advisory_lock($1::bigint)", [barrier.key]);
+              await publisher.query("SELECT pg_advisory_unlock($1::bigint)", [barrier.key]);
+            }
+          }));
+          inFlight.push(publishing);
+          await blocker(observer,wp,hp);
+          const editing = tracked(apply(hash)); inFlight.push(editing);
+          await blocker(observer,ep,wp); await stop.release();
+          expect(await publishing).toMatchObject({ ok: true,value: { outcome: "committed" } });
+          expect(await editing).toMatchObject({ ok: false,error: { message: "customer_self_service_stale_edit_catalog_head",code: "40001" } });
+          expect((await observer.query("SELECT count(*)::integer AS n FROM public.subscription_command_receipts WHERE subscription_id=$1 AND idempotency_key=$2", [f.subscription,key])).rows[0].n).toBe(0);
+          return;
+        }
+        restore = await hook(admissionSignature, sharedBoundary, barrier.sql);
+        const editing = tracked(apply(hash)); inFlight.push(editing);
+        await blocker(observer,ep,hp);
+        const before = await snapshot();
+        await assertBusy(await publishOn(publisher,next.publication),before);
+        await stop.release();
+        expect(await editing).toMatchObject({ ok: true });
+      } else if (change === "payment first" || change === "edit before payment") {
+        const paid = await payment(f,lane === "sized opt-in" || lane === "sized bundle"), ep = await pid(context), pp = await pid(publisher), hp = await pid(observer);
+        stop = await gate(observer);
+        await publisher.query("BEGIN");
+        if (change === "payment first") {
+          restore = await hook("public.payment_provider_lock_aggregate(uuid)",
+            "PERFORM 1 FROM public.subscriptions WHERE id=hint.subscription_id FOR UPDATE;",stop.sql);
+          const paying = tracked(paid.invoke(publisher)); inFlight.push(paying);
+          await blocker(observer,pp,hp);
+          const editing = tracked(apply(hash)); inFlight.push(editing);
+          await blocker(observer,ep,pp);
+          await assertNoCatalogGuard(observer,ep);
+          await stop.release();
+          expect(await paying).toMatchObject({ ok: true });
+          await publisher.query("COMMIT");
+          expect(await editing).toMatchObject({ ok: true });
+        } else {
+          restore = await hook(admissionSignature,sharedBoundary,stop.sql);
+          const editing = tracked(apply(hash)); inFlight.push(editing);
+          await blocker(observer,ep,hp);
+          await assertPrelocked(publisher,f,lane === "sized opt-in" || lane === "sized bundle" ? "sized" : lane);
+          const paying = tracked(paid.invoke(publisher)); inFlight.push(paying);
+          await blocker(observer,pp,ep);
+          await stop.release();
+          expect(await editing).toMatchObject({ ok: true });
+          expect(await paying).toMatchObject({ ok: true });
+          await publisher.query("COMMIT");
+        }
+        expect((await pool.query("SELECT status,total_amount_minor FROM public.commerce_orders WHERE id=$1", [paid.order])).rows)
+          .toEqual([{ status: "paid",total_amount_minor: "617" }]);
+      } else {
+        const applied = await apply(hash);
+        expect(applied).toMatchObject(lane === "legacy" ? { subscriptionAction: { status: "applied" } } : { status: "applied" });
+      }
+      expect(reads).toBe(1);
+      expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE subscription_id=$1 AND idempotency_key=$2",
+        [f.subscription,`command:${digest(`${f.actor}:${key}`)}`])).rows)
+        .toEqual([{ catalog_acceptance: { schemaVersion: 2,lines: [f.reference] } }]);
+    } finally {
+      await stop?.release();
+      await publisher.query("ROLLBACK");
+      await Promise.allSettled(inFlight);
+      await restore();
+      context.release(); publisher.release(); observer.release();
+    }
   },
 );

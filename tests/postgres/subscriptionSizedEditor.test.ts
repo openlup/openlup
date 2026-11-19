@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
-import { createPostgresSizedEditor, readSizedEditContext, quoteSizedEdit, createPostgresRenewalStore, createNativeRenewalCodec,
+import { createOfferDispatchedSubscriptionEditor, createPostgresSizedEditor, readSizedEditContext, quoteSizedEdit, createPostgresRenewalStore, createNativeRenewalCodec,
   SIZED_PARCEL_LEVER_KIND, createPostgresLifecycleMessages, createPostgresRenewalSettlementPort } from "@openlup/platform/subscriptions";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import type { SizedCatalogFact, SizedEditRequest, SizedEditorOptions, SizedQuoteLine, SizedRecurringQuote, SizedEditPolicy } from "@openlup/platform/subscriptions";
@@ -337,8 +337,24 @@ async function pastCycle(f: Fixture) {
     await db.query("COMMIT"); return { cycle, order };
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }
+async function linkPaidActivation(f: Fixture, order: string) {
+  await owner.query(`INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,
+    activation_idempotency_key,declare_idempotency_key,declared_at,activated_at) VALUES($1,$2,$3,20,'active',repeat('a',64),$4,$5,$6,$6)`,
+  [order,f.client,f.subscription,randomUUID(),randomUUID(),at]);
+}
+async function numberedRenewal(f: Fixture, number: number, status: "paid" | "payment_pending" | "skipped") {
+  await owner.query(`WITH op AS (
+    INSERT INTO public.subscription_renewal_operations(subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,
+      cycle_snapshot,claim_token,claimed_by,claimed_at,lease_expires_at)
+    VALUES($1,$2::timestamptz-make_interval(days=>21-$3),$3-1,$4,repeat('f',64),
+      $5,$6,'synthetic',$2::timestamptz-interval '22 days',$2::timestamptz-interval '21 days') RETURNING id,scheduled_at,operation_fingerprint
+  ) INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+    SELECT $1,scheduled_at,$7,id,operation_fingerprint FROM op`,
+  [f.subscription,at,number,`synthetic-renewal-identity:${randomUUID()}`,{ cycle: { status: "correlated", logicalCycleNumber: number } },randomUUID(),status]);
+}
 it("does not settle an outstanding protected delivery or move its anchor when editing", async () => {
   const f = await fixture(); await bind(f); const past = await pastCycle(f);
+  await linkPaidActivation(f,past.order);
   const alignment = (await owner.query(`INSERT INTO public.subscription_delivery_alignment_cases(predecessor_order_id,subscription_id,predecessor_cycle_id,
     captured_mode,state,evidence_kind,observed_next_cycle_at) VALUES($1,$2,$3,'protect','protected','missing_fulfillment',$4) RETURNING id`, [past.order, f.subscription, past.cycle, next])).rows[0].id;
   const readAlignment = async () => (await owner.query("SELECT to_jsonb(t) value,xmin::text FROM public.subscription_delivery_alignment_cases t WHERE id=$1", [alignment])).rows;
@@ -414,7 +430,8 @@ it("refuses malformed event evidence and disagreement with the exact native rene
 });
 it.each([1, 2])("refuses classic introductory opt-in with %s paid cycles in both dispatch and SQL", async paid => {
   const f = await fixture(), past = await pastCycle(f);
-  if (paid === 2) await owner.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-10-21T12:00:00Z','paid')", [f.subscription]);
+  await linkPaidActivation(f,past.order);
+  if (paid === 2) await numberedRenewal(f,2,"paid");
   const facts = { templateId: "introductory", shippingAmountMinor: 0, renewalTerms: { version: "native.renewal-terms.v1", minimumPayableMinor: 1,
     normalCadenceDays: [10, 20, 30], starterPack: { schemaVersion: "1", starterIntervalDays: 20, basisTemplateVersion: 1,
       delivery2: { discountBps: 2500, discountMinor: 100, basisSubtotalMinor: 500 }, graduation: { cadenceDays: 30,
@@ -531,3 +548,56 @@ it("admits the full frozen sized result before any ledger write, rechecks apply 
   await expect(shrunk.apply(actor(f), "fresh-sized-terms", { ...accepted, expectedTemplateVersion: result.templateVersion })).rejects.toThrow("subscription_reprice_invalid_request");
   expect(await protectedState(f)).toEqual(completed);
 }, 30_000);
+
+it.each(["open first","terminal max","stale basis","unnumbered"] as const)(
+  "LC9-D-053 shared sized phase uses %s authoritative history", async scenario => {
+    const f = await fixture(); await bind(f);
+    const past = await pastCycle(f); await linkPaidActivation(f,past.order);
+    const terms = { templateId: "introductory",shippingAmountMinor: 0,renewalTerms: { version: "native.renewal-terms.v1",minimumPayableMinor: 1,
+      normalCadenceDays: [10,20,30],starterPack: { schemaVersion: "1",starterIntervalDays: 20,basisTemplateVersion: scenario === "stale basis" ? 1 : 2,
+        delivery2: { discountBps: 2500,discountMinor: 100,basisSubtotalMinor: 500 },graduation: { cadenceDays: 30,
+          sizeConstraint: { kind: "unit_count",value: 4,dailyNeed: 4 },
+          lines: [{ sku: f.a,qty: 4,sortOrder: 0,isAddon: false,quoteLine: quoteLine(f.a,4,200) }] } } } };
+    await owner.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3,$4)", [past.order,f.subscription,terms,at]);
+    const api = createPostgresSizedEditor(options(f));
+    const edit = { subscriptionId: f.subscription,action: "update_base_mix" as const,base: [{ variantId: f.a,qty: 4 }] };
+    if (scenario === "unnumbered") {
+      await owner.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2::timestamptz-interval '1 day','paid')", [f.subscription,at]);
+      await expect(api.preview(actor(f),edit)).rejects.toMatchObject({ message: "subscription_edit_cycle_history_unreadable",code: "22023" });
+      const existing = await directEvidence(f,edit);
+      const raw = await runtime.query("SELECT public.subscription_sized_edit_apply($1,$2,$3,$4,$5,$6) AS result",
+        [f.actor,f.client,randomUUID(),f.subscription,existing,at]);
+      expect(raw.rows[0].result).toMatchObject({ status: "noop",action: edit.action,templateVersion: 2 });
+      return;
+    }
+    await numberedRenewal(f,2,scenario === "open first" ? "payment_pending" : "skipped");
+    if (scenario === "open first") {
+      await numberedRenewal(f,3,"payment_pending");
+      await numberedRenewal(f,4,"paid");
+      expect((await api.candidates(actor(f),f.subscription)).context.numberedPhase).toEqual({ upcomingCycle: 2,phase: "fixed" });
+      await expect(api.preview(actor(f),edit)).rejects.toThrow(/^subscription_edit_invalid_intro_fixed$/u);
+      return;
+    }
+    const preview = await api.preview(actor(f),edit);
+    const expected = scenario === "terminal max" ? "graduation_pending" : "none";
+    expect((await api.candidates(actor(f),f.subscription)).context.numberedPhase).toEqual({ upcomingCycle: 3,phase: expected });
+    if (scenario === "stale basis") {
+      expect(preview.preview.action).toBe(edit.action);
+      expect(preview.editConsent?.lines[0]).toMatchObject({ agreedUnitMinor: 100,newUnitMinor: 100 });
+      return;
+    }
+    expect(preview.preview.action).toBe("resize_bundle");
+    expect(preview.editConsent?.lines[0]).toMatchObject({ agreedUnitMinor: 100,newUnitMinor: 200 });
+    const accepted = { ...edit,acceptedQuoteHash: preview.quoteHash }, key = randomUUID();
+    const result = await api.apply(actor(f),key,accepted);
+    expect(result).toMatchObject({ status: "applied",action: "resize_bundle",templateVersion: 3 });
+    expect(await api.apply(actor(f),key,accepted)).toEqual({ ...result,status: "replayed",originalStatus: "applied" });
+    const currentBinding = async () => { throw new Error("binding unavailable after original command"); };
+    const dispatcher = createOfferDispatchedSubscriptionEditor({ readBinding: currentBinding,classic: api,sized: api });
+    await owner.query("DELETE FROM public.subscription_quote_previews WHERE subscription_id=$1", [f.subscription]);
+    await owner.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1", [f.subscription]);
+    expect(await dispatcher.apply(actor(f),key,accepted)).toEqual({ ...result,status: "replayed",originalStatus: "applied" });
+    await expect(dispatcher.apply(actor(f),key,{ ...accepted,base: [{ variantId: f.b,qty: 4 }] } as typeof accepted))
+      .rejects.toThrow(/^subscription_command_idempotency_conflict$/u);
+  },
+);

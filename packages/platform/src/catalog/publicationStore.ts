@@ -378,6 +378,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
             [reference.revisionId, reference.skuId, command.productId, reference.revision, publicationId, publicationJson(sku, CATALOG_PUBLICATION_LIMITS.skuBytes), reference.digest]);
         }
         for (const pair of successorDeclarations) await db.query("INSERT INTO public.catalog_sku_successors(predecessor_sku_id,successor_sku_id,publication_id) VALUES($1,$2,$3)", [pair.successorOf,pair.successorSkuId,publicationId]);
+        if (manifest.schemaVersion === 4) await assertSuccessorPairs(db, publicationId, manifest.successors);
         const result: CatalogPublicationReceiptV2 = { schemaVersion: 2, productId: command.productId, commandKey: command.commandKey, fingerprint, actorId,
           previousHead: current.head, head, publicationDigest: publicationDigestValue, committedAt,
           changes: compiled.skus.filter(sku => !current.references.some(prior => prior.revisionId === references.find(reference => reference.skuId === sku.id)!.revisionId)).map(sku => ({
@@ -514,6 +515,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         kind: identifier.scheme === "gs1:gtin" ? "gtin" : "other" })))), "catalog_publication_post_state_mismatch");
     }
   }
+  async function assertSuccessorPairs(db: PgQueryExecutor, publicationId: string, expected: readonly { successorSkuId: string; successorOf: string }[]) {
+    const observed = await tuple(db, `SELECT successor_sku_id AS "successorSkuId",predecessor_sku_id AS "successorOf"
+      FROM public.catalog_sku_successors WHERE publication_id=$1::uuid`, [publicationId]);
+    const pairKeys = (rows: readonly unknown[]) => rows.map(row => publicationJson(row)).sort();
+    require(equal(pairKeys(observed), pairKeys(expected)), "catalog_publication_post_state_mismatch", "dependency_unavailable");
+  }
   async function projectAttributes(db: PgQueryExecutor, state: { product: CatalogPublishedProduct; skus: CatalogPublishedSku[] }, definition: NonNullable<ReturnType<typeof deps.registry.resolve>>, revision: number) {
     await db.query("DELETE FROM public.catalog_attribute_projection WHERE sku_id=ANY($1::uuid[])", [state.skus.map(sku => sku.id)]);
     for (const sku of state.skus) {
@@ -639,6 +646,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           && typeof row.canonical_text === "string"
           && createHash("sha256").update(row.canonical_text).digest("hex") === row.document_digest,
         "catalog_publication_manifest_invalid", "dependency_unavailable");
+        if (manifest.schemaVersion === 4) await assertSuccessorPairs(db, head.publicationId, manifest.successors);
         const productId = manifest.product.id, pointer = decodeCursor(cursor, productId, "facts"), offset = pointer?.before ?? 0;
         require(!pointer || pointer.highWater === head.revision, "catalog_publication_cursor_invalid");
         require(offset <= manifest.skus.length, "catalog_publication_cursor_invalid");

@@ -296,9 +296,11 @@ it.each([
   const actor = { actorId: f.actor, clientId: f.client }, request = { subscriptionId: f.subscription, planDays: 14,
     base: [{ variantId: f.sku, qty: 4 }], addons: [{ variantId: f.addon, qty: 3 }] };
   const preview = await editor.preview(actor, request);
+  expect(preview.currentTotal).toEqual(money(700));
+  expect(quoted).toEqual([accepted]);
   expect(await editor.apply(actor, "accepted-host-constraint", { ...request, acceptedQuoteHash: preview.quoteHash }))
     .toMatchObject({ status: "applied", templateVersion: 2, subscriptionStatus: "active" });
-  expect(quoted).toEqual([constraint, accepted, constraint, accepted]);
+  expect(quoted).toEqual([accepted, accepted]);
   const after = (await owner.query("SELECT to_jsonb(s) AS row FROM public.subscriptions s WHERE id=$1", [f.subscription])).rows[0].row;
   expect(after).toEqual({ ...before, cadence_days: 14, composition_constraint: accepted, template_version: 2, updated_at: after.updated_at });
   expect(await lines()).toEqual(beforeLines);

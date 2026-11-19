@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import type { BundleLineRef } from "@openlup/core/bundle";
-import type { PackageEditCurrentLine, PackageEditLine, PackageEditMoney, PackageEditQuote, PackageEditQuotePorts,
-  PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+import type { ClassicBundleEditRequest } from "./contracts/editConsent.js";
+import { agreedEditTotal, assertRecurringEditQuote } from "./editConsent.js";
+import type { EditAgreementBaseline } from "./editConsentBaseline.js";
+import type { PackageEditCurrentLine, PackageEditLimits, PackageEditLine, PackageEditMoney, PackageEditQuote, PackageEditQuotePorts,
+  PackageEditReadPort, PackageEditRequest, PackageEditSubscription } from "./packageEditContracts.js";
 
 type Quote = Awaited<ReturnType<PackageEditQuotePorts["quotePort"]["createServerAuthoritativeQuote"]>>["quote"];
 /** Content identity deliberately excludes observation time and all presentation facts. */
@@ -18,8 +21,72 @@ function sanitize(lines: PackageEditLine[], code: string): PackageEditLine[] {
   return result;
 }
 const bundleLine = (line: PackageEditLine, isAddon: boolean): BundleLineRef => ({ ...line, isAddon });
+
+/** The generic bundle lane keeps the fixed pool when cadence stays the same. */
+export async function quoteClassicBundle(deps: PackageEditQuotePorts, request: ClassicBundleEditRequest,
+  baseline: EditAgreementBaseline, subscription: PackageEditSubscription, limits: PackageEditLimits) {
+  const { constraintMapper, compositionRulesPort } = deps;
+  const currentCore = baseline.lines.filter(line => !line.isAddon).map(line => bundleLine({ variantId: line.variantId, qty: line.quantity }, false));
+  const currentAddons = baseline.lines.filter(line => line.isAddon);
+  if (currentCore.length === 0) throw new Error("subscription_reprice_no_base_lines");
+  const cadenceDays = request.cadenceDays ?? subscription.cadenceDays;
+  const cadenceChanged = cadenceDays !== subscription.cadenceDays;
+  let constraint = constraintMapper.toCore(request.compositionConstraint ?? subscription.compositionConstraint);
+  let core = request.action === "update_bundle" ? request.coreLines.map(line => bundleLine(line, false)) : currentCore;
+  const requestedAddons = request.action === "update_bundle" ? request.addonLines : undefined;
+  const addons = (requestedAddons ?? currentAddons.map(line => ({ variantId: line.variantId, qty: line.quantity })))
+    .map(line => bundleLine(line, true));
+  if (request.action === "resize_bundle" || (request.cadenceDays !== undefined && request.compositionConstraint === undefined)) {
+    const lever = request.action === "resize_bundle" ? request.resizeLever : { kind: cadenceChanged ? "planLength" : "planLengthConstraint", value: cadenceDays };
+    const value = lever.kind === "portionMode"
+      ? { planDays: cadenceDays, ...(lever.value && typeof lever.value === "object" && !Array.isArray(lever.value) ? lever.value : { portionMode: lever.value }) }
+      : lever.value;
+    const resized = await compositionRulesPort.resizeComposition({ coreLines: core, constraint, lever: { kind: lever.kind, value } });
+    if (resized) {
+      core = resized.coreLines.map(line => bundleLine(line, false));
+      constraint = resized.constraint;
+    } else if (request.action === "resize_bundle" || cadenceChanged) {
+      throw new Error(request.action === "resize_bundle" ? "subscription_reprice_bundle_resize_unservable" : "subscription_reprice_plan_length_unservable");
+    }
+  }
+  if (request.action === "update_bundle") {
+    const validation = await compositionRulesPort.validateComposition({ coreLines: core, addonLines: requestedAddons ? addons : [], constraint });
+    if (!validation.ok) throw new Error(validation.code);
+    const units = (lines: BundleLineRef[]) => lines.reduce((sum, line) => sum + line.qty, 0);
+    if (!cadenceChanged && units(core) !== units(currentCore)) throw new Error("subscription_reprice_base_total_mismatch");
+  }
+  const desired = [...core, ...addons];
+  if (!core.length || core.length > limits.maximumBaseLines || addons.length > limits.maximumAddonLines
+    || cadenceDays > limits.maximumPlanDays || desired.some(line => !Number.isSafeInteger(line.qty) || line.qty <= 0 || line.qty > limits.maximumQuantity)) {
+    throw new Error("subscription_reprice_invalid_request");
+  }
+  if (new Set(desired.map(line => line.variantId.toLowerCase())).size !== desired.length) throw new Error("subscription_reprice_duplicate_variant");
+  const skus = new Map((await deps.quoteCatalogReadPort.listQuoteCatalogItems())
+    .filter(item => item.sellability.subscription).map(item => [item.variantId, item.skuCode]));
+  const refs = desired.map(line => {
+    const sku = skus.get(line.variantId);
+    if (!sku) throw new Error(`subscription_reprice_unknown_variant:${line.variantId}`);
+    return { ...line, sku, lineId: line.isAddon && !requestedAddons ? currentAddons.find(old => old.variantId === line.variantId)?.lineId ?? null : null };
+  });
+  const terms = refs.map(({ variantId,qty,sku }) => ({ variantId,qty,sku }));
+  await deps.admitSubscriptionTerms?.({ subscriptionId: request.subscriptionId, nominalPlanDays: cadenceDays, cadenceDays,
+    base: terms.slice(0, core.length), addons: terms.slice(core.length) });
+  const compositionConstraint = constraintMapper.fromCore(constraint);
+  if (compositionConstraint === null) throw new Error("subscription_reprice_bundle_constraint_unavailable");
+  const lines = refs.map(line => ({ sku: line.sku, quantity: line.qty, modeAtLine: "subscription" as const, isAddon: line.isAddon }));
+  const { quote } = await deps.quotePort.createServerAuthoritativeQuote({ mode: "subscription", cadenceDays, compositionConstraint, promoCodes: [], lines });
+  const currentRecurringPrice = agreedEditTotal(baseline);
+  assertRecurringEditQuote(currentRecurringPrice.currency, lines, quote);
+  return { lines: refs.map((line, index) => ({ ...line, quoteLine: quote.lines[index] })), cadenceDays, compositionConstraint,
+    quoteHash: hashPackageEditQuote(quote), expectedTemplateVersion: subscription.templateVersion };
+}
 /** The entire desired set is quoted verbatim. Cadence changes never resize quantities. */
 export function createClassicPackageRepricer(deps: PackageEditQuotePorts & { readPort: PackageEditReadPort }) {
+  return createClassicEditRepricer(deps);
+}
+
+/** Consent compares the validated agreement without pricing the former basket. */
+export function createClassicEditRepricer(deps: PackageEditQuotePorts & { readPort: PackageEditReadPort }, agreed?: PackageEditMoney) {
   const { readPort, constraintMapper, compositionRulesPort, quotePort, quoteCatalogReadPort } = deps;
   async function quoteLines(skus: ReadonlyMap<string, string>, cadenceDays: number, compositionConstraint: Record<string, unknown> | null,
     lines: { variantId: string; qty: number; isAddon: boolean }[]) {
@@ -67,7 +134,7 @@ export function createClassicPackageRepricer(deps: PackageEditQuotePorts & { rea
       await deps.admitSubscriptionTerms({ subscriptionId: input.subscriptionId, nominalPlanDays: input.planDays,
         cadenceDays, base: base.map(resolve), addons: addons.map(resolve) });
     }
-    const quotes = await Promise.allSettled([currentPrice(skus, subscription.cadenceDays, subscription.compositionConstraint, current),
+    const quotes = await Promise.allSettled([agreed ?? currentPrice(skus, subscription.cadenceDays, subscription.compositionConstraint, current),
       quoteLines(skus, cadenceDays, constraint, desired)]);
     const before = value(quotes[0]), after = value(quotes[1]).quote;
     if (after.lines.length !== desired.length) throw new Error("subscription_reprice_line_count_mismatch");
