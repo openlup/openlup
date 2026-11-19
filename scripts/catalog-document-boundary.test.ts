@@ -20,7 +20,7 @@ const QUOTE_PAYLOAD_USES = [
   "await verifyDocument(documents[index]!.revision_document_payload, envelope);",
   "revision_document_payload: unknown;",
 ];
-const parsedProvenance = "OmniPack";
+const parsedProvenance = "SyntheticProvenance";
 const parsedProvenanceRefusal = `imports or reconstructs ${parsedProvenance} provenance`;
 
 interface SourceFile {
