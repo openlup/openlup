@@ -633,7 +633,8 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
-    // Deferred admission validates the complete restored ledger.
+    // Deferred admission validates restored SKU facts and the complete ledger.
+    catalog_skus: ["catalog_skus_publication_facts_admitted"],
     catalog_publications: ["catalog_publications_issued"],
     catalog_sku_revisions: ["catalog_sku_revisions_issued"],
     catalog_operator_receipts: ["catalog_receipts_issued"],
