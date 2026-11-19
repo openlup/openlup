@@ -39,6 +39,7 @@ const sqlRefusals = {
   catalog_publication_head_invalid: ["publication_changed", "The current publication changed. Reload the product and try again."],
   catalog_publication_lineage_invalid: ["publication_version_invalid", "The selected previous publication is unavailable. Reload the product and select its current publication."],
   catalog_publication_document_invalid: ["publication_content_changed", "The selected product content differs from the approved revision. Review the product and prepare it again."],
+  catalog_publication_record_immutable: ["publication_requires_new_revision", "Saved publication details cannot be changed. Reload the product and prepare a new publication."],
   catalog_publication_issue_sealed: ["publication_requires_new_revision", "This publication is complete. Create a new publication to add the revision."],
   catalog_publication_sku_revision_invalid: ["publication_revision_invalid", "The product revisions do not match this publication. Reload the product and prepare it again."],
   catalog_publication_receipt_invalid: ["publication_incomplete", "The publication is incomplete. Reload the product and check its publication status before you try again."],

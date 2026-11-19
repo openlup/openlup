@@ -82,6 +82,23 @@ it("the original receipt is unchanged after a late owner SKU insert is refused",
   expect(await readReceipt()).toEqual(original);
 });
 
+it.each([
+  ["publication", "UPDATE public.catalog_publications SET issued_count=issued_count WHERE product_id=$1"],
+  ["SKU revision", "UPDATE public.catalog_sku_revisions SET issue_ordinal=issue_ordinal WHERE product_id=$1"],
+  ["receipt", "UPDATE public.catalog_operator_receipts SET result=result WHERE scope_id=$1 AND kind='publish'"],
+  ["decision", "DELETE FROM public.catalog_publication_decisions WHERE product_id=$1"],
+] as const)("refuses owner mutation of a saved %s at COMMIT", async (_relation, mutation) => {
+  const data = fixture();
+  await transaction(pool, async db => insertGraph(db, await graph(db, data)));
+  const result = await transaction(pool, async db => {
+    expect((await db.query(mutation, [data.productId])).rowCount).toBe(1);
+  }).catch((error: unknown) => error);
+  expect(catalogPublicationAdmissionRefusal(result)).toEqual({
+    outcome: "validation_issue", reason: "publication_requires_new_revision",
+    message: "Saved publication details cannot be changed. Reload the product and prepare a new publication.",
+  });
+});
+
 it("the deferred head guard rejects deleting a committed head", async () => {
   const data = fixture();
   await transaction(pool, async db => insertGraph(db, await graph(db, data)));

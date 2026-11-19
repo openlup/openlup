@@ -5622,10 +5622,6 @@
         "replacedFunctions": [],
         "createdFunctions": [
           {
-            "signature": "public.catalog_publication_immutable()",
-            "searchPath": "pg_catalog, public"
-          },
-          {
             "signature": "public.catalog_publication_pointer_fence()",
             "searchPath": "pg_catalog, public"
           },
@@ -5674,26 +5670,6 @@
         ],
         "createdTriggers": [
           {
-            "name": "catalog_publications_immutable",
-            "table": "public.catalog_publications",
-            "sha256": "6e9c89eaa59b60922576a401340eb43ce8d94916ed1155d8977efd3da34371e8"
-          },
-          {
-            "name": "catalog_sku_revisions_immutable",
-            "table": "public.catalog_sku_revisions",
-            "sha256": "757f3a6eede5c4e4e45e0e9c82fb0e4b737d125489a30e308323ec8926dc0ee5"
-          },
-          {
-            "name": "catalog_operator_receipts_immutable",
-            "table": "public.catalog_operator_receipts",
-            "sha256": "025dfafc4c21bb705ec2efada402440368f10f2dbd3b8c800b5344432135a893"
-          },
-          {
-            "name": "catalog_publication_decisions_immutable",
-            "table": "public.catalog_publication_decisions",
-            "sha256": "401a23e3f57147fc66b4af533bc5848e89e1cc79a3265f785b5747b4222e48c5"
-          },
-          {
             "name": "catalog_products_publication_pointer_fence",
             "table": "public.catalog_products",
             "sha256": "342f6a2618de6cb4a3fa12fe9d1316e6835ce7cbce9c815b1af1e21541e867a9"
@@ -5701,22 +5677,22 @@
           {
             "name": "catalog_publications_issued",
             "table": "public.catalog_publications",
-            "sha256": "d85910b8a2c69e15038920681db1ad94297f05360cdd7d4e229cd954318cd8fc"
+            "sha256": "8f6774fd0bc83006efe33373e253840d0487093e1392178800328f39e5d0c654"
           },
           {
             "name": "catalog_sku_revisions_issued",
             "table": "public.catalog_sku_revisions",
-            "sha256": "d9729e1178cf205e642ed997ab6e99ea65211418551f0bf8693db7a72859d7f0"
+            "sha256": "cfe0677812b1dee43c84779f71bd8c0608a1fe62b37ac4bc40d1a5b83db7727f"
           },
           {
             "name": "catalog_receipts_issued",
             "table": "public.catalog_operator_receipts",
-            "sha256": "5e95223bee664f6be3551647e783e4c618b57fa439c3d5d03a2444ca6e6f20eb"
+            "sha256": "920df8792c7e55239a2dd571fc6cdc35d92315e6e869e49d232971d077aa5464"
           },
           {
             "name": "catalog_decisions_issued",
             "table": "public.catalog_publication_decisions",
-            "sha256": "85daea7af770e8a7af32d15fa00b686a839476c7da3a329aaa135449def42b16"
+            "sha256": "52d4826362c6dfda72c7d6b62b7dd483c54e86c047c5d7b028b709743501f3d8"
           },
           {
             "name": "catalog_heads_issued",
@@ -8042,13 +8018,8 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "7ca1e5fe389f81ab378deeaea712817c0280898ca6afa626a880428e963e59cd",
+      "sha256": "5118c146523fd4c35f33a894de52b9a1a201c02c955bc87ecef6ef240359147a",
       "functions": [
-        {
-          "signature": "public.catalog_publication_immutable()",
-          "beforeSha256": null,
-          "afterSha256": "80d8a312159c2b624ac14011cdf355eb6a904d0b63f30fbb90c5165f43906048"
-        },
         {
           "signature": "public.catalog_publication_pointer_fence()",
           "beforeSha256": null,
@@ -8092,12 +8063,12 @@
         {
           "signature": "public.catalog_publication_sku_admit()",
           "beforeSha256": null,
-          "afterSha256": "574906a207393f812a40417d98dfee2a218e456721aa12cc63a9bc7cd83974ea"
+          "afterSha256": "ffa083bd4b2828173dfddf76ae2c9cb11eefa868b43b47d67878257e29958c66"
         },
         {
           "signature": "public.catalog_publication_admit()",
           "beforeSha256": null,
-          "afterSha256": "005d2c8c499e8f71e19a1745020d3e681be06bbc87ab38ccd129f45628624132"
+          "afterSha256": "a8419cc2238e5f707bca2ef17ffb38e756f9e66b25a3723ab89cb887622911bd"
         }
       ]
     }

@@ -901,8 +901,9 @@ predecessor roster and this issue's SKU facts, with a sort to compare the result
 roster in canonical order. Each SKU insert checks one row and finds its parent
 by key. The ordinal and SKU keys make each issued slot unique. Receipt, head and
 pointer events look up their associated rows by key. A decision additionally
-verifies the bounded source draft. The constraints run at commit or when the
-owner explicitly makes them immediate.
+verifies the bounded source draft. The same pinned triggers refuse updates and
+deletes of saved history without a lookup. The constraints run at commit or
+when the owner explicitly makes them immediate.
 
 Apply the complete native chain before binding native publication reads.
 A managed implementation can use the same relations, composite keys and

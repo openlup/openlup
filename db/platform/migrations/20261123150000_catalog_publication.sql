@@ -86,14 +86,6 @@ CREATE TABLE public.catalog_publication_pointer_capabilities (
 CREATE INDEX catalog_publications_product_revision_idx ON public.catalog_publications(product_id,revision DESC);
 CREATE INDEX catalog_sku_revisions_sku_revision_idx ON public.catalog_sku_revisions(sku_id,revision DESC);
 CREATE INDEX catalog_publication_decisions_reference_idx ON public.catalog_publication_decisions(candidate_reference_digest,decided_at,id);
-CREATE FUNCTION public.catalog_publication_immutable() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-BEGIN RAISE EXCEPTION 'catalog_publication_record_immutable' USING ERRCODE='55000'; END;
-$$;
-CREATE TRIGGER catalog_publications_immutable BEFORE UPDATE OR DELETE ON public.catalog_publications FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_immutable();
-CREATE TRIGGER catalog_sku_revisions_immutable BEFORE UPDATE OR DELETE ON public.catalog_sku_revisions FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_immutable();
-CREATE TRIGGER catalog_operator_receipts_immutable BEFORE UPDATE OR DELETE ON public.catalog_operator_receipts FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_immutable();
-CREATE TRIGGER catalog_publication_decisions_immutable BEFORE UPDATE OR DELETE ON public.catalog_publication_decisions FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_immutable();
 CREATE FUNCTION public.catalog_publication_pointer_fence() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE cap_fingerprint text; capabilities integer;
@@ -124,7 +116,6 @@ REVOKE ALL ON TABLE public.catalog_sku_revisions FROM PUBLIC;
 REVOKE ALL ON TABLE public.catalog_operator_receipts FROM PUBLIC;
 REVOKE ALL ON TABLE public.catalog_publication_decisions FROM PUBLIC;
 REVOKE ALL ON TABLE public.catalog_publication_pointer_capabilities FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.catalog_publication_immutable() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_publication_pointer_fence() FROM PUBLIC;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_publication_heads, public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions, public.catalog_publication_pointer_capabilities FROM anon;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_publication_heads, public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions, public.catalog_publication_pointer_capabilities FROM authenticated;'; END IF; END; $$;
@@ -440,6 +431,10 @@ CREATE FUNCTION public.catalog_publication_sku_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE body jsonb;
 BEGIN
+ IF TG_OP <> 'INSERT' THEN
+  RAISE EXCEPTION 'catalog_publication_record_immutable' USING ERRCODE='23514',
+    CONSTRAINT='catalog_publication_record_immutable';
+ END IF;
  body := NEW.full_facts::jsonb;
  IF jsonb_typeof(body) IS DISTINCT FROM 'object'
    OR NOT (body ?& ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
@@ -528,6 +523,10 @@ REVOKE ALL ON FUNCTION public.catalog_publication_sku_admit() FROM PUBLIC;
 CREATE FUNCTION public.catalog_publication_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 BEGIN
+ IF TG_OP <> 'INSERT' AND TG_TABLE_NAME IN ('catalog_publications','catalog_operator_receipts','catalog_publication_decisions') THEN
+  RAISE EXCEPTION 'catalog_publication_record_immutable' USING ERRCODE='23514',
+    CONSTRAINT='catalog_publication_record_immutable';
+ END IF;
  CASE TG_TABLE_NAME
  WHEN 'catalog_publications' THEN
   PERFORM public.catalog_publication_assert_issued(NEW.product_id,NEW.id);
@@ -556,13 +555,13 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_admit() FROM PUBLIC;
 
-CREATE CONSTRAINT TRIGGER catalog_publications_issued AFTER INSERT ON public.catalog_publications
+CREATE CONSTRAINT TRIGGER catalog_publications_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publications
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_sku_revisions_issued AFTER INSERT ON public.catalog_sku_revisions
+CREATE CONSTRAINT TRIGGER catalog_sku_revisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_sku_revisions
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_sku_admit();
-CREATE CONSTRAINT TRIGGER catalog_receipts_issued AFTER INSERT ON public.catalog_operator_receipts
+CREATE CONSTRAINT TRIGGER catalog_receipts_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_operator_receipts
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT ON public.catalog_publication_decisions
+CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_decisions
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_heads_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_heads
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
