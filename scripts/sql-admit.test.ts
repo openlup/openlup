@@ -87,17 +87,26 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
 type Case = { name: string; exit: number; refusal?: string; hint?: string; queue?: "not run"; build: (f: Fixture) => { base: string; head: string }; also?: (f: Fixture, base: string, head: string, fork: string) => void };
 const cases: Case[] = [
   { name: "an admitted native forward with its slot, pin and manifest row", exit: 0, build: (f) => { stageNativeForward(f); return { base: f.base, head: f.commit() }; } },
-  ...[true, false].map((deferred): Case => ({ name: deferred ? "a reviewed native forward with a deferred constraint trigger" : "an immediate constraint trigger with a fix and owner link",
-    exit: deferred ? 0 : 1, ...(deferred ? {} : { refusal: "reviewed native store created trigger shape refused: deferral: INITIALLY IMMEDIATE; write DEFERRABLE INITIALLY DEFERRED", hint: "#declare-a-reviewed-trigger" }), build: (f) => {
-    const entry = slot(nativePath), signature = "public.fixture_deferred()";
-    const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$ BEGIN RETURN NULL; END; $$;`;
-    const statement = `CREATE CONSTRAINT TRIGGER fixture_deferred AFTER UPDATE OR DELETE ON public.fixture_row DEFERRABLE INITIALLY ${deferred ? "DEFERRED" : "IMMEDIATE"} FOR EACH ROW EXECUTE FUNCTION ${signature};`;
-    entry.createdFunctions = [{ signature, searchPath: "pg_catalog" }];
-    entry.createdTriggers = [{ name: "fixture_deferred", table: "public.fixture_row", sha256: sqlSha256(statement) }];
-    stageNativeForward(f, `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n${statement}\n`, entry,
-      [{ signature, beforeSha256: null, afterSha256: sqlSha256(definition) }]);
-    return { base: f.base, head: f.commit() };
-  } })),
+  ...([
+    ["DEFERRED", "DEFERRED", ""],
+    ["INITIALLY DEFERRED", "INITIALLY IMMEDIATE", "deferral: INITIALLY IMMEDIATE; write DEFERRABLE INITIALLY DEFERRED"],
+    ["CREATE", "CREATE OR REPLACE", "declaration: OR REPLACE; remove OR REPLACE"],
+    ["TRIGGER ", "TRIGGER IF NOT EXISTS ", "declaration: IF NOT EXISTS; remove IF NOT EXISTS"],
+    ["EXECUTE FUNCTION", "EXECUTE PROCEDURE", "execute: PROCEDURE; write EXECUTE FUNCTION"],
+    ["fixture_deferred", "x".repeat(64), `identifier: ${"x".repeat(64)} exceeds 63 bytes; shorten it to at most 63 bytes`],
+  ] as const).map(([from, to, refusal]): Case => ({
+    name: refusal || "a reviewed native forward with a deferred constraint trigger", exit: refusal ? 1 : 0,
+    ...(refusal ? { refusal: `reviewed native store created trigger shape refused: ${refusal}`, hint: "#declare-a-reviewed-trigger" } : {}), build: (f) => {
+      const entry = slot(nativePath), signature = "public.fixture_deferred()";
+      const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$ BEGIN RETURN NULL; END; $$;`;
+      const statement = `CREATE CONSTRAINT TRIGGER fixture_deferred AFTER UPDATE OR DELETE ON public.fixture_row DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${signature};`.replace(from, to);
+      entry.createdFunctions = [{ signature, searchPath: "pg_catalog" }];
+      entry.createdTriggers = [{ name: from === "fixture_deferred" ? to : "fixture_deferred", table: "public.fixture_row", sha256: sqlSha256(statement) }];
+      stageNativeForward(f, `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n${statement}\n`, entry,
+        [{ signature, beforeSha256: null, afterSha256: sqlSha256(definition) }]);
+      return { base: f.base, head: f.commit() };
+    },
+  })),
   { name: "a replacement pin whose SQL this change does not introduce", exit: 1, refusal: "reviewed replacement pin must be approved separately unless its SQL is introduced in this PR",
     hint: "a separate approval PR", build: (f) => {
       const value = registry(); value.qualifiedInstallations = production.qualifiedInstallations!.slice(0, 4);

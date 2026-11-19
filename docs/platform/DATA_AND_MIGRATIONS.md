@@ -2410,13 +2410,11 @@ new view inventory, ownership and owner-only privileges.
 
 <a id="declare-a-reviewed-trigger"></a>
 
-**Declare a reviewed trigger.** Choose a qualified public table and a
-zero-argument public function. Use objects already present in the ordered
-prefix or create them earlier in the same slot. Keep both through the end
-of the forward. Choose a trigger name unused on that table and list its
-name, table and exact statement hash in `createdTriggers`.
-
-Write a deferred constraint trigger in this form:
+**Declare a reviewed trigger.** Choose a public table and a zero-argument
+public function declared in the prefix or earlier in the forward. Keep both
+installed. Choose a name unused on that table and unique within the slot.
+Use identifiers of at most 63 bytes. Pin the name, table and exact statement
+hash in `createdTriggers`.
 
 ```sql
 CREATE CONSTRAINT TRIGGER example_guard
@@ -2425,20 +2423,18 @@ CREATE CONSTRAINT TRIGGER example_guard
   FOR EACH ROW EXECUTE FUNCTION public.example_guard();
 ```
 
-Use one or more distinct events from that list, joined by `OR`. Keep the
-function in invoker mode and use `RETURNS trigger` or `RETURNS pg_catalog.trigger`.
-The existing accounting document, order line and payout total constraint
-triggers use invoker functions. Leave a prefix function unchanged. For a
-same-slot function, pin its search path, revoke PUBLIC and grant no EXECUTE.
-PostgreSQL reads the legacy spelling `EXECUTE PROCEDURE` as the same binding
-as `EXECUTE FUNCTION`. Pin the exact spelling used in the forward.
+Join one or more distinct events with `OR`. Omit `WHEN`, `FROM`, `REFERENCING`,
+`OR REPLACE` and `IF NOT EXISTS`. Use `EXECUTE FUNCTION` in place of
+`EXECUTE PROCEDURE`. Use invoker mode and `RETURNS trigger` or
+`RETURNS pg_catalog.trigger`. Leave a prefix function unchanged. For a new
+function, pin its search path, revoke PUBLIC and grant no EXECUTE.
 
-For an ordinary trigger, use `BEFORE` or `AFTER` and a same-slot trigger function
-with explicit `SECURITY INVOKER`. Use `UPDATE OF` only on ordinary triggers.
-Use plain creation with `FOR EACH ROW EXECUTE FUNCTION`. A deferred constraint
-trigger uses only the clauses shown above. The installed proof matches the
-executed statement to its pin and checks the enabled binding, events, function
-mode and return type, and the constraint's identity and deferral flags.
+The installed proof checks the exact pinned statement, the table and function
+bindings, the stored trigger name, the events and the linked deferred constraint.
+Keep other trigger DDL off the pinned relation and name in this forward.
+
+Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
+a same-slot function with explicit `SECURITY INVOKER`. They also allow `UPDATE OF`.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
