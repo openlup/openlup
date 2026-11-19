@@ -2384,6 +2384,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (rule) throw new Error(deferredTriggerMessages.field(trigger.name, "name", rule));
       if (!nativeStoreTable(trigger.relation) || trigger.relation.length > 70) invalid("relation", "a public relation with an identifier of at most 63 bytes");
       if (typeof trigger.function !== "string" || !/^public\.[a-z_][a-z0-9_]{0,62}\(\)$/u.test(trigger.function)) invalid("function", "a zero-argument public function of at most 63 bytes");
+      if (deferredKeyword.has(trigger.function.slice(7, -2))) throw new Error(deferredTriggerMessages.field(trigger.name, "function", "name is a reserved PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name."));
       if (!Array.isArray(trigger.events) || !trigger.events.length || canonical(trigger.events) !== canonical(deferredEvents.filter(event => trigger.events.includes(event)))) invalid("events", "a nonempty ordered subset of INSERT, UPDATE, DELETE");
       if (!hash(trigger.sha256)) invalid("sha256", "the 64-character SHA-256 digest of the statement");
       return !keysAre(trigger, "deferred,events,function,name,relation,sha256") && invalid("fields", "name, relation, events, function, deferred and sha256");
@@ -2663,7 +2664,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const baselineActions = new Set<number>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
-    const { tokens } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
+    const parsed = platformSqlTokens(statement, false, true), { tokens } = parsed, head = nativeTableHead(tokens);
     const word = (i: number, value: string) => nativeWord(tokens, i, value);
     const create = word(0, "CREATE"), drop = word(0, "DROP"), changing = word(0, "ALTER");
     const replacement = create && word(1, "OR") && word(2, "REPLACE"), kind = replacement ? 3 : word(0, "COMMENT") ? 2 : 1;
@@ -2673,7 +2674,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const next = (i: number) => i + (nativeSymbol(tokens, i + 1, ".") ? 3 : 1);
     const relation = (i: number) => next(i) === i + 3 ? `${id(i)}.${id(i + 2)}` : `public.${id(i)}`;
     const entry = create && word(triggerAt, "TRIGGER") && pins.find(pin => pin.name === id(nameIndex));
-    const block = nativeStoreRolePrivilege.exec(statement);
+    const block = nativeStoreRolePrivilege.exec(statement), pinScan = pins.length && block ? platformSqlTokens(block[2]!, false, true) : parsed;
+    if (pins.length && (!parsed.complete || !pinScan.complete)) throw new Error(`The statement cannot be checked for pinned objects. ${pinnedMessage(pins[0]!).message}`);
     if (entry) {
       if (statement !== renderNativeDeferredTrigger(entry) || triggers.has(entry.name)) throw pinnedMessage(entry);
       const digest = sqlSha256(statement);
@@ -2683,10 +2685,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const own = pins.find(pin => created.has(pin.function) && (create && word(1, "FUNCTION")
         ? nativeQualified(tokens, 2)?.name === pin.function.slice(0, -2) && nativeSymbol(tokens, 5, "(") && nativeSymbol(tokens, 6, ")")
         : revoke === `revoke all on function public . ${pin.function.slice(7, -2)} ( ) from public ;`))?.function.slice(7, -2);
-      const named = block ? platformSqlTokens(block[2]!, false, true).tokens : tokens;
-      for (const [i, token] of named.entries()) {
+      for (const [i, token] of pinScan.tokens.entries()) {
         const name = nativeIdentifier(token)?.slice(0, 63);
-        if (!name || name === own || (token.kind === "word" && deferredKeyword.has(name) && !nativeSymbol(named, i - 1, "."))) continue;
+        if (!name || name === own || (token.kind === "word" && deferredKeyword.has(name) && !nativeSymbol(pinScan.tokens, i - 1, "."))) continue;
         const pin = pins.find(pin => pin.name === name || pin.function === `public.${name}()`);
         if (pin) throw pinnedMessage(pin, name);
       }

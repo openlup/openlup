@@ -1278,6 +1278,8 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   const prefixPin = deferredPin({ function: "public.cat_trigger_fn()" }), freshPin = deferredPin({ relation: "public.cat_fresh" });
   const functionRule = `createdTriggers entry ${pin.name}: function must be a zero-argument public function of at most 63 bytes`;
   const quotedView = 'CREATE VIEW public.cat_quoted_view AS SELECT id AS ";" FROM public.cat_existing_table;';
+  const viewUsingPinnedFunction = quotedView.replace(/;$/u, " WHERE public.cat_created_guard() IS NOT NULL;");
+  const unreadable = `The statement cannot be checked for pinned objects. ${forbidden()}`;
   const quotedInsert = 'INSERT INTO public.fixture_data (";") VALUES (1);';
   type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; functionSql?: string; refusal?: string; companions?: Partial<NativeStoreSlot> };
   const cases: Fixture[] = [
@@ -1287,13 +1289,23 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       companions: { createdViews: [{ name: "public.cat_quoted_view", sha256: sqlSha256(quotedView) }] } },
     { label: "quoted semicolon INSERT column without a pin", pins: [], prefixFunction: true, sql: quotedInsert,
       setup: 'CREATE TABLE public.fixture_data (";" integer);', companions: { dataStatements: [quotedInsert] } },
+    ...[viewUsingPinnedFunction, quotedView].map(view => ({
+      label: view === quotedView ? "unrelated quoted semicolon view with a pin" : "quoted semicolon view referencing the pinned function",
+      pins: [pin], sql: statement + view + "REVOKE ALL ON TABLE public.cat_quoted_view FROM PUBLIC;", refusal: unreadable,
+      companions: { createdViews: [{ name: "public.cat_quoted_view", sha256: sqlSha256(view) }] },
+    })),
+    { label: "quoted semicolon inside a role privilege block", pins: [pin],
+      sql: statement + guarded("authenticated", "REVOKE ALL ON FUNCTION", 'public.";"() FROM authenticated;'), refusal: unreadable },
     { label: "quoted semicolon in a companion CHECK", pins: [pin], setup: 'ALTER TABLE public.cat_existing_table ADD COLUMN ";" integer;',
-      sql: statement + `ALTER TABLE public.cat_existing_table ADD CONSTRAINT ${pin.name} CHECK (";" > 0);`, refusal: forbidden() },
+      sql: statement + `ALTER TABLE public.cat_existing_table ADD CONSTRAINT ${pin.name} CHECK (";" > 0);`, refusal: unreadable },
     { label: "drifted function body with the pinned signature", pins: [pin], functionSql: deferredFunction.replace("RETURN NEW", "RETURN NULL"),
       refusal: "reviewed native store unlisted, missing or drifted function definition" },
     { label: "restored function body with the pinned signature", pins: [pin] },
     { label: "63-byte name", pins: [deferredPin({ name: long })] },
     { label: "keyword name select", pins: [deferredPin({ name: "select" })], refusal: "createdTriggers entry select: name must not be an SQL keyword" },
+    { label: "keyword function name replace", pins: [deferredPin({ function: "public.replace()" })], prefixFunction: true,
+      setup: "CREATE FUNCTION public.replace() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;",
+      refusal: `createdTriggers entry ${pin.name}: function name is a reserved PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name.` },
     { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
     { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: `createdTriggers entry ${pin.name}: relation must be a public relation with an identifier of at most 63 bytes` },
     { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: functionRule },
