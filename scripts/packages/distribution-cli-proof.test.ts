@@ -143,6 +143,21 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(to.files).toEqual(from.files);
 });
 
+it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const path = "owned/catalogue.ts", pack = "owned/catalogue.json";
+  const released = (file: string) => execFileSync("git", ["show", `openlup-core-v1.2.0:examples/neutral-store/${file}`], { encoding: "utf8" });
+  const previous = released(path), packBytes = released(pack);
+  const next = readFileSync(resolve("examples/neutral-store", path), "utf8");
+  write(path, previous); write(pack, packBytes); candidate(path, next);
+  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+  migrateStarterOwned(app, target, from, { ...to, version: "1.2.0" });
+  expect(readFileSync(join(app, path), "utf8")).toBe(previous);
+  migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, path), "utf8")).toBe(next);
+  expect(readFileSync(join(app, pack), "utf8")).toBe(packBytes);
+});
+
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "starter-next-set-"))); directories.push(directory);
   const source = join(directory, "source"), app = join(directory, "app"), target = join(directory, "target");
@@ -172,6 +187,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   };
   const customizations = new Map<string, readonly [string, string]>([
     ["AGENTS.md", ["Its fictional data", "Record local acceptance results in the test log. Its fictional data"]],
+    ["owned/catalogue.ts", ["title_required", "local_title_required"]],
     ["owned/renewal.config.ts", ["batchLimit: 10", "batchLimit: 8"]],
     ["owned/store.config.ts", ["#3d6657", "#663d57"]],
     ["owned/acquisition-policy.ts", ["Invalid recipient", "Enter a recipient name"]],
@@ -252,8 +268,12 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   if (localTest) expect(check.stdout).toContain(localTest.name);
   const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval", `
     import assert from "node:assert/strict";
+    import { catalogDraftRegistry } from "./owned/catalogue.ts";
     import { configurations } from "./owned/store.config.ts";
     import { createApplication } from "./host/server.ts";
+
+    const each = catalogDraftRegistry.resolve({ key: "starter:item", version: 1 })?.units.find(unit => unit.code === "starter:each");
+    assert.deepEqual(each?.factor, { canonicalUnit: "openlup:piece", unscaled: "1", scale: 0 }, "starter:each must equal one openlup:piece");
 
     for (const config of Object.values(configurations)) {
       assert.deepEqual(config.checkoutRecoveryReminders, {

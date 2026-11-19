@@ -39,6 +39,14 @@ characters; malformed configuration refuses the route before the inventory port
 runs. On upgrade, configure the intended region or send it explicitly instead
 of relying on the former implicit country value.
 
+## Native renewal stock protection
+
+A custom database runtime role needs the horizon-reader grant for ATP.
+Grant `EXECUTE` on `public.inventory_renewal_protection_validate(jsonb)` for
+connected settings validation or preview. This separate grant is optional for
+ATP. The pure validator reads no table. Direct calls without the grant raise
+SQLSTATE `42501`. See [native runtime grants](../../../docs/platform/DATA_AND_MIGRATIONS.md#native-renewal-stock-protection).
+
 ## Subscription forecast
 
 The package keeps OpenLup's forecast arithmetic and strict response validation.
