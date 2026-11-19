@@ -70,6 +70,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN');
+  let removeUncommittedBuild: (() => void) | undefined;
   try {
     const { rows } = await connection.query(`SELECT session_user AS login, current_user AS role,
       pg_catalog.shobj_description(oid, 'pg_database') AS marker
@@ -140,10 +141,11 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
     }
     if (catalogueReceipt && installation.catalogueRules)
-      retainStarterCatalogueBuild(Buffer.from(installation.catalogueRules), catalogueReceipt, installation.catalogueBuildDirectory);
+      removeUncommittedBuild = retainStarterCatalogueBuild(Buffer.from(installation.catalogueRules), catalogueReceipt, installation.catalogueBuildDirectory);
     await connection.query('COMMIT');
   } catch (error) {
-    await connection.query('ROLLBACK');
+    try { removeUncommittedBuild?.(); }
+    finally { await connection.query('ROLLBACK'); }
     throw error;
   }
 }

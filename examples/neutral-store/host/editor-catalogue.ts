@@ -47,7 +47,7 @@ function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, ar
 }
 
 /** Retain the installed definition and exact rules in the local demonstration build directory. */
-export function retainStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory): void {
+export function retainStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory): (() => void) | undefined {
   const definition = starterCataloguePack(artifact).types[0]!;
   const { validateContent: _callback, ...type } = definition;
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
@@ -61,7 +61,10 @@ export function retainStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDe
     try { linkSync(source, target); }
     catch (error) {
       if (!readOptional(target)?.equals(bytes)) throw error;
+      return;
     }
+    // Only this installation's new link is eligible for rollback.
+    return () => rmSync(target, { force: true });
   } finally { rmSync(temp, { recursive: true, force: true }); }
 }
 
@@ -91,7 +94,7 @@ export function starterCatalogue() {
     return build;
   }
   return { current, readInstalled, registry: { resolve: (ref: CatalogProductTypeRef) =>
-    current?.key === ref.key && current.version === ref.version ? current : readInstalled(ref)?.type ?? catalogDraftRegistry.resolve(ref) } };
+    readInstalled(ref)?.type ?? catalogDraftRegistry.resolve(ref) } };
 }
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {

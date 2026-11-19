@@ -56,24 +56,48 @@ export function isLifecycleOperation(operation: PublicationOperation): operation
 }
 
 /** Preserve the original wire for identity. Lower both inputs once into a single ordered intent. */
-export function publicationIntent(input: unknown): PublicationIntent | null {
-  const v3 = catalogPublicationDraftPayloadSchema.safeParse(input);
-  if (v3.success) return v3.data;
+export function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean) => never): PublicationIntent | null {
+  function invalid(issue: z.core.$ZodIssue, indexes?: readonly number[]) {
+    const path = [...issue.path];
+    if (indexes && path[0] === "publication" && path[1] === "operations" && typeof path[2] === "number")
+      path[2] = indexes[path[2]] ?? path[2];
+    if (issue.code === "unrecognized_keys") path.push(issue.keys[0]!);
+    return onInvalid?.(path.join(".") || "payload", issue.code === "unrecognized_keys") ?? null;
+  }
+  if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 4) {
+    const v3 = catalogPublicationDraftPayloadSchema.safeParse(input);
+    return v3.success ? v3.data : invalid(v3.error.issues[0]!);
+  }
   const wire = v4Wire.safeParse(input);
-  if (!wire.success) return null;
+  if (!wire.success) return invalid(wire.error.issues[0]!);
   const { publication, skus } = wire.data;
   const lifecycle = publication.operations.map(operation => lifecycleOperation.safeParse(operation));
+  const commonIndexes = lifecycle.flatMap((op, index) => op.success ? [] : [index]);
   const common = catalogPublicationDraftPayloadSchema.safeParse({ ...wire.data, schemaVersion: 3,
     skus: skus.map(({ demandPolicyRef: _policy, ...sku }) => sku),
     publication: { ...publication, operations: publication.operations.filter((_operation, index) => !lifecycle[index]!.success) },
   });
-  if (!common.success || common.data.publication.operations.some(op => op.op === "set_product_status" || op.op === "set_sku_status"))
-    return null;
+  if (!common.success) {
+    const issue = common.error.issues[0]!;
+    const index = issue.path[0] === "publication" && issue.path[1] === "operations" && typeof issue.path[2] === "number"
+      ? commonIndexes[issue.path[2]] : undefined;
+    if (index !== undefined) {
+      const result = lifecycle[index]!;
+      // A recognized lifecycle operation can name the malformed field directly.
+      const lifecycleIssue = !result.success && result.error.issues[0];
+      if (lifecycleIssue && !(lifecycleIssue.code === "invalid_union" && lifecycleIssue.path[0] === "op"))
+        return invalid({ ...lifecycleIssue, path: ["publication", "operations", index, ...lifecycleIssue.path] });
+    }
+    return invalid(issue, commonIndexes);
+  }
+  const status = common.data.publication.operations.findIndex(op => op.op === "set_product_status" || op.op === "set_sku_status");
+  if (status >= 0) return onInvalid?.(`publication.operations.${commonIndexes[status]}.op`, false) ?? null;
   let index = 0;
   const operations = lifecycle.map(op => op.success ? op.data : common.data.publication.operations[index++]!);
-  if (operations.some(op => (op.op === "restore_sku" || op.op === "set_sku_lifecycle" && op.state === "active")
+  const missingEligibility = operations.findIndex(op => (op.op === "restore_sku" || op.op === "set_sku_lifecycle" && op.state === "active")
     && !operations.some(other => other.op === "set_eligibility" && other.skuCode === op.skuCode
-      && (other.sellableStandalone || other.sellableInSubscription)))) return null;
+      && (other.sellableStandalone || other.sellableInSubscription)));
+  if (missingEligibility >= 0) return onInvalid?.(`publication.operations.${missingEligibility}`, false) ?? null;
   try { canonicalCatalogDraftJson(input); } catch { return null; }
   return { ...common.data, schemaVersion: 4, skus, publication: { ...common.data.publication, operations } };
 }

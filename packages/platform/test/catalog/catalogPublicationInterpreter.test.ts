@@ -28,6 +28,7 @@ type Case = { id: string; fixture?: "revision"; arrange?: (data: Fixture) => voi
   rulesAsset?: string;
   substitute?: boolean;
   currentHead?: CatalogCandidateDeps["currentHead"];
+  draftAdvanced?: boolean;
   routeCalls?: readonly [number, number, number];
   evidenceCalls?: number;
   evidenceRows?: (rows: Fixture["evidence"]["drafts"]) => void;
@@ -65,13 +66,13 @@ function media(data: Fixture, skuCode = "ARTICLE") {
   data.payload.publication.evidence.media = [{ skuCode, mediaRef: "example:media", assetRefs: [], revisionDigest: "d".repeat(64) }];
 }
 
-function facade(data: Fixture, deps?: Partial<CatalogCandidatePublicationDeps>, legacy = false, record: PublicationDraftRecord = data.record, currentHead?: CatalogCandidateDeps["currentHead"]) {
+function facade(data: Fixture, deps?: Partial<CatalogCandidatePublicationDeps>, legacy = false, record: PublicationDraftRecord = data.record, currentHead?: CatalogCandidateDeps["currentHead"], readDraft?: CatalogCandidateDeps["readDraft"]) {
   const wiring: CatalogCandidateDeps = { readDraft: async () => data.record, registry: data.registry,
     validatePrices: data.validatePrices,
     installedDefinitionDigest: async () => data.installedDefinitionDigest, resolveHead: async () => data.expectedHead,
     currentHead: currentHead ?? (async () => data.expectedHead ? { outcome: "found", head: data.expectedHead, documentRef: "example:document", observations: [] }
       : { outcome: "unpublished" }) };
-  return legacy ? createCatalogCandidateService(wiring) : createCatalogCandidateServiceWithPublication({ ...wiring, readDraft: async () => record }, {
+  return legacy ? createCatalogCandidateService(wiring) : createCatalogCandidateServiceWithPublication({ ...wiring, readDraft: readDraft ?? (async () => record) }, {
     readEvidence: async () => ({ ...data.evidence, drafts: [{ ...data.evidence.drafts[0]!, record }, ...data.evidence.drafts.slice(1)] }),
     ...data.observations, ...deps,
   });
@@ -152,6 +153,73 @@ function replaceDocument(data: Fixture, retained = false) {
 const movedHead = { publicationId: "50000000-0000-4000-8000-000000000007", revision: 4, documentDigest: "e".repeat(64) };
 const beforeRoute = { readiness: routeConflict, routeCalls: [0, 0, 0] } as const;
 const cases: Case[] = [
+  ...(["membership", "presentation"] as const).map((later): Case => ({
+    id: `the first derived value precedes a later ${later} mismatch`, fixture: "revision", arrange(data) {
+      if (later === "membership") {
+        activate(data, "membership");
+        data.payload.product.sharedContent.offerMemberships = [];
+      } else {
+        data.payload.publication.operations.push({ op: "set_product_presentation", productSlug: "article", presentation: { title: "Unsealed" } });
+      }
+      data.payload.publication.operations.unshift({ op: "set_derived_sku_facts", skuCode: "ARTICLE", documentRevisionNo: 1,
+        netContent: data.evidence.skus[0]!.netContent, facts: { derived: 13 } });
+    }, expected: reason("catalog_publication_v3_compile_derived_facts_mismatch"),
+    diagnostic: { phase: "structural", path: "publication.operations.0", subject: "ARTICLE" }, ...beforeRoute,
+  })),
+  { id: "binding precedes comparison with an advanced draft", fixture: "revision", substitute: true, draftAdvanced: true,
+    expected: reason("catalog_publication_rules_binding_mismatch"),
+    diagnostic: { phase: "structural", path: "product.type", subject: "example:article" }, evidenceCalls: 0, ...beforeRoute },
+  ...(["before", "after"] as const).map((where): Case => ({
+    id: `a malformed SKU row ${where} the known SKU preserves its identifier refusal`, fixture: "revision", arrange(data) {
+      activate(data, "membership");
+      data.payload.skus[0]!.identifiers![0]!.value = "4006381333931";
+      data.evidence.skus = where === "before" ? [null!, ...data.evidence.skus] : [...data.evidence.skus, null!];
+    }, expected: reason("catalog_publication_identifier_source_mismatch"),
+    diagnostic: { phase: "structural", path: "skus.0", subject: "ARTICLE" }, ...beforeRoute,
+  })),
+  { id: "a decoded wrong retained document identity refuses before routes", fixture: "revision",
+    rulesAsset: artifact.replace("...this.identifyDocument(document), canonicallyEncoded:", '...this.identifyDocument(document), documentRef: "example:wrong", canonicallyEncoded:'),
+    expected: reason("catalog_publication_document_source_mismatch"),
+    diagnostic: { phase: "structural", path: "product.documentRevision", subject: "example:article" }, ...beforeRoute },
+  { id: "a verified claimed draft with a stale document reference refuses before routes", fixture: "revision", arrange(data) {
+    const source = structuredClone(input().record);
+    source.draftId = "30000000-0000-4000-8000-000000000003";
+    source.payload.product.documentRevision!.digest = "f".repeat(64);
+    const receipt = catalogPublicationClaim(source);
+    data.evidence.drafts.push({ record: source, receipt, head: source });
+    data.payload.publication.evidence.drafts = [receipt];
+    data.payload.publication.operations.push({ op: "set_sku_metadata", skuCode: "ARTICLE", logisticsRef: null });
+  }, expected: reason("catalog_publication_v3_document_reference_stale"),
+  diagnostic: { phase: "structural", path: "product.documentRevision", subject: "example:article" }, ...beforeRoute },
+  { id: "compensation excludes the exact prior document in the final retained content", fixture: "revision", arrange(data) {
+    const prior = data.evidence.documents[0]!;
+    const canonicalText = canonicalCatalogDraftJson({ ...input().payload.product.sharedContent.document, revisionNo: 2 });
+    const reference = { ...prior.reference, id: "40000000-0000-4000-8000-000000000002", revisionNo: 2,
+      digest: createHash("sha256").update(canonicalText).digest("hex") };
+    data.evidence.documents = [prior, { ...prior, canonicalText, reference }];
+    data.evidence.documentRevisionHighWater = 2;
+    data.expectedHead!.documentDigest = reference.digest;
+    data.payload.product.documentRevision = reference;
+    data.evidence.product!.document = reference;
+    data.evidence.product!.content.publicationSkus[0]!.title = prior.canonicalText;
+    data.payload.publication.kind = "compensation";
+    data.payload.product.sharedContent.presentation = structuredClone(data.evidence.product!.presentation ?? {});
+    operation(data, "set_product_presentation", { presentation: data.payload.product.sharedContent.presentation });
+  }, expected: reason("catalog_publication_document_text_copied"), routeCalls: [1, 1, 1],
+  diagnostic: { phase: "structural", path: "product.content.publicationSkus.0.title", subject: "example:article" } },
+  { id: "an unsupported operation key keeps its admission path", fixture: "revision", arrange(data) {
+    operation(data, "set_product_presentation", { unsupportedField: true });
+    data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong";
+  }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
+  diagnostic: { ...routeAt(0), path: "publication.operations.0.unsupportedField" }, message: "Remove the unsupported field" },
+  { id: "a v4 unsupported operation keeps its original index after a lifecycle operation", fixture: "revision",
+    governed(data) {
+      operation(data, "set_product_presentation", { op: "unsupported" });
+      const governed = governedDraft(data);
+      governed.publication.operations.unshift({ op: "restore_product", productSlug: "article", expectedState: "withdrawn" });
+      return governed;
+    }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
+    diagnostic: { ...routeAt(1), path: "publication.operations.1.op" }, message: "Use a supported publication operation" },
   { id: "phase-1 binding precedes moved lineage and routes", fixture: "revision", substitute: true,
     arrange: data => { data.evidence.head = movedHead; },
     currentHead: async () => ({ outcome: "found", head: movedHead, documentRef: "example:moved", observations: [] }),
@@ -161,7 +229,8 @@ const cases: Case[] = [
     data.payload.product.sharedContent.presentation = {};
     operation(data, "set_product_presentation", { presentation: { extra: true } });
     data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong";
-  }, expected: reason("catalog_publication_presentation_invalid"), diagnostic: routeAt(0), evidenceCalls: 0, ...beforeRoute },
+  }, expected: reason("catalog_publication_presentation_invalid"),
+  diagnostic: { ...routeAt(0), path: "publication.operations.0.presentation.extra" }, evidenceCalls: 0, ...beforeRoute },
   { id: "phase-1 checksum precedes receipt and route", arrange: data => {
     operation(data, "register_document_revision", { canonicalText: "changed bytes" });
     data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong";
@@ -303,7 +372,8 @@ const cases: Case[] = [
       data.payload.product.sharedContent.presentation = { advertisedWeightsG: weights };
       operation(data, "set_product_presentation", { presentation: data.payload.product.sharedContent.presentation });
     }, ...(index < 3 ? { expected: reason("catalog_publication_presentation_invalid"), routeCalls: [0, 0, 0],
-      diagnostic: { phase: "structural", path: "product.sharedContent.presentation.advertisedWeightsG", subject: "example:article" } }
+      diagnostic: { phase: "structural", path: index === 2 ? "product.sharedContent.presentation.advertisedWeightsG.0"
+        : "product.sharedContent.presentation.advertisedWeightsG", subject: "example:article" } }
       : { routeCalls: [1, 1, 1] }),
   })),
   { id: "a newer same-code retained row cannot hide its actual SKU", fixture: "revision", arrange: data => {
@@ -412,7 +482,7 @@ const cases: Case[] = [
     const digest = createHash("sha256").update(canonicalText).digest("hex");
     data.payload.product.documentRevision!.digest = digest;
     operation(data, "register_document_revision", { canonicalText, digest });
-  }, expected: reason("catalog_publication_v3_document_invalid") },
+  }, expected: reason("catalog_publication_document_source_mismatch") },
   { id: "D-046 right identity still requires canonical bytes", arrange: data => {
     const canonicalText = " " + canonicalCatalogDraftJson(data.payload.product.sharedContent.document);
     const digest = createHash("sha256").update(canonicalText).digest("hex");
@@ -524,7 +594,7 @@ const cases: Case[] = [
     expected: reason("catalog_publication_presentation_unavailable") },
 ];
 
-it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
+it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, draftAdvanced, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
   const bound = rulesAsset === undefined ? {} : setupRules(rulesAsset);
   const data = fixture === "revision" ? await revision() : { ...input(), ...bound };
   if (fixture === "revision") Object.assign(data, bound);
@@ -543,7 +613,9 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   if (governed && !data.validatePrices) data.validatePrices = async () => [];
   const readEvidence = vi.fn(async () => evidence);
   const current = currentHead && vi.fn(currentHead);
-  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current);
+  const readDraft = draftAdvanced ? vi.fn(async (_id: string, revision?: number) => revision === undefined
+    ? { ...data.record, revision: data.record.revision + 1 } : data.record) : undefined;
+  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current, readDraft);
   const checkRouteCalls = (expectedCalls?: number) => {
     if (expectedCalls !== undefined) expect(observations.presentationReadiness).toHaveBeenCalledTimes(expectedCalls);
     observations.presentationReadiness.mockClear();
@@ -558,6 +630,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   checkRouteCalls(routeCalls?.[0]);
   if (evidenceCalls !== undefined) expect(readEvidence).toHaveBeenCalledTimes(evidenceCalls);
   if (substitute && current) expect(current).not.toHaveBeenCalled();
+  if (readDraft) expect(readDraft.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
   expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
   if (outcome) expect(preview.preparation?.structural.outcome).toBe(outcome);
@@ -669,18 +742,22 @@ it("K-3 document-free published content round-trips while the authored draft ret
   const { product, skus } = await compileCatalogPublication(data);
   const manifest = { schemaVersion: 2, product, skus: [{ skuId: skus[0]!.id,
     revisionId: "50000000-0000-4000-8000-000000000002", revision: 1, digest: publicationDigest(skus[0]) }] };
-  expect(catalogPublicationManifestSchema.parse(JSON.parse(publicationJson(manifest)))).toEqual(manifest);
+  expect(catalogPublicationManifestSchema().parse(JSON.parse(publicationJson(manifest)))).toEqual(manifest);
   const document = data.payload.product.sharedContent.document;
   expect(document).toBeDefined();
   expect(product.content).not.toHaveProperty("document");
   expect(product.document).toEqual(data.payload.product.documentRevision);
-  expect(catalogPublicationManifestSchema.safeParse({ ...manifest, product: { ...product, content: { ...product.content, document } } }).success).toBe(false);
+  expect(catalogPublicationManifestSchema().safeParse({ ...manifest, product: { ...product, content: { ...product.content, document } } }).success).toBe(false);
   const disguisedPresentation = { ...product.content, presentation: { copy: document } };
-  expect(catalogPublicationManifestSchema.safeParse({ ...manifest, product: { ...product, content: disguisedPresentation } }).success).toBe(false);
+  expect(catalogPublicationManifestSchema().safeParse({ ...manifest, product: { ...product, content: disguisedPresentation } }).success).toBe(false);
   const text = exactDocument(data);
   const display = (title: string) => ({ ...manifest, product: { ...product, presentation: { title } } });
-  expect(catalogPublicationManifestSchema.safeParse(display(text)).error?.issues[0]?.path).toEqual(["product", "presentation", "title"]);
-  expect(catalogPublicationManifestSchema.safeParse(display(text + " ")).success).toBe(true);
+  expect(catalogPublicationManifestSchema().safeParse(display(text)).error?.issues[0]?.path).toEqual(["product", "presentation", "title"]);
+  expect(catalogPublicationManifestSchema().safeParse(display(text + " ")).success).toBe(true);
+  const priorText = `{"revision":0}`;
+  const priorDigest = createHash("sha256").update(priorText).digest("hex");
+  expect(catalogPublicationManifestSchema(new Set([priorDigest])).safeParse(display(priorText)).error?.issues[0]?.path)
+    .toEqual(["product", "presentation", "title"]);
   expect(catalogPublishedSkuSchema.safeParse({ ...skus[0], facts: { derived: document } }).success).toBe(false);
 });
 

@@ -182,6 +182,40 @@ test('a retained build conflict rolls back definition installation before commit
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('a failed commit removes only the rules build linked by that installation', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-rollback-'));
+  try {
+    const config = Object.values(configurations)[0]!;
+    const fixture = installation();
+    fixture.binding.catalogueRules = bytes;
+    fixture.binding.catalogueBuildDirectory = directory;
+    const query = fixture.binding.connection.query;
+    const failure = new Error('synthetic commit failure');
+    let target: string | undefined;
+    fixture.binding.connection.query = async (text, values) => {
+      const result = await query(text, values);
+      if (text.startsWith('SELECT public.catalog_definition_install')) target = resolve(directory, `${values?.[1]}.json`);
+      if (text === 'COMMIT') {
+        assert.ok(target);
+        await stat(target);
+        throw failure;
+      }
+      return result;
+    };
+    await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
+    assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+    assert.ok(target);
+    await assert.rejects(stat(target), { code: 'ENOENT' });
+    const successful = installation();
+    await installDemonstration(config, async () => ({ ...successful.binding, catalogueRules: bytes, catalogueBuildDirectory: directory }));
+    const installed = await readFile(target);
+    await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
+    assert.deepEqual(await readFile(target), installed);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 
 for (const config of Object.values(configurations)) {
   test(`${config.id}: fictional catalog and prices come from one configuration deterministically`, () => {

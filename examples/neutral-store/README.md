@@ -115,7 +115,8 @@ This serves the database-free UI at `http://127.0.0.1:4319`. Stop with Ctrl-C.
 For a different configuration or port, use
 `npm start -- --configuration coffee --port 4320`. On macOS and Linux,
 `npm run dev` provides the [watched edit loop](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#edit-and-refresh).
-This preview does not bind database-backed purchase or account actions.
+`npm run dev` stays database-free. `./lifecycle up` is the one install command
+for the local demonstration, including updated product rules.
 Subscription price previews explain `host_binding_required` in the active
 language and point to `./lifecycle up` for the installed local demonstration.
 One-time estimates still work; installed quotes serve both purchase modes.

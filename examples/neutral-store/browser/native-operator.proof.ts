@@ -240,6 +240,17 @@ test('native support roster, catalogue administration, replay and operator admis
   const typeVersion = Number(created.value.record.payload.product.type.version);
   expect(Number.isSafeInteger(typeVersion) && typeVersion > 1).toBe(true);
   expect(sql(`SELECT count(*) FROM public.catalog_type_versions WHERE type_key='starter:item' AND version=${typeVersion}`)).toBe('1');
+  const staleDraft = structuredClone(created.value.record.payload);
+  const uninstalledVersion = typeVersion === 2 ? 3 : 2;
+  staleDraft.product.type.version = uninstalledVersion;
+  await draftForm.locator('[name=draftId]').fill(randomUUID());
+  await draftForm.locator('[name=payload]').fill(JSON.stringify(staleDraft));
+  const staleReply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  const fix = `rules version ${uninstalledVersion} is not installed; run ./lifecycle up`;
+  expect(await (await staleReply).json()).toMatchObject({ ok: false,
+    issues: [{ path: 'product.type', code: 'type_not_installed', message: fix }] });
+  await expect(draftForm.locator('.action-result')).toContainText(fix);
   const invalidDraft = structuredClone(created.value.record.payload);
   invalidDraft.product.sharedContent.title = '';
   await draftForm.locator('[name=draftId]').fill(randomUUID());

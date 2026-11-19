@@ -51,17 +51,21 @@ const contentSchema = catalogPublicationContentSchema.superRefine((content, cont
       context.addIssue({ code: "custom", path: ["publicationSkus", index, "facts"], message: "Use scalar facts" });
   });
 });
-export function assertPublishedPresentation(input: unknown, subject?: string): void {
+export function assertPublishedPresentation(input: unknown, path: string, subject?: string): void {
   const parsed = presentationSchema.nullable().safeParse(input);
   if (parsed.success) return;
   const code = "catalog_publication_presentation_invalid";
-  if (subject && parsed.error.issues[0]?.path[0] === "advertisedWeightsG")
-    throw new CatalogPublicationError(code, "validation_issue",
-      publicationIssue(code, "structural", "product.sharedContent.presentation.advertisedWeightsG", subject));
-  publicationRefuse(code);
+  const issue = parsed.error.issues[0]!;
+  const keys = issue.code === "unrecognized_keys" ? issue.keys.slice(0, 1) : [];
+  throw new CatalogPublicationError(code, "validation_issue",
+    publicationIssue(code, "structural", [path, ...issue.path, ...keys].join("."), subject));
 }
-export function assertPublishedFacts(input: unknown): void {
-  if (!publishedFactsSchema.safeParse(input).success) publicationRefuse("catalog_publication_facts_invalid");
+export function assertPublishedFacts(input: unknown, path: string, subject?: string): void {
+  const parsed = publishedFactsSchema.safeParse(input);
+  if (parsed.success) return;
+  const code = "catalog_publication_facts_invalid";
+  throw new CatalogPublicationError(code, "validation_issue",
+    publicationIssue(code, "structural", [path, ...parsed.error.issues[0]!.path].join("."), subject));
 }
 const attributes = catalogDraftSkuV2Schema.shape.attributes.unwrap();
 const claimSchema = z.object({ draftId: id, revision, commandKey: ref, fingerprint: digest }).strict();
@@ -91,19 +95,14 @@ function copiedTextPath(value: unknown, digests: ReadonlySet<string>): string[] 
     if (found) return [key, ...found];
   }
 }
-const publishedProduct = z.object({
+export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
   id, slug: z.string().min(1), name: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
   document: catalogDocumentRevisionRefSchema.nullable(), presentation: presentationSchema.nullable(), source: claimSchema,
   content: contentSchema,
 }).strict();
-export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = publishedProduct.superRefine((product, context) => {
-  const path = product.document && copiedTextPath(product, new Set([product.document.digest]));
-  if (path) context.addIssue({ code: "custom", path, message: copiedDocument });
-}) as z.ZodType<CatalogPublishedProduct>;
-
 export function decodePublishedProduct(product: CatalogPublishedProduct, documentDigests: ReadonlySet<string>): CatalogPublishedProduct {
-  const parsed = publishedProduct.safeParse(product);
+  const parsed = catalogPublishedProductSchema.safeParse(product);
   if (!parsed.success) return publicationRefuse("catalog_publication_manifest_invalid");
   assertDocumentExclusion(parsed.data, documentDigests, "product", product.type.key);
   return parsed.data;
@@ -118,23 +117,25 @@ function assertDocumentExclusion(value: unknown, digests: ReadonlySet<string>, f
   if (path) throw new CatalogPublicationError(copiedDocument, "validation_issue",
     publicationIssue(copiedDocument, "structural", [field, ...path].join("."), subject));
 }
-export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2> = z.object({
-  schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
-  skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()),
-}).strict().superRefine((manifest, context) => {
-  if (!manifest.skus.every((sku, index) => index === 0 || manifest.skus[index - 1]!.skuId < sku.skuId)
-    || !manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))
-    context.addIssue({ code: "custom", message: "manifest roster must be sorted, unique and contain its primary" });
-});
+/** Validates exact copies against the selected document and the revision digests supplied by the caller. */
+export function catalogPublicationManifestSchema(documentDigests: ReadonlySet<string> = new Set()): z.ZodType<CatalogPublicationManifestV2> {
+  return z.object({
+    schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
+    skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()),
+  }).strict().superRefine((manifest, context) => {
+    const selected = manifest.product.document?.digest;
+    const path = copiedTextPath(manifest.product, selected ? new Set([...documentDigests, selected]) : documentDigests);
+    if (path) context.addIssue({ code: "custom", path: ["product", ...path], message: copiedDocument });
+    if (!manifest.skus.every((sku, index) => index === 0 || manifest.skus[index - 1]!.skuId < sku.skuId)
+      || !manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))
+      context.addIssue({ code: "custom", message: "manifest roster must be sorted, unique and contain its primary" });
+  });
+}
 // Name every neutral field so that new draft carriers cannot become published facts.
 export function publicationContent(content: CatalogDraftSharedContentV3, subject?: string): CatalogPublishedContent {
   const { schemaVersion, catalogAction, presentation, offerMemberships, requestedModes, publicationSkus } = content;
-  assertPublishedPresentation(presentation, subject);
-  for (const [index, sku] of publicationSkus.entries()) {
-    if (publishedFactsSchema.safeParse(sku.facts).success) continue;
-    const code = "catalog_publication_facts_invalid";
-    throw new CatalogPublicationError(code, "validation_issue",
-      publicationIssue(code, "structural", `product.sharedContent.publicationSkus.${index}.facts`, subject));
-  }
+  assertPublishedPresentation(presentation, "product.sharedContent.presentation", subject);
+  for (const [index, sku] of publicationSkus.entries())
+    assertPublishedFacts(sku.facts, `product.sharedContent.publicationSkus.${index}.facts`, subject);
   return { schemaVersion, catalogAction, presentation, offerMemberships, requestedModes, publicationSkus };
 }

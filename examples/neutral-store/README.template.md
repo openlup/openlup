@@ -57,8 +57,8 @@ The test runs the same hooks as installation. Keep the rules pure and use the
 supplied arguments for time, locale and time zone. Include dependencies in the
 build so the rules need neither `require` nor Node APIs.
 
-Run `./lifecycle up` when you want to try the updated rules in **Catalogue
-drafts**. Choose **Load draft example**, save it, then use **Prepare saved draft**
+`./lifecycle up` is the one install command for the updated rules.
+`npm run dev` stays database-free. In **Catalogue drafts**, choose **Load draft example**, save it, then use **Prepare saved draft**
 with the saved draft ID and revision. Fix a refusal at the field named in its
 path and save again. The preparation report can wait for publication evidence.
 The starter keeps earlier builds available for drafts already saved.

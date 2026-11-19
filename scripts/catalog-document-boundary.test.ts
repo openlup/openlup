@@ -21,7 +21,7 @@ const QUOTE_PAYLOAD_USES = [
   "revision_document_payload: unknown;",
 ];
 const parsedProvenance = "SyntheticProvenance";
-const parsedProvenanceRefusal = `imports or reconstructs ${parsedProvenance} provenance`;
+const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
 interface SourceFile {
   path: string;
@@ -109,7 +109,7 @@ function violations(files: readonly SourceFile[]): string[] {
     if (readsDormantCatalogSkuGtin(file.source)) {
       found.push(`${file.path}: reads dormant catalog_skus.gtin`);
     }
-    if (file.path === PORTABLE_ADAPTER && new RegExp(`\\b${parsedProvenance}\\b`, "i").test(file.source)) {
+    if (file.path === PORTABLE_ADAPTER && new RegExp(`\\b(?:OmniPack|${parsedProvenance})\\b`, "i").test(file.source)) {
       found.push(`${file.path}: ${parsedProvenanceRefusal}`);
     }
 
@@ -153,7 +153,7 @@ describe("portable catalog document boundary", () => {
     [PORTABLE_ADAPTER, "import { ProductDocumentV1 } from './productDocumentContracts.js';", "imports a private document boundary"],
     [PORTABLE_ADAPTER, "ProductDocumentV1;", "private document schema vocabulary is not portable"],
     [PORTABLE_ADAPTER, "parseDocument(value);", "parses, validates, or canonicalizes a private document"],
-    [PORTABLE_ADAPTER, `// ${parsedProvenance}`, parsedProvenanceRefusal],
+    [PORTABLE_ADAPTER, `const source = "${parsedProvenance}";`, parsedProvenanceRefusal],
   ])("refuses %s with %s", (path, source, expected) => {
     expect(violations([{ path, source }])).toContain(`${path}: ${expected}`);
   });
