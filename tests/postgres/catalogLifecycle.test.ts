@@ -1473,11 +1473,12 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
       expect.soft(() => codec.decode(changed),fault).toThrow();
     }
     await db.query("SAVEPOINT governed_basket");
-    await expect.soft(db.query(`INSERT INTO public.subscription_renewal_operations(subscription_id,scheduled_at,cycle_number,identity_key,
+    const refusal = await db.query(`INSERT INTO public.subscription_renewal_operations(subscription_id,scheduled_at,cycle_number,identity_key,
       operation_fingerprint,cycle_snapshot,claim_token,claimed_by,claimed_at,lease_expires_at)
       VALUES($1,$2,1,$3,$4,$5::jsonb,$6,'synthetic',clock_timestamp(),clock_timestamp()+interval '1 minute')`,
-    [f.subscription,due.scheduledAt,codec.identity(snapshot),claimHash,JSON.stringify(changed),randomUUID()]),fault)
-      .rejects.toMatchObject({ code: "22023", message: wrongLines ? "catalog_acceptance_line_mismatch" : "catalog_acceptance_snapshot_mismatch" });
+    [f.subscription,due.scheduledAt,codec.identity(snapshot),claimHash,JSON.stringify(changed),randomUUID()])
+      .then(() => ({ admitted: true }), (error: unknown) => error);
+    expect.soft(refusal,fault).toMatchObject({ code: "22023", message: wrongLines ? "catalog_acceptance_line_mismatch" : "catalog_acceptance_snapshot_mismatch" });
     await db.query("ROLLBACK TO SAVEPOINT governed_basket");
   }
   await bind(previousRevision);
