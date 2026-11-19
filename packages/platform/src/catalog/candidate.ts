@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogPublishedProduct } from "./contracts/publication.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogDraftMediaClaimV3, CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
 import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
@@ -11,7 +11,8 @@ import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
-import { catalogPublicationMediaIssue, catalogPublicationPreparationIssues, CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict,
+import { assertCatalogPublicationGrossMass, catalogPublicationClaim, catalogPublicationMediaIssue, catalogPublicationPreparationIssues,
+  CatalogPublicationError, compileCatalogPublication, publicationReadinessVerdict, unresolvedPublicationDraftIssues, verifyCatalogPublicationMedia,
   type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
 import { z } from "./validation.js";
 
@@ -60,8 +61,11 @@ export interface CatalogCandidateDeps {
   presentationReadiness?: (productId: string, presentation: NonNullable<CatalogPublishedProduct["presentation"]>) =>
     Promise<{ ready: boolean; reasons: readonly string[] }>;
   /** @experimental Supplies current evidence for an explicit enabling phase. */
-  assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef) =>
+  assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef,
+    verifiedMedia: readonly CatalogDraftMediaClaimV3[]) =>
     Promise<{ ready: boolean; reasons: readonly string[] } | null>;
+  /** @experimental Independently verifies the sealed claim, including its revision digest. */
+  verifyMedia?: (claim: CatalogDraftMediaClaimV3, head: CatalogHeadRef) => Promise<boolean>;
 }
 const refuse = (code: CatalogCandidateError["code"]): never => { throw new CatalogCandidateError(code); };
 const equal = (left: CatalogHeadRef | null, right: CatalogHeadRef | null): boolean => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
@@ -80,19 +84,21 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     const rules = deps.publicationRules;
     const authored = catalogPublicationPreparationIssues(payload, { definition, rules: rules ?? {} });
     const hard: CatalogDraftIssue[] = [], unknown: CatalogDraftIssue[] = [];
-    for (const issue of new Map([...existingIssues, ...authored].map(issue => [`${issue.path}:${issue.code}`, issue])).values()) {
+    let current: Awaited<ReturnType<NonNullable<CatalogCandidateDeps["readPublicationState"]>>> | undefined;
+    try { current = head ? await deps.readPublicationState?.(head) : { product: null, skus: [], documents: [], retainedSources: [] }; }
+    catch { /* Retained state is unavailable. */ }
+    if (head && current?.product?.id !== record.productId) current = undefined;
+    const unresolved = current ? unresolvedPublicationDraftIssues(existingIssues, current) : existingIssues;
+    for (const issue of new Map([...unresolved, ...authored].map(issue => [`${issue.path}:${issue.code}`, issue])).values()) {
       if (issue.code.endsWith("_unavailable")) unknown.push(issue);
       else hard.push(issue);
     }
     if (!payload.product.documentRevision) hard.push({ path: "product.documentRevision", code: "document_reference_missing" });
-    if (!rules || head && !deps.readPublicationState) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
+    if (!rules || !current) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
     let compiled: ReturnType<typeof compileCatalogPublication> | undefined;
-    if (hard.length === 0 && rules) {
+    if (hard.length === 0 && rules && current) {
       try {
-        const current = head ? await deps.readPublicationState?.(head) : { product: null, skus: [], documents: [], retainedSources: [] };
-        if (!current || head && current.product?.id !== record.productId)
-          unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
-        else compiled = compileCatalogPublication({ ...current, record, payload, definition, rules });
+        compiled = compileCatalogPublication({ ...current, record, payload, definition, rules });
       } catch (error) {
         if (error instanceof CatalogPublicationError)
           hard.push({ path: error.code === "catalog_publication_activation_effect_missing" ? "publication.operations" : "publication", code: error.code });
@@ -148,14 +154,41 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     activation.issues = pending;
     if (activating.size > 0) {
       let verdict: Awaited<ReturnType<NonNullable<CatalogCandidateDeps["assessActivation"]>>> | undefined;
-      if (head && compiled) {
-        try { verdict = await deps.assessActivation?.(compiled, head); } catch { /* Missing current evidence is an unknown verdict. */ }
+      const activationRefusals: CatalogDraftIssue[] = [];
+      let proofUnavailable = false;
+      if (head && current && compiled) {
+        const verifiedMedia: CatalogDraftMediaClaimV3[] = [];
+        try {
+          for (const code of activating) {
+            const source = payload.skus.some(sku => sku.code === code) ? payload : current.retainedSources.find(source =>
+              source.payload.schemaVersion === 3 && source.payload.skus.some(sku => sku.code === code)
+              && payload.publication.evidence.drafts?.some(claim =>
+                canonicalCatalogDraftJson(claim) === canonicalCatalogDraftJson(catalogPublicationClaim(source))))?.payload;
+            const sku = source?.skus.find(sku => sku.code === code);
+            if (!sku?.netContent) throw new CatalogPublicationError("catalog_publication_operation_source_mismatch");
+            assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass ?? null, definition);
+            const claim = claims.get(code);
+            if (!claim) continue;
+            if (!authoredSkuCodes.has(code)) throw new CatalogPublicationError("catalog_publication_draft_advanced", "conflict");
+            if (catalogPublicationMediaIssue(payload.product.sharedContent.presentation.mediaRef, sku.assetRefs ?? [], claim))
+              throw new CatalogPublicationError("catalog_publication_media_evidence_mismatch");
+            if (!deps.verifyMedia) { proofUnavailable = true; continue; }
+            await verifyCatalogPublicationMedia(claim, () => deps.verifyMedia!(claim, head));
+            verifiedMedia.push(claim);
+          }
+          if (!proofUnavailable && !mediaIssues.length)
+            verdict = await deps.assessActivation?.(compiled, head, verifiedMedia);
+        } catch (error) {
+          if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable")
+            activationRefusals.push({ path: "publication.operations", code: error.code });
+          else proofUnavailable = true;
+        }
       }
       const parsed = publicationReadinessVerdict.safeParse(verdict);
-      activation.outcome = hard.length > 0 || !head || parsed.success && !parsed.data.ready
+      activation.outcome = hard.length > 0 || activationRefusals.length > 0 || !head || parsed.success && !parsed.data.ready
         || mediaIssues.some(issue => issue.code !== "media_readiness_unknown") ? "blocked-input"
         : parsed.success && !mediaIssues.length ? "ready" : "unknown";
-      activation.issues = hard.length ? [...hard, ...pending] : !head ? [{ path: "publication", code: "product_not_materialized" }]
+      activation.issues = hard.length || activationRefusals.length ? [...hard, ...activationRefusals, ...pending] : !head ? [{ path: "publication", code: "product_not_materialized" }]
         : parsed.success ? [...parsed.data.reasons.map(code => ({ path: "publication", code })), ...mediaIssues]
         : [...pending, { path: "publication", code: "activation_unknown" }];
     }

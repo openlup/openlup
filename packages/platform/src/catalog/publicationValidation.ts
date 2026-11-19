@@ -228,6 +228,21 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
     need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
   } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
 }
+
+export function unresolvedPublicationDraftIssues<T extends { code: string }>(issues: readonly T[],
+  retained: Pick<CatalogPublicationCompileInput, "product" | "skus">): T[] {
+  return issues.filter(issue => !(issue.code === "primary_sku_missing" && retained.product?.primarySkuId
+    || issue.code === "sku_missing" && retained.skus.length > 0));
+}
+
+export async function verifyCatalogPublicationMedia(claim: NonNullable<CatalogDraftPayloadV3["publication"]["evidence"]["media"]>[number],
+  verify: () => Promise<unknown>): Promise<void> {
+  // The installed verifier checks the exact sealed claim, including its revision digest.
+  need(/^[a-f0-9]{64}$/.test(claim.revisionDigest), "catalog_publication_media_readiness_unproven");
+  const verdict = await verify();
+  if (typeof verdict !== "boolean") publicationRefuse("catalog_publication_readiness_invalid", "dependency_unavailable");
+  need(verdict, "catalog_publication_media_readiness_unproven");
+}
 /** @experimental */
 export function catalogPublicationAffected(payload: CatalogDraftPayloadV3) {
   let wholeProduct = false;

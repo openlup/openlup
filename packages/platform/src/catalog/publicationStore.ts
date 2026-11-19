@@ -21,7 +21,7 @@ import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs, assertCatalogPublicationGrossMass, assertCatalogPublicationAuthorship, assertCatalogPublicationPreparation,
   compileCatalogPublicationEffects, CatalogPublicationError, publicationRefuse,
   publicationJson, publicationDigest, comparePublicationText, publicationReadinessReasons, publicationReadinessVerdict, catalogPublicationAffected,
-  catalogPublicationMediaIssue, type CatalogPublicationDocument } from "./publicationValidation.js";
+  catalogPublicationMediaIssue, unresolvedPublicationDraftIssues, verifyCatalogPublicationMedia, type CatalogPublicationDocument } from "./publicationValidation.js";
 
 const receiptColumns = "kind,scope_id,command_key,fingerprint,actor_id,publication_id,result::jsonb AS result";
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -541,9 +541,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
             const claim = mediaBySku.get(code);
             require(!catalogPublicationMediaIssue(mediaRef, assets, claim), "catalog_publication_media_readiness_unproven");
             if (claim && !verifiedMedia.has(code)) {
-              const verdict = await deps.verifyMedia(db, claim);
-              require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
-              require(verdict, "catalog_publication_media_readiness_unproven");
+              await verifyCatalogPublicationMedia(claim, () => deps.verifyMedia(db, claim));
               verifiedMedia.add(code);
             }
           }
@@ -574,9 +572,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         // Incoming rows are incremental. Retained facts satisfy only these two
         // absence issues; supplied invalid facts still refuse, and the compiler
         // revalidates the complete affected state below.
-        require(validation.valid && validation.readiness.publication.issues.every(issue =>
-          issue.code === "primary_sku_missing" && current.product?.primarySkuId !== null && current.product !== null
-          || issue.code === "sku_missing" && current.skus.length > 0), "candidate_invalid");
+        require(validation.valid && !unresolvedPublicationDraftIssues(validation.readiness.publication.issues, current).length, "candidate_invalid");
         const compilation = compileCatalogPublicationEffects({ ...prepared, product: current.product, skus: current.skus, documents: current.documents, retainedSources, rules: deps.rules });
         let step = compilation.next();
         while (!step.done) {

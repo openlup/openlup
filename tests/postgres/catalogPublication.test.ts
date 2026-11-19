@@ -3988,6 +3988,68 @@ it.each(["SQL admission", "readback, replay and recovery"] as const)("rejects om
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
 
+it.each([
+  ["retained gross only", "catalog_publication_gross_mass_required"],
+  ["unverified media digest", "catalog_publication_media_readiness_unproven"],
+  ["verified media digest", "committed"],
+  ["retained primary and SKU roster", "committed"],
+] as const)("facade and writer agree on %s", async (mode, expected) => inPriceDatabase(async () => {
+  const data = await priceDraft(), initial = realPriceAuthority(), initialActor = (await initial.authorize(null))!;
+  const first = await commit(data.publication, initial, initialActor), payload = structuredClone(data.payload);
+  const content = payload.product.sharedContent, sku = payload.skus[0], skuCode = sku.code!;
+  delete sku.priceOperations;
+  const activation = mode !== "retained primary and SKU roster";
+  const media = mode.endsWith("media digest");
+  const claims = media ? [{ skuCode, mediaRef: "example:bound-media", assetRefs: ["panel"],
+    revisionDigest: mode === "verified media digest" ? first.publicationDigest : "a".repeat(64) }] : [];
+  content.presentation = media ? { mediaRef: "example:bound-media" } : { label: "Next presentation" };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation }];
+  if (activation) payload.publication.operations.push({ op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false });
+  else {
+    payload.skus = [];
+    delete payload.product.primarySkuId;
+    Object.assign(content, { publicationSkus: [], offerMemberships: [], requestedModes: [] });
+  }
+  if (mode === "retained gross only") delete sku.grossMass;
+  if (media) { sku.assetRefs = ["panel"]; payload.publication.evidence.media = claims; }
+  const command = await save(payload, data.draftId, 2, first.head);
+  const page = await initial.readbackV2(first.head);
+  if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+  const originalRecord = (await db.query("SELECT public.catalog_draft_record($1,1) AS record", [data.draftId])).rows[0].record;
+  const document = (originalRecord.payload as CatalogDraftPayloadV3).publication.operations.find(op => op.op === "register_document_revision");
+  if (!document) throw new Error("Missing fixture document");
+  const checks: typeof claims = [], assessments: (readonly typeof claims[number][])[] = [];
+  const check = async (claim: typeof claims[number]) => { checks.push(claim); return claim.revisionDigest === first.publicationDigest; };
+  const target = realPriceAuthority(undefined, undefined, (_db, claim) => check(claim));
+  const capability = (await target.authorize(null))!, hooks = dependencies();
+  const facade = createCatalogCandidateService({ registry, publicationRules: hooks.rules,
+    readDraft: async (draftId, revision) => (await db.query("SELECT public.catalog_draft_record($1,$2) AS record", [draftId, revision ?? 3])).rows[0].record,
+    installedDefinitionDigest: async () => catalogDefinitionDigest(definition), resolveHead: async () => first.head,
+    currentHead: productId => initial.reads.current(productId), presentationReadiness: async () => ({ ready: true, reasons: [] }),
+    readPublicationState: async () => ({ product: page.product, skus: page.items.map(item => item.facts), retainedSources: [],
+      documents: [{ reference: page.product.document!, canonicalText: document.canonicalText,
+        provenance: { draftId: data.draftId, draftRevision: 1, draftCommandKey: originalRecord.commandKey, draftFingerprint: originalRecord.fingerprint } }] }),
+    verifyMedia: claim => check(claim),
+    assessActivation: async (_state, _head, verifiedMedia) => { assessments.push(verifiedMedia); return { ready: true, reasons: [] }; },
+  });
+  const preview = await facade.prepareCandidate({ draftId: data.draftId, draftRevision: 3, expectedHead: first.head });
+  for (const result of [preview, await facade.validate(preview.candidateRef), await facade.compareCandidate({ ...preview, expectedHead: first.head })]) {
+    expect(result.candidateDigest).toBe(command.candidateDigest);
+    if (expected === "committed") expect(result.preparation).toMatchObject({
+      structural: { outcome: "staged" }, activation: { outcome: activation ? "ready" : "pending" },
+    });
+    else expect(result.preparation?.activation).toMatchObject({
+      outcome: "blocked-input", issues: expect.arrayContaining([expect.objectContaining({ code: expected })]),
+    });
+  }
+  await approve(command, target, capability);
+  const published = await target.publish(command, capability);
+  if (expected === "committed") expect(published.outcome).toBe("committed");
+  else expect(published).toEqual({ outcome: "validation_issue", reason: expected });
+  expect(checks).toEqual(media ? Array.from({ length: 4 }, () => claims[0]) : []);
+  expect(assessments).toEqual(mode === "verified media digest" ? [claims, claims, claims] : []);
+}));
+
 it("publication binds an omitted SKU to its newest authored issuance without rewriting SKU facts", async () => inPriceDatabase(async () => {
   const target = realPriceAuthority(), capability = (await target.authorize(null))!;
   const data = await priceDraft(), first = await commit(data.publication, target, capability);
