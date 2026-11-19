@@ -87,6 +87,7 @@ export async function revision(installed?: ReturnType<typeof setupRules>): Promi
   const record = { ...initial.record, revision: 2, commandKey: "draft:second", fingerprint: "c".repeat(64), payload };
   const head = { publicationId: "50000000-0000-4000-8000-000000000001", revision: 1, documentDigest: retained.product.document!.digest };
   const evidence = { head, product: retained.product, skus: retained.skus, documents: retained.documents, documentRevisionHighWater: 1,
-    drafts: [{ record, receipt: catalogPublicationClaim(record), head: recordHead(record) }] };
+    drafts: [{ record, receipt: catalogPublicationClaim(record), head: recordHead(record) },
+      { record: initial.record, receipt: catalogPublicationClaim(initial.record), head: null }] };
   return { ...initial, payload, record, evidence, expectedHead: head };
 }

@@ -15,7 +15,7 @@ import { CatalogCandidateError, createCatalogCandidateService, type CatalogCandi
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
-const querySchema = z.object({ draftId: id, draftRevision: revision, expectedHead: headSchema.nullable() }).strict();
+const querySchema = z.object({ draftId: id, draftRevision: revision, expectedHead: z.unknown() }).strict();
 const referencePattern = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u;
 /** Decodes the released candidate reference for the facade and command admission.
  * @experimental
@@ -54,7 +54,6 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
   async function dispatch<Result>(candidateRef: string,
     legacy: (service: CatalogCandidateService) => Promise<Result>,
     evaluate: (reference: NonNullable<ReturnType<typeof parseCatalogCandidateReference>>, raw: PublicationDraftRecord | null) => Promise<Result>,
-    invalidCompareHead = false,
   ): Promise<Result> {
     try {
       const reference = parseCatalogCandidateReference(candidateRef);
@@ -70,14 +69,13 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       }
       return evaluate(reference, raw);
     } catch (error) {
-      if (invalidCompareHead) return refuse("candidate_invalid");
       if (error instanceof CatalogCandidateError) throw error;
       return refuse("candidate_dependency_unavailable");
     }
   }
 
   async function reconstruct(candidateRef: string, reference: NonNullable<ReturnType<typeof parseCatalogCandidateReference>>,
-    raw: PublicationDraftRecord | null, expected?: CatalogHeadRef | null): Promise<CatalogCandidatePreview> {
+    raw: PublicationDraftRecord | null, caller?: { expectedHead: unknown }): Promise<CatalogCandidatePreview> {
     try {
       const record = readPublicationDraftEnvelope(raw);
       if (!record || record.draftId !== reference.draftId || record.revision !== reference.draftRevision) return refuse("candidate_invalid");
@@ -85,9 +83,15 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       if ((payload.schemaVersion !== 3 && payload.schemaVersion !== 4) || !payload.product?.type) return refuse("candidate_invalid");
       const referenceHead = reference.head;
       let identityHead = referenceHead;
+      let unresolvedImmutableHead = false;
       const readHeadLineage = async () => {
+        const parsedHead = caller && headSchema.nullable().safeParse(caller.expectedHead);
+        if (parsedHead && (!parsedHead.success || !matchesPublicationHead(referenceHead, parsedHead.data)))
+          throw new CatalogPublicationError("head_conflict", "conflict");
+        const expected = parsedHead?.data;
         const resolved = referenceHead === null ? undefined : await readLineage(() => deps.resolveHead({ ...referenceHead }));
         const observedHead = headSchema.safeParse(resolved).data;
+        unresolvedImmutableHead = referenceHead !== null && observedHead === undefined;
         const fullHead = referenceHead === null ? undefined : expected ?? observedHead;
         const expectedHead = fullHead ?? referenceHead;
         identityHead = expectedHead;
@@ -107,25 +111,30 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
           && (!matchesPublicationHead(referenceHead, observation) || !matchesPublicationHead(comparisonHead, observation)))) {
           throw new CatalogPublicationError("head_conflict", "conflict");
         }
-        const unavailable = latest === undefined || head === undefined || referenceHead !== null && observedHead === undefined;
+        const unavailable = latest === undefined || head === undefined || unresolvedImmutableHead;
         return { head, unavailable, expectedHead: fullHead };
       };
       const definitionDrift = () => refuse("catalog_definition_drift",
         publicationIssue("catalog_definition_drift", "structural", "product.type", payload.product.type.key).message);
-      const definition = deps.registry.resolve(payload.product.type);
+      const definition = deps.registry.resolve({ ...payload.product.type });
       if (!definition?.validatorRef) return definitionDrift();
       const registryDigest = catalogDefinitionDigest(definition);
-      const installed = await deps.installedDefinitionDigest(payload.product.type);
+      const installed = await deps.installedDefinitionDigest({ ...payload.product.type });
       if (installed !== registryDigest) return definitionDrift();
       const evaluation = publication.evaluation ?? { evaluatedAt: record.createdAt };
       const issues: CatalogDraftIssue[] = [];
       if (record.status !== "open") issues.push({ path: "draft", code: "draft_abandoned" });
       const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
-        expectedHead: referenceHead === null ? null : expected ?? referenceHead,
+        expectedHead: referenceHead,
         evaluation, observations: publication, readCurrentHead: () => readHeadLineage(),
         attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
       if (result.failure?.code === "head_conflict"
         || (result.failure?.code === "candidate_invalid" && !result.failure.diagnostic?.message)) return refuse(result.failure.code);
+      if (unresolvedImmutableHead) {
+        // An independent hard refusal still wins, but the unresolved reference cannot issue a digest.
+        if (result.failure) return Promise.reject(result.failure);
+        return refuse("candidate_dependency_unavailable");
+      }
       if (result.head !== undefined) identityHead = result.head;
       const structural = result.structural.map(issue => issue.diagnostic);
       const blocked = result.structural.some(issue => issue.outcome !== "dependency_unavailable");
@@ -163,22 +172,22 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       const parsed = querySchema.safeParse(query);
       if (!parsed.success) return refuse("candidate_invalid");
       const { draftId, draftRevision, expectedHead } = parsed.data;
-      const candidateRef = `v1:${draftId}@${draftRevision}/${expectedHead === null ? "unpublished" : `${expectedHead.publicationId}@${expectedHead.revision}`}`;
+      const head = headSchema.nullable().safeParse(expectedHead).data;
+      // A malformed caller head still reaches admission before it can be refused.
+      const candidateRef = `v1:${draftId}@${draftRevision}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}`;
       return dispatch(candidateRef, service => service.prepareCandidate(query),
-        (reference, raw) => reconstruct(candidateRef, reference, raw, expectedHead));
+        (reference, raw) => reconstruct(candidateRef, reference, raw, { expectedHead }));
     },
     async validate(candidateRef) {
       return dispatch(candidateRef, service => service.validate(candidateRef),
         (reference, raw) => reconstruct(candidateRef, reference, raw));
     },
     async compareCandidate(input) {
-      const head = headSchema.nullable().safeParse(input.expectedHead);
       return dispatch(input.candidateRef, service => service.compareCandidate(input), async (reference, raw) => {
-        if (!head.success) return refuse("candidate_invalid");
-        const result = await reconstruct(input.candidateRef, reference, raw, head.data);
+        const result = await reconstruct(input.candidateRef, reference, raw, { expectedHead: input.expectedHead });
         if (input.candidateDigest !== result.candidateDigest) return refuse("candidate_digest_mismatch");
         return result;
-      }, !head.success);
+      });
     },
   };
 }

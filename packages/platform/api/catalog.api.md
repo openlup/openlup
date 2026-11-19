@@ -3831,6 +3831,11 @@ import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { type CatalogDraftValidation } from "./draftValidation.js";
+import { CatalogCombinationError } from "./variantCombination.js";
+export declare const catalogCombinationIssue: (error: CatalogCombinationError, prefix?: string) => {
+    path: string;
+    code: import("./index.js").CatalogCombinationCode;
+};
 /** Incomplete v2 drafts remain saveable; required attributes participate in publication readiness.
  * @experimental
  */

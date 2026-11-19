@@ -29,6 +29,7 @@ type Case = { id: string; fixture?: "revision"; arrange?: (data: Fixture) => voi
   substitute?: boolean;
   currentHead?: CatalogCandidateDeps["currentHead"];
   resolveHead?: CatalogCandidateDeps["resolveHead"];
+  facadeRefusal?: string;
   draftAdvanced?: boolean;
   latestReadRejects?: boolean;
   routeCalls?: readonly [number, number, number];
@@ -106,7 +107,7 @@ function retainedMedia(data: Fixture) {
   record.payload.product.sharedContent.presentation = { mediaRef: "example:media" };
   const claim = catalogPublicationClaim(record);
   data.evidence.skus[0]!.source = claim;
-  data.evidence.drafts.push({ record, receipt: claim, head: record });
+  data.evidence.drafts.splice(1, 0, { record, receipt: claim, head: record });
 }
 const routeAt = (index: number): Partial<CatalogCandidateIssue> =>
   ({ phase: "structural", path: `publication.operations.${index}`, subject: "example:article" });
@@ -124,6 +125,50 @@ function withdraw(data: Fixture) {
     { op: "set_product_lifecycle" as const, productSlug: "article", expectedState: "active" as const,
       state: "withdrawn" as const, children: [{ skuCode: "ARTICLE", expectedState: "active" as const }] },
   ] } };
+}
+const descendingDocument = { fr: "Article", en: "Item" };
+const descendingWire = (value: Record<string, unknown>) =>
+  JSON.stringify(Object.fromEntries(Object.entries(value).sort(([first], [second]) => first < second ? 1 : first > second ? -1 : 0)));
+const descendingRules = artifact.replace("a < b ? -1 : a > b ? 1 : 0", "a < b ? 1 : a > b ? -1 : 0") + `
+const identify = module.exports.identifyDocument;
+module.exports.identifyDocument = document => "fr" in document
+  ? { schemaId: "example:document.v1", documentRef: "example:document", productSlug: "article",
+      revisionNo: 2, name: "Synthetic article" }
+  : identify(document);
+module.exports.deriveSkuFacts = () => ({ derived: 12 });
+`;
+function documentHistory(data: Fixture, readable: boolean, copy: boolean) {
+  const reference = data.payload.product.documentRevision!;
+  const documents = [
+    [2, descendingDocument],
+    [3, { ...input().payload.product.sharedContent.document, revisionNo: 3 }],
+  ] as const;
+  data.evidence.documents = documents.map(([revisionNo, document]) => {
+    const canonicalText = descendingWire(document);
+    const digest = createHash("sha256").update(canonicalText).digest("hex");
+    const sealed = { ...reference, id: `40000000-0000-4000-8000-00000000000${revisionNo}`, revisionNo, digest };
+    const record = structuredClone(data.record);
+    record.draftId = `30000000-0000-4000-8000-00000000000${revisionNo}`;
+    record.payload.product.documentRevision = sealed;
+    record.payload.product.sharedContent.document = document;
+    const receipt = catalogPublicationClaim(record);
+    const available = readable || revisionNo === 3;
+    if (available) data.evidence.drafts.push({ record, receipt, head: null });
+    return { reference: sealed, canonicalText: available ? canonicalText : "",
+      provenance: { draftId: receipt.draftId, draftRevision: receipt.revision,
+        draftCommandKey: receipt.commandKey, draftFingerprint: receipt.fingerprint } };
+  });
+  const selected = data.evidence.documents[1]!.reference;
+  data.evidence.documentRevisionHighWater = 3;
+  data.expectedHead!.documentDigest = selected.digest;
+  data.evidence.product!.document = selected;
+  data.payload.product.documentRevision = selected;
+  const presentation = { shortName: { en: "Item", fr: copy ? "Article" : "Example" } };
+  data.evidence.product!.presentation = structuredClone(presentation);
+  data.evidence.product!.content.presentation = structuredClone(presentation);
+  data.payload.product.sharedContent.presentation = structuredClone(presentation);
+  data.payload.publication.kind = "compensation";
+  operation(data, "set_product_presentation", { presentation });
 }
 const productRefusal = artifact.replace("validateProduct: () => []", 'validateProduct: () => ["product_rule_rejected"]');
 const exactDocument = (data: Fixture) => canonicalCatalogDraftJson(data.payload.product.sharedContent.document);
@@ -180,7 +225,7 @@ const cases: Case[] = [
     Object.assign(sku, { status: "active", sellableStandalone: true, grossMass, source: catalogPublicationClaim(retained) });
     data.evidence.product!.status = "active";
     data.evidence.product!.presentation = { mediaRef: "example:media" };
-    data.evidence.drafts.push({ record: retained, receipt: catalogPublicationClaim(retained), head: retained });
+    data.evidence.drafts.splice(1, 0, { record: retained, receipt: catalogPublicationClaim(retained), head: retained });
     pointerBeforeRoute(data);
   }, expected: ["catalog_publication_media_readiness_unproven", "duplicate_route", "catalog_publication_media_readiness_unproven"],
   diagnostic: { phase: "activation", path: "publication.evidence.media", subject: "ARTICLE" },
@@ -208,7 +253,8 @@ const cases: Case[] = [
     fixture: "revision", resolveHead: async () => { throw new Error("synthetic immutable-head timeout"); },
     readiness: occupied ? routeConflict : ready, routeCalls: [1, 1, 1], evidenceCalls: 3,
     expected: reason(occupied ? "duplicate_route" : "publication_head_unavailable"),
-    ...(occupied ? { diagnostic: routeAt(0) } : { outcome: "unknown" }),
+    facadeRefusal: occupied ? "duplicate_route" : "candidate_dependency_unavailable",
+    ...(occupied && { diagnostic: routeAt(0) }),
   })),
   { id: "a rejected latest draft read leaves a known route refusal visible", fixture: "revision",
     latestReadRejects: true, readiness: routeConflict, routeCalls: [1, 1, 1],
@@ -425,6 +471,31 @@ const cases: Case[] = [
     return payload;
   }, rulesAsset: productRefusal, expected: reason("catalog_lifecycle_withdrawal_overlay_refused"),
     diagnostic: { phase: "structural", path: "product", subject: "example:article" }, routeCalls: [0, 0, 0] },
+  { id: "U-R3-HOST-CANONICAL", rulesAsset: descendingRules.replace("revisionNo: 2, name:", "revisionNo: 1, name:"), arrange(data) {
+    const canonicalText = descendingWire(descendingDocument);
+    const digest = createHash("sha256").update(canonicalText).digest("hex");
+    expect(digest).not.toBe(publicationDigest(descendingDocument));
+    data.payload.product.documentRevision!.digest = digest;
+    data.payload.product.sharedContent.document = descendingDocument;
+    const presentation = { shortName: { en: "Item", fr: "Article" } };
+    data.payload.product.sharedContent.presentation = presentation;
+    operation(data, "register_document_revision", { canonicalText, digest });
+    operation(data, "set_product_presentation", { presentation });
+  }, expected: reason("catalog_publication_document_text_copied"),
+  diagnostic: { phase: "structural", path: "product.presentation.shortName", subject: "example:article" }, routeCalls: [1, 1, 1] },
+  { id: "R3 compensation cannot finalise content while revision 2 is unreadable", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, false, true),
+    expected: reason("catalog_publication_document_bytes_unavailable"), outcome: "unknown",
+    diagnostic: { phase: "structural", path: "product.presentation", subject: "example:article" }, routeCalls: [1, 1, 1] },
+  { id: "R3 compensation excludes a re-encoded copy of readable revision 2", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, true, true),
+    expected: reason("catalog_publication_document_text_copied"),
+    diagnostic: { phase: "structural", path: "product.presentation.shortName", subject: "example:article" }, routeCalls: [1, 1, 1] },
+  { id: "R3 compensation admits a distinct value when revision 2 is readable", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, true, false), routeCalls: [1, 1, 1] },
+  { id: "R3 unavailable history leaves an independent route refusal visible", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, false, true), readiness: routeConflict,
+    expected: reason("duplicate_route"), diagnostic: routeAt(0), routeCalls: [1, 1, 1] },
   { id: "the published codec rejects an exact copy of the selected document", arrange: data => copiedPresentation(data),
     expected: reason("catalog_publication_document_text_copied"),
     diagnostic: { phase: "structural", path: "product.presentation.title", subject: "example:article" }, routeCalls: [1, 1, 1] },
@@ -527,6 +598,15 @@ const cases: Case[] = [
     expected: reason("attribute_projection_text_too_large"), routeCalls: [1, 1, 1],
     outcome: "blocked-input", diagnostic: { phase: "structural", path, subject },
   }))),
+  { id: "V-RETAINED-AXIS", fixture: "revision", arrange(data) {
+    data.definition = { ...data.definition, dimensions: [{ key: "style", kind: "choice", values: ["one", "two"] }],
+      axes: [{ key: "style", attributeKey: "style" }],
+      attributes: [{ key: "style", scope: "variant", valueType: { kind: "enum", values: [{ id: "one" }, { id: "two" }] },
+        filterable: false, facetable: false, public: true, required: false, cardinality: { min: 0, max: 1 }, displayOrder: 0, labels: {} }] };
+    data.registry = { resolve: () => data.definition };
+    data.installedDefinitionDigest = catalogDefinitionDigest(data.definition);
+    data.payload.product.dimensions = ["style"];
+  }, expected: reason("option_missing"), diagnostic: { phase: "structural", path: "options.style", subject: "ARTICLE" } },
   { id: "D-034 publication fact intent names an incoming SKU", arrange: data => {
     data.payload.product.sharedContent.publicationSkus.push({ ...data.payload.product.sharedContent.publicationSkus[0]!, skuCode: "STRAY" });
   }, expected: reason("intent_sku_absent") },
@@ -540,7 +620,10 @@ const cases: Case[] = [
     expected: reason("catalog_action_conflict") },
   { id: "D-039 create name must agree with the installed document", arrange: data => operation(data, "create_product", { name: "Unrelated" }),
     expected: reason("catalog_publication_product_name_source_mismatch") },
-  { id: "D-040 an exact registered document can supply the create name", arrange: data => { delete data.payload.product.sharedContent.document; } },
+  { id: "D-040 registered bytes can supply the create name while the canonical value is unavailable",
+    arrange: data => { delete data.payload.product.sharedContent.document; }, outcome: "unknown",
+    expected: reason("catalog_publication_document_bytes_unavailable"),
+    diagnostic: { phase: "structural", path: "product.presentation", subject: "example:article" } },
   { id: "D-041 H-1 create SKU binds the authored document revision", arrange: data => operation(data, "create_sku", { documentRevisionNo: 2 }),
     expected: reason("catalog_publication_v3_compile_document_stale") },
   { id: "D-041 binds the earlier effective pointer", arrange: data => {
@@ -672,7 +755,7 @@ const cases: Case[] = [
     expected: reason("catalog_publication_presentation_unavailable") },
 ];
 
-it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, resolveHead, draftAdvanced, latestReadRejects, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
+it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, resolveHead, facadeRefusal, draftAdvanced, latestReadRejects, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
   const bound = rulesAsset === undefined ? {} : setupRules(rulesAsset);
   const data = fixture === "revision" ? await revision() : { ...input(), ...bound };
   if (fixture === "revision") Object.assign(data, bound);
@@ -706,11 +789,31 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   };
   const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead };
   const before = canonicalCatalogDraftJson(record.payload);
-  const preview = await service.prepareCandidate(query);
-  checkRouteCalls(routeCalls?.[0]);
-  expect(await service.validate(preview.candidateRef)).toEqual(preview);
-  checkRouteCalls(routeCalls?.[0]);
-  expect(await service.compareCandidate({ ...preview, expectedHead: data.expectedHead })).toEqual(preview);
+  const candidateRef = `v1:${query.draftId}@${query.draftRevision}/${data.expectedHead ? `${data.expectedHead.publicationId}@${data.expectedHead.revision}` : "unpublished"}`;
+  let preview;
+  if (facadeRefusal) {
+    const refusal = { code: facadeRefusal, ...(diagnostic && { diagnostic }) };
+    await expect(service.prepareCandidate(query)).rejects.toMatchObject(refusal);
+    checkRouteCalls(routeCalls?.[0]);
+    await expect(service.validate(candidateRef)).rejects.toMatchObject(refusal);
+    checkRouteCalls(routeCalls?.[0]);
+    await expect(service.compareCandidate({ candidateRef, candidateDigest: "0".repeat(64), expectedHead: data.expectedHead }))
+      .rejects.toMatchObject(refusal);
+  } else {
+    preview = await service.prepareCandidate(query);
+    checkRouteCalls(routeCalls?.[0]);
+    expect(await service.validate(preview.candidateRef)).toEqual(preview);
+    checkRouteCalls(routeCalls?.[0]);
+    expect(await service.compareCandidate({ ...preview, expectedHead: data.expectedHead })).toEqual(preview);
+    expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
+    if (outcome) expect(preview?.preparation?.structural.outcome).toBe(outcome);
+    if (diagnostic) {
+      if (diagnostic.phase === "activation") expect(preview?.preparation?.activation.outcome).toBe("blocked-input");
+      const issues = diagnostic.phase === "activation" ? preview.preparation?.activation.issues : preview.preparation?.structural.issues;
+      expect(issues?.[0]).toEqual(expect.objectContaining({ code: expected[0], ...diagnostic }));
+      if (message) expect(issues?.[0]?.message).toContain(message);
+    }
+  }
   checkRouteCalls(routeCalls?.[0]);
   if (evidenceCalls !== undefined) expect(readEvidence).toHaveBeenCalledTimes(evidenceCalls);
   if (expected[0] === "catalog_publication_rules_binding_mismatch") {
@@ -719,14 +822,6 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   }
   if (draftAdvanced) expect(readDraft?.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
-  expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
-  if (outcome) expect(preview.preparation?.structural.outcome).toBe(outcome);
-  if (diagnostic) {
-    if (diagnostic.phase === "activation") expect(preview.preparation?.activation.outcome).toBe("blocked-input");
-    const issues = diagnostic.phase === "activation" ? preview.preparation?.activation.issues : preview.preparation?.structural.issues;
-    expect(issues?.[0]).toEqual(expect.objectContaining({ code: expected[0], ...diagnostic }));
-    if (message) expect(issues?.[0]?.message).toContain(message);
-  }
   if (rulesAsset && diagnostic?.cause) expect(() => loadCatalogRules(Buffer.from(rulesAsset)).validateContent({}))
     .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause, ...(message && { message: expect.stringContaining(message) }) }) }));
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
@@ -752,11 +847,11 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   }
   if (decisionHead && expected[0] === "catalog_publication_rules_binding_mismatch") expect(decisionHead).not.toHaveBeenCalled();
   expect(canonicalCatalogDraftJson(record.payload)).toBe(before);
-  if (priceListRefusal) expect(preview.preparation?.structural.issues).toContainEqual({ code: "price_list_not_found", phase: "pricing",
+  if (priceListRefusal) expect(preview?.preparation?.structural.issues).toContainEqual({ code: "price_list_not_found", phase: "pricing",
     path: "skus.0.priceOperations.0", subject: priceList,
     message: "Select an installed price list for this price change, then prepare the draft again." });
   if (activationReady) {
-    expect(preview.preparation?.activation.outcome).toBe("ready");
+    expect(preview?.preparation?.activation.outcome).toBe("ready");
     expect(assessActivation).toHaveBeenCalledTimes(4);
   }
   if (verifyMedia && expected.every(code => code === null))
@@ -822,6 +917,64 @@ it("T-1 the facade completes a partial head before requesting evidence", async (
   const unavailable = await service.validate(prepared.candidateRef);
   expect(unavailable.issues).toEqual([{ code: "publication_head_unavailable", path: "publication" }]);
   expect(readEvidence).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ expectedHead }));
+});
+
+it("U-UNRESOLVED-DIGEST refuses to seal until the immutable head is readable", async () => {
+  const data = await revision();
+  const readHead = vi.fn<CatalogCandidateDeps["currentHead"]>(async () => ({
+    outcome: "found", head: data.expectedHead!, documentRef: "example:document", observations: [],
+  }));
+  const resolveHead = vi.fn<CatalogCandidateDeps["resolveHead"]>(async () => data.expectedHead);
+  const service = facade(data, undefined, false, data.record, readHead, undefined, resolveHead);
+  const prepared = await service.prepareCandidate({
+    draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead,
+  });
+  resolveHead.mockResolvedValueOnce(null);
+  readHead.mockRejectedValueOnce(new Error("synthetic current head timeout"));
+  await expect(service.validate(prepared.candidateRef)).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
+  await expect(service.compareCandidate({ ...prepared, expectedHead: data.expectedHead })).resolves.toEqual(prepared);
+});
+
+it.each([false, true])("V-COMPARE-HEAD-OUTAGE refuses a contradictory caller head, outage=%s", async outage => {
+  const data = input();
+  const currentHead = vi.fn<CatalogCandidateDeps["currentHead"]>(async () => ({ outcome: "unpublished" }));
+  const service = facade(data, undefined, false, data.record, currentHead);
+  const preview = await service.prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null });
+  currentHead.mockClear();
+  if (outage) currentHead.mockResolvedValue({ outcome: "unsupported", reason: "publication_not_supported" });
+  await expect(service.compareCandidate({ ...preview, expectedHead: movedHead })).rejects.toMatchObject({ code: "head_conflict" });
+  expect(currentHead).not.toHaveBeenCalled();
+});
+
+it("U-COMPARE-MALFORMED uses head_conflict on the publication route", async () => {
+  const data = await revision();
+  const service = facade(data);
+  const preview = await service.prepareCandidate({
+    draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead,
+  });
+  await expect(service.compareCandidate({ ...preview, expectedHead: {} as typeof movedHead }))
+    .rejects.toMatchObject({ code: "head_conflict" });
+  await expect(service.prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: {} as typeof movedHead }))
+    .rejects.toMatchObject({ code: "head_conflict" });
+});
+
+it("U-HEAD-READ-ALIASES keeps the expected head independent of the evidence reader", async () => {
+  const data = await revision();
+  const expectedHead = data.expectedHead!;
+  const otherHead = { ...expectedHead, publicationId: movedHead.publicationId };
+  const readEvidence = vi.fn<CatalogCandidatePublicationDeps["readEvidence"]>(async request => {
+    Object.assign(request.expectedHead!, otherHead);
+    return { ...data.evidence, head: otherHead };
+  });
+  const service = facade(data, { readEvidence });
+  await expect(service.prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead }))
+    .rejects.toMatchObject({ code: "head_conflict" });
+  const { evidence: _evidence, ...decision } = data;
+  for (const mode of ["first-decision", "compile"] as const) {
+    await expect(compileCatalogPublication({ ...decision, observations: { readEvidence } }, mode))
+      .rejects.toMatchObject({ code: "head_conflict" });
+  }
+  expect(expectedHead.publicationId).not.toBe(otherHead.publicationId);
 });
 
 it("Q-PRICE-READ-ALIASES-SEALED-EFFECT discards a price reader mutation", async () => {
@@ -891,7 +1044,7 @@ it("the released v2 facade runs its configured validator without publication pre
     currentHead: async () => ({ outcome: "unpublished" }), resolveHead: async () => null });
   const preview = await service.prepareCandidate({ draftId: record.draftId, draftRevision: record.revision, expectedHead: null });
   expect(preview.issues).toContainEqual({ code: "unexpected_callback", path: "product.sharedContent" });
-  expect(preview.preparation?.structural.outcome).toBe("unknown");
+  expect(preview?.preparation?.structural.outcome).toBe("unknown");
   expect(await service.validate(preview.candidateRef)).toEqual(preview);
   expect(await service.compareCandidate({ ...preview, expectedHead: null })).toEqual(preview);
   expect(callback).toHaveBeenCalledTimes(3);

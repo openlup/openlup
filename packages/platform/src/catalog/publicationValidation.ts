@@ -3,7 +3,7 @@ import { z } from "./validation.js";
 import { catalogDraftSummarySchema } from "./draftSchemas.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
-import { canonicalizeCatalogCombinationV2 } from "./variantCombination.js";
+import { canonicalizeCatalogCombinationV2, CatalogCombinationError } from "./variantCombination.js";
 import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, parseCatalogQuantity } from "@openlup/core/catalog";
 import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
@@ -15,7 +15,7 @@ import { assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDo
   publicationDigest, publicationJson, publicationReadinessVerdict } from "./publicationCodec.js";
 import { resolvePublicationRules, ruleProduct, ruleSku } from "./publicationRules.js";
 import type { CatalogPublicationRulesModule, CatalogRulesContext } from "./catalogPublicationRules.js";
-import { validateCatalogDraftV2 } from "./draftV2Validation.js";
+import { catalogCombinationIssue, validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { validateCatalogAttributes } from "./attributeValidation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
@@ -279,6 +279,22 @@ function publicationAuthorship(record: PublicationDraftRecord, payload: Publicat
   const registrations = new Map(payload.publication.operations.flatMap(operation =>
     operation.op === "register_document_revision" ? [[operation.revisionId, operation] as const] : []));
   const proven = new Map(retained.map(entry => [entry.record, entry]));
+  const sourcesByRevision = new Map(sources.map(source => [`${source.draftId}@${source.revision}`, source]));
+  function documentDraft(provenance: CatalogPublicationDocument["provenance"]) {
+    const source = sourcesByRevision.get(`${provenance.draftId}@${provenance.draftRevision}`);
+    if (source?.commandKey === provenance.draftCommandKey && source.fingerprint === provenance.draftFingerprint) return source;
+  }
+  function documentValue({ provenance, reference }: CatalogPublicationDocument) {
+    const source = documentDraft(provenance);
+    if (!source || source.productId !== payload.product.id) return;
+    if (source !== record) {
+      // The receipt binds the immutable revision even after that draft's head moves.
+      const receipt = draftReceipt.safeParse(proven.get(source)?.receipt);
+      if (!receipt.success || !equal(receipt.data, catalogPublicationClaim(source))) return;
+    }
+    const authored = intents.get(source)!.product;
+    if (equal(authored.documentRevision, reference)) return authored.sharedContent.document;
+  }
   function requireCurrent(source: PublicationDraftRecord) {
     const entry = proven.get(source);
     if (!entry || !bindDraftObservation(entry, source, record)) {
@@ -314,11 +330,9 @@ function publicationAuthorship(record: PublicationDraftRecord, payload: Publicat
     const provenance = given.source === "current_draft"
       ? { draftId: record.draftId, draftRevision: record.revision, draftCommandKey: record.commandKey, draftFingerprint: record.fingerprint }
       : { draftId: given.draftId, draftRevision: given.draftRevision, draftCommandKey: given.draftCommandKey, draftFingerprint: given.draftFingerprint };
-    const source = sources.find(source => source.draftId === provenance.draftId && source.revision === provenance.draftRevision
-      && source.commandKey === provenance.draftCommandKey && source.fingerprint === provenance.draftFingerprint);
-    return { source, provenance };
+    return { source: documentDraft(provenance), provenance };
   }
-  function document(operation: Extract<PublicationOperation, { op: "register_document_revision" }>): CatalogPublicationDocument | undefined {
+  function document(operation: Extract<PublicationOperation, { op: "register_document_revision" }>) {
     const { source, provenance } = documentSource(operation);
     const intent = source && intents.get(source);
     const reference = intent?.product.documentRevision;
@@ -328,9 +342,7 @@ function publicationAuthorship(record: PublicationDraftRecord, payload: Publicat
     if (!reference || reference.id !== operation.revisionId || reference.revisionNo !== operation.revisionNo
       || reference.documentRef !== operation.documentRef || reference.sourceRef !== operation.sourceRef || reference.digest !== operation.digest)
       return publicationRefuse("catalog_publication_document_source_mismatch");
-    if (rules && intent.product.sharedContent.document !== undefined)
-      need(matchesAuthoredDocument(intent.product.sharedContent.document, operation.canonicalText, rules), "catalog_publication_v3_document_invalid");
-    return { reference, canonicalText: operation.canonicalText, provenance };
+    return { document: { reference, canonicalText: operation.canonicalText, provenance }, authored: intent.product.sharedContent.document };
   }
   function productOperation(operation: Extract<PublicationOperation, { productSlug: string }>) {
     need(operation.productSlug === slug, "catalog_publication_scope_expansion");
@@ -380,7 +392,7 @@ function publicationAuthorship(record: PublicationDraftRecord, payload: Publicat
       need(operation.logisticsRef === (source.sku.logisticsRef ?? null), "catalog_publication_logistics_source_mismatch");
     return source;
   }
-  return { document, documentSource, productOperation, skuOperation, sku };
+  return { document, documentSource, documentValue, productOperation, skuOperation, sku };
 }
 
 type PublicationMode = "preview" | "first-decision" | "compile";
@@ -440,16 +452,22 @@ function boundDrafts(record: PublicationDraftRecord, payload: PublicationIntent,
   return { retained, claimed, incomplete };
 }
 
-async function observe<T>(read: () => Promise<T | undefined>): Promise<T | undefined> {
-  try { return await read(); } catch { return undefined; }
-}
-
 /** Interpret one sealed intent. A writer can consume the ordered operations
  * and price obligations after successful evaluation against its guarded facts.
  */
 export async function evaluateCatalogPublication(input: Omit<CatalogPublicationCompileInput, "expectedHead"> & {
   expectedHead: ExpectedPublicationHead | null;
 }, mode: PublicationMode) {
+  // Capture independent writable views at each phase boundary. Installed rule hooks
+  // already exchange private JSON through their dispatcher.
+  const snapshot = <Views extends unknown[]>(...views: Views): Views => views.map(view => structuredClone(view)) as Views;
+  async function observe<T>(read: () => Promise<T | undefined>): Promise<T | undefined> {
+    try { return await read(); } catch { return undefined; }
+  }
+  const attributeReferences = input.attributeReferences && {
+    resolve: (references: Parameters<CatalogAttributeReferencePort["resolve"]>[0]) =>
+      input.attributeReferences!.resolve(snapshot(references)[0]),
+  };
   const structural: EvaluationIssue[] = [], activationIssues: EvaluationIssue[] = [];
   const issuesByPhase = { structural, activation: activationIssues };
   const position = { phase: "structural" as PublicationPhase, path: "product", subject: input.definition.key };
@@ -463,12 +481,16 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const compiled = await planPublication();
     return { compiled, structural, activationIssues, activating, pending, failure, completed, head: knownHead };
   } catch (error) {
-    if (!(error instanceof CatalogPublicationError)) throw error;
-    const diagnostic = publicationDiagnostic(error, position.phase, position.path, position.subject);
+    const refusal = error instanceof CatalogCombinationError
+      ? new CatalogPublicationError(error.code, "validation_issue", {
+        ...publicationIssue(error.code, position.phase, position.path, position.subject), ...catalogCombinationIssue(error),
+      }) : error;
+    if (!(refusal instanceof CatalogPublicationError)) throw refusal;
+    const diagnostic = publicationDiagnostic(refusal, position.phase, position.path, position.subject);
     const issues = issuesByPhase[diagnostic.phase === "activation" ? "activation" : "structural"];
-    const issue = { diagnostic, outcome: error.outcome };
+    const issue = { diagnostic, outcome: refusal.outcome };
     if (isUnavailable(issue)) issues.push(issue);
-    else { failure = new CatalogPublicationError(error.code, error.outcome, diagnostic); issues.unshift(issue); }
+    else { failure = new CatalogPublicationError(refusal.code, refusal.outcome, diagnostic); issues.unshift(issue); }
     return { compiled: undefined, structural, activationIssues, activating, pending, failure, completed, head: knownHead };
   }
 
@@ -502,15 +524,16 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
   }
 
   async function admit() {
-    const { record, definition } = input;
+    const { definition } = input;
     position.path = "product.type";
     need(input.installedDefinitionDigest === catalogDefinitionDigest(definition), "catalog_definition_drift");
-    const rules = resolvePublicationRules(definition, input.evaluation ?? { evaluatedAt: record.createdAt }, mode !== "preview");
+    const rules = resolvePublicationRules(definition, input.evaluation ?? { evaluatedAt: input.record.createdAt }, mode !== "preview");
     position.path = "product";
-    need(record.payload?.schemaVersion === 3 || record.payload?.schemaVersion === 4, "catalog_publication_source_invalid");
+    need(input.record.payload?.schemaVersion === 3 || input.record.payload?.schemaVersion === 4, "catalog_publication_source_invalid");
     let canonicalPayload: string;
-    try { canonicalPayload = canonicalCatalogDraftJson(record.payload); }
+    try { canonicalPayload = canonicalCatalogDraftJson(input.record.payload); }
     catch { return publicationRefuse("candidate_invalid"); }
+    const [record] = snapshot(input.record);
     // Check the temporary numeric domain before strict positive-quantity decoding,
     // so zero, negative, fractional and overflow all have the same stable refusal.
     assertCatalogPublicationMassInputs(record.payload, definition);
@@ -555,7 +578,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       skus: intentSkus.map(({ demandPolicyRef: _policy, ...sku }) => sku) };
     position.path = "product.sharedContent";
     const validation = await validateCatalogDraftV2(validationPayload, { resolve: () => ({ ...definition,
-      validateContent: !withdrawalOnly && rules ? rules.validateContent : () => [] }) }, input.attributeReferences);
+      validateContent: !withdrawalOnly && rules ? rules.validateContent : () => [] }) }, attributeReferences);
     const draftIssues = validation.valid ? validation.readiness.publication.issues : validation.issues;
     if (!validation.valid) {
       const refusal = draftIssues.find(issue => issue.code !== "attribute_reference_unresolved");
@@ -564,32 +587,37 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         throw new CatalogPublicationError(refusal.code, "validation_issue", diagnostic);
       }
     }
-    return { payload, content, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue, validationPayload, draftIssues };
+    return { record, payload, content, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue, validationPayload, draftIssues };
   }
 
-  async function bindEvidence({ payload, content, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue,
+  async function bindEvidence({ record, payload, content, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue,
     validationPayload, draftIssues }: Awaited<ReturnType<typeof admit>>) {
-    const { record, definition, observations } = input;
+    const { definition, observations } = input;
     position.path = "publication";
+    const [expected] = snapshot(input.expectedHead);
     let lineage: Awaited<ReturnType<NonNullable<typeof input.readCurrentHead>>>;
     try { lineage = await input.readCurrentHead?.() ?? { head: undefined, unavailable: Boolean(input.readCurrentHead) }; }
     catch (error) {
       if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") throw error;
       lineage = { head: undefined, unavailable: true };
     }
-    const expected = input.expectedHead, completion = lineage.expectedHead;
+    const completion = publicationHeadSchema.safeParse(lineage.expectedHead).data;
     if (completion !== undefined && !matchesPublicationHead(expected, completion)) publicationRefuse("head_conflict", "conflict");
     const requestedHead = expected && completion && expected.documentDigest === undefined
       ? { ...expected, documentDigest: completion.documentDigest } : expected;
-    const current = lineage.head;
+    const current = lineage.head === null ? null : publicationHeadSchema.safeParse(lineage.head).data;
     if (current !== undefined && !matchesPublicationHead(requestedHead, current)) publicationRefuse("head_conflict", "conflict");
     knownHead = requestedHead === null ? null : requestedHead.documentDigest === undefined ? current
       : { ...requestedHead, documentDigest: requestedHead.documentDigest };
     const evidenceHead = knownHead;
-    const evidence = input.evidence !== undefined ? input.evidence : evidenceHead === undefined ? null
-      : await observe(() => observations?.readEvidence?.({
+    const evidence = await observe(async () => {
+      if (input.evidence !== undefined) return snapshot(input.evidence)[0];
+      if (evidenceHead === undefined || !observations?.readEvidence) return;
+      const [request] = snapshot({
         candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead: evidenceHead,
-      }) ?? Promise.resolve(undefined)) ?? null;
+      });
+      return snapshot(await observations.readEvidence(request))[0];
+    }) ?? null;
     const head = evidence && publicationHeadSchema.nullable().safeParse(evidence.head);
     const recordedProduct = evidence && catalogPublishedProductSchema.nullable().safeParse(evidence.product);
     const skuRows = evidence && Array.isArray(evidence.skus) ? evidence.skus : undefined;
@@ -622,7 +650,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       documentRevisionHighWater: highWaterAvailable ? evidence.documentRevisionHighWater : 0,
     };
     if (!rules || !evidence) structural.push(missing("publication_preparation_unavailable", "publication"));
-    if (lineage.unavailable || knownHead === undefined) structural.push(missing("publication_head_unavailable", "publication"));
+    if (lineage.unavailable || lineage.head !== undefined && current === undefined
+      || lineage.expectedHead !== undefined && completion === undefined || knownHead === undefined) structural.push(missing("publication_head_unavailable", "publication"));
     const governedState = evidence?.lifecycle;
     const states = governedState && lifecycleEvidenceSchema.safeParse(governedState).data;
     const governed = governedIntent || governedState !== undefined;
@@ -631,11 +660,10 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication"));
     if (!governedIntent && states && lifecycleAvailable) publicationRefuse("catalog_lifecycle_raw_status_fenced");
     const priceOperations = payload.skus.flatMap(sku => sku.priceOperations ?? []);
-    async function checkPrices() {
-      if (!priceOperations.length) return;
-      const prices = z.array(z.object({ path: z.string(), code: z.string() })).safeParse(await observe(() => input.validatePrices?.(structuredClone({
-        ...validationPayload, product: { ...validationPayload.product, sharedContent: content },
-      })) ?? Promise.resolve(undefined)));
+    async function checkPrices(draft: CatalogDraftPayloadV2 | undefined) {
+      if (!draft) return;
+      const prices = z.array(z.object({ path: z.string(), code: z.string() })).safeParse(
+        await observe(() => input.validatePrices?.(draft) ?? Promise.resolve(undefined)));
       if (!prices.success) structural.push(missing("price_validation_unavailable", "skus"));
       else {
         for (const issue of prices.data) {
@@ -686,9 +714,15 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const documents: CatalogPublicationDocument[] = [];
     const authorship = publicationAuthorship(record, payload, sourceRead?.retained ?? [], skus, rules, !sourceRead || sourceRead.incomplete, markSourceUnavailable);
     const created = new Set<string>(), identities = new Set<string>();
-    const combination = (options: CatalogPublishedSku["options"]) => Buffer.from(canonicalizeCatalogCombinationV2({
-      definition: input.definition, axes: payload.product.dimensions, options,
-    }).combinationDigest).toString("hex");
+    function combination(sku: Pick<CatalogPublishedSku, "code" | "options">) {
+      const subject = position.subject;
+      position.subject = sku.code;
+      const digest = canonicalizeCatalogCombinationV2({
+        definition, axes: payload.product.dimensions, options: sku.options,
+      }).combinationDigest;
+      position.subject = subject;
+      return Buffer.from(digest).toString("hex");
+    }
     let existingCombinations: Set<string> | undefined;
     const unavailableRegistrations = new Set<number>();
     const incoming = new Map(payload.skus.map(sku => [sku.code, sku]));
@@ -725,6 +759,13 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const documentsById = new Map<string, CatalogPublicationDocument>();
     const referencesByRevision = new Map<number, DocumentRef>();
     const referencesById = new Map<string, DocumentRef>();
+    const documentValueDigests = new Map<string, string>();
+    function bindDocumentValue(document: CatalogPublicationDocument, authored: unknown, mismatch?: string) {
+      if (!rules || authored === undefined) return;
+      if (matchesAuthoredDocument(authored, document.canonicalText, rules))
+        documentValueDigests.set(document.reference.id, publicationDigest(authored));
+      else if (mismatch) publicationRefuse(mismatch);
+    }
     const addReference = (reference: DocumentRef) => {
       referencesById.set(reference.id, reference);
       referencesByRevision.set(reference.revisionNo, reference);
@@ -760,6 +801,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         const selected = { canonicalText: document.canonicalText, reference, provenance: provenance.data };
         documents.push(selected);
         documentsById.set(reference.id, selected);
+        bindDocumentValue(selected, authorship.documentValue(selected));
       }
       if (current) addReference(current);
     }
@@ -778,7 +820,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const verifiedMedia: CatalogDraftMediaClaimV3[] = [];
     const authoredPresentation = payload.product.sharedContent.presentation;
     const readRoute = async (presentation: CatalogPublicationFacts) => {
-      const verdict = publicationReadinessVerdict.safeParse(await observe(() => observations?.presentationReadiness?.(record.productId, structuredClone(presentation)) ?? Promise.resolve(undefined)));
+      const verdict = publicationReadinessVerdict.safeParse(await observe(() => observations?.presentationReadiness?.(record.productId, presentation) ?? Promise.resolve(undefined)));
       if (!verdict.success) structural.push(missing("catalog_publication_presentation_unavailable", "product.sharedContent.presentation"));
       else if (!verdict.data.ready) publicationRefuse(verdict.data.reasons[0]!);
     };
@@ -823,8 +865,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
                 "catalog_publication_v3_compile_derived_facts_mismatch");
           }
         } else if (operation.op === "register_document_revision") {
-          const document = authorship.document(operation);
-          if (document) savedDocuments.set(index, document);
+          const sealed = authorship.document(operation);
+          if (sealed) {
+            bindDocumentValue(sealed.document, sealed.authored, "catalog_publication_v3_document_invalid");
+            savedDocuments.set(index, sealed.document);
+          }
         }
       }
     }
@@ -890,10 +935,12 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         else need(!problem, "catalog_publication_media_readiness_unproven");
       }
       position.path = "publication.evidence.media";
-      for (const [code, claim] of media) {
+      const [requests] = snapshot([...media.values()].map(claim => ({ claim, head: expectedHead && { ...expectedHead } })));
+      for (const { claim, head } of requests) {
+        const code = claim.skuCode;
         position.subject = code;
-        const accepted = await observe(() => observations?.verifyMedia?.(structuredClone(claim), expectedHead) ?? Promise.resolve(undefined));
-        if (accepted === true) verifiedMedia.push(claim);
+        const accepted = await observe(() => observations?.verifyMedia?.(claim, head) ?? Promise.resolve(undefined));
+        if (accepted === true) verifiedMedia.push(media.get(code)!);
         else if (accepted === false) publicationRefuse("catalog_publication_media_readiness_unproven");
         else activationIssues.push(missing("catalog_publication_media_validation_unavailable", position.path));
       }
@@ -943,13 +990,15 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     }
     let highWater = retainedState.documentRevisionHighWater;
     async function applyPrefixes() {
-      const writesPresentation = payload.publication.operations.some(operation => operation.op === "set_product_presentation");
+      const [authoredView, retainedView, proposedViews] = snapshot(authoredPresentation, product?.presentation,
+        operations.map(operation => operation.op === "set_product_presentation" ? operation.presentation : null));
+      const writesPresentation = operations.some(operation => operation.op === "set_product_presentation");
       position.path = "product.sharedContent.presentation";
       position.subject = definition.key;
       if (!writesPresentation) {
         const authoredRoute = !withdrawalOnly && Object.keys(authoredPresentation).length > 0;
-        if (authoredRoute) await readRoute(authoredPresentation);
-        if (!withdrawalOnly && product?.presentation && (!authoredRoute || !equal(product.presentation, authoredPresentation))) await readRoute(product.presentation);
+        if (authoredRoute) await readRoute(authoredView);
+        if (!withdrawalOnly && retainedView && (!authoredRoute || !equal(product?.presentation, authoredPresentation))) await readRoute(retainedView);
       }
       for (const [index, operation] of payload.publication.operations.entries()) {
         atOperation(index, operation);
@@ -962,7 +1011,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         const entry = savedDocuments.get(index);
         if (operation.op === "set_product_presentation" && operation.presentation !== null) {
           if (!missingProduct) knownProduct();
-          await readRoute(operation.presentation);
+          await readRoute(proposedViews[index]!);
         }
         if (missingProduct) continue;
         if ("skuCode" in operation && operation.op !== "create_sku" && missingSkuRoster && !skus.has(operation.skuCode)) continue;
@@ -1000,8 +1049,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         } else if (operation.op === "create_sku") {
           need(!skus.has(operation.skuCode) && ![...skus.values()].some(sku => sku.id === operation.skuId), "catalog_publication_v3_compile_sku_conflict");
           const sku = skuCreationFacts(operation, source!, knownProduct().id);
-          existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing.options)));
-          const identity = combination(sku.options);
+          existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing)));
+          const identity = combination(sku);
           need(!existingCombinations.has(identity), "duplicate_combination");
           assertSkuCreationDocument(operation, source!.payload.product.documentRevision, knownProduct().document);
           existingCombinations.add(identity);
@@ -1067,7 +1116,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       const retainedAttributes = [...rows].filter(sku => incoming.get(sku.code)?.attributes === undefined);
       if (retainedAttributes.length || payload.product.attributes === undefined && Object.keys(productAttributes).length) {
         const validation = await validateCatalogAttributes(definition, { productAttributes,
-          skus: retainedAttributes.map(({ id, attributes }) => ({ id, attributes })) }, input.attributeReferences);
+          skus: retainedAttributes.map(({ id, attributes }) => ({ id, attributes })) }, attributeReferences);
         if (!validation.valid) {
           for (const issue of validation.issues) {
             if (issue.code === "attribute_reference_unresolved") structural.push(missing("publication_evidence_unavailable", issue.path));
@@ -1078,6 +1127,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     }
     let assembled: Awaited<ReturnType<typeof structuralResult>>;
     async function checkStructuralResult() { assembled = await structuralResult(); }
+    let documentExclusionUnavailable = false;
     async function structuralResult() {
       position.path = "product";
       position.subject = definition.key;
@@ -1091,10 +1141,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       "catalog_lifecycle_last_active_child");
       if (payload.product.documentRevision) need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
       const afterDocument = currentDocument();
+      if (!withdrawalOnly && afterDocument)
+        bindDocumentValue(afterDocument, payload.product.sharedContent.document, "catalog_publication_document_source_mismatch");
       const documentDigests = new Set([...referencesById.values()].map(reference => reference.digest));
+      for (const digest of documentValueDigests.values()) documentDigests.add(digest);
       if (result.document) documentDigests.add(result.document.digest);
-      if (!withdrawalOnly && rules && afterDocument && payload.product.sharedContent.document !== undefined)
-        need(matchesAuthoredDocument(payload.product.sharedContent.document, afterDocument.canonicalText, rules), "catalog_publication_document_source_mismatch");
       const productOverlay = { attributes: payload.product.attributes ?? result.attributes, axes: payload.product.dimensions };
       if (withdrawalOnly) need(equal(productOverlay, { attributes: result.attributes, axes: result.axes })
         && equal(payload.product.sharedContent.presentation, result.content.presentation), "catalog_lifecycle_withdrawal_overlay_refused");
@@ -1147,7 +1198,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           if (productState === undefined || state === undefined) structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
           else need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
         }
-        const key = combination(sku.options);
+        const key = combination(sku);
         need(!identities.has(key), "duplicate_combination"); identities.add(key);
         publicationJson(catalogPublishedSkuSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
       }
@@ -1179,6 +1230,10 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         if (refusal) publicationRefuse(refusal);
       }
       need(changed || structural.some(isUnavailable) || payload.publication.kind === "compensation" && payload.publication.operations.length > 0, "catalog_publication_v3_compile_change_noop");
+      // Keep the assembled views for independent activation checks, while withholding effects.
+      documentExclusionUnavailable = [...referencesById.keys()].some(id => !documentValueDigests.has(id));
+      if (documentExclusionUnavailable)
+        structural.push(missing("catalog_publication_document_bytes_unavailable", result.presentation ? "product.presentation" : "product.content"));
       const operations = payload.publication.operations;
       const priced = sorted.filter(affected.priced);
       const compiled = { product: published, skus: sorted, documents, operations,
@@ -1190,10 +1245,16 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     async function checkActivationResult() {
       position.path = "skus";
       position.subject = definition.key;
-      if (!assembled) { await checkPrices(); return; }
+      const [priceDraft, activationView, headView, mediaView] = snapshot(
+        priceOperations.length ? { ...validationPayload, product: { ...validationPayload.product, sharedContent: content } } : undefined,
+        assembled && (activating || assembled.priced.length)
+          ? { product: assembled.compiled.product, skus: assembled.compiled.skus } : undefined,
+        expectedHead, verifiedMedia,
+      );
+      await checkPrices(priceDraft);
+      if (!assembled) return;
       const { compiled, primary, priced } = assembled;
       const { product: result, operations } = compiled;
-      await checkPrices();
       position.path = "skus";
       for (const sku of priced) {
         position.subject = sku.code;
@@ -1208,9 +1269,9 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
         need(result.presentation, "catalog_publication_v3_presentation_required");
       }
-      if (activating || priced.length) {
+      if (activationView) {
         const verdict = publicationReadinessVerdict.safeParse(await observe(() =>
-          observations?.assessActivation?.(structuredClone({ product: compiled.product, skus: compiled.skus }), expectedHead, structuredClone(verifiedMedia)) ?? Promise.resolve(undefined)));
+          observations?.assessActivation?.(activationView, headView, mediaView) ?? Promise.resolve(undefined)));
         if (!verdict.success) activationIssues.push(missing("activation_unknown", "publication"));
         else if (!verdict.data.ready) publicationRefuse(verdict.data.reasons[0]!);
       }
@@ -1230,7 +1291,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
     }
     return { bindSources, checkPhysicalSources, checkActivationSources, applyPrefixes, checkStructuralResult, checkActivationResult,
-      addPending, result: () => assembled?.compiled };
+      addPending, result: () => documentExclusionUnavailable ? undefined : assembled?.compiled };
   }
 }
 
