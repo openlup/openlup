@@ -1492,15 +1492,20 @@ BEGIN
 
   -- The existing deferred owner sees the completed item ledger, even when
   -- the header and its items were written in separate statements.
-  IF v_acceptance IS NOT NULL AND public.catalog_order_evidence_v2(v_order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
-    RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+  -- Unbound writers never enter the private catalogue evidence branch.
+  IF v_acceptance IS NOT NULL THEN
+    IF public.catalog_order_evidence_v2(v_order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
+      RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+    END IF;
   END IF;
   IF TG_TABLE_NAME='commerce_order_items' AND TG_OP='UPDATE' THEN
     IF OLD.order_id IS DISTINCT FROM NEW.order_id THEN
       SELECT total_amount_minor, metadata, catalog_acceptance INTO v_declared, v_metadata, v_acceptance
       FROM public.commerce_orders WHERE id=OLD.order_id;
-      IF v_acceptance IS NOT NULL AND public.catalog_order_evidence_v2(OLD.order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
-        RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+      IF v_acceptance IS NOT NULL THEN
+        IF public.catalog_order_evidence_v2(OLD.order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
+          RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+        END IF;
       END IF;
     END IF;
   END IF;

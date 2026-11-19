@@ -577,6 +577,24 @@ it.each(["order", "edit"] as const)("LC5-PRE A3 refuses a valid retained tuple f
   }
   await db.query("ROLLBACK TO SAVEPOINT wrong_acceptance");
 });
+it("LC5-PRE2 unbound orders keep the restricted legacy writer path", async () => {
+  const f = await seed();
+  await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  await db.query("SET CONSTRAINTS ALL DEFERRED");
+  await db.query(`CREATE ROLE lifecycle_order_writer NOLOGIN;
+    GRANT USAGE ON SCHEMA public TO lifecycle_order_writer;
+    GRANT SELECT, INSERT ON public.commerce_orders, public.commerce_order_items TO lifecycle_order_writer;
+    GRANT SELECT ON public.commerce_order_adjustments TO lifecycle_order_writer;
+    SET LOCAL ROLE lifecycle_order_writer`);
+  expect((await db.query("SELECT has_function_privilege(current_user,'public.catalog_order_evidence_v2(uuid,jsonb,jsonb,boolean)','EXECUTE') AS catalog_evidence")).rows)
+    .toEqual([{ catalog_evidence: false }]);
+  const id = await order(f,"pending_payment");
+  await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+  expect((await db.query("SELECT status,catalog_acceptance FROM public.commerce_orders WHERE id=$1",[id])).rows)
+    .toEqual([{ status: "pending_payment", catalog_acceptance: null }]);
+  await db.query("RESET ROLE");
+});
+
 it.each(["order at commit", "edit matches only event", "edit matches only preview"] as const)("LC5-PRE2 acceptance reconciles both owners for %s", async path => {
   const f = await seed({ other: true }), standing = await standingActive(f);
   const other = f.payload.skus[1]!;
