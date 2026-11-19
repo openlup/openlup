@@ -343,6 +343,17 @@ it("budgets a real continuation for a full-fact page and returns the terminal pa
   if (last.outcome !== "page") throw new Error(last.reason);
   expect(last.items).toHaveLength(1);
   expect(new Set([...first.items, ...last.items].map(item => item.reference.skuId)).size).toBe(4);
+  const foreign = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue);
+    return issue.head;
+  });
+  const invalidContinuation = {
+    outcome: "validation_issue", reason: "catalog_publication_cursor_invalid",
+    message: "Restart from the first page or reuse the continuation returned for this product.",
+  };
+  expect(await reader.readbackV2(issued.head, "!")).toEqual(invalidContinuation);
+  expect(await reader.readbackV2(foreign, first.nextCursor)).toEqual(invalidContinuation);
 });
 
 it("uses the exact significant UTF-8 bytes of the recovery command key", async () => {

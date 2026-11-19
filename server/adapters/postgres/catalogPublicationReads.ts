@@ -28,7 +28,8 @@ const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 &&
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
 const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
-const sqlRefusals = {
+const publicationRefusals = {
+  catalog_publication_cursor_invalid: ["catalog_publication_cursor_invalid", "Restart from the first page or reuse the continuation returned for this product."],
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
   catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
   catalog_publication_attributes_invalid: ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."],
@@ -59,8 +60,8 @@ const sqlRefusals = {
   catalog_publication_candidate_invalid: ["publication_approval_invalid", "Approval does not match the selected product revision. Review and approve that revision again."],
   catalog_publication_pointer_capability_unconsumed: ["publication_content_not_saved", "The selected product content was not saved. Select the content again and retry."],
 } as const;
-type AdmissionDiagnostic = keyof typeof sqlRefusals;
-type AdmissionRefusal = { outcome: "validation_issue"; reason: (typeof sqlRefusals)[AdmissionDiagnostic][0]; message: string };
+type AdmissionDiagnostic = keyof typeof publicationRefusals;
+type AdmissionRefusal = { outcome: "validation_issue"; reason: (typeof publicationRefusals)[AdmissionDiagnostic][0]; message: string };
 const readInvalid = "catalog_publication_read_invalid";
 
 function requireCondition(condition: unknown, reason = readInvalid, outcome: CatalogPublicationFailure["outcome"] = "dependency_unavailable"): asserts condition {
@@ -83,7 +84,7 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
     !("constraint" in error) || typeof error.constraint !== "string") return null;
   const name = error.code === "23503" ? deferredForeignKeys.get(error.constraint)
     : error.code === "23514" ? error.constraint : undefined;
-  const refusal = name && Object.hasOwn(sqlRefusals, name) ? sqlRefusals[name as AdmissionDiagnostic] : undefined;
+  const refusal = name && Object.hasOwn(publicationRefusals, name) ? publicationRefusals[name as AdmissionDiagnostic] : undefined;
   if (!refusal) return null;
   const contentFixes = {
     presentation: "Use the supported product presentation fields and review their values.",
@@ -98,7 +99,10 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
 }
 
 function failure(error: unknown): CatalogPublicationFailure {
-  if (error instanceof CatalogPublicationError) return { outcome: error.outcome, reason: error.code };
+  if (error instanceof CatalogPublicationError) {
+    const remedy = Object.hasOwn(publicationRefusals, error.code) ? publicationRefusals[error.code as AdmissionDiagnostic][1] : undefined;
+    return { outcome: error.outcome, reason: error.code, ...(remedy && { message: remedy }) };
+  }
   const refusal = catalogPublicationAdmissionRefusal(error);
   return refusal ? { ...refusal, outcome: "dependency_unavailable" } : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
 }
