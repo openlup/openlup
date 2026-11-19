@@ -30,7 +30,8 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id)));
   IF blocking_orders > 0 THEN
     RAISE EXCEPTION 'checkout_recovery_schedule_change_blocked_open_episodes (% blocking orders)',
-      blocking_orders USING ERRCODE = '55000';
+      blocking_orders USING ERRCODE = '55000',
+      HINT = 'The current schedule stays in effect. Retry after the blocking orders are paid, cancelled, or their carts are no longer eligible.';
   END IF;
 END; $$;
 

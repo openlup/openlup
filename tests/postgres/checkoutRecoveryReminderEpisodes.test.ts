@@ -111,7 +111,10 @@ it('blocks a legacy episode of either kind even when the other kind is pinned', 
   expect((await pins(opened)).rows.map(pin => pin.kind)).toEqual(['abandoned_cart']);
   await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
     VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,'{"stage":"first"}')`, [opened, `checkout_recovery:1h:${opened}`]);
-  await expect(installCheckoutRecoveryReminderSchedule(db, schedule(2, 12))).rejects.toMatchObject(blocked);
+  await expect(installCheckoutRecoveryReminderSchedule(db, schedule(2, 12))).rejects.toMatchObject({
+    ...blocked,
+    hint: 'The current schedule stays in effect. Retry after the blocking orders are paid, cancelled, or their carts are no longer eligible.',
+  });
   await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [opened]);
   const other = await order(3, true);
   await checkout(other, 3);

@@ -8055,12 +8055,12 @@
     },
     {
       "path": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
-      "sha256": "74e9d0c5c805fa2afbb8fe21a64fadf8b37a520ec3100327e48cdc7644714b3a",
+      "sha256": "22fd2373c365d695244dccb12940c4301484bf4dc77f6be6d6c8b33418f6f8f7",
       "functions": [
         {
           "signature": "public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb)",
           "beforeSha256": "37c44c6d486d2edb915eb1c9af672e666edfd14f1d201a3b9170a98a11e864d3",
-          "afterSha256": "49d67f795f27d067fe93c7b3be3c26432fc9180be293fb79f0f4cd87cfb71fa9"
+          "afterSha256": "f471686335b9edc107d2e992ae022912c30f66889482935cffd60c94b7dc1506"
         },
         {
           "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
