@@ -287,7 +287,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           let rows = first.rows;
           if (!first.complete) {
             const meta = first.page;
-            if (readbackMaxPages <= 1 || !meta || meta.number !== 0 || meta.totalPages > readbackMaxPages) {
+            if (readbackMaxPages <= 1 || !meta || meta.number !== 0
+              || meta.totalPages < 2 || !meta.hasNext || meta.totalPages > readbackMaxPages) {
               return { kind: "unknown", refusal: refusal("local_missing", "readback") };
             }
             const collected = [...first.rows];
@@ -297,6 +298,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
               if (!nextMeta || nextMeta.number !== pageIndex
                 || nextMeta.totalPages !== meta.totalPages
                 || nextMeta.totalElements !== meta.totalElements
+                || (pageIndex < meta.totalPages - 1 && !nextMeta.hasNext)
                 || (pageIndex === meta.totalPages - 1 && nextMeta.hasNext)) {
                 return { kind: "unknown", refusal: refusal("local_missing", "readback") };
               }

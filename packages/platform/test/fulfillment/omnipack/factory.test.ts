@@ -626,6 +626,17 @@ it("walks bounded multi-page readback collections when readbackMaxPages > 1 and 
     return jsonResponse(body);
   }, { readbackMaxPages: 5 });
   expect(await duplicated.adapter.readback.read(reading)).toMatchObject({ kind: "unknown", refusal: { reason: "local_missing" } });
+
+  const contradictorySinglePage = fixture(
+    () => jsonResponse({
+      _embedded: { fulfilments: [row] },
+      page: { number: 0, size: 100, totalPages: 1, totalElements: 1 },
+      _links: { next: { href: "/fulfilments?page=1" } },
+    }),
+    { readbackMaxPages: 3 },
+  );
+  expect(await contradictorySinglePage.adapter.readback.read(reading)).toMatchObject({ kind: "unknown", refusal: { reason: "local_missing" } });
+  expect(contradictorySinglePage.fetchImpl).toHaveBeenCalledTimes(1);
 });
 it("prepares independently and joins dispatch before host resolution, credentials and POST", async () => {
   const releases: (() => void)[] = [];

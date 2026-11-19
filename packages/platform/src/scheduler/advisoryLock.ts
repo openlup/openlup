@@ -232,7 +232,7 @@ export function createEnvAdvisoryLock(
     if (!pending) {
       let resolvedClient: AdvisoryLockQuerier | null = null;
       const retireIfIdle = () => {
-        if (resolvedClient && pending === attempt && state.reservedCount() === 0) {
+        if (!closed && resolvedClient && pending === attempt && state.reservedCount() === 0) {
           const client = resolvedClient;
           pending = null;
           state.resetIdleSession();

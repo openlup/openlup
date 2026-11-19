@@ -179,13 +179,7 @@ function createPooledPostgresTransactions(
       const factory = options.poolFactory ?? defaultPoolFactory;
       ownedPoolPromise = Promise.resolve()
         .then(() => factory(env))
-        .then(
-          (pool) => attachPgErrorListener(pool, "postgres-gateway", options.onPoolError),
-          (error) => {
-            ownedPoolPromise = null;
-            throw error;
-          },
-        );
+        .then((pool) => attachPgErrorListener(pool, "postgres-gateway", options.onPoolError));
     }
     return ownedPoolPromise;
   }

@@ -2180,9 +2180,12 @@ export function installPartnerAcquisitionHostBinding(consumer: string, checkout 
 export function provePartnerAcquisitionBindingConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 assert.throws(() => require.resolve("pg"), { code: "MODULE_NOT_FOUND" });
+const bindingSource = readFileSync(new URL("./server/runtime/partners/partnerAcquisitionBinding.js", import.meta.url), "utf8");
+assert(!/^\\s*import\\s+[^;]*partnerAcquisitionRoutines/mu.test(bindingSource), "partner binding must not statically import the postgres adapter");
 const { resolvePartnerAcquisitionBinding, closePartnerAcquisitionBindings } = await import("./server/runtime/partners/partnerAcquisitionBinding.js");
 try {
   for (const env of [
@@ -2190,12 +2193,13 @@ try {
     { PLATFORM_BUNDLE: "node-postgres" },
     { PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: "   " },
   ]) assert.equal(await resolvePartnerAcquisitionBinding(env), null);
-  await assert.rejects(resolvePartnerAcquisitionBinding({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: "postgresql://unused.invalid/partners" }),
-    error => error.code === "ERR_MODULE_NOT_FOUND" && error.message.includes("pg"));
+  const port = await resolvePartnerAcquisitionBinding({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: "postgresql://unused.invalid/partners" });
+  assert(port && typeof port.list === "function");
+  await assert.rejects(
+    () => port.list({ actorRef: "11111111-1111-4111-8111-111111111111", view: "partner_acquisition_v1", limit: 1 }),
+    error => error.message.startsWith("OPENLUP_E_PEER_MISSING: pg is required by ") && Boolean(error.cause),
+  );
 } finally {
-  // A failed default import is cached by the unchanged host. Disposal also
-  // rejects that promise, after clearing the cache; preserve that fault mode.
-  await assert.rejects(closePartnerAcquisitionBindings(), error => error.code === "ERR_MODULE_NOT_FOUND");
   await closePartnerAcquisitionBindings();
 }
 `);
