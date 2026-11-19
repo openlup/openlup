@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
-  createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateService, CatalogCandidateError, BundleRpcError,
+  createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
   canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
@@ -155,7 +155,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       if (!uuid(payload.draftId) || !Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 1 || 'payload' in payload)
         return refused('starter_input_invalid');
       let rulesVersion: number | undefined;
-      const service = createCatalogCandidateService({ registry: catalogue.registry,
+      const service = createCatalogCandidateServiceWithPublication({ registry: catalogue.registry,
         async readDraft(draftId, revision) {
           const result = await drafts.get({ draftId, ...(revision === undefined ? {} : { revision }) }, context);
           const record = 'record' in result ? result.record : null;
@@ -166,7 +166,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         installedDefinitionDigest: async ref => catalogue.readInstalled(ref)?.digest ?? null,
         async currentHead() { return { outcome: 'unsupported', reason: 'publication_not_supported' }; },
         async resolveHead() { return null; },
-      });
+      }, { async readEvidence() { return null; } });
       try {
         const preview = await service.prepareCandidate({ draftId: payload.draftId, draftRevision: Number(payload.expectedRevision), expectedHead: null });
         return success(preview.preparation ?? { structural: { outcome: 'unknown', issues: preview.issues } });

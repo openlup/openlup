@@ -1137,6 +1137,41 @@ export declare function createCatalogCandidateService(deps: CatalogCandidateDeps
     compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
 };
 ```
+## dist/catalog/candidateService.d.ts
+
+```ts
+import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
+import type { CatalogValidationPort } from "./publicationPorts.js";
+import { type PublicationDraftRecord } from "./publicationIntent.js";
+import { type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
+import { type CatalogCandidateDeps } from "./candidate.js";
+/** Decodes the released candidate reference for the facade and command admission.
+ * @experimental
+ */
+export declare function parseCatalogCandidateReference(value: string): {
+    draftId: string;
+    draftRevision: number;
+    head: null;
+} | {
+    draftId: string;
+    draftRevision: number;
+    head: {
+        publicationId: string;
+        revision: number;
+    };
+} | null;
+type CatalogCandidateService = CatalogValidationPort & {
+    prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
+    compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
+};
+/** Opt in to publication preparation by supplying the publication observations.
+ * @experimental
+ */
+export declare function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogCandidateDeps, "readDraft"> & {
+    readDraft(draftId: string, revision?: number): Promise<PublicationDraftRecord | null>;
+}, publication: CatalogCandidatePublicationDeps): CatalogCandidateService;
+export {};
+```
 ## dist/catalog/catalogConformance.d.ts
 
 ```ts
@@ -2936,6 +2971,49 @@ export declare function validateCatalogQuantity(quantity: CatalogQuantity, defin
 /** Decimal spelling cannot make two equal option values distinct. No unit conversion is inferred. */
 export declare function canonicalCatalogOption(value: CatalogOptionValue): string;
 ```
+## dist/catalog/contracts/publication.d.ts
+
+```ts
+import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
+import type { RulesIdentifier, RulesProduct, RulesSku } from "./publicationRuleFacts.js";
+import type { CatalogDocumentRevisionRef } from "./foundation.js";
+/** @experimental */
+export declare const CATALOG_PUBLICATION_LIMITS: {
+    readonly skuBytes: 2097152;
+    readonly manifestBytes: 16777216;
+    readonly receiptBytes: 8388608;
+    readonly historyBytes: 16777216;
+    readonly pageBytes: 8388608;
+    readonly pageItems: 100;
+};
+/** @internal */
+export type CatalogPublishedIdentifier = RulesIdentifier;
+/** @experimental */
+export type CatalogPublishedContent = Pick<CatalogDraftSharedContentV3, "schemaVersion" | "catalogAction" | "presentation" | "offerMemberships" | "requestedModes" | "publicationSkus">;
+/** @internal */
+export interface CatalogPublishedProduct extends RulesProduct {
+    document: CatalogDocumentRevisionRef | null;
+    source: CatalogDraftClaimV3;
+    content: CatalogPublishedContent;
+}
+/** @internal */
+export interface CatalogPublishedSku extends RulesSku {
+    source: CatalogDraftClaimV3;
+}
+/** @experimental */
+export interface CatalogSkuRevisionRef {
+    skuId: string;
+    revisionId: string;
+    revision: number;
+    digest: string;
+}
+/** @experimental */
+export interface CatalogPublicationManifestV2 {
+    schemaVersion: 2;
+    product: CatalogPublishedProduct;
+    skus: CatalogSkuRevisionRef[];
+}
+```
 ## dist/catalog/contracts/publicationRuleFacts.d.ts
 
 ```ts
@@ -4016,6 +4094,8 @@ export { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalo
 export { validateCatalogDraftV2 } from "./draftV2Validation.js";
 export { createCatalogCandidateService, CatalogCandidateError } from "./candidate.js";
 export type { CatalogCandidateDeps } from "./candidate.js";
+export { createCatalogCandidateServiceWithPublication } from "./candidateService.js";
+export type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
@@ -4328,6 +4408,191 @@ export { canonicalCatalogOption, validateCatalogQuantity } from "./contracts/pro
 export type { CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogProductTypeDefinition, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 /** Definitions are installed by composition, never supplied as executable draft data. */
 export declare function createCatalogProductTypeRegistry(definitions: readonly CatalogProductTypeInput[]): CatalogProductTypeRegistry;
+```
+## dist/catalog/publicationEvidence.d.ts
+
+```ts
+import type { CatalogDraftPublicationStoredRecord, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogHeadRef } from "./contracts/lifecycle.js";
+import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
+import type { PublicationDraftRecord, PublicationLifecycleState } from "./publicationIntent.js";
+import type { CatalogRulesContext } from "./catalogPublicationRules.js";
+import { z } from "./validation.js";
+export type ExpectedPublicationHead = Pick<CatalogHeadRef, "publicationId" | "revision"> & Partial<Pick<CatalogHeadRef, "documentDigest">>;
+export declare function matchesPublicationHead(expected: ExpectedPublicationHead | null, observed: CatalogHeadRef | null): boolean;
+export declare const publicationHeadSchema: z.ZodObject<{
+    publicationId: z.ZodGUID;
+    revision: z.ZodNumber;
+    documentDigest: z.ZodString;
+}, z.core.$strict>;
+/** @experimental */
+export interface CatalogPublicationDocument {
+    reference: CatalogDocumentRevisionRef;
+    canonicalText: string;
+    provenance: {
+        draftId: string;
+        draftRevision: number;
+        draftCommandKey: string;
+        draftFingerprint: string;
+    };
+}
+/** One draft revision with its independent command receipt and observed open head.
+ * @experimental
+ */
+export interface CatalogPublicationDraftEvidence {
+    record: PublicationDraftRecord;
+    receipt: CatalogDraftClaimV3;
+    head: Pick<CatalogDraftPublicationStoredRecord, "draftId" | "productId" | "revision" | "status"> | null;
+}
+/** Read-only facts from the exact publication head and its admitted draft sources.
+ * @experimental
+ */
+export interface CatalogPublicationEvidence {
+    head: CatalogHeadRef | null;
+    product: CatalogPublishedProduct | null;
+    skus: readonly CatalogPublishedSku[];
+    documents: readonly CatalogPublicationDocument[];
+    /** Highest saved revision number, independent of which document bytes were selected. */
+    documentRevisionHighWater: number;
+    /** Selected sources, including the candidate. Retained sources are ordered by descending publication sequence, then by draft ID. */
+    drafts: readonly CatalogPublicationDraftEvidence[];
+    /** Omit for a confirmed historic head. Null means the authoritative state could not be read. */
+    lifecycle?: {
+        product: PublicationLifecycleState;
+        skus: Readonly<Record<string, {
+            state: PublicationLifecycleState;
+            demandPolicyRef?: string;
+        }>>;
+    } | null;
+}
+/** Observations supplied by the host's read owners.
+ * @experimental
+ */
+export interface CatalogCandidatePublicationDeps {
+    /** Share a fixed instant and any required locale or time zone across observations. */
+    evaluation?: CatalogRulesContext;
+    readEvidence(request: {
+        candidate: CatalogDraftClaimV3;
+        productId: string;
+        expectedHead: CatalogHeadRef | null;
+    }): Promise<CatalogPublicationEvidence | null>;
+    presentationReadiness?: (productId: string, presentation: CatalogPublicationFacts) => Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    } | null>;
+    verifyMedia?: (claim: CatalogDraftMediaClaimV3, head: CatalogHeadRef | null) => Promise<boolean | null>;
+    assessActivation?: (state: {
+        product: CatalogPublishedProduct;
+        skus: readonly CatalogPublishedSku[];
+    }, head: CatalogHeadRef | null, verifiedMedia: readonly CatalogDraftMediaClaimV3[]) => Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    } | null>;
+}
+```
+## dist/catalog/publicationIntent.d.ts
+
+```ts
+import { z } from "./validation.js";
+import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+declare const state: z.ZodEnum<{
+    active: "active";
+    draft: "draft";
+    archived: "archived";
+    withdrawn: "withdrawn";
+}>;
+export declare const lifecycleEvidenceSchema: z.ZodObject<{
+    product: z.ZodEnum<{
+        active: "active";
+        draft: "draft";
+        archived: "archived";
+        withdrawn: "withdrawn";
+    }>;
+    skus: z.ZodRecord<z.ZodString, z.ZodObject<{
+        state: z.ZodEnum<{
+            active: "active";
+            draft: "draft";
+            archived: "archived";
+            withdrawn: "withdrawn";
+        }>;
+        demandPolicyRef: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+declare const lifecycleOperation: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    op: z.ZodLiteral<"set_product_lifecycle">;
+    productSlug: z.ZodString;
+    expectedState: z.ZodEnum<{
+        active: "active";
+        draft: "draft";
+        archived: "archived";
+        withdrawn: "withdrawn";
+    }>;
+    state: z.ZodEnum<{
+        active: "active";
+        archived: "archived";
+        withdrawn: "withdrawn";
+    }>;
+    children: z.ZodArray<z.ZodObject<{
+        skuCode: z.ZodString;
+        expectedState: z.ZodEnum<{
+            active: "active";
+            draft: "draft";
+            archived: "archived";
+            withdrawn: "withdrawn";
+        }>;
+    }, z.core.$strict>>;
+}, z.core.$strict>, z.ZodObject<{
+    op: z.ZodLiteral<"restore_product">;
+    productSlug: z.ZodString;
+    expectedState: z.ZodLiteral<"withdrawn">;
+}, z.core.$strict>, z.ZodObject<{
+    op: z.ZodLiteral<"set_sku_lifecycle">;
+    skuCode: z.ZodString;
+    expectedState: z.ZodEnum<{
+        active: "active";
+        draft: "draft";
+        archived: "archived";
+        withdrawn: "withdrawn";
+    }>;
+    state: z.ZodEnum<{
+        active: "active";
+        archived: "archived";
+        withdrawn: "withdrawn";
+    }>;
+}, z.core.$strict>, z.ZodObject<{
+    op: z.ZodLiteral<"restore_sku">;
+    skuCode: z.ZodString;
+    expectedState: z.ZodLiteral<"withdrawn">;
+}, z.core.$strict>], "op">;
+export type PublicationLifecycleState = z.infer<typeof state>;
+export type PublicationLifecycleOperation = z.infer<typeof lifecycleOperation>;
+type LegacyOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
+export type PublicationOperation = LegacyOperation | PublicationLifecycleOperation;
+type IntentSku = CatalogDraftPayloadV3["skus"][number] & {
+    demandPolicyRef?: string | undefined;
+};
+export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication" | "skus"> & {
+    schemaVersion: 3 | 4;
+    skus: IntentSku[];
+    publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & {
+        operations: PublicationOperation[];
+    };
+};
+export type PublicationDraftRecord = Omit<CatalogDraftPublicationStoredRecord, "payload"> & {
+    payload: CatalogDraftPublicationStoredRecord["payload"] | (PublicationIntent & {
+        schemaVersion: 4;
+    });
+};
+export declare function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean;
+export declare function isLifecycleOperation(operation: PublicationOperation): operation is PublicationLifecycleOperation;
+/** Preserve the original wire for identity. Lower both inputs once into a single ordered intent. */
+export declare function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never): PublicationIntent | null;
+/** Read only the revision identity. The interpreter owns payload admission. */
+export declare function readPublicationDraftEnvelope(input: unknown): PublicationDraftRecord | null;
+export declare function readPublicationDraftRecord(input: unknown): PublicationDraftRecord | null;
+export declare function lifecycleTransition(from: PublicationLifecycleState, to: PublicationLifecycleState, restore: boolean): boolean;
+export {};
 ```
 ## dist/catalog/publicationPorts.d.ts
 

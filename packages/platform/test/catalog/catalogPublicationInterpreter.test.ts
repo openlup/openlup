@@ -875,12 +875,12 @@ it("D-032 legacy facade wiring reports unknown across all three methods", async 
   const service = facade(data, undefined, true);
   const prepared = await service.prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead });
   expect(prepared.preparation).toMatchObject({ structural: { outcome: "unknown" }, activation: { outcome: "unknown" } });
-  expect(prepared.issues).toContainEqual({ path: "publication", code: "publication_preparation_unavailable" });
+  expect(prepared.preparation?.structural.issues).toContainEqual(expect.objectContaining({ code: "publication_preparation_unavailable" }));
   expect(await service.validate(prepared.candidateRef)).toEqual(prepared);
   expect(await service.compareCandidate({ ...prepared, expectedHead: data.expectedHead })).toEqual(prepared);
 });
 
-it("the released v2 facade refuses a substituted callback at the installed identity", async () => {
+it("the released v2 facade runs its configured validator without publication preparation", async () => {
   const data = input();
   const callback = vi.fn(() => [{ path: "", code: "unexpected_callback" }]);
   data.registry = { resolve: () => ({ ...data.definition, validateContent: callback }) };
@@ -890,12 +890,11 @@ it("the released v2 facade refuses a substituted callback at the installed ident
     installedDefinitionDigest: async () => data.installedDefinitionDigest,
     currentHead: async () => ({ outcome: "unpublished" }), resolveHead: async () => null });
   const preview = await service.prepareCandidate({ draftId: record.draftId, draftRevision: record.revision, expectedHead: null });
-  expect(preview.preparation?.structural).toMatchObject({ outcome: "blocked-input", issues: [
-    { code: "catalog_publication_rules_binding_mismatch", path: "product.type", phase: "structural", subject: "example:article" },
-  ] });
+  expect(preview.issues).toContainEqual({ code: "unexpected_callback", path: "product.sharedContent" });
+  expect(preview.preparation?.structural.outcome).toBe("unknown");
   expect(await service.validate(preview.candidateRef)).toEqual(preview);
   expect(await service.compareCandidate({ ...preview, expectedHead: null })).toEqual(preview);
-  expect(callback).not.toHaveBeenCalled();
+  expect(callback).toHaveBeenCalledTimes(3);
 });
 
 it("K-3 document-free published content round-trips while the authored draft retains its document", async () => {

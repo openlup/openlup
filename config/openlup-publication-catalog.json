@@ -9850,6 +9850,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/fixtures/releasedCandidate.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/referenceCatalogHandler.test.ts",
       "class": "public-output"
     },

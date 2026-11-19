@@ -69,6 +69,8 @@ export { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalo
 export { validateCatalogDraftV2 } from "./draftV2Validation.js";
 export { createCatalogCandidateService, CatalogCandidateError } from "./candidate.js";
 export type { CatalogCandidateDeps } from "./candidate.js";
+export { createCatalogCandidateServiceWithPublication } from "./candidateService.js";
+export type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 

@@ -1404,24 +1404,19 @@ extraction nor a claim grants publication authority or proves external readiness
 the composed registry and an optional price-owner validator. `prepareCandidate`
 returns issues and an impact summary without writes. Its self-contained reference
 is `v1:<draftId>@<revision>/<publicationId>@<headRevision>`, or `/unpublished`.
-The same v1 reference format resolves v2 or v3 immutable payloads; unsupported
-payload versions refuse. The digest includes every v3 operation, its order,
-explicit eligibility, provenance, derived effects and shared-content field.
-Every reconstruction checks the current draft revision and resolves the supplied
-expected head. A known head change reports a conflict. For publication-aware
-drafts, an unreadable current head leaves preparation unknown unless a check
-already found an input that needs fixing. Older draft payloads report a
-dependency error when current lineage is unavailable. The digest covers the canonical
-payload, installed definition evidence and that complete expected head. No
-candidate table or cache is needed across process restarts. `validate(candidateRef)`
-reconstructs the preview; `compareCandidate` additionally checks the caller's
-complete expected head and digest. Legacy wiring still runs its configured validator for the released issues list. The
-preparation report stays unknown until installed rules and evidence are available.
-The preparation report separates a staged draft, an input to fix, and a check
-waiting for evidence. Activation has its own result. An older host can still
-prepare a draft and may report unavailable publication checks. Use the same
-service for prepare, validate and compare. Continue through the configured
-operator publication flow when it is available.
+The same reference resolves v1, v2 and v3 immutable payloads. The released
+reader order, refusal codes, issues and digest stay the same with ordinary
+wiring. Its preparation report is unknown because it has no publication
+observations. `validate(candidateRef)` reconstructs the preview and
+`compareCandidate` checks the caller's complete expected head and digest.
+
+To prepare a v3 or v4 publication, use
+`createCatalogCandidateServiceWithPublication` and supply `readEvidence`.
+The publication service reads the exact draft to select the evaluator. It
+reuses that draft when a v1 or v2 payload needs the released checks. If the
+evidence is unavailable, return `null`. The preparation report can still show
+a known issue that needs fixing. Saving or preparing a draft executes no
+publication operation.
 
 For example, `price_list_not_found` in pricing points to the price change and its
 selected list. Open that change, select an installed list and prepare the draft

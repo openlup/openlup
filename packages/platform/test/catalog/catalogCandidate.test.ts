@@ -7,10 +7,12 @@ import { validateCatalogDraftV2 } from "../../src/catalog/draftV2Validation.js";
 import { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalogDraftStoredCommandSchema } from "../../src/catalog/draftV2Schemas.js";
 import type { CatalogDraftPayloadV2, CatalogDraftStoredRecord } from "../../src/catalog/contracts/draftV2.js";
 import type { CatalogHeadRef } from "../../src/catalog/contracts/lifecycle.js";
-import type { CatalogCandidatePreview } from "../../src/catalog/contracts/candidate.js";
+import type { CatalogCandidatePreview, CatalogCandidateQuery } from "../../src/catalog/contracts/candidate.js";
 import { withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
 import type { CatalogValidationPort } from "../../src/catalog/publicationPorts.js";
-import { artifact, input } from "./fixtures/publicationInput.js";
+import { artifact, input, revision } from "./fixtures/publicationInput.js";
+import { createCatalogCandidateServiceWithPublication } from "../../src/catalog/candidateService.js";
+import { createCatalogCandidateService as createReleasedCatalogCandidateService } from "./fixtures/releasedCandidate.js";
 
 const draftId = "10000000-0000-4000-8000-000000000001", productId = "20000000-0000-4000-8000-000000000001";
 const skuId = "30000000-0000-4000-8000-000000000001", listId = "40000000-0000-4000-8000-000000000001";
@@ -37,6 +39,168 @@ function setup() {
     setRevision: (value: number) => { draftRevision = value; }, setHead: (value: CatalogHeadRef | null) => { head = value; },
     setInstalled: (value: string) => { installed = value; } };
 }
+type CandidateScenario = {
+  name: string;
+  setup?(deps: CatalogCandidateDeps): void;
+  compareHead?: CatalogHeadRef;
+  badSeal?: boolean;
+  unpublished?: boolean;
+  expected: readonly [string, string, string];
+};
+const matrixHead = { publicationId: listId, revision: 1, documentDigest: "c".repeat(64) };
+const unsupportedHead = async () => ({ outcome: "unsupported" as const, reason: "publication_not_supported" as const });
+const rejectedLookup = async () => { throw new Error("synthetic reader failure"); };
+const timedOutLookup = async () => { throw new Error("synthetic reader timeout"); };
+const same = (code: string) => [code, code, code] as const;
+const candidateOutcomes: CandidateScenario[] = [
+  { name: "headed success", expected: same("preview") },
+  { name: "unpublished success", unpublished: true, expected: same("preview") },
+  { name: "missing immutable draft", setup: deps => { deps.readDraft = async () => null; }, expected: same("candidate_invalid") },
+  { name: "null latest draft", setup(deps) {
+    const readDraft = deps.readDraft;
+    deps.readDraft = async (id, revision) => revision === undefined ? null : readDraft(id, revision);
+  }, expected: same("candidate_invalid") },
+  { name: "different latest revision", setup(deps) {
+    const readDraft = deps.readDraft;
+    deps.readDraft = async (id, revision) => {
+      const record = await readDraft(id, revision);
+      return record && revision === undefined ? { ...record, revision: record.revision + 1 } : record;
+    };
+  }, expected: same("candidate_invalid") },
+  { name: "null immutable head", setup: deps => { deps.resolveHead = async () => null; }, expected: same("head_conflict") },
+  { name: "different immutable head", setup: deps => { deps.resolveHead = async () => ({ ...matrixHead, revision: 2 }); }, expected: same("head_conflict") },
+  { name: "rejected immutable head", setup: deps => { deps.resolveHead = rejectedLookup; }, expected: same("candidate_dependency_unavailable") },
+  { name: "current head timeout", setup: deps => { deps.currentHead = timedOutLookup; }, expected: same("candidate_dependency_unavailable") },
+  { name: "latest draft timeout", setup(deps) {
+    const readDraft = deps.readDraft;
+    deps.readDraft = (id, revision) => revision === undefined ? timedOutLookup() : readDraft(id, revision);
+  }, expected: same("candidate_dependency_unavailable") },
+  { name: "unsupported current and missing immutable head", setup(deps) {
+    deps.currentHead = unsupportedHead;
+    deps.resolveHead = async () => null;
+  }, expected: same("head_conflict") },
+  { name: "malformed compare head", compareHead: {} as CatalogHeadRef, expected: ["preview", "preview", "head_conflict"] },
+  { name: "contradictory compare head during outage", unpublished: true, compareHead: matrixHead,
+    setup: deps => { deps.currentHead = unsupportedHead; }, expected: same("candidate_dependency_unavailable") },
+  { name: "wrong candidate digest", badSeal: true, expected: ["preview", "preview", "candidate_digest_mismatch"] },
+  { name: "installed definition drift", setup: deps => { deps.installedDefinitionDigest = async () => null; }, expected: same("catalog_definition_drift") },
+  { name: "current head unavailable with missing installed definition", setup(deps) {
+    deps.currentHead = unsupportedHead;
+    deps.installedDefinitionDigest = async () => null;
+  }, expected: same("candidate_dependency_unavailable") },
+];
+
+function legacyInput(version: 1 | 2, scenario: CandidateScenario) {
+  const f = setup(), expectedHead = scenario.unpublished ? null : matrixHead;
+  f.setHead(expectedHead);
+  if (version === 1) {
+    const readDraft = f.deps.readDraft;
+    f.deps.readDraft = async (id, revision) => {
+      const record = await readDraft(id, revision);
+      if (record?.payload.schemaVersion !== 2) return record;
+      const { attributes: _attributes, ...product } = record.payload.product;
+      const skus = record.payload.skus.map(({ attributes: _attributes, priceOperations: _prices, ...sku }) => sku);
+      return { ...record, payload: { schemaVersion: 1, product, skus } };
+    };
+  }
+  return { deps: f.deps, query: { draftId, draftRevision: 1, expectedHead } };
+}
+
+async function ordinaryInput(version: 1 | 2 | 3, scenario: CandidateScenario) {
+  if (version !== 3) return legacyInput(version, scenario);
+  const data = scenario.unpublished ? input() : await revision();
+  const { expectedHead } = data;
+  const deps: CatalogCandidateDeps = {
+    readDraft: async () => data.record,
+    currentHead: async () => expectedHead
+      ? { outcome: "found", head: expectedHead, documentRef: "example:document", observations: [] }
+      : { outcome: "unpublished" },
+    resolveHead: async identity => expectedHead && identity.publicationId === expectedHead.publicationId
+      && identity.revision === expectedHead.revision ? expectedHead : null,
+    registry: data.registry,
+    installedDefinitionDigest: async () => data.installedDefinitionDigest,
+    readDocument: async reference => reference,
+    validatePrices: async () => [],
+  };
+  return { deps, query: { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead } };
+}
+
+function traceReaders(deps: CatalogCandidateDeps, calls: unknown[][]): CatalogCandidateDeps {
+  function trace<Args extends unknown[], Result>(name: string, read: (...args: Args) => Result) {
+    return (...args: Args): Result => {
+      calls.push([name, ...args]);
+      return read(...args);
+    };
+  }
+  return { ...deps,
+    readDraft: trace("readDraft", deps.readDraft), resolveHead: trace("resolveHead", deps.resolveHead),
+    currentHead: trace("currentHead", deps.currentHead),
+    registry: { resolve: trace("registry.resolve", ref => deps.registry.resolve(ref)) },
+    installedDefinitionDigest: trace("installedDefinitionDigest", deps.installedDefinitionDigest),
+    ...(deps.readDocument && { readDocument: trace("readDocument", deps.readDocument) }),
+    ...(deps.validatePrices && { validatePrices: trace("validatePrices", deps.validatePrices) }),
+  };
+}
+
+async function candidateOutcome(operation: () => Promise<
+  Pick<CatalogCandidatePreview, "candidateDigest" | "issues"> & Partial<CatalogCandidatePreview>
+>) {
+  try {
+    const { preparation, ...preview } = await operation();
+    return { code: "preview", preview, preparation };
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error)) throw error;
+    return { code: error.code, name: error.name, message: error.message };
+  }
+}
+
+function candidateCalls(service: ReturnType<typeof createCatalogCandidateService>, query: CatalogCandidateQuery,
+  original: CatalogCandidatePreview, scenario: CandidateScenario) {
+  return [
+    () => service.prepareCandidate(query),
+    () => service.validate(original.candidateRef),
+    () => service.compareCandidate({ candidateRef: original.candidateRef,
+      candidateDigest: scenario.badSeal ? "0".repeat(64) : original.candidateDigest,
+      expectedHead: scenario.compareHead ?? query.expectedHead }),
+  ];
+}
+
+describe.each([1, 2, 3] as const)("released v%s outcomes", version => {
+  it.each(candidateOutcomes)("$name across prepare, validate and compare", async scenario => {
+    const baseline = await ordinaryInput(version, scenario), candidate = await ordinaryInput(version, scenario);
+    const original = await createReleasedCatalogCandidateService(baseline.deps).prepareCandidate(baseline.query);
+    scenario.setup?.(baseline.deps);
+    scenario.setup?.(candidate.deps);
+    const releasedReads: unknown[][] = [], currentReads: unknown[][] = [];
+    const released = createReleasedCatalogCandidateService(traceReaders(baseline.deps, releasedReads));
+    const current = createCatalogCandidateService(traceReaders(candidate.deps, currentReads));
+    const old = candidateCalls(released, baseline.query, original, scenario);
+    const next = candidateCalls(current, candidate.query, original, scenario);
+    const publicationReads = vi.fn(async () => null);
+    const optedIn = version === 3 ? undefined : candidateCalls(
+      createCatalogCandidateServiceWithPublication(candidate.deps, { readEvidence: publicationReads }),
+      candidate.query, original, scenario,
+    );
+    for (const [index, call] of old.entries()) {
+      releasedReads.length = 0;
+      currentReads.length = 0;
+      const { preparation: _baseline, ...expected } = await candidateOutcome(call);
+      expect(expected.code).toBe(scenario.expected[index]);
+      const { preparation, ...actual } = await candidateOutcome(next[index]!);
+      expect(actual).toEqual(expected);
+      expect(currentReads).toEqual(releasedReads);
+      if (actual.code === "preview") expect(preparation).toMatchObject({
+        structural: { outcome: "unknown" }, activation: { outcome: "unknown" },
+      });
+      if (optedIn) {
+        const { preparation: _preparation, ...optedInOutcome } = await candidateOutcome(optedIn[index]!);
+        expect(optedInOutcome).toEqual(expected);
+      }
+    }
+    expect(publicationReads).not.toHaveBeenCalled();
+  });
+});
+
 describe("self-contained catalogue preview", () => {
   it("keeps the released validation gate and distinguishes legacy validation from installed rules", async () => {
     const futureIssue = { path: "product", code: "application_issue", phase: "authoring" } as const;
@@ -60,9 +224,8 @@ describe("self-contained catalogue preview", () => {
     f.setInstalled(catalogDefinitionDigest(pack.types[0]!));
     const verified = createCatalogCandidateService({ ...f.deps, registry });
     const refused = await verified.prepareCandidate(query);
-    expect(refused.preparation?.structural).toMatchObject({ outcome: "blocked-input", issues: [{
-      code: "installed_rule_refused", path: "product.sharedContent.title", phase: "structural", subject: definition.key,
-    }] });
+    expect(refused.issues).toEqual([{ code: "installed_rule_refused", path: "product.sharedContent.title" }]);
+    expect(refused.preparation?.structural.outcome).toBe("unknown");
     expect(await verified.validate(refused.candidateRef)).toEqual(refused);
     expect(await verified.compareCandidate({ ...refused, expectedHead: null })).toEqual(refused);
   });
