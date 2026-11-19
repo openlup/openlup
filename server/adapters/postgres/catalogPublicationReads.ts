@@ -47,7 +47,7 @@ const sqlRefusals = {
   catalog_publication_receipt_invalid: ["publication_incomplete", "The publication is incomplete. Reload the product and check its publication status before you try again."],
   catalog_publication_approval_missing: ["publication_approval_missing", "This publication needs an active approval. Approve the proposed revision first."],
   catalog_publication_approval_wrong: ["publication_approval_wrong", "The approval has changed. Reload the active decision and try again."],
-  catalog_publication_approval_state_valid: ["publication_approval_state_invalid", "The approved product details are invalid. Prepare and approve the product again."],
+  catalog_publication_approval_state_valid: ["publication_approval_state_invalid", "The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again."],
   catalog_publication_post_state_changed: ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."],
   catalog_publication_roster_limit: ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."],
   catalog_publication_facts_invalid: ["publication_facts_invalid", "The saved facts contain an unsupported field. Keep the document in its designated field and prepare the product again."],

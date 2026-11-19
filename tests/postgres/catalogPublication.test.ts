@@ -377,6 +377,23 @@ it("admits a decision and its companion before the product exists", async () => 
   expect(result.rows).toEqual([{ action: "approve", product: null }]);
 });
 
+it("refuses a duplicate SKU in a sealed approval without changing its history", async () => {
+  const data = fixture();
+  const candidate = await transaction(pool, db => graph(db, data, null, false));
+  const member = { skuId: candidate.skuId, digest: hash(json(candidate.facts)) };
+  const duplicated = sealedState(candidate.product, [member, member]);
+  const error = await transaction(pool, async db => {
+    await decisionRow(db, candidate, duplicated);
+    await decisionReceipt(db, candidate, duplicated);
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({
+    reason: "publication_approval_state_invalid",
+    message: expect.stringContaining("Each SKU may appear once in the approved state. Prepare the publication again."),
+  });
+  expect((await pool.query("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+  expect((await pool.query("SELECT command_key FROM public.catalog_operator_receipts WHERE scope_id=$1", [data.productId])).rows).toEqual([]);
+});
+
 it("retains one document value and refuses a different value with the same recorded reference", async () => {
   const result = await pool.query(`SELECT attname FROM pg_attribute WHERE
     attrelid='public.catalog_product_document_revisions'::regclass AND attname IN ('document_payload','canonical_text')

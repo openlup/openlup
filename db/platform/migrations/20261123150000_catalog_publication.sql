@@ -602,8 +602,11 @@ BEGIN
  END IF;
 
  IF p_approval AND EXISTS (
-  SELECT 1 FROM jsonb_array_elements(manifest->'skus') member
-   WHERE (jsonb_typeof(member)='object' AND member ?& ARRAY['skuId','digest']
+  SELECT 1 FROM (
+   SELECT member, count(*) OVER (PARTITION BY member->>'skuId') AS sku_count
+   FROM jsonb_array_elements(manifest->'skus') member
+  ) AS roster
+   WHERE (sku_count=1 AND jsonb_typeof(member)='object' AND member ?& ARRAY['skuId','digest']
     AND member - ARRAY['skuId','digest']='{}'::jsonb
     AND jsonb_typeof(member->'skuId')='string' AND member->>'skuId' ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
     AND jsonb_typeof(member->'digest')='string' AND member->>'digest' ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
