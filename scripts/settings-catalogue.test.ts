@@ -69,7 +69,8 @@ it("runs each connected refusal remediation through the connected CLI branch", (
 });
 
 it("advertises settings results that the pinned MCP SDK accepts", () => {
-  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools).toHaveLength(2);
+  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools.map(tool => tool.name))
+    .toEqual(["settings__list", "settings__show", "settings__preview"]);
 });
 
 it("refuses unknown descriptor fields, including nested metadata, and a mismatched domain", () => {
@@ -99,4 +100,29 @@ it("imports unrelated operations when both settings carriers are unreadable", ()
     assert.equal(typeof operations.createPlatformControlPlanePort, "function");
   `], { encoding: "utf8" });
   expect(result.status, result.stderr).toBe(0);
+});
+
+
+it.each([
+  ["inventory_renewal_protection", "{", [], "json_invalid", ["proposed"]],
+  ["inventory_renewal_protection", "{}", ["--configuration", "unknown-store"], "configuration_unknown", ["configuration"]],
+  ["inventory_renewal_protection", "{}", ["--as-of", "yesterday"], "input_invalid", ["asOf"]],
+  ["inventory_renewal_protection", "{}", ["--database-url", "https://user:private@example.invalid"], "input_invalid", ["database-url"]],
+  ["inventory_renewal_protection", "{}", [], "connection_required", []],
+  ["checkout_recovery_reminders", "{}", [], "unsupported", ["key"]],
+] as const)("reports the preview refusal %s %s %j as %s", (key, value, flags, reason, path) => {
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", "host/settings.ts", "preview", key, value, ...flags, "--json"],
+    { cwd: "examples/neutral-store", encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(1);
+  expect(result.stderr).toBe("");
+  expect(result.stdout).not.toContain("private@example.invalid");
+  const document = JSON.parse(result.stdout);
+  expect(document).toMatchObject({ schemaVersion: 1, refusal: {
+    code: `commerce_setting_preview_${reason}`, path, rule: expect.any(String),
+    remediation: { action: expect.any(String), command: expect.stringContaining("host/settings.ts") },
+  } });
+  if (reason === "configuration_unknown") {
+    expect(document.refusal.hint).toContain("unknown-store");
+    expect(document.refusal.hint).toMatch(/supplements.*coffee/u);
+  }
 });

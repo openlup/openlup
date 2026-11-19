@@ -113,20 +113,34 @@ export const renewalStockProtectionPreviewResult = z.strictObject({
 type Validation = z.infer<typeof validationResult>;
 type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
 
-type LookupRefusal = (code: string) => Pick<Extract<Validation, { state: "invalid" }>, "rule" | "hint" | "remediation">;
+type PreviewRefusal = {
+  schemaVersion: 1;
+  refusal: Omit<Extract<Validation, { state: "invalid" }>, "state" | "code"> & { code: string; path: readonly string[] };
+};
+type RefusePreview = (code: string, detail?: { path: readonly string[]; hint: string }) => PreviewRefusal;
 
-async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"], lookupRefusal: LookupRefusal): Promise<Validation> {
+function sqlState(error: unknown): unknown {
+  return error && typeof error === "object" && "code" in error ? error.code : undefined;
+}
+
+async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"], refuse: RefusePreview): Promise<Validation> {
+  let installerAdmits: boolean;
+  try {
+    validateRenewalStockProtection(proposed);
+    installerAdmits = true;
+  } catch {
+    installerAdmits = false;
+  }
   try {
     const { rows } = await db.query("SELECT public.inventory_renewal_protection_validate($1::jsonb) AS value", [JSON.stringify(proposed)]);
-    return { state: "valid", value: policySchema().parse(rows[0]?.value) };
+    const value = policySchema().parse(rows[0]?.value);
+    if (installerAdmits) return { state: "valid", value };
   } catch (error) {
-    if (typeof error !== "object" || error === null || !("code" in error)) throw error;
-    if (error.code === "22023" || error.code === "22P05") {
-      const { rule, hint, remediation } = lookupRefusal(code);
-      return { state: "invalid", code, rule, hint, remediation };
-    }
-    throw error;
+    const state = sqlState(error);
+    if (state !== "22023" && state !== "22P05") throw error;
   }
+  const { rule, hint, remediation } = refuse(code).refusal;
+  return { state: "invalid", code, rule, hint, remediation };
 }
 
 /** @experimental A host-owned pool and stock source for read-only preview. */
@@ -135,48 +149,73 @@ export interface RenewalStockProtectionPreviewConnection {
   sourceKey: string;
 }
 
+const accessRefusals: Readonly<Record<string, string>> = {
+  "read the installed policy": "commerce_setting_preview_policy_read_denied",
+  "read stock availability": "commerce_setting_preview_stock_read_denied",
+  "check the proposed policy": "commerce_setting_preview_validation_denied",
+};
+
 /** @experimental Preview installed and proposed renewal stock protection at the same observation instant. */
 export async function previewRenewalStockProtection(
   settingKey: typeof key,
   proposed: PreviewResult["proposed"],
-  context: RenewalStockProtectionPreviewConnection & { asOf: string; skus: readonly string[]; lookupRefusal: LookupRefusal },
-): Promise<PreviewResult> {
-  const client = await context.db.connect();
-  let releaseWithError = true;
+  context: RenewalStockProtectionPreviewConnection & { asOf: string; skus: readonly string[]; refuse: RefusePreview },
+): Promise<PreviewResult | PreviewRefusal> {
+  let operation = "read the proposed policy";
   try {
-    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const current = await readRenewalStockProtectionPolicy(client);
-    const stock = createPostgresStockAvailability(client, { sourceKey: context.sourceKey, now: () => context.asOf });
-    const rows = await stock.readInstalled(context.skus);
-    // A PostgreSQL refusal aborts the transaction. Perform validation after the snapshot reads.
-    const validation = await validateInPostgres(client, proposed, context.lookupRefusal);
-    const days = validation.state === "valid"
-      ? validation.value.renewalProtectionDays - current.renewalProtectionDays
-      : null;
-    const result = renewalStockProtectionPreviewResult.parse({
-      schemaVersion: 1, key: settingKey, asOf: context.asOf, current, proposed,
-      difference: days === null ? null : { renewalProtectionDays: days },
-      validation,
-      effect: {
-        existingReservations: "unchanged",
-        newPurchaseAvailability: days === null ? "undetermined"
-          : days > 0 ? "equal-or-lower" : days < 0 ? "equal-or-higher" : "unchanged",
-        skus: [...rows.values()].map(row => ({
-          sku: row.sku, source: row.source, stale: row.stale,
-          currentAvailableForNewPurchases: row.source === "missing" ? null : row.availableForNewPurchases,
-          proposedAvailableForNewPurchases: null,
-        })),
-      },
-      uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change.",
-    });
-    // Echo the same value that was sent to PostgreSQL.
-    return { ...result, proposed };
-  } finally {
+    const snapshot = structuredClone(proposed);
+    operation = "open a store connection";
+    const client = await context.db.connect();
+    let discard = true;
     try {
-      await client.query("ROLLBACK");
-      releaseWithError = false;
+      operation = "start a read-only preview";
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      operation = "read the installed policy";
+      const current = await readRenewalStockProtectionPolicy(client);
+      operation = "read stock availability";
+      const stock = createPostgresStockAvailability(client, { sourceKey: context.sourceKey, now: () => context.asOf });
+      const rows = await stock.readInstalled(context.skus);
+      // A SQL refusal aborts the transaction, so validate after the snapshot reads.
+      operation = "check the proposed policy";
+      const validation = await validateInPostgres(client, snapshot, context.refuse);
+      const days = validation.state === "valid"
+        ? validation.value.renewalProtectionDays - current.renewalProtectionDays
+        : null;
+      const result = renewalStockProtectionPreviewResult.parse({
+        schemaVersion: 1, key: settingKey, asOf: context.asOf, current, proposed: snapshot,
+        difference: days === null ? null : { renewalProtectionDays: days },
+        validation,
+        effect: {
+          existingReservations: "unchanged",
+          newPurchaseAvailability: days === null ? "undetermined"
+            : days > 0 ? "equal-or-lower" : days < 0 ? "equal-or-higher" : "unchanged",
+          skus: [...rows.values()].map(row => ({
+            sku: row.sku, source: row.source, stale: row.stale,
+            currentAvailableForNewPurchases: row.source === "missing" ? null : row.availableForNewPurchases,
+            proposedAvailableForNewPurchases: null,
+          })),
+        },
+        uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change.",
+      });
+      return { ...result, proposed: snapshot };
     } finally {
-      client.release(releaseWithError);
+      try {
+        await client.query("ROLLBACK");
+        discard = false;
+      } finally {
+        if (discard) operation = "finish the preview";
+        client.release(discard);
+      }
     }
+  } catch (error) {
+    const state = sqlState(error);
+    const denied = accessRefusals[operation];
+    if (state === "42501" && denied) return context.refuse(denied);
+    if (state === "42883" && operation === "check the proposed policy") {
+      return context.refuse("commerce_setting_preview_validation_missing");
+    }
+    return context.refuse("commerce_setting_preview_unexpected", {
+      path: [], hint: `Could not ${operation}.`,
+    });
   }
 }

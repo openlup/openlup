@@ -1,6 +1,6 @@
 ### Preview renewal stock protection in the starter
 
-- Take the target extraction's `host/settings.ts` and `host/editor-ports.ts`
+- Take the target extraction's `host/settings.ts`
   through the managed upgrade plan and apply. Reconcile local managed-file
   edits against the predecessor and target before applying. A divergent
   managed file refuses; keep the app stopped until the managed snapshot and
@@ -12,6 +12,5 @@
 - Verify the command with
   `node --experimental-strip-types host/settings.ts preview --help`. Follow
   the target guide to preview a proposed value against your installation.
-  Preview uses a read-only transaction. The editor now reads the installed
-  horizon and picks up installer changes on the next stock read. No separate
-  installed-policy write is needed to upgrade these files.
+  Preview uses a read-only transaction. The installer applies policy changes
+  at deployment.

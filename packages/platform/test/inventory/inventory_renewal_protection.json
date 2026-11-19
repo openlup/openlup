@@ -4,6 +4,7 @@
   {"name": "proposed horizon", "input": "{\"revision\": \"fixture-21\", \"renewalProtectionDays\": 21}", "accepted": true, "normalized": {"revision": "fixture-21", "renewalProtectionDays": 21}},
   {"name": "maximum", "input": "{\"revision\": \"révision\", \"renewalProtectionDays\": 3660}", "accepted": true, "normalized": {"revision": "révision", "renewalProtectionDays": 3660}},
   {"name": "decimal spelling 14.0", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14.0}", "accepted": true, "normalized": {"revision": "x", "renewalProtectionDays": 14}},
+  {"name": "rounded decimal", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14.0000000000000001}", "accepted": false, "decodedNormalized": {"revision": "x", "renewalProtectionDays": 14}, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "exponent spelling 1e1", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 1e1}", "accepted": true, "normalized": {"revision": "x", "renewalProtectionDays": 10}},
   {"name": "large exponent within range", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 36600000000000000000000000000000000000000.00e-37}", "accepted": true, "normalized": {"revision": "x", "renewalProtectionDays": 3660}},
   {"name": "exponent above maximum", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 3.661e3}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},

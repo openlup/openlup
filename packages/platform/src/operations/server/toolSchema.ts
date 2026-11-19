@@ -51,7 +51,11 @@ export function settingRefusalSchema(codes: readonly string[]) {
 
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
 export const settingsToolOutputSchema = Object.assign(
-  (result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown> =>
-    ({ type: "object", ...toolInputSchema(z.union([result, z.strictObject({ refusal })]), "output") }),
+  (result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>, schemaVersion?: 1): Record<string, unknown> => {
+    const refused = schemaVersion === undefined
+      ? z.strictObject({ refusal })
+      : z.strictObject({ schemaVersion: z.literal(schemaVersion), refusal });
+    return { type: "object", ...toolInputSchema(z.union([result, refused]), "output") };
+  },
   { descriptor: settingDescriptorSchema },
 );

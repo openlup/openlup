@@ -24,7 +24,7 @@ import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 const corpus = JSON.parse(readFileSync(
   new URL("../../packages/platform/test/inventory/inventory_renewal_protection.json", import.meta.url), "utf8",
-)) as Array<{ name: string; input: string; accepted: boolean; normalized?: RenewalStockProtectionPolicy; code?: string }>;
+)) as Array<{ name: string; input: string; accepted: boolean; normalized?: RenewalStockProtectionPolicy; decodedNormalized?: RenewalStockProtectionPolicy; code?: string }>;
 const source = `starter-demo:${selectConfiguration().id}`, sku = "POLICY-FIXTURE";
 const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
   bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
@@ -173,7 +173,9 @@ it("malformed installed policy always names the error, including empty demand an
       .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
     await expect(stock.readInstalled(["missing"]))
       .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
-    await expect(readRenewalStockProtectionPolicy(db)).rejects.toThrow("inventory_renewal_protection_policy_invalid");
+    const decoded = corpus.find(row => row.input === value)?.decodedNormalized;
+    if (decoded) await expect(readRenewalStockProtectionPolicy(db)).resolves.toEqual(decoded);
+    else await expect(readRenewalStockProtectionPolicy(db)).rejects.toThrow("inventory_renewal_protection_policy_invalid");
   }
 });
 
@@ -378,22 +380,21 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
         expect(readable.stdout).toContain("New purchase availability: equal-or-lower");
       }
     }
-    const additionalField = corpus.find(({ name }) => name === "additional field")!;
-    const proposedWithAdditionalField = JSON.parse(additionalField.input);
-    expect(Object.hasOwn(proposedWithAdditionalField, "__proto__")).toBe(true);
-    const invalid = await mcp.callTool({ name: tool.name, arguments: {
-      key, proposed: proposedWithAdditionalField, asOf: instant,
-    } });
-    expect(invalid.structuredContent).toMatchObject({
-      schemaVersion: 1, validation: { state: "invalid", code: additionalField.code },
-    });
-    expect(JSON.stringify(invalid.structuredContent)).toContain(
-      `"proposed":${JSON.stringify(proposedWithAdditionalField)}`,
-    );
-    const cliInvalid = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
-      key, additionalField.input, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
-    expect(cliInvalid.status, cliInvalid.stderr).toBe(0);
-    expect(JSON.parse(cliInvalid.stdout)).toEqual(invalid.structuredContent);
+    for (const entry of corpus) {
+      const decoded = JSON.parse(entry.input);
+      const expected = entry.decodedNormalized ?? entry.normalized;
+      const { structuredContent } = await mcp.callTool({ name: tool.name, arguments: { key, proposed: decoded, asOf: instant } });
+      expect(structuredContent, entry.name).toMatchObject({
+        schemaVersion: 1, validation: expected ? { state: "valid", value: expected } : { state: "invalid", code: entry.code },
+      });
+      expect(JSON.stringify(structuredContent), entry.name).toContain(`"proposed":${JSON.stringify(decoded)}`);
+      if (entry.decodedNormalized || entry.name === "additional field") {
+        const cli = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
+          key, entry.input, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
+        expect(cli.status, cli.stderr).toBe(0);
+        expect(JSON.parse(cli.stdout)).toEqual(structuredContent);
+      }
+    }
   } finally {
     try {
       await mcp.close();

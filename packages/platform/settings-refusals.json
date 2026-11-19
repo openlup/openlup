@@ -65,40 +65,127 @@
       }
     },
     {
+      "code": "commerce_setting_preview_input_invalid",
+      "path": [],
+      "rule": "The preview arguments are invalid.",
+      "hint": "Check the preview arguments.",
+      "remediation": {
+        "retry": true,
+        "action": "Correct the named argument and run preview again.",
+        "command": "node --experimental-strip-types host/settings.ts preview --help"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_json_invalid",
+      "path": [
+        "proposed"
+      ],
+      "rule": "The proposed value is invalid JSON.",
+      "hint": "Pass the proposed policy as one JSON value.",
+      "remediation": {
+        "retry": true,
+        "action": "Correct the JSON and run preview again.",
+        "command": "node --experimental-strip-types host/settings.ts preview --help"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_configuration_unknown",
+      "path": [
+        "configuration"
+      ],
+      "rule": "The requested configuration is unknown.",
+      "hint": "Use an ID defined by this starter.",
+      "remediation": {
+        "retry": true,
+        "action": "Choose one of the listed configuration IDs and run preview again.",
+        "command": "node --experimental-strip-types host/settings.ts preview --help"
+      }
+    },
+    {
       "code": "commerce_setting_preview_unsupported",
       "path": [
         "key"
       ],
-      "rule": "Connected preview requires a key with an executable preview.",
-      "hint": "Check the runtime level in the catalogue.",
+      "rule": "This setting has no connected preview.",
+      "hint": "Use show to read the setting's effect and change mechanism.",
       "remediation": {
-        "retry": false,
-        "action": "Read the key's documented effect and change mechanism.",
+        "retry": true,
+        "action": "Choose a setting that supports preview.",
         "command": "node --experimental-strip-types host/settings.ts show <key> --json"
       }
     },
     {
       "code": "commerce_setting_preview_connection_required",
       "path": [],
-      "rule": "Preview reads live settings and stock from the intended store.",
+      "rule": "Preview needs a connection to the intended store.",
       "hint": "Use the connected form of preview.",
       "remediation": {
         "retry": true,
-        "action": "Connect to the intended store with a read-capable URL and include the SKUs you want to inspect.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json"
+        "action": "Supply a read-capable connection and run preview again.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
-      "code": "commerce_setting_preview_unavailable",
+      "code": "commerce_setting_preview_policy_read_denied",
       "path": [
-        "key"
+        "current"
       ],
-      "rule": "Preview requires a valid installed policy, stock read access, and a working validator.",
-      "hint": "Check the intended store's connection, installed value, and read access.",
+      "rule": "This connection cannot read the installed policy.",
+      "hint": "Preview needs to read the setting's current value.",
       "remediation": {
         "retry": true,
-        "action": "Verify the installed policy. Use a role that can read it from public.commerce_settings, run public.inventory_new_purchase_stock_read, and has EXECUTE on public.inventory_renewal_protection_validate(jsonb). If the validator is missing, apply the inventory renewal protection validation migration.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json"
+        "action": "Ask your store administrator for a connection that can read the installed policy, then retry.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_stock_read_denied",
+      "path": [
+        "skus"
+      ],
+      "rule": "This connection cannot read stock availability.",
+      "hint": "Preview needs to read availability for the named SKUs.",
+      "remediation": {
+        "retry": true,
+        "action": "Ask your store administrator for a connection that can read stock availability, then retry.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_validation_denied",
+      "path": [
+        "proposed"
+      ],
+      "rule": "This connection cannot check the proposed policy.",
+      "hint": "Preview needs permission to validate this setting.",
+      "remediation": {
+        "retry": true,
+        "action": "Ask your store administrator for a connection with permission to preview this setting, then retry.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_validation_missing",
+      "path": [
+        "proposed"
+      ],
+      "rule": "The store is missing support for checking the proposed policy.",
+      "hint": "Preview needs the matching installed OpenLup version.",
+      "remediation": {
+        "retry": true,
+        "action": "Ask your store administrator to update the store's OpenLup installation, then retry.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+      }
+    },
+    {
+      "code": "commerce_setting_preview_unexpected",
+      "path": [],
+      "rule": "The preview could not be completed.",
+      "hint": "Check that the connection points to the intended store.",
+      "remediation": {
+        "retry": true,
+        "action": "Retry once. If preview still fails, contact your store administrator.",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
       }
     },
     {

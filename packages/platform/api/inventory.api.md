@@ -887,9 +887,19 @@ export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
 }, z.core.$strict>;
 type Validation = z.infer<typeof validationResult>;
 type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
-type LookupRefusal = (code: string) => Pick<Extract<Validation, {
-    state: "invalid";
-}>, "rule" | "hint" | "remediation">;
+type PreviewRefusal = {
+    schemaVersion: 1;
+    refusal: Omit<Extract<Validation, {
+        state: "invalid";
+    }>, "state" | "code"> & {
+        code: string;
+        path: readonly string[];
+    };
+};
+type RefusePreview = (code: string, detail?: {
+    path: readonly string[];
+    hint: string;
+}) => PreviewRefusal;
 /** @experimental A host-owned pool and stock source for read-only preview. */
 export interface RenewalStockProtectionPreviewConnection {
     db: {
@@ -903,8 +913,8 @@ export interface RenewalStockProtectionPreviewConnection {
 export declare function previewRenewalStockProtection(settingKey: typeof key, proposed: PreviewResult["proposed"], context: RenewalStockProtectionPreviewConnection & {
     asOf: string;
     skus: readonly string[];
-    lookupRefusal: LookupRefusal;
-}): Promise<PreviewResult>;
+    refuse: RefusePreview;
+}): Promise<PreviewResult | PreviewRefusal>;
 export {};
 ```
 ## dist/inventory/reservationPolicy.d.ts

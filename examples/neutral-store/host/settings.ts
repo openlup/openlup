@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, showSetting, type SettingReader } from '@openlup/platform/operations/server';
+import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting, type SettingReader } from '@openlup/platform/operations/server';
 
 const help = `Usage: npm run --silent settings -- list [--goal <text>] | show <key> | preview <key> <value> | explain <refusal-code-or-key>
 Use --json for versioned output. Keep --silent on the npm command so stdout contains only JSON.
@@ -16,6 +16,7 @@ Examples:
   npm run --silent settings -- explain commerce_setting_unknown`;
 
 async function run(args: string[]) {
+  const previewRequested = args.find(arg => arg !== '--json' && arg !== '--help') === 'preview';
   let parsed;
   try {
     parsed = parseArgs({
@@ -25,8 +26,11 @@ async function run(args: string[]) {
         sku: { type: 'string', multiple: true }, configuration: { type: 'string' }, 'as-of': { type: 'string' },
       },
     });
-  } catch {
-    print(invalidSettingsCommand(), args.includes('--json'));
+  } catch (error) {
+    const flag = error instanceof Error ? /--(database-url|sku|configuration|as-of)\b/u.exec(error.message)?.[1] : undefined;
+    print(previewRequested ? refuseSettingsPreview('commerce_setting_preview_input_invalid', flag
+      ? { path: [flag], hint: `Supply a value for --${flag} as shown in preview help.` } : undefined)
+      : invalidSettingsCommand(), args.includes('--json'));
     return;
   }
   const { values, positionals: [command, value, ...extra] } = parsed;
@@ -37,10 +41,14 @@ async function run(args: string[]) {
   }
 
   const databaseUrl = values['database-url'];
-  if (extra.length !== (command === 'preview' ? 1 : 0) || (values.goal !== undefined && command !== 'list')
+  if ((command === 'preview' && !value) || extra.length !== (command === 'preview' ? 1 : 0) || (values.goal !== undefined && command !== 'list')
     || (databaseUrl !== undefined && (!databaseUrl || (command !== 'show' && command !== 'preview')))
     || (command !== 'preview' && (values.sku || values.configuration !== undefined || values['as-of'] !== undefined))) {
-    print(invalidSettingsCommand(), values.json);
+    const field = values.goal !== undefined ? 'goal' : databaseUrl === '' ? 'database-url' : !value ? 'key' : 'proposed';
+    print(command === 'preview' ? refuseSettingsPreview('commerce_setting_preview_input_invalid', {
+      path: [field], hint: field === 'proposed' || field === 'key' ? 'Pass the setting key and one proposed JSON value.'
+        : field === 'goal' ? 'Use --goal with list.' : 'Supply a read-capable database URL.',
+    }) : invalidSettingsCommand(), values.json);
     return;
   }
   if (command === 'list' && value === undefined) {
@@ -81,7 +89,7 @@ async function preview(
 ) {
   let proposed: unknown;
   try { proposed = JSON.parse(jsonValue); }
-  catch { return invalidSettingsCommand(); }
+  catch { return refuseSettingsPreview('commerce_setting_preview_json_invalid'); }
   const input = { key, proposed, skus, asOf };
   if (!databaseUrl && configuration === undefined) return previewSetting(input);
   const { configurations, defaultConfigurationId, selectConfiguration } = await import('../owned/store.config.ts');
@@ -89,11 +97,17 @@ async function preview(
   let sourceKey: string;
   try { sourceKey = `starter-demo:${selectConfiguration(id).id}`; }
   catch {
-    const result = invalidSettingsCommand();
-    return { ...result, refusal: { ...result.refusal, path: ['configuration'],
-      hint: `Unknown configuration ${JSON.stringify(id)}. Use one of these IDs: ${Object.keys(configurations).join(', ')}.` } };
+    return refuseSettingsPreview('commerce_setting_preview_configuration_unknown', {
+      path: ['configuration'],
+      hint: `Unknown configuration ${id.includes('://') ? 'ID' : JSON.stringify(id)}. Use one of these IDs: ${Object.keys(configurations).join(', ')}.`,
+    });
   }
   if (!databaseUrl) return previewSetting(input);
+  if (!URL.canParse(databaseUrl) || !['postgres:', 'postgresql:'].includes(new URL(databaseUrl).protocol)) {
+    return refuseSettingsPreview('commerce_setting_preview_input_invalid', {
+      path: ['database-url'], hint: 'Supply a PostgreSQL URL for the intended store.',
+    });
+  }
   const { default: pg } = await import('pg');
   const { describeRenewalStockProtectionSetting, previewRenewalStockProtection } = await import('@openlup/platform/inventory');
   const inventoryKey = describeRenewalStockProtectionSetting().key;
@@ -111,7 +125,7 @@ type Result = Awaited<ReturnType<typeof preview>> | ReturnType<typeof listSettin
 function print(result: Result, json = false) {
   if ('refusal' in result) process.exitCode = 1;
   if (json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify('schemaVersion' in result ? result : { schemaVersion: 1, ...result }));
   } else if ('refusal' in result || 'explanation' in result) {
     const { code, rule, hint, remediation } = 'refusal' in result ? result.refusal : result.explanation;
     console.log([code, rule, hint, remediation.action, remediation.command].join('\n'));

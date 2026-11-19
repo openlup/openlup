@@ -115,7 +115,6 @@
     },
     {
       "key": "checkout_recovery_reminders",
-      "searchTerms": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
       "domain": "commerce",
       "kind": "installed",
       "goal": "Find when checkout recovery and abandoned cart reminders are sent.",
@@ -566,7 +565,6 @@
       "domain": "inventory",
       "kind": "installed",
       "goal": "Set the renewal stock protection horizon used to calculate stock available to new purchases.",
-      "searchTerms": "stock lookahead, inventory buffer, renewal allocation, available to promise",
       "schemaVersion": 1,
       "examples": [
         {
@@ -1155,7 +1153,6 @@
     },
     {
       "key": "savedAddressValidation",
-      "searchTerms": "postal format, phone normalization, delivery address checks",
       "domain": "shipping",
       "kind": "callback",
       "goal": "Customize validation and normalization of the postal code and phone on saved customer addresses.",
@@ -1248,7 +1245,6 @@
     },
     {
       "key": "subscriber_winback_policy",
-      "searchTerms": "cancelled subscriber outreach, retention messaging, reactivation window",
       "domain": "subscriptions",
       "kind": "installed",
       "goal": "Find the cancellation age window for subscriber winback messages.",
@@ -1283,7 +1279,6 @@
     },
     {
       "key": "subscriptionCreation.editWindowHours",
-      "searchTerms": "edit cutoff, change deadline, activation window",
       "domain": "subscriptions",
       "kind": "code",
       "goal": "Set how many hours before a renewal customers can edit a newly created subscription.",
@@ -1743,6 +1738,11 @@
     }
   ],
   "searchTerms": {
+    "inventory_renewal_protection": "stock lookahead, inventory buffer, renewal allocation, available to promise",
+    "checkout_recovery_reminders": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
+    "subscriber_winback_policy": "cancelled subscriber outreach, retention messaging, reactivation window",
+    "subscriptionCreation.editWindowHours": "edit cutoff, change deadline, activation window",
+    "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "account-support": "operator permissions, administrative access",
     "catalog": "product assortment, SKU records",
     "commerce": "store orders, checkout processing",
@@ -2002,9 +2002,16 @@
                   "commerce_setting_read_input_invalid",
                   "commerce_setting_read_unavailable",
                   "commerce_setting_runtime_not_ready",
+                  "commerce_setting_preview_input_invalid",
+                  "commerce_setting_preview_json_invalid",
+                  "commerce_setting_preview_configuration_unknown",
                   "commerce_setting_preview_unsupported",
                   "commerce_setting_preview_connection_required",
-                  "commerce_setting_preview_unavailable",
+                  "commerce_setting_preview_policy_read_denied",
+                  "commerce_setting_preview_stock_read_denied",
+                  "commerce_setting_preview_validation_denied",
+                  "commerce_setting_preview_validation_missing",
+                  "commerce_setting_preview_unexpected",
                   "inventory_renewal_protection_policy_invalid",
                   "checkout_recovery_policy_invalid"
                 ]

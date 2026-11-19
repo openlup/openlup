@@ -296,9 +296,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
   if (hasSettingsPreview(to) && !hasSettingsPreview(from)) {
     phase("settings-preview-upgrade", () => {
-      for (const path of ["host/settings.ts", "host/editor-ports.ts"]) {
-        assert.equal(readFileSync(join(app, path), "utf8"), to.files[path], `starter preview upgrade did not apply ${path}`);
-      }
+      const path = "host/settings.ts";
+      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path], `starter preview upgrade did not apply ${path}`);
       assert(readFileSync(join(app, "AGENTS.md"), "utf8").includes(previewGuidance));
     });
   }
