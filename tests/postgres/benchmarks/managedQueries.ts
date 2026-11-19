@@ -81,7 +81,9 @@ async function measure<T>(samples: number, run: () => Promise<T>): Promise<Sampl
   const milliseconds: number[] = [];
   for (let i = 0; i < samples; i++) milliseconds.push((await timed(run)).milliseconds);
   milliseconds.sort((a, b) => a - b);
-  return { value, medianMs: milliseconds[Math.floor(milliseconds.length / 2)], samplesMs: milliseconds };
+  const midpoint = (milliseconds.length - 1) / 2;
+  const medianMs = (milliseconds[Math.floor(midpoint)] + milliseconds[Math.ceil(midpoint)]) / 2;
+  return { value, medianMs, samplesMs: milliseconds };
 }
 
 async function nestedPlan(db: PoolClient, text: string, values: Input[], marker: string) {

@@ -53,7 +53,9 @@ Measured on November 19, 2026 UTC with the managed migrations from
 `9a627035047bbb094c76e7947bb5d7c741866c35`. PostgreSQL 17.11 ran in Docker
 on an ARM64 macOS host with JIT enabled, 128 MB of shared buffers and 4 MB of
 work memory. Values are median client milliseconds from five samples per case.
-The contention rows are single observed trials per size.
+The contention rows are single observed trials per size. The recent window
+starts six elapsed days before the fixture timestamp, spanning seven fixture
+dates including both endpoints.
 
 | Case | 10,000 historical orders and subscriptions | 20,000 historical orders and subscriptions |
 | --- | ---: | ---: |
@@ -61,9 +63,9 @@ The contention rows are single observed trials per size.
 | Hot-SKU renewal ATP | 17.2 | 67.9 |
 | OMS first page, full history | 2,948.9 | 5,502.0 |
 | OMS deep page, full history | 1,779.9 | 6,030.3 |
-| OMS first page, last seven days | 245.1 | 296.6 |
+| OMS first page, recent window | 245.1 | 296.6 |
 | OMS exact order-number search, full history | 862.9 | 1,550.9 |
-| OMS exact order-number search, last seven days | 921.0 | 1,591.4 |
+| OMS exact order-number search, recent window | 921.0 | 1,591.4 |
 | Managed checkout allocation with the observed blocker | 46.0 | 135.5 |
 | Managed renewal allocation with the observed blocker | 20.2 | 76.8 |
 
@@ -76,11 +78,12 @@ amounts for both callers and the same stock locking order.
 
 At 20,000 orders, both full-history pages reported 18,002 visible orders
 and the same paid totals. Each wrote 1,488 temporary buffers in its
-instrumented plan. The recent page listed 358 visible orders. Its paid
-summary counted 872 paid orders, including 596 from orders created before the
-window. Moving the creation-date predicate into the input shared with paid
-totals would change this result. Evaluate date filtering for the page
-pipeline with a separate paid-date witness.
+instrumented plan. The recent query reported 358 visible orders across all
+pages and returned 25 on its first page. Its paid summary counted 872 paid
+orders, including 596 from orders created before the window. Moving the
+creation-date predicate into the input shared with paid totals would change
+this result. Evaluate date filtering for the page pipeline with a separate
+paid-date witness.
 
 The two exact searches touched the same number of shared buffers at each
 size, including 127,877 at 20,000. Profile the normalized search and item
