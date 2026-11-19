@@ -94,6 +94,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       const record = preparePublication ? readPublicationDraftEnvelope(raw) : catalogDraftPublicationStoredRecordSchema.safeParse(raw).data;
       if (!record || record.draftId !== reference.draftId || record.revision !== reference.draftRevision) return refuse("candidate_invalid");
       const payload = record.payload;
+      let identityPayload = payload;
       if (!payload?.product?.type) return refuse("candidate_invalid");
       const draftIsCurrent = async () => {
         const latest = await deps.readDraft(record.draftId);
@@ -159,6 +160,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         const legacy = catalogDraftPublicationStoredRecordSchema.safeParse(raw);
         if (!legacy.success || legacy.data.payload.schemaVersion !== 3) return refuse("candidate_invalid");
         await checkLegacyLineage(record.productId);
+        identityPayload = legacy.data.payload;
         await legacyIssues(catalogDraftV3ValidationPayload(legacy.data.payload), issues);
         preparation = unknownPreparation(definition.key);
       } else if (preparePublication) {
@@ -187,8 +189,8 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
             : result.activating ? "ready" : "pending", issues: [...activation, ...result.pending] } };
         issues.push(...activation.map(({ path, code }) => ({ path, code })));
       }
-      const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
-        .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: installed }])).update(",")
+      const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(identityPayload)).update(",")
+        .update(canonicalCatalogDraftJson([{ ...identityPayload.product.type, definitionDigest: installed }])).update(",")
         .update(canonicalCatalogDraftJson(expectedHead)).update("]").digest("hex");
       const skus = Array.isArray(payload.skus) ? payload.skus : [];
       const priceOperationCount = payload.schemaVersion === 1 ? 0 : skus.reduce((sum, sku) =>

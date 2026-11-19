@@ -56,13 +56,15 @@ export function isLifecycleOperation(operation: PublicationOperation): operation
 }
 
 /** Preserve the original wire for identity. Lower both inputs once into a single ordered intent. */
-export function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean) => never): PublicationIntent | null {
+export function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never): PublicationIntent | null {
   function invalid(issue: z.core.$ZodIssue, indexes?: readonly number[]) {
     const path = [...issue.path];
     if (indexes && path[0] === "publication" && path[1] === "operations" && typeof path[2] === "number")
       path[2] = indexes[path[2]] ?? path[2];
     if (issue.code === "unrecognized_keys") path.push(issue.keys[0]!);
-    return onInvalid?.(path.join(".") || "payload", issue.code === "unrecognized_keys") ?? null;
+    const fix = issue.code === "custom" && path[0] === "publication" && path[1] === "operations" && path[3] === "quantity"
+      ? issue.message : undefined;
+    return onInvalid?.(path.join(".") || "payload", issue.code === "unrecognized_keys", fix) ?? null;
   }
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 4) {
     const v3 = catalogPublicationDraftPayloadSchema.safeParse(input);

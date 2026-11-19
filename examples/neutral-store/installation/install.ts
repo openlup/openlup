@@ -5,7 +5,7 @@ import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
-import { editorProducts, readStarterCatalogueRules, retainStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
 import { randomBytes } from 'node:crypto';
 import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
@@ -70,7 +70,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN');
-  let removeUncommittedBuild: (() => void) | undefined;
+  let stagedBuild: ReturnType<typeof stageStarterCatalogueBuild>;
   try {
     const { rows } = await connection.query(`SELECT session_user AS login, current_user AS role,
       pg_catalog.shobj_description(oid, 'pg_database') AS marker
@@ -141,12 +141,19 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
     }
     if (catalogueReceipt && installation.catalogueRules)
-      removeUncommittedBuild = retainStarterCatalogueBuild(Buffer.from(installation.catalogueRules), catalogueReceipt, installation.catalogueBuildDirectory);
+      stagedBuild = stageStarterCatalogueBuild(Buffer.from(installation.catalogueRules), catalogueReceipt, installation.catalogueBuildDirectory);
     await connection.query('COMMIT');
   } catch (error) {
-    try { removeUncommittedBuild?.(); }
+    try { stagedBuild?.discard(); }
     finally { await connection.query('ROLLBACK'); }
     throw error;
+  }
+  try {
+    try { stagedBuild?.publish(); }
+    finally { stagedBuild?.discard(); }
+  } catch {
+    // The definition is committed. Replaying this install can finish publishing its build.
+    process.stderr.write('Catalogue rules committed. Run ./lifecycle up again to make the build available.\n');
   }
 }
 

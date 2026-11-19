@@ -39,7 +39,7 @@ type Binding = {
   validatorRef: `sha256:${string}`; bytes: Buffer;
   rules(evaluation: CatalogRulesContext): CatalogPublicationRulesModule;
 };
-const boundValidators = new WeakMap<CatalogProductTypeInput["validateContent"], Binding>();
+const boundValidators = new WeakMap<CatalogProductTypeInput["validateContent"], Binding & CatalogProductTypeRef>();
 const referenceFor = (bytes: Uint8Array): `sha256:${string}` => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 const realmLimits = ["Date", "Math.random", "require", "process"] as const;
 
@@ -98,7 +98,7 @@ export function bindCatalogPublicationRules(pack: CatalogPublicationRulesPack,
     }
     const binding = loadCatalogPublicationRules(type.validatorRef, artifact);
     const validateContent = binding.rules(localContext).validateContent;
-    boundValidators.set(validateContent, binding);
+    boundValidators.set(validateContent, { ...binding, key: type.key, version: type.version });
     return Object.freeze({ ...type, validatorRef: binding.validatorRef, publicationRules: true as const, validateContent });
   });
   return Object.freeze({ ...pack, types: Object.freeze(types) });
@@ -112,7 +112,8 @@ export function readPublicationRulesAsset(artifact: Uint8Array, evaluation = loc
 export function resolvePublicationRules(definition: CatalogProductTypeInput, evaluation: CatalogRulesContext, recheck = false) {
   const binding = boundValidators.get(definition.validateContent);
   if (!binding && !definition.publicationRules) return undefined;
-  if (!binding || binding.validatorRef !== definition.validatorRef || recheck && referenceFor(binding.bytes) !== definition.validatorRef)
+  if (!binding || binding.key !== definition.key || binding.version !== definition.version
+    || binding.validatorRef !== definition.validatorRef || recheck && referenceFor(binding.bytes) !== definition.validatorRef)
     return publicationRefuse("catalog_publication_rules_binding_mismatch");
   return binding.rules(evaluation);
 }

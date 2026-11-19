@@ -83,6 +83,9 @@ describe("self-contained catalogue preview", () => {
     ]);
     expect(result.preparation?.activation.outcome).toBe("unknown");
     expect(await service.validate(result.candidateRef)).toEqual(result);
+    const reference = data.record.payload.product.documentRevision!;
+    reference.sourceRef = ` ${reference.sourceRef} `;
+    expect(await service.compareCandidate({ ...result, expectedHead: null })).toEqual(result);
   });
   it("catalog_candidate_requires_complete_publication_facts", async () => {
     const f = setup(), incomplete: CatalogDraftPayloadV2 = { schemaVersion: 2, product: { id: productId, type: { key: definition.key, version: 1 }, dimensions: [] }, skus: [] };

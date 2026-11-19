@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
-import { editorProducts, readStarterCatalogueRules } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
@@ -182,24 +182,33 @@ test('a retained build conflict rolls back definition installation before commit
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('a failed commit removes only the rules build linked by that installation', async context => {
+test('a running reader exposes only committed rules builds across a failed commit', async context => {
   const bytes = readStarterCatalogueRules();
   if (!bytes) return context.skip('This starter has kept its existing draft validator.');
   const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-rollback-'));
   try {
     const config = Object.values(configurations)[0]!;
+    const reader = starterCatalogue(directory);
+    assert.ok(reader.current);
+    const ref = reader.current;
+    assert.equal(reader.readInstalled(ref), undefined);
     const fixture = installation();
     fixture.binding.catalogueRules = bytes;
     fixture.binding.catalogueBuildDirectory = directory;
     const query = fixture.binding.connection.query;
     const failure = new Error('synthetic commit failure');
-    let target: string | undefined;
+    let target: string | undefined, committed = false;
     fixture.binding.connection.query = async (text, values) => {
       const result = await query(text, values);
       if (text.startsWith('SELECT public.catalog_definition_install')) target = resolve(directory, `${values?.[1]}.json`);
       if (text === 'COMMIT') {
         assert.ok(target);
-        await stat(target);
+        if (committed) assert.ok(reader.readInstalled(ref));
+        else {
+          await assert.rejects(stat(target), { code: 'ENOENT' });
+          assert.equal(reader.readInstalled(ref), undefined);
+          assert.equal(reader.registry.resolve(ref), undefined);
+        }
         throw failure;
       }
       return result;
@@ -208,9 +217,12 @@ test('a failed commit removes only the rules build linked by that installation',
     assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
     assert.ok(target);
     await assert.rejects(stat(target), { code: 'ENOENT' });
+    assert.equal(reader.readInstalled(ref), undefined);
     const successful = installation();
     await installDemonstration(config, async () => ({ ...successful.binding, catalogueRules: bytes, catalogueBuildDirectory: directory }));
     const installed = await readFile(target);
+    committed = true;
+    assert.ok(reader.readInstalled(ref));
     await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
     assert.deepEqual(await readFile(target), installed);
   } finally { await rm(directory, { recursive: true, force: true }); }

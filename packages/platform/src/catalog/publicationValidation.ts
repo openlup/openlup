@@ -481,7 +481,7 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
       { run: async () => { bound = await bindEvidence(admitted); } },               // Bind reads              all  P:508–594 (draft heads: P:560–569)
       { run: () => bound.bindSources() },                                           // Saved-operation sources all  P:595–672
       { run: () => bound.checkPhysicalSources() },                                  // Media and identity      all  P:674–691, T:106–117
-      { run: () => bound.checkActivationSources(), activation: true },               // Activation sources      P:502,548–558,683–697, T:133–152
+      { run: () => bound.checkActivationSources(), activation: true },               // Activation sources      P:263–292,502,548–558,683–697, T:133–152
       { run: () => bound.applyPrefixes() },                                         // Ordered effects         all  P:815–929, M:91–98
       { run: () => bound.checkStructuralResult() },                                 // Structural result       all  P:940–954
       { run: () => bound.checkActivationResult(), activation: true },                // Activation result       P:955–969
@@ -504,11 +504,11 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     // Check the temporary numeric domain before strict positive-quantity decoding,
     // so zero, negative, fractional and overflow all have the same stable refusal.
     assertCatalogPublicationMassInputs(record.payload, definition);
-    const intent = publicationIntent(record.payload, (path, unsupportedKey) => {
+    const intent = publicationIntent(record.payload, (path, unsupportedKey, fix) => {
       const code = "candidate_invalid";
-      const message = unsupportedKey ? "Remove the unsupported field at this path, then prepare the draft again."
+      const message = fix ?? (unsupportedKey ? "Remove the unsupported field at this path, then prepare the draft again."
         : path.endsWith(".op") ? "Use a supported publication operation at this path, then prepare the draft again."
-          : "Correct the draft value at this path, then prepare the draft again.";
+          : "Correct the draft value at this path, then prepare the draft again.");
       throw new CatalogPublicationError(code, "validation_issue", { ...publicationIssue(code, "structural", path, definition.key), message });
     });
     if (!intent) return publicationRefuse("candidate_invalid");
@@ -561,7 +561,11 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     validationPayload, draftIssues }: Awaited<ReturnType<typeof admit>>) {
     const { record, definition, expectedHead, observations } = input;
     position.path = "publication";
-    const current = await input.readCurrentHead?.();
+    let current: CatalogHeadRef | null | undefined;
+    try { current = await input.readCurrentHead?.(); }
+    catch (error) {
+      if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") throw error;
+    }
     if (current !== undefined && !equal(current, expectedHead)) publicationRefuse("head_conflict", "conflict");
     const evidence = input.evidence === undefined ? await observe(() => observations?.readEvidence?.({
       candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead,
@@ -846,7 +850,17 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
         need(source.sku.netContent, "catalog_publication_operation_source_mismatch");
         assertCatalogPublicationGrossMass(source.sku.netContent!, source.sku.grossMass ?? null, definition);
         position.path = "publication.evidence.media";
-        const problem = catalogPublicationMediaIssue(presentation?.mediaRef, source.sku.assetRefs ?? [], media.get(code));
+        const assets = source.sku.assetRefs ?? [];
+        const retainedReference = source.payload.product.sharedContent.presentation.mediaRef;
+        if (source.source !== record && (retainedReference != null || assets.length)
+          && (typeof retainedReference !== "string" || retainedReference !== presentation?.mediaRef)) {
+          const code = "catalog_publication_media_readiness_unproven";
+          throw new CatalogPublicationError(code, "validation_issue", {
+            ...publicationIssue(code, "activation", position.path, position.subject),
+            message: "Keep the selected draft's media reference in the proposed presentation.",
+          });
+        }
+        const problem = catalogPublicationMediaIssue(presentation?.mediaRef, assets, media.get(code));
         if (problem === "media_readiness_unknown")
           activationIssues.push(unavailable(publicationIssue("catalog_publication_media_validation_unavailable", "activation", position.path, code)));
         else need(!problem, "catalog_publication_media_readiness_unproven");

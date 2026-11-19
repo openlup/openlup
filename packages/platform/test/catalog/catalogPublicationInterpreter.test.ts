@@ -29,6 +29,7 @@ type Case = { id: string; fixture?: "revision"; arrange?: (data: Fixture) => voi
   substitute?: boolean;
   currentHead?: CatalogCandidateDeps["currentHead"];
   draftAdvanced?: boolean;
+  latestReadRejects?: boolean;
   routeCalls?: readonly [number, number, number];
   evidenceCalls?: number;
   evidenceRows?: (rows: Fixture["evidence"]["drafts"]) => void;
@@ -153,6 +154,40 @@ function replaceDocument(data: Fixture, retained = false) {
 const movedHead = { publicationId: "50000000-0000-4000-8000-000000000007", revision: 4, documentDigest: "e".repeat(64) };
 const beforeRoute = { readiness: routeConflict, routeCalls: [0, 0, 0] } as const;
 const cases: Case[] = [
+  { id: "a callback verified for another type cannot bind the selected definition", arrange(data) {
+    const { validateContent: _rule, publicationRules: _installed, ...type } = data.definition;
+    const pack = withCatalogPublicationRules({ id: "example:paired-rules", namespace: "example", version: 1, openlupRange: "1.x",
+      taxClasses: [], capabilities: {}, types: [type, { ...type, key: "example:other" }] }, () => Buffer.from(artifact));
+    data.definition = { ...data.definition, validateContent: pack.types[1]!.validateContent };
+    data.registry = { resolve: () => data.definition };
+  }, expected: reason("catalog_publication_rules_binding_mismatch"), evidenceCalls: 0, ...beforeRoute,
+  diagnostic: { phase: "structural", path: "product.type", subject: "example:article" } },
+  { id: "retained activation media cannot be removed from the proposed presentation", fixture: "revision", arrange(data) {
+    const retained = structuredClone(input().record);
+    retained.draftId = "30000000-0000-4000-8000-000000000003";
+    retained.payload.product.sharedContent.presentation = { mediaRef: "example:media" };
+    const sku = data.evidence.skus[0]!;
+    const grossMass = { ...sku.netContent, unscaled: "110" };
+    retained.payload.skus[0]!.grossMass = grossMass;
+    Object.assign(sku, { status: "active", sellableStandalone: true, grossMass, source: catalogPublicationClaim(retained) });
+    data.evidence.product!.status = "active";
+    data.evidence.product!.presentation = { mediaRef: "example:media" };
+    data.evidence.drafts.push({ record: retained, receipt: catalogPublicationClaim(retained), head: retained });
+    pointerBeforeRoute(data);
+  }, expected: ["catalog_publication_media_readiness_unproven", null, "catalog_publication_media_readiness_unproven"],
+  diagnostic: { phase: "activation", path: "publication.evidence.media", subject: "ARTICLE" },
+  message: "Keep the selected draft's media reference", routeCalls: [0, 1, 0] },
+  { id: "a unit identifier refusal names the quantity field and its fix", arrange(data) {
+    operation(data, "create_identifier", { quantity: 2 });
+  }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
+  diagnostic: { phase: "structural", path: "publication.operations.4.quantity", subject: "example:article" },
+  message: "unit identifiers require quantity 1" },
+  { id: "a rejected latest draft read leaves a known route refusal visible", fixture: "revision",
+    latestReadRejects: true, readiness: routeConflict, routeCalls: [1, 1, 1],
+    expected: reason("duplicate_route"), diagnostic: routeAt(0) },
+  { id: "a rejected latest draft read is a typed dependency refusal when the route passes", fixture: "revision",
+    latestReadRejects: true, routeCalls: [1, 1, 1], outcome: "unknown",
+    expected: reason("publication_head_unavailable") },
   ...(["membership", "presentation"] as const).map((later): Case => ({
     id: `the first derived value precedes a later ${later} mismatch`, fixture: "revision", arrange(data) {
       if (later === "membership") {
@@ -594,7 +629,7 @@ const cases: Case[] = [
     expected: reason("catalog_publication_presentation_unavailable") },
 ];
 
-it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, draftAdvanced, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
+it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, draftAdvanced, latestReadRejects, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
   const bound = rulesAsset === undefined ? {} : setupRules(rulesAsset);
   const data = fixture === "revision" ? await revision() : { ...input(), ...bound };
   if (fixture === "revision") Object.assign(data, bound);
@@ -613,8 +648,12 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   if (governed && !data.validatePrices) data.validatePrices = async () => [];
   const readEvidence = vi.fn(async () => evidence);
   const current = currentHead && vi.fn(currentHead);
-  const readDraft = draftAdvanced ? vi.fn(async (_id: string, revision?: number) => revision === undefined
-    ? { ...data.record, revision: data.record.revision + 1 } : data.record) : undefined;
+  const rejectLatest = async () => { throw new Error("synthetic read timeout"); };
+  const readDraft = draftAdvanced || latestReadRejects ? vi.fn(async (_id: string, revision?: number) => {
+    if (revision !== undefined) return data.record;
+    if (latestReadRejects) return rejectLatest();
+    return { ...data.record, revision: data.record.revision + 1 };
+  }) : undefined;
   const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current, readDraft);
   const checkRouteCalls = (expectedCalls?: number) => {
     if (expectedCalls !== undefined) expect(observations.presentationReadiness).toHaveBeenCalledTimes(expectedCalls);
@@ -630,19 +669,20 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   checkRouteCalls(routeCalls?.[0]);
   if (evidenceCalls !== undefined) expect(readEvidence).toHaveBeenCalledTimes(evidenceCalls);
   if (substitute && current) expect(current).not.toHaveBeenCalled();
-  if (readDraft) expect(readDraft.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
+  if (draftAdvanced) expect(readDraft?.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
   expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
   if (outcome) expect(preview.preparation?.structural.outcome).toBe(outcome);
   if (diagnostic) {
-    const issues = preview.preparation?.structural.issues;
+    const issues = diagnostic.phase === "activation" ? preview.preparation?.activation.issues : preview.preparation?.structural.issues;
     expect(issues?.[0]).toEqual(expect.objectContaining({ code: expected[0], ...diagnostic }));
     if (message) expect(issues?.[0]?.message).toContain(message);
   }
   if (rulesAsset && diagnostic?.cause) expect(() => loadCatalogRules(Buffer.from(rulesAsset)).validateContent({}))
     .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause, ...(message && { message: expect.stringContaining(message) }) }) }));
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
-    const result = compileCatalogPublication({ ...data, record, evidence, observations, ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
+    const result = compileCatalogPublication({ ...data, record, evidence, observations,
+      ...(latestReadRejects && { readCurrentHead: rejectLatest }), ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
     if (expected[index + 1]) await expect(result).rejects.toMatchObject({ code: expected[index + 1],
       ...(diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }), ...(outcome === "unknown" && { outcome: "dependency_unavailable" }) });
     else {

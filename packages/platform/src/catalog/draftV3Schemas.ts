@@ -77,7 +77,7 @@ export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublic
   if (new Set(drafts.map(row => row.draftId)).size !== drafts.length) issue("draft evidence must be unique");
   if (new Set(media.map(row => row.skuCode)).size !== media.length) issue("media evidence must be unique");
   const created = new Set<string>(), primaries = new Set<string>(), identities = new Set<string>();
-  for (const operation of input.operations) {
+  for (const [index, operation] of input.operations.entries()) {
     const keys = operation.op === "create_product" ? [`product:${operation.productId}`, `slug:${operation.productSlug}`]
       : operation.op === "create_sku" ? [`sku:${operation.skuId}`, `code:${operation.skuCode}`]
       : operation.op === "register_document_revision" ? [`document:${operation.revisionId}`, `revision:${operation.productSlug}:${operation.revisionNo}`] : [];
@@ -85,7 +85,9 @@ export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublic
     if (operation.op === "create_sku") created.add(operation.skuCode);
     if (operation.op === "create_identifier") {
       if (!created.has(operation.skuCode)) issue("identifier precedes or lacks SKU creation");
-      if ((operation.packagingLevel === "unit") !== (operation.quantity === 1)) issue("identifier quantity contradicts packaging level");
+      if (operation.packagingLevel === "unit" && operation.quantity !== 1)
+        context.addIssue({ code: "custom", path: ["operations", index, "quantity"], message: "unit identifiers require quantity 1" });
+      else if (operation.packagingLevel !== "unit" && operation.quantity === 1) issue("identifier quantity contradicts packaging level");
       if (operation.isPrimary && (operation.packagingLevel !== "unit" || primaries.has(operation.skuCode))) issue("second or non-unit primary identifier");
       if (operation.isPrimary) primaries.add(operation.skuCode);
       if (operation.scheme === "gs1:gtin") {

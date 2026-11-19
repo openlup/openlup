@@ -46,29 +46,35 @@ function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, ar
     types: [type], capabilities: {}, taxClasses: [] }, () => artifact);
 }
 
-/** Retain the installed definition and exact rules in the local demonstration build directory. */
-export function retainStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory): (() => void) | undefined {
+/** Stage the receipt and exact rules. Only a committed install may publish their link. */
+export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory) {
   const definition = starterCataloguePack(artifact).types[0]!;
   const { validateContent: _callback, ...type } = definition;
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
   const bytes = Buffer.from(canonicalCatalogDraftJson({ type, asset: artifact.toString('base64'), installed }));
   mkdirSync(directory, { recursive: true });
+  const target = join(directory, `${type.version}.json`);
+  const previous = readOptional(target);
+  if (previous) {
+    if (!previous.equals(bytes)) throw Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' });
+    return;
+  }
   const temp = mkdtempSync(join(directory, '.pending-'));
-  try {
-    const source = join(temp, 'build.json'), target = join(directory, `${type.version}.json`);
-    writeFileSync(source, bytes);
-    try { linkSync(source, target); }
-    catch (error) {
-      if (!readOptional(target)?.equals(bytes)) throw error;
-      return;
-    }
-    // Only this installation's new link is eligible for rollback.
-    return () => rmSync(target, { force: true });
-  } finally { rmSync(temp, { recursive: true, force: true }); }
+  const source = join(temp, 'build.json');
+  const discard = () => rmSync(temp, { recursive: true, force: true });
+  try { writeFileSync(source, bytes); }
+  catch (error) { discard(); throw error; }
+  return {
+    publish() {
+      try { linkSync(source, target); }
+      catch (error) { if (!readOptional(target)?.equals(bytes)) throw error; }
+    },
+    discard,
+  };
 }
 
-export function starterCatalogue() {
+export function starterCatalogue(directory = buildDirectory) {
   const artifact = readStarterCatalogueRules();
   const pack = artifact && starterCataloguePack(artifact);
   const current = pack && createCatalogProductTypeRegistry(pack.types).resolve(pack.types[0]!);
@@ -77,7 +83,8 @@ export function starterCatalogue() {
     if (ref.key !== starterCatalogueType.key || !Number.isSafeInteger(ref.version) || ref.version <= 1) return;
     const cached = history.get(ref.version);
     if (cached) return cached;
-    const raw = readOptional(join(buildDirectory, `${ref.version}.json`));
+    // A visible receipt link was published only after its definition committed.
+    const raw = readOptional(join(directory, `${ref.version}.json`));
     if (!raw) return;
     const { type, asset, installed } = JSON.parse(raw.toString()) as {
       type: Omit<CatalogProductTypeInput, 'validateContent'>; asset: string;
