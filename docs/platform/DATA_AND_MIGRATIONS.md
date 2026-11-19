@@ -2521,8 +2521,10 @@ CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example
 ```
 
 Use a public zero-argument invoker returning `trigger`. Reserve the pinned names
-for declarations, new functions and their PUBLIC revokes. A pinned-name refusal
-lists the permitted statements and identifies the statement to remove or rewrite.
+for declarations, new functions and their PUBLIC revokes. Fix parse errors first.
+For a pinned object, remove the refused statement or use one of the listed exact
+statements. Remove an unregistered trigger, or register it and use the rendered
+SQL when its form is supported.
 Pins may share a relation. Reuse prefix invokers without a revoke and keep other trigger DDL off it.
 
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
@@ -4562,26 +4564,21 @@ The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderSchedule.t
 compares both current preimages, payloads (apart from the new stage and random
 tokens), metadata, dedup keys, replay, function attributes and restricted access.
 
-Separate runtime roles retain their existing producer EXECUTE and relation
-privileges. Add this one EXECUTE grant before resuming the invoker abandoned-cart
-producer; the qualified service-role binding already receives it:
-
-```sql
-GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() TO runtime_role;
-```
-
-The validator requires no caller settings SELECT. Missing EXECUTE raises `42501`
-even with an absent key. The TypeScript read helper separately needs settings
-SELECT to return the revision and full schedule. The reminder guard forward
+After the episode pin forward, a separately delegated cart job role retains
+its producer `EXECUTE` and needs `EXECUTE` on
+`commerce_enqueue_abandoned_cart_reminder_episodes(integer)`. The helper calls
+the validator as owner. Follow the [installation recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
+for the grant, the refusal and its hint. The TypeScript read helper requires
+settings `SELECT` to return the revision and full schedule. The reminder guard
+forward
 `20261123141000_checkout_recovery_reminder_guard.sql` preserves both producer signatures and privileges. The SQL installer runs with
 the installation role's permissions. It takes the same transaction
 advisory lock as the guard and both producers, before reading the installed
 schedule. Enqueued waves and the guard check therefore serialize at `READ COMMITTED`.
-Every pending checkout order with a wave blocks schedule changes regardless of
-age. A pending abandoned cart with a wave blocks while its draft receipt is
-valid and it has no settlement intent. A refusal reports the number of blocking
-orders. A compacted checkout wave consumes both stages with an installed
-schedule and follows the historical hour mapping when the row is absent.
+Both blocker predicates require a pending-payment order with a wave and no pin
+for its reminder kind. A refusal reports the number of blocking orders.
+A compacted checkout wave consumes both stages with an installed schedule
+and follows the historical hour mapping when the row is absent.
 Abandoned-cart stage identity survives compaction in the event type. Both
 producers apply stage deduplication after the candidate limit.
 An identical install returns without a write at every isolation level. Changes
@@ -4589,6 +4586,11 @@ and producers require a fresh statement snapshot after the lock, so
 `REPEATABLE READ` and `SERIALIZABLE` refuse. Follow the
 [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
 to resolve an open-episode refusal before retrying installation.
+
+`20261123148000_checkout_recovery_reminder_episode_pin.sql` stores each order
+and reminder kind's effective offsets with its first wave. The guard continues
+to fence preexisting waves without a pin. Native capture and restore carry
+episode rows with their order. See the [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderEpisodes.test.ts).
 
 ### Expired checkout preparation
 

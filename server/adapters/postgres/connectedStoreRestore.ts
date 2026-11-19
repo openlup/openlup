@@ -272,7 +272,7 @@ const order = [
   "fulfillment_operator_receipts", "fulfillment_operator_status_evidence",
   "commerce_order_holds", "commerce_order_operations", "subscription_delivery_alignment_cases", "subscription_delivery_alignment_admission_receipts", "subscription_delivery_alignment_arrivals",
   "subscription_dunning_cases", "subscription_dunning_notifications",
-  "commerce_checkout_recovery_tokens", "payment_method_recovery_authorities", "subscription_retry_obligations", "subscription_retry_receipts",
+  "commerce_checkout_recovery_tokens", "commerce_reminder_episodes", "payment_method_recovery_authorities", "subscription_retry_obligations", "subscription_retry_receipts",
   "subscription_retry_recovery_authorizations",
   "payment_provider_reconciliation_runs", "payment_prepared_absence_reopens",
   "payment_dunning_case_attribution", "payment_refund_evidence",

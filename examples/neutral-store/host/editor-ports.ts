@@ -88,8 +88,8 @@ export function sizedHostPorts(config: StoreConfig, now: () => string, connectio
       JOIN public.catalog_products product ON product.id=sku.product_id
       JOIN public.catalog_product_document_revisions revision ON revision.id=product.current_document_revision_id
       WHERE sku.id=ANY($1::uuid[]) ORDER BY sku.id`, [ids])).rows;
-    const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now }).readPort.read({
-      skus: rows.map(row => String(row.sku)),horizonDays: config.inventory.renewalProtection.renewalProtectionDays,excludeOrderId: null });
+    const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now })
+      .readInstalled(rows.map(row => String(row.sku)));
     return rows.map((row): SizedCatalogFact => {
       const parsed = productDocument(row.document_payload,config.quote.document.schemaId), variant = parsed.variants.find(item => item.skuId === row.id && item.sku === row.sku);
       if (!variant || parsed.productId !== row.product_id || variant.physical.netWeightG !== row.net_weight_g || documentDigest(parsed) !== row.digest) throw new Error('subscription_reprice_sized_catalog_facts_unreadable');

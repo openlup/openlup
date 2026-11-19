@@ -148,7 +148,7 @@
         ]
       },
       "absentMeans": {
-        "description": "Checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.",
+        "description": "Unpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.",
         "source": "host call parameters, with SQL defaults for omitted offsets",
         "value": {
           "abandonedCart": [
@@ -173,7 +173,7 @@
       },
       "whyThisDefault": "The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.",
       "effect": {
-        "appliesTo": "Scheduling new reminder waves.",
+        "appliesTo": "A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.",
         "frozenOn": [
           "Enqueued messages and send receipts retain their recorded identity."
         ],
@@ -605,7 +605,7 @@
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter editor still supplies its configured horizon to the stock read port."
+        "reason": "The editor reads the installed horizon. Apply changes with the installer at deployment."
       },
       "change": {
         "operation": "installRenewalStockProtectionPolicy"

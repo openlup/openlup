@@ -91,8 +91,8 @@ const cases: Case[] = [
     const name = "fixture_deferred", relation = "public.fixture_row", signature = "public.fixture_deferred()";
     const canonical = `CREATE CONSTRAINT TRIGGER ${name} AFTER UPDATE OR DELETE ON ${relation} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${signature};`;
     const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`;
-    const refusal = scenario === "drift" ? `deferred trigger ${name} does not match its registry entry; write exactly: ${canonical}` : scenario === "conflict" ? `CREATE OR REPLACE TRIGGER is not allowed here: in a forward that pins ${name}, only these statements may name ${name}: ${canonical} ${definition} REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC; Remove or rewrite CREATE OR REPLACE TRIGGER.` : undefined;
-    return { name: `a pinned deferred trigger with ${scenario} SQL`, exit: refusal ? 1 : 0, refusal, hint: scenario === "drift" ? "#declare-a-reviewed-trigger" : undefined, build: (f) => {
+    const refusal = scenario === "exact" ? undefined : `deferred trigger ${name} is pinned; only these statements may name ${name}: ${canonical} ${definition} REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC; remove it, or rewrite it to exactly one of these`;
+    return { name: `a pinned deferred trigger with ${scenario} SQL`, exit: refusal ? 1 : 0, refusal, build: (f) => {
         const statement = scenario === "drift" ? canonical.replace("CREATE", "create") : canonical;
         const entry = slot(nativePath);
         entry.createdFunctions = [{ signature, searchPath: null }];
