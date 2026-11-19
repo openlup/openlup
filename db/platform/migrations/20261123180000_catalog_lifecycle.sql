@@ -527,7 +527,7 @@ BEGIN
  RETURN (SELECT count(*)=count(DISTINCT l->>'skuCode') AND count(*)>0
   AND count(*)=(SELECT count(*) FROM jsonb_object_keys(p_basket))
   AND bool_and(coalesce(p_basket ? (l->>'skuCode') AND EXISTS(
-   SELECT 1 FROM public.catalog_skus k WHERE to_jsonb(k.id)=l->'skuId' AND k.sku=l->>'skuCode'),false))
+   SELECT 1 FROM public.catalog_skus k WHERE k.sku=l->>'skuCode' AND to_jsonb(k.id)=l->'skuId'),false))
   FROM jsonb_array_elements(p_acceptance->'lines') l);
 END;
 $$;
@@ -544,7 +544,9 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_order_evidence_v2(uuid,jsonb,jsonb,boolean) FROM PUBLIC;
 
 -- Read the same accepted edit owners for carrier admission and handoff proof.
-CREATE FUNCTION public.catalog_edit_evidence_v2(p_event public.subscription_events,p_inserting boolean) RETURNS jsonb
+CREATE INDEX subscription_edit_quotes_accepted_event_idx ON public.subscription_edit_quotes (accepted_event_id);
+
+CREATE FUNCTION public.catalog_edit_evidence_v2(p_event public.subscription_events) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE payload jsonb:=p_event.payload; edit_action text:=payload->>'action'; preview public.subscription_quote_previews;
  old_quote public.subscription_edit_quotes; edited jsonb; quoted jsonb; proposed jsonb; hash text; basis integer;
@@ -559,11 +561,11 @@ BEGIN
   INTO edited_roles FROM jsonb_array_elements(payload->'linePricing') l;
  END IF;
  IF payload ? 'quotePreviewId' THEN
+  IF coalesce(payload->>'quotePreviewId','') !~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN RETURN NULL; END IF;
   SELECT * INTO preview FROM public.subscription_quote_previews q
-   WHERE q.id::text=payload->>'quotePreviewId' AND q.subscription_id=p_event.subscription_id AND q.action=edit_action
+   WHERE q.id=(payload->>'quotePreviewId')::uuid AND q.subscription_id=p_event.subscription_id AND q.action=edit_action
     AND EXISTS(SELECT 1 FROM public.subscriptions s WHERE s.id=q.subscription_id AND s.client_id=q.client_id)
-    AND ((q.status='accepted' AND q.accepted_event_id=p_event.id AND q.accepted_at=p_event.occurred_at)
-     OR (p_inserting AND q.status='previewed'));
+    AND q.status='accepted' AND q.accepted_event_id=p_event.id AND q.accepted_at=p_event.occurred_at;
   IF NOT FOUND THEN RETURN NULL; END IF;
   IF edit_action='update_package_template' THEN
    IF jsonb_typeof(preview.quote_snapshot->'baseLines') IS DISTINCT FROM 'array'
@@ -592,7 +594,7 @@ BEGIN
  RETURN quoted||jsonb_build_object('basis',basis,'quoteHash',hash,'commandKey',preview.accepted_idempotency_key);
 END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_edit_evidence_v2(public.subscription_events,boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_edit_evidence_v2(public.subscription_events) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_renewal_integer_v3(p_value jsonb,p_min bigint,p_max bigint DEFAULT 9007199254740991) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -691,7 +693,7 @@ BEGIN
  LOOP
   before_basket:=NULL;
   IF event.event_type LIKE 'subscription.customer_self_service.%' THEN
-   evidence:=public.catalog_edit_evidence_v2(event,false);
+   evidence:=public.catalog_edit_evidence_v2(event);
    IF evidence->'basis' IS DISTINCT FROM to_jsonb(p_basis) THEN CONTINUE; END IF;
    IF NOT (event.payload->>'quoteHash'=evidence->>'quoteHash' AND NOT (event.payload ? 'quotePreviewId')
     AND event.payload#>'{payload,acceptedQuoteHash}' IS NULL
@@ -1581,21 +1583,14 @@ BEGIN
  END IF;
  IF NEW.catalog_acceptance IS NOT NULL THEN
   PERFORM public.catalog_acceptance_assert_v2(NEW.catalog_acceptance);
-  IF TG_TABLE_NAME='commerce_orders' THEN
-   basket:=public.catalog_order_evidence_v2(NEW.id,NEW.metadata,NEW.catalog_acceptance,TG_OP='INSERT' OR NEW.total_amount_minor=0);
-  ELSIF TG_TABLE_NAME='subscription_events' THEN
-   basket:=public.catalog_edit_evidence_v2(NEW,TG_OP='INSERT')->'basket';
-  ELSIF TG_TABLE_NAME='subscription_renewal_operations' THEN
+  IF TG_TABLE_NAME='subscription_renewal_operations' THEN
    IF NEW.cycle_snapshot->>'frozenRevision' IS DISTINCT FROM 'native.purchase-renewal.v3' THEN
-    RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023';
-   END IF;
+    RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023'; END IF;
    codes:=public.catalog_frozen_basket_codes_v2(NEW.cycle_snapshot);
    IF codes IS NOT NULL THEN basket:=public.catalog_retained_basket_v2(NEW.cycle_snapshot->'lines'); END IF;
-  END IF;
-  IF (TG_TABLE_NAME='commerce_orders' AND basket IS NULL)
-   OR (TG_TABLE_NAME IN ('subscription_events','subscription_renewal_operations')
-    AND NOT public.catalog_acceptance_roster_valid_v2(NEW.catalog_acceptance,basket)) THEN
-   RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+   IF NOT public.catalog_acceptance_roster_valid_v2(NEW.catalog_acceptance,basket) THEN
+    RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+   END IF;
   END IF;
   IF TG_TABLE_NAME='subscription_renewal_operations' THEN
    IF NOT public.catalog_frozen_wire_valid_v3(NEW.cycle_snapshot,NEW.operation_fingerprint) THEN
@@ -1617,6 +1612,88 @@ CREATE TRIGGER commerce_orders_catalog_acceptance_admit BEFORE INSERT OR UPDATE 
 CREATE TRIGGER subscription_events_catalog_acceptance_admit BEFORE INSERT OR UPDATE OF catalog_acceptance ON public.subscription_events FOR EACH ROW EXECUTE FUNCTION public.catalog_acceptance_record_admit_v2();
 CREATE TRIGGER subscription_renewal_terms_catalog_acceptance_admit BEFORE INSERT OR UPDATE OF catalog_acceptance ON public.subscription_renewal_terms FOR EACH ROW EXECUTE FUNCTION public.catalog_acceptance_record_admit_v2();
 CREATE TRIGGER subscription_renewal_operations_catalog_acceptance_admit BEFORE INSERT OR UPDATE OF catalog_acceptance,cycle_snapshot ON public.subscription_renewal_operations FOR EACH ROW EXECUTE FUNCTION public.catalog_acceptance_record_admit_v2();
+-- Read final row versions. Older/unbound carriers do not use catalogue evidence.
+CREATE FUNCTION public.catalog_order_acceptance_final(p_order_id uuid) RETURNS void
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE parent public.commerce_orders;
+BEGIN
+ SELECT * INTO parent FROM public.commerce_orders WHERE id=p_order_id;
+ IF parent.catalog_acceptance IS NULL THEN RETURN; END IF;
+ IF public.catalog_order_evidence_v2(p_order_id,parent.metadata,parent.catalog_acceptance,parent.total_amount_minor=0) IS NULL THEN
+  RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+ END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_order_acceptance_final(uuid) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_order_receipt_acceptance_trigger() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE previous uuid; current_order uuid; target uuid;
+BEGIN
+ IF TG_OP<>'INSERT' THEN previous:=OLD.order_id; END IF;
+ IF TG_OP<>'DELETE' THEN current_order:=NEW.order_id; END IF;
+ FOREACH target IN ARRAY ARRAY[previous,CASE WHEN current_order IS DISTINCT FROM previous THEN current_order END] LOOP
+  IF target IS NULL THEN CONTINUE; END IF;
+  IF EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=target AND catalog_acceptance IS NOT NULL) THEN
+   PERFORM public.catalog_order_acceptance_final(target);
+  END IF;
+ END LOOP;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_order_receipt_acceptance_trigger() FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_edit_acceptance_final(p_event_id uuid) RETURNS void
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE event public.subscription_events; basket jsonb;
+BEGIN
+ SELECT * INTO event FROM public.subscription_events WHERE id=p_event_id;
+ IF event.catalog_acceptance IS NULL THEN RETURN; END IF;
+ basket:=public.catalog_edit_evidence_v2(event)->'basket';
+ IF NOT public.catalog_acceptance_roster_valid_v2(event.catalog_acceptance,basket) THEN
+  RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+ END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_edit_acceptance_final(uuid) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_edit_acceptance_trigger() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE previous uuid; current_event uuid; target uuid;
+BEGIN
+ IF TG_TABLE_NAME='subscription_events' THEN
+  IF NEW.catalog_acceptance IS NOT NULL THEN PERFORM public.catalog_edit_acceptance_final(NEW.id); END IF;
+  RETURN NULL;
+ END IF;
+ -- A committed governed event and its quote have a matching accepted link.
+ -- The reverse link therefore finds every committed carrier; the event's own
+ -- check covers new claims, including events whose link was never set.
+ IF TG_OP<>'INSERT' THEN previous:=OLD.accepted_event_id; END IF;
+ IF TG_OP<>'DELETE' THEN current_event:=NEW.accepted_event_id; END IF;
+ FOREACH target IN ARRAY ARRAY[previous,CASE WHEN current_event IS DISTINCT FROM previous THEN current_event END] LOOP
+  IF target IS NULL THEN CONTINUE; END IF;
+  IF EXISTS(SELECT 1 FROM public.subscription_events WHERE id=target AND catalog_acceptance IS NOT NULL) THEN
+   PERFORM public.catalog_edit_acceptance_final(target);
+  END IF;
+ END LOOP;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_edit_acceptance_trigger() FROM PUBLIC;
+
+CREATE CONSTRAINT TRIGGER commerce_order_draft_receipts_catalog_final
+ AFTER INSERT OR UPDATE OR DELETE ON public.commerce_order_draft_receipts
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_order_receipt_acceptance_trigger();
+CREATE CONSTRAINT TRIGGER subscription_events_catalog_final
+ AFTER INSERT OR UPDATE ON public.subscription_events
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_edit_acceptance_trigger();
+CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final
+ AFTER INSERT OR UPDATE OR DELETE ON public.subscription_quote_previews
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_edit_acceptance_trigger();
+CREATE CONSTRAINT TRIGGER subscription_edit_quotes_catalog_final
+ AFTER INSERT OR UPDATE OR DELETE ON public.subscription_edit_quotes
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_edit_acceptance_trigger();
+
 CREATE OR REPLACE FUNCTION public.commerce_order_assert_line_sum()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1624,67 +1701,45 @@ SET search_path = public, pg_catalog
 AS $$
 DECLARE
   v_order_id uuid;
+  v_old_order_id uuid;
+  v_new_order_id uuid;
   v_declared bigint;
   v_sum bigint;
   v_acceptance jsonb;
-  v_metadata jsonb;
 BEGIN
-  -- Branching statements rather than one CASE expression on purpose: the procedural language
-  -- compiles an expression into a single query, so every record field named in any arm must exist
-  -- on every row type the trigger can see, and the two row types here differ.
+  -- Trigger records differ between the header and its items.
   IF TG_TABLE_NAME = 'commerce_orders' THEN
-    v_order_id := NEW.id;
-  ELSIF TG_OP = 'DELETE' THEN
-    v_order_id := OLD.order_id;
+    v_new_order_id := NEW.id;
   ELSE
-    v_order_id := NEW.order_id;
+    IF TG_OP <> 'INSERT' THEN v_old_order_id := OLD.order_id; END IF;
+    IF TG_OP <> 'DELETE' THEN v_new_order_id := NEW.order_id; END IF;
   END IF;
 
-  SELECT total_amount_minor, metadata, catalog_acceptance INTO v_declared, v_metadata, v_acceptance
-    FROM public.commerce_orders
-   WHERE id = v_order_id;
-  -- The order is gone: a cascade took it, and there is nothing left to be consistent with.
-  IF NOT FOUND THEN
-    RETURN NULL;
-  END IF;
+  FOREACH v_order_id IN ARRAY ARRAY[v_new_order_id,CASE WHEN v_old_order_id IS DISTINCT FROM v_new_order_id THEN v_old_order_id END] LOOP
+    IF v_order_id IS NULL THEN CONTINUE; END IF;
+    SELECT total_amount_minor, catalog_acceptance INTO v_declared, v_acceptance
+      FROM public.commerce_orders WHERE id = v_order_id;
+    -- The order may be gone after a cascade.
+    IF NOT FOUND THEN CONTINUE; END IF;
 
-  SELECT COALESCE(sum(line_amount_minor), 0) INTO v_sum
-    FROM public.commerce_order_items
-   WHERE order_id = v_order_id;
+    SELECT COALESCE(sum(line_amount_minor), 0) INTO v_sum
+      FROM public.commerce_order_items WHERE order_id = v_order_id;
 
-  SELECT v_sum + COALESCE(sum(CASE
-    WHEN kind = 'shipping_charge' THEN amount_minor
-    WHEN kind = 'promotion_discount' AND scope = 'shipping' THEN -amount_minor
-    ELSE 0 END), 0) INTO v_sum
-    FROM public.commerce_order_adjustments
-   WHERE order_id = v_order_id;
+    SELECT v_sum + COALESCE(sum(CASE
+      WHEN kind = 'shipping_charge' THEN amount_minor
+      WHEN kind = 'promotion_discount' AND scope = 'shipping' THEN -amount_minor
+      ELSE 0 END), 0) INTO v_sum
+      FROM public.commerce_order_adjustments WHERE order_id = v_order_id;
 
-  IF v_sum IS DISTINCT FROM COALESCE(v_declared, 0) THEN
-    RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514',
-      DETAIL = format('order %s declares %s and its lines sum to %s',
-                      v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);
-  END IF;
-
-  -- The existing deferred owner sees the completed item ledger, even when
-  -- the header and its items were written in separate statements.
-  -- Unbound writers never enter the private catalogue evidence branch.
-  IF v_acceptance IS NOT NULL THEN
-    IF public.catalog_order_evidence_v2(v_order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
-      RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
+    IF v_sum IS DISTINCT FROM COALESCE(v_declared, 0) THEN
+      RAISE EXCEPTION 'commerce_order_line_sum_mismatch' USING ERRCODE = '23514',
+        DETAIL = format('order %s declares %s and its lines sum to %s',
+                        v_order_id, COALESCE(v_declared::text, 'nothing'), v_sum);
     END IF;
-  END IF;
-  IF TG_TABLE_NAME='commerce_order_items' AND TG_OP='UPDATE' THEN
-    IF OLD.order_id IS DISTINCT FROM NEW.order_id THEN
-      SELECT total_amount_minor, metadata, catalog_acceptance INTO v_declared, v_metadata, v_acceptance
-      FROM public.commerce_orders WHERE id=OLD.order_id;
-      IF v_acceptance IS NOT NULL THEN
-        IF public.catalog_order_evidence_v2(OLD.order_id,v_metadata,v_acceptance,v_declared=0) IS NULL THEN
-          RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023';
-        END IF;
-      END IF;
-    END IF;
-  END IF;
 
+    -- Restricted unbound writers never call the private evidence helpers.
+    IF v_acceptance IS NOT NULL THEN PERFORM public.catalog_order_acceptance_final(v_order_id); END IF;
+  END LOOP;
   RETURN NULL;
 END;
 $$;

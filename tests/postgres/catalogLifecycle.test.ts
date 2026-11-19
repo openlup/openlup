@@ -696,12 +696,14 @@ it.each(["order", "edit"] as const)("LC5-PRE A3 refuses a valid retained tuple f
   if (carrier === "order") {
     const otherOrder = await order({ ...f, sku: other.id });
     await db.query("SAVEPOINT wrong_acceptance");
-    await expect(db.query("UPDATE public.commerce_orders SET catalog_acceptance=$2::jsonb WHERE id=$1", [otherOrder,acceptance]))
+    await db.query("UPDATE public.commerce_orders SET catalog_acceptance=$2::jsonb WHERE id=$1", [otherOrder,acceptance]);
+    await expect(db.query("SET CONSTRAINTS trg_commerce_orders_line_sum IMMEDIATE"))
       .rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
   } else {
     const payload = { action: "update_bundle", linePricing: [{ sku: other.code, quantity: 1, unitAmountMinor: 617, isAddon: false, quoteLine: {} }] };
     await db.query("SAVEPOINT wrong_acceptance");
-    await expect(db.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle',$2,$3::jsonb,$4::jsonb)", [f.subscription,`edit:${id}`,JSON.stringify(payload),acceptance]))
+    await db.query("INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,catalog_acceptance) VALUES($1,'subscription.customer_self_service.update_bundle',$2,$3::jsonb,$4::jsonb)", [f.subscription,`edit:${id}`,JSON.stringify(payload),acceptance]);
+    await expect(db.query("SET CONSTRAINTS subscription_events_catalog_final IMMEDIATE"))
       .rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
   }
   await db.query("ROLLBACK TO SAVEPOINT wrong_acceptance");
@@ -754,10 +756,104 @@ it.each(["order at commit", "edit matches only event", "edit matches only previe
       VALUES($1,$2,$3,$4,$5,$6,1,clock_timestamp()+interval '1 hour','accepted','{}',$7::jsonb,'{}',
         (SELECT occurred_at FROM public.subscription_events WHERE id=$8),$9,$8)`,
       [preview,f.subscription,f.client,randomUUID(),action,"b".repeat(64),JSON.stringify({ lines: [{ variantId: other.id, qty: 1, quoteLine: { sku: other.code } }] }),id,`accept:${id}`]);
-    await expect.soft(db.query("UPDATE public.subscription_events SET catalog_acceptance=$2::jsonb WHERE id=$1",[id,acceptance]))
+    await db.query("UPDATE public.subscription_events SET catalog_acceptance=$2::jsonb WHERE id=$1",[id,acceptance]);
+    await expect.soft(db.query("SET CONSTRAINTS subscription_events_catalog_final IMMEDIATE"))
       .rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
   }
   await db.query("ROLLBACK TO SAVEPOINT contradictory_acceptance");
+});
+
+it.each([
+  "header before items", "zero receipt only", "changed receipt", "moved item", "unlinked edit", "missing preview acceptance",
+  "wrong preview link", "changed preview", "changed classic quote",
+] as const)("LC5-C3 A3 reconciles the final owners: %s", async path => {
+  const f = await seed({ other: true }), standing = await standingActive(f), other = f.payload.skus[1]!;
+  const acceptance = JSON.stringify({ schemaVersion: 2, lines: [standing.accepted] });
+  const target = randomUUID(), mismatch = { code: "22023", message: "catalog_acceptance_line_mismatch" };
+  const check = (trigger: string) => db.query(`SET CONSTRAINTS ${trigger} IMMEDIATE`);
+  const rearm = async () => { await check("ALL"); await db.query("SET CONSTRAINTS ALL DEFERRED"); };
+  const anchor = "final_owner";
+
+  if (["header before items", "zero receipt only", "changed receipt", "moved item"].includes(path)) {
+    const total = path === "header before items" ? 617 : 0;
+    await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,catalog_acceptance) VALUES($1,$2,'XXX',$3,$4::jsonb)",
+      [target,f.client,total,acceptance]);
+    if (path === "zero receipt only" || path === "changed receipt" || path === "moved item") await saveOrderQuote(target,[{ sku: f.code, quantity: 1 }]);
+    if (total > 0 || path === "moved item") await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,1,1,$3,$3)", [target,f.sku,total]);
+    await rearm();
+    expect((await db.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [target])).rows[0].catalog_acceptance).toEqual(JSON.parse(acceptance));
+    if (path === "changed receipt") {
+      await db.query(`SAVEPOINT ${anchor}`);
+      await db.query("UPDATE public.commerce_order_draft_receipts SET response_payload=jsonb_set(response_payload,'{orderDraft,quoteSnapshot,quote,lines,0,sku}',to_jsonb($2::text)) WHERE order_id=$1", [target,other.code]);
+      await expect(check("commerce_order_draft_receipts_catalog_final")).rejects.toMatchObject(mismatch);
+      await db.query(`ROLLBACK TO SAVEPOINT ${anchor}`);
+      expect((await db.query("SELECT response_payload#>>'{orderDraft,quoteSnapshot,quote,lines,0,sku}' AS sku FROM public.commerce_order_draft_receipts WHERE order_id=$1", [target])).rows)
+        .toEqual([{ sku: f.code }]);
+    } else if (path === "moved item") {
+      const source = randomUUID();
+      await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [source,f.client]);
+      await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,0,0)", [source,other.id]);
+      await rearm();
+      await db.query(`SAVEPOINT ${anchor}`);
+      await db.query("UPDATE public.commerce_order_items SET order_id=$1 WHERE order_id=$2", [target,source]);
+      await expect(check("trg_commerce_order_items_line_sum")).rejects.toMatchObject(mismatch);
+      await db.query(`ROLLBACK TO SAVEPOINT ${anchor}`);
+      expect((await db.query("SELECT sku_id FROM public.commerce_order_items WHERE order_id=$1", [source])).rows).toEqual([{ sku_id: other.id }]);
+    }
+    return;
+  }
+
+  const classic = path === "changed classic quote", linked = path !== "unlinked edit" && !classic;
+  const action = classic ? "update_bundle" : "update_package_template", preview = randomUUID(), hash = "c".repeat(64), key = `accept:${target}`;
+  const clock = (await db.query("SELECT statement_timestamp() AS at, statement_timestamp()+interval '1 hour' AS expiry")).rows[0];
+  const quoteLine = { sku: f.code, quantity: 1, unitPriceGross: { amountMinor: 617 } };
+  const proposed = [{ variantId: f.sku, qty: 1, quoteLine }];
+  const payload = { action, ...(linked ? { quotePreviewId: preview } : {}),
+    ...(classic ? { quoteHash: hash, templateVersion: 2 } : {
+      linePricing: [{ sku: f.code, quantity: 1, unitAmountMinor: 617, isAddon: false, quoteLine }],
+    }) };
+  if (linked) {
+    await db.query(`INSERT INTO public.subscription_quote_previews(id,subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,status,request_payload,quote_snapshot,totals)
+      VALUES($1,$2,$3,$4,$5,$6,1,$7,'previewed','{}',$8::jsonb,'{}')`,
+      [preview,f.subscription,f.client,randomUUID(),action,hash,clock.expiry,JSON.stringify({ baseLines: proposed, addonLines: [] })]);
+  }
+  await db.query(`SAVEPOINT ${anchor}`);
+  await db.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload,catalog_acceptance,occurred_at)
+    VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)`, [target,f.subscription,`subscription.customer_self_service.${action}`,key,JSON.stringify(payload),acceptance,clock.at]);
+  if (path === "missing preview acceptance" || path === "wrong preview link") {
+    if (path === "wrong preview link") {
+      const unrelated = randomUUID();
+      await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,occurred_at) VALUES($1,$2,$3,$4,$5)",
+        [unrelated,f.subscription,`subscription.customer_self_service.${action}`,`unrelated:${target}`,clock.at]);
+      await db.query("SELECT public.subscription_quote_preview_mark_accepted($1,$2,$3,$4)", [preview,key,unrelated,clock.at]);
+    }
+    await expect(check("subscription_events_catalog_final")).rejects.toMatchObject(mismatch);
+    await db.query(`ROLLBACK TO SAVEPOINT ${anchor}`);
+    expect((await db.query("SELECT accepted_event_id FROM public.subscription_quote_previews WHERE id=$1", [preview])).rows).toEqual([{ accepted_event_id: null }]);
+    expect((await db.query("SELECT id FROM public.subscription_events WHERE id=$1", [target])).rows).toEqual([]);
+    return;
+  }
+  if (linked) await db.query("SELECT public.subscription_quote_preview_mark_accepted($1,$2,$3,$4)", [preview,key,target,clock.at]);
+  if (classic) {
+    const lines = [{ variantId: f.sku, quantity: 1, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }];
+    await db.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,quote_hash,expected_template_version,
+      proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,status,expires_at,accepted_event_id,accepted_at)
+      VALUES($1,$2,$3,$4,1,$5::jsonb,28,617,617,'XXX','accepted',$6,$7,$8)`,
+      [f.subscription,key,"d".repeat(64),hash,JSON.stringify(lines),clock.expiry,target,clock.at]);
+  }
+  await rearm();
+  expect((await db.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [target])).rows[0].catalog_acceptance).toEqual(JSON.parse(acceptance));
+  if (path === "unlinked edit") return;
+  await db.query("SAVEPOINT corrupt_companion");
+  if (classic) {
+    await db.query("UPDATE public.subscription_edit_quotes SET proposed_lines=jsonb_set(proposed_lines,'{0,variantId}',to_jsonb($2::uuid)) WHERE accepted_event_id=$1", [target,other.id]);
+    await expect(check("subscription_edit_quotes_catalog_final")).rejects.toMatchObject(mismatch);
+  } else {
+    await db.query("UPDATE public.subscription_quote_previews SET quote_snapshot=jsonb_set(quote_snapshot,'{baseLines,0,quoteLine,unitPriceGross,amountMinor}','618') WHERE id=$1", [preview]);
+    await expect(check("subscription_quote_previews_catalog_final")).rejects.toMatchObject(mismatch);
+  }
+  await db.query("ROLLBACK TO SAVEPOINT corrupt_companion");
+  expect((await db.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [target])).rows[0].catalog_acceptance).toEqual(JSON.parse(acceptance));
 });
 
 function withdrawal(f: Awaited<ReturnType<typeof seed>>): CatalogDraftPayloadV4 {

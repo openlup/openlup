@@ -37,8 +37,9 @@ price. Missing or contradictory lineage leaves the obligation unknown.
 
 Order evidence reconciles accepted quotes, item quantities and retained
 references. Separate ordinals for the same SKU contribute to the same quantity.
-The deferred order check validates acceptance against the completed item ledger,
-including when the order header was written first. Governed renewal admission
+Deferred checks reconcile supplied acceptance against the final item, receipt,
+and linked quote rows. A header or subscription event may be written before its
+companion rows in the same transaction. Governed renewal admission
 checks the frozen wire before the native reader replays it, including the
 native integer bounds for item quantities and ordinals. Publication and head
 checks resolve complete immutable rosters at the end of the transaction.
