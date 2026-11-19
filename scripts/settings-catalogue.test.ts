@@ -127,6 +127,7 @@ it.each([
   ["inventory_renewal_protection", "{}", ["--configuration", "unknown-store"], "configuration_unknown", ["configuration"]],
   ["inventory_renewal_protection", "{}", ["--as-of", "yesterday"], "input_invalid", ["asOf"]],
   ["inventory_renewal_protection", "{}", ["--database-url", "https://user:private@example.invalid"], "input_invalid", ["database-url"]],
+  ["inventory_renewal_protection", "{}", ["--database-url", "postgresql://"], "input_invalid", ["database-url"]],
   ["inventory_renewal_protection", "{}", [], "connection_required", []],
   ["checkout_recovery_reminders", "{}", [], "unsupported", ["key"]],
 ] as const)("reports the preview refusal %s %s %j as %s", (key, value, flags, reason, path) => {

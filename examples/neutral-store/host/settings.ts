@@ -112,7 +112,8 @@ async function preview(
     });
   }
   if (!databaseUrl) return previewSetting(input);
-  if (!URL.canParse(databaseUrl) || !['postgres:', 'postgresql:'].includes(new URL(databaseUrl).protocol)) {
+  const url = URL.parse(databaseUrl);
+  if (!url?.hostname || !['postgres:', 'postgresql:'].includes(url.protocol)) {
     return refuseSettingsPreview('commerce_setting_preview_input_invalid', {
       path: ['database-url'], hint: 'Supply a PostgreSQL URL for the intended store.',
     });

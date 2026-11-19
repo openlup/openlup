@@ -115,13 +115,29 @@ export type SettingPreviewer<Result extends { schemaVersion: 1 }> = (proposed: J
   asOf: string; skus: readonly string[]; refuse: typeof refuseSettingsPreview;
 }) => Promise<Result | PreviewRefusal>;
 
+function hasNonfiniteNumber(proposed: unknown): boolean {
+  const pending = [proposed];
+  const seen = new WeakSet<object>();
+  while (pending.length) {
+    const value = pending.pop();
+    if (typeof value === "number" && !Number.isFinite(value)) return true;
+    if (value && typeof value === "object" && !seen.has(value)) {
+      seen.add(value);
+      for (const child of Object.values(value)) pending.push(child);
+    }
+  }
+  return false;
+}
+
 /** @experimental Shared dispatcher for CLI and host-mounted MCP preview. */
 export async function previewSetting<Result extends { schemaVersion: 1 } = never>(
   input: unknown, previewers: Readonly<Record<string, SettingPreviewer<Result>>> = {},
 ): Promise<Result | PreviewRefusal> {
-  const parsed = settingsPreviewRequest.safeParse(input);
-  if (!parsed.success) {
-    const field = parsed.error.issues[0]?.path[0];
+  // Inspect and forward the original proposal, including its own __proto__ keys.
+  const { proposed } = (input ?? {}) as { proposed: JsonValue };
+  const parsed = hasNonfiniteNumber(proposed) ? undefined : settingsPreviewRequest.safeParse(input);
+  if (!parsed?.success) {
+    const field = parsed ? parsed.error.issues[0]?.path[0] : "proposed";
     const hint = field === "key" ? "Supply a setting key from the catalogue."
       : field === "proposed" ? "Supply a decoded JSON value with finite numbers."
       : field === "skus" ? "Supply nonempty SKU strings."
@@ -136,8 +152,6 @@ export async function previewSetting<Result extends { schemaVersion: 1 } = never
   const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
   if (!preview) return refuseSettingsPreview("commerce_setting_preview_connection_required");
   try {
-    // Check the envelope without substituting Zod's copy of the proposed value.
-    const { proposed } = input as { proposed: JsonValue };
     return await preview(proposed, { skus: [...new Set(skus)], asOf, refuse: refuseSettingsPreview });
   } catch {
     return refuseSettingsPreview("commerce_setting_preview_unexpected");

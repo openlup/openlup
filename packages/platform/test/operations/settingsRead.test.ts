@@ -253,6 +253,21 @@ it("snapshots a direct proposal before connecting and admits a request with more
   } })).resolves.toEqual({ schemaVersion: 1 });
 });
 
+it("refuses nonfinite numbers under own __proto__ keys at the root or nested", async () => {
+  const run = vi.fn(async () => ({ schemaVersion: 1 as const }));
+  for (const json of [
+    '{"revision":"x","renewalProtectionDays":14,"__proto__":1e400}',
+    '{"revision":"x","renewalProtectionDays":14,"__proto__":[{"__proto__":-1e400}]}',
+  ]) {
+    await expect(previewSetting({ key: previewKey, proposed: JSON.parse(json) }, { [previewKey]: run }))
+      .resolves.toMatchObject({ schemaVersion: 1, refusal: {
+        code: "commerce_setting_preview_input_invalid", path: ["proposed"],
+        hint: "Supply a decoded JSON value with finite numbers.",
+      } });
+  }
+  expect(run).not.toHaveBeenCalled();
+});
+
 it("passes exact SKU identifiers through and deduplicates only exact matches", async () => {
   const skus = ["SKU-1", " SKU-1 ", "SKU-1", " SKU-1 "];
   const run = vi.fn(async () => ({ schemaVersion: 1 as const }));
