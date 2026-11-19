@@ -30,6 +30,8 @@ type Case = { id: string; fixture?: "revision"; arrange?: (data: Fixture) => voi
   currentHead?: CatalogCandidateDeps["currentHead"];
   routeCalls?: readonly [number, number, number];
   evidenceCalls?: number;
+  evidenceRows?: (rows: Fixture["evidence"]["drafts"]) => void;
+  message?: string;
   preserve?: boolean;
   evaluation?: CatalogCandidatePublicationDeps["evaluation"];
 };
@@ -127,7 +129,113 @@ const copiedPresentation = (data: Fixture, suffix = "") => {
   operation(data, "set_product_presentation", { presentation: data.payload.product.sharedContent.presentation });
 };
 const unreadableHead = { publicationId: "head", revision: 1, documentDigest: "unavailable" };
+function replaceDocument(data: Fixture, retained = false) {
+  const reference = data.payload.product.documentRevision!;
+  const prior = data.evidence.documents[0]!.canonicalText;
+  const document = { ...input().payload.product.sharedContent.document, revisionNo: 2 };
+  const canonicalText = canonicalCatalogDraftJson(document);
+  const next = { ...reference, id: "40000000-0000-4000-8000-000000000002", revisionNo: 2,
+    digest: createHash("sha256").update(canonicalText).digest("hex") };
+  data.payload.product.documentRevision = next;
+  data.payload.product.sharedContent.document = document;
+  const source = { ...data.record, draftId: "30000000-0000-4000-8000-000000000003" };
+  const claim = catalogPublicationClaim(source);
+  if (retained) data.payload.publication.evidence.drafts = [claim];
+  data.payload.publication.operations.unshift({ op: "register_document_revision", productSlug: "article", revisionId: next.id,
+    revisionNo: next.revisionNo, documentRef: next.documentRef, sourceRef: next.sourceRef, canonicalText, digest: next.digest,
+    provenance: retained ? { source: "retained_draft", draftId: claim.draftId, draftRevision: claim.revision,
+      draftCommandKey: claim.commandKey, draftFingerprint: claim.fingerprint } : { source: "current_draft" } },
+  { op: "move_document_pointer", productSlug: "article", documentRevisionNo: 2 });
+  if (retained) data.evidence.drafts.push({ record: { ...source, payload: {} as typeof source.payload }, receipt: claim, head: source });
+  return prior;
+}
+const movedHead = { publicationId: "50000000-0000-4000-8000-000000000007", revision: 4, documentDigest: "e".repeat(64) };
+const beforeRoute = { readiness: routeConflict, routeCalls: [0, 0, 0] } as const;
 const cases: Case[] = [
+  { id: "phase-1 binding precedes moved lineage and routes", fixture: "revision", substitute: true,
+    arrange: data => { data.evidence.head = movedHead; },
+    currentHead: async () => ({ outcome: "found", head: movedHead, documentRef: "example:moved", observations: [] }),
+    expected: reason("catalog_publication_rules_binding_mismatch"), diagnostic: { phase: "structural", path: "product.type", subject: "example:article" },
+    evidenceCalls: 0, ...beforeRoute },
+  { id: "phase-1 operation grammar precedes receipt and route", fixture: "revision", arrange: data => {
+    data.payload.product.sharedContent.presentation = {};
+    operation(data, "set_product_presentation", { presentation: { extra: true } });
+    data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong";
+  }, expected: reason("catalog_publication_presentation_invalid"), diagnostic: routeAt(0), evidenceCalls: 0, ...beforeRoute },
+  { id: "phase-1 checksum precedes receipt and route", arrange: data => {
+    operation(data, "register_document_revision", { canonicalText: "changed bytes" });
+    data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong";
+  }, expected: reason("catalog_publication_v3_document_digest_mismatch"), diagnostic: routeAt(1), evidenceCalls: 0, ...beforeRoute },
+  ...(["digest", "revision"] as const).map((kind): Case => ({
+    id: `phase-2 stale ${kind} precedes route`, fixture: "revision", arrange(data) {
+      const reference = data.payload.product.documentRevision!;
+      if (kind === "digest") reference.digest = "d".repeat(64);
+      else Object.assign(reference, { id: "40000000-0000-4000-8000-000000000004", revisionNo: 4 });
+    }, expected: reason("catalog_publication_v3_document_reference_stale"),
+    diagnostic: { phase: "structural", path: "product.documentRevision", subject: "example:article" }, ...beforeRoute,
+  })),
+  { id: "phase-2 malformed row preserves known receipt refusal", fixture: "revision",
+    arrange: data => { data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong"; },
+    evidenceRows: rows => { rows.unshift(null!); }, expected: reason("catalog_publication_source_mismatch"),
+    diagnostic: { phase: "structural", path: "publication", subject: "example:article" }, ...beforeRoute },
+  { id: "phase-2 draft head binds before routes", fixture: "revision", arrange: data => {
+    data.evidence.drafts[0]!.head!.revision++;
+  }, expected: reason("catalog_publication_draft_advanced"), diagnostic: { phase: "structural", path: "publication", subject: "example:article" }, ...beforeRoute },
+  { id: "phase-3 derived value precedes route", fixture: "revision", arrange: data => {
+    data.payload.publication.operations.push({ op: "set_derived_sku_facts", skuCode: "ARTICLE", documentRevisionNo: 1,
+      netContent: data.evidence.skus[0]!.netContent, facts: { derived: 13 } });
+  }, expected: reason("catalog_publication_v3_compile_derived_facts_mismatch"),
+    diagnostic: { phase: "structural", path: "publication.operations.1", subject: "ARTICLE" }, ...beforeRoute },
+  { id: "phase-4 physical identifier precedes route", fixture: "revision", arrange: data => {
+    activate(data, "membership"); data.payload.skus[0]!.identifiers![0]!.value = "4006381333931";
+  }, expected: reason("catalog_publication_identifier_source_mismatch"),
+    diagnostic: { phase: "structural", path: "skus.0", subject: "ARTICLE" }, ...beforeRoute },
+  { id: "phase-4 media tuple precedes route", fixture: "revision", arrange: data => {
+    retainedMedia(data); data.payload.publication.evidence.media![0]!.mediaRef = "example:other";
+  }, expected: reason("catalog_publication_media_evidence_mismatch"),
+    diagnostic: { phase: "structural", path: "publication.evidence.media", subject: "ARTICLE" }, ...beforeRoute },
+  { id: "phase-5 activation prerequisites precede route in activation modes", fixture: "revision",
+    arrange: data => activate(data, "eligibility", false), readiness: routeConflict,
+    expected: ["catalog_publication_gross_mass_required", "duplicate_route", "catalog_publication_gross_mass_required"], routeCalls: [0, 1, 0] },
+  { id: "phase-6 earlier archive refusal precedes a later route", fixture: "revision", arrange: data => {
+    data.payload.skus = [structuredClone(input().payload.skus[0]!)];
+    data.payload.publication.operations.unshift({ op: "set_sku_status", skuCode: "ARTICLE", status: "archived" });
+  }, expected: reason("catalog_publication_v3_compile_archive_refused"),
+    diagnostic: { phase: "structural", path: "publication.operations.0", subject: "ARTICLE" }, ...beforeRoute },
+  { id: "phase-7 structural effects cannot precede an earlier route", arrange: data => {
+    data.payload.publication.operations = data.payload.publication.operations.filter(value => value.op !== "create_identifier");
+  }, readiness: routeConflict, expected: reason("duplicate_route"), routeCalls: [1, 1, 1] },
+  { id: "phase-8 price verdict cannot precede an earlier route", arrange: data => {
+    withPrice(data);
+    data.validatePrices = async () => [{ path: "skus.0.priceOperations.0", code: "price_list_not_found" }];
+  }, readiness: routeConflict, expected: reason("duplicate_route"), routeCalls: [1, 1, 1] },
+  { id: "an unverified registration and pointer preserve an independent route refusal", fixture: "revision",
+    arrange: data => { replaceDocument(data, true); }, readiness: routeConflict, expected: reason("duplicate_route"),
+    diagnostic: routeAt(2), routeCalls: [1, 1, 1] },
+  { id: "an unresolved registration is unknown when the route is clear", fixture: "revision",
+    arrange: data => { replaceDocument(data, true); }, expected: reason("catalog_publication_read_invalid"), outcome: "unknown",
+    routeCalls: [1, 1, 1] },
+  { id: "a null draft row preserves an independent route refusal", fixture: "revision",
+    evidenceRows: rows => { rows.unshift(null!); }, readiness: routeConflict, expected: reason("duplicate_route"),
+    diagnostic: routeAt(0), routeCalls: [1, 1, 1] },
+  { id: "a refused retained document read preserves an independent route refusal", fixture: "revision",
+    rulesAsset: artifact.replace("inspectDocument(canonicalText) {", "inspectDocument(canonicalText) { return null;"),
+    arrange: pointerBeforeRoute, readiness: routeConflict, expected: reason("duplicate_route"), diagnostic: routeAt(1), routeCalls: [1, 1, 1] },
+  { id: "prior document text stays excluded after pointer replacement", fixture: "revision", arrange: data => {
+    const prior = replaceDocument(data);
+    data.payload.product.sharedContent.presentation = { title: prior };
+    operation(data, "set_product_presentation", { presentation: { title: prior } });
+  }, expected: reason("catalog_publication_document_text_copied"),
+    diagnostic: { phase: "structural", path: "product.presentation.title", subject: "example:article" } },
+  ...([
+    ["async () => { throw Error('rule rejected'); }", "invalid_result", "rules must be synchronous and pure: validateContent returned a Promise"],
+    ["() => ({ then(_resolve, reject) { reject('rule rejected'); } })", "invalid_result", "rules must be synchronous and pure: validateContent returned a Promise"],
+    ["() => { throw { get message() { throw Error('secondary throw'); } }; }", "throw", "Return an array of field issues"],
+  ] as const).map(([hook, cause, message]): Case => ({
+    id: `rule dispatch contains invalid execution (${hook})`, rulesAsset: artifact.replace("validateContent: () => []", `validateContent: ${hook}`),
+    expected: reason("catalog_publication_rule_failed"), evidenceCalls: 0, ...beforeRoute, message,
+    diagnostic: { phase: "structural", path: "product.sharedContent", subject: "example:article", hook: "validateContent", cause },
+  })),
   { id: "the selected definition rejects replacement callbacks before evidence", substitute: true,
     expected: reason("catalog_publication_rules_binding_mismatch"), diagnostic: { phase: "structural", path: "product.type", subject: "example:article" },
     routeCalls: [0, 0, 0], evidenceCalls: 0 },
@@ -227,12 +335,12 @@ const cases: Case[] = [
   { id: "A-4 a presentation field cannot carry the authored document", arrange: data => {
     data.payload.product.sharedContent.presentation = { copy: data.payload.product.sharedContent.document! };
     operation(data, "set_product_presentation", { presentation: data.payload.product.sharedContent.presentation });
-  }, expected: reason("catalog_publication_presentation_invalid") },
+  }, expected: reason("catalog_publication_presentation_invalid"), ...beforeRoute },
   { id: "A-4 an SKU fact cannot carry the authored document", arrange: data => {
     const facts = { derived: data.payload.product.sharedContent.document! };
     data.payload.product.sharedContent.publicationSkus[0]!.facts = facts;
     operation(data, "create_sku", { facts });
-  }, expected: reason("catalog_publication_facts_invalid") },
+  }, expected: reason("catalog_publication_facts_invalid"), ...beforeRoute },
   { id: "A-5 zero mass reaches the same ingress refusal", arrange: data => { data.payload.skus[0]!.netContent!.unscaled = "0"; },
     expected: reason("catalog_publication_integral_grams_required"),
     diagnostic: { path: "skus.0.netContent", phase: "structural", subject: "ARTICLE" } },
@@ -311,8 +419,8 @@ const cases: Case[] = [
     data.payload.product.documentRevision!.digest = digest;
     operation(data, "register_document_revision", { canonicalText, digest });
   }, expected: reason("catalog_publication_v3_document_not_canonical") },
-  { id: "D-064 receipt key is independent of the draft and head", arrange: data => { data.evidence!.drafts[0]!.receipt.commandKey = "draft:wrong"; },
-    expected: reason("catalog_publication_source_mismatch") },
+  { id: "phase-2 candidate receipt binds before routes", arrange: data => { data.evidence.drafts[0]!.receipt.commandKey = "draft:wrong"; },
+    expected: reason("catalog_publication_source_mismatch"), ...beforeRoute },
   { id: "D-064 receipt fingerprint is independent of the draft and head", arrange: data => { data.evidence!.drafts[0]!.receipt.fingerprint = "a".repeat(64); },
     expected: reason("catalog_publication_source_mismatch") },
   { id: "D-065 valid receipt still requires the correct open-head owner", arrange: data => { data.evidence!.drafts[0]!.head!.productId = "10000000-0000-4000-8000-000000000009"; },
@@ -416,7 +524,7 @@ const cases: Case[] = [
     expected: reason("catalog_publication_presentation_unavailable") },
 ];
 
-it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, routeCalls, evidenceCalls, preserve, evaluation }) => {
+it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
   const bound = rulesAsset === undefined ? {} : setupRules(rulesAsset);
   const data = fixture === "revision" ? await revision() : { ...input(), ...bound };
   if (fixture === "revision") Object.assign(data, bound);
@@ -431,9 +539,11 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   const observations = { presentationReadiness: vi.fn(readiness ?? ready), ...(verifyMedia ? { verifyMedia } : {}), assessActivation };
   const record = governed ? { ...data.record, payload: governed(data) } : data.record;
   const evidence = { ...data.evidence, drafts: [{ ...data.evidence.drafts[0]!, record }, ...data.evidence.drafts.slice(1)] };
+  evidenceRows?.(evidence.drafts);
   if (governed && !data.validatePrices) data.validatePrices = async () => [];
   const readEvidence = vi.fn(async () => evidence);
-  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, currentHead);
+  const current = currentHead && vi.fn(currentHead);
+  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current);
   const checkRouteCalls = (expectedCalls?: number) => {
     if (expectedCalls !== undefined) expect(observations.presentationReadiness).toHaveBeenCalledTimes(expectedCalls);
     observations.presentationReadiness.mockClear();
@@ -446,20 +556,22 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   checkRouteCalls(routeCalls?.[0]);
   expect(await service.compareCandidate({ ...preview, expectedHead: data.expectedHead })).toEqual(preview);
   checkRouteCalls(routeCalls?.[0]);
-  expect(readEvidence).toHaveBeenCalledTimes(evidenceCalls ?? (substitute ? 0 : readEvidence.mock.calls.length));
+  if (evidenceCalls !== undefined) expect(readEvidence).toHaveBeenCalledTimes(evidenceCalls);
+  if (substitute && current) expect(current).not.toHaveBeenCalled();
   expect(replacement).not.toHaveBeenCalled();
   expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
   if (outcome) expect(preview.preparation?.structural.outcome).toBe(outcome);
   if (diagnostic) {
     const issues = preview.preparation?.structural.issues;
     expect(issues?.[0]).toEqual(expect.objectContaining({ code: expected[0], ...diagnostic }));
+    if (message) expect(issues?.[0]?.message).toContain(message);
   }
   if (rulesAsset && diagnostic?.cause) expect(() => loadCatalogRules(Buffer.from(rulesAsset)).validateContent({}))
-    .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause }) }));
+    .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause, ...(message && { message: expect.stringContaining(message) }) }) }));
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
     const result = compileCatalogPublication({ ...data, record, evidence, observations, ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
     if (expected[index + 1]) await expect(result).rejects.toMatchObject({ code: expected[index + 1],
-      ...(diagnostic && { diagnostic }), ...(outcome === "unknown" && { outcome: "dependency_unavailable" }) });
+      ...(diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }), ...(outcome === "unknown" && { outcome: "dependency_unavailable" }) });
     else {
       const compiled = await result;
       expect(compiled.product.id).toBe(data.record.productId);
@@ -494,6 +606,19 @@ it("rules install rejects executable bytes that differ from the declared digest"
   expect(() => loadCatalogPublicationRules(declared, Buffer.from(alternate))).toThrow(/attach the build to the product type/);
   await expect(compileCatalogPublication({ ...data, ...setupRules(alternate) })).rejects.toMatchObject({ code: "title_required" });
   await expect(compileCatalogPublication(data)).resolves.toHaveProperty("product.id", data.record.productId);
+});
+
+it("a supplied invalid optional hook refuses before the installer executor", async () => {
+  const definition = { ...input().definition };
+  delete definition.validatorRef;
+  const malformed = Buffer.from(artifact + "\nmodule.exports.validateMembershipChange = false;");
+  const query = vi.fn();
+  const install = async () => installCatalogDefinitions({ query }, withCatalogPublicationRules({
+    id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x", types: [definition], taxClasses: [], capabilities: {},
+  }, () => malformed));
+  await expect(install()).rejects.toMatchObject({ code: "catalog_publication_rules_module_invalid",
+    diagnostic: { hook: "validateMembershipChange", message: expect.stringContaining("Export it as a function or omit it.") } });
+  expect(query).not.toHaveBeenCalled();
 });
 
 it("A-1 installation requires the verified bytes even after a pack is reconstructed", async () => {

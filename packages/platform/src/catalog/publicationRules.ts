@@ -51,7 +51,12 @@ function runRule<T>(hook: Hook | "module", invoke: () => T): T {
   let fix = shape;
   try { value = invoke(); }
   catch (error) {
-    const message = error && typeof error === "object" && "message" in error ? error.message : undefined;
+    let message: unknown, refusal: CatalogPublicationError | undefined;
+    try {
+      if (error instanceof CatalogPublicationError) refusal = error;
+      message = error && typeof error === "object" ? Reflect.get(error, "message") : undefined;
+    } catch { /* A thrown value cannot interrupt the refusal. */ }
+    if (refusal) throw refusal;
     const limit = realmLimits.find(name => `catalog_rule_limit:${name}` === message);
     const dynamicCode = typeof message === "string" && /^(?:Code generation from strings disallowed|Wasm code generation disallowed)/u.test(message);
     cause = limit || dynamicCode ? "realm_limit" : "throw";
@@ -61,8 +66,13 @@ function runRule<T>(hook: Hook | "module", invoke: () => T): T {
     if (!schema) return value;
     // Decode the realm's result before any JSON conversion can change its type.
     try {
-      const decoded = schema.safeParse(value);
-      if (decoded.success) return decoded.data as T;
+      if (value !== null && (typeof value === "object" || typeof value === "function") && typeof Reflect.get(value, "then") === "function") {
+        void Promise.resolve(value).catch(() => undefined);
+        fix = `rules must be synchronous and pure: ${hook} returned a Promise`;
+      } else {
+        const decoded = schema.safeParse(value);
+        if (decoded.success) return decoded.data as T;
+      }
     } catch { /* A value that could not be decoded is an invalid hook result. */ }
     cause = "invalid_result";
   }
@@ -134,21 +144,28 @@ ${source}
       })(module, module.exports);
       const exported = Object.freeze(module.exports);
       const hooks = Object.freeze(Object.fromEntries(${JSON.stringify([...requiredHooks, ...optionalHooks])}.map(key =>
-        [key, Object.getOwnPropertyDescriptor(exported, key)?.value])));
-      const available = key => typeof hooks[key] === "function";
-      if (!${JSON.stringify(requiredHooks)}.every(available)) throw new Error("rules");
+        [key, Object.getOwnPropertyDescriptor(exported, key)])));
       return Object.freeze({
-        available,
-        invoke: (key, args) => Reflect.apply(hooks[key], exported, parse(args)),
+        status: key => typeof hooks[key]?.value === "function" ? "callable" : hooks[key] ? "invalid" : "absent",
+        invoke: (key, args) => Reflect.apply(hooks[key]?.value, exported, parse(args)),
       });
     })()`);
     type Dispatch = {
-      available(key: string): boolean;
+      status(key: Hook): "callable" | "invalid" | "absent";
       invoke(key: Hook, args: string): unknown;
     };
     const instantiate = (): Dispatch => script.runInNewContext(Object.create(null), { contextCodeGeneration: { strings: false, wasm: false } });
     const probe = instantiate();
-    const available = [...requiredHooks, ...optionalHooks].filter(key => probe.available(key));
+    const invalidRequired = requiredHooks.find(key => probe.status(key) !== "callable");
+    const invalidOptional = optionalHooks.find(key => probe.status(key) === "invalid");
+    const hook = invalidRequired ?? invalidOptional;
+    if (hook) {
+      const code = "catalog_publication_rules_module_invalid";
+      const remedy = invalidRequired ? "Export it as a function." : "Export it as a function or omit it.";
+      throw new CatalogPublicationError(code, "validation_issue", { code, path: hook, hook,
+        message: `Product rule ${hook} must be a function. ${remedy}` });
+    }
+    const available = [...requiredHooks, ...optionalHooks].filter(key => probe.status(key) === "callable");
     return { validatorRef, bytes, rules: evaluation => {
       const context = { ...evaluation };
       return Object.freeze(Object.fromEntries(available.map(key => [key, (...args: unknown[]) =>
