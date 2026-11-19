@@ -1,9 +1,48 @@
+import { z } from "zod";
 import { installedPolicy } from "./installedPolicy.js";
-import type { CheckoutRecoveryReminderSchedule } from "../contracts/checkoutRecoveryReminders.js";
+import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
+import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
 
-const settingKey = "checkout_recovery_reminders";
+const key = "checkout_recovery_reminders";
+const fallback = {
+  revision: "default",
+  abandonedCart: [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }],
+  checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }],
+} as const satisfies CheckoutRecoveryReminderSchedule;
+
+// Match the JSON accepted by commerce_checkout_recovery_policy, including its defaults.
+const seconds = z.int().min(1).max(2147483647);
+const wavePolicy = z.strictObject({
+  firstOffsetSeconds: seconds.default(3600),
+  finalOffsetSeconds: seconds.default(72000),
+  checkoutSeconds: seconds.default(86400),
+  recoverySeconds: seconds.default(2592000),
+  activitySeconds: seconds.default(900),
+  profile: z.string().regex(/^[a-z][a-z0-9_-]{0,47}$/u).default("capture"),
+}).refine(policy => policy.firstOffsetSeconds < policy.finalOffsetSeconds && policy.finalOffsetSeconds < policy.checkoutSeconds);
+
+function effectiveWavePolicy(policy: Partial<CheckoutRecoveryWavePolicy>) {
+  try {
+    // The native adapter sends JSON, so omitted properties stay omitted and explicit nulls refuse.
+    const parsed = wavePolicy.safeParse(JSON.parse(JSON.stringify(policy)));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function checkoutRecoveryReminderAbsence(policy?: z.output<typeof wavePolicy>) {
+  return {
+    abandonedCart: fallback.abandonedCart.map(wave => ({ ...wave })),
+    checkoutRecovery: policy ? [
+      { stage: "first", afterHours: policy.firstOffsetSeconds / 3600 },
+      { stage: "last", afterHours: policy.finalOffsetSeconds / 3600 },
+    ] : null,
+  };
+}
+
 const code = "checkout_recovery_reminder_schedule_invalid";
-function validate(value: unknown): CheckoutRecoveryReminderSchedule {
+function validateCheckoutRecoveryReminderSchedule(value: unknown): CheckoutRecoveryReminderSchedule {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(code);
   const schedule = value as Record<string, unknown>;
   if (Object.keys(schedule).sort().join(",") !== "abandonedCart,checkoutRecovery,revision"
@@ -25,18 +64,31 @@ function validate(value: unknown): CheckoutRecoveryReminderSchedule {
   }
   return structuredClone(schedule) as unknown as CheckoutRecoveryReminderSchedule;
 }
-const fallback: CheckoutRecoveryReminderSchedule = { revision: "default",
-  abandonedCart: [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }],
-  checkoutRecovery: [{ stage: "first", afterHours: 1 }, { stage: "last", afterHours: 20 }] };
 interface Executor {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
-const store = (db: Executor) => installedPolicy(db, settingKey, validate, structuredClone(fallback), code);
+const store = (db: Executor) => installedPolicy(db, key, validateCheckoutRecoveryReminderSchedule, structuredClone(fallback), code);
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export async function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void> {
-  await db.query("SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)", [settingKey, JSON.stringify(validate(schedule))]);
+  await db.query("SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)", [key, JSON.stringify(validateCheckoutRecoveryReminderSchedule(schedule))]);
 }
-/** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
+/** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule> {
   return store(db).read();
+}
+
+/** @experimental Observe an installed override or the effective waves for an absent row. */
+export async function readCheckoutRecoveryReminderObservation(
+  db: Executor,
+  policy?: Partial<CheckoutRecoveryWavePolicy>,
+) {
+  const effective = policy === undefined ? undefined : effectiveWavePolicy(policy);
+  if (policy !== undefined && !effective) return { refusal: "checkout_recovery_policy_invalid" } as const;
+  const schedule = await store(db).readOverride();
+  if (schedule) return {
+    present: true as const,
+    revision: schedule.revision,
+    value: { ...schedule, abandonedCart: [...schedule.abandonedCart], checkoutRecovery: [...schedule.checkoutRecovery] },
+  };
+  return { present: false as const, effective: checkoutRecoveryReminderAbsence(effective) };
 }

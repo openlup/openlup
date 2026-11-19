@@ -100,6 +100,8 @@ uncredited active subscription demand through the installed renewal horizon, and
 channel exposure. The cutoff is inclusive. Only the fenced renewal allocator can
 skip soft demand; a new purchase cannot select that exemption. This policy does
 not change subscription dates, delivery alignment or frozen renewal terms.
+See the [renewal stock protection catalogue entry](../how-to/operate/settings-catalogue.md#inventory_renewal_protection)
+for the default and effect.
 
 In 1.2.0, `@openlup/platform/inventory` exports
 `RenewalStockProtectionPolicy`, `installRenewalStockProtectionPolicy(db, policy)`

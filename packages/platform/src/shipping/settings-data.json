@@ -1,0 +1,48 @@
+[
+  {
+    "key": "savedAddressValidation",
+    "domain": "shipping",
+    "kind": "callback",
+    "goal": "Customize validation and normalization of the postal code and phone on saved customer addresses.",
+    "schemaVersion": 1,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "The platform uses the standard normalization and validation for the supplied address policy.", "source": "shipping address policy", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Hosts can choose address formats required by their delivery integrations while preserving existing behavior by default.",
+    "effect": {"appliesTo": "Subsequent saved-address submissions after deployment.", "frozenOn": ["Existing saved addresses and captured delivery destinations keep their stored values."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callbacks are executable host code."},
+    "change": {"file": "owned/acquisition-policy.ts", "symbol": "savedAddressValidation"},
+    "rules": []
+  },
+  {
+    "key": "shipping.addressRegions",
+    "domain": "shipping",
+    "goal": "Support optional postal codes and address regions.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The native address contract requires a postal code and has no region field.",
+    "effect": {"appliesTo": "The native address contract requires a postal code and has no region field.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The native address contract requires a postal code and has no region field."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingaddressregions"},
+    "rules": []
+  },
+  {
+    "key": "shipping.paymentMethodPreferences",
+    "domain": "shipping",
+    "goal": "Save additional payment method preferences.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The customer preferences contract has a fixed payment method vocabulary.",
+    "effect": {"appliesTo": "The customer preferences contract has a fixed payment method vocabulary.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The customer preferences contract has a fixed payment method vocabulary."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingpaymentmethodpreferences"},
+    "rules": []
+  }
+]

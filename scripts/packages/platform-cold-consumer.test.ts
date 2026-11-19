@@ -699,6 +699,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
     installCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderSchedule: "function",
+    readCheckoutRecoveryReminderObservation: "function",
     cancelAbandonedCheckout: "function",
     cancelUnstartedPromotionCheckout: "function",
     classifyCheckoutRecoveryTokenState: "function",

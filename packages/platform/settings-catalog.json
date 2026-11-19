@@ -1,0 +1,1695 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "key": "account-support.recoverableAdministration",
+      "domain": "account-support",
+      "goal": "Keep at least one active human administrator.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The last human administrator is required for recoverable administration.",
+      "effect": {
+        "appliesTo": "The last human administrator is required for recoverable administration.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The last human administrator is required for recoverable administration."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#account-supportrecoverableadministration"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "catalog.additionalMediaFormats",
+      "domain": "catalog",
+      "goal": "Accept additional catalogue media formats.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The media contract admits a fixed set of validated formats.",
+      "effect": {
+        "appliesTo": "The media contract admits a fixed set of validated formats.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The media contract admits a fixed set of validated formats."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogadditionalmediaformats"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "catalog.netContentUnits",
+      "domain": "catalog",
+      "goal": "Represent product net contents in units other than grams.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The catalogue read envelope uses grams for net contents.",
+      "effect": {
+        "appliesTo": "The catalogue read envelope uses grams for net contents.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The catalogue read envelope uses grams for net contents."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#catalognetcontentunits"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "catalog.optionalGtin",
+      "domain": "catalog",
+      "goal": "Use catalogue SKUs that have no GTIN.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native catalogue identities require a GTIN.",
+      "effect": {
+        "appliesTo": "Native catalogue identities require a GTIN.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native catalogue identities require a GTIN."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogoptionalgtin"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "checkout_recovery_reminders",
+      "domain": "commerce",
+      "kind": "installed",
+      "goal": "Find when checkout recovery and abandoned cart reminders are sent.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": {
+        "revision": "default",
+        "abandonedCart": [
+          {
+            "stage": "first",
+            "afterHours": 1
+          },
+          {
+            "stage": "gentle",
+            "afterHours": 24
+          },
+          {
+            "stage": "last",
+            "afterHours": 72
+          }
+        ],
+        "checkoutRecovery": [
+          {
+            "stage": "first",
+            "afterHours": 1
+          },
+          {
+            "stage": "last",
+            "afterHours": 20
+          }
+        ]
+      },
+      "absentMeans": {
+        "description": "Checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.",
+        "source": "host call parameters, with SQL defaults for omitted offsets",
+        "value": {
+          "abandonedCart": [
+            {
+              "stage": "first",
+              "afterHours": 1
+            },
+            {
+              "stage": "gentle",
+              "afterHours": 24
+            },
+            {
+              "stage": "last",
+              "afterHours": 72
+            }
+          ],
+          "checkoutRecovery": null
+        }
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.",
+      "effect": {
+        "appliesTo": "Scheduling new reminder waves.",
+        "frozenOn": [
+          "Enqueued messages and send receipts retain their recorded identity."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Runtime editing needs episode lineage and delivery replay evidence."
+      },
+      "change": {
+        "operation": "installCheckoutRecoveryReminderSchedule"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "checkout_recovery_policy_invalid",
+          "path": [],
+          "description": "The host checkout recovery policy accepts only firstOffsetSeconds, finalOffsetSeconds, checkoutSeconds, recoverySeconds, activitySeconds and profile. Supply seconds as integers from 1 to 2147483647 and keep firstOffsetSeconds below finalOffsetSeconds, which must be below checkoutSeconds after defaults. A supplied profile starts with a lowercase letter and has up to 48 lowercase letters, digits, underscores or hyphens."
+        }
+      ]
+    },
+    {
+      "key": "commerce.manualHoldReasons",
+      "domain": "commerce",
+      "goal": "Distinguish separate reasons for manually holding an order.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native order controls record a fixed manual hold reason.",
+      "effect": {
+        "appliesTo": "Native order controls record a fixed manual hold reason.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native order controls record a fixed manual hold reason."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemanualholdreasons"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "commerce.multipleMarkets",
+      "domain": "commerce",
+      "goal": "Serve several markets from one starter configuration.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "A starter configuration has one market and composes its own quote and checkout admission.",
+      "effect": {
+        "appliesTo": "A starter configuration has one market and composes its own quote and checkout admission.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "A starter configuration has one market and composes its own quote and checkout admission."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemultiplemarkets"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "commerce.promotionCodeRedemption",
+      "domain": "commerce",
+      "goal": "Redeem promotion codes in native checkout.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native checkout path lacks a promotion-code resolver.",
+      "effect": {
+        "appliesTo": "The native checkout path lacks a promotion-code resolver.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native checkout path lacks a promotion-code resolver."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercepromotioncoderedemption"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "commerce.returnReasons",
+      "domain": "commerce",
+      "goal": "Choose the allowed return reasons.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native order service still enforces a fixed vocabulary.",
+      "effect": {
+        "appliesTo": "The native order service still enforces a fixed vocabulary.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native order service still enforces a fixed vocabulary."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercereturnreasons"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "commerce.zeroPayableSettlements",
+      "domain": "commerce",
+      "goal": "Settle orders and renewal cycles with zero payable.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path.",
+      "effect": {
+        "appliesTo": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercezeropayablesettlements"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "communications.accountConsentPurposes",
+      "domain": "communications",
+      "goal": "Define account consent purposes and copy revisions.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native account consent path uses fixed purposes and a fixed copy revision.",
+      "effect": {
+        "appliesTo": "The native account consent path uses fixed purposes and a fixed copy revision.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native account consent path uses fixed purposes and a fixed copy revision."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsaccountconsentpurposes"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "communications.additionalLocales",
+      "domain": "communications",
+      "goal": "Use additional languages for OpenLup communications and identity.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Package contracts restrict the supported locale vocabulary.",
+      "effect": {
+        "appliesTo": "Package contracts restrict the supported locale vocabulary.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Package contracts restrict the supported locale vocabulary."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsadditionallocales"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "communications.messageDateFormatting",
+      "domain": "communications",
+      "goal": "Use consistent date formatting and time zones in UI and mail.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The starter displays several recorded timestamps directly.",
+      "effect": {
+        "appliesTo": "The starter displays several recorded timestamps directly.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The starter displays several recorded timestamps directly."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "fulfillment.additionalDeliveryMethods",
+      "domain": "fulfillment",
+      "goal": "Offer additional delivery methods.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The delivery contract has a fixed set of native method kinds.",
+      "effect": {
+        "appliesTo": "The delivery contract has a fixed set of native method kinds.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The delivery contract has a fixed set of native method kinds."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentadditionaldeliverymethods"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "fulfillment.independentShipments",
+      "domain": "fulfillment",
+      "goal": "Dispatch independent shipments from one order.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native shipment sequencing needs additional fulfillment modeling for this case.",
+      "effect": {
+        "appliesTo": "Native shipment sequencing needs additional fulfillment modeling for this case.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native shipment sequencing needs additional fulfillment modeling for this case."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentindependentshipments"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "identity.magicLinkRegistration",
+      "domain": "identity",
+      "goal": "Register a new account through a magic link.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native sign-in port admits existing accounts only.",
+      "effect": {
+        "appliesTo": "The native sign-in port admits existing accounts only.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native sign-in port admits existing accounts only."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#identitymagiclinkregistration"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "inventory.reservationReplayExpiry",
+      "domain": "inventory",
+      "goal": "Preserve the original reservation expiry on replay.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "A replay returns the existing hold without changing stock allocation or expiry.",
+      "effect": {
+        "appliesTo": "A replay returns the existing hold without changing stock allocation or expiry.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "A replay returns the existing hold without changing stock allocation or expiry."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#inventoryreservationreplayexpiry"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "inventory.safetyStock",
+      "domain": "inventory",
+      "goal": "Set safety stock and channel exposure in available-to-promise calculations.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native available-to-promise currently uses zero safety stock and no channel allocation.",
+      "effect": {
+        "appliesTo": "Native available-to-promise currently uses zero safety stock and no channel allocation.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native available-to-promise currently uses zero safety stock and no channel allocation."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#inventorysafetystock"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "inventory_renewal_protection",
+      "domain": "inventory",
+      "kind": "installed",
+      "goal": "Set the renewal stock protection horizon used to calculate stock available to new purchases.",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "revision": "store-1",
+            "renewalProtectionDays": 21
+          }
+        },
+        {
+          "value": {
+            "revision": " ",
+            "renewalProtectionDays": 21
+          },
+          "code": "inventory_renewal_protection_policy_invalid"
+        },
+        {
+          "value": {
+            "revision": "store-1",
+            "renewalProtectionDays": 0
+          },
+          "code": "inventory_renewal_protection_policy_invalid"
+        }
+      ],
+      "fallback": {
+        "revision": "default",
+        "renewalProtectionDays": 14
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Two weeks cover a typical replenishment cycle and preserve the established stock priority.",
+      "effect": {
+        "appliesTo": "Future available-to-promise calculations and new purchase allocations.",
+        "frozenOn": [
+          "Existing reservations keep their quantities and expiry times."
+        ],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The starter editor still supplies its configured horizon to the stock read port."
+      },
+      "change": {
+        "operation": "installRenewalStockProtectionPolicy"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "renewalProtectionDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3660
+          }
+        },
+        "required": [
+          "revision",
+          "renewalProtectionDays"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": [
+        {
+          "code": "inventory_renewal_protection_policy_invalid",
+          "path": [],
+          "description": "Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660."
+        }
+      ]
+    },
+    {
+      "key": "invoicing.invoicePaymentMatch",
+      "domain": "invoicing",
+      "goal": "Require the invoice amount and currency to agree with the payment.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "An invoice relies on matching durable payment evidence.",
+      "effect": {
+        "appliesTo": "An invoice relies on matching durable payment evidence.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "An invoice relies on matching durable payment evidence."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicinginvoicepaymentmatch"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "invoicing.partialInvoiceCorrections",
+      "domain": "invoicing",
+      "goal": "Issue a partial invoice correction.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native correction contract supports full reversal.",
+      "effect": {
+        "appliesTo": "The native correction contract supports full reversal.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native correction contract supports full reversal."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicingpartialinvoicecorrections"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "payments.declineNoticeTiming",
+      "domain": "payments",
+      "goal": "Choose the delay and link lifetime for a payment decline notice.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native decline notices wait three minutes and issue links for 24 hours.",
+      "effect": {
+        "appliesTo": "Native decline notices wait three minutes and issue links for 24 hours.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native decline notices wait three minutes and issue links for 24 hours."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeclinenoticetiming"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "payments.deferredCapture",
+      "domain": "payments",
+      "goal": "Authorize a payment now and capture it later.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The current payment adapter contract has no separate capture operation.",
+      "effect": {
+        "appliesTo": "The current payment adapter contract has no separate capture operation.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The current payment adapter contract has no separate capture operation."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeferredcapture"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "payments.paymentRefunds",
+      "domain": "payments",
+      "goal": "Request a refund through the payment rail.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The current payment adapter contract has no funds-refund operation.",
+      "effect": {
+        "appliesTo": "The current payment adapter contract has no funds-refund operation.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The current payment adapter contract has no funds-refund operation."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentspaymentrefunds"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "payments.providerProfiles",
+      "domain": "payments",
+      "goal": "Register a payment provider capability profile for reconciliation.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native recovery uses a fixed set of qualified provider profiles.",
+      "effect": {
+        "appliesTo": "Native recovery uses a fixed set of qualified provider profiles.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native recovery uses a fixed set of qualified provider profiles."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsproviderprofiles"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "payments.verifiedPaymentEvidence",
+      "domain": "payments",
+      "goal": "Require verified signature, attempt, amount and currency for payment evidence.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Settlement relies on verified provider evidence tied to the charged attempt.",
+      "effect": {
+        "appliesTo": "Settlement relies on verified provider evidence tied to the charged attempt.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Settlement relies on verified provider evidence tied to the charged attempt."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsverifiedpaymentevidence"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.currencyExponent",
+      "domain": "pricing",
+      "goal": "Format money using the currency exponent.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter.",
+      "effect": {
+        "appliesTo": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Some starter views assume two decimal places. The platform already provides a currency-aware formatter."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.indivisibleOfferTotals",
+      "domain": "pricing",
+      "goal": "Quote an offer total that cannot be divided evenly by quantity.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The offer pricing contract needs an allocation that reconciles each line.",
+      "effect": {
+        "appliesTo": "The offer pricing contract needs an allocation that reconciles each line.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The offer pricing contract needs an allocation that reconciles each line."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingindivisibleoffertotals"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.mixedTaxRates",
+      "domain": "pricing",
+      "goal": "Quote a basket with mixed tax rates.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The strict quote contract rejects mixed tax rates in one quote.",
+      "effect": {
+        "appliesTo": "The strict quote contract rejects mixed tax rates in one quote.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The strict quote contract rejects mixed tax rates in one quote."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingmixedtaxrates"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.quantityPriceBreaks",
+      "domain": "pricing",
+      "goal": "Apply quantity price breaks in a strict quote.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native strict quote selects base prices only.",
+      "effect": {
+        "appliesTo": "The native strict quote selects base prices only.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native strict quote selects base prices only."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingquantitypricebreaks"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.reconciledQuoteLines",
+      "domain": "pricing",
+      "goal": "Keep line totals equal to unit price times quantity in the same currency.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Financial evidence must reconcile.",
+      "effect": {
+        "appliesTo": "Financial evidence must reconcile.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Financial evidence must reconcile."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingreconciledquotelines"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.salesChannels",
+      "domain": "pricing",
+      "goal": "Choose a sales channel for strict quotes and price lists.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native strict quote and base-price writer currently use one fixed channel.",
+      "effect": {
+        "appliesTo": "The native strict quote and base-price writer currently use one fixed channel.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native strict quote and base-price writer currently use one fixed channel."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsaleschannels"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "pricing.subscriptionPriceRounding",
+      "domain": "pricing",
+      "goal": "Select the subscription price rounding rule.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The current subscription price policy rounds down to the configured quantum.",
+      "effect": {
+        "appliesTo": "The current subscription price policy rounds down to the configured quantum.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The current subscription price policy rounds down to the configured quantum."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsubscriptionpricerounding"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "promotions.freeShippingBasis",
+      "domain": "promotions",
+      "goal": "Choose the subtotal basis for free shipping.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native threshold decisions use a fixed basis.",
+      "effect": {
+        "appliesTo": "Native threshold decisions use a fixed basis.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native threshold decisions use a fixed basis."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "promotions.promotionCompatibilityGroups",
+      "domain": "promotions",
+      "goal": "Combine promotion codes using compatibility groups.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The adjustment engine needs additional combination rules.",
+      "effect": {
+        "appliesTo": "The adjustment engine needs additional combination rules.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The adjustment engine needs additional combination rules."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionspromotioncompatibilitygroups"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "savedAddressValidation",
+      "domain": "shipping",
+      "kind": "callback",
+      "goal": "Customize validation and normalization of the postal code and phone on saved customer addresses.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": null,
+      "absentMeans": {
+        "description": "The platform uses the standard normalization and validation for the supplied address policy.",
+        "source": "shipping address policy",
+        "value": null
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Hosts can choose address formats required by their delivery integrations while preserving existing behavior by default.",
+      "effect": {
+        "appliesTo": "Subsequent saved-address submissions after deployment.",
+        "frozenOn": [
+          "Existing saved addresses and captured delivery destinations keep their stored values."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The callbacks are executable host code."
+      },
+      "change": {
+        "file": "owned/acquisition-policy.ts",
+        "symbol": "savedAddressValidation"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "shipping.addressRegions",
+      "domain": "shipping",
+      "goal": "Support optional postal codes and address regions.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native address contract requires a postal code and has no region field.",
+      "effect": {
+        "appliesTo": "The native address contract requires a postal code and has no region field.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native address contract requires a postal code and has no region field."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingaddressregions"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "shipping.paymentMethodPreferences",
+      "domain": "shipping",
+      "goal": "Save additional payment method preferences.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The customer preferences contract has a fixed payment method vocabulary.",
+      "effect": {
+        "appliesTo": "The customer preferences contract has a fixed payment method vocabulary.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The customer preferences contract has a fixed payment method vocabulary."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingpaymentmethodpreferences"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriber_winback_policy",
+      "domain": "subscriptions",
+      "kind": "installed",
+      "goal": "Find the cancellation age window for subscriber winback messages.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": {
+        "minCancellationAgeDays": 14,
+        "maxCancellationAgeDays": 120,
+        "requireRetentionConsent": true
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "The age window preserves the established outreach timing after cancellation. The platform keeps its neutral default of requiring retention consent at the send gate.",
+      "effect": {
+        "appliesTo": "Candidates for new winback messages.",
+        "frozenOn": [
+          "Existing winback delivery receipts retain their deduplication identity."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Discovery documents the age window and send gate. The full policy and episode changes need separate qualification."
+      },
+      "change": {
+        "operation": "No settings write operation is available for this key."
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptionCreation.editWindowHours",
+      "domain": "subscriptions",
+      "kind": "code",
+      "goal": "Set how many hours before a renewal customers can edit a newly created subscription.",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": 48
+        }
+      ],
+      "fallback": 72,
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "A three-day cutoff preserves the established edit window and gives operations notice before renewal.",
+      "effect": {
+        "appliesTo": "New native subscription activations after deploying the host configuration.",
+        "frozenOn": [
+          "Existing subscriptions keep their stored edit window."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The host supplies the value at subscription activation."
+      },
+      "change": {
+        "file": "owned/store.config.ts",
+        "symbol": "subscriptionCreation.editWindowHours"
+      },
+      "schema": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 720
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.addressBasedRenewalShipping",
+      "domain": "subscriptions",
+      "goal": "Reprice renewal shipping from the current address.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Retained native terms carry one shipping threshold profile.",
+      "effect": {
+        "appliesTo": "Retained native terms carry one shipping threshold profile.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Retained native terms carry one shipping threshold profile."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsaddressbasedrenewalshipping"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.calendarCadence",
+      "domain": "subscriptions",
+      "goal": "Renew subscriptions on a fixed calendar day.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native cadence is expressed in days.",
+      "effect": {
+        "appliesTo": "Native cadence is expressed in days.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native cadence is expressed in days."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionscalendarcadence"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.customPauseDurations",
+      "domain": "subscriptions",
+      "goal": "Offer custom subscription pause durations.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native lifecycle commands support two weeks, one month and indefinite.",
+      "effect": {
+        "appliesTo": "Native lifecycle commands support two weeks, one month and indefinite.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native lifecycle commands support two weeks, one month and indefinite."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionscustompausedurations"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.deliveryAlignmentEvidence",
+      "domain": "subscriptions",
+      "goal": "Require delivery evidence and move alignment only later.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "A late delivery extends the cycle without stacking deliveries. A replacement counts only after arrival.",
+      "effect": {
+        "appliesTo": "A late delivery extends the cycle without stacking deliveries. A replacement counts only after arrival.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "A late delivery extends the cycle without stacking deliveries. A replacement counts only after arrival."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsdeliveryalignmentevidence"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.introductoryPhases",
+      "domain": "subscriptions",
+      "goal": "Schedule introductory discounts by renewal cycle.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native terms support one introductory phase before the retained terms take over.",
+      "effect": {
+        "appliesTo": "Native terms support one introductory phase before the retained terms take over.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native terms support one introductory phase before the retained terms take over."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.lifecycleNoticeRetryBudget",
+      "domain": "subscriptions",
+      "goal": "Set the retry budget for subscription lifecycle notices.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native notice dispatch uses a limit of six attempts.",
+      "effect": {
+        "appliesTo": "Native notice dispatch uses a limit of six attempts.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native notice dispatch uses a limit of six attempts."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionslifecyclenoticeretrybudget"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.prepaidCycles",
+      "domain": "subscriptions",
+      "goal": "Prepay several subscription deliveries.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native commands refuse multi-cycle prepaid subscriptions.",
+      "effect": {
+        "appliesTo": "Native commands refuse multi-cycle prepaid subscriptions.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native commands refuse multi-cycle prepaid subscriptions."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsprepaidcycles"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.renewalPriceChanges",
+      "domain": "subscriptions",
+      "goal": "Change a renewal price without changing the subscription basket.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native renewal prices are locked until an edit changes the terms.",
+      "effect": {
+        "appliesTo": "Native renewal prices are locked until an edit changes the terms.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native renewal prices are locked until an edit changes the terms."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsrenewalpricechanges"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.rescheduleTimeZone",
+      "domain": "subscriptions",
+      "goal": "Calculate a subscription reschedule date in the market time zone.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native command compares dates using UTC days.",
+      "effect": {
+        "appliesTo": "The native command compares dates using UTC days.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native command compares dates using UTC days."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsrescheduletimezone"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.retrySchedule",
+      "domain": "subscriptions",
+      "goal": "Use one retry schedule for host and provider-recorded payment failures.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule.",
+      "effect": {
+        "appliesTo": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsretryschedule"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.sharedDeliveryControls",
+      "domain": "subscriptions",
+      "goal": "Use the same delivery controls for managed and native notices.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Managed and native delivery paths use separate controls.",
+      "effect": {
+        "appliesTo": "Managed and native delivery paths use separate controls.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Managed and native delivery paths use separate controls."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsshareddeliverycontrols"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.stockWaitHoldLifetime",
+      "domain": "subscriptions",
+      "goal": "Set the stock hold lifetime when a renewal leaves stock wait.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native recovery holds stock for 900 seconds.",
+      "effect": {
+        "appliesTo": "Native recovery holds stock for 900 seconds.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Native recovery holds stock for 900 seconds."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.subscriberReviewWindows",
+      "domain": "subscriptions",
+      "goal": "Set windows for subscriber review requests.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Review branches exist in SQL and need composition before exposing a setting.",
+      "effect": {
+        "appliesTo": "Review branches exist in SQL and need composition before exposing a setting.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Review branches exist in SQL and need composition before exposing a setting."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionssubscriberreviewwindows"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.unknownPaymentReconciliation",
+      "domain": "subscriptions",
+      "goal": "Reconcile unknown payment outcomes before retrying and stop on hard declines.",
+      "schemaVersion": 1,
+      "kind": "invariant",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Retrying a charge with an unknown outcome risks charging twice.",
+      "effect": {
+        "appliesTo": "Retrying a charge with an unknown outcome risks charging twice.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Retrying a charge with an unknown outcome risks charging twice."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsunknownpaymentreconciliation"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "subscriptions.winbackEpisodeDeduplication",
+      "domain": "subscriptions",
+      "goal": "Send winback again for a new cancellation episode.",
+      "schemaVersion": 1,
+      "kind": "cap",
+      "examples": [],
+      "fallback": null,
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The native winback receipt deduplicates by subscription.",
+      "effect": {
+        "appliesTo": "The native winback receipt deduplicates by subscription.",
+        "frozenOn": [],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "The native winback receipt deduplicates by subscription."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionswinbackepisodededuplication"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    }
+  ],
+  "searchTerms": {
+    "inventory_renewal_protection": "stock lookahead, inventory buffer, renewal allocation, available to promise",
+    "checkout_recovery_reminders": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
+    "subscriber_winback_policy": "cancelled subscriber outreach, retention messaging, reactivation window",
+    "subscriptionCreation.editWindowHours": "edit cutoff, change deadline, activation window",
+    "savedAddressValidation": "postal format, phone normalization, delivery address checks",
+    "account-support": "operator permissions, administrative access",
+    "catalog": "product assortment, SKU records",
+    "commerce": "store orders, checkout processing",
+    "communications": "messaging, notifications",
+    "fulfillment": "shipping, dispatch, delivery",
+    "identity": "account access, sign-in",
+    "inventory": "stock, allocation, availability",
+    "invoicing": "billing documents, adjustments",
+    "payments": "charge handling, settlement",
+    "pricing": "quote amounts, price calculation",
+    "promotions": "discount rules, offer adjustments",
+    "shipping": "delivery destination, address details",
+    "subscriptions": "recurring orders, renewals"
+  }
+}

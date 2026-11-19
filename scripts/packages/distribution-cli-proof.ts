@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 
@@ -98,6 +98,19 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
       if (path === created) continue; // The CLI creates this path from the target snapshot.
       assert(readFileSync(join(app, path)).equals(readFileSync(join(target, path))), `starter owned migration did not match target: ${path}`);
     }
+  }
+  if (!Object.hasOwn(from.files, "host/settings.ts") && Object.hasOwn(to.files, "host/settings.ts")) {
+    const path = "AGENTS.md", heading = "\n## Change a business setting\n";
+    const previous = readFileSync(join(app, path), "utf8");
+    const candidate = readFileSync(join(target, path), "utf8");
+    const start = candidate.indexOf(heading);
+    assert(start >= 0, "starter settings guidance missing from target");
+    if (!previous.includes(heading)) {
+      const end = candidate.indexOf("\n## ", start + heading.length);
+      const section = candidate.slice(start, end < 0 ? undefined : end);
+      writeFileSync(join(app, path), previous + (previous.endsWith("\n") ? "" : "\n") + section);
+    }
+    assert(JSON.parse(to.files["package.json"]).scripts.settings, "starter settings command missing from target");
   }
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
@@ -402,6 +415,91 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
     assert.deepEqual(executeApp(), { installedVersion: "0.36.0", coreVersion: "0.36.0", executedVersion: "0.36.0" });
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+}
+
+/** Exercise both independent discovery paths in the existing installed starter proof. */
+export function proveSettingsDiscovery(app: string): void {
+  const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
+  assert(typeof manifest.scripts?.settings === "string" && manifest.scripts.settings.trim(), "extracted starter settings script missing");
+  const env = isolatedConsumerEnv();
+  const run = (name: string, args: string[]) =>
+    execFileSync(name, args, { cwd: app, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const key = "inventory_renewal_protection", goal = "renewal stock protection horizon";
+  const guide = join(app, "AGENTS.md");
+  const guideBytes = readFileSync(guide, "utf8");
+  const heading = "\n## Change a business setting\n";
+  const start = guideBytes.indexOf(heading);
+  assert(start >= 0, "starter settings guidance missing");
+  const end = guideBytes.indexOf("\n## ", start + heading.length);
+  const section = guideBytes.slice(start, end < 0 ? undefined : end);
+  const directArgs = ["--experimental-strip-types", "host/settings.ts"];
+  const directCommand = "node " + directArgs.join(" ");
+  const direct = (...args: string[]) => run(process.execPath, [...directArgs, ...args]);
+  const npm = run("/bin/bash", ["-c", "command -v npm"]).trim();
+  assert(isAbsolute(npm), "starter settings proof requires an absolute npm path");
+  const npmArgs = ["run", "--silent", "settings", "--"];
+  const npmCommand = "npm " + npmArgs.join(" ");
+  const settings = (...args: string[]) => run(npm, [...npmArgs, ...args]);
+  const show = (invoke: typeof settings) => {
+    const result = JSON.parse(invoke("show", key, "--json"));
+    assert.equal(result.schemaVersion, 1);
+    assert.equal(result.setting.key, key);
+    assert.equal(result.setting.domain, "inventory");
+    assert.equal(result.setting.schema.properties.renewalProtectionDays.minimum, 1);
+    assert.equal(result.setting.schema.properties.renewalProtectionDays.maximum, 3660);
+    assert.match(result.setting.effect.appliesTo, /Future available-to-promise/);
+    assert(result.setting.effect.frozenOn.some((item: string) => item.includes("Existing reservations")));
+    assert.equal(result.observation.state, "offline");
+  };
+
+  try {
+    writeFileSync(guide, guideBytes.replace(section, ""));
+    const lookup = JSON.parse(run(join(app, "node_modules/.bin/openlup-context"), ["search", goal, "--json"]));
+    const entry = lookup.hits.find((hit: { file: string; title: string }) =>
+      hit.file.endsWith("/settings-catalogue.md") && hit.title === key);
+    assert(entry, "openlup-context did not find the catalogue key");
+    const configure = lookup.hits.find((hit: { file: string }) => hit.file.endsWith("/configure-settings.md"));
+    assert(configure, "openlup-context did not find Configure settings");
+    const instructions = readFileSync(configure.file, "utf8").split("\n");
+    assert(instructions.includes(`${directCommand} list --goal "${goal}"`));
+    assert(instructions.includes(`${directCommand} show ${key} --json`));
+    assert(instructions.includes(`${directCommand} explain commerce_setting_unknown`));
+    assert(direct("list").includes(key));
+    assert(direct("list", "--goal", goal).includes(key));
+    assert(direct("explain", "commerce_setting_unknown").includes("commerce_setting_unknown"));
+    const lines = readFileSync(entry.file, "utf8").split("\n").slice(entry.start - 1, entry.end);
+    assert(lines.includes(`${directCommand} show ${key} --json`), "catalogue entry did not lead to show");
+    show(direct);
+  } finally {
+    writeFileSync(guide, guideBytes);
+  }
+
+  // The mirror follows only the instructions in the restored application guide.
+  assert(section.includes(`${npmCommand} list\``));
+  assert(section.includes(`${npmCommand} list --goal "${goal}"`));
+  assert(settings("list").includes(key));
+  assert(settings("list", "--goal", goal).includes(key));
+  const list = JSON.parse(settings("list", "--goal", goal, "--json"));
+  assert.deepEqual(list.entries.map(({ key }: { key: string }) => key), [key]);
+  assert(section.includes(`${npmCommand} show ${list.entries[0].key} --json`));
+  show(settings);
+  assert(settings("show", key).includes("Existing reservations"));
+  const refused = spawnSync(npm, [...npmArgs, "show", "no_such_setting", "--json"],
+    { cwd: app, env, encoding: "utf8" });
+  assert.equal(refused.status, 1);
+  const { refusal } = JSON.parse(refused.stdout);
+  const explained = JSON.parse(settings("explain", refusal.code, "--json")).explanation;
+  assert.deepEqual(explained, refusal);
+  assert(settings("explain", refusal.code).includes(refusal.remediation.command));
+  for (const command of ["list", "show", "explain"]) {
+    const help = settings(command, "--help");
+    assert(help.includes("Examples:"));
+    assert(help.includes(`${npmCommand} show ${key} --json`));
+  }
+  for (const file of ["settings-catalog.json", "settings-refusals.json"]) {
+    const data = JSON.parse(readFileSync(join(app, "node_modules/@openlup/platform", file), "utf8"));
+    assert.equal(data.schemaVersion, 1);
   }
 }
 

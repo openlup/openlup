@@ -1,0 +1,17 @@
+[
+  {
+    "key": "account-support.recoverableAdministration",
+    "domain": "account-support",
+    "goal": "Keep at least one active human administrator.",
+    "schemaVersion": 1,
+    "kind": "invariant",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The last human administrator is required for recoverable administration.",
+    "effect": {"appliesTo": "The last human administrator is required for recoverable administration.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The last human administrator is required for recoverable administration."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#account-supportrecoverableadministration"},
+    "rules": []
+  }
+]

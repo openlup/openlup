@@ -1,5 +1,7 @@
 # Compose native fulfillment
 
+Discover the [renewal stock protection horizon](../operate/settings-catalogue.md#inventory_renewal_protection) in the settings catalogue.
+
 Prepare shipments from authoritative application facts, exercise dispatch with
 synthetic captures, and bind label, handoff and tracking commands to authorized
 operator handlers.

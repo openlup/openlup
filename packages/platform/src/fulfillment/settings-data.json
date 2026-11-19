@@ -1,0 +1,32 @@
+[
+  {
+    "key": "fulfillment.additionalDeliveryMethods",
+    "domain": "fulfillment",
+    "goal": "Offer additional delivery methods.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The delivery contract has a fixed set of native method kinds.",
+    "effect": {"appliesTo": "The delivery contract has a fixed set of native method kinds.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The delivery contract has a fixed set of native method kinds."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentadditionaldeliverymethods"},
+    "rules": []
+  },
+  {
+    "key": "fulfillment.independentShipments",
+    "domain": "fulfillment",
+    "goal": "Dispatch independent shipments from one order.",
+    "schemaVersion": 1,
+    "kind": "cap",
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Native shipment sequencing needs additional fulfillment modeling for this case.",
+    "effect": {"appliesTo": "Native shipment sequencing needs additional fulfillment modeling for this case.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "Native shipment sequencing needs additional fulfillment modeling for this case."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentindependentshipments"},
+    "rules": []
+  }
+]

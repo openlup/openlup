@@ -27,6 +27,9 @@ below, owns arrival and persisted schedule alignment.
 
 ## Freeze the edit window at activation
 
+See [the activation edit-window setting](../how-to/operate/settings-catalogue.md#subscriptioncreationeditwindowhours)
+and [the subscriber winback policy](../how-to/operate/settings-catalogue.md#subscriber_winback_policy).
+
 In 1.2.0,
 `activateNativePurchaseWithRenewal` accepts the optional trusted host input
 `editWindowHours`: an integer from 1 through 720. Invalid input throws
