@@ -394,6 +394,10 @@ BEGIN
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(prices) p
    WHERE NOT coalesce(pg_input_is_valid(p->>'priceListId','uuid'),false)
       OR NOT coalesce(pg_input_is_valid(p->>'entryId','uuid'),false) OR jsonb_typeof(p->'entry') IS DISTINCT FROM 'object'
+      OR (p ? 'base' AND (p_mode<>'subscription' OR p ? 'policy'
+       OR jsonb_typeof(p->'base') IS DISTINCT FROM 'object' OR (p->'base')-ARRAY['entryId','entry']<>'{}'::jsonb
+       OR NOT coalesce(pg_input_is_valid(p#>>'{base,entryId}','uuid'),false) OR p#>>'{base,entryId}'=p->>'entryId'
+       OR jsonb_typeof(p#>'{base,entry}') IS DISTINCT FROM 'object'))
       OR (p ? 'policy' AND (p_mode<>'subscription' OR p_offer_evidence->>'lane'='legacy'
        OR jsonb_typeof(p->'policy') IS DISTINCT FROM 'object' OR (p->'policy')-ARRAY['revisionId','digest']<>'{}'::jsonb
        OR NOT coalesce(pg_input_is_valid(p#>>'{policy,revisionId}','uuid'),false)
@@ -416,7 +420,8 @@ BEGIN
  PERFORM p.id FROM public.price_lists p WHERE p.id IN
   (SELECT (v->>'priceListId')::uuid FROM jsonb_array_elements(prices) v) ORDER BY p.id FOR SHARE;
  PERFORM p.id FROM public.price_entries p WHERE p.id IN
-  (SELECT (v->>'entryId')::uuid FROM jsonb_array_elements(prices) v) ORDER BY p.id FOR SHARE;
+  (SELECT (v->>'entryId')::uuid FROM jsonb_array_elements(prices) v
+   UNION SELECT (v#>>'{base,entryId}')::uuid FROM jsonb_array_elements(prices) v WHERE v ? 'base') ORDER BY p.id FOR SHARE;
  -- The policy writer serializes its effective windows with this context
  -- guard. Read its MVCC row while holding the guard and no policy row lock.
  FOR price_key IN
@@ -437,11 +442,33 @@ BEGIN
    AND p.price_list_id=(price_context->>'priceListId')::uuid AND p.variant_id=(price_context->>'skuId')::uuid
    AND ((NOT (price_context ? 'policy') AND p.mode IN (p_mode,'any')) OR
     (price_context ? 'policy' AND p.mode='one_time' AND p.min_qty=1))
+   AND (NOT (price_context ? 'base') OR (p.mode='subscription' AND p.min_qty=1))
    AND p.min_qty<=(demand->>'quantity')::integer
    AND (p_purpose<>'order' OR p.amount_kind='gross')
    AND p.active AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
    AND to_jsonb(p)=price_context->'entry';
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
+  IF price_context ? 'base' AND (
+   NOT EXISTS(SELECT 1 FROM public.price_entries p WHERE p.id=(price_context#>>'{base,entryId}')::uuid
+    AND p.price_list_id=(price_context->>'priceListId')::uuid AND p.variant_id=(price_context->>'skuId')::uuid
+    AND p.mode='one_time' AND p.min_qty=1 AND p.amount_kind='gross' AND p.active
+    AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
+    AND to_jsonb(p)=price_context#>'{base,entry}')
+   OR EXISTS(SELECT 1 FROM public.price_entries p
+    WHERE p.price_list_id=(price_context->>'priceListId')::uuid AND p.variant_id=(price_context->>'skuId')::uuid
+     AND p.min_qty=1 AND p.active AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
+     AND ((p.mode='one_time' AND p.id<>(price_context#>>'{base,entryId}')::uuid)
+       OR (p.mode='subscription' AND p.id<>(price_context->>'entryId')::uuid)))
+  ) THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
+  IF p_purpose='order' AND p_offer_evidence->'scopeSkuIds' IS NULL AND NOT (price_context ? 'base' OR price_context ? 'policy')
+   AND (SELECT p.id FROM public.price_entries p JOIN public.price_lists l ON l.id=p.price_list_id
+    WHERE p.variant_id=(price_context->>'skuId')::uuid AND p.mode IN (p_mode,'any')
+     AND p.min_qty<=(demand->>'quantity')::integer AND p.active AND p.amount_kind='gross'
+     AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
+     AND l.currency=(SELECT currency FROM public.price_lists WHERE id=(price_context->>'priceListId')::uuid) AND l.status='active'
+     AND l.valid_from<=statement_timestamp() AND (l.valid_to IS NULL OR l.valid_to>statement_timestamp())
+    ORDER BY (p.mode=p_mode) DESC,p.min_qty DESC,p.id LIMIT 1) IS DISTINCT FROM (price_context->>'entryId')::uuid THEN
+   RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
   IF price_context ? 'policy' AND NOT EXISTS(
    SELECT 1 FROM public.subscription_price_policy_revisions r
    JOIN public.price_lists p ON (r.price_list_id,r.region_code,r.currency)=(p.id,p.region_code,p.currency)
@@ -591,6 +618,7 @@ DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]
  member jsonb; offer_version text; quoted_heads jsonb; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
  retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean; price_context jsonb; phase_reference jsonb;
+ base public.price_entries;
  composition_publication jsonb;
 BEGIN
  IF p_purpose NOT IN ('order','account') OR p_purpose IS NULL OR jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN
@@ -680,6 +708,12 @@ BEGIN
   SELECT * INTO price FROM public.price_entries WHERE id=CASE WHEN pg_input_is_valid(price_id,'uuid') THEN price_id::uuid END AND variant_id=sku_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_required' USING ERRCODE='22023'; END IF;
   price_context:=jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price));
+  IF requested->>'version'='catalog_facts_v1' AND p_mode='subscription' AND requested->>'basePriceEntryId' IS DISTINCT FROM price.id::text THEN
+   SELECT * INTO base FROM public.price_entries WHERE id=CASE WHEN pg_input_is_valid(requested->>'basePriceEntryId','uuid')
+    THEN (requested->>'basePriceEntryId')::uuid END AND variant_id=sku_id AND price_list_id=price.price_list_id;
+   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_required' USING ERRCODE='22023'; END IF;
+   price_context:=price_context||jsonb_build_object('base',jsonb_build_object('entryId',base.id,'entry',to_jsonb(base)));
+  END IF;
   IF requested->>'version'='catalog_facts_v2' THEN
    price_context:=price_context||jsonb_build_object('policy',jsonb_build_object(
     'revisionId',requested->'policyRevisionId','digest',requested->'policyDigest'));
@@ -780,6 +814,8 @@ BEGIN
     ON c->>'skuId'=sku.id::text
   WHERE consulted.entry_id IS NOT NULL AND (c->>'entryId' IS DISTINCT FROM consulted.entry_id
     OR (observed.facts IS NOT NULL AND observed.facts->>'skuId' IS DISTINCT FROM sku.id::text)
+    OR (observed.facts->>'version'='catalog_facts_v1' AND p_mode='subscription'
+     AND observed.facts->>'basePriceEntryId' IS DISTINCT FROM coalesce(c#>>'{base,entryId}',c->>'entryId'))
     OR (observed.facts->>'version'='catalog_facts_v2' AND c->'policy' IS DISTINCT FROM
       jsonb_build_object('revisionId',observed.facts->'policyRevisionId','digest',observed.facts->'policyDigest')))) THEN
   RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;

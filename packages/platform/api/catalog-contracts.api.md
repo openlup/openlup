@@ -26,6 +26,13 @@ export interface CatalogAdmissionPriceContext {
     priceListId: string;
     entryId: string;
     entry: Record<string, unknown>;
+    /** The separate one-time base consulted alongside an explicit subscription entry.
+     * @experimental
+     */
+    base?: {
+        entryId: string;
+        entry: Record<string, unknown>;
+    };
     /** Effective subscription policy associated with the consulted one-time base.
      * @experimental
      */

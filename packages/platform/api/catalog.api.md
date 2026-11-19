@@ -1319,6 +1319,13 @@ export interface CatalogAdmissionPriceContext {
     priceListId: string;
     entryId: string;
     entry: Record<string, unknown>;
+    /** The separate one-time base consulted alongside an explicit subscription entry.
+     * @experimental
+     */
+    base?: {
+        entryId: string;
+        entry: Record<string, unknown>;
+    };
     /** Effective subscription policy associated with the consulted one-time base.
      * @experimental
      */
@@ -5225,7 +5232,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123190000_catalog_admission";
     readonly catalogPath: "db/platform/migrations/20261123190000_catalog_admission.sql";
     readonly position: 153;
-    readonly sha256: "ea3da8b41db4bcd68322271bdab61ecb140356217cbc907ffcbceed516e5cbd6";
+    readonly sha256: "e0fca6d237e1986be20d90cd65a42884e7b4eb862c2c9b1adda8e61ec25c6af1";
     readonly url: URL;
 }];
 ```

@@ -307,7 +307,7 @@ it.each((["one_time","subscription"] as const).flatMap(mode => [false,true].flat
     const stop = await gate(h), ap = await pid(a), bp = await pid(b), hp = await pid(h);
     const routine = promoted ? "commerce_create_promoted_order_draft_with_outbox" : "commerce_create_order_draft_with_outbox";
     const widerScope = "UNION ALL\n   SELECT l.id,scope.sku_id FROM public.price_lists l CROSS JOIN unnest(scoped_skus) scope(sku_id)\n    WHERE p_purpose='order' AND l.currency=p_offer_evidence->>'currency'";
-    const boundary = "(SELECT (v->>'entryId')::uuid FROM jsonb_array_elements(prices) v) ORDER BY p.id FOR SHARE;";
+    const boundary = "UNION SELECT (v#>>'{base,entryId}')::uuid FROM jsonb_array_elements(prices) v WHERE v ? 'base') ORDER BY p.id FOR SHARE;";
     let restore = async () => {};
     try {
       await b.query("SET LOCAL ROLE authenticated");
@@ -897,6 +897,53 @@ it.for([false,true])("LC6-D-072 legacy quote preserves the exact winning price, 
     if (control) expect((await applying).subscriptionAction.status).toBe("applied");
     else await expect(applying).rejects.toMatchObject({ code: "40001",message: "catalog_admission_price_context_moved" });
   } finally { await db.query("ROLLBACK"); db.release(); await restore?.(); }
+});
+
+it.for((["assertion","port","plain","promoted"] as const).flatMap(path => [false,true].map(control => ({ path,control }))))(
+  "LC6-D-072/D-147 strict subscription evidence preserves both entry identities via $path, control=$control", async ({ path,control }) => {
+    const f = await fixture(packs[0]), entry = f.admission.priceContextVersions[0], baseId = randomUUID();
+    entry.entry = (await pool.query("UPDATE public.price_entries SET mode='subscription' WHERE id=$1 RETURNING to_jsonb(price_entries) AS entry", [entry.entryId])).rows[0].entry;
+    const base = (await pool.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from)
+     VALUES($1,$2,$3,'one_time',700,$4::timestamptz-interval '1 day') RETURNING to_jsonb(price_entries) AS entry`,
+    [baseId,entry.priceListId,f.sku,f.at])).rows[0].entry;
+    Object.assign(entry,{ base: { entryId: baseId,entry: base } });
+    const input = { ...f.admission,purpose: "order" as const }, purchase = purchaseInput(f);
+    const facts = { ...governedCheckoutQuote(f,"subscription").quote.lines[0].catalogFacts,basePriceEntryId: baseId,baseUnitAmountMinor: 700 };
+    Object.assign(purchase.quote.quote.lines[0],{ catalogFacts: facts });
+    const restore = control ? await hook(catalogAssertionSignature,"DECLARE selection jsonb;","",body => {
+      const predicate = "IF price_context ? 'base' AND (";
+      expect(body.split(predicate)).toHaveLength(2);
+      return body.replace(predicate,"IF false AND (");
+    }) : undefined;
+    const db = await session();
+    try {
+      const assertEntry = () => path === "port" ? createPostgresCatalogAdmission().assertCurrent(db,input)
+        : path === "assertion" ? rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),
+          input.mode,input.offerEvidence,JSON.stringify(input.priceContextVersions),input.purpose])
+          : rpc(db,path === "plain" ? "commerce_create_order_draft_with_outbox" : "commerce_create_promoted_order_draft_with_outbox",purchase.args);
+      await db.query("SAVEPOINT positive_base");
+      if (path === "port" || path === "assertion") await assertEntry();
+      else expect(await assertEntry()).toMatchObject({ orderDraft: { replayed: false } });
+      await db.query("ROLLBACK TO SAVEPOINT positive_base");
+      await db.query("UPDATE public.price_entries SET valid_to=statement_timestamp()-interval '1 second' WHERE id=$1", [baseId]);
+      await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+        VALUES($1,$2,'one_time',700,statement_timestamp())`, [entry.priceListId,f.sku]);
+      if (control) await assertEntry();
+      else await expect(assertEntry()).rejects.toMatchObject({ code: "40001",message: "catalog_admission_price_context_moved" });
+    } finally { await db.query("ROLLBACK"); db.release(); await restore?.(); }
+  },
+);
+
+it.each(["assertion","port"] as const)("LC6-D-147 an eligible nonwinner is refused via %s", async path => {
+  const f = await fixture(packs[0]), input = { ...f.admission,purpose: "order" as const }, db = await session();
+  try {
+    await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      VALUES($1,$2,'subscription',617,statement_timestamp()-interval '1 second')`, [input.priceContextVersions[0].priceListId,f.sku]);
+    const result = path === "port" ? createPostgresCatalogAdmission().assertCurrent(db,input)
+      : rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,
+        input.offerEvidence,JSON.stringify(input.priceContextVersions),input.purpose]);
+    await expect(result).rejects.toMatchObject({ code: "40001",message: "catalog_admission_price_context_moved" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
 it.each((["assertion","port"] as const).flatMap(path =>
