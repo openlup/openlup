@@ -274,7 +274,7 @@ BEGIN
  IF baseline IS NOT NULL THEN
   scope_demand:=p_offer_evidence->'scopeDemand';
   IF scope_demand IS NULL AND jsonb_typeof(p_sku_revisions)='array' THEN
-   SELECT jsonb_agg(jsonb_build_object('skuId',l#>'{reference,skuId}','quantity',l->'quantity','isAddon',false))
+   SELECT jsonb_agg(jsonb_build_object('skuId',l#>'{reference,skuId}','quantity',l->'quantity','isAddon',coalesce(l->'isAddon','false'::jsonb)))
     INTO scope_demand FROM jsonb_array_elements(p_sku_revisions) l;
   END IF;
   SELECT coalesce(array_agg(DISTINCT (d->>'skuId')::uuid),'{}') INTO retained_ids
@@ -319,10 +319,11 @@ BEGIN
  IF jsonb_array_length(p_sku_revisions) NOT BETWEEN 1 AND 100
   OR p_mode IS NULL OR p_mode NOT IN ('one_time','subscription')
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_sku_revisions) s
-   WHERE jsonb_typeof(s) IS DISTINCT FROM 'object' OR s-ARRAY['reference','quantity']<>'{}'::jsonb
+   WHERE jsonb_typeof(s) IS DISTINCT FROM 'object' OR s-ARRAY['reference','quantity','isAddon']<>'{}'::jsonb
     OR jsonb_typeof(s->'reference') IS DISTINCT FROM 'object'
     OR NOT coalesce(pg_input_is_valid(s#>>'{reference,skuId}','uuid'),false)
     OR jsonb_typeof(s->'quantity') IS DISTINCT FROM 'number'
+    OR (s ? 'isAddon' AND (p_purpose<>'account' OR jsonb_typeof(s->'isAddon') IS DISTINCT FROM 'boolean'))
     OR NOT coalesce(s->>'quantity' ~ '^[1-9][0-9]*$' AND pg_input_is_valid(s->>'quantity','integer'),false))
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_sku_revisions) s GROUP BY (s#>>'{reference,skuId}')::uuid HAVING count(*)>1) THEN
   RAISE EXCEPTION '%',refused USING ERRCODE='22023'; END IF;

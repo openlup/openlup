@@ -946,6 +946,41 @@ it.each(["assertion","port"] as const)("LC6-D-147 an eligible nonwinner is refus
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
+it.for((["assertion","port"] as const).flatMap(path => [false,true].map(control => ({ path,control }))))(
+  "LC6-D-057/D-060 retained add-on role keeps its exact proof via $path, control=$control", async ({ path,control }) => {
+    const primary = await fixture(packs[0]), addon = await fixture(packs[1],{ sku: { isAddon: true } });
+    const setup = await pool.connect();
+    try { expect(await (await edit(primary,"sized")).invoke(setup)).toMatchObject({ status: "applied",templateVersion: 2 }); }
+    finally { setup.release(); }
+    const predicate = "'isAddon',coalesce(l->'isAddon','false'::jsonb)";
+    const restore = control ? await hook(catalogAssertionSignature,"DECLARE selection jsonb;","",body => {
+      expect(body.split(predicate)).toHaveLength(2);
+      return body.replace(predicate,"'isAddon',false");
+    }) : undefined;
+    const db = await session();
+    try {
+      await db.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [primary.subscription]);
+      await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,catalog_sku_revision_id)
+        VALUES($1,$2,2,1,true,617,'XXX',$3)`, [primary.subscription,addon.sku,addon.reference.skuRevisionId]);
+      await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2,$2,2,617)", [primary.subscription,addon.code]);
+      await db.query("UPDATE public.subscription_renewal_terms SET catalog_acceptance=$2 WHERE subscription_id=$1",
+        [primary.subscription,{ schemaVersion: 2,lines: [primary.reference,addon.reference].sort((a,b) => a.skuId.localeCompare(b.skuId)) }]);
+      const quoted = governedCheckoutQuote(addon,"subscription").quote.lines[0];
+      await db.query(`UPDATE public.subscription_events SET payload=jsonb_set(payload,'{linePricing}',payload->'linePricing'||$2::jsonb)
+        WHERE subscription_id=$1 AND event_type='subscription.customer_self_service.resize_bundle'`, [primary.subscription,JSON.stringify([
+        { sku: addon.code,quantity: 2,unitAmountMinor: 617,isAddon: true,quoteLine: quoted },
+      ])]);
+      const input: CatalogAdmissionInput = { purpose: "account",mode: "subscription",heads: [],
+        skuRevisions: [{ reference: addon.reference,quantity: 2,isAddon: true }],
+        offerEvidence: { subscriptionId: primary.subscription,offerVersion: "sized.v1",lane: "sized" },priceContextVersions: [] };
+      const run = path === "port" ? createPostgresCatalogAdmission().assertCurrent(db,input)
+        : rpc(db,"catalog_admission_assert_current",["[]",JSON.stringify(input.skuRevisions),input.mode,input.offerEvidence,"[]",input.purpose]);
+      if (control) await expect(run).rejects.toMatchObject({ code: "22023",message: accountAnchor });
+      else await run;
+    } finally { await db.query("ROLLBACK"); db.release(); await restore?.(); }
+  },
+);
+
 it.each((["assertion","port"] as const).flatMap(path =>
   (["none","current","closed","duplicate","orphan","withdrawn","missing proof","missing proof control"] as const).map(change => ({ path,change }))))(
   "LC6-D-151 retained price consultation $change via $path", async ({ path,change }) => {

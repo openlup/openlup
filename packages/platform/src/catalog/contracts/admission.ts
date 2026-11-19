@@ -7,6 +7,10 @@ import type { CatalogHeadRef } from "./lifecycle.js";
 export interface CatalogAdmissionSelection {
   reference: CatalogAcceptedReferenceV2;
   quantity: number;
+  /** Role in the agreed account selection. Omission retains the core default.
+   * @experimental
+   */
+  isAddon?: boolean;
 }
 /** Native price identity and exact consulted state; no price calculation occurs here.
  * @experimental

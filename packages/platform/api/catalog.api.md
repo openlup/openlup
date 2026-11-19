@@ -1310,6 +1310,10 @@ import type { CatalogHeadRef } from "./lifecycle.js";
 export interface CatalogAdmissionSelection {
     reference: CatalogAcceptedReferenceV2;
     quantity: number;
+    /** Role in the agreed account selection. Omission retains the core default.
+     * @experimental
+     */
+    isAddon?: boolean;
 }
 /** Native price identity and exact consulted state; no price calculation occurs here.
  * @experimental
@@ -5232,7 +5236,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123190000_catalog_admission";
     readonly catalogPath: "db/platform/migrations/20261123190000_catalog_admission.sql";
     readonly position: 153;
-    readonly sha256: "e0fca6d237e1986be20d90cd65a42884e7b4eb862c2c9b1adda8e61ec25c6af1";
+    readonly sha256: "12be3479a2e55dcf2d1facfdc9d63f898934f34df9e988f556760a30b6735b3e";
     readonly url: URL;
 }];
 ```
