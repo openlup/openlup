@@ -616,6 +616,7 @@ export declare function createPostgresStockAvailability(executor: StockQueryExec
     now: () => string;
 }): {
     readPort: NewPurchaseStockReadPort;
+    readInstalled(skus: readonly string[]): ReturnType<NewPurchaseStockReadPort["read"]>;
     availableToPromise(sku: string, asOf: string): Promise<NativeStockPromise>;
 };
 export {};

@@ -34,8 +34,9 @@ it("W2 binds native ATP rather than a host override and exposes no renewal waive
     const port = createNewPurchaseStockAvailabilityPort({ ...stock, readPort: binding.newPurchaseStockReadPort! }, { mode });
     expect((await port.getAvailability({ items: [item] }))[0].sellableNow).toBe(5);
   }
+  // The extracted batch reader changes the SQL indentation while keeping the same read-only call.
   const sql = `SELECT public.inventory_new_purchase_stock_read(
-          $1::text,$2::jsonb,$3::timestamptz) AS response`;
+      $1::text,$2::jsonb,$3::timestamptz) AS response`;
   const policyRead = ["SELECT public.inventory_renewal_protection_days() AS days"];
   expect(query.mock.calls).toEqual([policyRead, [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]],
     policyRead, [sql, ["EXAMPLE-source", JSON.stringify([item.sku]), now()]]]);

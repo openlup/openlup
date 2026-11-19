@@ -5649,6 +5649,25 @@
         "dataStatements": []
       },
       {
+        "row": "F2A-INVENTORY-RENEWAL-PROTECTION-VALIDATION",
+        "path": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.inventory_renewal_protection_days()",
+            "beforeSha256": "4d1570aecc30219d65da01d175f2d87c95c1cc4caef9d803c0f9e20e803f74db",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.inventory_renewal_protection_validate(jsonb)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalogue-core-s",
         "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
         "replacedFunctions": [],
@@ -8108,6 +8127,22 @@
           "signature": "public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb)",
           "beforeSha256": null,
           "afterSha256": "6cb1c2ee85c8397d463186eb04774cfb5b2e170d07dc25dd8724b221eef5349d"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
+      "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481",
+      "functions": [
+        {
+          "signature": "public.inventory_renewal_protection_days()",
+          "beforeSha256": "4d1570aecc30219d65da01d175f2d87c95c1cc4caef9d803c0f9e20e803f74db",
+          "afterSha256": "1191ee20527ad36d820dbf37d268af2a4870329765e91d7a5b4ba7b7c50e2286"
+        },
+        {
+          "signature": "public.inventory_renewal_protection_validate(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "de8f7e1de2757b58f840935d66cd6073869756e67d1d7c93a9223be92c253e09"
         }
       ]
     },
