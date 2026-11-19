@@ -167,8 +167,8 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         return { preview, request, priced, ...(qualified ? { catalogPublications } : {}) };
       };
       const record = async (db: SubscriptionQueryExecutor, result: Awaited<ReturnType<typeof prepare>>): Promise<SizedEditPreview> => {
+        if (!("priced" in result)) return result.preview;
         const { preview, request, priced, catalogPublications } = result;
-        if (!priced || !request) return preview;
         const { subscriptionId: _id, ...raw } = request;
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
         const recorded = await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
@@ -193,7 +193,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
           await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
           return prepare(db, true);
         });
-      return prepared.priced ? options.withTransaction(db => record(db, prepared)) : prepared.preview;
+      return "priced" in prepared ? options.withTransaction(db => record(db, prepared)) : prepared.preview;
     },
     async apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult> {
       const parsed = parse(input);
