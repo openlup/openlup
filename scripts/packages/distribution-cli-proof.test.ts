@@ -204,6 +204,8 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   const from = starterUpgradeSnapshot(app, "1.1.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
   const managedTarget = { ...to.files };
   const marketPath = "owned/market.config.ts";
+  const cataloguePath = "owned/catalogue.ts";
+  let unreconciledCatalogue: string | undefined;
   expect(existsSync(join(app, marketPath))).toBe(false);
   if (customized) {
     const previousFile = (path: string) => join(source, previousOwnership.sourceMappings?.[path] ?? path);
@@ -211,6 +213,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
       !readFileSync(previousFile(path)).equals(readFileSync(join(target, path))));
     for (const path of changedOwned) expect(customizations.has(path), `missing local edit for ${path}`).toBe(true);
     for (const [path, [before, after]] of customizations) edit(path, before, after);
+    unreconciledCatalogue = read(cataloguePath);
     // Reconcile each local file in place against its released base and target.
     for (const path of customizations.keys()) {
       execFileSync("git", ["merge-file", join(app, path), previousFile(path), join(target, path)], { stdio: "pipe", timeout: 5_000 });
@@ -256,6 +259,19 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(readFileSync(join(app, path)).equals(expected), `owned bytes after upgrade: ${path}`).toBe(true);
   }
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
+  const runContracts = (...paths: string[]) => spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...paths],
+    { cwd: app, encoding: "utf8", timeout: 60_000 });
+  if (unreconciledCatalogue !== undefined) {
+    const reconciled = read(cataloguePath);
+    writeFileSync(join(app, cataloguePath), unreconciledCatalogue);
+    try {
+      const refusal = runContracts(starterCatalogueTest);
+      expect(refusal.status, refusal.error?.message ?? refusal.stdout + refusal.stderr).toBe(1);
+      expect(refusal.stdout).toContain("Export catalogDraftTypeRefs from owned/catalogue.ts");
+    } finally {
+      writeFileSync(join(app, cataloguePath), reconciled);
+    }
+  }
   // The full upgraded-starter suite runs in the pre-publication proof (#783);
   // here, run only the owned-contract tests so the root shard stays bounded.
   const contracts = [
@@ -267,7 +283,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     starterCatalogueTest,
   ];
   if (localTest) contracts.push(localTest.path);
-  const check = spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...contracts], { cwd: app, encoding: "utf8", timeout: 60_000 });
+  const check = runContracts(...contracts);
   expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
   if (localTest) expect(check.stdout).toContain(localTest.name);
   const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval", `

@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { inspect } from 'node:util';
 import type { CatalogProductTypeInput } from '@openlup/platform/catalog';
-import { catalogDraftRegistry, catalogDraftTypeRefs } from '../owned/catalogue.ts';
+import * as catalogue from '../owned/catalogue.ts';
 
 test('the offline catalogue pack matches the authored type metadata', () => {
+  const { catalogDraftRegistry, catalogDraftTypeRefs } = catalogue;
+  assert.ok(Array.isArray(catalogDraftTypeRefs), 'Export catalogDraftTypeRefs from owned/catalogue.ts. '
+    + 'List one { key, version } per authored type, derived from the same types array used to create the registry.');
   const subject = JSON.parse(readFileSync(new URL('../owned/catalogue.json', import.meta.url), 'utf8')) as {
     packs: { pack: { types: Omit<CatalogProductTypeInput, 'validateContent'>[] } }[];
   };

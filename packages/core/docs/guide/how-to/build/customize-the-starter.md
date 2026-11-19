@@ -586,6 +586,8 @@ Replace the fictional `starter:item@1` registry and content validator in
 Mirror the type key and version, unit codes, dimension, integrality, factor,
 `netContentUnits` and `dimensions` in the `owned/catalogue.json` pack so the
 starter's npm `test` script can report any differences.
+Keep the `catalogDraftTypeRefs` export when replacing the registry because it
+lists the authored types for that check.
 Draft payloads cannot install
 executable validators. The operator can create, revise, abandon, list and read
 drafts; the host supplies the actor and command key. Provision and deactivate
