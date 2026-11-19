@@ -94,6 +94,7 @@ CREATE TABLE public.catalog_publication_pointer_capabilities (
 );
 CREATE INDEX catalog_publications_product_revision_idx ON public.catalog_publications(product_id,revision DESC);
 CREATE INDEX catalog_sku_revisions_sku_revision_idx ON public.catalog_sku_revisions(sku_id,revision DESC);
+CREATE INDEX catalog_sku_revisions_publication_idx ON public.catalog_sku_revisions(publication_id,sku_id,revision DESC);
 CREATE INDEX catalog_operator_receipts_publication_idx ON public.catalog_operator_receipts(publication_id);
 CREATE INDEX catalog_publication_decisions_reference_idx ON public.catalog_publication_decisions(candidate_reference_digest,decided_at,id);
 -- Keep legacy-to-legacy admission. An identity owned by publication cannot
