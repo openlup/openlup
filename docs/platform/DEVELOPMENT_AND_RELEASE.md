@@ -157,6 +157,51 @@ release prepare or release attestation. Installation and changes to this local
 layer remain maintainer-controlled and outside the public tree.
 All required source and merge-group CI commands still run.
 
+## Measuring delivery improvements
+
+Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
+pre-release measurement supplement to M19 A5. Its four tasks and local candidate
+rehearsals remain separate from the full blind adopter journey and
+[first-party consumer evidence](../../packages/core/docs/guide/reference/stability.md#release-evidence).
+
+Record measurements in the existing task evidence, with actual candidate,
+workflow run and attempt identities; no separate tracking service is needed.
+Compare like work: a new package or API contribution, an existing-package repair,
+and metadata-only delivery have different costs. Retain failed attempts and
+recovery work. Two log files for one run are one attempt.
+
+Use the same start in both routes: the functional scope is ready to stabilize,
+before version bumps, release notes, pins, release-contract generation and any
+route-specific maintainer reading, review or verification. Include this
+preparation in the comparison. If that start cannot be reconstructed for the
+baseline, report the missing cost as unknown; timing only the stabilized
+candidate cannot establish a net saving.
+
+Record these milestones separately: stable signed candidate; source checks green
+and native admission; queue arming, group admission and merge; main checks green
+and exact release preflight; protected release approval; every publisher job
+complete; and complete consumer, integrity and provenance proof. PR creation or
+publish exit zero is not the final milestone. Where completion still requires
+manual observation, include that work rather than claiming an autonomous result.
+
+Report total elapsed time, integrator active work, maintainer wait, other external
+wait and runner/job seconds separately. Agent-controlled critical-path time uses
+non-overlapping intervals excluding maintainer wait; parallel job durations are
+not added to it. Record full reviews and verifies, questions, MFA interactions,
+failures and manual recovery. Do not invent token or monetary costs without
+telemetry.
+
+Evaluate the next two naturally needed comparable sets, each with its own
+required release approval; do not publish empty benchmark versions. Check whether
+the combined route actually removed a second preparation PR and delivery cycle,
+and whether repeated routine decisions disappeared. A working target is 20% less
+agent-controlled time from the common start to final proof, including tool repair
+and operation cost. Two observations detect obvious regressions; they do not
+establish an average effect for every contribution class. Break-even divides
+implementation and maintenance hours by active-work hours saved per comparable
+set. Unknown savings or frequency means unknown return. Report safety improvements
+separately if speed did not improve; local replay alone does not prove a live gain.
+
 ## Measure package coverage
 
 Use a scoped Vitest V8 report to identify test gaps before proposing coverage
@@ -217,51 +262,6 @@ suite leaves `nativeSubscriptionBinding.ts` at zero. The installed-consumer
 and PostgreSQL test suites can exercise behavior outside this measurement.
 Use those suites to verify SQL semantics, race handling and installed
 composition.
-
-## Measuring delivery improvements
-
-Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
-pre-release measurement supplement to M19 A5. Its four tasks and local candidate
-rehearsals remain separate from the full blind adopter journey and
-[first-party consumer evidence](../../packages/core/docs/guide/reference/stability.md#release-evidence).
-
-Record measurements in the existing task evidence, with actual candidate,
-workflow run and attempt identities; no separate tracking service is needed.
-Compare like work: a new package or API contribution, an existing-package repair,
-and metadata-only delivery have different costs. Retain failed attempts and
-recovery work. Two log files for one run are one attempt.
-
-Use the same start in both routes: the functional scope is ready to stabilize,
-before version bumps, release notes, pins, release-contract generation and any
-route-specific maintainer reading, review or verification. Include this
-preparation in the comparison. If that start cannot be reconstructed for the
-baseline, report the missing cost as unknown; timing only the stabilized
-candidate cannot establish a net saving.
-
-Record these milestones separately: stable signed candidate; source checks green
-and native admission; queue arming, group admission and merge; main checks green
-and exact release preflight; protected release approval; every publisher job
-complete; and complete consumer, integrity and provenance proof. PR creation or
-publish exit zero is not the final milestone. Where completion still requires
-manual observation, include that work rather than claiming an autonomous result.
-
-Report total elapsed time, integrator active work, maintainer wait, other external
-wait and runner/job seconds separately. Agent-controlled critical-path time uses
-non-overlapping intervals excluding maintainer wait; parallel job durations are
-not added to it. Record full reviews and verifies, questions, MFA interactions,
-failures and manual recovery. Do not invent token or monetary costs without
-telemetry.
-
-Evaluate the next two naturally needed comparable sets, each with its own
-required release approval; do not publish empty benchmark versions. Check whether
-the combined route actually removed a second preparation PR and delivery cycle,
-and whether repeated routine decisions disappeared. A working target is 20% less
-agent-controlled time from the common start to final proof, including tool repair
-and operation cost. Two observations detect obvious regressions; they do not
-establish an average effect for every contribution class. Break-even divides
-implementation and maintenance hours by active-work hours saved per comparable
-set. Unknown savings or frequency means unknown return. Report safety improvements
-separately if speed did not improve; local replay alone does not prove a live gain.
 
 ## Reading results and recovering
 
