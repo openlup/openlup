@@ -190,8 +190,9 @@ function readsUnapprovedCanonicalDocument(file: SourceFile, lines: readonly stri
 
 function readsWholeDocumentRow(source: string): boolean {
   return source.split(/[`;]/).some(statement => {
-    statement = statement.replace(/'(?:''|[^'])*'/g, "''");
-    const tables = [...statement.matchAll(/\b(?:from|join|update|into)\s+(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s+(?:as\s+)?"?([a-z_][\w]*)"?\b)?/gi)];
+    statement = statement.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\//g, " ");
+    if (/^\s*table\s+(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions\b/i.test(statement)) return true;
+    const tables = [...statement.matchAll(/(?:\b(?:from|join|update|into)\s+|,\s*)(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s+(?:as\s+)?"?([a-z_][\w]*)"?\b)?/gi)];
     if (!tables.length) return false;
     const projections = [];
     const selects = new Map<number, number>();
@@ -202,6 +203,7 @@ function readsWholeDocumentRow(source: string): boolean {
         case ")": selects.delete(depth--); break;
         case "select": selects.set(depth, index + token.length); break;
         case "from": {
+          if (/\bIS\s+(?:NOT\s+)?DISTINCT\s*$/i.test(statement.slice(0, index))) break;
           const start = selects.get(depth);
           if (start !== undefined) projections.push(statement.slice(start, index).replace(/^\s*(?:ALL\b|DISTINCT\b(?:\s+ON\s*\([^)]*\))?)/i, ""));
           selects.delete(depth);
@@ -353,6 +355,7 @@ describe("portable catalog document boundary", () => {
     "SELECT * FROM public.catalog_product_document_revisions;",
     "SELECT *, saved.id FROM public.catalog_product_document_revisions saved;",
     "SELECT DISTINCT * FROM public.catalog_product_document_revisions d;",
+    "SELECT DISTINCT /* whole */ * FROM public.catalog_product_document_revisions d;",
     "SELECT d FROM public.catalog_product_document_revisions AS d;",
     'SELECT "d" FROM public.catalog_product_document_revisions AS d;',
     "SELECT ROW(d) FROM public.catalog_product_document_revisions d;",
@@ -361,7 +364,9 @@ describe("portable catalog document boundary", () => {
     "SELECT DISTINCT ON (d.id) * FROM public.catalog_product_document_revisions d;",
     'SELECT d FROM "public"."catalog_product_document_revisions" AS "d";',
     "SELECT (SELECT x.value FROM other_table x), d FROM public.catalog_product_document_revisions d;",
+    "SELECT d.id IS DISTINCT FROM x.id, d FROM other_table x, public.catalog_product_document_revisions d;",
     "UPDATE public.catalog_product_document_revisions d SET revision_no=2 RETURNING d;",
+    "TABLE public.catalog_product_document_revisions;",
   ])("refuses a whole document row projection: %s", source => {
     expect(violations([{ path: PUBLICATION_WRITER, source }])).toContain(
       `${PUBLICATION_WRITER}: document rows must use explicit projections`,
