@@ -1277,9 +1277,21 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   const inlineColumn = `ALTER TABLE public.cat_existing_table ADD COLUMN cohort integer CONSTRAINT ${pin.name} CHECK (true);`;
   const prefixPin = deferredPin({ function: "public.cat_trigger_fn()" }), freshPin = deferredPin({ relation: "public.cat_fresh" });
   const functionRule = `createdTriggers entry ${pin.name}: function must be a zero-argument public function of at most 63 bytes`;
-  type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; refusal?: string; companions?: Partial<NativeStoreSlot> };
+  const quotedView = 'CREATE VIEW public.cat_quoted_view AS SELECT id AS ";" FROM public.cat_existing_table;';
+  const quotedInsert = 'INSERT INTO public.fixture_data (";") VALUES (1);';
+  type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; functionSql?: string; refusal?: string; companions?: Partial<NativeStoreSlot> };
   const cases: Fixture[] = [
     ...subset.map(events => ({ label: events.join(" OR "), pins: [deferredPin({ events })] })),
+    { label: "quoted semicolon view alias without a pin", pins: [], prefixFunction: true,
+      sql: quotedView + "REVOKE ALL ON TABLE public.cat_quoted_view FROM PUBLIC;",
+      companions: { createdViews: [{ name: "public.cat_quoted_view", sha256: sqlSha256(quotedView) }] } },
+    { label: "quoted semicolon INSERT column without a pin", pins: [], prefixFunction: true, sql: quotedInsert,
+      setup: 'CREATE TABLE public.fixture_data (";" integer);', companions: { dataStatements: [quotedInsert] } },
+    { label: "quoted semicolon in a companion CHECK", pins: [pin], setup: 'ALTER TABLE public.cat_existing_table ADD COLUMN ";" integer;',
+      sql: statement + `ALTER TABLE public.cat_existing_table ADD CONSTRAINT ${pin.name} CHECK (";" > 0);`, refusal: forbidden() },
+    { label: "drifted function body with the pinned signature", pins: [pin], functionSql: deferredFunction.replace("RETURN NEW", "RETURN NULL"),
+      refusal: "reviewed native store unlisted, missing or drifted function definition" },
+    { label: "restored function body with the pinned signature", pins: [pin] },
     { label: "63-byte name", pins: [deferredPin({ name: long })] },
     { label: "keyword name select", pins: [deferredPin({ name: "select" })], refusal: "createdTriggers entry select: name must not be an SQL keyword" },
     { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
@@ -1291,7 +1303,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     { label: "unregistered with WHEN", pins: [], sql: statement.replace("EXECUTE FUNCTION", "WHEN (true) EXECUTE FUNCTION"), refusal: unregistered },
     ...['"cat space"', "CatUpper", "select", long + "a"].map(name => ({ label: `unregistered invalid name ${name}`, pins: [], sql: statement.replace(pin.name, name),
       refusal: `deferred trigger ${name.replaceAll('"', "")} is not registered; rename it to a lowercase, unquoted, non-keyword identifier of at most 63 bytes and add it to createdTriggers` })),
-    { label: "missing statement", pins: [pin], sql: "", refusal: "reviewed native store created trigger statement missing" },
+    { label: "missing statement", pins: [pin], sql: "", refusal: `reviewed native store created trigger statement missing: ${pin.name}` },
     { label: "stale statement hash", pins: [{ ...pin, sha256: "0".repeat(64) }], refusal: `deferred trigger ${pin.name}: update sha256 in its createdTriggers entry to ${pin.sha256}` },
     { label: "duplicate statement", pins: [pin], sql: statement + statement, refusal: forbidden() },
     ...[inlineColumn, inlineColumn.replace(" CONSTRAINT", ", ADD CONSTRAINT")].map(sql => ({ label: sql === inlineColumn ? "inline column CHECK" : "second ALTER action",
@@ -1340,9 +1352,9 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     { label: "drop with keyword pin", pins: [deferredPin({ name: "if" })], sql: statement.replace(pin.name, "if") + "DROP TRIGGER if ON public.cat_existing_table;",
       refusal: "createdTriggers entry if: name must not be an SQL keyword" },
   ];
-  it.each(cases)("admits and verifies the same deferred forward for $label", async ({ pins, sql, setup, prefixFunction, refusal, companions }) => {
+  it.each(cases)("admits and verifies the same deferred forward for $label", async ({ pins, sql, setup, prefixFunction, functionSql = deferredFunction, refusal, companions }) => {
     const slot = { ...DEFERRED_SLOT, createdTriggers: pins, createdFunctions: prefixFunction ? [] : DEFERRED_SLOT.createdFunctions, ...companions };
-    const fixture = deferredFixture(slot, (prefixFunction ? "" : deferredFunction) + (sql ?? pins.map(renderNativeDeferredTrigger).join("\n")), setup);
+    const fixture = deferredFixture(slot, (prefixFunction ? "" : functionSql) + (sql ?? pins.map(renderNativeDeferredTrigger).join("\n")), setup);
     if (refusal) {
       const error = new Error(refusal);
       const unopened = { connect: () => { throw new Error("opened a connection before admission"); } } as unknown as Pool;

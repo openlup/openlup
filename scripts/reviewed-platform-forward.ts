@@ -2663,8 +2663,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const baselineActions = new Set<number>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
-    const { tokens, complete } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
-    if (!complete) throw new Error("reviewed native store refuses statement outside its closed shapes");
+    const { tokens } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
     const word = (i: number, value: string) => nativeWord(tokens, i, value);
     const create = word(0, "CREATE"), drop = word(0, "DROP"), changing = word(0, "ALTER");
     const replacement = create && word(1, "OR") && word(2, "REPLACE"), kind = replacement ? 3 : word(0, "COMMENT") ? 2 : 1;
@@ -2682,7 +2681,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     } else if (pins.length) {
       const revoke = word(0, "REVOKE") && tokens.filter((_, i) => i !== 2 || !word(i, "PRIVILEGES")).map(token => nativeIdentifier(token) ?? token.value).join(" ");
       const own = pins.find(pin => created.has(pin.function) && (create && word(1, "FUNCTION")
-        ? forward.functions.some(binding => binding.signature === pin.function && binding.afterSha256 === sqlSha256(statement))
+        ? nativeQualified(tokens, 2)?.name === pin.function.slice(0, -2) && nativeSymbol(tokens, 5, "(") && nativeSymbol(tokens, 6, ")")
         : revoke === `revoke all on function public . ${pin.function.slice(7, -2)} ( ) from public ;`))?.function.slice(7, -2);
       const named = block ? platformSqlTokens(block[2]!, false, true).tokens : tokens;
       for (const [i, token] of named.entries()) {
@@ -2841,7 +2840,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");
   if (pending || completedConstraints.size !== replacements.length) throw new Error("reviewed native store requires the complete named CHECK replacement");
   if (dropped.size !== droppedIndexes.length) throw new Error("reviewed native store listed index drop missing");
-  if (triggers.size !== (slot.createdTriggers?.length ?? 0)) throw new Error("reviewed native store created trigger statement missing");
+  if (triggers.size !== (slot.createdTriggers?.length ?? 0)) throw new Error(["reviewed native store created trigger statement missing", pins.find(pin => !triggers.has(pin.name))?.name].filter(Boolean).join(": "));
   if (views.size !== (slot.createdViews?.length ?? 0)) throw new Error("reviewed native store created view missing");
   if ([...views].some(view => !revokedViews.has(view))) throw new Error("reviewed native store created view missing PUBLIC revoke");
   if (data.size !== slot.dataStatements.length) throw new Error("reviewed native store named data statement missing");
