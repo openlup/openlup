@@ -2384,7 +2384,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (rule) throw new Error(deferredTriggerMessages.field(trigger.name, "name", rule));
       if (!nativeStoreTable(trigger.relation) || trigger.relation.length > 70) invalid("relation", "a public relation with an identifier of at most 63 bytes");
       if (typeof trigger.function !== "string" || !/^public\.[a-z_][a-z0-9_]{0,62}\(\)$/u.test(trigger.function)) invalid("function", "a zero-argument public function of at most 63 bytes");
-      if (deferredKeyword.has(trigger.function.slice(7, -2))) throw new Error(deferredTriggerMessages.field(trigger.name, "function", "name is a reserved PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name."));
+      if (deferredKeyword.has(trigger.function.slice(7, -2))) throw new Error(deferredTriggerMessages.field(trigger.name, "function", "name is a PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name."));
       if (!Array.isArray(trigger.events) || !trigger.events.length || canonical(trigger.events) !== canonical(deferredEvents.filter(event => trigger.events.includes(event)))) invalid("events", "a nonempty ordered subset of INSERT, UPDATE, DELETE");
       if (!hash(trigger.sha256)) invalid("sha256", "the 64-character SHA-256 digest of the statement");
       return !keysAre(trigger, "deferred,events,function,name,relation,sha256") && invalid("fields", "name, relation, events, function, deferred and sha256");
@@ -2675,7 +2675,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const relation = (i: number) => next(i) === i + 3 ? `${id(i)}.${id(i + 2)}` : `public.${id(i)}`;
     const entry = create && word(triggerAt, "TRIGGER") && pins.find(pin => pin.name === id(nameIndex));
     const block = nativeStoreRolePrivilege.exec(statement), pinScan = pins.length && block ? platformSqlTokens(block[2]!, false, true) : parsed;
-    if (pins.length && (!parsed.complete || !pinScan.complete)) throw new Error(`The statement cannot be checked for pinned objects. ${pinnedMessage(pins[0]!).message}`);
+    // The pin scan reads unquoted and double-quoted identifiers in full. Exact statement pins cover text inside string literals and function bodies.
+    const unicodeEscape = pins.length && pinScan.tokens.some((token, i, scan) => nativeWord(scan, i, "UESCAPE")
+      || (nativeWord(scan, i, "U") && nativeSymbol(scan, i + 1, "&") && token.end === scan[i + 1]!.start
+        && scan[i + 1]!.end === scan[i + 2]?.start && (scan[i + 2]?.kind === "quoted" || scan[i + 2]?.kind === "string")));
+    if (pins.length && (!parsed.complete || !pinScan.complete || unicodeEscape)) throw new Error(`The statement cannot be checked for pinned objects. ${pinnedMessage(pins[0]!).message}`);
     if (entry) {
       if (statement !== renderNativeDeferredTrigger(entry) || triggers.has(entry.name)) throw pinnedMessage(entry);
       const digest = sqlSha256(statement);

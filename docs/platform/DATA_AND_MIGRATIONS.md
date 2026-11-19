@@ -2477,7 +2477,7 @@ for declarations, new functions and their PUBLIC revokes. Fix parse errors first
 For a pinned object, remove the refused statement or use one of the listed exact
 statements. Remove an unregistered trigger, or register it and use the rendered
 SQL when its form is supported.
-Rename any identifier the checker cannot read fully (such as `";"` or an escaped identifier), or move its statement to a forward without trigger pins.
+Rename any identifier the checker cannot read fully (such as `";"` or a Unicode-escaped identifier), or move its statement to a forward without trigger pins.
 Pins may share a relation. Reuse prefix invokers without a revoke and keep other trigger DDL off it.
 
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and

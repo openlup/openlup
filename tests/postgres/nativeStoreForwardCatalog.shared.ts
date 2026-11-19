@@ -1294,6 +1294,15 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       pins: [pin], sql: statement + view + "REVOKE ALL ON TABLE public.cat_quoted_view FROM PUBLIC;", refusal: unreadable,
       companions: { createdViews: [{ name: "public.cat_quoted_view", sha256: sqlSha256(view) }] },
     })),
+    ...[
+      ["Unicode-escaped pinned function in a view", quotedView.replace('AS ";"', "AS item_id")
+        .replace(/;$/u, ` WHERE public.U&"!0063at_created_guard" UESCAPE '!'() IS NOT NULL;`)],
+      ["Unicode-escaped unrelated alias in a view", quotedView.replace('AS ";"', `AS u&"!0069tem_id" UESCAPE '!'`)],
+      ["Unicode-escaped string in a view", quotedView.replace('id AS ";"', "U&'sample' AS label")],
+    ].map(([label, view]) => ({
+      label: label!, pins: [pin], sql: statement + view + "REVOKE ALL ON TABLE public.cat_quoted_view FROM PUBLIC;", refusal: unreadable,
+      companions: { createdViews: [{ name: "public.cat_quoted_view", sha256: sqlSha256(view!) }] },
+    })),
     { label: "quoted semicolon inside a role privilege block", pins: [pin],
       sql: statement + guarded("authenticated", "REVOKE ALL ON FUNCTION", 'public.";"() FROM authenticated;'), refusal: unreadable },
     { label: "quoted semicolon in a companion CHECK", pins: [pin], setup: 'ALTER TABLE public.cat_existing_table ADD COLUMN ";" integer;',
@@ -1305,7 +1314,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     { label: "keyword name select", pins: [deferredPin({ name: "select" })], refusal: "createdTriggers entry select: name must not be an SQL keyword" },
     { label: "keyword function name replace", pins: [deferredPin({ function: "public.replace()" })], prefixFunction: true,
       setup: "CREATE FUNCTION public.replace() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;",
-      refusal: `createdTriggers entry ${pin.name}: function name is a reserved PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name.` },
+      refusal: `createdTriggers entry ${pin.name}: function name is a PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name.` },
     { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
     { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: `createdTriggers entry ${pin.name}: relation must be a public relation with an identifier of at most 63 bytes` },
     { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: functionRule },
