@@ -26,6 +26,10 @@ const corpus = JSON.parse(readFileSync(
   new URL("../../packages/platform/test/inventory/inventory_renewal_protection.json", import.meta.url), "utf8",
 )) as Array<{ name: string; input: string; accepted: boolean; normalized?: RenewalStockProtectionPolicy; decodedNormalized?: RenewalStockProtectionPolicy; code?: string }>;
 const source = `starter-demo:${selectConfiguration().id}`, sku = "POLICY-FIXTURE";
+const fixtureSkus = [sku, ...Array.from({ length: 24 }, (_, index) => `${sku}-${index + 1}`)];
+const noStockSku = `${sku}-NO-STOCK`;
+const missingSku = `${sku}-MISSING`;
+const previewStockSql = "SELECT public.inventory_new_purchase_stock_preview($1::text,$2::jsonb,$3::timestamptz,$4::jsonb) AS response";
 const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
   bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
 let resource: PostgresContainer | undefined, db: Pool, asOf: string;
@@ -52,7 +56,8 @@ beforeAll(async () => {
   const id = randomUUID();
   await db.query("INSERT INTO public.clients(id,email) VALUES ($1,'policy@example.invalid')", [id]);
   await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES ($1,'policy-fixture','Fixture')", [id]);
-  await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES ($1,$1,$2,'Fixture')", [id, sku]);
+  await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title)
+    SELECT gen_random_uuid(),$1,value,'Fixture' FROM unnest($2::text[]) value`, [id, [...fixtureSkus, noStockSku]]);
   await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
     VALUES ($1,$2,100,100,0,'sellable',$3,$3::timestamptz + interval '1 day','fixture','policy-fixture',$4)`, [source, sku, asOf, "a".repeat(64)]);
   await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
@@ -83,6 +88,7 @@ it.each([
   "20261123130000_inventory_renewal_protection_policy.sql",
   "20261123142000_inventory_renewal_protection_validation.sql",
   "20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+  "20261123152000_inventory_new_purchase_stock_preview.sql",
 ])("admits %s against its complete native prefix", file => {
   const path = `db/platform/migrations/${file}`;
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -291,7 +297,32 @@ it("restricted native startup refuses drift before serving or writing, with inst
   } finally { await runtime.end(); }
 });
 
-it("matches current ATP credits for eligible holds, terminal cycles, expired holds and another schedule", async () => {
+it.each([0, 3661, null, 14.5])("refuses proposed SQL horizon %s", async days => {
+  await expect(db.query(previewStockSql, [source, JSON.stringify([sku]), asOf, days]))
+    .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
+});
+
+it("preview denies browser roles and uses the caller's stock privileges", async () => {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(`SELECT rolname,
+      has_function_privilege(oid,'public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)','EXECUTE') AS allowed
+      FROM pg_roles WHERE rolname IN ('anon', 'authenticated') ORDER BY rolname`);
+    expect(rows).toEqual([{ rolname: "anon", allowed: false }, { rolname: "authenticated", allowed: false }]);
+    await client.query(`CREATE ROLE inventory_preview_table_denied NOLOGIN;
+      GRANT EXECUTE ON FUNCTION public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb),
+        public.inventory_renewal_protection_validate(jsonb) TO inventory_preview_table_denied;
+      SET LOCAL ROLE inventory_preview_table_denied`);
+    await expect(client.query(previewStockSql, [source, JSON.stringify([sku]), asOf, 14]))
+      .rejects.toMatchObject({ code: "42501", message: expect.stringMatching(/^permission denied for table /u) });
+  } finally {
+    try { await client.query("ROLLBACK"); }
+    finally { client.release(); }
+  }
+});
+
+it("matches installed availability field for field across instants and horizons with renewal credits", async () => {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -326,8 +357,22 @@ it("matches current ATP credits for eligible holds, terminal cycles, expired hol
     )
     INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity)
     SELECT id,operation_fingerprint,$3,10 FROM reservations`, [asOf, source, sku]);
-    await client.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('inventory_renewal_protection',$1)",
-      [JSON.stringify({ revision: "fixture-21", renewalProtectionDays: 21 })]);
+    const expectPreviewParity = async () => {
+      const { rows } = await client.query(`SELECT
+        public.inventory_new_purchase_stock_read($1,$2,instant) AS installed,
+        public.inventory_new_purchase_stock_preview($1,$2,instant,to_jsonb(public.inventory_renewal_protection_days())) AS proposed
+        FROM (VALUES ($3::timestamptz - interval '1 second'), ($3::timestamptz),
+          ($3::timestamptz + interval '1 day')) observations(instant)`,
+      [source, JSON.stringify([...fixtureSkus, noStockSku, missingSku]), asOf]);
+      expect(rows).toHaveLength(3);
+      for (const { installed, proposed } of rows) {
+        expect(installed).toHaveLength(fixtureSkus.length + 2);
+        expect(proposed).toEqual(installed);
+      }
+    };
+    await expectPreviewParity();
+    await installRenewalStockProtectionPolicy(client, { revision: "fixture-21", renewalProtectionDays: 21 });
+    await expectPreviewParity();
     const { rows } = await client.query(`SELECT mode,
       public.inventory_before_credit_aggregation($1,$2,$3,mode) AS before,
       public.inventory_available_to_promise($1,$2,$3,mode) AS after
@@ -346,7 +391,7 @@ it("matches current ATP credits for eligible holds, terminal cycles, expired hol
   }
 });
 
-it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries for 1 or 25 SKUs and no writes", async () => {
+it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queries for 1 or 25 SKUs and no writes", async () => {
   const key = "inventory_renewal_protection";
   const current = { revision: "fixture-14", renewalProtectionDays: 14 };
   const proposed = { revision: "fixture-21", renewalProtectionDays: 21 };
@@ -385,9 +430,8 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
     });
     return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
   });
-  const skus = [sku, ...Array.from({ length: 24 }, (_, index) => `${sku}-${index + 1}`)];
-  const preview = async (selected: string[]) => {
-    const result = await mcp.callTool({ name: tool.name, arguments: { key, proposed, skus: selected, asOf: instant } });
+  const preview = async (selected: string[], value = proposed) => {
+    const result = await mcp.callTool({ name: tool.name, arguments: { key, proposed: value, skus: selected, asOf: instant } });
     return result.structuredContent;
   };
   try {
@@ -404,7 +448,7 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
     expect(cliRefused.status, cliRefused.stderr).toBe(1);
     expect(JSON.parse(cliRefused.stdout)).toEqual(refused.structuredContent);
 
-    for (const selected of [[sku], skus]) {
+    for (const selected of [[sku], fixtureSkus]) {
       const result = await preview(selected);
       expect(result).toMatchObject({
         key, asOf: instant, current, proposed, difference: { renewalProtectionDays: 7 },
@@ -412,9 +456,9 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
         effect: {
           existingReservations: "unchanged", newPurchaseAvailability: "equal-or-lower",
           skus: expect.arrayContaining([{ sku, source: "provider", stale: false,
-            currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: null }]),
+            currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: 25 }]),
         },
-        uncertainty: expect.stringContaining("effect.skus[].proposedAvailableForNewPurchases"),
+        uncertainty: expect.stringMatching(/estimate at the same instant and in the same snapshot.*Recorded stock and demand can change/u),
       });
       expect(renewalStockProtectionPreviewResult.parse(result).effect.skus).toHaveLength(selected.length);
       expect(calls.splice(0)).toEqual([
@@ -422,6 +466,7 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
         expect.stringContaining("SELECT value_text FROM public.commerce_settings"),
         expect.stringContaining("SELECT public.inventory_new_purchase_stock_read("),
         expect.stringContaining("SELECT public.inventory_renewal_protection_validate("),
+        expect.stringContaining("SELECT public.inventory_new_purchase_stock_preview("),
         "ROLLBACK",
       ]);
       if (selected.length === 1) {
@@ -436,6 +481,20 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
         expect(readable.stdout).toContain("New purchase availability: equal-or-lower");
       }
     }
+    const stockRow = (result: unknown) => renewalStockProtectionPreviewResult.parse(result).effect.skus.find(row => row.sku === sku);
+    expect(stockRow(await preview([sku], current))).toMatchObject({
+      currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: 61,
+    });
+    expect(stockRow(await preview([sku], { revision: "shorter", renewalProtectionDays: 7 }))).toMatchObject({
+      currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: 88,
+    });
+    const missing = renewalStockProtectionPreviewResult.parse(await preview([noStockSku, missingSku]));
+    expect(missing.effect.skus).toEqual([missingSku, noStockSku].map(sku => ({
+      sku, source: "missing", stale: false, currentAvailableForNewPurchases: null, proposedAvailableForNewPurchases: null,
+    })));
+    expect(stockRow(await preview([sku], { revision: "invalid", renewalProtectionDays: 0 }))).toMatchObject({
+      currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: null,
+    });
     for (const entry of corpus) {
       const decoded = JSON.parse(entry.input);
       const expected = entry.decodedNormalized ?? entry.normalized;

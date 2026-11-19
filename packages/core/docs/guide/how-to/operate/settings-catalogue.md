@@ -263,7 +263,7 @@ Set the renewal stock protection horizon used to calculate stock available to ne
 Search terms include stock lookahead, inventory buffer, renewal allocation, available to promise.
 
 - Owner **inventory** · kind **installed** · runtime **preview**
-- Preview is available. Apply changes with the installer at deployment.
+- Preview estimates availability for named SKUs. Apply changes with the installer at deployment.
 - Frozen on: Existing reservations keep their quantities and expiry times.
 - Default is `{"revision":"default","renewalProtectionDays":14}`.
 - Basis `reference-code` (matches the reference deployment's code).

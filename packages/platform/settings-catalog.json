@@ -605,7 +605,7 @@
       },
       "runtime": {
         "level": "preview",
-        "reason": "Preview is available. Apply changes with the installer at deployment."
+        "reason": "Preview estimates availability for named SKUs. Apply changes with the installer at deployment."
       },
       "change": {
         "operation": "installRenewalStockProtectionPolicy"

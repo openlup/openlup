@@ -1506,6 +1506,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4927,6 +4931,10 @@
     },
     {
       "path": "packages/platform/sql/20261123150000_subscription_renewal_due_fairness.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123152000_inventory_new_purchase_stock_preview.sql",
       "class": "public-output"
     },
     {
