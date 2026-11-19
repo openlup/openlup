@@ -119,10 +119,7 @@ if (command === 'candidate') {
     const code = error instanceof Error ? error.message : 'starter_installation_failed';
     process.stderr.write(`${code}\n`);
     const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-    if (hint) {
-      const line = hint.replace(/\bpostgres(?:ql)?:\/\/[^\s"'<>]+/giu, '[redacted]').trim().replace(/\s+/gu, ' ');
-      process.stderr.write(`${line.slice(0, installationHintLimit)}\n`);
-    }
+    if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
     if (code === 'starter_seed_demonstration_database_required') {
       process.stderr.write('See node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
     }

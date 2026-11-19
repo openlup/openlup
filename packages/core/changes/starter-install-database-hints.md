@@ -7,7 +7,8 @@ an application-owned launcher outside both snapshots that delegates to
 replan and apply with the same snapshots. Keep the app stopped until the
 managed snapshot and installed OpenLup versions match.
 
-On a failed install, the starter prints the existing message first and a
-database hint, when present, on the next stderr line. Installation retains
-the same exit status and refusal codes. This file upgrade requires no
-additional settings write or database grant.
+When the schedule guard refuses installation, the starter prints the existing
+message first and the retry hint on the next stderr line. Other installer
+errors with a database hint use the same format. Installation retains the same
+exit status and refusal codes. This file upgrade requires no additional
+settings write or database grant.

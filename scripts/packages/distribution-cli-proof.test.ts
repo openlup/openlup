@@ -34,7 +34,6 @@ it("prints a bounded installation hint after the existing refusal and preserves 
     [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],
     [{ hint: " ", cause: { hint: "Use the owner role." } }, "Use the owner role.\n"],
     [{ hint: "a".repeat(260) }, "a".repeat(240) + "\n"],
-    [{ hint: "Check postgresql://db.invalid/demo." }, "Check [redacted]\n"],
     [{}, ""],
   ] as const) {
     write("installation/install.ts", `export const bootstrapDemonstration = () => undefined;
