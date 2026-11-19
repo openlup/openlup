@@ -3,14 +3,14 @@
 const caseColumns = `id, client_id, subscription_id, cycle_number, scheduled_at, state,
   deficits, order_id, cycle_id, fulfillment_id, opened_at, last_checked_at,
   stock_secured_at, resumed_at, closed_at, block_reason`;
-const legacyCases = `SELECT 'legacy' AS kind, false AS superseded, ${caseColumns}
+const legacyCases = `SELECT 'legacy' AS kind, false AS superseded, NULL::uuid AS operation_id, ${caseColumns}
   FROM public.subscription_stock_wait_cases`;
 
 export function stockWaitCasesSql(graph: "native" | "managed") {
   return `WITH wait_cases AS NOT MATERIALIZED (
     ${legacyCases}
     ${graph === "native" ? `UNION ALL
-      SELECT 'successor' AS kind, superseded_by_proposal_id IS NOT NULL AS superseded, ${caseColumns}
+      SELECT 'successor' AS kind, superseded_by_proposal_id IS NOT NULL AS superseded, operation_id, ${caseColumns}
       FROM public.subscription_successor_wait_cases_v2` : ""}
   )`;
 }
@@ -21,6 +21,10 @@ export function stockWaitPageSql(graph: "native" | "managed", reader: "admin" | 
   const admin = reader === "admin";
   const customer = reader === "customer";
   const order = reader === "evidence" ? "last_checked_at" : "opened_at";
+  // Preparation and settlement bind the generation before the wait resumes.
+  const native = graph === "native";
+  const generationField = (field: "order_id" | "cycle_id" | "fulfillment_id") =>
+    native ? `CASE WHEN c.kind='successor' THEN g.${field} ELSE c.${field} END` : `c.${field}`;
   const account = customer ? `, account AS (
     SELECT id FROM public.clients WHERE id=$1::uuid AND ${graph === "native" ? "principal_id" : "auth_user_id"}=$2::uuid
   )` : "";
@@ -34,8 +38,14 @@ export function stockWaitPageSql(graph: "native" | "managed", reader: "admin" | 
     ${admin ? "LIMIT $2::integer OFFSET $3::bigint" : customer ? "LIMIT 100" : "LIMIT 2000"}
   ), projected AS (
     SELECT c.*, s.status AS subscription_status,
+      ${native ? "c.kind='legacy' OR g.id IS NOT NULL" : "true"} AS carrier_available,
+      ${generationField("order_id")} AS projected_order_id,
+      ${generationField("cycle_id")} AS projected_cycle_id,
+      ${generationField("fulfillment_id")} AS projected_fulfillment_id,
       coalesce(isfinite(s.next_cycle_at) AND s.next_cycle_at=c.scheduled_at,false) AS same_anchor
     FROM selected c LEFT JOIN public.subscriptions s ON s.id=c.subscription_id AND s.client_id=c.client_id
+    ${native ? `LEFT JOIN public.subscription_successor_operations_v2 g ON g.id=c.operation_id
+      AND g.subscription_id=c.subscription_id AND g.scheduled_at=c.scheduled_at AND g.cycle_number=c.cycle_number` : ""}
   )
   SELECT
     ${admin ? `(SELECT count(*) FROM wait_cases WHERE ${filter}) AS "totalCount",` : ""}
@@ -43,7 +53,8 @@ export function stockWaitPageSql(graph: "native" | "managed", reader: "admin" | 
     coalesce((SELECT jsonb_agg(jsonb_build_object(
       'schemaVersion',2,'caseKind',kind,'id',id,'clientId',client_id,'subscriptionId',subscription_id,
       'cycleNumber',cycle_number,'scheduledAt',scheduled_at,'state',state,'deficits',deficits,
-      'orderId',order_id,'cycleId',cycle_id,'fulfillmentId',fulfillment_id,'openedAt',opened_at,
+      'carrierAvailable',carrier_available,'orderId',projected_order_id,'cycleId',projected_cycle_id,
+      'fulfillmentId',projected_fulfillment_id,'openedAt',opened_at,
       'lastCheckedAt',last_checked_at,'stockSecuredAt',stock_secured_at,'resumedAt',resumed_at,
       'closedAt',closed_at,'blockReason',block_reason,
       'automaticRecoveryEligible',coalesce(subscription_status='active' AND same_anchor AND NOT superseded,false),

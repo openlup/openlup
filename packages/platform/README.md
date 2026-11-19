@@ -2720,17 +2720,19 @@ subscription set. The reader rechecks ownership in PostgreSQL before returning
 customer cases. Keep this account binding and the database executor server-side.
 
 Supply `withReadSnapshot` with one read-only, repeatable-read transaction on
-a single connection. The executor needs read access to the case and subscription
-relations, client ownership columns, and delivery evidence. The operator reader
-also needs the graph's payment intent relation and the native reader needs SKU
-labels. Native hosts can use the existing successor store's owner-controlled
+a single connection. The executor needs read access to cases, subscriptions,
+client ownership, and delivery evidence. The operator reader also needs the
+graph's payment intent relation. Native readers need successor operations and
+SKU labels. Native hosts can use the existing successor store's owner-controlled
 read authority. A separate runtime role needs explicit read privileges and
 matching row policies for the relations it reads.
 
-The native graph reads both case kinds. The managed graph reads existing legacy
-cases under the host's service authority and treats only the specifically
-missing managed case table as empty. Failed reads of payments, subscriptions,
-notices or summary data propagate. An empty page beyond the end still includes
+The native graph reads both case kinds. Successor cycle and order references
+come from the generation, including before the wait resumes. Operator payment
+evidence must match the generation's settlement intent. The managed graph reads
+existing legacy cases under the host's service authority. It treats only the
+specifically missing managed case table as empty. Failed reads of payments,
+subscriptions, notices or summary data propagate. An empty page beyond the end still includes
 the complete filtered totals. Customer reads omit payment facts. Call
 `stockWaitHealth` on the operational feed with the observation clock.
 

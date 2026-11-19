@@ -9,6 +9,7 @@ const uuid = (id: number) => `00000000-0000-4000-8000-${String(id).padStart(12, 
 const client = uuid(1), other = uuid(2), principal = uuid(3);
 const subscription = uuid(11), otherSubscription = uuid(12), omittedSubscription = uuid(13);
 const caseA = uuid(21), caseB = uuid(22), caseC = uuid(23), caseD = uuid(24);
+const successorOperation = uuid(32), successorOrder = uuid(51), successorCycle = uuid(54), successorIntent = uuid(55);
 const total = (missing: number, cases: number) => [{ sku: "ITEM", displayName: "Item", missingUnits: missing, affectedCases: cases }];
 let container: PostgresContainer | undefined, pool: Pool, db: PoolClient, now: Date;
 
@@ -64,6 +65,38 @@ const cases = [
     expect(lookedUp).toEqual([uuid(51)]);
     expect(result.cases.map(({ paymentStatus, paymentEvidence }) => [paymentStatus, paymentEvidence]))
       .toEqual([["not_started", "not_applicable"], ["succeeded", "recorded"], ["not_started", "missing"]]);
+  }],
+  ...(["payment_pending", "paid"] as const).map(phase => [`LC10-D-292 projects a ${phase} successor before resumption`, async () => {
+    await seed({}, phase);
+    const port = readers();
+    const links = { id: caseB, caseKind: "successor", orderId: successorOrder, cycleId: successorCycle,
+      state: "stock_secured", resumedAt: null, fulfillmentId: null };
+    const result = await port.listAdmin(page("all", 2, 1));
+    expect(result).toMatchObject({ totalCount: 4, productTotals: total(8, 3), cases: [{
+      ...links, paymentStatus: phase === "paid" ? "succeeded" : "created", paymentEvidence: "recorded",
+    }] });
+    for (const list of [await port.listEvidence(), await port.listCustomer()]) {
+      const successor = list.find(row => row.id === caseB);
+      expect(successor).toMatchObject(links);
+      expect(successor).not.toHaveProperty("paymentStatus");
+    }
+  }] as const),
+  ["LC10-D-292 an intent outside the successor generation is missing evidence", async () => {
+    await seed({}, "unbound_intent");
+    const result = await readers().listAdmin(page("all", 2, 1));
+    expect(result.cases[0]).toMatchObject({
+      id: caseB, orderId: successorOrder, paymentStatus: "not_started", paymentEvidence: "missing",
+    });
+  }],
+  ["LC10-D-295 a missing successor carrier fails the projection visibly", async () => {
+    await seed();
+    await db.query("SET LOCAL session_replication_role = replica");
+    await db.query("DELETE FROM public.subscription_successor_operations_v2 WHERE id=$1", [successorOperation]);
+    await db.query("SET LOCAL session_replication_role = origin");
+    const port = readers();
+    await expect(port.listAdmin(page())).rejects.toThrow("carrierAvailable");
+    await expect(port.listEvidence()).rejects.toThrow("carrierAvailable");
+    await expect(port.listCustomer()).rejects.toThrow("carrierAvailable");
   }],
   ["LC10-D-292 no order lookup with no IDs", async () => {
     await seed();
@@ -315,7 +348,7 @@ async function seed(overrides: Record<string, {
   state?: StockWaitReadProjection["state"];
   openedMinutes?: number;
   deficits?: Record<string, unknown>[];
-}> = {}) {
+}> = {}, successorPhase: "payment_pending" | "paid" | "unbound_intent" = "paid") {
   await db.query("SET LOCAL session_replication_role = replica");
   await db.query(`INSERT INTO public.clients (id,email,principal_id) VALUES
     ($1,'one@example.invalid',$3),($2,'two@example.invalid',NULL)`, [client, other, principal]);
@@ -328,7 +361,7 @@ async function seed(overrides: Record<string, {
     [caseC, otherSubscription, other, "waiting", 2, 15, uuid(52), uuid(33)],
     [caseA, subscription, client, "waiting", 1, 10, null, uuid(31)],
     [caseD, omittedSubscription, client, "closed", 3, 20, uuid(53), uuid(34)],
-    [caseB, subscription, client, "stock_secured", 1, 5, uuid(51), uuid(32)],
+    [caseB, subscription, client, "stock_secured", 1, 5, null, successorOperation],
   ] as const;
   for (const [id, sub, owner, state, openedMinutes, checkedMinutes, orderId, operation] of data) {
     const override = overrides[id];
@@ -345,9 +378,24 @@ async function seed(overrides: Record<string, {
       $5::timestamptz - $8 * interval '1 min',$9,2,repeat('a',64),$10::uuid::text,'{}','{}',${links})`,
     id === caseB ? [...coordinates, caseA] : coordinates);
   }
+  const paid = successorPhase !== "payment_pending";
+  await db.query(`INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status)
+    VALUES ($1,$2,$3,$4)`, [successorCycle, subscription, now, paid ? "paid" : "payment_pending"]);
+  await db.query(`INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor)
+    VALUES ($1,$2,$3,$4,'XXX',100)`, [successorOrder, client, successorCycle, paid ? "paid" : "pending_payment"]);
   await db.query(`INSERT INTO public.commerce_settlement_intents
-    (order_id, channel_key, status, amount_minor, currency_code, open_idempotency_key, settled_at)
-    VALUES ($1,'test','settled',100,'XXX','test-a',$3),($2,'test','failed',100,'XXX','test-b',NULL)`, [uuid(51), uuid(53), now]);
+    (id,order_id,channel_key,status,amount_minor,currency_code,open_idempotency_key,settled_at)
+    VALUES ($1,$2,'test',$3,100,'XXX','test-a',$4),(gen_random_uuid(),$5,'test','failed',100,'XXX','test-b',NULL)`,
+  [successorIntent, successorOrder, paid ? "settled" : "created", paid ? now : null, uuid(53)]);
+  await db.query(`INSERT INTO public.subscription_successor_operations_v2
+    (id,root_operation_id,proposal_id,subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,
+     due_snapshot,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at,
+     attempt_prepared_at,terminal_outcome,terminal_at,cycle_id,order_id,settlement_intent_id)
+    VALUES ($1,$2,$3,$4,$5::timestamptz,2,'fixture:successor-operation-generation:bound-identity',repeat('a',64),
+     '{}','{}',$6,gen_random_uuid(),'fixture',$5,$5::timestamptz+interval '5 min',$5,$7,$8,$9,$10,$11)`,
+  [successorOperation, uuid(31), uuid(81), subscription, now, paid ? "succeeded" : "attempt_prepared",
+    paid ? "succeeded" : null, paid ? now : null, successorCycle, successorOrder,
+    successorPhase === "unbound_intent" ? uuid(56) : successorIntent]);
 
   // One generation's events cannot attach to the other. A bookkeeping event
   // for a case and a delivery event for another case must both stay out.

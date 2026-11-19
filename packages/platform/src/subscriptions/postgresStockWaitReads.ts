@@ -14,6 +14,7 @@ const pageInput = z.object({ state: filter, page: z.int().positive(), pageSize: 
 const accountScope = z.object({ principalId: id, clientId: id, subscriptionIds: z.array(id) });
 const coordinates = z.object({
   schemaVersion: z.literal(2), caseKind: z.enum(["legacy", "successor"]), id,
+  carrierAvailable: z.literal(true),
   subscriptionId: id, clientId: id, state, cycleNumber: z.int().positive(), scheduledAt: stamp,
   orderId: id.nullable(), cycleId: id.nullable(), fulfillmentId: id.nullable(),
   openedAt: stamp, lastCheckedAt: stamp, stockSecuredAt: stamp.nullable(), resumedAt: stamp.nullable(), closedAt: stamp.nullable(),
@@ -90,7 +91,7 @@ export function createPostgresStockWaitReads(options: {
     }
     const nativeLines = graph === "native" ? await nativeStockWaitDeficits(db, rows.flatMap(row => row.deficits)) : [];
     let start = 0;
-    return rows.map(({ deficits, ...row }) => {
+    return rows.map(({ carrierAvailable: _carrierAvailable, deficits, ...row }) => {
       const end = start + deficits.length;
       const lines = graph === "native" ? nativeLines.slice(start, end) : deficits.map(raw => {
         const line = managedDeficit.parse(raw);
@@ -107,8 +108,11 @@ export function createPostgresStockWaitReads(options: {
     const orderIds = [...new Set(cases.flatMap(row => row.orderId ? [row.orderId] : []))];
     const statuses = new Map<string, z.infer<typeof paymentSchema>>();
     if (!orderIds.length) return statuses;
-    const relation = graph === "native" ? "commerce_settlement_intents" : "commerce_payment_intents";
-    for (const row of (await db.query(`SELECT order_id,status FROM public.${relation} WHERE order_id=ANY($1::uuid[])`, [orderIds])).rows) {
+    const sql = graph === "native" ? `SELECT i.order_id,i.status FROM public.commerce_settlement_intents i
+      LEFT JOIN public.subscription_successor_operations_v2 g ON g.order_id=i.order_id
+      WHERE i.order_id=ANY($1::uuid[]) AND (g.id IS NULL OR g.settlement_intent_id=i.id)` :
+      "SELECT order_id,status FROM public.commerce_payment_intents WHERE order_id=ANY($1::uuid[])";
+    for (const row of (await db.query(sql, [orderIds])).rows) {
       const persisted = graph === "native" ? nativePayment.safeParse(row.status) : paymentSchema.safeParse(row.status);
       if (!persisted.success) throw new Error("stock_wait_admin_payment_status_invalid");
       statuses.set(id.parse(row.order_id), persisted.data);
