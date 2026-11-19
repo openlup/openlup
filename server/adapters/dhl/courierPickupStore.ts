@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- shared store accepts the structural database client. */
+import { FulfillmentPreflightError } from "../../../src/domains/fulfillment/ports.js";
 import { CARRIER_DISPLAY_NAME } from "../../infra/dhl/adminDhlSoap.js";
 import { WARSAW_TIME_ZONE } from "../../infra/dhl/commerceShipmentSoap.js";
 
@@ -205,4 +206,83 @@ export function createCarrierProviderEvidence(message: string, timestamp: string
     supportCode: createCarrierSupportCode(timestamp, message),
     details: classification ?? {},
   };
+}
+
+type PickupStatus = "pending" | "succeeded" | "failed" | "indeterminate";
+export type StoredCourierPickup = {
+  id: string;
+  updatedAt: string;
+  status: PickupStatus;
+  courierOrderId: string | null;
+  shipmentsCount: number;
+  operatorMessage: string | null;
+  retryable: boolean;
+  supportCode: string | null;
+  rawResponseExcerpt: string | null;
+};
+
+export async function findCourierPickup(client: Client, idempotencyKey: string): Promise<StoredCourierPickup | null> {
+  const { data: row, error } = await client.from(CARRIER_PERSISTENCE.pickupTable)
+    .select(CARRIER_PERSISTENCE.pickupSelection)
+    .eq(CARRIER_PERSISTENCE.idempotencyKey, idempotencyKey)
+    .maybeSingle();
+  if (error) throw pickupStoreUnavailable();
+  if (row == null) return null;
+  const status = row.status;
+  if (
+    typeof row.id !== "string" || typeof row.updated_at !== "string" || !Number.isFinite(Date.parse(row.updated_at))
+    || (status !== "pending" && status !== "succeeded" && status !== "failed" && status !== "indeterminate")
+  ) throw pickupStoreUnavailable();
+  return {
+    id: row.id,
+    updatedAt: row.updated_at,
+    status,
+    courierOrderId: typeof row.courier_order_id === "string" ? row.courier_order_id : null,
+    shipmentsCount: typeof row.shipments_count === "number" ? row.shipments_count : 0,
+    operatorMessage: typeof row.operator_message === "string" ? row.operator_message : null,
+    retryable: row.retryable === true,
+    supportCode: typeof row.support_code === "string" ? row.support_code : null,
+    rawResponseExcerpt: typeof row.raw_response_excerpt === "string" ? row.raw_response_excerpt : null,
+  };
+}
+
+export async function recordCourierPickupShipments(client: Client, pickupId: string, testers: CourierPickupTester[]) {
+  const { error } = await client.from(CARRIER_PERSISTENCE.pickupShipmentTable).upsert(testers.map((tester) => ({
+    [CARRIER_PERSISTENCE.pickupId]: pickupId,
+    tester_id: tester.id,
+    tracking_number_snapshot: tester.tracking_number,
+    [CARRIER_PERSISTENCE.shipmentDispatchIdSnapshot]: tester[CARRIER_PERSISTENCE.shipmentDispatchId],
+    [CARRIER_PERSISTENCE.shipmentDateSnapshot]: tester[CARRIER_PERSISTENCE.shipmentDate],
+  })), { onConflict: "pickup_id,tester_id" });
+  if (error) throw pickupStoreUnavailable();
+}
+
+export async function recordCourierPickup(client: Client, pickupId: string, previous: "pending" | "indeterminate", input: {
+  status: Exclude<PickupStatus, "pending">;
+  courierOrderId?: string;
+  operatorMessage?: string;
+  retryable?: boolean;
+  supportCode?: string;
+  rawResponse?: string;
+}): Promise<boolean> {
+  try {
+    const { data, error } = await client.from(CARRIER_PERSISTENCE.pickupTable).update({
+      status: input.status,
+      courier_order_id: input.courierOrderId ?? null,
+      operator_message: input.operatorMessage ?? null,
+      retryable: input.retryable ?? null,
+      support_code: input.supportCode ?? null,
+      raw_response_excerpt: input.rawResponse?.slice(0, 2000) ?? null,
+    }).eq("id", pickupId).eq("status", previous).select("id").maybeSingle();
+    return !error && data?.id === pickupId;
+  } catch {
+    // The database may have applied the update. Never infer a safe retry.
+    return false;
+  }
+}
+
+export function pickupStoreUnavailable() {
+  return new FulfillmentPreflightError(`Nie udało się potwierdzić zapisu rezerwacji ${CARRIER_DISPLAY_NAME}`, {
+    errorCode: "LOCAL_PICKUP_STORE_UNAVAILABLE",
+  });
 }

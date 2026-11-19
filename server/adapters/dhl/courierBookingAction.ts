@@ -25,14 +25,12 @@ import {
   type CourierPickupTester,
   validateCarrierPickupTesters,
   validateCarrierPickupWindow,
-} from "./courierPickupStore.js";
-import {
-  claimCourierPickup,
+  pickupStoreUnavailable,
   findCourierPickup,
   recordCourierPickup,
   recordCourierPickupShipments,
   type StoredCourierPickup,
-} from "./courierPickupEvidence.js";
+} from "./courierPickupStore.js";
 type Client = { auth: { getUser: (token: string) => Promise<any> }; from: (table: string) => any };
 
 export type BookCourierInput = {
@@ -251,4 +249,39 @@ async function throwForFailedReconcile(
       { errorCode: "LOCAL_STATUS_UPDATE_FAILED", failedTesterIds: failed },
     );
   }
+}
+
+async function claimCourierPickup(client: Client, input: {
+  idempotencyKey: string;
+  request: { pickupDate: string; pickupTimeFrom: string; pickupTimeTo: string; additionalInfo: string };
+  requestedBy: string;
+  testers: CourierPickupTester[];
+  retryOf: Pick<StoredCourierPickup, "id" | "updatedAt"> | null;
+}): Promise<string | null> {
+  const table = client.from(CARRIER_PERSISTENCE.pickupTable);
+  const claim = input.retryOf
+    ? table.update({
+      status: "pending",
+      updated_at: new Date(Math.max(Date.now(), Date.parse(input.retryOf.updatedAt) + 1)).toISOString(),
+      requested_by: input.requestedBy,
+      additional_info: input.request.additionalInfo || null,
+      operator_message: null,
+      retryable: null,
+      support_code: null,
+      raw_response_excerpt: null,
+    }).eq("id", input.retryOf.id).eq("status", "failed").eq("retryable", true).eq("updated_at", input.retryOf.updatedAt)
+    : table.upsert({
+      status: "pending",
+      idempotency_key: input.idempotencyKey,
+      pickup_date: input.request.pickupDate,
+      pickup_time_from: input.request.pickupTimeFrom,
+      pickup_time_to: input.request.pickupTimeTo,
+      additional_info: input.request.additionalInfo || null,
+      requested_by: input.requestedBy,
+      shipments_count: input.testers.length,
+    }, { onConflict: CARRIER_PERSISTENCE.idempotencyKey, ignoreDuplicates: true });
+
+  const { data, error } = await claim.select("id").maybeSingle();
+  if (error || (data != null && typeof data.id !== "string")) throw pickupStoreUnavailable();
+  return data?.id ?? null;
 }

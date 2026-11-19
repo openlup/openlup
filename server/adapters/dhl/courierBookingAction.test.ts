@@ -15,7 +15,7 @@ import {
 } from "./courierPickupStore.js";
 
 const input = {
-  accessToken: "admin-token", pickupDate: "2026-08-17", pickupTimeFrom: "10:00", pickupTimeTo: "12:00",
+  accessToken: "admin-token", pickupDate: "2040-08-17", pickupTimeFrom: "10:00", pickupTimeTo: "12:00",
   additionalInfo: "Gate & bell", testerIds: ["tester-1"],
 };
 const tester = {
@@ -24,7 +24,7 @@ const tester = {
   tracking_number: "TRK-1",
   label_url: "label-1",
   [CARRIER_PERSISTENCE.shipmentDispatchId]: "SHIP-1",
-  [CARRIER_PERSISTENCE.shipmentDate]: "2026-08-17",
+  [CARRIER_PERSISTENCE.shipmentDate]: "2040-08-17",
 };
 
 describe("carrier pickup booking action", () => {
@@ -39,7 +39,7 @@ describe("carrier pickup booking action", () => {
     const fake = bookingClient();
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<bookCourierResult><item>ORD-1</item></bookCourierResult>"));
     const sendEmail = vi.fn().mockResolvedValue(undefined);
-    const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z", sendEmail });
+    const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail });
 
     await expect(action(input)).resolves.toEqual({ pickupDate: input.pickupDate, pickupTime: "10:00-12:00", shipmentsCount: 1, courierOrderId: "ORD-1" });
     expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ headers: { SOAPAction: `${CARRIER_NAMESPACE}#bookCourier` } });
@@ -55,7 +55,7 @@ describe("carrier pickup booking action", () => {
   it("records a fault as non-retryable already_booked provider evidence", async () => {
     const fake = bookingClient();
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<faultstring>Po przesyłkę o id SHIP-1 jest już zamówiony kurier</faultstring>"));
-    const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z" });
+    const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z" });
 
     await expect(action(input)).rejects.toMatchObject({ provider: CARRIER_PROVIDER_ID, retryable: false, details: { reason: "already_booked", blockingShipmentId: "SHIP-1" } } satisfies Partial<FulfillmentProviderError>);
     expect(fake.pickup()).toMatchObject({ status: "failed", retryable: false, raw_response_excerpt: expect.stringContaining("faultstring") });
@@ -68,7 +68,7 @@ describe("carrier pickup booking action", () => {
       client: fake.client,
       fetchImpl,
       auth: { username: "u", password: "p" },
-      now: () => "2026-08-16T08:00:00.000Z",
+      now: () => "2040-08-16T08:00:00.000Z",
     });
 
     await expect(action(input)).rejects.toMatchObject({ retryable: false });
@@ -81,11 +81,11 @@ describe("carrier pickup booking action", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["read", "claim", "shipments"] as const)("stops before DHL when the %s write or read fails", async (failure) => {
+  it.each(["read", "claim", "shipments"] as const)("stops before the carrier call when the %s write or read fails", async (failure) => {
     const fake = bookingClient({ failure });
     const fetchImpl = vi.fn();
     const action = createCarrierPickupBookingAction({
-      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
     await expect(action(input)).rejects.toMatchObject({ details: { errorCode: "LOCAL_PICKUP_STORE_UNAVAILABLE" } });
@@ -94,14 +94,14 @@ describe("carrier pickup booking action", () => {
 
   it("admits only one booking when two reads both report no previous attempt", async () => {
     const fake = bookingClient({ concurrentInitialReads: true });
-    const response = Promise.withResolvers<ReturnType<typeof xmlResponse>>();
-    const started = Promise.withResolvers<void>();
+    const response = deferred<ReturnType<typeof xmlResponse>>();
+    const started = deferred<void>();
     const fetchImpl = vi.fn(() => {
       started.resolve();
       return response.promise;
     });
     const action = createCarrierPickupBookingAction({
-      client: fake.client, fetchImpl: fetchImpl as never, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: fake.client, fetchImpl: fetchImpl as never, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
     const bookings = [action(input), action(input)];
@@ -125,7 +125,7 @@ describe("carrier pickup booking action", () => {
     });
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(fault));
     const action = createCarrierPickupBookingAction({
-      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
     const outcomes = await Promise.allSettled([action(input), action(input)]);
@@ -136,11 +136,11 @@ describe("carrier pickup booking action", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("retains the claim if DHL confirms but the outcome write fails", async () => {
+  it("retains the claim if the carrier confirms but the outcome write fails", async () => {
     const fake = bookingClient({ failure: "outcome" });
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
     const action = createCarrierPickupBookingAction({
-      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
     await expect(action(input)).rejects.toMatchObject({ retryable: false, message: expect.stringContaining("ORD-1") });
@@ -153,7 +153,7 @@ describe("carrier pickup booking action", () => {
     const fake = bookingClient();
     const fetchImpl = vi.fn().mockRejectedValue(new Error("connection lost"));
     const action = createCarrierPickupBookingAction({
-      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
     await expect(action(input)).rejects.toMatchObject({ retryable: false });
@@ -167,7 +167,7 @@ describe("carrier pickup booking action", () => {
       .mockResolvedValueOnce(xmlResponse("<orderId>ORD-1</orderId>"));
     const fake = bookingClient();
     const action = createCarrierPickupBookingAction({
-      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
 
     await expect(action(input)).rejects.toMatchObject({ retryable: true });
@@ -176,7 +176,7 @@ describe("carrier pickup booking action", () => {
 
     const legacy = bookingClient({ existing: { status: "failed", retryable: true, raw_response_excerpt: "" } });
     const legacyAction = createCarrierPickupBookingAction({
-      client: legacy.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z",
+      client: legacy.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
     await expect(legacyAction(input)).rejects.toMatchObject({ retryable: false });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -185,16 +185,22 @@ describe("carrier pickup booking action", () => {
   it("keeps pickup evidence and exposes LOCAL_STATUS_UPDATE_FAILED for normal and recovered paths", async () => {
     const normal = bookingClient({ testerUpdateError: "write failed" });
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
-    const normalAction = createCarrierPickupBookingAction({ client: normal.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z" });
+    const normalAction = createCarrierPickupBookingAction({ client: normal.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z" });
     await expect(normalAction(input)).rejects.toMatchObject({ details: { errorCode: "LOCAL_STATUS_UPDATE_FAILED" } } satisfies Partial<FulfillmentPreflightError>);
     expect(normal.pickup()?.status).toBe("succeeded");
 
     const recovery = bookingClient({ existing: { status: "indeterminate", courier_order_id: null, shipments_count: 1, raw_response_excerpt: "<orderId>ORD-1</orderId>" }, testerUpdateError: "write failed" });
-    const recoveryAction = createCarrierPickupBookingAction({ client: recovery.client, fetchImpl: vi.fn(), auth: { username: "u", password: "p" }, now: () => "2026-08-16T08:00:00.000Z" });
+    const recoveryAction = createCarrierPickupBookingAction({ client: recovery.client, fetchImpl: vi.fn(), auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z" });
     await expect(recoveryAction(input)).rejects.toMatchObject({ details: { errorCode: "LOCAL_STATUS_UPDATE_FAILED" } } satisfies Partial<FulfillmentPreflightError>);
     expect(recovery.pickup()?.status).toBe("succeeded");
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>(settle => { resolve = settle; });
+  return { promise, resolve };
+}
 
 function bookingClient(options: {
   existing?: Record<string, unknown>;
@@ -203,13 +209,13 @@ function bookingClient(options: {
   concurrentInitialReads?: boolean;
   delaySecondRetryUntilOutcome?: boolean;
 } = {}) {
-  const pendingRow = { id: "pickup-1", updated_at: "2026-08-16T08:00:00Z" };
+  const pendingRow = { id: "pickup-1", updated_at: "2040-08-16T08:00:00Z" };
   let pickup = options.existing ? { ...pendingRow, ...options.existing } : null;
   let status = tester.status;
   let reads = 0;
   let retries = 0;
-  const firstOutcome = Promise.withResolvers<void>();
-  const bothRead = Promise.withResolvers<void>();
+  const firstOutcome = deferred<void>();
+  const bothRead = deferred<void>();
   const error = { message: "write unavailable" };
   const client = {
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: "admin-1" } }, error: null }) },
