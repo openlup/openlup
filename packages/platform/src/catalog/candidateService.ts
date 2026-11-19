@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import { catalogDraftPublicationStoredRecordSchema } from "./draftV3Schemas.js";
+import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
 import type { CatalogDraftIssue } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogValidationPort } from "./publicationPorts.js";
@@ -58,6 +58,33 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
     } catch { /* This observation is unavailable. */ }
   }
 
+  function unknownPreparation(subject: string): NonNullable<CatalogCandidatePreview["preparation"]> {
+    const result = { outcome: "unknown" as const, issues: [publicationIssue("publication_preparation_unavailable", "structural", "product.type", subject)] };
+    return { structural: result, activation: result };
+  }
+
+  async function legacyIssues(payload: CatalogDraftPayloadV2, issues: CatalogDraftIssue[]) {
+    const copy = () => JSON.parse(canonicalCatalogDraftJson(payload)) as CatalogDraftPayloadV2;
+    const validation = await validateCatalogDraftV2(copy(), deps.registry, deps.attributeReferences);
+    issues.push(...(validation.valid ? validation.readiness.publication.issues : validation.issues));
+    await legacyReadIssues(payload, copy, issues);
+  }
+
+  async function legacyReadIssues(payload: CatalogDraftPayloadV2, copy: () => CatalogDraftPayloadV2, issues: CatalogDraftIssue[]) {
+    if (payload.product.documentRevision) {
+      if (!deps.readDocument) issues.push({ path: "product.documentRevision", code: "document_validation_unavailable" });
+      else {
+        const document = await deps.readDocument({ ...payload.product.documentRevision });
+        if (!document || canonicalCatalogDraftJson(document) !== canonicalCatalogDraftJson(payload.product.documentRevision))
+          issues.push({ path: "product.documentRevision", code: "document_reference_invalid" });
+      }
+    }
+    if (payload.skus.some(sku => sku.priceOperations?.length)) {
+      if (!deps.validatePrices) issues.push({ path: "skus", code: "price_validation_unavailable" });
+      else issues.push(...await deps.validatePrices(copy()));
+    }
+  }
+
   async function reconstruct(candidateRef: string, expected?: CatalogHeadRef | null): Promise<{ preview: CatalogCandidatePreview; head: CatalogHeadRef | null }> {
     try {
       const reference = parseCatalogCandidateReference(candidateRef);
@@ -105,18 +132,23 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       if (record.status !== "open") issues.push({ path: "draft", code: "draft_abandoned" });
       if (payload.schemaVersion === 1) issues.push({ path: "payload.schemaVersion", code: "candidate_requires_payload_v2" });
       else if (payload.schemaVersion === 2) {
-        const validationPayload = JSON.parse(canonicalCatalogDraftJson(payload)) as CatalogDraftPayloadV2;
+        const copy = () => JSON.parse(canonicalCatalogDraftJson(payload)) as CatalogDraftPayloadV2;
         try {
           const rules = resolvePublicationRules(definition, evaluation);
-          const validation = await validateCatalogDraftV2(validationPayload, { resolve: () => ({
-            ...definition, validateContent: rules?.validateContent ?? (() => []),
-          }) }, deps.attributeReferences);
-          const draftIssues = validation.valid ? validation.readiness.publication.issues : validation.issues;
-          issues.push(...draftIssues.map(({ path, code }) => ({ path, code })));
-          const details = draftIssues.map(({ path, code }) => publicationIssue(code, "structural", path, definition.key));
-          if (!rules) details.push(publicationIssue("publication_preparation_unavailable", "structural", "product.type", definition.key));
-          const outcome = !rules || validation.valid ? "unknown" : "blocked-input";
-          preparation = { structural: { outcome, issues: details }, activation: { outcome, issues: details } };
+          if (rules) {
+            const validation = await validateCatalogDraftV2(copy(), { resolve: () => ({
+              ...definition, validateContent: rules.validateContent,
+            }) }, deps.attributeReferences);
+            const draftIssues = validation.valid ? validation.readiness.publication.issues : validation.issues;
+            issues.push(...draftIssues);
+            const details = draftIssues.map(({ path, code }) => publicationIssue(code, "structural", path, definition.key));
+            const outcome = validation.valid ? "unknown" : "blocked-input";
+            preparation = { structural: { outcome, issues: details }, activation: { outcome, issues: details } };
+          } else {
+            await legacyIssues(payload, issues);
+            preparation = unknownPreparation(definition.key);
+          }
+          if (rules) await legacyReadIssues(payload, copy, issues);
         } catch (error) {
           if (!(error instanceof CatalogPublicationError)) throw error;
           const issue = publicationDiagnostic(error, "structural",
@@ -124,20 +156,14 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
           issues.push({ code: issue.code, path: issue.path });
           preparation = { structural: { outcome: "blocked-input", issues: [issue] }, activation: { outcome: "blocked-input", issues: [issue] } };
         }
-        if (payload.product.documentRevision) {
-          if (!deps.readDocument) issues.push({ path: "product.documentRevision", code: "document_validation_unavailable" });
-          else {
-            const document = await deps.readDocument({ ...payload.product.documentRevision });
-            if (!document || canonicalCatalogDraftJson(document) !== canonicalCatalogDraftJson(payload.product.documentRevision))
-              issues.push({ path: "product.documentRevision", code: "document_reference_invalid" });
-          }
-        }
-        if (payload.skus.some(sku => sku.priceOperations?.length)) {
-          if (!deps.validatePrices) issues.push({ path: "skus", code: "price_validation_unavailable" });
-          else issues.push(...await deps.validatePrices(validationPayload));
-        }
       }
-      if (preparePublication) {
+      if (payload.schemaVersion === 3 && !definition.publicationRules && !publication) {
+        const legacy = catalogDraftPublicationStoredRecordSchema.safeParse(raw);
+        if (!legacy.success || legacy.data.payload.schemaVersion !== 3) return refuse("candidate_invalid");
+        await checkLegacyLineage(record.productId);
+        await legacyIssues(catalogDraftV3ValidationPayload(legacy.data.payload), issues);
+        preparation = unknownPreparation(definition.key);
+      } else if (preparePublication) {
         const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
           expectedHead, evaluation, observations: publication,
           readCurrentHead: async () => {

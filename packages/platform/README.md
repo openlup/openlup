@@ -1415,7 +1415,9 @@ dependency error when current lineage is unavailable. The digest covers the cano
 payload, installed definition evidence and that complete expected head. No
 candidate table or cache is needed across process restarts. `validate(candidateRef)`
 reconstructs the preview; `compareCandidate` additionally checks the caller's
-complete expected head and digest. The preparation report separates a staged draft, an input to fix, and a check
+complete expected head and digest. Legacy wiring still runs its configured validator for the released issues list. The
+preparation report stays unknown until installed rules and evidence are available.
+The preparation report separates a staged draft, an input to fix, and a check
 waiting for evidence. Activation has its own result. An older host can still
 prepare a draft and may report unavailable publication checks. Use the same
 service for prepare, validate and compare. Continue through the configured

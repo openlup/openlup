@@ -9,7 +9,8 @@ import type { CatalogDraftPayloadV2, CatalogDraftStoredRecord } from "../../src/
 import type { CatalogHeadRef } from "../../src/catalog/contracts/lifecycle.js";
 import type { CatalogCandidatePreview } from "../../src/catalog/contracts/candidate.js";
 import { withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
-import { artifact } from "./fixtures/publicationInput.js";
+import type { CatalogValidationPort } from "../../src/catalog/publicationPorts.js";
+import { artifact, input } from "./fixtures/publicationInput.js";
 
 const draftId = "10000000-0000-4000-8000-000000000001", productId = "20000000-0000-4000-8000-000000000001";
 const skuId = "30000000-0000-4000-8000-000000000001", listId = "40000000-0000-4000-8000-000000000001";
@@ -37,7 +38,7 @@ function setup() {
     setInstalled: (value: string) => { installed = value; } };
 }
 describe("self-contained catalogue preview", () => {
-  it("A-2 and A-9 preserve the released issues type and only run byte-bound candidate rules", async () => {
+  it("keeps the released validation gate and distinguishes legacy validation from installed rules", async () => {
     const futureIssue = { path: "product", code: "application_issue", phase: "authoring" } as const;
     const { issues }: Pick<CatalogCandidatePreview, "issues"> = { issues: [futureIssue] };
     expect(issues).toEqual([futureIssue]);
@@ -45,11 +46,13 @@ describe("self-contained catalogue preview", () => {
     const replacement = vi.fn(() => [{ path: "", code: "substituted_callback" }]);
     const legacy = createCatalogCandidateService({ ...f.deps, registry: createCatalogProductTypeRegistry([{ ...definition, validateContent: replacement }]) });
     const preview = await legacy.prepareCandidate(query);
-    expect(preview.issues).toEqual([]);
+    expect(preview.issues).toEqual([{ path: "product.sharedContent", code: "substituted_callback" }]);
     expect(preview.preparation?.structural.outcome).toBe("unknown");
-    expect(await legacy.validate(preview.candidateRef)).toEqual(preview);
+    const releasedCaller = async (port: CatalogValidationPort) => (await port.validate(preview.candidateRef)).issues.length === 0;
+    expect(await releasedCaller(legacy)).toBe(false);
+    expect(await releasedCaller(f.service)).toBe(true);
     expect(await legacy.compareCandidate({ ...preview, expectedHead: null })).toEqual(preview);
-    expect(replacement).not.toHaveBeenCalled();
+    expect(replacement).toHaveBeenCalledTimes(3);
     const rules = artifact.replace("validateContent: () => []", 'validateContent: () => [{ path: "title", code: "installed_rule_refused" }]');
     const pack = withCatalogPublicationRules({ id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x",
       types: [{ ...definition, validatorRef: undefined }], taxClasses: [], capabilities: {} }, () => Buffer.from(rules));
@@ -62,6 +65,24 @@ describe("self-contained catalogue preview", () => {
     }] });
     expect(await verified.validate(refused.candidateRef)).toEqual(refused);
     expect(await verified.compareCandidate({ ...refused, expectedHead: null })).toEqual(refused);
+  });
+  it("keeps legacy v3 draft, document and price issues in the released projection", async () => {
+    const data = input(), { publicationRules: _mark, ...metadata } = data.definition;
+    const legacy = { ...metadata, validateContent: () => [{ path: "title", code: "application_title_refused" }] };
+    const service = createCatalogCandidateService({
+      readDraft: async () => data.record,
+      registry: createCatalogProductTypeRegistry([legacy]),
+      installedDefinitionDigest: async () => catalogDefinitionDigest(legacy),
+      currentHead: async () => ({ outcome: "unpublished" }),
+      resolveHead: async () => null,
+    });
+    const result = await service.prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null });
+    expect(result.issues).toEqual([
+      { path: "product.sharedContent.title", code: "application_title_refused" },
+      { path: "product.documentRevision", code: "document_validation_unavailable" },
+    ]);
+    expect(result.preparation?.activation.outcome).toBe("unknown");
+    expect(await service.validate(result.candidateRef)).toEqual(result);
   });
   it("catalog_candidate_requires_complete_publication_facts", async () => {
     const f = setup(), incomplete: CatalogDraftPayloadV2 = { schemaVersion: 2, product: { id: productId, type: { key: definition.key, version: 1 }, dimensions: [] }, skus: [] };
