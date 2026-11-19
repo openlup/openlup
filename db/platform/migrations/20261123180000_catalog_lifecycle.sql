@@ -1660,12 +1660,33 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_edit_acceptance_final(uuid) FROM PUBLIC;
 
+-- A deferred trigger runs after the legacy customer owner's definer call has
+-- returned. Check only that customer's own event without granting event reads
+-- or access to the private catalogue evidence functions.
+CREATE FUNCTION public.catalog_customer_edit_acceptance_assert(p_event_id uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE subscription uuid;
+BEGIN
+ SELECT subscription_id INTO subscription FROM public.subscription_events
+ WHERE id=p_event_id AND catalog_acceptance IS NOT NULL;
+ IF NOT FOUND THEN RETURN; END IF;
+ IF EXISTS(SELECT 1 FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
+   WHERE s.id=subscription AND c.principal_id=auth.uid()) THEN
+  PERFORM public.catalog_edit_acceptance_final(p_event_id);
+ END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_customer_edit_acceptance_assert(uuid) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_edit_acceptance_trigger() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE previous uuid; current_event uuid; target uuid;
 BEGIN
  IF TG_TABLE_NAME='subscription_events' THEN
-  IF NEW.catalog_acceptance IS NOT NULL THEN PERFORM public.catalog_edit_acceptance_final(NEW.id); END IF;
+  IF NEW.catalog_acceptance IS NOT NULL THEN
+   IF current_user='authenticated' THEN PERFORM public.catalog_customer_edit_acceptance_assert(NEW.id);
+   ELSE PERFORM public.catalog_edit_acceptance_final(NEW.id); END IF;
+  END IF;
   RETURN NULL;
  END IF;
  -- A committed governed event and its quote have a matching accepted link.
@@ -1675,7 +1696,9 @@ BEGIN
  IF TG_OP<>'DELETE' THEN current_event:=NEW.accepted_event_id; END IF;
  FOREACH target IN ARRAY ARRAY[previous,CASE WHEN current_event IS DISTINCT FROM previous THEN current_event END] LOOP
   IF target IS NULL THEN CONTINUE; END IF;
-  IF EXISTS(SELECT 1 FROM public.subscription_events WHERE id=target AND catalog_acceptance IS NOT NULL) THEN
+  IF current_user='authenticated' THEN
+   PERFORM public.catalog_customer_edit_acceptance_assert(target);
+  ELSIF EXISTS(SELECT 1 FROM public.subscription_events WHERE id=target AND catalog_acceptance IS NOT NULL) THEN
    PERFORM public.catalog_edit_acceptance_final(target);
   END IF;
  END LOOP;
@@ -1791,4 +1814,8 @@ REVOKE ALL ON FUNCTION public.catalog_price_setup_sale_ready(uuid,uuid) FROM PUB
 -- Draft writes use the same pure wire checks under the existing runtime role.
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
  EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_publication_content_valid_v3(jsonb), public.catalog_lifecycle_reference_valid_v3(text,integer), public.catalog_renewal_integer_v3(jsonb,bigint,bigint) TO service_role';
+END IF; END; $$;
+
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN
+ EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_customer_edit_acceptance_assert(uuid) TO authenticated';
 END IF; END; $$;

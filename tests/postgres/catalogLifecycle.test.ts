@@ -786,7 +786,7 @@ it.each(["order at commit", "edit matches only event", "edit matches only previe
 
 it.each([
   "header before items", "zero receipt only", "changed receipt", "moved item", "unlinked edit", "missing preview acceptance",
-  "wrong preview link", "changed preview", "changed classic quote",
+  "wrong preview link", "changed preview", "changed classic quote", "customer scope",
 ] as const)("LC5-C3 A3 reconciles the final owners: %s", async path => {
   const f = await seed({ other: true }), standing = await standingActive(f), other = f.payload.skus[1]!;
   const acceptance = JSON.stringify({ schemaVersion: 2, lines: [standing.accepted] });
@@ -824,7 +824,7 @@ it.each([
     return;
   }
 
-  const classic = path === "changed classic quote", linked = path !== "unlinked edit" && !classic;
+  const classic = path === "changed classic quote" || path === "customer scope", linked = path !== "unlinked edit" && !classic;
   const action = classic ? "update_bundle" : "update_package_template", preview = randomUUID(), hash = "c".repeat(64), key = `accept:${target}`;
   const clock = (await db.query("SELECT statement_timestamp() AS at, statement_timestamp()+interval '1 hour' AS expiry")).rows[0];
   const quoteLine = { sku: f.code, quantity: 1, unitPriceGross: { amountMinor: 617 } };
@@ -868,7 +868,19 @@ it.each([
   await db.query("SAVEPOINT corrupt_companion");
   if (classic) {
     await db.query("UPDATE public.subscription_edit_quotes SET proposed_lines=jsonb_set(proposed_lines,'{0,variantId}',to_jsonb($2::uuid)) WHERE accepted_event_id=$1", [target,other.id]);
-    await expect(check("subscription_edit_quotes_catalog_final")).rejects.toMatchObject(mismatch);
+    if (path === "customer scope") {
+      const principal = randomUUID();
+      await db.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client,principal]);
+      await db.query("SET LOCAL ROLE authenticated");
+      const proof = await db.query(`SELECT has_table_privilege(current_user,'public.subscription_events','SELECT') AS event_read,
+        has_function_privilege(current_user,'public.catalog_edit_acceptance_final(uuid)','EXECUTE') AS evidence_exec`);
+      expect(proof.rows).toEqual([{ event_read: false, evidence_exec: false }]);
+      const scope = (sub: string) => db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub, role: "authenticated" })]);
+      await scope(randomUUID());
+      await db.query("SELECT public.catalog_customer_edit_acceptance_assert($1)", [target]);
+      await scope(principal);
+      await expect(check("subscription_edit_quotes_catalog_final")).rejects.toMatchObject(mismatch);
+    } else await expect(check("subscription_edit_quotes_catalog_final")).rejects.toMatchObject(mismatch);
   } else {
     await db.query("UPDATE public.subscription_quote_previews SET quote_snapshot=jsonb_set(quote_snapshot,'{baseLines,0,quoteLine,unitPriceGross,amountMinor}','618') WHERE id=$1", [preview]);
     await expect(check("subscription_quote_previews_catalog_final")).rejects.toMatchObject(mismatch);
