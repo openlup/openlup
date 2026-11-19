@@ -46,17 +46,17 @@ history. Managed-to-native ingress defaults only absent product/SKU publication
 projections to NULL and never creates publication history. New uniqueness indexes
 scope to published projections. Existing draft combinations and identifiers keep
 their original admission rules, and publication checks new GTINs against legacy
-and published identifiers. The native write fence serializes legacy catalogue
-writes with publication and checks cross-format identity collisions. The managed
-equivalent can use the same row triggers and transaction-local relation guards. Keep the new reader
+and published identifiers. The publisher uses a relation lock for cross-format identity checks. Legacy writers
+retain their issuer-scoped key, and a legacy writer can insert an equal canonical
+GTIN under another issuer after publication releases the lock. The managed
+equivalent can use the same transaction-local relation guards. Keep the new reader
 while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 Registration checks each source against its immutable draft receipt. A new SKU
 can be created and priced in the same issuance. Enabling sale requires a later
 issuance with a current source that matches the materialized SKU. Installed
 publication rules interpret document bytes and return typed metadata and
-derived SKU facts. Legacy GTIN writes use Read Committed and check cross-issuer
-collisions under one transaction lock. Successor manifests retain every
+derived SKU facts. Successor manifests retain every
 previously issued SKU, including unchanged and archived rows.
 The price boundary uses the existing version 2 command through the price owner's
 same-transaction writer. The shared price-owner phases reserve sorted receipt

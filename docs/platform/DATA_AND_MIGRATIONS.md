@@ -413,10 +413,11 @@ The portable catalogue boundary binds these operations to their exact paths,
 trimmed lines and occurrence counts. It refuses field extraction, path and
 containment operators, schema-shaped validation, private schema imports, platform
 parsing, logging, serialization and whole-row projections.
-Native GTIN inserts and updates use Read Committed. One transaction lock
-serializes the collision checks across identifiers and issuers. Updates that
-already hold a row lock refuse contention with `catalog_publication_busy`. A GTIN write
-under another isolation level refuses with `catalog_publication_gtin_requires_read_committed`.
+Publication checks canonical GTINs across issuers while it holds the identifier
+relation lock. It refuses a duplicate committed before it takes that lock.
+Legacy writers retain the issuer-scoped key. A legacy write racing a
+publication can still insert an equal canonical GTIN under a different issuer
+after the publication releases its lock.
 Moving to an off-head document requires a matching
 registration before the move. On creation, the persisted product name must
 match the sealed document's string `name`. An explicit null presentation effect

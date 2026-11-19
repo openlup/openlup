@@ -5724,11 +5724,6 @@
             "sha256": "7d776bade865577e8a5068078be2b83dcbb1069fad1f1e6d18f95bc06cb5bcd0"
           },
           {
-            "name": "catalog_identifiers_publication_identity_fence",
-            "table": "public.catalog_sku_identifiers",
-            "sha256": "950fc37532639a3c39154a528a2d7e46c377b5c5f22752a452530b62d59e12c8"
-          },
-          {
             "name": "catalog_publications_predecessor_admit",
             "table": "public.catalog_publications",
             "sha256": "444fb224a058abd33837762d4e9d337eceecbe3428d09185aadd82bf6dac8232"

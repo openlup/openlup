@@ -3862,72 +3862,39 @@ it.each(["legacy GTIN first", "row locker first", "publisher first with collidin
       expect(await result).toMatchObject({ outcome: "committed" });
       expect(guarded).toBe(true);
       if (mode.endsWith("attribute projection")) return;
-      if (mode.endsWith("distinct identifier")) expect((await writeIdentifier("other")).rowCount).toBe(1);
-      else await expect(mode.endsWith("SKU") ? writeLegacySku() : writeIdentifier("gtin")).rejects.toMatchObject({ code: "23505" });
+      if (mode.endsWith("SKU")) await expect(writeLegacySku()).rejects.toMatchObject({ code: "23505" });
+      else expect((await writeIdentifier(mode.endsWith("GTIN") ? "gtin" : "other")).rowCount).toBe(1);
     } finally {
       await competing.query("ROLLBACK");
       competing.release();
     }
   });
 
-it.each(["read committed", "repeatable read"] as const)("publication fences legacy GTIN writers at %s", async isolation => {
-  const owner = await db.connect(), legacy = await db.connect(), gtin = nextGtin();
-  const write = (client: import("pg").PoolClient, issuer: string, scheme: string | null) => client.query(
-    `INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,scheme)
-     VALUES($1,$2,'gtin',$3,'unit',1,$4)`, [foreignPublished.data.skuId, issuer, gtin, scheme]);
-  let completed = false;
-  let pending: Promise<unknown> | undefined;
+it("publication refuses a duplicate GTIN from a concurrent Read Committed legacy insert that committed first", async () => {
+  const data = await draft(), gtin = data.payload.skus[0].identifiers![0].value;
+  const legacy = await db.connect(), issuer = `legacy:${randomUUID()}`;
+  let committedFirst = false;
+  const target = createPostgresCatalogPublication(dependencies(async sql => {
+    if (!sql.startsWith("SELECT pg_try_advisory_xact_lock(hashtextextended('catalog-publication-global'")) return;
+    await legacy.query(`INSERT INTO public.catalog_sku_identifiers
+      (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+      VALUES($1,$2,'gtin',$3,'unit',1)`, [foreignPublished.data.skuId, issuer, gtin]);
+    await legacy.query("COMMIT");
+    committedFirst = true;
+  }));
+  const capability = (await target.authorize(null))!;
   try {
-    await owner.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-    await legacy.query(`BEGIN ISOLATION LEVEL ${isolation}`);
-    const pid = (await legacy.query("SELECT pg_backend_pid() AS id")).rows[0].id;
-    expect((await legacy.query("SELECT id FROM public.catalog_sku_identifiers WHERE normalized_value=$1", [gtin])).rowCount).toBe(0);
-    await write(owner, "example:published-race", "gs1:gtin");
-    const legacyIssuer = "example:legacy-race";
-    if (isolation === "read committed") {
-      pending = write(legacy, legacyIssuer, null).catch((error: unknown) => error).finally(() => { completed = true; });
-      await expect.poll(async () => completed ? "completed" : (await db.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [pid])).rows[0]?.wait_event).toBe("advisory");
-      await owner.query("COMMIT");
-      expect(await pending).toMatchObject({ code: "23505", message: "catalog_publication_identity_conflict" });
-    } else {
-      await owner.query("COMMIT");
-      await expect(write(legacy, legacyIssuer, null)).rejects.toMatchObject({ code: "0A000", message: "catalog_publication_gtin_requires_read_committed" });
-    }
+    await approve(data.publication, target, capability);
+    await legacy.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    expect(await target.publish(data.publication, capability))
+      .toEqual({ outcome: "conflict", reason: "catalog_publication_identity_conflict" });
+    expect(committedFirst).toBe(true);
+    expect((await db.query("SELECT id FROM public.catalog_sku_identifiers WHERE issuer=$1", [issuer])).rowCount).toBe(1);
+    expect(await target.reads.current(data.productId)).toEqual({ outcome: "unpublished" });
   } finally {
-    await owner.query("ROLLBACK");
-    await pending;
     await legacy.query("ROLLBACK");
-    await owner.query("DELETE FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1 AND normalized_value=$2", [foreignPublished.data.skuId, gtin]);
-    legacy.release(); owner.release();
-  }
-});
-
-it("legacy GTIN writers accept opposite batch orders without deadlocking", async () => {
-  const left = await db.connect(), right = await db.connect(), codes = [nextGtin(), nextGtin()];
-  const writers = [`example:legacy-${randomUUID()}`, `example:legacy-${randomUUID()}`];
-  const write = (client: import("pg").PoolClient, issuer: string, values: string[]) => client.query(`
-    INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
-    SELECT $1,$2,'gtin',value,'unit',1 FROM unnest($3::text[]) value`, [foreignPublished.data.skuId, issuer, values]);
-  async function finish(client: import("pg").PoolClient, issuer: string, values: string[]) {
-    try { await write(client, issuer, values); await client.query("COMMIT"); return "committed"; }
-    catch (error) { await client.query("ROLLBACK"); return error; }
-  }
-  let pending: ReturnType<typeof finish> | undefined;
-  try {
-    await left.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-    await right.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-    const { id } = (await right.query("SELECT pg_backend_pid() AS id")).rows[0];
-    await write(left, writers[0], [codes[0]]);
-    pending = finish(right, writers[1], [...codes].reverse());
-    await expect.poll(async () => (await db.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [id])).rows[0]?.wait_event).toBe("advisory");
-    expect(await Promise.all([finish(left, writers[0], [codes[1]]), pending])).toEqual(["committed", "committed"]);
-    expect((await db.query("SELECT id FROM public.catalog_sku_identifiers WHERE issuer=ANY($1::text[])", [writers])).rowCount).toBe(4);
-  } finally {
-    await left.query("ROLLBACK");
-    await pending;
-    await right.query("ROLLBACK");
-    await db.query("DELETE FROM public.catalog_sku_identifiers WHERE issuer=ANY($1::text[])", [writers]);
-    right.release(); left.release();
+    await legacy.query("DELETE FROM public.catalog_sku_identifiers WHERE issuer=$1", [issuer]);
+    legacy.release();
   }
 });
 
