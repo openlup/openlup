@@ -141,6 +141,8 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
+    assert.deepEqual(first.calls.map(call => call.text.trim())
+      .filter(text => /^(BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK|ABORT)\b/i.test(text)), ['BEGIN', 'COMMIT']);
     const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
     const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
     const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call) && call.text.startsWith('INSERT INTO public.'));
@@ -150,12 +152,14 @@ for (const config of Object.values(configurations)) {
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
-    assert.equal(protection.length, 1);
-    assert.deepEqual(JSON.parse(String(protection[0]!.values?.[1])), config.inventory.renewalProtection);
-    assert.equal(reminders.length, 1);
-    const transaction = first.calls.slice(1, -1);
-    assert.ok(transaction.includes(protection[0]!) && transaction.includes(reminders[0]!));
-    assert.deepEqual(JSON.parse(String(reminders[0]!.values?.[1])), config.checkoutRecoveryReminders);
+    const upsert = /^INSERT\s+INTO\s+public\.commerce_settings\b[^;]+\bON\s+CONFLICT\b[^;]*\bDO\s+(UPDATE|NOTHING)\b[^;]*;?$/i;
+    const installer = /^SELECT\s+public\.(commerce|inventory)_\w+\(\s*\$1(?:\s*::\w+)?\s*,\s*\$2(?:\s*::\w+)?(?:\s*,[^;]+)?\s*\)\s*;?$/i;
+    for (const [calls, value] of [[protection, config.inventory.renewalProtection], [reminders, config.checkoutRecoveryReminders]] as const) {
+      assert.equal(calls.length, 1);
+      const { text, values } = calls[0]!;
+      assert.ok(upsert.test(text.trim()) || installer.test(text.trim()), 'policy installation must issue an upsert or a platform SQL function call');
+      assert.deepEqual(JSON.parse(String(values?.[1])), value);
+    }
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
     assert.equal(registry.length, acquisitionAddresses.length);
     assert.match(registry[0]!.text, /\(source, reference, revision, provenance, active\)/);

@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
-import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
+  reconcileReminderInstallationTest, reminderInstallationTest, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -207,25 +208,23 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   writeFileSync(join(app, marketPath), "local market divergence");
   const conflict = run(); expect(conflict.status).toBe(1); assertUpgradeConflict(JSON.parse(conflict.stdout), marketPath);
   rmSync(join(app, marketPath));
-  const reminderTest = "test/installation.test.ts";
-  const localCheck = (source: string) => source.replace("  const root = fileURLToPath",
-      "  // Local installation check.\n  const root = fileURLToPath");
-  let reconciledReminderTest: string | undefined;
-  if (customized) {
-    const local = localCheck(from.files[reminderTest]!);
-    writeFileSync(join(app, reminderTest), local);
-    const refusal = run(); expect(refusal.status).toBe(1); assertUpgradeConflict(JSON.parse(refusal.stdout), reminderTest);
-    expect(read(reminderTest)).toBe(local);
-    reconciledReminderTest = execFileSync("git", ["merge-file", "-p", join(app, reminderTest),
-      join(source, previousOwnership.sourceMappings?.[reminderTest] ?? reminderTest), join(target, reminderTest)], { encoding: "utf8" });
-    expect(reconciledReminderTest).toBe(localCheck(to.files[reminderTest]!));
-    writeFileSync(join(app, reminderTest), from.files[reminderTest]!);
-  }
+  const localTest = customized ? reconcileReminderInstallationTest(app, from.files[reminderInstallationTest]!, () => {
+    const refusal = run(); expect(refusal.status).toBe(1); return JSON.parse(refusal.stdout);
+  }) : undefined;
+  const checkInstallationTests = () => {
+    expect(read(reminderInstallationTest)).toBe(to.files[reminderInstallationTest]);
+    if (localTest) expect(read(localTest.path)).toBe(localTest.bytes);
+  };
+  const replay = () => {
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout).applied).toEqual([]);
+    checkInstallationTests();
+  };
   const result = run(); expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, reminderTest]));
-  expect(read(reminderTest)).toBe(to.files[reminderTest]);
-  expect(JSON.parse(run().stdout).applied).toEqual([]);
-  if (reconciledReminderTest !== undefined) writeFileSync(join(app, reminderTest), reconciledReminderTest);
+  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, reminderInstallationTest]));
+  checkInstallationTests();
+  replay();
   // Expected bytes come from the target inventory, including contracts that
   // have no runtime refusal. The customized expectation adds each local edit.
   for (const path of targetOwnership.owned) {
@@ -245,10 +244,12 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     "test/renewal.test.ts",
     "test/policy.test.ts",
     "test/subscription-creation.test.ts",
-    "test/installation.test.ts",
+    reminderInstallationTest,
   ];
+  if (localTest) contracts.push(localTest.path);
   const check = spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...contracts], { cwd: app, encoding: "utf8", timeout: 60_000 });
   expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
+  if (localTest) expect(check.stdout).toContain(localTest.name);
   const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval", `
     import assert from "node:assert/strict";
     import { configurations } from "./owned/store.config.ts";
@@ -270,9 +271,8 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   `], { cwd: app, encoding: "utf8", timeout: 10_000 });
   expect(startup.status, startup.error?.message ?? startup.stdout + startup.stderr).toBe(0);
   // A later owned edit also survives replay of the same snapshots.
-  if (reconciledReminderTest !== undefined) writeFileSync(join(app, reminderTest), to.files[reminderTest]!);
   edit("owned/store.config.ts", customized ? "#663d57" : "#3d6657", "#123456");
-  expect(JSON.parse(run().stdout).applied).toEqual([]);
+  replay();
   expect(read("owned/store.config.ts")).toContain("#123456");
 }, 180_000);
 
