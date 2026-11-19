@@ -233,6 +233,28 @@ describe("upstream exact managed migration approval", () => {
     expect(() => assertAdmittedPlatformForward(f.root, f.base, head, path, Buffer.from(sql), true)).not.toThrow();
   });
 
+  it("refuses exact approval retroactively for an already committed managed migration", () => {
+    const f = fixture();
+    f.put(path, "CREATE TABLE public.example (id uuid);\n");
+    const issued = f.commit();
+    approve(f);
+    const latePin = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, issued, latePin))
+      .toThrow("exact managed forward approval must precede its SQL");
+  });
+
+  it("refuses repairing an unapproved introduction before the first release", () => {
+    const f = fixture();
+    approve(f);
+    f.commit();
+    f.put(path, sql + "-- changed at introduction\n");
+    f.commit();
+    f.put(path, sql);
+    const repaired = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, f.base, repaired, path, Buffer.from(sql), true))
+      .toThrow("exact managed forward introduction differs from upstream approval");
+  });
+
   it("selects exact-only changes in the trusted queue and refuses a simultaneous machinery edit", () => {
     const f = fixture();
     approve(f);

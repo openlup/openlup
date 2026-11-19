@@ -1052,6 +1052,12 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
         throw new Error("issued exact managed forward approvals are immutable");
       }
     }
+    const existingExactPaths = new Set(prior.managedExactForwards?.map(pin => pin.path));
+    for (const pin of candidate.managedExactForwards ?? []) {
+      if (!existingExactPaths.has(pin.path) && blob(root, base, pin.path)) {
+        throw new Error(`exact managed forward approval must precede its SQL: ${pin.path}`);
+      }
+    }
     const previousData = JSON.parse(before.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
     const currentData = JSON.parse(after.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
     if (previousData?.channelIngestForwards !== undefined && currentData?.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
@@ -1134,7 +1140,13 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
         .toString("utf8").trim().split("\n").filter(Boolean);
       if (introductions.length !== 1) throw new Error("exact managed forward requires one first-parent introduction");
       approval = git(root, ["rev-parse", `${introductions[0]}^`]).toString("utf8").trim();
-      assertUnchangedForwardApproval(root, approval, introductions[0]!, path);
+      const introduction = introductions[0]!;
+      assertUnchangedForwardApproval(root, approval, introduction, path);
+      const introduced = blob(root, introduction, path);
+      if (!introduced || sqlSha256(introduced) !== exact.sha256
+        || managedForwardPrefixSha256(root, introduction, path) !== exact.prefixSha256) {
+        throw new Error("exact managed forward introduction differs from upstream approval");
+      }
     }
     // An upstream approval is mandatory, including when the candidate adds its own pin.
     assertUnchangedForwardApproval(root, approval, head, path);
