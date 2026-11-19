@@ -47,16 +47,16 @@ function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, ar
 }
 
 /** Retain the installed definition and exact rules in the local demonstration build directory. */
-export function retainStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt): void {
+export function retainStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory): void {
   const definition = starterCataloguePack(artifact).types[0]!;
   const { validateContent: _callback, ...type } = definition;
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
   const bytes = Buffer.from(canonicalCatalogDraftJson({ type, asset: artifact.toString('base64'), installed }));
-  mkdirSync(buildDirectory, { recursive: true });
-  const temp = mkdtempSync(join(buildDirectory, '.pending-'));
+  mkdirSync(directory, { recursive: true });
+  const temp = mkdtempSync(join(directory, '.pending-'));
   try {
-    const source = join(temp, 'build.json'), target = join(buildDirectory, `${type.version}.json`);
+    const source = join(temp, 'build.json'), target = join(directory, `${type.version}.json`);
     writeFileSync(source, bytes);
     try { linkSync(source, target); }
     catch (error) {

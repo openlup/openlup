@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
@@ -102,7 +103,7 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
       calls.push({ text, values });
       if (text.startsWith('SELECT public.catalog_definition_install')) {
         const { manifest } = JSON.parse(String(values?.[2]));
-        return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(manifest).digest('hex') } }] };
+        return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(manifest).digest('hex'), types: JSON.parse(manifest).types } }] };
       }
       if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
@@ -135,7 +136,16 @@ test('local rules run before installation and derive an immutable product type o
   async function installed(bytes: Buffer) {
     const fixture = installation();
     fixture.binding.catalogueRules = bytes;
-    await installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding);
+    const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-build-'));
+    try {
+      fixture.binding.catalogueBuildDirectory = directory;
+      await installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding);
+      const install = fixture.calls.find(entry => entry.text.startsWith('SELECT public.catalog_definition_install'));
+      assert.ok(install);
+      const build = JSON.parse(await readFile(resolve(directory, `${install.values?.[1]}.json`), 'utf8'));
+      assert.equal(build.installed.version, install.values?.[1]);
+      assert.equal(build.asset, bytes.toString('base64'));
+    } finally { await rm(directory, { recursive: true, force: true }); }
     const call = fixture.calls.find(entry => entry.text.startsWith('SELECT public.catalog_definition_install'));
     assert.ok(call);
     const { types } = JSON.parse(String(call.values?.[2]));
@@ -147,6 +157,31 @@ test('local rules run before installation and derive an immutable product type o
   assert.ok(first.version > 1);
   assert.notEqual((await installed(Buffer.concat([bytes, Buffer.from('// Changed rules asset')]))).version, first.version);
 });
+
+test('a retained build conflict rolls back definition installation before commit', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-conflict-'));
+  try {
+    const config = Object.values(configurations)[0]!;
+    const first = installation();
+    first.binding.catalogueRules = bytes;
+    first.binding.catalogueBuildDirectory = directory;
+    await installDemonstration(config, async () => first.binding);
+    const change = first.calls.find(row => row.text.startsWith('SELECT public.catalog_definition_install'));
+    assert.ok(change);
+    const conflictingBuild = resolve(directory, `${change.values?.[1]}.json`);
+    await writeFile(conflictingBuild, 'conflicting build');
+    const retry = installation();
+    retry.binding.catalogueRules = bytes;
+    retry.binding.catalogueBuildDirectory = directory;
+    await assert.rejects(installDemonstration(config, async () => retry.binding), { code: 'EEXIST' });
+    assert.equal(retry.calls.at(-1)?.text, 'ROLLBACK');
+    assert.ok(!retry.calls.some(row => row.text === 'COMMIT'));
+    assert.equal(await readFile(conflictingBuild, 'utf8'), 'conflicting build');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 
 for (const config of Object.values(configurations)) {
   test(`${config.id}: fictional catalog and prices come from one configuration deterministically`, () => {

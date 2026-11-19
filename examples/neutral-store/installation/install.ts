@@ -5,7 +5,7 @@ import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
-import { editorProducts, readStarterCatalogueRules, starterCataloguePack } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules, retainStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
 import { randomBytes } from 'node:crypto';
 import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
@@ -49,6 +49,7 @@ export interface DemonstrationInstallation {
   connection: InstallConnection;
   stock?: Pick<FulfillmentStockSyncPort,'recordProviderStockCurrent'>;
   catalogueRules?: Uint8Array;
+  catalogueBuildDirectory?: string;
   installRole: string;
   runtimeRole: string;
   close(): Promise<void>;
@@ -59,10 +60,7 @@ export type InstallationBootstrap = (config: StoreConfig) => Promise<Demonstrati
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
 export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap) {
   const installation = await bootstrap(config);
-  try {
-    const receipt = await applyDemoSeed(config, installation);
-    if (receipt && installation.catalogueRules) return { receipt, bytes: Buffer.from(installation.catalogueRules) };
-  }
+  try { await applyDemoSeed(config, installation); }
   finally { await installation.close(); }
 }
 
@@ -141,8 +139,9 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       if (existing.rows.length !== 1 || existing.rows[0]?.provenance !== row.provenance
         || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
     }
+    if (catalogueReceipt && installation.catalogueRules)
+      retainStarterCatalogueBuild(Buffer.from(installation.catalogueRules), catalogueReceipt, installation.catalogueBuildDirectory);
     await connection.query('COMMIT');
-    return catalogueReceipt;
   } catch (error) {
     await connection.query('ROLLBACK');
     throw error;
