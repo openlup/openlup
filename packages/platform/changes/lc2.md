@@ -23,8 +23,10 @@ values, while unaddressed projection drift still refuses and rolls back.
 Changed complete facts retain compatible attribute, axis, gross-mass and asset
 updates without refreshing unrelated fields. Candidate preparation reports staged,
 pending, unknown and blocked evidence. Creation binds the name to the sealed
-document. An explicit null presentation clears an existing presentation, and
-moving to an off-head document requires its matching registration. Publication
+document. The draft compiler represents authored absence with an empty
+presentation object. The ordered null effect still clears the live presentation.
+Positive eligibility generates required product and SKU promotions before sealing.
+Moving to an off-head document requires its matching registration. Publication
 and decision command keys preserve whitespace and accept up to 200 UTF-8 bytes.
 A decision reason may be null. A supplied reason preserves whitespace, requires
 text beyond ASCII spaces, and accepts up to 1,000 UTF-8 bytes. History,
@@ -52,7 +54,10 @@ while retained publications reference it. Publication
 requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 Registration checks each source against its immutable draft receipt. A new SKU
 can be created and priced in the same issuance. Enabling sale requires a later
-issuance with a current source that matches the materialized SKU.
+issuance with a current source that matches the materialized SKU. Installed
+publication rules supply the document decoder and return the authored name
+with the document identity. Legacy GTIN writes use Read Committed and check
+cross-issuer collisions after taking the identifier lock.
 The price boundary uses the existing version 2 command through the price owner's
 same-transaction writer. The shared price-owner phases reserve sorted receipt
 keys before sorted contexts, verify every child belongs to the parent, and apply

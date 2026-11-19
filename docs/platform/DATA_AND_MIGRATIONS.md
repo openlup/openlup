@@ -424,7 +424,11 @@ under another isolation level refuses with `catalog_publication_gtin_requires_re
 Moving to an off-head document requires a matching
 registration before the move. On creation, the persisted product name must
 match the sealed document's string `name`. An explicit null presentation effect
-clears an existing presentation.
+clears an existing presentation. The draft compiler seals an empty presentation
+object for that authored absence, while publication keeps the live presentation
+null through subsequent revisions. The same compiler inserts draft product and
+SKU promotions into the ordered batch for positive eligibility before sealing.
+Publication refuses a sealed batch that leaves a required promotion unapplied.
 Creation and explicit product activation still require a presentation. Hosts may
 validate each membership effect against the ordered SKU state, including repeats
 against a frozen roster. An installed SKU amount rule can impose a category-specific

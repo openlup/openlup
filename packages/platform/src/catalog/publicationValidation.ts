@@ -374,8 +374,8 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
     }
     if (operation.op === "move_document_pointer")
       need(operation.documentRevisionNo === payload.product.documentRevision?.revisionNo, "catalog_publication_document_source_mismatch");
-    if (operation.op === "set_product_presentation" && operation.presentation !== null)
-      need(equal(operation.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_source_mismatch");
+    if (operation.op === "set_product_presentation")
+      need(equal(sealedPresentation(operation.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_source_mismatch");
   }
   function skuOperation(operation: Extract<PublicationOperation, { skuCode: string }>) {
     const source = sku(operation.skuCode);
@@ -508,7 +508,6 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
     catch { return publicationRefuse("catalog_publication_v3_document_invalid"); }
   }
   let activation = false;
-  let clearedPresentation = false;
   for (const operation of payload.publication.operations) {
     if ("productSlug" in operation) need(operation.productSlug === slug, "catalog_publication_scope_expansion");
     if (operation.op === "create_product") {
@@ -588,7 +587,6 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
     } else if (operation.op === "set_product_presentation") {
       authorship.productOperation(operation);
       knownProduct().presentation = operation.presentation;
-      clearedPresentation = operation.presentation === null;
     } else if (operation.op === "set_sku_metadata") {
       const sku = knownSku(operation.skuCode);
       authorship.skuOperation(operation);
@@ -655,8 +653,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
   }
   need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
   need(result.primarySkuId && result.document && (input.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
-  if (!clearedPresentation)
-    need(equal(result.presentation, payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
+  need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
   const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
   need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
   function validatePriceReadiness() {

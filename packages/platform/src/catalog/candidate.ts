@@ -86,14 +86,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     }
     if (!payload.product.documentRevision) hard.push({ path: "product.documentRevision", code: "document_reference_missing" });
     if (!rules || head && !deps.readPublicationState) unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
-    const presentation = payload.product.sharedContent.presentation;
-    if (presentation !== null) {
-      let result: unknown;
-      try { result = await deps.presentationReadiness?.(record.productId, presentation); } catch { /* Evidence is unknown. */ }
-      const verdict = publicationReadinessVerdict.safeParse(result), path = "product.sharedContent.presentation";
-      if (!verdict.success) unknown.push({ path, code: "catalog_publication_presentation_unavailable" });
-      else hard.push(...verdict.data.reasons.map(code => ({ path, code })));
-    }
+    const authoredPresentation = payload.publication.operations.findLast(op => op.op === "set_product_presentation");
     let compiled: ReturnType<typeof compileCatalogPublication> | undefined;
     if (hard.length === 0 && rules) {
       try {
@@ -106,6 +99,15 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
           hard.push({ path: error.code === "catalog_publication_activation_effect_missing" ? "publication.operations" : "publication", code: error.code });
         else unknown.push({ path: "publication", code: "publication_preparation_unavailable" });
       }
+    }
+    const presentation = compiled ? compiled.product.presentation
+      : authoredPresentation ? authoredPresentation.presentation : payload.product.sharedContent.presentation;
+    if (presentation !== null) {
+      let result: unknown;
+      try { result = await deps.presentationReadiness?.(record.productId, presentation); } catch { /* Evidence is unknown. */ }
+      const verdict = publicationReadinessVerdict.safeParse(result), path = "product.sharedContent.presentation";
+      if (!verdict.success) unknown.push({ path, code: "catalog_publication_presentation_unavailable" });
+      else hard.push(...verdict.data.reasons.map(code => ({ path, code })));
     }
     const activation: NonNullable<CatalogCandidatePreview["preparation"]>["activation"] = { outcome: "pending", issues: [] };
     const activating = new Set(payload.publication.operations.flatMap(op => op.op === "set_eligibility"

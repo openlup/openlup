@@ -8,6 +8,7 @@ import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPubl
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
+import { createPostgresCatalogReadPort } from "../../server/adapters/postgres/catalogRead.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
@@ -3162,6 +3163,7 @@ it.each([
   if (first) content.catalogAction = "revise";
   if (mode === "clear on create" || mode === "clear on revision") {
     const clear = { op: "set_product_presentation" as const, productSlug: payload.product.slug!, presentation: null };
+    content.presentation = {};
     if (first) payload.publication.operations = [clear];
     else payload.publication.operations.splice(payload.publication.operations.findIndex(op => op.op === clear.op), 1, clear);
   }
@@ -3199,6 +3201,43 @@ it.each([
     expect(await snapshot()).toEqual(stable);
   }
   expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
+});
+
+it.each(["null", "unchanged"] as const)("CD-CAT-43 preserves storefront and projection for %s presentation over two revisions", async reading => {
+  await inPriceDatabase(async () => {
+    const data = await priceDraft();
+    const target = realPriceAuthority(), capability = (await target.authorize(null))!;
+    const active = structuredClone(data.payload);
+    active.product.attributes = { product_flag: true };
+    const first = await commit(await save(active, data.draftId, 2, data.publication.expectedHead), target, capability);
+    const storefront = createPostgresCatalogReadPort(db);
+    async function customerOutput() {
+      const product = await storefront.getProductBySlug(active.product.slug!);
+      const projection = (await db.query(`SELECT to_jsonb(p) - 'publication_revision' AS value FROM public.catalog_attribute_projection p
+        WHERE sku_id=$1 ORDER BY attribute_key,value_ordinal`, [data.skuId])).rows;
+      expect(product).toMatchObject({ slug: active.product.slug, publicationStatus: "published" });
+      expect(projection.length).toBeGreaterThan(0);
+      return { product, projection };
+    }
+    const expected = await customerOutput();
+    const presentation = reading === "null" ? null : active.product.sharedContent.presentation;
+    delete active.skus[0].priceOperations;
+    let head = first.head;
+    for (const index of [0, 1]) {
+      const payload = structuredClone(active), sku = payload.skus[0];
+      sku.logisticsRef = `example:fulfillment-${index}`;
+      payload.publication.operations = [{ op: "set_sku_metadata", skuCode: sku.code!, logisticsRef: sku.logisticsRef }];
+      if (reading === "null" && index === 0)
+        payload.publication.operations.push({ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: null });
+      const sealed = compileCatalogPublicationDraft(payload, presentation);
+      expect(sealed.product.sharedContent.presentation).toEqual(presentation ?? {});
+      const next = await commit(await save(sealed, data.draftId, 3 + index, head), target, capability);
+      expect(next.head.revision).toBe(head.revision + 1);
+      expect(await target.readbackV2(next.head)).toMatchObject({ outcome: "page", product: { presentation } });
+      expect(await customerOutput()).toEqual(expected);
+      head = next.head;
+    }
+  });
 });
 
 it.each(["missing SKU promotion", "missing product promotion"] as const)("CD-CAT-43 refuses an atomic activation batch with %s", async missing => {
