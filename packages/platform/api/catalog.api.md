@@ -4050,7 +4050,7 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 export { createPostgresCatalogPublication } from "./publicationStore.js";
-export { compileCatalogPublication, CatalogPublicationError, assertCatalogPublicationPreparation, assertCatalogPublicationGrossMass } from "./publicationValidation.js";
+export { compileCatalogPublication, compileCatalogPublicationDraft, CatalogPublicationError, assertCatalogPublicationPreparation, assertCatalogPublicationGrossMass } from "./publicationValidation.js";
 export type { CatalogPublicationRules, CatalogPublicationCompileInput, CatalogPublicationDocument } from "./publicationValidation.js";
 export type { CatalogPublicationDependencies, CatalogPublicationTransactions, CatalogPublicationPriceBoundary, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
 export { validateCatalogPublicationAttributes } from "./attributeValidation.js";
@@ -4585,12 +4585,15 @@ export interface CatalogPublicationRules {
         admitted: boolean;
     }): boolean;
     canonicalizeDocument(document: unknown): string;
+    /** Decodes stored document bytes using the installed document rules. */
+    decodeDocument(canonicalText: string): unknown;
     /** Reads identity using the installed document's schema. */
     identifyDocument(document: unknown): {
         schemaId: string;
         documentRef: string;
         productSlug: string;
         revisionNo: number;
+        name?: string;
     };
     /** Optional installed category limit, applied to exactly converted integer grams. */
     validateSkuAmounts?(sku: {
@@ -4618,6 +4621,10 @@ export interface CatalogPublicationCompileInput {
     capacity?: number;
 }
 export declare function catalogPublicationClaim(record: CatalogDraftPublicationStoredRecord): CatalogDraftClaimV3;
+/** Adapts presentation and compiles required draft-status effects before sealing the v3 batch.
+ * @experimental
+ */
+export declare function compileCatalogPublicationDraft(payload: CatalogDraftPayloadV3, presentation: CatalogPublicationFacts | null, current?: Pick<CatalogPublicationCompileInput, "product" | "skus">): CatalogDraftPayloadV3;
 /** Temporary native publication boundary, until versioned quantity readers land. */
 export declare function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): string;
 export declare function assertCatalogPublicationMassInputs(payload: unknown, definition: CatalogProductTypeDefinition): void;
@@ -5089,7 +5096,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "3f5adcab8f87582555372d5f4bdcbdee4f70ec16dbf013fd69d9aface240c79d";
+        readonly sha256: "994e3b6f16e5a103a88468af12a4c69e28f80ace90798cba97f3f7624ea6f82a";
         readonly url: URL;
     }
 ];
