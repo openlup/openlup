@@ -38,7 +38,9 @@ describe("carrier pickup booking action", () => {
 
   it("writes golden courier SOAP/evidence, then reconciles and sends email", async () => {
     const fake = bookingClient();
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
+    const receipt = bookingReceipt().replace("<SOAP-ENV:Body>",
+      '<SOAP-ENV:Body SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">');
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(receipt));
     const sendEmail = vi.fn().mockResolvedValue(undefined);
     const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail });
 
@@ -199,6 +201,10 @@ describe("carrier pickup booking action", () => {
       "<SOAP-ENV:Envelope ", '<SOAP-ENV:Envelope context="unknown" ',
     ), 500],
     ["unqualified fault code", clientRefusalEnvelope().replace("SOAP-ENV:Client", "Client"), 500],
+    ["mandatory header on a refusal", withMandatoryHeader(clientRefusalEnvelope()), 500],
+    ["nil fault", clientRefusalEnvelope().replace(
+      "<SOAP-ENV:Fault>", '<SOAP-ENV:Fault xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true">',
+    ), 500],
   ])("keeps a %s outside the retry path", async (_case, body, status) => {
     const fake = bookingClient();
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(body, status));
@@ -276,6 +282,13 @@ describe("carrier pickup booking action", () => {
 
   it.each([
     ["an isolated result", "<orderId>ORD-1</orderId>"],
+    ["an unsupported mandatory header", withMandatoryHeader(bookingReceipt())],
+    ["a nil result wrapper", bookingReceipt().replace(
+      "<api:bookCourierResponse>", '<api:bookCourierResponse xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true">',
+    )],
+    ["an item with a different type", bookingReceipt().replace(
+      "<item>", '<item xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="invalid">',
+    )],
     ["a comment", bookingReceipt().replace("<item>ORD-1</item>", "<!-- <item>ORD-1</item> -->")],
     ["incomplete XML", bookingReceipt().replace("</SOAP-ENV:Body>", "")],
     ["inconsistent fault detail", clientRefusalEnvelope("<![CDATA[Incomplete]]>").replace(
@@ -474,4 +487,10 @@ function bookingReceipt() {
       <bookCourierResult><item>ORD-1</item></bookCourierResult>
     </api:bookCourierResponse></SOAP-ENV:Body>
   </SOAP-ENV:Envelope>`;
+}
+
+function withMandatoryHeader(xml: string) {
+  return xml.replace("<SOAP-ENV:Body>", `<SOAP-ENV:Header>
+    <context:unknown xmlns:context="urn:unsupported" SOAP-ENV:mustUnderstand="1"/>
+  </SOAP-ENV:Header><SOAP-ENV:Body>`);
 }

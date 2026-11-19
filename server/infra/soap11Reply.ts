@@ -1,10 +1,22 @@
-import { SaxesParser } from "saxes";
+import { SaxesParser, type SaxesAttributeNS, type SaxesTagNS } from "saxes";
 
 const envelopeNamespace = "http://schemas.xmlsoap.org/soap/envelope/";
+const encodingNamespace = "http://schemas.xmlsoap.org/soap/encoding/";
+const declarationNamespace = "http://www.w3.org/2000/xmlns/";
 const faultFields = ["faultcode", "faultstring", "faultactor", "detail"];
 
 type ResultContract = { namespace: string; response: string; result: string };
 type Outcome = { kind: "accepted"; ids: string[] } | { kind: "client_refusal"; reason: string };
+
+function supportedEncoding(attribute: SaxesAttributeNS): boolean {
+  return attribute.uri === envelopeNamespace && attribute.local === "encodingStyle"
+    && ["", encodingNamespace].includes(attribute.value.trim());
+}
+
+function validLiteralAttributes(tag: SaxesTagNS, allowLanguage = false): boolean {
+  return Object.values(tag.attributes).every(attribute => attribute.uri === declarationNamespace || supportedEncoding(attribute)
+    || (allowLanguage && attribute.uri === "http://www.w3.org/XML/1998/namespace" && attribute.local === "lang"));
+}
 
 /** Read one SOAP 1.1 Body member and the operation's string-array result. */
 export function readSoap11Reply(xml: string, contract: ResultContract): Outcome | null {
@@ -32,11 +44,11 @@ export function readSoap11Reply(xml: string, contract: ResultContract): Outcome 
     depth++;
     if (depth === 1) {
       valid &&= tag.local === "Envelope" && tag.uri === envelopeNamespace
-        && Object.values(tag.attributes).every(attribute => attribute.uri !== "");
+        && validLiteralAttributes(tag);
       return;
     }
     if (depth === 2) {
-      valid &&= tag.uri === envelopeNamespace && Object.values(tag.attributes).every(attribute => attribute.uri !== "");
+      valid &&= tag.uri === envelopeNamespace && validLiteralAttributes(tag);
       if (tag.local === "Body") {
         section = "body";
         bodyCount++;
@@ -46,10 +58,15 @@ export function readSoap11Reply(xml: string, contract: ResultContract): Outcome 
       } else invalidate();
       return;
     }
-    if (section === "header" && depth === 3 && tag.uri === "") invalidate();
+    if (section === "header" && depth === 3) {
+      const mandatory = Object.values(tag.attributes).some(attribute => attribute.uri === envelopeNamespace
+        && attribute.local === "mustUnderstand" && attribute.value !== "0");
+      if (tag.uri === "" || mandatory) invalidate();
+    }
     if (section !== "body") return;
     if (depth === 3) {
       bodyMembers++;
+      valid &&= validLiteralAttributes(tag);
       if (tag.local === "Fault" && tag.uri === envelopeNamespace) member = "fault";
       else if (tag.local === contract.response && tag.uri === contract.namespace) member = "result";
       else invalidate();
@@ -59,21 +76,18 @@ export function readSoap11Reply(xml: string, contract: ResultContract): Outcome 
     if (member === "fault") {
       if (depth === 4) {
         const field = faultFields.indexOf(tag.local);
-        valid &&= tag.uri === "" && field > lastFaultField;
+        valid &&= tag.uri === "" && field > lastFaultField && validLiteralAttributes(tag, field === 1);
         lastFaultField = field;
         fieldText = "";
       } else if (depth === 5 && lastFaultField < 3) invalidate();
       return;
     }
 
-    const nil = Object.values(tag.attributes).some(
-      attribute => attribute.uri === "http://www.w3.org/2001/XMLSchema-instance" && attribute.local === "nil",
-    );
     if (depth === 4) {
       resultCount++;
-      valid &&= tag.local === contract.result && tag.uri === "" && !nil;
+      valid &&= tag.local === contract.result && tag.uri === "" && validLiteralAttributes(tag);
     } else if (depth === 5) {
-      valid &&= tag.local === "item" && tag.uri === "" && !nil;
+      valid &&= tag.local === "item" && tag.uri === "" && validLiteralAttributes(tag);
       fieldText = "";
     } else invalidate();
   });
