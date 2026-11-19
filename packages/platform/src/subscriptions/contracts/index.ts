@@ -14,6 +14,6 @@ export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEdit
 
 export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
 
-export type { LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
+export type { ClassicBundleEditRequest, LegacyEditConsentRequest, SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./editConsent.js";
 
 export type { StockWaitReadState, StockWaitReadNotice, StockWaitReadProjection, StockWaitOperatorSummary, StockWaitAdminPage } from "./stockWaitReads.js";

@@ -60,7 +60,7 @@ export type { NativeWinbackOptions } from "./postgresWinback.js";
 
 export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
 export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
-export { createPostgresPackageEditor } from "./packageEditor.js";
+export { createPostgresClassicBundleEditor, createPostgresPackageEditor } from "./packageEditor.js";
 export { createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError } from "./sizedEditor.js";
 export { createSizedParcelProjection } from "./sizedParcelProjection.js";
 export type { SizedParcelProjectionPorts } from "./sizedParcelProjection.js";
@@ -69,6 +69,7 @@ export { createSizedCompositionRules } from "./sizedComposition.js";
 export { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 export { splitBySubscriptionAgreement, agreedSubscriptionTotal, mergeSubscriptionAgreedQuote } from "./agreedPlanQuote.js";
 export type { SizedEditorOptions, SizedHostPorts, SizedSubjectFacts, SizedCatalogFact } from "./sizedEditPorts.js";
+export type { ReadSubscriptionEditCatalogAdmission } from "./packageEditContracts.js";
 export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy,
   SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
@@ -93,9 +94,10 @@ export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
 export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
 
 export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
-export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+export type { ClassicBundleEditRequest, LegacyEditConsentRequest } from "./contracts/editConsent.js";
 export { createPostgresSuccessorStore } from "./postgresSuccessorStore.js";
 export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuccessorStore.js";
+export { requireHistoricalProtocolBinding } from "./successorProtocolBindings.js";
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";

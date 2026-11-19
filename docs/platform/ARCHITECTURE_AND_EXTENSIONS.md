@@ -1973,6 +1973,15 @@ with JSON integer fields `fixedThroughCycle` and `graduationCycle`, matching the
 host policy. Missing or malformed configuration refuses. These settings carry
 adopter values; the package installs none.
 
+The consented sized editor selects the lowest open numbered cycle, or one past
+the highest recorded number when every cycle is closed. The paid activation
+cycle is cycle one when the activation and order identify that cycle. A renewal
+cycle uses its linked operation's recorded logical number. The underlying direct
+SQL editor retains its paid-count behavior. Wrapped editing, including candidate
+context, refuses incomplete history with
+`subscription_edit_cycle_history_unreadable`. A retained import needs complete
+cycle identity evidence before it can use this binding.
+
 The sized SQL forward adds `configured_offer_version` and service-only
 context/apply functions. Classic stays classic on entry, preview or abandonment.
 Even unchanged contents require priced review and explicit `resize_bundle`
@@ -2056,6 +2065,21 @@ has no event, notice or preview acceptance. Existing generic commands retain
 their separate contracts. `mapPackageEditError` distinguishes customer request
 refusals, durable apply conflicts and generic upstream failures; raw preview
 ledger failures remain upstream failures.
+
+`createPostgresClassicBundleEditor` is an experimental binding for classic
+bundle updates and resize. At the same cadence a bundle update preserves the
+base unit total. An omitted add-on set keeps the existing lines. An explicit
+empty set removes them. Resize passes the lever to the host composition port and
+records the resulting cadence and constraint. Use
+`createPostgresLegacyEditConsentBridge` for the existing legacy bundle command.
+When an edit keeps the current agreement, the preview shows the retained prices
+and `noChange.livePriceDiffers` indicates a difference in the live comparison.
+
+For a governed catalogue edit, supply `readCatalogAdmission` from the trusted
+server quote composition. It receives the complete desired set under the
+subscription lock. The recorded evidence includes the selected SKU revisions,
+publication heads and exact price-entry rows. Native acceptance verifies those
+records on the same transaction. Keep this reader off the customer request.
 
 The package-editor forward must be admitted and installed through the selected
 migration plan before this API is composed. It writes future line/cadence terms

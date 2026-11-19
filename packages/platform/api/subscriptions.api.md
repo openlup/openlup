@@ -109,14 +109,37 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
 ## dist/subscriptions/classicPackageQuote.d.ts
 
 ```ts
-import type { PackageEditQuote, PackageEditQuotePorts, PackageEditReadPort, PackageEditRequest } from "./packageEditContracts.js";
+import type { ClassicBundleEditRequest } from "./contracts/editConsent.js";
+import type { EditAgreementBaseline } from "./editConsentBaseline.js";
+import type { PackageEditLimits, PackageEditMoney, PackageEditQuote, PackageEditQuotePorts, PackageEditReadPort, PackageEditRequest, PackageEditSubscription } from "./packageEditContracts.js";
 type Quote = Awaited<ReturnType<PackageEditQuotePorts["quotePort"]["createServerAuthoritativeQuote"]>>["quote"];
 /** Content identity deliberately excludes observation time and all presentation facts. */
 export declare function hashPackageEditQuote(quote: Quote): string;
+/** The generic bundle lane keeps the fixed pool when cadence stays the same. */
+export declare function quoteClassicBundle(deps: PackageEditQuotePorts, request: ClassicBundleEditRequest, baseline: EditAgreementBaseline, subscription: PackageEditSubscription, limits: PackageEditLimits): Promise<{
+    lines: {
+        quoteLine: import("./packageEditContracts.js").PackageEditQuoteLine;
+        sku: string;
+        lineId: string | null;
+        variantId: string;
+        qty: number;
+        isAddon: boolean;
+    }[];
+    cadenceDays: number;
+    compositionConstraint: Record<string, unknown>;
+    quoteHash: string;
+    expectedTemplateVersion: number;
+}>;
 /** The entire desired set is quoted verbatim. Cadence changes never resize quantities. */
 export declare function createClassicPackageRepricer(deps: PackageEditQuotePorts & {
     readPort: PackageEditReadPort;
 }): {
+    quote(input: Pick<PackageEditRequest, "subscriptionId" | "planDays" | "base" | "addons">): Promise<PackageEditQuote>;
+};
+/** Consent compares the validated agreement without pricing the former basket. */
+export declare function createClassicEditRepricer(deps: PackageEditQuotePorts & {
+    readPort: PackageEditReadPort;
+}, agreed?: PackageEditMoney): {
     quote(input: Pick<PackageEditRequest, "subscriptionId" | "planDays" | "base" | "addons">): Promise<PackageEditQuote>;
 };
 export {};
@@ -427,22 +450,40 @@ export interface RenewalFailureHandoffPort {
 ## dist/subscriptions/contracts/editConsent.d.ts
 
 ```ts
-/** Per-line agreement disclosure. Missing sides are absent prices, including for zero-priced lines.
- * @experimental
- */
-export interface SubscriptionEditDisclosureLine {
-    kind: "retained" | "added" | "removed";
+type DisclosureLineIdentity = {
     variantId: string;
     sku: string;
     isAddon: boolean;
-    agreedQuantity: number | null;
-    newQuantity: number | null;
-    agreedUnitMinor: number | null;
-    newUnitMinor: number | null;
-    deltaMinor: number | null;
     subtotalDeltaMinor: number;
-    reason: "unchanged" | "price_changed" | "quantity_changed" | "added" | "removed";
-}
+};
+/** Per-line agreement disclosure. Missing sides are absent prices, including for zero-priced lines.
+ * @experimental
+ */
+export type SubscriptionEditDisclosureLine = DisclosureLineIdentity & ({
+    kind: "retained";
+    agreedQuantity: number;
+    newQuantity: number;
+    agreedUnitMinor: number;
+    newUnitMinor: number;
+    deltaMinor: number;
+    reason: "unchanged" | "price_changed" | "quantity_changed";
+} | {
+    kind: "added";
+    agreedQuantity: null;
+    newQuantity: number;
+    agreedUnitMinor: null;
+    newUnitMinor: number;
+    deltaMinor: null;
+    reason: "added";
+} | {
+    kind: "removed";
+    agreedQuantity: number;
+    newQuantity: null;
+    agreedUnitMinor: number;
+    newUnitMinor: null;
+    deltaMinor: null;
+    reason: "removed";
+});
 /** Versioned disclosure bound to the original lane quote and complete current agreement.
  * @experimental
  */
@@ -455,6 +496,10 @@ export interface SubscriptionEditConsent {
     agreedTotalMinor: number;
     newTotalMinor: number;
     subtotalDeltaMinor: number;
+    /** Present when the command keeps the agreement despite a fresh comparison. @experimental */
+    noChange?: {
+        livePriceDiffers: boolean;
+    };
 }
 /** Legacy desired-set inputs; money and identity are supplied on the server.
  * @experimental
@@ -474,6 +519,22 @@ export interface LegacyEditConsentRequest {
     expectedTemplateVersion?: number;
     acceptedQuoteHash?: string;
 }
+/** Classic bundle composition with explicit update and resize actions.
+ * Omitting add-on lines retains the current set.
+ * @experimental
+ */
+export type ClassicBundleEditRequest = Omit<LegacyEditConsentRequest, "coreLines" | "addonLines"> & ({
+    action: "update_bundle";
+    coreLines: LegacyEditConsentRequest["coreLines"];
+    addonLines?: LegacyEditConsentRequest["addonLines"];
+} | {
+    action: "resize_bundle";
+    resizeLever: {
+        kind: string;
+        value: unknown;
+    };
+});
+export {};
 ```
 ## dist/subscriptions/contracts/exactEdit.d.ts
 
@@ -1445,6 +1506,11 @@ export interface SizedEditContext {
     compositionConstraint: Record<string, unknown> | null;
     nextCycleAt: string | null;
     paidCycleCount: number;
+    /** Authoritative numbered phase on the consented context. @experimental */
+    numberedPhase?: {
+        upcomingCycle: number;
+        phase: SizedEditPhase;
+    };
     marker: {
         basisTemplateVersion: number;
         graduation: {
@@ -1677,10 +1743,34 @@ export interface SuccessorProposal {
     editConsent: SubscriptionEditConsent;
 }
 ```
+## dist/subscriptions/editConsentBaseline.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface EditAgreementLine {
+    ordinal: number;
+    lineId: string;
+    variantId: string;
+    sku: string;
+    isAddon: boolean;
+    quantity: number;
+    unitMinor: number;
+}
+export interface EditAgreementBaseline {
+    currency: string;
+    templateVersion: number;
+    lines: readonly EditAgreementLine[];
+    fingerprint: string;
+}
+export declare function exactMinor(value: unknown, code: string, positive?: boolean): number;
+export declare function safeMinor(value: bigint, code: string): number;
+/** Additive complete reader; the existing partial/frozen-price readers retain their contracts. */
+export declare function readCompleteEditBaseline(db: SubscriptionQueryExecutor, subscriptionId: string): Promise<EditAgreementBaseline>;
+```
 ## dist/subscriptions/editConsentLegacyBridge.d.ts
 
 ```ts
-import type { PackageEditActor } from "./packageEditContracts.js";
+import type { PackageEditActor, ReadSubscriptionEditCatalogAdmission } from "./packageEditContracts.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
 /** One authenticated native connection owns both quote ledgers and the original legacy transaction.
@@ -1690,6 +1780,8 @@ import type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
 export declare function createPostgresLegacyEditConsentBridge(options: {
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     now(): string;
+    /** @experimental */
+    readCatalogAdmission?: ReadSubscriptionEditCatalogAdmission;
 }): {
     preview(actor: PackageEditActor, key: string, input: LegacyEditConsentRequest): Promise<Record<string, unknown>>;
     apply(actor: PackageEditActor, key: string, input: LegacyEditConsentRequest): Promise<Record<string, unknown>>;
@@ -1766,7 +1858,7 @@ export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
 export type { NativeWinbackOptions } from "./postgresWinback.js";
 export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
 export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
-export { createPostgresPackageEditor } from "./packageEditor.js";
+export { createPostgresClassicBundleEditor, createPostgresPackageEditor } from "./packageEditor.js";
 export { createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError } from "./sizedEditor.js";
 export { createSizedParcelProjection } from "./sizedParcelProjection.js";
 export type { SizedParcelProjectionPorts } from "./sizedParcelProjection.js";
@@ -1775,6 +1867,7 @@ export { createSizedCompositionRules } from "./sizedComposition.js";
 export { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "./sizedEditQuote.js";
 export { splitBySubscriptionAgreement, agreedSubscriptionTotal, mergeSubscriptionAgreedQuote } from "./agreedPlanQuote.js";
 export type { SizedEditorOptions, SizedHostPorts, SizedSubjectFacts, SizedCatalogFact } from "./sizedEditPorts.js";
+export type { ReadSubscriptionEditCatalogAdmission } from "./packageEditContracts.js";
 export { SIZED_PARCEL_LEVER_KIND } from "./sizedParcelLever.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./contracts/sizedEdit.js";
 export { mapPackageEditError } from "./packageEditErrors.js";
@@ -1790,9 +1883,10 @@ export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
 export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
 export type { SubscriptionEditConsent, SubscriptionEditDisclosureLine } from "./contracts/editConsent.js";
 export { createPostgresLegacyEditConsentBridge } from "./editConsentLegacyBridge.js";
-export type { LegacyEditConsentRequest } from "./contracts/editConsent.js";
+export type { ClassicBundleEditRequest, LegacyEditConsentRequest } from "./contracts/editConsent.js";
 export { createPostgresSuccessorStore } from "./postgresSuccessorStore.js";
 export type { SuccessorPreviewBinding, SuccessorOfferInput } from "./postgresSuccessorStore.js";
+export { requireHistoricalProtocolBinding } from "./successorProtocolBindings.js";
 export type { HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 export type { SuccessorCaseKind, SuccessorProposalState, SuccessorResolutionRequest, SuccessorProposal } from "./contracts/successors.js";
 export { createPostgresSuccessorNotices, successorNoticeSources } from "./postgresSuccessorNotices.js";
@@ -2026,8 +2120,38 @@ export declare function nativeSubscriptionSchema(catalogue: {
 import type { PackageEditMoney, PackageEditQuoteLine, SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
 export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./contracts/packageEdit.js";
 import type { CompositionConstraint, CompositionRulesPort } from "@openlup/core/bundle";
+import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
+/** Read the selected revisions and exact price entries from trusted server state.
+ * The editor supplies the normalized desired set under its subscription lock.
+ * @experimental
+ */
+export type ReadSubscriptionEditCatalogAdmission = (db: SubscriptionQueryExecutor, input: {
+    subscriptionId: string;
+    lane: "classic" | "exact" | "sized" | "legacy";
+    cadenceDays: number;
+    lines: readonly {
+        variantId: string;
+        qty: number;
+        isAddon: boolean;
+    }[];
+}) => Promise<{
+    heads: readonly {
+        productId: string;
+        head: CatalogAcceptedReferenceV2["publicationHead"];
+    }[];
+    skuRevisions: readonly {
+        reference: CatalogAcceptedReferenceV2;
+        quantity: number;
+    }[];
+    priceContextVersions: readonly {
+        skuId: string;
+        priceListId: string;
+        entryId: string;
+        entry: Record<string, unknown>;
+    }[];
+} | null>;
 /** Trusted host ports; neither identity nor price evidence comes from a browser. */
 export interface PackageEditSubscription {
     cadenceDays: number;
@@ -2100,6 +2224,8 @@ export interface PackageEditLimits {
     maximumQuantity: number;
 }
 export interface PackageEditorOptions extends PackageEditQuotePorts {
+    /** @experimental */
+    readCatalogAdmission?: ReadSubscriptionEditCatalogAdmission;
     /** Required only for the exact portion lever. */
     portionModes?: SubscriptionPortionModes;
     /** One connection through commit/rollback; authorization precedes this factory. */
@@ -2128,6 +2254,7 @@ export declare function mapPackageEditError(error: unknown, phase: "preview" | "
 
 ```ts
 import type { SuccessorCaseKind } from "./contracts/successors.js";
+import type { ClassicBundleEditRequest } from "./contracts/editConsent.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
 import type { PackageEditActor, PackageEditApplyResult, PackageEditPreview, PackageEditRequest, PackageEditorOptions } from "./packageEditContracts.js";
 type EditAction = "update_package_template" | ExactSubscriptionEditAction;
@@ -2152,13 +2279,26 @@ export declare function createPostgresPackageEditor(options: PackageEditorOption
         previewId?: string;
     }>;
 };
+/** Opt-in classic bundle and resize editor using host-owned composition rules.
+ * The legacy bridge has its own command and quote ledger.
+ * @experimental
+ */
+export declare function createPostgresClassicBundleEditor(options: PackageEditorOptions): {
+    preview(actor: PackageEditActor, input: ClassicBundleEditRequest): Promise<PackageEditPreview<ClassicBundleEditRequest["action"]>>;
+    apply(actor: PackageEditActor, key: string, input: ClassicBundleEditRequest): Promise<PackageEditApplyResult<ClassicBundleEditRequest["action"]>>;
+};
 export {};
 ```
 ## dist/subscriptions/packageEditRead.d.ts
 
 ```ts
-import type { PackageEditReadPort } from "./packageEditContracts.js";
+import type { PackageEditActor, PackageEditPreview, PackageEditReadPort } from "./packageEditContracts.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export declare function readOwnedEditVersion(db: SubscriptionQueryExecutor, actor: PackageEditActor, id: string, lock: boolean): Promise<number>;
+export declare function readEditEligibility(db: SubscriptionQueryExecutor, actor: PackageEditActor, id: string): Promise<Record<string, unknown>>;
+export declare function assertEditVersion(expected: number | undefined, current: number): void;
+export declare function editPreviewEligibility<Action extends string>(row: Record<string, unknown>, id: string, action: Action, now: string, unpaidSuccessor?: boolean): PackageEditPreview<Action>;
+export declare function assertFreshEditEligible(row: Record<string, unknown>, now: string): void;
 /** The same settings key, column and strict integer domain are used by the definer apply. */
 export declare function createPostgresPackageEditReadPort(db: SubscriptionQueryExecutor): PackageEditReadPort;
 ```
@@ -2794,13 +2934,20 @@ export declare function createPostgresStockWaitStore(options: NativeStockWaitBin
 ## dist/subscriptions/postgresSuccessorNotices.d.ts
 
 ```ts
+import { z } from "zod";
 import type { OutboxEventRow, OutboxHandlerOutcome } from "@openlup/core/outbox";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
-import type { SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
+import type { SubscriptionLifecycleMessagePort, SubscriptionLifecycleMessageDescriptor } from "./contracts/messages.js";
+declare const waitMessage: z.ZodObject<{
+    from: z.ZodString;
+    to: z.ZodString;
+    subject: z.ZodString;
+    html: z.ZodString;
+}, z.core.$loose>;
 /** Inert source registrations. A host binds these to its existing outbox worker.
  * @experimental
  */
-export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2", "subscription_stock_wait.started", "subscription_stock_wait.resumed"];
+export declare const successorNoticeSources: readonly ["catalog.publication.committed", "subscription_stock_wait.opened.v1", "subscription_stock_wait.opened.v2", "subscription.successor.offered.v2", "subscription.predecessor_withdrawn.v2", "subscription_stock_wait.started", "subscription_stock_wait.resumed", "subscription_stock_wait.started.v2", "subscription_stock_wait.resumed.v2"];
 /** Source claims must be committed before invocation. Commerce commits its handoff
  * before M04 enqueue; a crash between enqueue and source acknowledgement replays
  * the same message key. Construction registers no worker or capability.
@@ -2822,10 +2969,19 @@ export declare function createPostgresSuccessorNotices(options: {
             reason: string;
         }>;
     };
-    /** Native M04 receipts share this store. For stock-wait facts the host freezes
-     * rendered copy with subscription_stock_wait_bind_notice(caseId,factId,message)
-     * before enqueue and reuses the returned message on every attempt. */
+    /** Native M04 receipts share this store. */
     delivery: SubscriptionLifecycleMessagePort;
+    /** The store freezes rendered stock-wait copy before invoking the transport.
+     * @experimental
+     */
+    stockWaitDelivery?: {
+        render(descriptor: SubscriptionLifecycleMessageDescriptor): Promise<z.input<typeof waitMessage>>;
+        send(input: {
+            messageKey: string;
+            templateSlug: string;
+            message: z.output<typeof waitMessage>;
+        }): Promise<void>;
+    };
     recipient(clientId: string): Promise<{
         recipientRef: string;
         locale: string;
@@ -2833,20 +2989,136 @@ export declare function createPostgresSuccessorNotices(options: {
 }): {
     handle(row: OutboxEventRow): Promise<OutboxHandlerOutcome>;
 };
+export {};
 ```
 ## dist/subscriptions/postgresSuccessorStore.d.ts
 
 ```ts
+import { z } from "zod";
 import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { type HistoricalSuccessorProtocolBinding } from "./successorProtocolBindings.js";
 import type { RenewalFrozenSnapshot } from "./contracts/renewal.js";
-import type { PackageEditActor } from "./packageEditContracts.js";
+import type { PackageEditActor, PackageEditLimits } from "./packageEditContracts.js";
+import type { SizedEditPolicy } from "./contracts/sizedEdit.js";
 import type { SuccessorCaseKind, SuccessorResolutionRequest } from "./contracts/successors.js";
+import type { SizedHostPorts } from "./sizedEditPorts.js";
+/** Internal native wait observation wire. @experimental */
+export declare const nativeWaitDeficitSchema: z.ZodObject<{
+    sku: z.ZodString;
+    requiredUnits: z.ZodNumber;
+    reservedUnits: z.ZodNumber;
+    availableUnits: z.ZodNumber;
+    missingUnits: z.ZodNumber;
+}, z.core.$loose>;
+/** Internal versioned case wire. @experimental */
+export declare const successorCaseReadSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    caseKind: z.ZodLiteral<"legacy">;
+    case: z.ZodObject<{
+        id: z.ZodGUID;
+        client_id: z.ZodGUID;
+        subscription_id: z.ZodGUID;
+        fingerprint: z.ZodString;
+        identity_key: z.ZodString;
+        scheduled_at: z.ZodISODateTime;
+        cycle_number: z.ZodNumber;
+        state: z.ZodEnum<{
+            resumed: "resumed";
+            closed: "closed";
+            waiting: "waiting";
+            stock_secured: "stock_secured";
+        }>;
+        deficits: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            requiredUnits: z.ZodNumber;
+            reservedUnits: z.ZodNumber;
+            availableUnits: z.ZodNumber;
+            missingUnits: z.ZodNumber;
+        }, z.core.$loose>>;
+        cycle_id: z.ZodNullable<z.ZodGUID>;
+        order_id: z.ZodNullable<z.ZodGUID>;
+        fulfillment_id: z.ZodNullable<z.ZodGUID>;
+        opened_at: z.ZodISODateTime;
+        last_checked_at: z.ZodISODateTime;
+        last_selected_at: z.ZodNullable<z.ZodISODateTime>;
+        stock_secured_at: z.ZodNullable<z.ZodISODateTime>;
+        resumed_at: z.ZodNullable<z.ZodISODateTime>;
+        closed_at: z.ZodNullable<z.ZodISODateTime>;
+        block_reason: z.ZodNullable<z.ZodString>;
+        waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
+        renewal_operation_id: z.ZodGUID;
+    }, z.core.$loose>;
+    schemaVersion: z.ZodLiteral<2>;
+}, z.core.$loose>, z.ZodObject<{
+    caseKind: z.ZodLiteral<"successor">;
+    case: z.ZodObject<{
+        id: z.ZodGUID;
+        client_id: z.ZodGUID;
+        subscription_id: z.ZodGUID;
+        fingerprint: z.ZodString;
+        identity_key: z.ZodString;
+        scheduled_at: z.ZodISODateTime;
+        cycle_number: z.ZodNumber;
+        state: z.ZodEnum<{
+            resumed: "resumed";
+            closed: "closed";
+            waiting: "waiting";
+            stock_secured: "stock_secured";
+        }>;
+        deficits: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            requiredUnits: z.ZodNumber;
+            reservedUnits: z.ZodNumber;
+            availableUnits: z.ZodNumber;
+            missingUnits: z.ZodNumber;
+        }, z.core.$loose>>;
+        cycle_id: z.ZodNullable<z.ZodGUID>;
+        order_id: z.ZodNullable<z.ZodGUID>;
+        fulfillment_id: z.ZodNullable<z.ZodGUID>;
+        opened_at: z.ZodISODateTime;
+        last_checked_at: z.ZodISODateTime;
+        last_selected_at: z.ZodNullable<z.ZodISODateTime>;
+        stock_secured_at: z.ZodNullable<z.ZodISODateTime>;
+        resumed_at: z.ZodNullable<z.ZodISODateTime>;
+        closed_at: z.ZodNullable<z.ZodISODateTime>;
+        block_reason: z.ZodNullable<z.ZodString>;
+        waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
+        operation_id: z.ZodGUID;
+    }, z.core.$loose>;
+    waitingNoticeRelevant: z.ZodOptional<z.ZodBoolean>;
+    schemaVersion: z.ZodLiteral<2>;
+}, z.core.$loose>], "caseKind">;
+declare const recoverySelection: z.ZodObject<{
+    caseKind: z.ZodLiteral<"successor">;
+    caseId: z.ZodGUID;
+    operationId: z.ZodGUID;
+    rootOperationId: z.ZodGUID;
+    proposalId: z.ZodGUID;
+    claimGeneration: z.ZodNumber;
+}, z.core.$loose>;
+/** Internal schedule identity shared by successor reads and notices.
+ * @experimental
+ */
+export declare function successorScheduleKey(subscriptionId: string, scheduledAt: string): string;
 /** Internal source check shared by the existing preview owners. */
 export declare function lockUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, subscriptionId: string, source: {
     caseId: string;
     caseKind: SuccessorCaseKind;
 }): Promise<void>;
+/** Record a validated unpaid preview on its owner connection after locking the subscription.
+ * @experimental
+ */
+export declare function recordUnpaidSuccessorPreview(db: SubscriptionQueryExecutor, input: {
+    actor: PackageEditActor;
+    subscriptionId: string;
+    action: string;
+    quoteHash: string;
+    templateVersion: number;
+    expiresAt: string;
+    request: unknown;
+    snapshot: unknown;
+    totals: unknown;
+    now: string;
+}): Promise<string>;
 /** Server-owned enrichment of a recorded native preview. The store preholds the
  * subscription, client, preview and source parents. Enrichment may update only
  * that preview; it takes no catalogue fence or other commerce lock.
@@ -2890,6 +3162,35 @@ export declare function createPostgresSuccessorStore(options: {
     codec: NativeRenewalCodec;
     previews: SuccessorPreviewBinding;
     historicalBindings?: readonly HistoricalSuccessorProtocolBinding[];
+    /** The same host assertion used by the ordinary sized editor. Required for fresh sized acceptance.
+     * @experimental
+     */
+    assertCurrentSizedFacts?: SizedHostPorts["assertCurrentFacts"];
+    /** Host edit limits for fresh stock-wait acceptance.
+     * @experimental
+     */
+    editLimits?: {
+        package: PackageEditLimits;
+        sized: Pick<SizedEditPolicy, "maximumCoreLines" | "maximumAddonLines" | "maximumQuantity" | "allowedCadences">;
+    };
+    /** Select the most recent active and healthy saved method, then the most recent active method,
+     * then the most recent method. Compare last update first and creation time second.
+     * Read the owned subscription's payment data without changing it. Keep missing method
+     * references and buyer fields nullable.
+     * @experimental
+     */
+    selectSavedMethod?(db: SubscriptionQueryExecutor, input: {
+        subscriptionId: string;
+        clientId: string;
+        asOf: string;
+    }): Promise<{
+        methodRef: string | null;
+        buyer: {
+            email: string | null;
+            firstName: string | null;
+            lastName: string | null;
+        };
+    }>;
 }): {
     offer(actor: PackageEditActor, input: SuccessorOfferInput): Promise<Record<string, unknown>>;
     decide(actor: PackageEditActor, input: {
@@ -2901,8 +3202,8 @@ export declare function createPostgresSuccessorStore(options: {
     }): Promise<Record<string, unknown>>;
     resolve(actor: PackageEditActor, input: Omit<SuccessorResolutionRequest, "clientId">): Promise<Record<string, unknown>>;
     readCase(caseId: string, caseKind: SuccessorCaseKind): Promise<Record<string, unknown> | null>;
-    listDue(limit: number, now: string): Promise<unknown>;
-    listCandidates(limit: number, now: string): Promise<unknown>;
+    listDue(limit: number | null, now: string): Promise<unknown[]>;
+    listCandidates(limit: number | null, now: string): Promise<{} | null>;
     claim(input: {
         identityKey: string;
         fingerprint: string;
@@ -2922,6 +3223,8 @@ export declare function createPostgresSuccessorStore(options: {
         fingerprint: string;
         workerId: string;
         now: string;
+        /** @experimental */
+        selection?: z.input<typeof recoverySelection>;
     }): Promise<Record<string, unknown>>;
     prepare(input: {
         operationId: string;
@@ -2941,6 +3244,7 @@ export declare function createPostgresSuccessorStore(options: {
     }): Promise<Record<string, unknown>>;
     markResumed(orderId: string): Promise<Record<string, unknown> | null>;
 };
+export {};
 ```
 ## dist/subscriptions/postgresWinback.d.ts
 
@@ -3231,11 +3535,26 @@ export declare function createSizedCompositionRules(input: {
 
 ```ts
 import type { SizedEditContext, SizedEditPolicy, SizedEditPhase, SizedEditRequest } from "./contracts/sizedEdit.js";
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Internal parser for the shipped sized wire. @experimental */
+export declare function parseSizedEditRequest(request: unknown): SizedEditRequest;
+/** Internal parse for receipt dispatch. @experimental */
+export declare function tryParseSizedEditRequest(request: unknown): SizedEditRequest | null;
+/** The successor wire requires the flat form for both requested and effective constraints.
+ * @experimental
+ */
+export declare function parseSuccessorSizedEditRequest(input: unknown, evidence?: {
+    subscriptionId: string;
+    applyPayload: unknown;
+}): SizedEditRequest;
 export declare function readSizedEditContext(db: SubscriptionQueryExecutor, clientId: string, id: string, optIn?: boolean): Promise<SizedEditContext>;
+export declare function readSizedConsentPhase(db: SubscriptionQueryExecutor, clientId: string, subscriptionId: string): Promise<{
+    upcomingCycle: number;
+    phase: "none" | "fixed" | "graduation_pending";
+}>;
 /** Construct once per authenticated request; do not share across preview/apply. */
 export declare function createSizedEditContextScope(read: (id: string, optIn: boolean) => Promise<SizedEditContext>): (id: string, optIn?: boolean) => Promise<SizedEditContext>;
-export declare function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount">, policy: SizedEditPolicy): SizedEditPhase;
+export declare function sizedEditPhase(context: Pick<SizedEditContext, "marker" | "templateVersion" | "paidCycleCount" | "numberedPhase">, policy: SizedEditPolicy): SizedEditPhase;
 export declare function isSizedOptIn(request: {
     action: string;
     resizeLever?: unknown;
@@ -3252,6 +3571,8 @@ import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEdi
 import type { SizedEditorOptions } from "./sizedEditPorts.js";
 /** The host composes this alongside its existing classic binding. One callback owns one connection through commit. */
 export declare function createPostgresSizedEditor(options: SizedEditorOptions): {
+    /** Used before binding dispatch to preserve an owned historical receipt. @experimental */
+    replayCompleted(actor: PackageEditActor, key: string, request: unknown): Promise<SizedEditApplyResult | null>;
     candidates(actor: PackageEditActor, id: string, optIn?: boolean): Promise<{
         context: SizedEditContext;
         catalog: {
@@ -3280,6 +3601,7 @@ export declare function createPostgresSizedEditor(options: SizedEditorOptions): 
     }>;
     apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult>;
 };
+type SizedEditor = ReturnType<typeof createPostgresSizedEditor>;
 /** Binding dispatch does not read sized context for lifecycle or ordinary classic operations. */
 export declare function createOfferDispatchedSubscriptionEditor(input: {
     readBinding(actor: PackageEditActor, id: string): Promise<"classic" | "sized.v1" | null>;
@@ -3287,7 +3609,7 @@ export declare function createOfferDispatchedSubscriptionEditor(input: {
         preview(actor: PackageEditActor, request: never): Promise<unknown>;
         apply(actor: PackageEditActor, key: string, request: never): Promise<unknown>;
     };
-    sized: ReturnType<typeof createPostgresSizedEditor>;
+    sized: Omit<SizedEditor, "replayCompleted" | "previewStockWaitSuccessor"> & Partial<Pick<SizedEditor, "replayCompleted">>;
 }): {
     preview(actor: PackageEditActor, request: {
         subscriptionId: string;
@@ -3299,6 +3621,7 @@ export declare function createOfferDispatchedSubscriptionEditor(input: {
     }): Promise<unknown>;
 };
 export declare function mapSizedEditError(error: unknown, phase: "preview" | "apply", action?: string): import("./packageEditErrors.js").PackageEditErrorMapping;
+export {};
 ```
 ## dist/subscriptions/sizedEditPorts.d.ts
 
@@ -3306,6 +3629,7 @@ export declare function mapSizedEditError(error: unknown, phase: "preview" | "ap
 import type { SubscriptionTermsAdmission } from "./contracts/packageEdit.js";
 import type { SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedQuoteRequest, SizedRecurringQuote } from "./contracts/sizedEdit.js";
 import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+import type { ReadSubscriptionEditCatalogAdmission } from "./packageEditContracts.js";
 /** Host verifies its current documents and translates physical, demand and exclusion facts.
  * Retained withdrawn identities must be resolved exactly, independently of discovery. */
 export interface SizedCatalogFact {
@@ -3367,6 +3691,8 @@ export interface SizedHostPorts {
     };
 }
 export interface SizedEditorOptions extends SizedHostPorts {
+    /** @experimental */
+    readCatalogAdmission?: ReadSubscriptionEditCatalogAdmission;
     policy: SizedEditPolicy;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     now(): string;
@@ -3429,7 +3755,7 @@ export declare function quoteSizedEdit(input: {
     subjectFacts: SizedSubjectFacts;
     optInFacts: Record<string, unknown> | null;
 }>;
-export declare function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: SizedEditContext, policy: SizedEditPolicy): void;
+export declare function assertSizedSubjectFacts(facts: SizedSubjectFacts, context: Pick<SizedEditContext, "clientId" | "subscriptionId">, policy: Pick<SizedEditPolicy, "maximumExclusions">): void;
 export declare function sizedCandidateCompatibility(catalog: readonly SizedCatalogFact[], facts: SizedSubjectFacts): {
     selectable: boolean;
     variantId: string;
@@ -3553,5 +3879,6 @@ export declare class Lc10ProtocolBindingError extends Error {
     readonly code = "lc10_protocol_binding_unavailable";
     constructor();
 }
+/** Resolve one exact installed authority for retained successor evidence. @experimental */
 export declare function requireHistoricalProtocolBinding(input: Omit<HistoricalSuccessorProtocolBinding, "authorityRef">, installedBindings: readonly HistoricalSuccessorProtocolBinding[]): HistoricalSuccessorProtocolBinding;
 ```

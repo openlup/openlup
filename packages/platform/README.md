@@ -1495,28 +1495,47 @@ schemas remain strict. `createPostgresCatalogWithdrawalImpact` calls the same
 unpaginated obligation query as archive, including successor generations and
 waits. Unknown or unavailable evidence never means no obligations.
 
-`createPostgresSuccessorStore` accepts server-owned LC9 preview enrichment and a
+`createPostgresSuccessorStore` accepts server-owned preview enrichment and a
 native renewal codec. Offers require explicit acceptance. Only the dedicated
 unpaid-wait command can supersede a frozen basket outside the ordinary edit
 window; it retains the original cycle anchor and refuses paid or provider-owned
-work.
+work. The resolver validates the retained quote and next basket before closing
+the source wait and releasing eligible holds, then applies the accepted edit.
 The native package and sized editors expose experimental
 `previewStockWaitSuccessor` methods for that exact unpaid source. They reuse the
 ordinary pricing, baseline, consent and ledger owners; only the cutoff refusal
 is lifted after authenticating the current frozen wait. Ordinary preview keeps
 its cutoff. A successful successor preview supplies the native preview ID for
 the existing server-owned admission and codec enrichment binding.
+For sized acceptance, supply the ordinary sized editor's `assertCurrentFacts`
+callback as `assertCurrentSizedFacts`. The successor store checks the retained
+subject and calls that host assertion on the apply connection before taking
+the catalogue fence. Native acceptance SQL is an owner-only trusted primitive
+that compares retained quote facts and accepts its internal payload grammar.
+Customer-facing roles use the host wrapper. Successor sized requests require a
+flat composition constraint and the current sized line fields. Ordinary sized
+editor entry points keep their existing request behavior.
+Supply `editLimits` from the host's package and sized editors to accept a fresh
+stock-wait successor quote. The wrapper checks the accepted cadence, line counts
+and quantities against those bounds in the acceptance transaction.
+Bind `selectSavedMethod` to attach a saved-method selection to recovery
+candidates and prepared successor attempts. Among saved methods for the owned
+subscription, prefer active and healthy methods, then active methods, then the
+most recent method. Within each group, order by most recently updated and then
+by most recently created. Missing method references and buyer fields stay
+nullable. This selection leaves frozen payment authority intact.
+To record a resumed successor wait after fulfillment, bind the store's
+`markResumed` as the paid-fulfillment handler's `realizationAdmitted` callback.
+The handler acknowledges the paid event after the observer completes.
 Existing legacy operation and case readers remain unchanged; version 2
 case reads require an explicit kind. New execution identities never alias the
 root operation. `createPostgresSuccessorNotices` binds opened and publication
 facts to the same notice writer and the existing M04 descriptor port. Recipient
 failures retry, and durable message keys survive source-event and worker replay.
-The same factory handles native started/resumed notices. It checks accepted M04
-receipts before live dependencies, validates the authoritative case binding and
-milestone, and carries the checked deficit observation in the descriptor. The
-host freezes rendered copy through `subscription_stock_wait_bind_notice` before
-M04 enqueue and reuses the returned message on retry; native M04 receipts share
-the source store.
+Bind `stockWaitDelivery` to render and send started and resumed notices for
+either case kind. The notice store checks accepted M04 receipts before live
+dependencies, validates the case and milestone, and freezes the rendered
+message before sending. Retries use the first stored message and key.
 These factories register no workers or capabilities. Follow the
 [migration instructions](changes/lc10.md) before composing a host runtime.
 
@@ -2801,6 +2820,8 @@ published complete migration chain. See the
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
 Native editor previews expose experimental `editConsent` data with the complete agreed-to-proposed per-line comparison and accepted hash. `createPostgresLegacyEditConsentBridge` supplies this comparison around the original legacy bundle transaction. Compose it with one authenticated transaction connection; construction activates nothing. Missing agreement evidence refuses rather than substituting current catalogue prices. See [subscription contracts](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+
+`createPostgresClassicBundleEditor` supplies a separate experimental bundle update and resize binding. Omitting add-ons retains the accepted set. A content-only edit shows the retained amounts and reports whether the live comparison differs. Use the trusted `readCatalogAdmission` port to attach the exact evidence checked by native acceptance for governed catalogue edits.
 
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor and the sized parcel lever value;
