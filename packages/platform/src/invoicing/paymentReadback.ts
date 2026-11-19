@@ -6,9 +6,15 @@ type PaymentEvidence = {
 };
 
 export async function readInvoicePaymentEvidence(
-  payment: { provider: string; providerPaymentId: string | null },
+  payment: {
+    provider: string;
+    providerPaymentId: string | null;
+    /** Canonical claim amount for comparison when the captured amount is unavailable. */
+    amountCents?: number;
+  },
   provider: { readPayment(input: { providerPaymentId: string }): Promise<{
     status: "succeeded" | "failed" | "pending" | "unknown"; providerStatus: string; amountMinor: number | null; currency: string | null;
+    configuredAmountMinor?: number;
   }> } | undefined,
 ): Promise<PaymentEvidence> {
   const providerName = payment.provider;
@@ -24,16 +30,23 @@ export async function readInvoicePaymentEvidence(
     const readback = await provider.readPayment({
       providerPaymentId: payment.providerPaymentId,
     });
+    const capturedAmount = integerOrNull(readback.amountMinor);
+    const configuredAmount = readback.status === "succeeded" && capturedAmount === null
+      ? integerOrNull(readback.configuredAmountMinor ?? null) : null;
+    const expectedAmount = integerOrNull(payment.amountCents ?? null);
+    const configuredMismatch = configuredAmount !== null && expectedAmount !== null && configuredAmount !== expectedAmount;
     return {
-      providerStatus: readback.status,
-      providerAmountCents: integerOrNull(readback.amountMinor),
+      providerStatus: configuredMismatch ? "unknown" : readback.status,
+      providerAmountCents: capturedAmount,
       providerCurrency: currencyOrNull(readback.currency),
       providerEvidence: {
         source: "provider_api",
         provider: providerName,
         providerPaymentId: payment.providerPaymentId,
         providerStatus: readback.providerStatus.slice(0, 80),
-        amountAvailable: integerOrNull(readback.amountMinor) !== null,
+        amountAvailable: capturedAmount !== null,
+        ...(configuredAmount !== null ? { configuredComparisonAmountCents: configuredAmount } : {}),
+        ...(configuredMismatch ? { unavailableReason: "provider_configured_amount_mismatch" } : {}),
         currencyAvailable: currencyOrNull(readback.currency) !== null,
       },
     };

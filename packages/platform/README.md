@@ -2153,6 +2153,16 @@ attempt-bound failure rung. Same and stale observations replay without changing
 case, authorization or notice authority. Historical unattributed cases return a
 named refusal while retaining applied money.
 
+Once the durable capture evidence migration is applied, native provider success
+requires a signed webhook or a recorded provider readback for the active payment
+attempt. Both carry the actual received amount, currency and
+`capturedAmountBasis: "provider_capture_v1"`. Custom reconciliation callers
+supply that basis with the observed `amountMinor` and `currency` and
+`normalizedStatus: "succeeded"` in the readback payload after confirming the
+capture through the provider. Use the active attempt's stored remote reference
+for that lookup. Apply the packaged migration and update the payment runtime
+together. Exact completed results and ordinary decline evidence remain valid.
+
 `paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are now
 `supported` for that installed chain. Auto-reopen remains default off. Explicit
 absence proof, watchdog evidence, age and conflict guards authorize one recorded

@@ -2158,6 +2158,7 @@ type ProviderRenewalWebhookControl = {
     ingestPaymentEvent?: ProviderRenewalWebhookIngest;
     applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{
         replayed: boolean;
+        kind?: string;
     }>;
 };
 type ProviderRenewalWebhook = {
@@ -2170,6 +2171,7 @@ type ProviderRenewalAttempt = {
     settlementStatus: string;
     amountMinor: number;
     currency: string;
+    captureReviewRequired?: boolean;
     requestPayload: Record<string, unknown>;
     responsePayload: Record<string, unknown>;
     paymentAttempt: {
@@ -2201,6 +2203,7 @@ export interface ProviderRenewalPaymentPorts {
         }>;
         applyPaymentResult(input: ProviderRenewalResultInput): Promise<{
             replayed: boolean;
+            kind?: string;
         }>;
     };
     controlFor(executor: SubscriptionQueryExecutor): ProviderRenewalPaymentPorts["control"];
@@ -2271,6 +2274,7 @@ export interface ProviderRenewalPaymentPorts {
                     currency: string;
                 };
                 providerOccurredAt: string | null;
+                capturedAmountBasis?: "provider_capture_v1";
             } | {
                 kind: "unknown" | "unsupported" | "absent";
             }>;

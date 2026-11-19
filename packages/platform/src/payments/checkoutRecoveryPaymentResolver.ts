@@ -1,13 +1,13 @@
 import type { CheckoutRecoveryPaymentResolution, CheckoutRecoveryPaymentResolver, PaymentProviderRecoveryProvider } from "./contracts/repair.js";
 import type { PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentProviderReconciliationPort } from "./contracts/reconciliation.js";
 import { terminalAmountMismatch } from "./paymentProviderReconciliationEvidence.js";
-import { toClaimedAttemptShape, verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
+import { hasCommittedCaptureReview, sameCanonicalAttempt, toClaimedAttemptShape, verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
 
 const LIVE_ATTEMPT_STATUSES = new Set(["sent_to_provider", "requires_action", "processing", "created"]);
 
 export function createCheckoutRecoveryPaymentResolver(deps: {
   readPort: PaymentVerifyReadPort;
-  applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+  applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
   providers: Partial<Record<string, PaymentProviderRecoveryProvider>>;
   now?: () => Date;
 }): CheckoutRecoveryPaymentResolver {
@@ -33,11 +33,14 @@ async function resolveSnapshot(
   snapshot: VerifiableAttemptSnapshot,
   deps: {
     readPort: PaymentVerifyReadPort;
-    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
     providers: Partial<Record<string, PaymentProviderRecoveryProvider>>;
   },
   now: () => Date,
 ): Promise<CheckoutRecoveryPaymentResolution> {
+  const captureReview = await hasCommittedCaptureReview(snapshot, deps.applyPort).catch(() => null);
+  if (captureReview === true) return { kind: "manual_review" };
+  if (captureReview === null) return { kind: "awaiting_provider" };
   if (snapshot.attemptStatus === "succeeded" || snapshot.intentStatus === "succeeded") {
     return { kind: "paid" };
   }
@@ -70,6 +73,14 @@ async function resolveSnapshot(
       return { kind: "manual_review" };
     }
     if (recovery.clientAction) {
+      const current = await deps.readPort.readVerifiableAttempt({
+        orderId: snapshot.orderId,
+        paymentIntentId: snapshot.paymentIntentId,
+      });
+      if (!current || current.orderId !== snapshot.orderId || current.orderClientId !== snapshot.orderClientId
+        || current.paymentIntentId !== snapshot.paymentIntentId) return { kind: "awaiting_provider" };
+      if (await hasCommittedCaptureReview(current, deps.applyPort)) return { kind: "manual_review" };
+      if (!sameCanonicalAttempt(snapshot, current)) return { kind: "awaiting_provider" };
       return { kind: "resume_existing", clientAction: recovery.clientAction };
     }
     if (recovery.status.status === "pending" || recovery.status.status === "unknown") {
@@ -81,12 +92,13 @@ async function resolveSnapshot(
 
     const verified = await verifyPaymentAttemptNow({
       snapshot,
-      applyPort: deps.applyPort,
+      applyPort: { applyTerminalResult: input => deps.applyPort.applyTerminalResult(input) },
       providers: deps.providers,
       providerPaymentId,
       providerStatus: recovery.status,
       now,
     });
+    if (verified.status === "manual_review") return { kind: "manual_review" };
     if (verified.status !== "succeeded" && verified.status !== "failed") {
       return { kind: "awaiting_provider" };
     }
@@ -95,13 +107,15 @@ async function resolveSnapshot(
       orderId: snapshot.orderId,
       paymentIntentId: snapshot.paymentIntentId,
     });
+    if (current?.captureReviewRequired) return { kind: "manual_review" };
     if (current?.attemptStatus === "succeeded" || current?.intentStatus === "succeeded") {
       return { kind: "paid" };
     }
     if (current?.attemptStatus === "failed" || current?.intentStatus === "failed") {
       return { kind: "retry_new" };
     }
-    return verified.status === "succeeded" ? { kind: "paid" } : { kind: "retry_new" };
+    if (verified.status === "failed") return { kind: "retry_new" };
+    return { kind: verified.applied ? "paid" : "awaiting_provider" };
   } catch {
     return { kind: "awaiting_provider" };
   }

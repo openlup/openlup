@@ -52,12 +52,14 @@ export function createStripeConformanceFixture() {
     const money = { amountMinor: fixture.amountMinor, currency: fixture.currency };
     const identity = { provider: "stripe", providerPaymentRef: fixture.remote, intentRef: fixture.intentRef, attemptRef: fixture.attemptRef };
     function verification(sourceType: string, outcome: VerifiedPaymentEvidence["outcome"], object: Record<string, unknown> = {}, signedAt = timestamp) {
-      const amount = "amount" in object ? object.amount as number | undefined : money.amountMinor;
+      const amountKey = outcome === "succeeded" ? "amount_received" : "amount";
+      const rawAmount = amountKey in object ? object[amountKey] as number | undefined : money.amountMinor;
+      const amount = outcome === "succeeded" && rawAmount === 0 ? undefined : rawAmount;
       const currency = "currency" in object ? object.currency as string | undefined : money.currency;
       const observedMoney = amount && currency ? { amountMinor: amount, currency: currency.toUpperCase() } : null;
       const eventId = `evt_${fixture.remote}_${outcome}`;
       const rawBody = Buffer.from(JSON.stringify({ id: eventId, type: sourceType, created: timestamp, data: { object: {
-        id: fixture.remote, amount: money.amountMinor, currency: money.currency.toLowerCase(),
+        id: fixture.remote, amount: money.amountMinor, amount_received: money.amountMinor, currency: money.currency.toLowerCase(),
         metadata: { paymentIntentId: fixture.intentRef }, client_secret: `transient_${fixture.remote}`, ...object,
       } } }));
       const digest = createHmac("sha256", signingKey).update(`${signedAt}.`).update(rawBody).digest("hex");
@@ -68,8 +70,17 @@ export function createStripeConformanceFixture() {
         ...(outcome === "refunded" ? { refund: { kind: "cumulative-snapshot", operationId: `ch_${fixture.remote}`,
           originalPaymentMoney: money, refundedMoney: { amountMinor: 500, currency: money.currency } } } : {}),
       };
+      const configuredAmount = "amount" in object ? object.amount : money.amountMinor;
+      const legacyAmount = typeof configuredAmount === "number" ? configuredAmount : rawAmount;
+      const historicalCaptureFingerprint = outcome === "succeeded" && typeof legacyAmount === "number"
+        && legacyAmount > 0 && legacyAmount !== observedMoney?.amountMinor && currency
+        ? createHash("sha256").update(JSON.stringify({ ...normalized,
+          money: { amountMinor: legacyAmount, currency: currency.toUpperCase() } })).digest("hex")
+        : undefined;
       const expected: VerifiedPaymentEvidence = { ...normalized,
         fingerprint: createHash("sha256").update(JSON.stringify(normalized)).digest("hex"),
+        ...(historicalCaptureFingerprint ? { historicalCaptureFingerprint } : {}),
+        ...(outcome === "succeeded" && observedMoney ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
         providerAuditPayload: { provider: "stripe", eventId, eventType: sourceType, providerPaymentId: fixture.remote,
           amountMinor: amount ?? null, currency: currency?.toUpperCase() ?? null,
           ...(outcome === "refunded" ? { stripeRefundSnapshot: { chargeId: `ch_${fixture.remote}`, amountRefundedMinor: 500 } } : {}),
@@ -127,8 +138,8 @@ export function stripeSafetyFixture() {
         signatureMismatch: { input: { ...valid.input, rawBody: Buffer.from("tampered") }, expected: { kind: "refusal", reason: "signature" } },
         partialAmount: verification("charge.refunded", "refunded", { id: `ch_${subject.readbackInput.identity.providerPaymentRef}`,
           payment_intent: subject.readbackInput.identity.providerPaymentRef, amount_refunded: 500 }),
-        zeroAmount: verification("payment_intent.succeeded", "succeeded", { amount: 0 }),
-        missingAmount: verification("payment_intent.succeeded", "succeeded", { amount: undefined }),
+        zeroAmount: verification("payment_intent.succeeded", "succeeded", { amount_received: 0 }),
+        missingAmount: verification("payment_intent.succeeded", "succeeded", { amount_received: undefined }),
         missingCurrency: verification("payment_intent.succeeded", "succeeded", { currency: undefined }),
         chargeback: verification("charge.dispute.created", "disputed", { id: "dp_fixture", payment_intent: subject.readbackInput.identity.providerPaymentRef }),
       } } };

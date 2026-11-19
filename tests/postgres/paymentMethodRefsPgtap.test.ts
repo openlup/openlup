@@ -536,7 +536,14 @@ async function sandboxCompatibilityFixture(channel: "sandbox" | "captured", init
     await control.finalizeProviderAttempt({ idempotencyKey: `finalize:${order}`, paymentIntentId: purchase.intent, paymentAttemptId: attempt.paymentAttemptId,
       providerIdempotencyKey: `provider:${order}`, providerRequestFingerprint: "e".repeat(64), providerAttemptId: `attempt:${order}`, providerSessionId: null,
       attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
-    await control.applyPaymentResult({ idempotencyKey: `result:${order}`, paymentIntentId: purchase.intent, paymentEventId: null, resultStatus: "succeeded", occurredAt: AT, failureReason: null });
+    const ingress = createPostgresPaymentWebhookControlPort(db, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" });
+    const observed = await ingress.ingestPaymentEvent({
+      provider: "card_rail", providerEventId: `fixture-capture:${order}`, eventType: "payment.succeeded",
+      paymentIntentId: purchase.intent, paymentAttemptId: attempt.paymentAttemptId, providerPaymentId: `attempt:${order}`,
+      amountMinor: 200, currency: "XXX", occurredAt: AT, rawPayload: {}, capturedAmountBasis: "provider_capture_v1",
+    });
+    await control.applyPaymentResult({ idempotencyKey: `result:${order}`, paymentIntentId: purchase.intent,
+      paymentEventId: observed.paymentEventId, resultStatus: "succeeded", occurredAt: AT, failureReason: null });
   } else await purchase.settle();
   await call(db, "subscription_declare_provisional_activation", [`declare:${order}`, order, 28]);
   const facts = { settlementChannelKey: "sandbox", authorizationRef: "sandbox-authorization", unattendedChargeAuthorizedAt: new Date().toISOString(),
