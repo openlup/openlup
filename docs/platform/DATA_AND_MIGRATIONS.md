@@ -109,7 +109,7 @@ raise SQLSTATE `42501`.
 statement, so ATP reads settings and stock against the same snapshot. Its
 TypeScript `readInstalled` entry takes only the SKU list.
 
-The [preview forward](../../db/platform/migrations/20261123149500_inventory_new_purchase_stock_preview.sql)
+The [preview forward](../../db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql)
 adds `public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)` for
 proposed-horizon estimates. It uses caller stock permissions and the existing
 validator, with EXECUTE granted to `service_role` where that role exists. For a

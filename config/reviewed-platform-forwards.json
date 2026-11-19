@@ -5781,7 +5781,7 @@
       },
       {
         "row": "F2C-INVENTORY-NEW-PURCHASE-STOCK-PREVIEW",
-        "path": "db/platform/migrations/20261123149500_inventory_new_purchase_stock_preview.sql",
+        "path": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -8253,7 +8253,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261123149500_inventory_new_purchase_stock_preview.sql",
+      "path": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
       "sha256": "275ffae4413f157de5d408fecd32dda6cb45c186b95efedcf7605fb8aedc8d55",
       "functions": [
         {

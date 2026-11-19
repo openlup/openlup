@@ -88,7 +88,7 @@ it.each([
   "20261123130000_inventory_renewal_protection_policy.sql",
   "20261123142000_inventory_renewal_protection_validation.sql",
   "20261123147000_inventory_atp_aggregate_renewal_credits.sql",
-  "20261123149500_inventory_new_purchase_stock_preview.sql",
+  "20261123152000_inventory_new_purchase_stock_preview.sql",
 ])("admits %s against its complete native prefix", file => {
   const path = `db/platform/migrations/${file}`;
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
