@@ -79,11 +79,12 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
+export const starterSettingsCli = "host/settings.ts";
 const settingsHeading = "\n## Change a business setting\n";
 const previewGuidance = "\nBefore changing renewal stock protection, run a connected, read-only preview.";
 
 function hasSettingsPreview(snapshot: ReturnType<typeof starterUpgradeSnapshot>): boolean {
-  return snapshot.files["host/settings.ts"]?.includes("Preview before any change.") ?? false;
+  return snapshot.files[starterSettingsCli]?.includes("Preview before any change.") ?? false;
 }
 
 function sectionEnd(guide: string, start: number): number {
@@ -202,14 +203,26 @@ ${current.slice(predecessor.length)}`;
 export const starterEditorPorts = "host/editor-ports.ts";
 
 export function reconcileEditorCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
-  const managed = join(app, starterEditorPorts);
-  const customized = Buffer.from(predecessor + "\nexport const localEditorNote = 'Adopter editor customization';\n");
-  writeFileSync(managed, customized);
-  assertUpgradeConflict(applyRefused(), starterEditorPorts);
-  const current = readFileSync(managed);
-  assert.deepEqual(current, customized, "refused upgrade changed the managed editor");
+  return reconcileManagedCustomization(app, predecessor, applyRefused, starterEditorPorts,
+    "owned/editor-customization.ts", "\nexport const localEditorNote = 'Adopter editor customization';\n");
+}
 
-  const path = "owned/editor-customization.ts";
+export function reconcileSettingsCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
+  return reconcileManagedCustomization(app, predecessor, applyRefused, starterSettingsCli,
+    "owned/settings-customization.ts", "\nexport const localSettingsNote = 'Adopter settings customization';\n");
+}
+
+function reconcileManagedCustomization(
+  app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
+  managedPath: string, path: string, edit: string,
+) {
+  const managed = join(app, managedPath);
+  const customized = Buffer.from(predecessor + edit);
+  writeFileSync(managed, customized);
+  assertUpgradeConflict(applyRefused(), managedPath);
+  const current = readFileSync(managed);
+  assert.deepEqual(current, customized, `refused upgrade changed ${managedPath}`);
+
   const bytes = current.subarray(Buffer.byteLength(predecessor));
   mkdirSync(dirname(join(app, path)), { recursive: true });
   writeFileSync(join(app, path), bytes, { flag: "wx" });
@@ -226,8 +239,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  const settingsPreviewUpgrade = hasSettingsPreview(to) && !hasSettingsPreview(from);
   phase("migrate-owned-contracts", () => {
-    const preserveLocalGuide = hasSettingsPreview(to) && !hasSettingsPreview(from)
+    const preserveLocalGuide = settingsPreviewUpgrade
       && !(from.version === "1.1.0" && Object.hasOwn(to.files, "shared/locales.ts"));
     const path = join(app, "AGENTS.md");
     const local = "\n## Local operations\n\nUse the adoption checklist before maintenance.\n";
@@ -270,16 +284,16 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const editorReplacement = changed.find((file: { path: string; action: string }) =>
     file.path === starterEditorPorts && file.action === "replace");
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
+  const paths = new Set([...Object.keys(from.files), ...Object.keys(to.files)]);
+  const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
+  const applyRefused = () => {
+    const before = readFiles();
+    const report = run("apply", 1);
+    assert.deepEqual(readFiles(), before, "conflict wrote managed files");
+    return report;
+  };
   phase("managed-conflict", () => {
     pair.evidence.managedConflict = { path: conflict, action };
-    const paths = new Set([...Object.keys(from.files), ...Object.keys(to.files)]);
-    const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
-    const applyRefused = () => {
-      const before = readFiles();
-      const report = run("apply", 1);
-      assert.deepEqual(readFiles(), before, "conflict wrote managed files");
-      return report;
-    };
     if (editorReplacement) {
       const local = reconcileEditorCustomization(app, from.files[starterEditorPorts]!, applyRefused);
       owned[local.path] = local.bytes;
@@ -303,6 +317,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     owned[local.path] = Buffer.from(local.bytes);
     pair.evidence.customizations![local.path] = hash(owned[local.path]);
   });
+  if (settingsPreviewUpgrade && changed.some((file: { path: string; action: string }) =>
+    file.path === starterSettingsCli && file.action === "replace")) phase("settings-cli-reconciliation", () => {
+    const local = reconcileSettingsCustomization(app, from.files[starterSettingsCli]!, applyRefused);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
+  });
   phase("interrupt-and-refuse", () => {
     const preload = join(workspace, "interrupt.mjs");
     writeFileSync(preload, 'import { promises as fs } from "node:fs"; const rename = fs.rename.bind(fs); fs.rename = async (...args) => { await rename(...args); process.kill(process.pid, "SIGKILL"); await new Promise(() => {}); };');
@@ -325,10 +346,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
-  if (hasSettingsPreview(to) && !hasSettingsPreview(from)) {
+  if (settingsPreviewUpgrade) {
     phase("settings-preview-upgrade", () => {
-      const path = "host/settings.ts";
-      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path], `starter preview upgrade did not apply ${path}`);
+      assert.equal(readFileSync(join(app, starterSettingsCli), "utf8"), to.files[starterSettingsCli],
+        `starter preview upgrade did not apply ${starterSettingsCli}`);
       assert(readFileSync(join(app, "AGENTS.md"), "utf8").includes(previewGuidance));
     });
   }

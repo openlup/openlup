@@ -1,10 +1,11 @@
 ### Preview renewal stock protection in the starter
 
 - Take the target extraction's `host/settings.ts`
-  through the managed upgrade plan and apply. Reconcile local managed-file
-  edits against the predecessor and target before applying. A divergent
-  managed file refuses; keep the app stopped until the managed snapshot and
-  installed OpenLup package versions match.
+  through the managed upgrade plan and apply. If local edits cause a conflict,
+  move them to an application-owned file outside both snapshots and restore the
+  exact predecessor bytes in `host/settings.ts`. Replan and apply with the
+  same snapshots. Keep the app stopped until the managed snapshot and installed
+  OpenLup package versions match.
 - For a pristine starter, take the target extraction's `AGENTS.md`. If you
   customized that file, carry the preview paragraph and example from the
   target's **Change a business setting** section into your guide and preserve
