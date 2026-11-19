@@ -112,8 +112,6 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
       await db.query(`SELECT public.catalog_admission_check_sized_preview(
         $1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::text,$8::boolean,$9::timestamptz)`,
       [actor.actorId, actor.clientId, request.subscriptionId, request.action, request.acceptedQuoteHash, version, key, isSizedOptIn(request), options.now()]);
-    } catch (error) {
-      if (!(typeof error === "object" && error !== null && "code" in error && error.code === "42883")) throw error;
     } finally {
       // The final apply takes the guard again after the host's owned facts.
       await db.query("ROLLBACK TO SAVEPOINT sized_catalog_preview");
