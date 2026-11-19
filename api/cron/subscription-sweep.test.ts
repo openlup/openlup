@@ -62,11 +62,12 @@ describe("subscription-sweep cron", () => {
     });
     const { factory, asService } = fakeGatewayFactory(client);
 
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2024-01-20T15:42:13.456Z"));
     const result = await runSubscriptionSweepCron(authedReq(), {
       ...BASE_ENV,
       COMMERCE_SUBSCRIPTION_SWEEP_ENABLED: "true",
       SUBSCRIPTION_ACTIVATION_WINDOW_MINUTES: "90",
-    }, factory as never);
+    }, factory as never).finally(() => now.mockRestore());
 
     expect(result.status).toBe(200);
     expect(result.body).toMatchObject({ ok: true, windowMinutes: 90, swept: 2 });
@@ -74,8 +75,11 @@ describe("subscription-sweep cron", () => {
     const sweepCall = client.rpc.mock.calls.find(([n]) => n === "subscription_sweep_unpaid_provisional");
     expect(sweepCall).toBeDefined();
     const sweepArgs = sweepCall?.[1] as Record<string, unknown>;
-    expect(sweepArgs).toMatchObject({ p_idempotency_prefix: "subscription-sweep-run", p_limit: 50 });
-    expect(typeof sweepArgs.p_older_than).toBe("string");
+    expect(sweepArgs).toMatchObject({
+      p_idempotency_prefix: "subscription-sweep-run",
+      p_limit: 50,
+      p_older_than: "2024-01-20T14:12:13.456Z",
+    });
     expect(client.rpc).toHaveBeenCalledWith("platform_finish_job_run_v2", expect.objectContaining({ p_status: "success" }));
   });
 

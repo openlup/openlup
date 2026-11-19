@@ -117,7 +117,8 @@ for package composition and application boundaries.
 The reference UI uses React, Vite and Tailwind CSS; Core does not require that
 frontend stack. Browser-shareable contracts stay separate from server execution.
 Provider SDKs, environment readers and payload translation belong behind adapters.
-Portable PostgreSQL and managed Supabase retain distinct installation histories.
+Each deployment serves one store. Portable PostgreSQL works without Supabase.
+The managed Supabase installation has its own migration history.
 
 ## What is already in the repository
 Moved to [Platform source map](docs/platform/SOURCE_MAP.md).

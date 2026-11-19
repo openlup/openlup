@@ -5,12 +5,8 @@ import { baseURL, bypassToken } from "./tests/preview/account/helpers/env.ts";
 /**
  * Account + client-facing a11y suite config.
  *
- * Sibling to `playwright.checkout.config.ts` so the preview suites run and
- * report independently. Base URL + bypass header resolution is shared via
- * `tests/preview/account/helpers/env.ts`, which adds the
- * `ACCOUNT_PREVIEW_BASE_URL` first-precedence override on top of the shared
- * preview env chain. Runs serial (workers:1) across desktop, mobile, and tablet
- * viewports.
+ * The account preview uses `ACCOUNT_PREVIEW_BASE_URL` when configured
+ * and runs serially across desktop, mobile and tablet viewports.
  */
 
 export default defineConfig({
@@ -20,8 +16,6 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  // These routes are read-only (no order mint / no quota burn), but keep retries
-  // at 0 to match the checkout suite's determinism contract.
   retries: 0,
   reporter: [["list"]],
   outputDir: "test-results/account-preview",
