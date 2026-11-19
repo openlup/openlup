@@ -561,24 +561,27 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
   const headAt = (revision: number) => ({
     publicationId: `50000000-0000-4000-8000-${suffix(revision)}`, revision, documentDigest,
   });
-  const history = Array.from({ length: 20 }, (_, index) => {
-    const revision = 20 - index;
+  const terminal = mode.startsWith("terminal");
+  const historySize = terminal ? 3 : 4, skuCount = 9000;
+  // Fill the same byte budget with fewer coherent receipts so the reader
+  // serializes fewer cumulative pages. Every receipt remains below its cap.
+  const skuPadding = "é".repeat(terminal ? 100 : 112);
+  const history = Array.from({ length: historySize }, (_, index) => {
+    const revision = historySize - index;
     const head = headAt(revision), previousHead = revision > 1 ? headAt(revision - 1) : null;
     const receipt: CatalogPublicationReceiptV2 = {
       schemaVersion: 2, productId, commandKey: `publish:${revision}`, fingerprint: "a".repeat(64), actorId,
       head, previousHead, publicationDigest: "b".repeat(64), committedAt: "2026-01-01T00:00:00.000000Z",
-      changes: Array.from({ length: 2500 }, (_, index) => {
+      changes: Array.from({ length: skuCount }, (_, index) => {
         const variantId = `60000000-0000-4000-8000-${suffix(index + 1)}`;
-        return { productId, variantId, sku: `SKU-${suffix(index + 1)}`, state: "active", variantRevision: revision,
+        return { productId, variantId, sku: `SKU-${suffix(index + 1)}${skuPadding}`, state: "active", variantRevision: revision,
           publicationHead: head, draftRef: { draftId: record.draftId, revision } };
       }),
     };
     return { revision, id: head.publicationId, result: receipt, kind: "publish", scope_id: productId,
       command_key: receipt.commandKey, fingerprint: receipt.fingerprint, actor_id: actorId, publication_id: head.publicationId };
   });
-  const terminal = mode.startsWith("terminal");
   if (terminal) {
-    history.splice(16);
     const legacy = history.map(row => {
       const { schemaVersion: _version, productId: _product, publicationDigest: _digest, committedAt: _at, ...receipt } = row.result;
       return receipt;
@@ -586,7 +589,7 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
     const size = Buffer.byteLength(JSON.stringify({ outcome: "page", receipts: legacy, limit: 100, nextCursor: null }));
     let text = CATALOG_PUBLICATION_LIMITS.historyBytes - size;
     for (const change of history.at(-1)!.result.changes) {
-      const bytes = Math.min(text, 120);
+      const bytes = Math.min(text, 2 * (160 - change.sku.length));
       change.sku += "é".repeat(Math.floor(bytes / 2)) + "x".repeat(bytes % 2);
       text -= bytes;
       if (text === 0) break;
@@ -596,7 +599,7 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
   const product = { ...compileCatalogPublication(fixture).product, primarySkuId: history[0]!.result.changes[0]!.variantId };
   const retained = new Map(history.map(({ id, revision, result }) => {
     const skus = result.changes.map((change, index) => ({
-      skuId: change.variantId, revisionId: `80000000-0000-4000-8000-${suffix(revision * 2500 + index)}`, revision, digest: "c".repeat(64),
+      skuId: change.variantId, revisionId: `80000000-0000-4000-8000-${suffix(revision * skuCount + index)}`, revision, digest: "c".repeat(64),
     }));
     const canonicalState = publicationJson({ schemaVersion: 2, product, skus });
     result.publicationDigest = publicationDigest(JSON.parse(canonicalState));
@@ -637,22 +640,22 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
   expect(first.outcome).toBe("page");
   if (first.outcome !== "page") throw new Error("Missing history page");
   if (terminal) {
-    expect(first.receipts).toHaveLength(16);
+    expect(first.receipts).toHaveLength(3);
     expect(first.nextCursor).toBeNull();
     expect(Buffer.byteLength(JSON.stringify(first))).toBe(CATALOG_PUBLICATION_LIMITS.historyBytes);
     return;
   }
   if (first.nextCursor === null) throw new Error("Missing history continuation");
-  expect(first.receipts.map(receipt => receipt.head.revision)).toEqual([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5]);
+  expect(first.receipts.map(receipt => receipt.head.revision)).toEqual([4, 3]);
   expect(JSON.parse(Buffer.from(first.nextCursor, "base64url").toString("utf8"))).toEqual({
-    schemaVersion: 1, kind: "history", productId, highWater: 20, before: 5,
+    schemaVersion: 1, kind: "history", productId, highWater: 4, before: 3,
   });
   const rest = await target.reads.history(productId, first.nextCursor);
   expect(rest.outcome).toBe("page");
   if (rest.outcome !== "page") throw new Error("Missing history remainder");
-  expect(rest.receipts.map(receipt => receipt.head.revision)).toEqual([4, 3, 2, 1]);
+  expect(rest.receipts.map(receipt => receipt.head.revision)).toEqual([2, 1]);
   expect(rest.nextCursor).toBeNull();
-  expect(historyQueries).toEqual([[productId, null, null], [productId, 20, 5]]);
+  expect(historyQueries).toEqual([[productId, null, null], [productId, 4, 3]]);
 
   const bytes = Buffer.byteLength(JSON.stringify(first));
   expect(bytes).toBeLessThanOrEqual(CATALOG_PUBLICATION_LIMITS.historyBytes);
