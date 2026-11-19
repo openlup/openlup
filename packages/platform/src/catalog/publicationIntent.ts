@@ -62,8 +62,7 @@ export function publicationIntent(input: unknown, onInvalid?: (path: string, uns
     if (indexes && path[0] === "publication" && path[1] === "operations" && typeof path[2] === "number")
       path[2] = indexes[path[2]] ?? path[2];
     if (issue.code === "unrecognized_keys") path.push(issue.keys[0]!);
-    const fix = issue.code === "custom" && path[0] === "publication" && path[1] === "operations" && path[3] === "quantity"
-      ? issue.message : undefined;
+    const fix = issue.code === "custom" && path.length > 0 ? issue.message : undefined;
     return onInvalid?.(path.join(".") || "payload", issue.code === "unrecognized_keys", fix) ?? null;
   }
   if (!input || typeof input !== "object" || !("schemaVersion" in input) || input.schemaVersion !== 4) {

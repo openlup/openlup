@@ -9,14 +9,14 @@ import type { CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftSharedCo
   CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult,
   CatalogPublicationJson, CatalogPublicationFacts } from "./contracts/draftV3.js";
 
-const id = z.guid().refine(value => value === value.toLowerCase());
+const id = z.guid().refine(value => value === value.toLowerCase(), "use a lowercase identifier");
 const revision = z.number().int().min(1).max(2_147_483_647);
 const documentRevision = z.number().int().min(1).max(999_999_999);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const reference = z.string().min(1).max(240).refine(value => value.trim() === value);
+const reference = z.string().min(1).max(240).refine(value => value.trim() === value, "remove surrounding whitespace from the reference");
 const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
 const slug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
-const text = z.string().min(1).max(500).refine(value => value.trim() === value);
+const text = z.string().min(1).max(500).refine(value => value.trim() === value, "remove surrounding whitespace from the text");
 const json: z.ZodType<CatalogPublicationJson> = z.json();
 const facts: z.ZodType<CatalogPublicationFacts> = z.record(z.string(), json);
 const skuFacts = z.object({ skuCode: code, title: text, minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), facts }).strict();
@@ -25,13 +25,13 @@ const sharedContentShape = {
   schemaVersion: z.literal(1), catalogAction: z.enum(["create", "revise"]), presentation: facts,
   offerMemberships: z.array(membership).max(10_000),
   requestedModes: z.array(z.object({ skuCode: code, modes: z.array(z.enum(["one_time", "subscription"])).max(2)
-    .refine(values => new Set(values).size === values.length) }).strict()).max(10_000),
+    .refine(values => new Set(values).size === values.length, "list each requested mode once") }).strict()).max(10_000),
   publicationSkus: z.array(skuFacts).max(10_000),
 };
 function uniqueSkuIntents(content: Omit<CatalogDraftSharedContentV3, "document">, context: z.RefinementCtx) {
   for (const key of ["offerMemberships", "requestedModes", "publicationSkus"] as const) {
     const codes = content[key].map(row => row.skuCode);
-    if (new Set(codes).size !== codes.length) context.addIssue({ code: "custom", path: [key], message: "SKU intents must be unique" });
+    if (new Set(codes).size !== codes.length) context.addIssue({ code: "custom", path: [key], message: "list each SKU once" });
   }
 }
 /** @internal Published neutral content excludes the authored document. */
@@ -69,31 +69,38 @@ export const catalogDraftPublicationInputsV3Schema: z.ZodType<CatalogDraftPublic
   evidence: z.object({
     drafts: z.array(z.object({ draftId: id, revision, commandKey: reference, fingerprint: digest }).strict()).min(1).max(100).optional(),
     media: z.array(z.object({ skuCode: code, mediaRef: reference, assetRefs: z.array(reference).max(32)
-      .refine(values => values.every((value, index) => index === 0 || values[index - 1]! < value)), revisionDigest: digest }).strict()).min(1).optional(),
+      .refine(values => values.every((value, index) => index === 0 || values[index - 1]! < value),
+        "list each asset reference once in ascending order"), revisionDigest: digest }).strict()).min(1).optional(),
   }).strict(),
 }).strict().superRefine((input, context) => {
-  const issue = (message: string) => context.addIssue({ code: "custom", message });
+  const issue = (message: string, path: PropertyKey[] = []) => context.addIssue({ code: "custom", path, message });
   const drafts = input.evidence.drafts ?? [], media = input.evidence.media ?? [];
-  if (new Set(drafts.map(row => row.draftId)).size !== drafts.length) issue("draft evidence must be unique");
-  if (new Set(media.map(row => row.skuCode)).size !== media.length) issue("media evidence must be unique");
+  if (new Set(drafts.map(row => row.draftId)).size !== drafts.length) issue("list each draft once", ["evidence", "drafts"]);
+  if (new Set(media.map(row => row.skuCode)).size !== media.length) issue("list media evidence for each SKU once", ["evidence", "media"]);
   const created = new Set<string>(), primaries = new Set<string>(), identities = new Set<string>();
   for (const [index, operation] of input.operations.entries()) {
-    const keys = operation.op === "create_product" ? [`product:${operation.productId}`, `slug:${operation.productSlug}`]
-      : operation.op === "create_sku" ? [`sku:${operation.skuId}`, `code:${operation.skuCode}`]
-      : operation.op === "register_document_revision" ? [`document:${operation.revisionId}`, `revision:${operation.productSlug}:${operation.revisionNo}`] : [];
-    for (const key of keys) { if (identities.has(key)) issue("operation identities must be unique"); identities.add(key); }
+    const keys: readonly [string, string][] = operation.op === "create_product"
+      ? [["productId", `product:${operation.productId}`], ["productSlug", `slug:${operation.productSlug}`]]
+      : operation.op === "create_sku" ? [["skuId", `sku:${operation.skuId}`], ["skuCode", `code:${operation.skuCode}`]]
+        : operation.op === "register_document_revision"
+          ? [["revisionId", `document:${operation.revisionId}`], ["revisionNo", `revision:${operation.productSlug}:${operation.revisionNo}`]] : [];
+    for (const [field, key] of keys) {
+      if (identities.has(key)) issue("use a distinct value for this operation field", ["operations", index, field]);
+      identities.add(key);
+    }
     if (operation.op === "create_sku") created.add(operation.skuCode);
     if (operation.op === "create_identifier") {
       if (!created.has(operation.skuCode)) issue("identifier precedes or lacks SKU creation");
       if (operation.packagingLevel === "unit" && operation.quantity !== 1)
-        context.addIssue({ code: "custom", path: ["operations", index, "quantity"], message: "unit identifiers require quantity 1" });
-      else if (operation.packagingLevel !== "unit" && operation.quantity === 1) issue("identifier quantity contradicts packaging level");
-      if (operation.isPrimary && (operation.packagingLevel !== "unit" || primaries.has(operation.skuCode))) issue("second or non-unit primary identifier");
+        issue("unit identifiers require quantity 1", ["operations", index, "quantity"]);
+      else if (operation.packagingLevel === "case" && operation.quantity < 2)
+        issue("case identifiers require at least 2 units", ["operations", index, "quantity"]);
+      if (operation.isPrimary && (operation.packagingLevel !== "unit" || primaries.has(operation.skuCode))) issue("use one primary unit identifier per SKU", ["operations", index, "isPrimary"]);
       if (operation.isPrimary) primaries.add(operation.skuCode);
       if (operation.scheme === "gs1:gtin") {
-        if (!isValidGtin(operation.value)) issue("invalid GTIN");
+        if (!isValidGtin(operation.value)) issue("enter a valid GTIN", ["operations", index, "value"]);
         const key = `gtin:${operation.value.padStart(14, "0")}`;
-        if (identities.has(key)) issue("duplicate GTIN"); identities.add(key);
+        if (identities.has(key)) issue("use a different GTIN", ["operations", index, "value"]); identities.add(key);
       }
     }
     if (operation.op === "set_sku_status" && operation.status === "active" && !input.operations.some(other => other.op === "set_eligibility"
@@ -145,7 +152,7 @@ export const catalogDraftPublicationStoredPayloadSchema: z.ZodType<CatalogDraftP
 export const catalogDraftPublicationStoredCommandSchema: z.ZodType<CatalogDraftPublicationStoredCommand> = z.union([catalogDraftStoredCommandSchema, catalogDraftCommandV3Schema]);
 /** @experimental */
 export const catalogDraftPublicationStoredRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogDraftPublicationStoredPayloadSchema }).strict()
-  .refine(record => record.productId === record.payload.product.id, "record product must own payload");
+  .refine(record => record.productId === record.payload.product.id, { path: ["productId"], message: "use the product ID from the draft payload" });
 /** @experimental */
 export const catalogDraftPublicationStoredApplyResultSchema: z.ZodType<CatalogDraftPublicationStoredApplyResult> = z.union([
   z.object({ outcome: z.enum(["committed", "replayed"]), record: catalogDraftPublicationStoredRecordSchema }).strict(), catalogDraftRefusalSchema,

@@ -156,6 +156,19 @@ describe("self-contained catalogue preview", () => {
     f.setHead({ ...head, revision: 2 });
     await expect(f.service.validate(headed.candidateRef)).rejects.toMatchObject({ code: "head_conflict" });
   });
+  it.each(["immutable", "current", "draft"] as const)("classifies an unavailable %s lineage lookup in the released facade", async lookup => {
+    const f = setup(), head = { publicationId: listId, revision: 1, documentDigest: "c".repeat(64) };
+    f.setHead(head);
+    const query = { draftId, draftRevision: 1, expectedHead: head };
+    const preview = await f.service.prepareCandidate(query);
+    const readDraft = f.deps.readDraft;
+    if (lookup === "immutable") f.deps.resolveHead = async () => null;
+    if (lookup === "current") f.deps.currentHead = async () => { throw new Error("synthetic current head timeout"); };
+    if (lookup === "draft") f.deps.readDraft = async (id, revision) => revision === undefined ? null : readDraft(id, revision);
+    await expect(f.service.prepareCandidate(query)).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
+    await expect(f.service.validate(preview.candidateRef)).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
+    await expect(f.service.compareCandidate({ ...preview, expectedHead: head })).rejects.toMatchObject({ code: "candidate_dependency_unavailable" });
+  });
   it("keeps the exact donor price command grammar and refuses unknown payload versions", () => {
     expect(catalogDraftPriceOperationV2Schema.parse(operation)).toEqual(operation);
     expect(catalogDraftPriceOperationV2Schema.parse({ ...operation, expected: { entryId: listId, unitPriceMinor: 0 } })).toMatchObject({ expected: { unitPriceMinor: 0 } });

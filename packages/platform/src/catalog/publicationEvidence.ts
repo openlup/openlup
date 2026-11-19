@@ -6,6 +6,14 @@ import type { PublicationDraftRecord, PublicationLifecycleState } from "./public
 import type { CatalogRulesContext } from "./catalogPublicationRules.js";
 import { z } from "./validation.js";
 
+export type ExpectedPublicationHead = Pick<CatalogHeadRef, "publicationId" | "revision">
+  & Partial<Pick<CatalogHeadRef, "documentDigest">>;
+
+export function matchesPublicationHead(expected: ExpectedPublicationHead | null, observed: CatalogHeadRef | null): boolean {
+  return expected === null ? observed === null : observed !== null && expected.publicationId === observed.publicationId
+    && expected.revision === observed.revision && (expected.documentDigest === undefined || expected.documentDigest === observed.documentDigest);
+}
+
 export const publicationHeadSchema = z.object({ publicationId: z.guid().refine(value => value === value.toLowerCase()),
   revision: z.number().int().min(1).max(2_147_483_647), documentDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 

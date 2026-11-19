@@ -11,7 +11,7 @@ import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { z } from "./validation.js";
 import { CatalogPublicationError, publicationDiagnostic, publicationIssue } from "./publicationError.js";
 import { readPublicationDraftEnvelope, type PublicationDraftRecord } from "./publicationIntent.js";
-import { publicationHeadSchema as headSchema, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
+import { matchesPublicationHead, publicationHeadSchema as headSchema, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { evaluateCatalogPublication } from "./publicationValidation.js";
 import { resolvePublicationRules } from "./publicationRules.js";
 
@@ -38,7 +38,10 @@ const refuse = (code: CatalogCandidateError["code"], message?: string): never =>
   if (message) error.message = message;
   throw error;
 };
-const equal = (left: CatalogHeadRef | null, right: CatalogHeadRef | null): boolean => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
+/** Map failed reads and unusable results to unavailable before any lineage comparison. */
+async function readLineage<T>(read: () => Promise<T | undefined>): Promise<T | undefined> {
+  try { return await read(); } catch { return undefined; }
+}
 
 type CatalogCandidateService = CatalogValidationPort & {
   prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
@@ -50,14 +53,6 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
   readDraft(draftId: string, revision?: number): Promise<PublicationDraftRecord | null>;
 },
   publication?: CatalogCandidatePublicationDeps): CatalogCandidateService {
-  async function readHead(productId: string) {
-    try {
-      const current: CatalogPublicationReadResult = await deps.currentHead(productId);
-      if (current?.outcome === "found") return headSchema.safeParse(current.head).data;
-      if (current?.outcome === "unpublished") return null;
-    } catch { /* This observation is unavailable. */ }
-  }
-
   function unknownPreparation(subject: string): NonNullable<CatalogCandidatePreview["preparation"]> {
     const result = { outcome: "unknown" as const, issues: [publicationIssue("publication_preparation_unavailable", "structural", "product.type", subject)] };
     return { structural: result, activation: result };
@@ -96,28 +91,35 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       const payload = record.payload;
       let identityPayload = payload;
       if (!payload?.product?.type) return refuse("candidate_invalid");
-      const draftIsCurrent = async () => {
-        const latest = await deps.readDraft(record.draftId);
-        return latest && latest.draftId === record.draftId && latest.revision === record.revision && latest.status === record.status;
+      const referenceHead = reference.head;
+      const observedHead = referenceHead === null ? undefined : await readLineage(async () =>
+        headSchema.safeParse(await deps.resolveHead(referenceHead)).data);
+      const expectedHead = referenceHead === null ? null : expected ?? observedHead ?? referenceHead;
+      let identityHead = expectedHead;
+      const readHeadLineage = async (legacy = false) => {
+        const latest = await readLineage(async () => readPublicationDraftEnvelope(await deps.readDraft(record.draftId)) ?? undefined);
+        if (latest && (latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status)) {
+          if (legacy) return refuse("candidate_invalid");
+          throw new CatalogPublicationError("catalog_publication_draft_advanced", "conflict",
+            publicationIssue("catalog_publication_draft_advanced", "structural", "draft", payload.product.type.key));
+        }
+        const head = await readLineage(async () => {
+          const current: CatalogPublicationReadResult = await deps.currentHead(record.productId);
+          if (current?.outcome === "found") return headSchema.safeParse(current.head).data;
+          if (current?.outcome === "unpublished") return null;
+        });
+        const comparisonHead = expected === undefined ? expectedHead : expected;
+        if ([observedHead, head].some(observation => observation !== undefined
+          && (!matchesPublicationHead(referenceHead, observation) || !matchesPublicationHead(comparisonHead, observation)))) {
+          if (legacy) return refuse("head_conflict");
+          throw new CatalogPublicationError("head_conflict", "conflict");
+        }
+        const unavailable = latest === undefined || head === undefined || referenceHead !== null && observedHead === undefined;
+        if (legacy && unavailable) return refuse("candidate_dependency_unavailable");
+        return { head, unavailable };
       };
-      let observedHead: CatalogHeadRef | undefined;
-      if (reference.head) {
-        try { observedHead = headSchema.safeParse(await deps.resolveHead(reference.head)).data; }
-        catch { /* Admission can still diagnose the supplied draft. */ }
-      }
-      const expectedHead = reference.head ? observedHead ?? expected ?? null : null;
-      const expectedHeadMatches = () =>
-        (!reference.head || observedHead?.publicationId === reference.head.publicationId && observedHead.revision === reference.head.revision)
-        && (expected === undefined || equal(expected, expectedHead));
-      async function checkLegacyLineage(productId: string) {
-        if (!await draftIsCurrent()) return refuse("candidate_invalid");
-        if (!expectedHeadMatches()) return refuse("head_conflict");
-        const head = await readHead(productId);
-        if (head === undefined) return refuse("candidate_dependency_unavailable");
-        if (!equal(head, expectedHead)) return refuse("head_conflict");
-      }
       // Older drafts keep the released lineage checks. Publication admission runs before lineage is compared.
-      if (!preparePublication) await checkLegacyLineage(record.productId);
+      if (!preparePublication) await readHeadLineage(true);
       const definitionDrift = () => refuse("catalog_definition_drift",
         publicationIssue("catalog_definition_drift", "structural", "product.type", payload.product.type.key).message);
       const definition = deps.registry.resolve(payload.product.type);
@@ -159,22 +161,18 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       if (payload.schemaVersion === 3 && !definition.publicationRules && !publication) {
         const legacy = catalogDraftPublicationStoredRecordSchema.safeParse(raw);
         if (!legacy.success || legacy.data.payload.schemaVersion !== 3) return refuse("candidate_invalid");
-        await checkLegacyLineage(record.productId);
+        await readHeadLineage(true);
         identityPayload = legacy.data.payload;
         await legacyIssues(catalogDraftV3ValidationPayload(legacy.data.payload), issues);
         preparation = unknownPreparation(definition.key);
       } else if (preparePublication) {
         const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
           expectedHead, evaluation, observations: publication,
-          readCurrentHead: async () => {
-            if (!await draftIsCurrent()) throw new CatalogPublicationError("catalog_publication_draft_advanced", "conflict",
-              publicationIssue("catalog_publication_draft_advanced", "structural", "draft", definition.key));
-            if (!expectedHeadMatches()) throw new CatalogPublicationError("head_conflict", "conflict");
-            return readHead(record.productId);
-          },
+          readCurrentHead: () => readHeadLineage(),
           attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
         if (result.failure?.code === "head_conflict"
           || (result.failure?.code === "candidate_invalid" && !result.failure.diagnostic?.message)) return refuse(result.failure.code);
+        if (result.head !== undefined) identityHead = result.head;
         const structural = result.structural.map(issue => issue.diagnostic);
         const blocked = result.structural.some(issue => issue.outcome !== "dependency_unavailable");
         const activationBlocked = result.activationIssues.some(issue => issue.outcome !== "dependency_unavailable");
@@ -184,14 +182,16 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
           activation.splice(activation.indexOf(first), 1);
           activation.unshift(first);
         }
-        preparation = { structural: { outcome: blocked ? "blocked-input" : structural.length ? "unknown" : "staged", issues: structural },
-          activation: { outcome: blocked || activationBlocked ? "blocked-input" : activation.length ? "unknown"
-            : result.activating ? "ready" : "pending", issues: [...activation, ...result.pending] } };
+        const outcome = <T extends string>(complete: boolean, blocked: boolean, issues: readonly unknown[], passed: T) =>
+          blocked ? "blocked-input" as const : !complete || issues.length ? "unknown" as const : passed;
+        preparation = { structural: { outcome: outcome(result.completed.structural, blocked, structural, "staged"), issues: structural },
+          activation: { outcome: outcome(result.completed.activation, blocked || activationBlocked, activation, result.activating ? "ready" : "pending"),
+            issues: [...activation, ...result.pending] } };
         issues.push(...activation.map(({ path, code }) => ({ path, code })));
       }
       const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(identityPayload)).update(",")
         .update(canonicalCatalogDraftJson([{ ...identityPayload.product.type, definitionDigest: installed }])).update(",")
-        .update(canonicalCatalogDraftJson(expectedHead)).update("]").digest("hex");
+        .update(canonicalCatalogDraftJson(identityHead)).update("]").digest("hex");
       const skus = Array.isArray(payload.skus) ? payload.skus : [];
       const priceOperationCount = payload.schemaVersion === 1 ? 0 : skus.reduce((sum, sku) =>
         sum + (sku && typeof sku === "object" && "priceOperations" in sku && Array.isArray(sku.priceOperations)
@@ -216,7 +216,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
     async validate(candidateRef) { return reconstruct(candidateRef); },
     async compareCandidate(input) {
       const head = headSchema.nullable().safeParse(input.expectedHead);
-      if (!head.success) return refuse("head_conflict");
+      if (!head.success) return refuse("candidate_invalid");
       const result = await reconstruct(input.candidateRef, head.data);
       if (input.candidateDigest !== result.candidateDigest) return refuse("candidate_digest_mismatch");
       return result;

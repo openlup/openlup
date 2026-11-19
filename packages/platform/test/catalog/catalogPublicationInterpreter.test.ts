@@ -28,6 +28,7 @@ type Case = { id: string; fixture?: "revision"; arrange?: (data: Fixture) => voi
   rulesAsset?: string;
   substitute?: boolean;
   currentHead?: CatalogCandidateDeps["currentHead"];
+  resolveHead?: CatalogCandidateDeps["resolveHead"];
   draftAdvanced?: boolean;
   latestReadRejects?: boolean;
   routeCalls?: readonly [number, number, number];
@@ -67,10 +68,10 @@ function media(data: Fixture, skuCode = "ARTICLE") {
   data.payload.publication.evidence.media = [{ skuCode, mediaRef: "example:media", assetRefs: [], revisionDigest: "d".repeat(64) }];
 }
 
-function facade(data: Fixture, deps?: Partial<CatalogCandidatePublicationDeps>, legacy = false, record: PublicationDraftRecord = data.record, currentHead?: CatalogCandidateDeps["currentHead"], readDraft?: CatalogCandidateDeps["readDraft"]) {
+function facade(data: Fixture, deps?: Partial<CatalogCandidatePublicationDeps>, legacy = false, record: PublicationDraftRecord = data.record, currentHead?: CatalogCandidateDeps["currentHead"], readDraft?: CatalogCandidateDeps["readDraft"], resolveHead?: CatalogCandidateDeps["resolveHead"]) {
   const wiring: CatalogCandidateDeps = { readDraft: async () => data.record, registry: data.registry,
     validatePrices: data.validatePrices,
-    installedDefinitionDigest: async () => data.installedDefinitionDigest, resolveHead: async () => data.expectedHead,
+    installedDefinitionDigest: async () => data.installedDefinitionDigest, resolveHead: resolveHead ?? (async () => data.expectedHead),
     currentHead: currentHead ?? (async () => data.expectedHead ? { outcome: "found", head: data.expectedHead, documentRef: "example:document", observations: [] }
       : { outcome: "unpublished" }) };
   return legacy ? createCatalogCandidateService(wiring) : createCatalogCandidateServiceWithPublication({ ...wiring, readDraft: readDraft ?? (async () => record) }, {
@@ -174,14 +175,28 @@ const cases: Case[] = [
     data.evidence.product!.presentation = { mediaRef: "example:media" };
     data.evidence.drafts.push({ record: retained, receipt: catalogPublicationClaim(retained), head: retained });
     pointerBeforeRoute(data);
-  }, expected: ["catalog_publication_media_readiness_unproven", null, "catalog_publication_media_readiness_unproven"],
+  }, expected: ["catalog_publication_media_readiness_unproven", "duplicate_route", "catalog_publication_media_readiness_unproven"],
   diagnostic: { phase: "activation", path: "publication.evidence.media", subject: "ARTICLE" },
-  message: "Keep the selected draft's media reference", routeCalls: [0, 1, 0] },
-  { id: "a unit identifier refusal names the quantity field and its fix", arrange(data) {
-    operation(data, "create_identifier", { quantity: 2 });
+  message: "Keep the selected draft's media reference", readiness: routeConflict, routeCalls: [0, 1, 0], outcome: "unknown" },
+  ...(["unit", "case"] as const).map((packagingLevel): Case => ({
+    id: `a ${packagingLevel} identifier refusal names the quantity field and its fix`, arrange(data) {
+      operation(data, "create_identifier", { packagingLevel, quantity: packagingLevel === "unit" ? 2 : 1, isPrimary: false });
+    }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
+    diagnostic: { phase: "structural", path: "publication.operations.4.quantity", subject: "example:article" },
+    message: packagingLevel === "unit" ? "unit identifiers require quantity 1" : "case identifiers require at least 2 units",
+  })),
+  { id: "a repeated requested mode keeps its indexed field and fix", arrange(data) {
+    data.payload.product.sharedContent.requestedModes[0]!.modes = ["one_time", "one_time"];
   }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
-  diagnostic: { phase: "structural", path: "publication.operations.4.quantity", subject: "example:article" },
-  message: "unit identifiers require quantity 1" },
+  diagnostic: { phase: "structural", path: "product.sharedContent.requestedModes.0.modes", subject: "example:article" },
+  message: "list each requested mode once" },
+  ...([false, true] as const).map((occupied): Case => ({
+    id: `an immutable-head timeout leaves a ${occupied ? "known route refusal" : "typed dependency issue"}`,
+    fixture: "revision", resolveHead: async () => { throw new Error("synthetic immutable-head timeout"); },
+    readiness: occupied ? routeConflict : ready, routeCalls: [1, 1, 1], evidenceCalls: 3,
+    expected: reason(occupied ? "duplicate_route" : "publication_head_unavailable"),
+    ...(occupied ? { diagnostic: routeAt(0) } : { outcome: "unknown" }),
+  })),
   { id: "a rejected latest draft read leaves a known route refusal visible", fixture: "revision",
     latestReadRejects: true, readiness: routeConflict, routeCalls: [1, 1, 1],
     expected: reason("duplicate_route"), diagnostic: routeAt(0) },
@@ -629,7 +644,7 @@ const cases: Case[] = [
     expected: reason("catalog_publication_presentation_unavailable") },
 ];
 
-it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, draftAdvanced, latestReadRejects, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
+it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expected = [null, null, null], readiness, media: proof, activationReady, governed, priceListRefusal, outcome, diagnostic, rulesAsset, substitute, currentHead, resolveHead, draftAdvanced, latestReadRejects, routeCalls, evidenceCalls, evidenceRows, preserve, evaluation, message }) => {
   const bound = rulesAsset === undefined ? {} : setupRules(rulesAsset);
   const data = fixture === "revision" ? await revision() : { ...input(), ...bound };
   if (fixture === "revision") Object.assign(data, bound);
@@ -654,7 +669,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
     if (latestReadRejects) return rejectLatest();
     return { ...data.record, revision: data.record.revision + 1 };
   }) : undefined;
-  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current, readDraft);
+  const service = facade(data, { ...observations, readEvidence, ...(evaluation && { evaluation }) }, false, record, current, readDraft, resolveHead);
   const checkRouteCalls = (expectedCalls?: number) => {
     if (expectedCalls !== undefined) expect(observations.presentationReadiness).toHaveBeenCalledTimes(expectedCalls);
     observations.presentationReadiness.mockClear();
@@ -674,6 +689,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
   if (outcome) expect(preview.preparation?.structural.outcome).toBe(outcome);
   if (diagnostic) {
+    if (diagnostic.phase === "activation") expect(preview.preparation?.activation.outcome).toBe("blocked-input");
     const issues = diagnostic.phase === "activation" ? preview.preparation?.activation.issues : preview.preparation?.structural.issues;
     expect(issues?.[0]).toEqual(expect.objectContaining({ code: expected[0], ...diagnostic }));
     if (message) expect(issues?.[0]?.message).toContain(message);
@@ -682,9 +698,13 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
     .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause, ...(message && { message: expect.stringContaining(message) }) }) }));
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
     const result = compileCatalogPublication({ ...data, record, evidence, observations,
-      ...(latestReadRejects && { readCurrentHead: rejectLatest }), ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
-    if (expected[index + 1]) await expect(result).rejects.toMatchObject({ code: expected[index + 1],
-      ...(diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }), ...(outcome === "unknown" && { outcome: "dependency_unavailable" }) });
+      ...(latestReadRejects && { readCurrentHead: rejectLatest }),
+      ...(resolveHead && { readCurrentHead: async () => ({ head: data.expectedHead, unavailable: true }) }),
+      ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
+    const decisionReason = expected[index + 1];
+    if (decisionReason) await expect(result).rejects.toMatchObject({ code: decisionReason,
+      ...(decisionReason === expected[0] && diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }),
+      ...(decisionReason.endsWith("_unavailable") && { outcome: "dependency_unavailable" }) });
     else {
       const compiled = await result;
       expect(compiled.product.id).toBe(data.record.productId);

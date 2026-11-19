@@ -22,7 +22,7 @@ import type { CatalogCandidateIssue } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
-import { publicationHeadSchema, type CatalogPublicationEvidence, type CatalogPublicationDraftEvidence, type CatalogPublicationDocument, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
+import { matchesPublicationHead, publicationHeadSchema, type ExpectedPublicationHead, type CatalogPublicationEvidence, type CatalogPublicationDraftEvidence, type CatalogPublicationDocument, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { isLifecycleOperation, lifecycleTransition, publicationIntent, readPublicationDraftRecord,
   lifecycleEvidenceSchema, lifecycleWithdrawalOnly, type PublicationDraftRecord, type PublicationIntent, type PublicationLifecycleOperation, type PublicationOperation } from "./publicationIntent.js";
 import { enablesSku, requiredPromotions, sealedPresentation } from "./publicationDraft.js";
@@ -32,7 +32,7 @@ export interface CatalogPublicationCompileInput {
   definition: CatalogProductTypeDefinition;
   installedDefinitionDigest: string;
   expectedHead: CatalogHeadRef | null;
-  readCurrentHead?: () => Promise<CatalogHeadRef | null | undefined>;
+  readCurrentHead?: () => Promise<{ head: CatalogHeadRef | null | undefined; unavailable: boolean }>;
   evidence?: CatalogPublicationEvidence | null;
   evaluation?: CatalogRulesContext;
   attributeReferences?: CatalogAttributeReferencePort | undefined;
@@ -446,16 +446,20 @@ async function observe<T>(read: () => Promise<T | undefined>): Promise<T | undef
 /** Interpret one sealed intent. A writer can consume the ordered operations
  * and price obligations after successful evaluation against its guarded facts.
  */
-export async function evaluateCatalogPublication(input: CatalogPublicationCompileInput, mode: PublicationMode) {
+export async function evaluateCatalogPublication(input: Omit<CatalogPublicationCompileInput, "expectedHead"> & {
+  expectedHead: ExpectedPublicationHead | null;
+}, mode: PublicationMode) {
   const structural: EvaluationIssue[] = [], activationIssues: EvaluationIssue[] = [];
   const position = { phase: "structural" as PublicationPhase, path: "product", subject: input.definition.key };
   const missing = (code: string, path: string) => unavailable(publicationIssue(code, position.phase, path, position.subject));
+  const completed = { structural: false, activation: false };
+  let knownHead: CatalogHeadRef | null | undefined;
   let activating = false;
   let failure: CatalogPublicationError | undefined;
   const pending: (CatalogDraftIssue & { channel?: "one_time" | "subscription" })[] = [];
   try {
     const compiled = await planPublication();
-    return { compiled, structural, activationIssues, activating, pending, failure };
+    return { compiled, structural, activationIssues, activating, pending, failure, completed, head: knownHead };
   } catch (error) {
     if (!(error instanceof CatalogPublicationError)) throw error;
     const diagnostic = publicationDiagnostic(error, position.phase, position.path, position.subject);
@@ -463,7 +467,7 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     const issue = { diagnostic, outcome: error.outcome };
     if (isUnavailable(issue)) issues.push(issue);
     else { failure = new CatalogPublicationError(error.code, error.outcome, diagnostic); issues.unshift(issue); }
-    return { compiled: undefined, structural, activationIssues, activating, pending, failure };
+    return { compiled: undefined, structural, activationIssues, activating, pending, failure, completed, head: knownHead };
   }
 
 
@@ -483,8 +487,8 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
       { run: () => bound.checkPhysicalSources() },                                  // Media and identity      all  P:674–691, T:106–117
       { run: () => bound.checkActivationSources(), activation: true },               // Activation sources      P:263–292,502,548–558,683–697, T:133–152
       { run: () => bound.applyPrefixes() },                                         // Ordered effects         all  P:815–929, M:91–98
-      { run: () => bound.checkStructuralResult() },                                 // Structural result       all  P:940–954
-      { run: () => bound.checkActivationResult(), activation: true },                // Activation result       P:955–969
+      { run: async () => { await bound.checkStructuralResult(); completed.structural = true; } }, // Structural result       all  P:940–954
+      { run: async () => { await bound.checkActivationResult(); completed.activation = true; }, activation: true }, // Activation result       P:955–969
     ];
     for (const phase of phases) if (!phase.activation || mode !== "first-decision") await phase.run();
     if (mode === "preview") bound.addPending();
@@ -559,17 +563,23 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
 
   async function bindEvidence({ payload, content, rules, governedIntent, withdrawalOnly, canonicalPayload, contextualIssue,
     validationPayload, draftIssues }: Awaited<ReturnType<typeof admit>>) {
-    const { record, definition, expectedHead, observations } = input;
+    const { record, definition, expectedHead: requestedHead, observations } = input;
     position.path = "publication";
-    let current: CatalogHeadRef | null | undefined;
-    try { current = await input.readCurrentHead?.(); }
+    let lineage: Awaited<ReturnType<NonNullable<typeof input.readCurrentHead>>>;
+    try { lineage = await input.readCurrentHead?.() ?? { head: undefined, unavailable: Boolean(input.readCurrentHead) }; }
     catch (error) {
       if (error instanceof CatalogPublicationError && error.outcome !== "dependency_unavailable") throw error;
+      lineage = { head: undefined, unavailable: true };
     }
-    if (current !== undefined && !equal(current, expectedHead)) publicationRefuse("head_conflict", "conflict");
-    const evidence = input.evidence === undefined ? await observe(() => observations?.readEvidence?.({
-      candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead,
-    }) ?? Promise.resolve(undefined)) ?? null : input.evidence;
+    const current = lineage.head;
+    if (current !== undefined && !matchesPublicationHead(requestedHead, current)) publicationRefuse("head_conflict", "conflict");
+    knownHead = requestedHead === null ? null : requestedHead.documentDigest === undefined ? current
+      : { ...requestedHead, documentDigest: requestedHead.documentDigest };
+    const evidenceHead = knownHead;
+    const evidence = input.evidence !== undefined ? input.evidence : evidenceHead === undefined ? null
+      : await observe(() => observations?.readEvidence?.({
+        candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead: evidenceHead,
+      }) ?? Promise.resolve(undefined)) ?? null;
     const head = evidence && publicationHeadSchema.nullable().safeParse(evidence.head);
     const recordedProduct = evidence && catalogPublishedProductSchema.nullable().safeParse(evidence.product);
     const skuRows = evidence && Array.isArray(evidence.skus) ? evidence.skus : undefined;
@@ -580,7 +590,9 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     const recordedSkus = skuRows?.length === retainedSkus.length;
     const recordedDocuments = evidence && Array.isArray(evidence.documents);
     const highWaterAvailable = evidence && Number.isSafeInteger(evidence.documentRevisionHighWater) && evidence.documentRevisionHighWater >= 0;
-    if (head?.success && !equal(head.data, expectedHead)) publicationRefuse("head_conflict", "conflict");
+    if (head?.success && !matchesPublicationHead(evidenceHead === undefined ? requestedHead : evidenceHead, head.data)) publicationRefuse("head_conflict", "conflict");
+    if (head?.success && knownHead === undefined) knownHead = head.data;
+    const expectedHead = knownHead ?? null;
     if (evidence && (!head?.success || !recordedProduct?.success || !recordedSkus || !recordedDocuments || !highWaterAvailable))
       structural.push(missing("catalog_publication_read_invalid", "publication"));
     const sourceRead = evidence && Array.isArray(evidence.drafts) ? boundDrafts(record, payload, evidence.drafts) : undefined;
@@ -589,8 +601,8 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
         structural.push(missing("catalog_publication_read_invalid", "publication"));
     };
     if (evidence && (!sourceRead || sourceRead.incomplete)) markSourceUnavailable();
-    const missingProduct = expectedHead !== null && !recordedProduct?.data;
-    const missingSkuRoster = expectedHead !== null && !recordedSkus;
+    const missingProduct = requestedHead !== null && !recordedProduct?.data;
+    const missingSkuRoster = requestedHead !== null && !recordedSkus;
     const missingState = missingProduct || missingSkuRoster;
     const retainedState = {
       product: recordedProduct?.data ?? null,
@@ -599,11 +611,11 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
       documentRevisionHighWater: highWaterAvailable ? evidence.documentRevisionHighWater : 0,
     };
     if (!rules || !evidence) structural.push(missing("publication_preparation_unavailable", "publication"));
-    if (input.readCurrentHead && current === undefined) structural.push(missing("publication_head_unavailable", "publication"));
+    if (lineage.unavailable || knownHead === undefined) structural.push(missing("publication_head_unavailable", "publication"));
     const governedState = evidence?.lifecycle;
     const states = governedState && lifecycleEvidenceSchema.safeParse(governedState).data;
     const governed = governedIntent || governedState !== undefined;
-    const lifecycleAvailable = !expectedHead || Boolean(states && retainedState.skus.every(sku => states.skus[sku.code]));
+    const lifecycleAvailable = !requestedHead || Boolean(states && retainedState.skus.every(sku => states.skus[sku.code]));
     if (governed && !lifecycleAvailable)
       structural.push(missing("catalog_lifecycle_evidence_unavailable", "publication"));
     if (!governedIntent && states && lifecycleAvailable) publicationRefuse("catalog_lifecycle_raw_status_fenced");
@@ -640,7 +652,7 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     need(canonicalCatalogDraftJson(record.payload) === canonicalPayload, "catalog_publication_source_mismatch");
     position.path = "publication";
     if (head?.success && recordedProduct?.success)
-      need((retainedState.product?.document?.digest ?? null) === (expectedHead?.documentDigest ?? null), "catalog_publication_source_mismatch");
+      need((retainedState.product?.document?.digest ?? null) === (head.data?.documentDigest ?? null), "catalog_publication_source_mismatch");
     need(missingState || retainedState.skus.length === 0 || retainedState.product !== null, "catalog_publication_source_invalid");
     need(retainedState.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
     const retainedIds = new Set<string>(), retainedCodes = new Set<string>();
@@ -671,7 +683,7 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     const incoming = new Map(payload.skus.map(sku => [sku.code, sku]));
     const gtins = new Set(retainedState.skus.flatMap(sku => sku.identifiers.filter(identifier => identifier.scheme === "gs1:gtin").map(identifier => identifier.value.padStart(14, "0"))));
     if (product) need(product.id === payload.product.id && product.slug === slug && equal(product.type, payload.product.type), "catalog_publication_product_identity_conflict");
-    assertCatalogAction(payload, expectedHead === null ? "create" : "revise");
+    assertCatalogAction(payload, requestedHead === null ? "create" : "revise");
     if (product && payload.product.primarySkuId)
       need(product.primarySkuId === payload.product.primarySkuId, "current_primary_mismatch");
     const authoredDocument = payload.product.documentRevision ?? publicationRefuse("document_reference_missing");
@@ -957,7 +969,7 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
             const previous = documentsById.get(operation.revisionId);
             need(byId === byRevision && equal(byId, entry.reference) && (!previous || equal(previous, entry)), "catalog_publication_v3_compile_document_conflict");
           } else {
-            if (highWaterAvailable || expectedHead === null)
+            if (highWaterAvailable || requestedHead === null)
             need(operation.revisionNo === highWater + 1, "catalog_publication_document_revision_sequence");
             addReference(entry.reference);
             highWater++;
