@@ -162,17 +162,30 @@ const productCarrierRefusal = {
   code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_facts_invalid" },
 };
 
-it("refuses an opaque document in the legacy product publication projection on write and restore", async () => {
-  expect(packet.owned.find(entry => entry.table === "catalog_publications")!.rows).toEqual([]);
-  const projection = await opaqueProductProjection();
-  const pristine = await journeyCensus(target.owner);
+function packetWithProductProjection(row: string) {
   const edited = structuredClone(packet);
   const table = edited.owned.find(entry => entry.table === "catalog_products")!;
   const index = table.rows.findIndex(row => JSON.parse(row).id === products[0]);
   expect(index).toBeGreaterThanOrEqual(0);
-  table.rows[index] = projection.row;
+  table.rows[index] = row;
   rehash(edited);
-  await expect(restore(target.owner, edited)).rejects.toMatchObject(productCarrierRefusal);
+  return edited;
+}
+
+async function storeOpaqueProductProjection(owner: Pool, facts: string) {
+  // Model a row already on disk while leaving transfer admission active.
+  await transaction(owner, async db => {
+    await db.query("ALTER TABLE public.catalog_products DISABLE TRIGGER catalog_products_publication_pointer_fence");
+    await db.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [products[0], facts]);
+    await db.query("ALTER TABLE public.catalog_products ENABLE TRIGGER catalog_products_publication_pointer_fence");
+  });
+}
+
+it("refuses an opaque document in the legacy product publication projection on write and restore", async () => {
+  expect(packet.owned.find(entry => entry.table === "catalog_publications")!.rows).toEqual([]);
+  const projection = await opaqueProductProjection();
+  const pristine = await journeyCensus(target.owner);
+  await expect(restore(target.owner, packetWithProductProjection(projection.row))).rejects.toMatchObject(productCarrierRefusal);
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 
   const refused = await transaction(source.owner, db => db.query(
@@ -185,17 +198,23 @@ it("refuses an opaque document in the legacy product publication projection on w
 
 it("refuses an opaque document in a stored legacy product publication projection during capture", async () => {
   const { facts } = await opaqueProductProjection();
-  // Model a malformed source row already on disk while leaving normal capture admission active.
-  await transaction(source.owner, async db => {
-    await db.query("ALTER TABLE public.catalog_products DISABLE TRIGGER catalog_products_publication_pointer_fence");
-    await db.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [products[0], facts]);
-    await db.query("ALTER TABLE public.catalog_products ENABLE TRIGGER catalog_products_publication_pointer_fence");
-  });
+  await storeOpaqueProductProjection(source.owner, facts);
   try {
     await expect(captureStoreJourney(source.owner, "catalog-document-source")).rejects.toMatchObject(productCarrierRefusal);
   } finally {
     await source.owner.query("UPDATE public.catalog_products SET publication_facts=NULL WHERE id=$1", [products[0]]);
   }
+}, 65_000);
+
+it("refuses an opaque document in the same stored legacy product projection during exact replay", async () => {
+  expect(await restore()).toMatchObject({ replayed: false });
+  const projection = await opaqueProductProjection();
+  const edited = packetWithProductProjection(projection.row);
+  await storeOpaqueProductProjection(target.owner, projection.facts);
+  const before = await journeyCensus(target.owner);
+  expect(before.catalog_products).toContain(projection.row);
+  await expect(restore(target.owner, edited)).rejects.toMatchObject(productCarrierRefusal);
+  expect(await journeyCensus(target.owner)).toEqual(before);
 }, 65_000);
 
 it("preserves a null document pointer and a null primary SKU without changing product rows", async () => {

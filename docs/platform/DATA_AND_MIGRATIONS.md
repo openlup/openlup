@@ -948,7 +948,7 @@ publication events use the same checked text before comparing the original
 result. Invalid saved result text refuses the entire transaction. Work on
 an issue scales with the predecessor roster and issued SKU facts, with a sort
 for canonical order. SKU, receipt, head and pointer events use their indexed
-keys. Deferred triggers run once per affected row, including during bulk restore.
+keys. Deferred triggers run per affected row, including in bulk restore. The live SKU event walks each changed facts JSON value recursively.
 Decision events use the candidate and event-order index to check adjacent
 transitions and the approval active at the issue's saved time.
 

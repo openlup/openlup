@@ -736,7 +736,8 @@ BEGIN
            WHEN operation #>> '{provenance,source}'='retained_draft' THEN (operation->'provenance') - 'source'
          END IS NOT DISTINCT FROM d.provenance
          AND operation->'documentRef'=to_jsonb(d.document_ref) AND operation->'sourceRef'=to_jsonb(d.source_ref)
-         AND operation->'digest'=to_jsonb(d.digest) AND (operation->>'canonicalText')::jsonb=d.document_payload
+         AND operation->'digest'=to_jsonb(d.digest)
+         AND (operation->>'canonicalText')::jsonb=d.document_payload
          AND encode(sha256(convert_to(operation->>'canonicalText','UTF8')),'hex')=d.digest) IS TRUE AS matches
         FROM (VALUES (false,origin.payload,d.provenance),
          (true,authored,jsonb_build_object('draftId',product #> '{source,draftId}','draftRevision',product #> '{source,revision}',

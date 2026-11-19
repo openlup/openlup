@@ -5,6 +5,9 @@ import {
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
 
+export const catalogProductCarriersValidSql = "t.publication_facts IS NULL OR public.catalog_publication_carriers_valid(t.publication_facts,t.id)";
+export const catalogProductCarrierViolation = { code: "23514", constraint: "catalog_publication_facts_invalid" } as const;
+
 // One finite native subscription/order/media profile. This is not an extension
 // registry or a caller-selected SQL/table importer. Unknown nonempty public/app
 // data refuses the whole capture; credentials and migration history are not data
@@ -217,12 +220,11 @@ export async function captureConnectedNativeStore(input: {
         // Only PostgreSQL encodes row values. JS never reserializes parsed
         // bigint/numeric/timestamp values for transport.
         const carrierCheck = table === "catalog_products"
-          ? ", t.publication_facts IS NULL OR public.catalog_publication_carriers_valid(t.publication_facts,t.id) AS carriers_valid" : "";
+          ? `, ${catalogProductCarriersValidSql} AS carriers_valid` : "";
         const captured = (await db.query<{ value: string; carriers_valid?: boolean }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value${carrierCheck}
           FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows;
         if (captured.some(row => row.carriers_valid === false)) {
-          const refusal = catalogPublicationAdmissionRefusal({ code: "23514", constraint: "catalog_publication_facts_invalid" });
-          throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
+          throw Object.assign(new Error("Invalid product publication facts"), catalogProductCarrierViolation);
         }
         const rows = captured.map(row => row.value);
         count += rows.length;
