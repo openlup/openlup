@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
-import { assertCoLocatedForwardApproval, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
@@ -17,9 +17,10 @@ const SHA = /^[a-f0-9]{40}$/u;
 /**
  * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
  * @param {readonly string[]} changedPaths
+ * @param {(path: string) => boolean} hasUpstreamManagedApproval
  */
-export function needsForwardApproval(changedPaths) {
-  return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path));
+export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
+  return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
 export function parseReceipt(body) {
   if (typeof body !== 'string' || body.length > 1024 * 1024) return null;
@@ -88,14 +89,16 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
-      const forwardApproval = needsForwardApproval(candidate.changedPaths);
+      const forwardApproval = needsForwardApproval(candidate.changedPaths, path => hasExactManagedForward(cwd, candidate.base, path));
       // The trusted reader checks each change on its own base; moves on main or ahead in the queue do not refuse it.
       if (forwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
         decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree, trustedMain: main }, runGit);
         demand(decision.ok, decision.reason, decision.code);
-        if (forwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha);
+        if (forwardApproval || needsForwardApproval(candidate.changedPaths, path => hasExactManagedForward(cwd, group.base_sha, path))) {
+          assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha);
+        }
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');

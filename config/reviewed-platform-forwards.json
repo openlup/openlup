@@ -5668,6 +5668,20 @@
         "dataStatements": []
       },
       {
+        "row": "INVENTORY-ATP-AGGREGATE-RENEWAL-CREDITS",
+        "path": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+            "beforeSha256": "271417d6788f0e55e36f55c3e7415c45d862e4f7a32520eeacbb91655a1a1c1b",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "CF-R1-CHECKOUT-RECOVERY-REMINDER-EPISODE-PIN",
         "path": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
         "replacedFunctions": [
@@ -8050,6 +8064,17 @@
           "signature": "public.inventory_renewal_protection_validate(jsonb)",
           "beforeSha256": null,
           "afterSha256": "de8f7e1de2757b58f840935d66cd6073869756e67d1d7c93a9223be92c253e09"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7",
+      "functions": [
+        {
+          "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+          "beforeSha256": "271417d6788f0e55e36f55c3e7415c45d862e4f7a32520eeacbb91655a1a1c1b",
+          "afterSha256": "e27fdcc3840cde832b784cac4f413d0c46a79c20b2d79537e77c552a80c8f66f"
         }
       ]
     },
