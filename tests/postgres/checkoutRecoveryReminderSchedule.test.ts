@@ -233,15 +233,16 @@ it('tells a separate cart runtime which grant to apply before it can enqueue and
 it('revokes cart helper execution from both browser roles under managed default grants', async () => {
   const defaultGrant = sqlStatements(readFileSync('tests/postgres/managed-compat/supabase.sql', 'utf8'))
     .find(sql => sql.startsWith('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS '))!;
-  const [create, ...privileges] = sqlStatements(readFileSync(episodePath, 'utf8'))
-    .filter(sql => sql.startsWith(`CREATE FUNCTION ${cartHelper}(`) || sql.includes(`FUNCTION ${cartHelperSignature}`));
+  const statements = sqlStatements(readFileSync(episodePath, 'utf8'));
+  const create = statements.find(sql => sql.startsWith(`CREATE FUNCTION ${cartHelper}(`))!;
+  const privileges = statements.filter(sql => /^(REVOKE|DO)\b/u.test(sql) && sql.includes(`FUNCTION ${cartHelperSignature}`));
   const owner = await db.connect();
   try {
     await owner.query('BEGIN');
     // Recreate the exact helper in the installed schema using the managed default ACL.
     await owner.query(defaultGrant);
     await owner.query(`DROP FUNCTION ${cartHelperSignature}`);
-    await owner.query(create!);
+    await owner.query(create);
     const browserRoles = ['anon', 'authenticated'];
     const grants = await owner.query(`SELECT r.rolname FROM pg_proc p
       CROSS JOIN LATERAL aclexplode(p.proacl) acl JOIN pg_roles r ON r.oid=acl.grantee
