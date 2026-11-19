@@ -219,9 +219,10 @@ When the guard refuses, PostgreSQL returns SQLSTATE `55000` and the message
 `checkout_recovery_schedule_change_blocked_open_episodes (N blocking orders)`.
 The separate `HINT` says the current schedule stays in effect and tells you when
 to retry. `installCheckoutRecoveryReminderSchedule` propagates the original
-database error with its code, message and hint. The starter's `./lifecycle up`
-shows the database message and count on stderr and omits the database hint.
-The outer command also reports `starter_installation_failed`.
+database error with its code, message and hint. For this installation refusal,
+the updated starter's `./lifecycle up` shows the database message and count on
+stderr, followed by the retry hint on one line. The outer command also reports
+`starter_installation_failed`.
 
 The current schedule stays in effect. Retry after the blocking orders are paid
 or cancelled. An abandoned cart also stops blocking when all its draft receipts
