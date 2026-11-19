@@ -19,19 +19,31 @@ for (const [subpath, target] of Object.entries(codeExports)) {
   assert(target.types === `./${contract.entrypoint}` && target.import === target.default && target.import === target.types.replace(/\.d\.ts$/, ".js"), "declarations and runtime exports differ");
 }
 
+const maturityRank = { testing: 0, experimental: 1, stable: 2 };
+const subpathByDir = new Map();
 const declaredSubpathRoots = Object.entries(gates.packageSurface)
-  .map(([subpath, contract]) => ({
-    subpath,
-    dir: dirname(resolveInsidePackage(contract.entrypoint)),
-  }))
+  .map(([subpath, contract]) => {
+    const dir = dirname(resolveInsidePackage(contract.entrypoint));
+    assert(!subpathByDir.has(dir), `duplicate declaration entrypoint directory ${toPosix(relative(packageRoot, dir))} for ${subpathByDir.get(dir)} and ${subpath}; give each subpath its own entrypoint directory`);
+    subpathByDir.set(dir, subpath);
+    return { subpath, dir };
+  })
   .sort((left, right) => right.dir.length - left.dir.length || left.dir.localeCompare(right.dir));
 
-for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
+const entrypoints = new Map(Object.entries(gates.packageSurface).map(([subpath, contract]) => {
   const entrypoint = resolveInsidePackage(contract.entrypoint);
-  const snapshotPath = resolveInsidePackage(contract.snapshot);
   assert(existsSync(entrypoint), `missing declaration entrypoint ${contract.entrypoint}; run npm run build`);
+  return [subpath, entrypoint];
+}));
+const declarationsBySubpath = new Map([...entrypoints].map(([subpath, entrypoint]) => [subpath, collectDeclarationGraph(subpath, [entrypoint])]));
+const scopedFiles = new Set([...declarationsBySubpath.values()].flat());
+const missingFiles = collectDeclarationGraph(null, [...entrypoints.values()])
+  .filter((file) => !scopedFiles.has(file)).map((file) => toPosix(relative(packageRoot, file)));
+assert(missingFiles.length === 0, `API snapshots omit declarations: ${missingFiles.join(", ")}; make each missing declaration reachable from its owning subpath entrypoint or move it to a shared directory outside declared subpath roots`);
 
-  const snapshot = renderSnapshot(subpath, contract, entrypoint);
+for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
+  const snapshotPath = resolveInsidePackage(contract.snapshot);
+  const snapshot = renderSnapshot(subpath, contract, declarationsBySubpath.get(subpath));
   if (update) {
     mkdirSync(dirname(snapshotPath), { recursive: true });
     writeFileSync(snapshotPath, snapshot);
@@ -49,8 +61,7 @@ for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
 }
 
 
-function renderSnapshot(subpath, contract, entrypoint) {
-  const declarations = collectDeclarationGraph(subpath, entrypoint);
+function renderSnapshot(subpath, contract, declarations) {
   const sections = declarations.map((file) => {
     const path = toPosix(relative(packageRoot, file));
     const source = readFileSync(file, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").split("\n").map(line => line.trimEnd()).join("\n").trimEnd();
@@ -80,9 +91,9 @@ function ownerSubpathOf(file) {
   return null;
 }
 
-function collectDeclarationGraph(subpath, entrypoint) {
+function collectDeclarationGraph(subpath, entrypoints) {
   const found = new Set();
-  const pending = [entrypoint];
+  const pending = [...entrypoints];
 
   while (pending.length > 0) {
     const file = pending.pop();
@@ -105,15 +116,15 @@ function collectDeclarationGraph(subpath, entrypoint) {
       const target = resolveDeclaration(file, specifier);
       assert(target, `cannot resolve ${specifier} from ${toPosix(relative(packageRoot, file))}`);
       assert(target.startsWith(`${distRoot}${sep}`), `declaration escaped dist: ${target}`);
-      // Always follow explicit re-exports (including local `import { X }; export { X }`) so the
-      // snapshot retains every exported symbol's declaration; stop pure imports at sibling
-      // declared subpath boundaries because each sibling owns its own API snapshot.
-      if (reexport) {
+      // Follow every edge for the full graph and every re-export for each snapshot.
+      if (subpath === null || reexport) {
         pending.push(target);
         return;
       }
       const targetOwner = ownerSubpathOf(target);
-      if (targetOwner === null || targetOwner === subpath) {
+      // A less mature sibling's snapshot cannot carry the importing subpath's compatibility promise.
+      if (targetOwner === null || targetOwner === subpath ||
+          maturityRank[gates.packageSurface[targetOwner].maturity] < maturityRank[gates.packageSurface[subpath].maturity]) {
         pending.push(target);
       }
     });

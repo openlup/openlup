@@ -1061,9 +1061,10 @@ requests that supply a different horizon.
 returns one validation outcome for the proposed value. Use the
 [settings preview](../core/docs/guide/how-to/operate/configure-settings.md#preview-before-changing-a-setting)
 to inspect current stock for named SKUs, how the proposed horizon could affect
-new purchase availability, and which records retain their terms. Availability
-under the proposed horizon is pending; existing reservations keep their
-quantities and expiry times.
+new purchase availability, and which records retain their terms. The version-1
+document estimates proposed availability at the same instant and in the same
+snapshot as current availability. Existing reservations keep their quantities
+and expiry times.
 
 Apply `20261123142000_inventory_renewal_protection_validation.sql` from the
 complete native catalogue. The existing horizon reader now calls

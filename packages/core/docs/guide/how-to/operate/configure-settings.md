@@ -67,9 +67,14 @@ command.
 
 A longer horizon can only leave availability for new purchases equal or lower.
 A shorter horizon can only leave it equal or higher. Existing reservations
-keep their quantities and expiry times. The result includes current availability
-for the named SKUs and leaves `effect.skus[].proposedAvailableForNewPurchases`
-null pending a proposed-horizon read.
+keep their quantities and expiry times. For each named SKU, the version-1 document
+reports current availability and a proposed estimate computed at the same instant
+in the same snapshot. Recorded stock and demand can change. The proposed quantity
+is null for an invalid proposal or missing SKU or stock source.
+
+Use `--json` to see both quantities in the starter CLI. Default text output shows
+the current quantity and the direction of change. MCP and the platform library
+also return both fields in the preview document.
 
 ## Modes and runtime levels
 
@@ -107,7 +112,7 @@ recheck command and whether retrying can help.
 | `commerce_setting_preview_configuration_unknown` | Select one of the listed IDs. |
 | `commerce_setting_preview_input_invalid` | Correct the named argument or run `preview --help`. |
 | `commerce_setting_preview_policy_read_denied` | Ask for a connection that can read the installed policy. |
-| `commerce_setting_preview_stock_read_denied` | Ask for a connection that can read stock availability. |
+| `commerce_setting_preview_stock_read_denied` | Ask for a connection that can read stock and execute `inventory_new_purchase_stock_preview` for a proposed estimate. |
 | `commerce_setting_preview_validation_denied` | Ask for a connection with permission to preview this setting. |
 | `commerce_setting_preview_validation_missing` | Ask your store administrator to update the OpenLup installation. |
 | `commerce_setting_preview_unexpected` | Retry once, then contact your store administrator if the same step still fails. |

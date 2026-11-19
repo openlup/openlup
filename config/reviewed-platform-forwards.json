@@ -5794,6 +5794,19 @@
         "dataStatements": []
       },
       {
+        "row": "F2C-INVENTORY-NEW-PURCHASE-STOCK-PREVIEW",
+        "path": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalogue-core-s",
         "path": "db/platform/migrations/20261123190000_catalog_publication.sql",
         "replacedFunctions": [],
@@ -8447,6 +8460,17 @@
           "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
           "beforeSha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39",
           "afterSha256": "77e895b36fd2f9e755e7513aa9cb55f038f3330aaf2cc90d6a256f4e6293441a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
+      "sha256": "275ffae4413f157de5d408fecd32dda6cb45c186b95efedcf7605fb8aedc8d55",
+      "functions": [
+        {
+          "signature": "public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "83655f95f2de6be62fd16c14e0043b9e98d4065a93b4111942cb153771d953bb"
         }
       ]
     },
