@@ -2,10 +2,14 @@
   "current": {
     "profiles": {
       "legacy": {
-        "count": 158,
-        "exactTailCount": 48,
-        "objectInventorySha256": "39aaadc3085ec2a0cfb330d4f2debd3347b7cbdb24edf7bd9270935b42837d44",
+        "count": 159,
+        "exactTailCount": 49,
+        "objectInventorySha256": "e150a40685abde4a12c9c2c9116fd7198b4305eb053a03647903df640fa4e835",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+            "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
+          },
           {
             "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
             "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
@@ -641,10 +645,14 @@
         ]
       },
       "bootstrap": {
-        "count": 163,
-        "exactTailCount": 48,
-        "objectInventorySha256": "13ed143e3d89c58e9bed605999f77ca37d4cd9e5911dcdfe6d2d5e6c3236464b",
+        "count": 164,
+        "exactTailCount": 49,
+        "objectInventorySha256": "0f7ed71ac10756349873e91aab6326206b6f9428b22cd926aefb4afa2ec63183",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+            "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
+          },
           {
             "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
             "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
@@ -1300,10 +1308,14 @@
         ]
       },
       "separate": {
-        "count": 163,
-        "exactTailCount": 48,
-        "objectInventorySha256": "129a6ec4c20ea219d22cb1afe5a124d9677f5b0c745cc130ae87353a6815f533",
+        "count": 164,
+        "exactTailCount": 49,
+        "objectInventorySha256": "3a9a77c164bd383d0cf32123225fa6372e7698186882e211c45675f43e9c9271",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+            "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
+          },
           {
             "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
             "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
@@ -1959,10 +1971,14 @@
         ]
       },
       "admin-managed": {
-        "count": 162,
-        "exactTailCount": 48,
-        "objectInventorySha256": "dcf65614061ccf21afad173f6783d1a0845cf421ae0005108de5c1b533d28f74",
+        "count": 163,
+        "exactTailCount": 49,
+        "objectInventorySha256": "26c562957dfdc844d67f947a32cab69f4340bba8a0f13f4f611e8c47e3f1158b",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+            "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
+          },
           {
             "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
             "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
@@ -2614,10 +2630,14 @@
         ]
       },
       "admin-operator": {
-        "count": 162,
-        "exactTailCount": 48,
-        "objectInventorySha256": "f85b7d32c20c9addf8ece187d39d7c4e4603a8d685562d51bd2b9203cb0e4280",
+        "count": 163,
+        "exactTailCount": 49,
+        "objectInventorySha256": "ea1dd1110325574ea03b3f65149a1dbddb7f016ffe9fcb2b01f273d11b0ca861",
         "tail": [
+          {
+            "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
+            "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
+          },
           {
             "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
             "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
@@ -3269,7 +3289,7 @@
         ]
       }
     },
-    "connectedTableCount": 160
+    "connectedTableCount": 161
   },
   "historical": {}
 }
