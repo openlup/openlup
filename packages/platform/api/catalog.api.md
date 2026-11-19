@@ -5320,7 +5320,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123180000_catalog_lifecycle";
         readonly catalogPath: "db/platform/migrations/20261123180000_catalog_lifecycle.sql";
         readonly position: 158;
-        readonly sha256: "d8f9f6ff266b326abc3501778802c2888ab5a0efe2e5e0f468354e0293e0139b";
+        readonly sha256: "f1c2c4ed234b3d0de07303c4e30188ce1723ed7309c8402008f1b265ff1e5a9f";
         readonly url: URL;
     }
 ];

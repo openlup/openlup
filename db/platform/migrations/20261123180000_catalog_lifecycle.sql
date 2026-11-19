@@ -225,7 +225,7 @@ BEGIN
   type_version:=p_facts#>'{type,version}';
   IF jsonb_typeof(p_facts->'axes') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
   IF jsonb_array_length(p_facts->'axes')>16 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_facts->'axes') a
-   WHERE jsonb_typeof(a)<>'string' OR a#>>'{}' !~ '^[a-z][a-z0-9_-]{0,63}$')
+   WHERE jsonb_typeof(a)<>'string' OR a#>>'{}' !~ '^[a-z][a-z0-9_-]{0,63}$' OR a#>>'{}' IN ('constructor','prototype'))
    OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_facts->'axes') a GROUP BY a HAVING count(*)>1) THEN RETURN false; END IF;
   RETURN coalesce(p_facts ?& ARRAY['slug','name','type','axes','primarySkuId','document','presentation','content']
    AND p_facts - ARRAY['schemaVersion','lifecycleState','id','slug','name','status','type','axes','attributes','primarySkuId','document','presentation','source','content','definitionDigest']='{}'::jsonb
@@ -354,6 +354,9 @@ BEGIN
  SELECT * INTO doc FROM public.catalog_product_document_revisions d
  WHERE d.id=(p_manifest#>>'{product,document,id}')::uuid AND d.product_id=p_product_id;
  IF NOT FOUND OR doc.canonical_text IS NULL
+  OR NOT public.catalog_lifecycle_reference_valid_v3(doc.schema_id,240)
+  OR NOT public.catalog_lifecycle_reference_valid_v3(doc.document_ref,240)
+  OR NOT public.catalog_lifecycle_reference_valid_v3(doc.source_ref,240)
   OR doc.digest<>encode(sha256(convert_to(doc.canonical_text,'UTF8')),'hex')
   OR p_manifest#>'{product,document}' IS DISTINCT FROM jsonb_build_object('id',doc.id,'productId',doc.product_id,
     'revisionNo',doc.revision_no,'schemaId',doc.schema_id,'documentRef',doc.document_ref,'sourceRef',doc.source_ref,'digest',doc.digest)

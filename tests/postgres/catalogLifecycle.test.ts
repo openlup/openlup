@@ -1311,7 +1311,10 @@ it.each([
   if (defect === "manifest version" || defect === "product projection" || defect.startsWith("legacy envelope") || defect === "noncanonical manifest" || defect === "empty shared content") {
     const manifest = JSON.parse(publication.canonical_state);
     if (defect === "manifest version") manifest.product.schemaVersion = 2;
-    if (defect === "empty shared content") manifest.product.content = {};
+    if (defect === "empty shared content") {
+      manifest.product.content = {};
+      expect(catalogPublicationStateSchema.safeParse(manifest).success).toBe(false);
+    }
     if (defect === "product projection") manifest.product.status = "draft";
     if (defect.startsWith("legacy envelope")) manifest.schemaVersion = 2;
     if (defect === "legacy envelope with legacy product and governed roster") {
@@ -1330,7 +1333,10 @@ it.each([
     } else await expect(insert).rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
   } else {
     if (defect === "sku version") facts.schemaVersion = 99;
-    if (defect === "missing SKU attributes") delete facts.attributes;
+    if (defect === "missing SKU attributes") {
+      delete facts.attributes;
+      expect(catalogSkuStateSchema.safeParse(facts).success).toBe(false);
+    }
     if (defect === "duplicate membership") facts.memberships = [{ offerVersion: "example:offer@1", admitted: true }, { offerVersion: "example:offer@1", admitted: false }];
     if (defect === "scalar option") facts.options = { finish: "matte" };
     if (defect === "empty logistics") facts.logisticsRef = "";
@@ -1465,13 +1471,14 @@ it.each([
   expect((await db.query("SHOW extra_float_digits")).rows).toEqual([{ extra_float_digits: "0" }]);
 });
 
-it.each(["empty logistics", "scalar option", "noncanonical sibling", "tabbed membership", "bad GTIN checksum", "UTF-16 memberships", "UTF-8-only memberships"] as const)(
+it.each(["missing SKU attributes", "empty logistics", "scalar option", "noncanonical sibling", "tabbed membership", "bad GTIN checksum", "UTF-16 memberships", "UTF-8-only memberships"] as const)(
   "LC5-PRE shared authority and codecs agree on %s on R3, R4, A1 and O", async fault => {
   const f = await seed({ other: true }), standing = await standingActive(f);
   const stored = (await db.query("SELECT * FROM public.catalog_publications WHERE id=$1", [standing.head.publicationId])).rows[0];
   const manifest = JSON.parse(stored.canonical_state), [bad, good] = manifest.skus;
   const facts = JSON.parse((await db.query("SELECT full_facts FROM public.catalog_sku_revisions WHERE id=$1", [bad.revisionId])).rows[0].full_facts);
   const goodFacts = JSON.parse((await db.query("SELECT full_facts FROM public.catalog_sku_revisions WHERE id=$1", [good.revisionId])).rows[0].full_facts);
+  if (fault === "missing SKU attributes") delete facts.attributes;
   if (fault === "empty logistics") facts.logisticsRef = "";
   if (fault === "scalar option") facts.options = { finish: "matte" };
   if (fault === "tabbed membership") facts.memberships = [{ offerVersion: "\texample:offer@1", admitted: true }];
