@@ -1043,7 +1043,7 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
       throw new Error(`issued exact managed forward must retain its bytes: ${pin.path}`);
     }
   }
-  if (prior && after && !before!.equals(after)) {
+  if (before && prior && after && !before.equals(after)) {
     const candidate = readReviewedForwardRegistry(after);
     assertNativeStoreClassTransition(prior, candidate);
     nativeStoreNewSlotTimes(root, base, prior, candidate);
