@@ -1,5 +1,5 @@
 /** Frozen host facts; no catalogue, registry or country-policy reread on retry.
- * Carrier: donor providerPorts snapshot and invoiceContracts LocalInvoiceSnapshot;
+ * Carrier: prior providerPorts snapshot and invoiceContracts LocalInvoiceSnapshot;
  * native invoicing_install_facts adds dates/refs/policyVersion and explicit totals.
  */
 export interface InvoiceSeller {
