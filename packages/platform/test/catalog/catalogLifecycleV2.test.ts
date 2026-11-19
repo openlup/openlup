@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js";
 import { catalogDraftPayloadV4Schema, catalogLifecycleTransitionV2, catalogAuthoritativeLifecycleV2, catalogAcceptedReferenceV2Schema } from "../../src/catalog/lifecycleV2.js";
-import { compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
+import { catalogPublicationStateSchema, catalogSkuStateSchema, compileCatalogPublication } from "../../src/catalog/publicationValidation.js";
 import type { CatalogDraftPayloadV4, CatalogLifecycleStateV2, CatalogDraftPublicationOperationV4 } from "../../src/catalog/contracts/lifecycleV2.js";
 import { input } from "./fixtures/publicationInput.js";
 
@@ -28,6 +28,20 @@ function revision(operations: CatalogDraftPublicationOperationV4[]) {
     sharedContent: { ...source.payload.product.sharedContent, catalogAction: "revise" } }, publication: { kind: "release", evidence: {}, operations } };
   return { ...source, product: first.product, skus: first.skus, documents: first.documents, payload, record: { ...source.record, revision: 2, payload } };
 }
+it.each(["SKU attributes", "shared product content"] as const)("LC5-C3 published codecs require %s", field => {
+  const { first } = active();
+  const sku = first.skus[0]!, manifest = { schemaVersion: 3, product: first.product, skus: [
+    { skuId: sku.id, revisionId: sku.id, revision: 1, digest: "b".repeat(64) },
+  ] };
+  expect(catalogSkuStateSchema.safeParse(sku).success).toBe(true);
+  expect(catalogPublicationStateSchema.safeParse(manifest).success).toBe(true);
+  if (field === "SKU attributes") {
+    const { attributes: _attributes, ...incomplete } = sku;
+    expect(catalogSkuStateSchema.safeParse(incomplete).success).toBe(false);
+  } else {
+    expect(catalogPublicationStateSchema.safeParse({ ...manifest, product: { ...manifest.product, content: {} } }).success).toBe(false);
+  }
+});
 it("keeps v1/v2/v3 decoding strict while adding lifecycle commands", () => {
   const value = governed();
   expect(catalogDraftPayloadV4Schema.safeParse(value.payload).success).toBe(true);

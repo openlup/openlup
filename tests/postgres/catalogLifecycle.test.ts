@@ -1,7 +1,5 @@
-import { createNativeCatalogRenewalCodecV2, createPostgresRenewalSettlementPort, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
+import { createNativeCatalogRenewalCodecV2, createNativeRenewalCodec, createPostgresRenewalSettlementPort, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { createHash, randomUUID } from "node:crypto";
-import { catalogPublicationStateSchema, catalogSkuStateSchema } from "../../packages/platform/src/catalog/publicationValidation.js";
-import { graduateNativeRenewal } from "../../packages/platform/src/subscriptions/nativeRenewalTerms.js";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { beforeAll, afterAll, beforeEach, afterEach, expect, it } from "vitest";
@@ -618,33 +616,56 @@ it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "ac
 });
 it.each(["priced", "unpriced"] as const)("LC5-C3-O retains the owner's %s carry after a subsequent edit", async pricing => {
   const f = await seed({ other: true }), addon = f.payload.skus[1]!;
-  const orderId = randomUUID(), list = randomUUID();
+  const list = randomUUID(), activation = randomUUID(), delivery = randomUUID();
+  const orderId = await order(f,"fulfilled"), parcel = await replacement(f,orderId);
   const original = [f.code, addon.code!].map((sku,index) => ({ lineOrdinal: index+1, sku, quantity: 1, unitAmountMinor: 617 }));
+  await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,617,617)", [orderId,addon.id]);
+  await db.query("UPDATE public.commerce_orders SET total_amount_minor=1234 WHERE id=$1", [orderId]);
+  await db.query("INSERT INTO public.fulfillment_parcel_lines(shipment_id,order_item_id,sku_id,sku,quantity) SELECT $1,id,$2,$3,quantity FROM public.commerce_order_items WHERE order_id=$4 AND sku_id=$2",
+    [parcel.leaf,addon.id,addon.code,orderId]);
+  await db.query("UPDATE public.fulfillment_shipments SET status='delivered',delivered_at=statement_timestamp() WHERE id=$1", [parcel.leaf]);
+  await db.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic graduation','AA','XXX')", [list]);
+  await db.query(`UPDATE public.subscriptions SET price_list_id=$2,currency_code='XXX',cadence_days=14,
+    started_at=statement_timestamp()-interval '28 days',next_cycle_at=date_trunc('milliseconds',statement_timestamp()) WHERE id=$1`, [f.subscription,list]);
+  await db.query(`INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status)
+    SELECT $1::uuid,id,started_at,'paid' FROM public.subscriptions WHERE id=$3
+    UNION ALL SELECT $2::uuid,id,started_at+interval '14 days','paid' FROM public.subscriptions WHERE id=$3`, [activation,delivery,f.subscription]);
+  await db.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [orderId,activation]);
+  await db.query(`INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at)
+    VALUES($1,$2,$3,14,'active',$4,$5,$6,statement_timestamp())`, [orderId,f.client,f.subscription,"a".repeat(64),`active:${orderId}`,`declare:${orderId}`]);
   const facts = graduationFacts(1, f.code);
   const renewalTerms = { ...facts.renewalTerms, ...(pricing === "priced" ? { linePricing: [{
     sku: addon.code, quantity: 1, unitAmountMinor: 617, isAddon: true, quoteLine: {},
   }] } : {}) };
-  await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',0)", [orderId,f.client]);
-  await db.query("INSERT INTO public.price_lists(id,name,region_code,currency) VALUES($1,'Synthetic graduation','AA','XXX')", [list]);
-  await db.query("UPDATE public.subscriptions SET price_list_id=$2,currency_code='XXX',cadence_days=14 WHERE id=$1", [f.subscription,list]);
+  const purchase = { templateId: "synthetic", shippingAmountMinor: 0, acquisitionRef: null, renewalTerms, lines: original };
   await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,statement_timestamp())",
-    [orderId,f.subscription,JSON.stringify({ renewalTerms })]);
+    [orderId,f.subscription,JSON.stringify(purchase)]);
   await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
     VALUES($1,$2,1,0,false,617,'XXX'),($1,$3,1,1,true,617,'XXX')`, [f.subscription,f.sku,addon.id]);
-  await db.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
-    VALUES($1,'XXX','example','sandbox',statement_timestamp(),'example')`, [f.subscription]);
-  await db.query("SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE", [f.subscription]);
+  await db.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,next_cycle_number)
+    VALUES($1,'XXX','example','sandbox',statement_timestamp(),'example',2)`, [f.subscription]);
+  for (const line of original) await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,$2,$3,1,617)",
+    [f.subscription,line.lineOrdinal,line.sku]);
   expect(await obligations(f.sku)).toMatchObject({ outcome: "complete", obligations: expect.arrayContaining([
     expect.objectContaining({ family: "graduation", sourceId: orderId })]) });
-  expect(await graduateNativeRenewal(db, { subscription_id: f.subscription, template_version: 1, cadence_days: 14,
-    activation_cycle_id: randomUUID(), activation_cycle_paid: true, paid_cycle_count: 2, next_cycle_number: 2,
-    activation_order_id: orderId, currency_code: "XXX", purchase_facts: { renewalTerms }, lines: original })).toBe(true);
+  const dueAt = (await db.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].next_cycle_at as Date;
+  const owner = createPostgresRenewalStore(db,createNativeRenewalCodec(),work => work(db));
+  await owner.buildCycleSnapshots({ subscriptionId: f.subscription, scheduledAt: dueAt.toISOString(), scheduledInstant: dueAt.getTime() });
   const event = (await db.query("SELECT id,payload FROM public.subscription_events WHERE subscription_id=$1 AND event_type='subscription.starter_graduated'", [f.subscription])).rows[0];
   expect(event.payload).toMatchObject({ carriedAddonSkus: [addon.code] });
   expect(event.payload.linePricing.map((row: { sku: string }) => row.sku)).toEqual(pricing === "priced" ? [f.code,addon.code] : [f.code]);
   await db.query("DELETE FROM public.subscription_lines WHERE subscription_id=$1 AND variant_id=$2", [f.subscription,addon.id]);
   await db.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 AND sku=$2", [f.subscription,addon.code]);
   await db.query("UPDATE public.subscriptions SET template_version=3 WHERE id=$1", [f.subscription]);
+  const editId = randomUUID(), hash = "d".repeat(64), key = `after-graduation:${editId}`;
+  await db.query(`INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload)
+    VALUES($1,$2,'subscription.customer_self_service.update_bundle',$3,$4::jsonb)`,
+    [editId,f.subscription,key,JSON.stringify({ action: "update_bundle", templateVersion: 3, quoteHash: hash })]);
+  await db.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,quote_hash,expected_template_version,
+    proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,status,expires_at,accepted_event_id,accepted_at)
+    SELECT $1,$2,$3,$4,2,$5::jsonb,28,2468,1851,'XXX','accepted',occurred_at+interval '1 hour',id,occurred_at
+    FROM public.subscription_events WHERE id=$6`,
+    [f.subscription,key,"a".repeat(64),hash,JSON.stringify([{ variantId: f.sku, quantity: 3, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }]),editId]);
   expect((await db.query("SELECT public.subscription_catalog_basis_transition($1,1) AS result", [f.subscription])).rows[0].result)
     .toMatchObject({ outcome: "proved", kind: "graduation", eventId: event.id, basket: { [f.code]: 3, [addon.code!]: 1 } });
   const result = await obligations(f.sku);
@@ -1311,10 +1332,7 @@ it.each([
   if (defect === "manifest version" || defect === "product projection" || defect.startsWith("legacy envelope") || defect === "noncanonical manifest" || defect === "empty shared content") {
     const manifest = JSON.parse(publication.canonical_state);
     if (defect === "manifest version") manifest.product.schemaVersion = 2;
-    if (defect === "empty shared content") {
-      manifest.product.content = {};
-      expect(catalogPublicationStateSchema.safeParse(manifest).success).toBe(false);
-    }
+    if (defect === "empty shared content") manifest.product.content = {};
     if (defect === "product projection") manifest.product.status = "draft";
     if (defect.startsWith("legacy envelope")) manifest.schemaVersion = 2;
     if (defect === "legacy envelope with legacy product and governed roster") {
@@ -1333,10 +1351,7 @@ it.each([
     } else await expect(insert).rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
   } else {
     if (defect === "sku version") facts.schemaVersion = 99;
-    if (defect === "missing SKU attributes") {
-      delete facts.attributes;
-      expect(catalogSkuStateSchema.safeParse(facts).success).toBe(false);
-    }
+    if (defect === "missing SKU attributes") delete facts.attributes;
     if (defect === "duplicate membership") facts.memberships = [{ offerVersion: "example:offer@1", admitted: true }, { offerVersion: "example:offer@1", admitted: false }];
     if (defect === "scalar option") facts.options = { finish: "matte" };
     if (defect === "empty logistics") facts.logisticsRef = "";
@@ -1384,7 +1399,6 @@ it.each([
     manifest.schemaVersion = version;
     if (version === 2) for (const field of ["schemaVersion","lifecycleState","definitionDigest"]) delete manifest.product[field];
     manifest.skus = [reference];
-    expect(catalogPublicationStateSchema.safeParse(manifest).success).toBe(true);
     const wire = canonicalCatalogDraftJson(manifest);
     await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
       SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
@@ -1399,7 +1413,6 @@ it.each([
     await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [f.product,id,revision]);
   };
   const addRevision = async (publication: string) => {
-    expect(catalogSkuStateSchema.safeParse(facts).success).toBe(true);
     await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,3,$4,$5,$6)",
       [reference.revisionId,f.sku,f.product,publication,wire,reference.digest]);
   };
