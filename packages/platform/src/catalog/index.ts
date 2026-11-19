@@ -67,7 +67,7 @@ export { CatalogCombinationError, canonicalizeCatalogCombinationV2, classifyCata
 export { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalogDraftCommandV2Schema, catalogDraftStoredPayloadSchema,
   catalogDraftStoredCommandSchema, catalogDraftStoredRecordSchema, catalogDraftStoredApplyResultSchema } from "./draftV2Schemas.js";
 export { validateCatalogDraftV2 } from "./draftV2Validation.js";
-export { createCatalogCandidateService, CatalogCandidateError, parseCatalogCandidateReference } from "./candidate.js";
+export { createCatalogCandidateService, CatalogCandidateError } from "./candidate.js";
 export type { CatalogCandidateDeps } from "./candidate.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
@@ -79,10 +79,5 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 
-export { loadCatalogPublicationRules } from "./publicationRules.js";
-export type { CatalogPublicationRulesHandle, CatalogPublicationRulesModule } from "./publicationRules.js";
-export type { CatalogCandidatePublicationDeps, CatalogPublicationDocument, CatalogPublicationDraftEvidence, CatalogPublicationEvidence } from "./publicationEvidence.js";
-export { compileCatalogPublicationDraft } from "./publicationDraft.js";
-export { CatalogPublicationError } from "./publicationError.js";
-export { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
-export type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublishedIdentifier } from "./contracts/publication.js";
+export { withCatalogPublicationRules } from "./catalogPublicationRules.js";
+export type { CatalogPublicationRulesModule } from "./catalogPublicationRules.js";

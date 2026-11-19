@@ -21,14 +21,9 @@ export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetainedCombinationV2, CatalogCombinationChangeV2 } from "./variantAxes.js";
 export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2,
   CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
-export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./candidate.js";
+export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison, CatalogCandidateIssue } from "./candidate.js";
 
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3,
   CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3,
   CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload,
   CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
-
-export { CATALOG_PUBLICATION_LIMITS } from "./publication.js";
-export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogPublicationReceiptV2,
-  CatalogPublishedContent, CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku,
-  CatalogPublicationManifestV2, CatalogSkuRevisionRef, CatalogPublicationFailure } from "./publication.js";

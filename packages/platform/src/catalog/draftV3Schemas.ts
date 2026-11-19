@@ -1,4 +1,3 @@
-import type { CatalogPublishedContent } from "./contracts/publication.js";
 import { z } from "./validation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDraftSummarySchema, catalogDraftRefusalSchema } from "./draftSchemas.js";
@@ -35,7 +34,7 @@ function uniqueSkuIntents(content: Omit<CatalogDraftSharedContentV3, "document">
     if (new Set(codes).size !== codes.length) context.addIssue({ code: "custom", path: [key], message: "SKU intents must be unique" });
   }
 }
-export const catalogPublicationContentSchema: z.ZodType<CatalogPublishedContent> = z.object(sharedContentShape).strict().superRefine(uniqueSkuIntents);
+export const catalogPublicationContentSchema: z.ZodType<Omit<CatalogDraftSharedContentV3, "document">> = z.object(sharedContentShape).strict().superRefine(uniqueSkuIntents);
 /** @experimental */
 export const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3> =
   z.object({ ...sharedContentShape, document: facts.optional() }).strict().superRefine(uniqueSkuIntents);

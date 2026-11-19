@@ -1,4 +1,4 @@
-import type { CatalogPublicationRulesModule } from "../../../src/catalog/publicationRules.js";
+import type { CatalogPublicationRulesModule } from "../../../src/catalog/catalogPublicationRules.js";
 import type { categoryDocument } from "./categoryDocumentInput.js";
 import { productDocumentV2Schema } from "./categoryDocument.js";
 

@@ -1,7 +1,6 @@
 import type { CatalogPublishCommand, CatalogPublicationReceipt } from "./lifecycle.js";
-import type { CatalogQuantity, CatalogProductTypeRef, CatalogOptionValue } from "./productTypes.js";
-import type { CatalogAttributeValue } from "./draftV2.js";
-import type { CatalogPublicationFacts, CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
+import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
+import type { RulesIdentifier, RulesProduct, RulesSku } from "./publicationRuleFacts.js";
 import type { CatalogDocumentRevisionRef } from "./foundation.js";
 
 /** @experimental */
@@ -14,29 +13,20 @@ export interface CatalogDecisionCommandV2 {
   schemaVersion: 2; action: "approve" | "revoke"; productId: string; commandKey: string;
   candidateRef: string; candidateDigest: string; reason: string | null;
 }
-/** @experimental */
-export interface CatalogPublishedIdentifier {
-  scheme: string; issuer: string; value: string; packagingLevel: "unit" | "case"; quantity: number;
-  isPrimary: boolean; label: string | null; sourceRef: string | null;
-}
+/** @internal */
+export type CatalogPublishedIdentifier = RulesIdentifier;
 /** @experimental */
 export type CatalogPublishedContent = Pick<CatalogDraftSharedContentV3,
   "schemaVersion" | "catalogAction" | "presentation" | "offerMemberships" | "requestedModes" | "publicationSkus">;
-/** @experimental */
-export interface CatalogPublishedProduct {
-  id: string; slug: string; name: string; status: "draft" | "active" | "archived";
-  type: CatalogProductTypeRef; axes: string[]; attributes: Record<string, CatalogAttributeValue>;
-  primarySkuId: string | null; document: CatalogDocumentRevisionRef | null;
-  presentation: CatalogPublicationFacts | null; source: CatalogDraftClaimV3; content: CatalogPublishedContent;
+/** @internal */
+export interface CatalogPublishedProduct extends RulesProduct {
+  document: CatalogDocumentRevisionRef | null;
+  source: CatalogDraftClaimV3;
+  content: CatalogPublishedContent;
 }
-/** @experimental */
-export interface CatalogPublishedSku {
-  id: string; productId: string; code: string; title: string; status: "draft" | "active" | "archived";
-  minQuantity: number; isAddon: boolean; sellableStandalone: boolean; sellableInSubscription: boolean;
-  netContent: CatalogQuantity; grossMass: CatalogQuantity | null; options: Record<string, CatalogOptionValue>;
-  attributes: Record<string, CatalogAttributeValue>; facts: CatalogPublicationFacts;
-  identifiers: CatalogPublishedIdentifier[]; assetRefs: string[]; logisticsRef: string | null;
-  memberships: { offerVersion: string; admitted: boolean }[]; source: CatalogDraftClaimV3;
+/** @internal */
+export interface CatalogPublishedSku extends RulesSku {
+  source: CatalogDraftClaimV3;
 }
 /** @experimental */
 export interface CatalogSkuRevisionRef { skuId: string; revisionId: string; revision: number; digest: string }
