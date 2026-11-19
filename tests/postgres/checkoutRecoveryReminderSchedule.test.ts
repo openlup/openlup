@@ -16,6 +16,7 @@ import { composeNativeBindings } from '../../examples/neutral-store/host/native-
 import { createOriginPolicy } from '../../examples/neutral-store/host/origin-policy.ts';
 
 const path = 'db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql';
+const guardPath = 'db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql';
 const signatures = ['public.commerce_enqueue_abandoned_cart_reminders(integer)', 'public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)'];
 const installation = { generation: 'qualified-v2', roleMode: 'installer-managed', migrationLogin: 'postgres',
   bootstrapLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
@@ -57,11 +58,21 @@ beforeAll(async () => {
     await db.query(sql.replace(signatures[i]!.split('(')[0]!, `public.k8_before_${i ? 'checkout' : 'abandoned'}`));
   }
   const before = await attributes();
-  for (const sql of sqlStatements(readFileSync(path, 'utf8'))) if (sql.startsWith('CREATE OR REPLACE FUNCTION')) await db.query(sql);
+  for (const sql of sqlStatements(readFileSync(path, 'utf8'))) {
+    const i = signatures.findIndex(signature => sql.startsWith(`CREATE OR REPLACE FUNCTION ${signature.split('(')[0]}(`));
+    if (i === -1) continue;
+    await db.query(sql);
+    await db.query(sql.replace(signatures[i]!.split('(')[0]!, `public.r0_before_${i ? 'checkout' : 'abandoned'}`));
+  }
+  expect(await attributes()).toEqual(before);
+  for (const sql of sqlStatements(readFileSync(guardPath, 'utf8'))) if (sql.startsWith('CREATE OR REPLACE FUNCTION')) await db.query(sql);
   expect(await attributes()).toEqual(before);
   defaults = await readCheckoutRecoveryReminderSchedule(db);
 }, postgresSetupTimeoutMs);
-beforeEach(async () => { await db.query("DELETE FROM public.commerce_settings WHERE key='checkout_recovery_reminders'"); });
+beforeEach(async () => {
+  await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE status='pending_payment'");
+  await db.query("DELETE FROM public.commerce_settings WHERE key='checkout_recovery_reminders'");
+});
 afterAll(async () => { await closePostgres(resource, db); }, postgresTeardownTimeoutMs);
 it('admits the exact forward against its whole native prefix', () => {
   const manifest = JSON.parse(readFileSync('config/platform-migration-manifest.json', 'utf8'));
@@ -204,4 +215,382 @@ it('startup reads only and refuses revision/hour/stage drift for an arbitrary co
   }
   await installCheckoutRecoveryReminderSchedule(db, config.checkoutRecoveryReminders);
   const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config); await bindings.close();
+});
+
+const blockedMessage = 'checkout_recovery_schedule_change_blocked_open_episodes';
+const checkoutSchedule = (first: number, last: number) => ({ ...defaults, checkoutRecovery: [
+  { stage: 'first', afterHours: first }, { stage: 'last', afterHours: last },
+] } satisfies CheckoutRecoveryReminderSchedule);
+const checkoutEvents = async (id: string) => (await events()).filter(row => row.aggregate_id === id && row.event_type === 'commerce.checkout_recovery');
+async function acceptFirstRecovery(id: string) {
+  const event = (await db.query(`SELECT id FROM public.outbox_events
+    WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery' AND payload->>'stage'='first'`, [id])).rows[0];
+  await db.query("SELECT public.commerce_checkout_recovery_record_sent($1,'capture','fixture:accepted')", [event.id]);
+}
+async function forceSchedule(schedule: CheckoutRecoveryReminderSchedule) {
+  await db.query("UPDATE public.commerce_settings SET value_text=$1 WHERE key='checkout_recovery_reminders'", [JSON.stringify(schedule)]);
+}
+
+it('CF-R0 (1, 2, 5): refuses between and after checkout waves, then installs after closure', async () => {
+  await installCheckoutRecoveryReminderSchedule(db, defaults);
+  const id = await order(22);
+  const firstRun = (await db.query("SELECT created_at + interval '3 hours' AS at FROM public.commerce_orders WHERE id=$1", [id])).rows[0].at;
+  await enqueue(false, '{}', firstRun);
+  await acceptFirstRecovery(id);
+  await installCheckoutRecoveryReminderSchedule(db, defaults);
+  const message = `${blockedMessage} (1 blocking orders)`;
+  await expect(installCheckoutRecoveryReminderSchedule(db, checkoutSchedule(2, 20))).rejects.toMatchObject({ code: '55000', message });
+  expect((await checkoutEvents(id)).map(row => row.payload.stage)).toEqual(['first']);
+  await enqueue();
+  expect((await checkoutEvents(id)).map(row => row.idempotency_key)).toEqual([`checkout_recovery:1h:${id}`, `checkout_recovery:20h:${id}`]);
+
+  const changed = checkoutSchedule(1, 21);
+  await expect(installCheckoutRecoveryReminderSchedule(db, changed)).rejects.toMatchObject({ code: '55000', message });
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(defaults);
+  await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id]);
+  await installCheckoutRecoveryReminderSchedule(db, changed);
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(changed);
+});
+
+it('CF-R0: an uncompacted last-only checkout wave blocks schedule changes until closure', async () => {
+  const schedule = { ...defaults, checkoutRecovery: [{ stage: 'last', afterHours: 20 }] } as const;
+  const changed = { ...schedule, checkoutRecovery: [{ stage: 'last', afterHours: 21 }] } as const;
+  await installCheckoutRecoveryReminderSchedule(db, schedule);
+  const id = await order(22);
+  await enqueue();
+
+  const waves = await checkoutEvents(id);
+  expect(waves).toMatchObject([{ idempotency_key: `checkout_recovery:20h:${id}`, payload: { stage: 'last' } }]);
+  expect(waves[0]?.metadata).not.toHaveProperty('retentionCompactedAt');
+  const { rows } = await db.query(`SELECT public.commerce_checkout_recovery_event_stage(e, true) AS stage
+    FROM public.outbox_events e WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'`, [id]);
+  expect(rows).toEqual([{ stage: 'last' }]);
+  await expect(installCheckoutRecoveryReminderSchedule(db, changed)).rejects.toMatchObject({
+    code: '55000', message: `${blockedMessage} (1 blocking orders)`,
+  });
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(schedule);
+
+  await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id]);
+  await installCheckoutRecoveryReminderSchedule(db, changed);
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(changed);
+});
+
+it('CF-R0 (3): both producers preserve one event per stage after an owner-only hour change', async () => {
+  const schedule = { ...defaults, abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 20 }] } as const;
+  const changed = { ...checkoutSchedule(1, 21), abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 21 }] } as const;
+  await installCheckoutRecoveryReminderSchedule(db, schedule);
+  const draft = await order(22, true), recovery = await order(22);
+  await priorAbandoned(draft, 1);
+  await enqueue();
+  await acceptFirstRecovery(recovery);
+  await enqueue();
+  const before = (await events()).filter(row => [draft, recovery].includes(row.aggregate_id));
+  expect(before.filter(row => row.aggregate_id === draft && row.event_type.startsWith('commerce.order_draft.abandoned.'))
+    .map(row => row.idempotency_key)).toEqual([`abandoned_1h:${draft}`, `abandoned_20h:${draft}`]);
+  expect((await checkoutEvents(recovery)).map(row => row.payload.stage)).toEqual(['first', 'last']);
+  await expect(installCheckoutRecoveryReminderSchedule(db, changed)).rejects.toMatchObject({ code: '55000',
+    message: `${blockedMessage} (2 blocking orders)` });
+  await forceSchedule(changed);
+  await enqueue();
+  expect((await events()).filter(row => [draft, recovery].includes(row.aggregate_id))).toEqual(before);
+});
+
+it('CF-R0 (4): absent to explicit defaults refuses for an old draft until its receipt is invalidated', async () => {
+  const draft = await order(100, true);
+  await priorAbandoned(draft);
+  await enqueue();
+  await expect(installCheckoutRecoveryReminderSchedule(db, defaults)).rejects.toMatchObject({ code: '55000',
+    message: `${blockedMessage} (1 blocking orders)` });
+  expect((await db.query("SELECT 1 FROM public.commerce_settings WHERE key='checkout_recovery_reminders'")).rowCount).toBe(0);
+  await db.query('UPDATE public.commerce_order_draft_receipts SET invalidated_at=now() WHERE order_id=$1', [draft]);
+  await installCheckoutRecoveryReminderSchedule(db, defaults);
+});
+
+it('CF-R0 (4a): legacy checkout waves consume their stages after a forced first-hour change', async () => {
+  await installCheckoutRecoveryReminderSchedule(db, defaults);
+  const id = await order(22);
+  await enqueue();
+  await acceptFirstRecovery(id);
+  await enqueue();
+  await db.query("UPDATE public.outbox_events SET payload=payload-'stage' WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'", [id]);
+  const stages = (await db.query(`SELECT public.commerce_checkout_recovery_event_stage(e, true) AS stage FROM public.outbox_events e
+    WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery' ORDER BY idempotency_key`, [id])).rows;
+  expect(stages).toEqual([{ stage: 'first' }, { stage: 'last' }]);
+  await expect(installCheckoutRecoveryReminderSchedule(db, checkoutSchedule(2, 20))).rejects.toMatchObject({ code: '55000' });
+  await forceSchedule(checkoutSchedule(2, 20));
+  await enqueue();
+  expect((await checkoutEvents(id)).map(row => row.idempotency_key)).toEqual([`checkout_recovery:1h:${id}`, `checkout_recovery:20h:${id}`]);
+});
+
+it('CF-R0: payload-only legacy waves use numeric hours to identify their stages', async () => {
+  const cases = [['20.0', 'last'], ['1.0', 'first'], ['2e1', 'last'], ['2.5', 'both'], ['"unknown"', 'both'], ['null', 'both']] as const;
+  const orders: { id: string; stage: 'first' | 'last' | 'both' }[] = [];
+  for (const [hours, stage] of cases) {
+    const id = await order(3);
+    const { rows } = await db.query(`INSERT INTO public.outbox_events AS wave
+      (aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+      VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,$3::jsonb)
+      RETURNING public.commerce_checkout_recovery_event_stage(wave, false) AS stage`,
+      [id, `legacy_payload:${id}`, `{"reminderHours":${hours}}`]);
+    expect(rows).toEqual([{ stage }]);
+    orders.push({ id, stage });
+  }
+  await enqueue();
+  for (const { id, stage } of orders) {
+    const keys = (await checkoutEvents(id)).map(row => row.idempotency_key);
+    expect(keys).toEqual(stage === 'last' ? [`checkout_recovery:1h:${id}`, `legacy_payload:${id}`] : [`legacy_payload:${id}`]);
+  }
+});
+
+it('CF-R0: an unlabeled nonhistorical wave consumes both stages and link events consume neither', async () => {
+  const legacy = await order(22), links = await order(22);
+  const fixtures = [
+    [legacy, `checkout_recovery:2h:${legacy}`, { reminderHours: 2 }],
+    [links, `checkout_recovery:operator:${links}`, { reminderHours: 1 }],
+    [links, `checkout_recovery:buyer:${links}:1`, { stage: 'first' }],
+  ] as const;
+  for (const [id, key, payload] of fixtures) {
+    await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+      VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,$3)`, [id, key, payload]);
+  }
+  const stages = (await db.query(`SELECT public.commerce_checkout_recovery_event_stage(e, true) AS stage FROM public.outbox_events e
+    WHERE aggregate_id IN ($1,$2) ORDER BY idempotency_key`, [legacy, links])).rows;
+  expect(stages).toEqual([{ stage: 'both' }, { stage: null }, { stage: null }]);
+  await enqueue();
+  expect(await checkoutEvents(legacy)).toHaveLength(1);
+  expect((await checkoutEvents(links)).some(row => row.idempotency_key === `checkout_recovery:1h:${links}`)).toBe(true);
+});
+
+it.each([
+  ['abandoned', 'r0_before_abandoned(1)', 'commerce_enqueue_abandoned_cart_reminders(1)', { enqueued_1h: 0, enqueued_24h: 0, enqueued_72h: 0 }],
+  ['checkout', "r0_before_checkout(1,'{}',now())", "commerce_enqueue_checkout_recovery_reminders(1,'{}',now())", { enqueued_1h: 0, enqueued_20h: 0 }],
+] as const)('CF-R0: %s preserves the limit-one slot occupied by an existing stage', async (kind, before, after, zero) => {
+  const oldest = await order(3, kind === 'abandoned');
+  const youngest = await order(2, kind === 'abandoned');
+  await db.query(`SELECT public.${before}`);
+  const existing = (await events()).filter(row => row.aggregate_id === oldest);
+  expect(existing).toHaveLength(1);
+
+  for (const producer of [before, after]) {
+    const { rows } = await db.query(`SELECT public.${producer} AS result`);
+    expect(rows).toEqual([{ result: zero }]);
+    expect((await events()).filter(row => [oldest, youngest].includes(row.aggregate_id))).toEqual(existing);
+  }
+});
+
+it('CF-R0: removing a prior custom schedule does not enqueue another first wave for either producer', async () => {
+  const schedule = { ...checkoutSchedule(2, 20), abandonedCart: [
+    { stage: 'first', afterHours: 2 }, ...defaults.abandonedCart.slice(1),
+  ] } satisfies CheckoutRecoveryReminderSchedule;
+  await installCheckoutRecoveryReminderSchedule(db, schedule);
+  const id = await order(3, true);
+  await db.query("SELECT public.r0_before_abandoned(1), public.r0_before_checkout(1,'{}',now())");
+  const before = (await events()).filter(row => row.aggregate_id === id);
+  expect(before.map(row => [row.idempotency_key, row.payload.stage])).toEqual([
+    [`checkout_recovery:2h:${id}`, 'first'], [`abandoned_2h:${id}`, 'first'],
+  ]);
+  const removed = await db.query("DELETE FROM public.commerce_settings WHERE key='checkout_recovery_reminders'");
+  expect(removed.rowCount).toBe(1);
+
+  const { rows } = await db.query(`SELECT public.commerce_enqueue_abandoned_cart_reminders(1) AS abandoned,
+    public.commerce_enqueue_checkout_recovery_reminders(1,'{}',now()) AS checkout`);
+  expect(rows).toEqual([{
+    abandoned: { enqueued_1h: 0, enqueued_24h: 0, enqueued_72h: 0 },
+    checkout: { enqueued_1h: 0, enqueued_20h: 0 },
+  }]);
+  expect((await events()).filter(row => row.aggregate_id === id)).toEqual(before);
+});
+
+it('CF-R0 (6): an old pending checkout wave blocks regardless of order age', async () => {
+  await installCheckoutRecoveryReminderSchedule(db, defaults);
+  const id = await order(30);
+  await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload,metadata)
+    SELECT 'commerce_order',id,'commerce.checkout_recovery','checkout_recovery:1h:'||id,
+      jsonb_build_object('stage','first','expiresAt',created_at + interval '24 hours'),
+      '{"deliveryProfile":"capture"}'
+    FROM public.commerce_orders WHERE id=$1`, [id]);
+  await acceptFirstRecovery(id);
+
+  const changed = checkoutSchedule(2, 20);
+  await expect(installCheckoutRecoveryReminderSchedule(db, changed)).rejects.toMatchObject({ code: '55000',
+    message: `${blockedMessage} (1 blocking orders)` });
+  await enqueue(false, JSON.stringify({ checkoutSeconds: 72 * 3600 }));
+  expect((await checkoutEvents(id)).map(row => row.payload.stage)).toEqual(['first', 'last']);
+
+  await db.query("UPDATE public.commerce_orders SET created_at=now()-interval '2147483648 seconds' WHERE id=$1", [id]);
+  await expect(installCheckoutRecoveryReminderSchedule(db, changed)).rejects.toMatchObject({ code: '55000',
+    message: `${blockedMessage} (1 blocking orders)` });
+  await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id]);
+  await installCheckoutRecoveryReminderSchedule(db, changed);
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(changed);
+});
+
+async function compactCheckoutWave(id: string) {
+  await db.query(`UPDATE public.outbox_events SET status='processed', processed_at=now()-interval '31 days'
+    WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'`, [id]);
+  await db.query('SELECT public.commerce_outbox_compact_terminal(5000,now())');
+}
+
+it('CF-R0 (7): compaction of a last-only 1h wave consumes both installed checkout stages', async () => {
+  const id = await order(35 * 24);
+  const schedule = (afterHours: number) => ({ ...defaults, checkoutRecovery: [{ stage: 'last', afterHours }] } as const);
+  const policy = JSON.stringify({ checkoutSeconds: 60 * 86400 });
+  await installCheckoutRecoveryReminderSchedule(db, schedule(1));
+  await enqueue(false, policy);
+  expect((await checkoutEvents(id))[0]?.payload.stage).toBe('last');
+  await compactCheckoutWave(id);
+  const compacted = await checkoutEvents(id);
+  expect(compacted).toMatchObject([{ payload: {}, metadata: { retentionCompactedAt: expect.any(String) } }]);
+  expect(compacted[0]?.payload).toEqual({});
+  const { rows } = await db.query(`SELECT public.commerce_checkout_recovery_event_stage(e, true) AS stage
+    FROM public.outbox_events e WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'`, [id]);
+  expect(rows).toEqual([{ stage: 'both' }]);
+
+  await expect(installCheckoutRecoveryReminderSchedule(db, schedule(2))).rejects.toMatchObject({ code: '55000' });
+  for (const changed of [schedule(2), checkoutSchedule(2, 20)]) {
+    await forceSchedule(changed);
+    await enqueue(false, policy);
+    expect(await checkoutEvents(id)).toEqual(compacted);
+  }
+});
+
+it('CF-R0 (8): an accepted compacted first wave still gets its last wave with no installed schedule', async () => {
+  const id = await order(35 * 24);
+  const policy = JSON.stringify({ checkoutSeconds: 60 * 86400 });
+  await db.query(`SELECT public.r0_before_checkout(1,$1::jsonb,created_at + interval '3 hours')
+    FROM public.commerce_orders WHERE id=$2`, [policy, id]);
+  await acceptFirstRecovery(id);
+  await compactCheckoutWave(id);
+  expect(await checkoutEvents(id)).toMatchObject([{
+    idempotency_key: `checkout_recovery:1h:${id}`, payload: {}, metadata: { retentionCompactedAt: expect.any(String) },
+  }]);
+  await expect(installCheckoutRecoveryReminderSchedule(db, defaults)).rejects.toMatchObject({
+    code: '55000', message: `${blockedMessage} (1 blocking orders)`,
+  });
+  expect((await db.query("SELECT 1 FROM public.commerce_settings WHERE key='checkout_recovery_reminders'")).rowCount).toBe(0);
+
+  const connection = await db.connect();
+  try {
+    await connection.query('BEGIN');
+    await connection.query('SAVEPOINT compare');
+    const lastWave = async () => (await connection.query(`SELECT idempotency_key, payload - 'recoveryToken' AS payload, metadata
+      FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'
+        AND idempotency_key=$2`, [id, `checkout_recovery:20h:${id}`])).rows;
+    const historical = await connection.query('SELECT public.r0_before_checkout(1,$1::jsonb,now()) AS result', [policy]);
+    const historicalWave = await lastWave();
+    expect(historical.rows).toEqual([{ result: { enqueued_1h: 0, enqueued_20h: 1 } }]);
+    expect(historicalWave).toHaveLength(1);
+
+    await connection.query('ROLLBACK TO compare');
+    const current = await connection.query('SELECT public.commerce_enqueue_checkout_recovery_reminders(1,$1::jsonb,now()) AS result', [policy]);
+    expect(current.rows).toEqual(historical.rows);
+    expect(await lastWave()).toEqual(historicalWave);
+    await connection.query('COMMIT');
+  } finally {
+    await connection.query('ROLLBACK');
+    connection.release();
+  }
+  expect((await checkoutEvents(id)).map(row => row.idempotency_key))
+    .toEqual([`checkout_recovery:1h:${id}`, `checkout_recovery:20h:${id}`]);
+});
+
+it('CF-R0: a compacted abandoned wave keeps its stage and a settlement intent closes its guard window', async () => {
+  const id = await order(35 * 24, true);
+  const schedule = (afterHours: number) => ({ ...defaults, abandonedCart: [{ stage: 'last', afterHours }] } as const);
+  const produce = () => db.query('SELECT public.commerce_enqueue_abandoned_cart_reminders(1)');
+  const draftEvents = async () => (await events()).filter(row => row.aggregate_id === id);
+  await installCheckoutRecoveryReminderSchedule(db, schedule(1));
+  await produce();
+  await db.query(`UPDATE public.outbox_events SET status='processed', processed_at=now()-interval '31 days'
+    WHERE aggregate_id=$1 AND event_type='commerce.order_draft.abandoned.72h'`, [id]);
+  await db.query('SELECT public.commerce_outbox_compact_terminal(5000,now())');
+  const compacted = await draftEvents();
+  expect(compacted).toMatchObject([{ event_type: 'commerce.order_draft.abandoned.72h', metadata: { retentionCompactedAt: expect.any(String) } }]);
+  expect(compacted[0]?.payload).toEqual({});
+  await expect(installCheckoutRecoveryReminderSchedule(db, schedule(2))).rejects.toMatchObject({ code: '55000' });
+  await forceSchedule(schedule(2));
+  await produce();
+  expect(await draftEvents()).toEqual(compacted);
+
+  await db.query(`WITH priced AS (UPDATE public.commerce_orders SET total_amount_minor=1 WHERE id=$1 RETURNING id)
+    INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+    SELECT id,1,1,1,1 FROM priced`, [id]);
+  await db.query(`INSERT INTO public.commerce_settlement_intents(order_id,channel_key,amount_minor,currency_code,open_idempotency_key)
+    VALUES($1,'fixture',1,'XXX',$2)`, [id, `open:${id}`]);
+  await installCheckoutRecoveryReminderSchedule(db, schedule(3));
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(schedule(3));
+});
+
+it('CF-R0: delegates installation through explicit function and settings grants', async () => {
+  await db.query(`CREATE ROLE schedule_installer NOLOGIN;
+    GRANT USAGE ON SCHEMA public TO schedule_installer;
+    GRANT SELECT, INSERT, UPDATE ON public.commerce_settings TO schedule_installer;
+    GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb),
+      public.commerce_checkout_recovery_reminder_schedule() TO schedule_installer`);
+  const delegated = await db.connect();
+  try {
+    await delegated.query('SET ROLE schedule_installer');
+    await expect(installCheckoutRecoveryReminderSchedule(delegated, defaults)).rejects.toMatchObject({ code: '42501' });
+    await db.query(`GRANT EXECUTE ON FUNCTION public.commerce_install_checkout_recovery_reminder_schedule(text,jsonb)
+      TO schedule_installer`);
+    await installCheckoutRecoveryReminderSchedule(delegated, defaults);
+    expect(await readCheckoutRecoveryReminderSchedule(delegated)).toEqual(defaults);
+  } finally { await delegated.query('RESET ROLE'); delegated.release(); }
+});
+
+it.each(['READ UNCOMMITTED', 'READ COMMITTED', 'REPEATABLE READ', 'SERIALIZABLE'] as const)(
+  'CF-R0: %s accepts identical schedule replay without writing', async isolation => {
+    await installCheckoutRecoveryReminderSchedule(db, defaults);
+    const connection = await db.connect();
+    const stored = () => connection.query("SELECT xmin::text, value_text FROM public.commerce_settings WHERE key='checkout_recovery_reminders'");
+    try {
+      await connection.query(`BEGIN ISOLATION LEVEL ${isolation} READ ONLY`);
+      const before = (await stored()).rows;
+      await installCheckoutRecoveryReminderSchedule(connection, defaults);
+      expect((await stored()).rows).toEqual(before);
+    } finally { await connection.query('ROLLBACK'); connection.release(); }
+  },
+);
+
+it.each(['REPEATABLE READ', 'SERIALIZABLE'] as const)(
+  'CF-R0: %s refuses schedule changes and both producers with an absent setting', async isolation => {
+    const connection = await db.connect();
+    try {
+      await connection.query(`BEGIN ISOLATION LEVEL ${isolation}`);
+      const refusal = { code: '22023', message: 'checkout_recovery_schedule_isolation_unsupported' };
+      await expect(installCheckoutRecoveryReminderSchedule(connection, defaults)).rejects.toMatchObject(refusal);
+      for (const producer of ['commerce_enqueue_abandoned_cart_reminders(1)', "commerce_enqueue_checkout_recovery_reminders(1,'{}',now())"]) {
+        await connection.query(`ROLLBACK; BEGIN ISOLATION LEVEL ${isolation}`);
+        await expect(connection.query(`SELECT public.${producer}`)).rejects.toMatchObject(refusal);
+      }
+    } finally { await connection.query('ROLLBACK'); connection.release(); }
+  },
+);
+
+it.each([
+  ['checkout', "SELECT public.commerce_enqueue_checkout_recovery_reminders(1000,'{}',now())", 'checkout_recovery:2h:'],
+  ['abandoned', 'SELECT public.commerce_enqueue_abandoned_cart_reminders(1000)', 'abandoned_2h:'],
+] as const)('CF-R0: %s producer waits from guard check through the schedule write', async (kind, sql, keyPrefix) => {
+  await installCheckoutRecoveryReminderSchedule(db, defaults);
+  const id = await order(3, kind === 'abandoned');
+  const changed = { ...checkoutSchedule(2, 20), abandonedCart: [{ stage: 'first', afterHours: 2 }, ...defaults.abandonedCart.slice(1)] } satisfies CheckoutRecoveryReminderSchedule;
+  const installer = await db.connect(), producer = await db.connect();
+  let wave: Promise<unknown> | undefined;
+  try {
+    const pid = (await producer.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    await installer.query('BEGIN');
+    await installer.query('SELECT public.commerce_checkout_recovery_schedule_change_guard($1,$2)', [defaults, changed]);
+    wave = producer.query(sql);
+    void wave.catch(() => undefined);
+    await expect.poll(async () => (await installer.query('SELECT pg_backend_pid() = ANY(pg_blocking_pids($1)) AS blocked', [pid])).rows[0].blocked).toBe(true);
+    await installCheckoutRecoveryReminderSchedule(installer, changed);
+    await installer.query('COMMIT');
+    await wave;
+    expect((await events()).filter(row => row.aggregate_id === id).map(row => row.idempotency_key)).toEqual([`${keyPrefix}${id}`]);
+  } finally {
+    await installer.query('ROLLBACK');
+    await wave?.catch(() => undefined);
+    installer.release();
+    producer.release();
+  }
 });
