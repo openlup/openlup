@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, readReviewedForwardRegistry, assertNativeDeferredTriggerSource, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeStoreSlot } from "../../scripts/reviewed-platform-forward.js";
+import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements"> & Partial<Pick<NativeStoreSlot, "dataStatements">>;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -21,7 +21,7 @@ const GRANT_OPTION = " WITH GRANT OPTION";
 // moves when the same statement sits at another offset. That is compared as nothing; everything else in a tree is compared.
 const POSITIONS = String.raw`':(?:stmt_)?location -?[0-9]+|:stmt_len [0-9]+', ':position'`;
 
-type FunctionRow = { oid: number; name: string; owner: string; attrs: Record<string, unknown>; acl: string[]; src: string };
+type FunctionRow = { oid: number; name: string; owner: string; returnsTrigger: boolean; attrs: Record<string, unknown>; acl: string[]; src: string };
 type RelationRow = { oid: number; name: string; schema: string; relation: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
   indexes: { oid: number; name: string; table: string; definition: string; attrs: unknown }[];
@@ -47,7 +47,7 @@ const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE
 
 // Preserve every structural attribute; normalize only parse positions.
 async function snapshot(db: PoolClient): Promise<Snapshot> {
-  const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner,
+  const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner, p.prorettype = 'pg_catalog.trigger'::regtype AS "returnsTrigger",
     (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
     ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, p.prosrc AS src
     FROM pg_proc p WHERE p.oid >= ${OID_FLOOR} ORDER BY p.oid`)).rows;
@@ -305,28 +305,10 @@ const SUCCESSOR_STORAGE_SHAPES: Record<string, {
 
 const fail = (message: string): never => { throw new Error(`catalog: ${message}`); };
 
-function triggerProofSource(slot: CatalogSlot, forward: string) {
-  const statements = slot.createdTriggers?.length ? sqlStatements(forward, false, false, true) : [];
-  const hashes = statements.map(sqlSha256);
-  const entries = slot.createdTriggers ?? [], names = new Set(entries.map(entry => entry.name));
-  if (names.size !== entries.length) fail("created trigger inventory repeats a name; list each trigger name once");
-  const triggers = entries.map(entry => {
-    const position = hashes.indexOf(entry.sha256);
-    const statement = statements[position] ?? triggerStatements.get(entry.sha256);
-    if (!statement) return fail("created trigger source differs from its pin; include the exact pinned statement once in the forward");
-    const definition = nativeStoreTriggerDefinition(statement, message => fail(`created trigger source differs: ${message}`));
-    if (!definition || definition.name !== entry.name || definition.table !== entry.table) return fail("created trigger source differs from its listed identity; pin its exact relation and name");
-    return { entry, definition, position };
-  });
-  if (triggers.some(trigger => trigger.definition.deferred)) {
-    if (triggers.some(({ entry, position }) => position < 0 || position !== hashes.lastIndexOf(entry.sha256))) fail("created trigger source differs from its pin; include the exact pinned statement once in the forward");
-    assertNativeDeferredTriggerSource(statements, new Map(triggers.map(({ position, definition }) => [statements[position]!, definition])), slot, fail);
-  }
-  return { statements, triggers };
-}
+type NativeAdmission = ReturnType<typeof assertNativeStoreForward>;
 
 /** Compare PostgreSQL's own before/after catalogs with one slot's closed lists. Throws on any difference. */
-async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snapshot, after: Snapshot, migrationRole: string, forward = "", proof = triggerProofSource(slot, forward)) {
+async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snapshot, after: Snapshot, migrationRole: string, forward = "", admission?: NativeAdmission) {
   const resolve = async (signature: string) => Number((await db.query("SELECT $1::regprocedure::oid::int AS oid", [signature])).rows[0].oid);
   const created = new Map<number, CatalogSlot["createdFunctions"][number]>();
   for (const fn of slot.createdFunctions) created.set(await resolve(fn.signature), fn);
@@ -521,40 +503,41 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   // This is additive to every generic owner/ACL/catalogue guard above and below.
   // Read the installed keys independently of the statement classifier.
   const admittedTriggers = new Set<string>(), deferredLinks = new Set<number>();
-  for (const { entry, definition: expected, position } of proof.triggers) {
-    const deferred = expected.deferred === true;
-    const prefixTable = before.relations.find(row => row.name === entry.table && row.kind === "r");
-    if (before.guards.triggers!.some(row => row.tgname === entry.name && (!deferred || Number(row.tgrelid) === prefixTable?.oid))) fail("created trigger name existed in the prefix; choose a fresh trigger name");
-    const earlier = proof.statements.slice(0, Math.max(position, 0));
-    const table = after.relations.find(row => row.name === entry.table && row.kind === "r" && (prefixTable
-      ? row.oid === prefixTable.oid
-      : !before.relationOids.includes(row.oid) && row.owner === migrationRole && earlier.some(statement => nativeStoreCreatedTable(statement) === entry.table)));
-    const fn = slot.createdFunctions.find(fn => fn.signature === expected.signature);
-    if (!table || (!deferred && !fn?.searchPath)) return fail("created trigger requires a prefix or earlier same-slot owned table and same-slot created function");
-    const functionOid = await resolve(expected.signature), functionRow = added.find(row => row.oid === functionOid);
-    const prefixFunction = deferred ? before.functions.find(row => row.oid === functionOid) : undefined;
-    const attrs = (await db.query("SELECT prorettype = 'pg_catalog.trigger'::regtype AS returns_trigger, prosecdef, proretset FROM pg_proc WHERE oid=$1::oid", [functionOid])).rows[0];
-    if (!attrs?.returns_trigger || attrs.prosecdef || (deferred && attrs.proretset)) fail("created trigger function must be an owner-only invoker returning trigger; use SECURITY INVOKER and RETURNS pg_catalog.trigger");
-    if (prefixFunction) {
-      if (JSON.stringify(current.get(functionOid)) !== JSON.stringify(prefixFunction) || replaced.has(functionOid) || grantOnly.has(functionOid)) fail("use an unchanged prefix function for the deferred trigger");
-    } else if (!functionRow || functionRow.acl.some(item => !item.startsWith(`${migrationRole}:`))
-      || (deferred && (!fn?.searchPath || !nativeStoreFunctionDefinitions(Buffer.from(earlier.join("\n")), [expected.signature], true).has(expected.signature)))) {
-      fail("created trigger function must be an owner-only invoker declared earlier in the slot with its search_path pin and PUBLIC revoke");
-    }
+  for (const entry of slot.createdTriggers ?? []) {
+    const deferred = entry.deferred === true, relation = deferred ? entry.relation : entry.table;
+    const accepted = admission?.ordinaryProof.get(entry.name);
+    const expected = deferred ? null : admission ? accepted?.definition : nativeStoreTriggerDefinition(triggerStatements.get(entry.sha256) ?? "");
+    if (!deferred && (!expected || expected.name !== entry.name || expected.table !== relation)) return fail("created trigger source differs from its listed hash and identity");
+    const prefixTable = before.relations.find(row => row.name === relation && row.kind === "r");
+    if (before.guards.triggers!.some(row => row.tgname === entry.name && (!deferred || Number(row.tgrelid) === prefixTable?.oid))) fail("created trigger name existed in the prefix");
+    const localTable = deferred || accepted?.localTable || (!admission && !prefixTable && hasEarlierTriggerTable(forward, relation, entry.sha256));
+    const table = after.relations.find(row => row.name === relation && row.kind === "r" && (prefixTable
+      ? row.oid === prefixTable.oid : localTable && !before.relationOids.includes(row.oid) && row.owner === migrationRole));
+    const signature = deferred ? entry.function : expected!.signature;
+    if (!table || (!deferred && !slot.createdFunctions.some(fn => fn.signature === signature && fn.searchPath))) return fail("created trigger requires a prefix or earlier same-slot owned table and same-slot created function");
+    const functionOid = await resolve(signature), fn = current.get(functionOid);
+    const prefixFunction = deferred && before.functions.some(row => row.oid === functionOid);
+    if (!fn?.returnsTrigger || fn.attrs.prosecdef || (deferred && fn.attrs.proretset)) fail("created trigger function must be an owner-only invoker returning trigger");
+    if (prefixFunction ? replaced.has(functionOid) || grantOnly.has(functionOid) : !created.has(functionOid) || fn?.acl.some(item => !item.startsWith(`${migrationRole}:`))) fail("created trigger function must be an owner-only invoker returning trigger");
     const rows = after.guards.triggers!.filter(row => row.tgname === entry.name && Number(row.tgrelid) === table.oid), row = rows[0];
-    if (!row || rows.length !== 1 || row.tgenabled !== "O" || row.tgisinternal !== false || Number(row.tgfoid) !== functionOid || Number(row.tgnargs) !== 0) return fail("created trigger binding or enabled state differs from its entry; use the pinned name, table and zero-argument function and leave it enabled");
+    if (!row || rows.length !== 1 || row.tgenabled !== "O" || row.tgisinternal !== false || Number(row.tgfoid) !== functionOid || Number(row.tgnargs) !== 0) return fail("created trigger binding or enabled state differs from its entry");
     const constraint = Number(row.tgconstraint);
     if (deferred) {
+      const bits = { INSERT: 4, DELETE: 8, UPDATE: 16 };
+      if (Number(row.tgtype) !== 1 + entry.events.reduce((mask, event) => mask + bits[event], 0) || !Array.isArray(row.tgattr) || row.tgattr.length || row.tgqual !== null
+        || Number(row.tgconstrrelid) !== 0 || row.tgoldtable !== null || row.tgnewtable !== null) fail("deferred trigger events or row shape differ from its entry");
       const link = after.constraints.find(candidate => candidate.oid === constraint);
-      if (!link || before.constraintOids.includes(constraint) || link.kind !== "t" || link.relationOid !== table.oid || link.name !== entry.name || !link.validated) fail("created deferred trigger requires its own new validated constraint; use the pinned CREATE CONSTRAINT TRIGGER");
-      if (row.tgdeferrable !== true || row.tginitdeferred !== true || !link?.deferrable || !link.deferred) fail("created trigger deferral differs from its entry; write DEFERRABLE INITIALLY DEFERRED");
+      if (!link || before.constraintOids.includes(constraint) || link.kind !== "t" || link.relationOid !== table.oid || link.name !== entry.name || !link.validated) fail("created deferred trigger requires its own new validated constraint");
+      if (row.tgdeferrable !== true || row.tginitdeferred !== true || !link?.deferrable || !link.deferred) fail("created trigger deferral differs from its entry");
       deferredLinks.add(constraint);
-    } else if (constraint !== 0) fail("created trigger binding or enabled state differs from its entry");
-    const installed = (await db.query("SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgname=$1 AND tgrelid=$2::oid", [entry.name, table.oid])).rows[0];
-    const actual = nativeStoreTriggerDefinition(`${installed?.definition};`);
-    const eventKey = (events: NonNullable<typeof actual>["events"]) => JSON.stringify(events.map(event => ({ ...event, columns: [...event.columns].sort() })).sort((a, b) => a.event.localeCompare(b.event)));
-    if (!actual || actual.name !== expected.name || actual.table !== expected.table || actual.signature !== expected.signature || actual.timing !== expected.timing
-      || actual.deferred !== expected.deferred || eventKey(actual.events) !== eventKey(expected.events)) fail("created trigger events or row shape differ from its entry; install the pinned declaration");
+    } else {
+      if (constraint !== 0) fail("created trigger binding or enabled state differs from its entry");
+      const installed = (await db.query("SELECT pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgname=$1 AND tgrelid=$2::oid", [entry.name, table.oid])).rows[0];
+      const actual = nativeStoreTriggerDefinition(`${installed?.definition};`);
+      const eventKey = (events: NonNullable<typeof actual>["events"]) => JSON.stringify(events.map(event => ({ ...event, columns: [...event.columns].sort() })).sort((a, b) => a.event.localeCompare(b.event)));
+      if (!actual || actual.name !== expected!.name || actual.table !== expected!.table || actual.signature !== signature || actual.timing !== expected!.timing
+        || eventKey(actual.events) !== eventKey(expected!.events)) fail("created trigger events or row shape differ from its entry");
+    }
     admittedTriggers.add(JSON.stringify(row));
   }
 
@@ -644,10 +627,22 @@ async function pinned<T>(db: PoolClient, run: () => Promise<T>): Promise<T> {
   try { return await run(); } finally { await db.query("RESET search_path").catch(() => undefined); }
 }
 
+// Raw ordinary-trigger fixtures can supply intentionally mismatched SQL.
+function hasEarlierTriggerTable(forward: string, relation: string, hash: string) {
+  const statements = sqlStatements(forward, false, false, true);
+  const position = statements.findIndex(statement => sqlSha256(statement) === hash);
+  return position >= 0 && statements.slice(0, position).some(statement => nativeStoreCreatedTable(statement) === relation);
+}
+
+async function verifyForward(pool: Pool, registry: ReviewedForwardRegistry, path: string, bytes: Buffer, prefix: Parameters<typeof assertNativeStoreForward>[3], keep = false, setup = "") {
+  const admission = assertNativeStoreForward(registry, path, bytes, prefix);
+  return checkForward(pool, admission.slot, bytes.toString("utf8"), keep, setup, admission);
+}
+
 // Run a forward in a transaction on a real database and check it against the slot. It is rolled
 // back, except that `keep` commits a forward that passed so the next slot sees the cumulative chain.
-async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "") {
-  const proof = triggerProofSource(slot, forward);
+async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "", admission?: NativeAdmission) {
+  if (!admission && (keep || slot.createdTriggers?.some(entry => entry.deferred))) fail("deferred verification and commit require static admission");
   const db = await pool.connect();
   let passed = false;
   try {
@@ -657,7 +652,7 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
       if (setup) await db.query(setup);
       const before = await pinned(db, () => snapshot(db));
       await db.query(forward);
-      await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole, forward, proof));
+      await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole, forward, admission));
       passed = true;
     } finally { await db.query(keep && passed ? "COMMIT" : "ROLLBACK"); }
   } finally { db.release(); }
@@ -718,26 +713,26 @@ const TRIGGER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT,
   createdTriggers: [{ name: "cat_created_guard", table: "public.cat_existing_table", sha256: sqlSha256(TRIGGER_BEFORE) }, { name: "cat_created_event", table: "public.cat_parameters", sha256: sqlSha256(TRIGGER_AFTER) }],
 };
 const TRIGGER_SQL = `${TRIGGER_FUNCTION}\n${TRIGGER_REVOKE}\n${TRIGGER_BEFORE}\n${TRIGGER_AFTER}`;
-const DEFERRED_TRIGGER = "CREATE CONSTRAINT TRIGGER cat_deferred_guard AFTER INSERT OR UPDATE OR DELETE ON public.cat_existing_table DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.cat_created_guard();";
 const DEFERRED_SLOT: NativeStoreSlot = {
   row: "DeferredTrigger", path: "db/platform/migrations/20271106100000_deferred_trigger_fixture.sql", dataStatements: [],
-  createdFunctions: [{ signature: "public.cat_created_guard()", searchPath: "pg_catalog, pg_temp" }],
-  replacedFunctions: [], grantOnlyFunctions: [],
+  createdFunctions: [{ signature: "public.cat_created_guard()", searchPath: null }], replacedFunctions: [], grantOnlyFunctions: [],
 };
-const deferredSql = (statement: string) => `${TRIGGER_FUNCTION}\n${TRIGGER_REVOKE}\n${statement}`;
-function deferredSlot(statement: string, table = "public.cat_existing_table", name = "cat_deferred_guard"): NativeStoreSlot {
-  return { ...DEFERRED_SLOT, createdTriggers: [{ name, table, sha256: sqlSha256(statement) }] };
+const deferredFunction = TRIGGER_FUNCTION.replace(" SET search_path = pg_catalog, pg_temp", "") + TRIGGER_REVOKE;
+function deferredPin(overrides: Partial<Omit<NativeDeferredTrigger, "sha256">> = {}, statement?: string): NativeDeferredTrigger {
+  const entry = { name: "cat_deferred_guard", relation: "public.cat_existing_table", events: ["INSERT", "UPDATE", "DELETE"],
+    function: "public.cat_created_guard()", deferred: true, ...overrides } satisfies Omit<NativeDeferredTrigger, "sha256">;
+  return { ...entry, sha256: sqlSha256(statement ?? renderNativeDeferredTrigger(entry)) };
 }
-function admitDeferredFixture(slot: NativeStoreSlot, forward: string, setup: string) {
+function deferredFixture(slot: NativeStoreSlot, forward: string, setup = ""): Parameters<typeof assertNativeStoreForward> {
   const bytes = Buffer.from(forward), signatures = slot.createdFunctions.map(fn => fn.signature);
-  const definitions = nativeStoreFunctionDefinitions(bytes, signatures);
-  assertNativeStoreForward({
+  const definitions = nativeStoreFunctionDefinitions(Buffer.from(deferredFunction), signatures, true);
+  return [{
     schemaVersion: 1, baselineSha256: sqlSha256(SYNTHETIC_BASE), replacementForwards: [], creationForwards: [],
     nativeStoreForwardClass: { sealed: true, slots: [slot] },
     nativeStoreForwards: [{ path: slot.path, sha256: sqlSha256(bytes), functions: signatures.map(signature =>
       ({ signature, beforeSha256: null, afterSha256: definitions.get(signature)! })) }],
   }, slot.path, bytes, [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(SYNTHETIC_BASE) },
-    ...(setup ? [{ path: "db/platform/migrations/20261031120000_trigger_history.sql", bytes: Buffer.from(setup) }] : [])]);
+    ...(setup ? [{ path: "db/platform/migrations/20261031120000_trigger_history.sql", bytes: Buffer.from(setup) }] : [])]];
 }
 
 const ASSIGNMENT_ADD = "ALTER TABLE public.subscriptions ADD COLUMN offer_policy_assignment_state text NOT NULL DEFAULT 'legacy_frozen';";
@@ -865,10 +860,10 @@ const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const chain = [manifest.baseline, ...manifest.forward].filter(unit => !boundPaths.has(unit.file)).map(unit => {
   const bytes = readFileSync(unit.file);
   if (sha(bytes) !== unit.sha256) throw new Error(`native chain unit differs from the manifest: ${unit.file}`);
-  return { path: unit.file, sql: bytes.toString("utf8") };
+  return { path: unit.file, bytes };
 });
-const triggerStatements = new Map([TRIGGER_SQL, ...bound.filter(entry => entry.slot.createdTriggers?.length).map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql).map(statement => [sqlSha256(statement), statement] as const)));
-const indexStatements = new Map([SYNTHETIC_BASE, ...chain.map(unit => unit.sql), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true, false, true).map(statement => [sqlSha256(statement), statement] as const)));
+const triggerStatements = new Map(sqlStatements(TRIGGER_SQL).map(statement => [sqlSha256(statement), statement] as const));
+const indexStatements = new Map([SYNTHETIC_BASE, ...chain.map(unit => unit.bytes.toString("utf8")), ...bound.map(entry => readFileSync(entry.pin.path, "utf8"))].flatMap(sql => sqlStatements(sql, true, false, true).map(statement => [sqlSha256(statement), statement] as const)));
 const PARAMETER_SLOT: CatalogSlot = { ...SYNTHETIC_SLOT, checkSupersets: [
   { table: "public.cat_parameters", constraint: "cat_status", column: "status", values: ["open", "closed", "paused"] },
   { table: "public.cat_parameters", constraint: "cat_kind", column: "kind", values: ["first", "second", "third"] },
@@ -925,16 +920,20 @@ async function replayChain(connectionString: string) {
   let creationOutcomes = new Map<string, Error | null>();
   let applied = 0;
   const chainDb = new Pool({ connectionString });
+  const prefix: Parameters<typeof assertNativeStoreForward>[3] = [];
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
   try {
     for (const step of steps) {
-      if ("unit" in step) { await chainDb.query(step.unit.sql); applied += 1; continue; }
-      const { pin, slot } = step.entry;
-      const bytes = readFileSync(pin.path);
-      if (sha(bytes) !== pin.sha256) throw new Error(`bound forward differs from its pin: ${pin.path}`);
-      outcomes.set(pin.path, await checkForward(chainDb, slot, bytes.toString("utf8"), true).then(() => null, (error: Error) => error));
-      // Probe the first replacement at creation, roll every probe back, then continue the unchanged full prefix.
-      if (pin.path === reminderCreation.pin.path) creationOutcomes = await reminderCreationProbes(chainDb);
+      const { path } = step, bytes = "unit" in step ? step.unit.bytes : readFileSync(path);
+      if ("unit" in step) { await chainDb.query(bytes.toString("utf8")); applied += 1; }
+      else {
+        const error = await verifyForward(chainDb, registry, path, bytes, prefix, true).then(() => null, (error: Error) => error);
+        outcomes.set(path, error);
+        if (error) continue;
+        // Probe the first replacement at creation and roll each probe back.
+        if (path === reminderCreation.pin.path) creationOutcomes = await reminderCreationProbes(chainDb);
+      }
+      prefix.push({ path, bytes });
     }
   } finally { await chainDb.end(); }
   return { outcomes, creationOutcomes, applied };
@@ -1269,139 +1268,96 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     CREATE TABLE public.catalog_publications (id uuid PRIMARY KEY);
     CREATE TABLE public.cat_other_skus (id uuid PRIMARY KEY);
     CREATE TABLE public.cat_other_publications (id uuid PRIMARY KEY);`;
-  const table = "public.cat_deferred_table", name = "cat_deferred_guard";
-  const target = (relation: string, fn = "cat_created_guard") => DEFERRED_TRIGGER.replace("public.cat_existing_table", relation).replace("cat_created_guard()", `${fn}()`);
-  const local = target(table), create = `CREATE TABLE ${table}(id int);`, prefix = target("public.cat_existing_table", "cat_trigger_fn");
-  const other = target("public.cat_parameters").replace(name, "cat_other_guard");
-  const limit = "a".repeat(63), atLimit = DEFERRED_TRIGGER.replace(name, limit);
-  const sourceError = /remove other or opaque DDL/u, missingPin = /source differs from its pin/u, staticSource = /reviewed native store/u;
-  type Refusal = RegExp | { code: string };
-  const cases: { label: string; statement?: string; pin?: string; name?: string; table?: string; setup?: string; sql?: string;
-    prefixFn?: boolean; otherPin?: string; admit?: RegExp; verify?: Refusal }[] = [
-    { label: "canonical pin" },
-    { label: "single event, prefix invoker and same-slot table", statement: target(table, "cat_trigger_fn").replace("INSERT OR UPDATE OR DELETE", "UPDATE"), table, sql: create + target(table, "cat_trigger_fn").replace("INSERT OR UPDATE OR DELETE", "UPDATE"), prefixFn: true },
-    { label: "63-byte name", statement: atLimit, name: limit },
-    { label: "successor table and the proven sixth constraint", statement: target("public.catalog_sku_successors"), table: "public.catalog_sku_successors", setup: successorBase, sql: successorCreate + deferredSql(target("public.catalog_sku_successors")) },
-    { label: "disjoint second pin and trigger text in a comment and function body", otherPin: other,
-      sql: "-- CREATE TRIGGER is only a comment\n" + deferredSql(DEFERRED_TRIGGER).replace("RETURN NEW", "PERFORM 'DROP TRIGGER'; RETURN NEW") + other
-        + guarded("authenticated", "REVOKE ALL ON FUNCTION", "public.cat_created_guard() FROM authenticated;") },
-    { label: "wrong pin identity", name: "cat_wrong", admit: staticSource, verify: /listed identity/u },
-    { label: "stale pin", pin: other, admit: staticSource, verify: missingPin },
-    { label: "repeated pin", sql: deferredSql(DEFERRED_TRIGGER) + DEFERRED_TRIGGER, admit: staticSource, verify: missingPin },
-    { label: "second pin on the same relation", otherPin: other.replace("public.cat_parameters", "public.cat_existing_table"),
-      sql: deferredSql(DEFERRED_TRIGGER) + other.replace("public.cat_parameters", "public.cat_existing_table"), verify: sourceError },
-    { label: "undeclared relation", table, statement: local, admit: /relation: .*no earlier declaration/u, verify: { code: "42P01" } },
-    { label: "later table declaration", table, statement: local, sql: deferredSql(local) + create, admit: /relation: .*no earlier declaration/u, verify: { code: "42P01" } },
-    { label: "undeclared function", statement: prefix.replace("cat_trigger_fn", "cat_unknown_fn"), prefixFn: true, admit: /function: .*no earlier declaration/u, verify: { code: "42883" } },
-    { label: "later function declaration", sql: DEFERRED_TRIGGER + deferredSql(""), admit: /function: .*no earlier declaration/u, verify: { code: "42883" } },
-    { label: "prefix table renamed", table, statement: local, setup: create + `ALTER TABLE ${table} RENAME TO cat_renamed;`, verify: { code: "42P01" } },
-    { label: "prefix table dropped without qualification", table, statement: local, setup: create + "DROP TABLE cat_deferred_table;", verify: { code: "42P01" } },
-    { label: "64-byte name", statement: DEFERRED_TRIGGER.replace(name, "a".repeat(64)), name: "a".repeat(64), admit: /shorten it to at most 63 bytes/u, verify: /shorten it to at most 63 bytes/u },
-    { label: "linked constraint named through a 63-byte alias", statement: atLimit, name: limit,
-      sql: deferredSql(atLimit) + `ALTER TABLE public.cat_existing_table DROP CONSTRAINT "${limit}a";`, admit: staticSource, verify: sourceError },
-    ...([
-      ["BEFORE", "AFTER", "BEFORE", /timing: BEFORE; write AFTER/u],
-      ["INSTEAD OF", "AFTER", "INSTEAD OF", /timing: INSTEAD; write AFTER/u],
-      ["statement level", "FOR EACH ROW", "FOR EACH STATEMENT", /level: STATEMENT; write FOR EACH ROW/u],
-      ["omitted row level", "FOR EACH ROW ", "", /level: EXECUTE; write FOR EACH ROW/u],
-      ["NOT DEFERRABLE", "DEFERRABLE INITIALLY DEFERRED", "NOT DEFERRABLE", /deferral: NOT DEFERRABLE; write DEFERRABLE INITIALLY DEFERRED/u],
-      ["omitted deferral", "DEFERRABLE INITIALLY DEFERRED ", "", /deferral: FOR; write DEFERRABLE INITIALLY DEFERRED/u],
-      ["INITIALLY IMMEDIATE", "INITIALLY DEFERRED", "INITIALLY IMMEDIATE", /deferral: INITIALLY IMMEDIATE; write DEFERRABLE INITIALLY DEFERRED/u],
-      ["WHEN", "EXECUTE", "WHEN (true) EXECUTE", /execute: WHEN; write EXECUTE FUNCTION/u],
-      ["FROM", "DEFERRABLE", "FROM public.cat_parameters DEFERRABLE", /deferral: FROM; write DEFERRABLE INITIALLY DEFERRED/u],
-      ["REFERENCING", "FOR EACH ROW", "REFERENCING NEW TABLE AS new_rows FOR EACH ROW", /level: REFERENCING; write FOR EACH ROW/u],
-      ["arguments", "cat_created_guard();", "cat_created_guard('argument');", /arguments: .*with no arguments/u],
-      ["TRUNCATE", "INSERT", "TRUNCATE", /events: TRUNCATE; join distinct/u],
-      ["UPDATE OF", "UPDATE", "UPDATE OF id", /events: OF; use UPDATE without/u],
-      ["duplicate event", "UPDATE", "INSERT", /events: INSERT; join distinct/u],
-      ["unqualified relation", "ON public.", "ON ", /relation: CAT_EXISTING_TABLE; write ON public/u],
-      ["unqualified function", "FUNCTION public.", "FUNCTION ", /function: CAT_CREATED_GUARD; write a qualified public/u],
-      ["bad event separator", "INSERT OR UPDATE", "INSERT, UPDATE", /write ON public/u],
-      ["non-public relation", "ON public.", "ON other.", /write ON public/u],
-      ["non-public function", "FUNCTION public.", "FUNCTION other.", /write a qualified public/u],
-      ["64-byte table", "cat_existing_table", limit + "a", /shorten it to at most 63 bytes/u],
-      ["64-byte function", "cat_created_guard", limit + "a", /shorten it to at most 63 bytes/u],
-      ["EXECUTE PROCEDURE", "EXECUTE FUNCTION", "EXECUTE PROCEDURE", /write EXECUTE FUNCTION/u],
-      ["OR REPLACE", "CREATE", "CREATE OR REPLACE", /remove OR REPLACE/u],
-      ["IF NOT EXISTS", "TRIGGER ", "TRIGGER IF NOT EXISTS ", /remove IF NOT EXISTS/u],
-    ] as const).map(([label, from, to, admit]) => ({ label, statement: DEFERRED_TRIGGER.replace(from, to), admit, verify: admit })),
+  const pin = deferredPin(), statement = renderNativeDeferredTrigger(pin), long = "a".repeat(63);
+  const mismatch = `deferred trigger ${pin.name} does not match its registry entry; write exactly: ${statement}`;
+  const successor = deferredPin({ relation: "public.catalog_sku_successors" });
+  const renamed = deferredPin({ relation: "public.cat_renamed", function: "public.cat_trigger_fn()" });
+  const subset: NativeDeferredTrigger["events"][] = [["INSERT"], ["UPDATE"], ["DELETE"], ["INSERT", "UPDATE"], ["INSERT", "DELETE"], ["UPDATE", "DELETE"], pin.events];
+  type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; refusal?: string };
+  const cases: Fixture[] = [
+    ...subset.map(events => ({ label: events.join(" OR "), pins: [deferredPin({ events })] })),
+    { label: "63-byte name", pins: [deferredPin({ name: long })] },
+    { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: "reviewed native store invalid created trigger inventory" },
+    { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: "reviewed native store invalid created trigger inventory" },
+    { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: "reviewed native store invalid created trigger inventory" },
+    { label: "unregistered", pins: [], sql: statement, refusal: `deferred trigger ${pin.name} is not registered; add it to createdTriggers in the same PR` },
+    { label: "missing statement", pins: [pin], sql: "", refusal: mismatch },
+    { label: "stale statement hash", pins: [{ ...pin, sha256: "0".repeat(64) }], refusal: mismatch },
+    { label: "duplicate statement", pins: [pin], sql: statement + statement, refusal: mismatch },
+    { label: "missing terminator", pins: [pin], sql: statement.slice(0, -1), refusal: mismatch },
+    { label: "extra terminator", pins: [pin], sql: statement + ";", refusal: mismatch },
+    { label: "disjoint pins with a shared null-path invoker", pins: [pin, deferredPin({ name: "cat_deferred_other", relation: "public.cat_parameters" })] },
+    { label: "renamed prefix table", pins: [renamed], setup: "ALTER TABLE public.cat_existing_table RENAME TO cat_renamed;", prefixFunction: true },
+    { label: "successor table with its own linked constraint", pins: [successor], setup: successorBase, sql: successorCreate + renderNativeDeferredTrigger(successor) },
     ...[
-      "DROP TRIGGER IF EXISTS cat_deferred_guard ON cat_existing_table;",
-      `DROP TRIGGER ${name} ON public.cat_existing_table;${DEFERRED_TRIGGER.replace("FOR EACH ROW", "FOR ROW")}`,
-      "CREATE TRIGGER cat_transient BEFORE INSERT ON public.cat_existing_table FOR EACH STATEMENT EXECUTE FUNCTION public.cat_trigger_fn(); DROP TRIGGER cat_transient ON public.cat_existing_table;",
-      other.replace("cat_other_guard", name),
-      'ALTER TRIGGER cat_base_trigger ON "public"."cat_existing_table" RENAME TO cat_deferred_guard;',
-      "COMMENT ON TRIGGER cat_deferred_guard ON cat_existing_table IS 'comment';",
-      'ALTER TABLE ONLY "public"."cat_existing_table" ADD COLUMN ignored int, DISABLE TRIGGER USER;',
-      "ALTER TABLE public.cat_existing_table ENABLE ALWAYS TRIGGER cat_deferred_guard;",
-      "ALTER TABLE public.cat_existing_table DISABLE TRIGGER ALL;",
-      "ALTER TABLE public.cat_existing_table DROP CONSTRAINT cat_deferred_guard;",
-      "DROP TABLE public.cat_existing_table CASCADE;",
-      "DROP ROUTINE cat_created_guard() CASCADE;",
-      TRIGGER_FUNCTION.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"),
-      "GRANT EXECUTE ON FUNCTION public.cat_created_guard() TO authenticated; REVOKE EXECUTE ON FUNCTION public.cat_created_guard() FROM authenticated;",
-      "DO $$ BEGIN NULL; END $$;",
-    ].map((extra, index) => ({ label: `conflicting source ${index + 1}`, sql: deferredSql(DEFERRED_TRIGGER) + extra, admit: staticSource, verify: sourceError })),
+      ["event order", "INSERT OR UPDATE", "UPDATE OR INSERT"], ["different events", "INSERT OR UPDATE OR DELETE", "UPDATE"],
+      ["event separator", "INSERT OR UPDATE", "INSERT, UPDATE"], ["timing", "AFTER", "BEFORE"], ["row level", "FOR EACH ROW", "FOR EACH STATEMENT"],
+      ["deferral", "INITIALLY DEFERRED", "INITIALLY IMMEDIATE"], ["WHEN", "EXECUTE", "WHEN (true) EXECUTE"],
+      ["FROM", "DEFERRABLE", "FROM public.cat_parameters DEFERRABLE"], ["REFERENCING", "DEFERRABLE", "REFERENCING NEW TABLE AS new_rows DEFERRABLE"],
+      ["EXECUTE PROCEDURE", "EXECUTE FUNCTION", "EXECUTE PROCEDURE"], ["OR REPLACE", "CREATE", "CREATE OR REPLACE"],
+      ["IF NOT EXISTS", "TRIGGER ", "TRIGGER IF NOT EXISTS "], ["byte spacing", " TRIGGER ", "  TRIGGER "],
+    ].map(([label, from, to]) => {
+      const sql = statement.replace(from!, to!);
+      return { label: label!, pins: [deferredPin({}, sql)], sql, refusal: mismatch };
+    }),
+    ...[
+      ["DROP TRIGGER", "DROP TRIGGER IF EXISTS cat_deferred_guard ON public.cat_existing_table;"],
+      ["ALTER TRIGGER", "ALTER TRIGGER cat_deferred_guard ON public.cat_existing_table RENAME TO different;"],
+      ["DISABLE TRIGGER", "ALTER TABLE ONLY public.cat_existing_table DISABLE TRIGGER ALL;"],
+      ["COMMENT ON TRIGGER", "COMMENT ON TRIGGER cat_deferred_guard ON public.cat_existing_table IS 'note';"],
+      ["CREATE OR REPLACE FUNCTION", TRIGGER_FUNCTION.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")],
+      ["DROP CONSTRAINT", "ALTER TABLE public.cat_existing_table DROP CONSTRAINT cat_deferred_guard;"],
+      ["CREATE TRIGGER cat_created_guard", TRIGGER_BEFORE],
+    ].map(([clause, ddl]) => ({ label: clause!, pins: [pin], sql: statement + ddl, refusal: `remove ${clause} from this forward` })),
+    { label: "linked constraint truncation", pins: [deferredPin({ name: long })], sql: renderNativeDeferredTrigger(deferredPin({ name: long }))
+      + `ALTER TABLE public.cat_existing_table DROP CONSTRAINT "${long}a";`, refusal: "remove DROP CONSTRAINT from this forward" },
+    { label: "duplicate guarded revoke", pins: [pin], sql: statement + guarded("authenticated", "REVOKE ALL ON FUNCTION", "public.cat_created_guard() FROM authenticated;").repeat(2),
+      refusal: "reviewed native store permits one conditional block per role, verb and object kind" },
   ];
-  // Pair each text and its actual pin with an independent install/comparison verdict.
-  it.each(cases)("checks deferred forward $label", async ({ statement = DEFERRED_TRIGGER, pin = statement, name, table, setup = "", sql, prefixFn, otherPin, admit, verify }) => {
-    const slot = deferredSlot(pin, table, name), forward = sql ?? (prefixFn ? statement : deferredSql(statement));
-    if (prefixFn) slot.createdFunctions = [];
-    if (otherPin) slot.createdTriggers!.push({ name: "cat_other_guard", table: otherPin.includes("public.cat_parameters") ? "public.cat_parameters" : "public.cat_existing_table", sha256: sqlSha256(otherPin) });
-    const candidate = () => admitDeferredFixture(slot, forward, setup);
-    if (admit) expect(candidate).toThrow(admit); else expect(candidate).not.toThrow();
-    const installed = checkForward(pool, slot, forward, false, setup);
-    if (verify instanceof RegExp) await expect(installed).rejects.toThrow(verify);
-    else if (verify) await expect(installed).rejects.toMatchObject(verify);
-    else await installed;
+  it.each(cases)("admits and verifies the same deferred forward for $label", async ({ pins, sql, setup, prefixFunction, refusal }) => {
+    const slot = { ...DEFERRED_SLOT, createdTriggers: pins, createdFunctions: prefixFunction ? [] : DEFERRED_SLOT.createdFunctions };
+    const source = (prefixFunction ? "" : deferredFunction) + (sql ?? pins.map(renderNativeDeferredTrigger).join("\n"));
+    const fixture = deferredFixture(slot, source, setup);
+    if (refusal) {
+      const error = new Error(refusal);
+      const unopened = { connect: () => { throw new Error("opened a connection before admission"); } } as unknown as Pool;
+      expect(() => assertNativeStoreForward(...fixture)).toThrow(error);
+      await expect(verifyForward(unopened, ...fixture, true, setup)).rejects.toThrow(error);
+    } else {
+      expect(() => assertNativeStoreForward(...fixture)).not.toThrow();
+      await verifyForward(pool, ...fixture, false, setup);
+    }
   });
-
+  it("counts every successor constraint except the verified trigger link", async () => {
+    const sql = successorCreate + deferredFunction + renderNativeDeferredTrigger(successor)
+      + "ALTER TABLE public.catalog_sku_successors ADD CONSTRAINT cat_extra CHECK (true);";
+    const fixture = deferredFixture({ ...DEFERRED_SLOT, createdTriggers: [successor] }, sql, successorBase);
+    await expect(verifyForward(pool, ...fixture, true, successorBase)).rejects.toThrow(/successor primary key or self-link CHECK/u);
+    const result = await pool.query("SELECT to_regclass('public.catalog_sku_successors') AS rolled_back");
+    expect(result.rows[0].rolled_back).toBeNull();
+  });
   it.each([
-    ["qualified return and implicit invoker", "RETURNS pg_catalog.trigger LANGUAGE plpgsql", "", null],
-    ["direct definer", "RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER", "", /use SECURITY INVOKER/u],
-    ["ALTER FUNCTION option order", "RETURNS trigger LANGUAGE plpgsql", "ALTER FUNCTION public.cat_guard() COST 50 SECURITY DEFINER;", /use SECURITY INVOKER/u],
-    ["ALTER ROUTINE", "RETURNS trigger LANGUAGE plpgsql", "ALTER ROUTINE public.cat_guard() SECURITY DEFINER;", /use SECURITY INVOKER/u],
-    ["wrong return", "RETURNS int LANGUAGE plpgsql", "", { code: "42P17" }],
-    ["set return", "RETURNS SETOF int LANGUAGE plpgsql", "", { code: "42P17" }],
-  ] as const)("uses the installed function for %s", async (_label, header, alteration, refusal) => {
-    const statement = target("public.cat_existing_table", "cat_guard"), slot = { ...deferredSlot(statement), createdFunctions: [] };
-    const setup = `CREATE FUNCTION public.cat_guard() ${header} AS $$ BEGIN RETURN${header.includes("SETOF") ? "" : " NULL"}; END $$; ${alteration}`;
-    const verify = checkForward(pool, slot, statement, false, setup);
-    if (refusal instanceof RegExp) await expect(verify).rejects.toThrow(refusal);
-    else if (refusal) await expect(verify).rejects.toMatchObject(refusal);
-    else await verify;
-  });
-  it.each([["same relation", "cat_existing_table", { code: "42710" }], ["other relation", "cat_parameters", null]] as const)("checks a prefix name on the %s for a deferred trigger", async (_label, table, refusal) => {
-    const setup = `CREATE TRIGGER ${name} BEFORE INSERT ON public.${table} FOR EACH ROW EXECUTE FUNCTION public.cat_trigger_fn();`;
-    const verify = checkForward(pool, deferredSlot(DEFERRED_TRIGGER), deferredSql(DEFERRED_TRIGGER), false, setup);
-    if (refusal) await expect(verify).rejects.toMatchObject(refusal); else await verify;
-  });
-  it("refuses using a replaced prefix function in the same deferred forward", async () => {
-    const replacement = TRIGGER_FUNCTION.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("RETURN NEW", "RETURN NULL");
-    await expect(checkForward(pool, { ...deferredSlot(DEFERRED_TRIGGER), createdFunctions: [] }, replacement + DEFERRED_TRIGGER, false, TRIGGER_FUNCTION)).rejects.toThrow(sourceError);
-  });
-  it("exempts only the proved constraint from the successor count", async () => {
-    const relation = "public.catalog_sku_successors", statement = target(relation);
-    const extra = `ALTER TABLE ${relation} ADD CONSTRAINT cat_extra CHECK (true);`;
-    await expect(checkForward(pool, deferredSlot(statement, relation), successorCreate + deferredSql(statement) + extra, false, successorBase)).rejects.toThrow(/successor primary key or self-link CHECK/u);
-  });
-  it.each(["stored name", "function OID", "events", "enabled", "missing link", "wrong link", "trigger deferrable", "trigger initially deferred",
-    "constraint deferrable", "constraint initially deferred", "later table", "later function"] as const)("refuses a deferred catalogue mismatch in %s", async field => {
-    const db = await pool.connect(), slot = deferredSlot(local, table), sql = create + deferredSql(local);
+    ["tgname", "different"], ["tgrelid", 0], ["tgfoid", 0], ["tgenabled", "D"], ["tgisinternal", true], ["tgnargs", 1],
+    ["tgattr", [1]], ["tgqual", "condition"], ["tgconstrrelid", 1], ["tgoldtable", "old"], ["tgnewtable", "new"],
+    ["tgtype", 28], ["tgtype", 31], ["tgtype", 5],
+    ["tgconstraint", 0], ["tgdeferrable", false], ["tginitdeferred", false],
+    ["link.kind", "c"], ["link.relationOid", 0], ["link.name", "different"], ["link.validated", false], ["link.fresh", false], ["link.deferrable", false], ["link.deferred", false],
+    ["function.returnsTrigger", false], ["attrs.prosecdef", true], ["attrs.proretset", true],
+  ] as const)("refuses installed fact drift in %s (%s)", async (field, value) => {
+    const db = await pool.connect(), slot = { ...DEFERRED_SLOT, createdTriggers: [pin] };
+    const pinnedPath = field === "attrs.prosecdef";
+    if (pinnedPath) slot.createdFunctions = [{ signature: pin.function, searchPath: "pg_catalog, pg_temp" }];
     try {
       await db.query("BEGIN");
-      const migrationRole = String((await db.query("SELECT current_user::text AS role")).rows[0].role);
+      const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
       const before = await pinned(db, () => snapshot(db));
-      await db.query(field === "events" ? sql.replace("INSERT OR UPDATE OR DELETE", "INSERT") : sql);
-      const after = await pinned(db, () => snapshot(db)), row = after.guards.triggers!.find(row => row.tgname === name)!, link = after.constraints.find(link => link.oid === Number(row.tgconstraint))!;
-      const changes = { "stored name": [row, "tgname", "cat_other_guard"], "function OID": [row, "tgfoid", 0], enabled: [row, "tgenabled", "D"],
-        "missing link": [row, "tgconstraint", 0], "wrong link": [link, "name", "cat_other_guard"], "trigger deferrable": [row, "tgdeferrable", false],
-        "trigger initially deferred": [row, "tginitdeferred", false], "constraint deferrable": [link, "deferrable", false], "constraint initially deferred": [link, "deferred", false] } as const;
-      if (field in changes) { const [entry, key, value] = changes[field as keyof typeof changes]; Object.assign(entry, { [key]: value }); }
-      const source = field === "later table" ? deferredSql(local) + create : field === "later function" ? create + local + deferredSql("") : sql;
-      const refusal = field.startsWith("later") ? /earlier/u : field.includes("link") ? /own new validated constraint/u : /deferrable|initially/u.test(field)
-        ? /deferral differs/u : field === "events" ? /events or row shape/u : /binding or enabled state/u;
-      await expect(pinned(db, () => assertSlotCatalog(db, slot, before, after, migrationRole, source))).rejects.toThrow(refusal);
+      await db.query((pinnedPath ? TRIGGER_FUNCTION + TRIGGER_REVOKE : deferredFunction) + statement);
+      const after = await pinned(db, () => snapshot(db)), row = after.guards.triggers!.find(row => row.tgname === pin.name)!;
+      const link = after.constraints.find(link => link.oid === Number(row.tgconstraint))!, fn = after.functions.find(fn => fn.oid === Number(row.tgfoid))!;
+      const [owner, key] = field.split("."), subjects = { link, function: fn, attrs: fn.attrs };
+      if (field === "link.fresh") before.constraintOids.push(link.oid);
+      else Object.assign(key ? subjects[owner as keyof typeof subjects] : row, { [key ?? field]: value });
+      await expect(pinned(db, () => assertSlotCatalog(db, slot, before, after, role))).rejects.toThrow(/catalog: (?:created(?: deferred)?|deferred) trigger/u);
     } finally { await db.query("ROLLBACK"); db.release(); }
   });
   it.each([

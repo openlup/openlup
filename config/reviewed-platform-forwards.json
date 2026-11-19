@@ -5759,33 +5759,74 @@
           },
           {
             "name": "catalog_publications_issued",
-            "table": "public.catalog_publications",
-            "sha256": "8f6774fd0bc83006efe33373e253840d0487093e1392178800328f39e5d0c654"
+            "relation": "public.catalog_publications",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_publication_admit()",
+            "deferred": true,
+            "sha256": "5cc18ada38b0075fa066cef488cf139885f798ad51c270bfdc55ad031a965919"
           },
           {
             "name": "catalog_sku_revisions_issued",
-            "table": "public.catalog_sku_revisions",
-            "sha256": "cfe0677812b1dee43c84779f71bd8c0608a1fe62b37ac4bc40d1a5b83db7727f"
+            "relation": "public.catalog_sku_revisions",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_publication_sku_admit()",
+            "deferred": true,
+            "sha256": "29f7fda3585823cd2bcd87fbd2fd020aeec3c02509a5dbb2b90c1a0313f44dbc"
           },
           {
             "name": "catalog_receipts_issued",
-            "table": "public.catalog_operator_receipts",
-            "sha256": "920df8792c7e55239a2dd571fc6cdc35d92315e6e869e49d232971d077aa5464"
+            "relation": "public.catalog_operator_receipts",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_publication_admit()",
+            "deferred": true,
+            "sha256": "c04301c15d0c702217d7c8acf054def081ca114a17b35258ae131f5d0d0ae918"
           },
           {
             "name": "catalog_decisions_issued",
-            "table": "public.catalog_publication_decisions",
-            "sha256": "52d4826362c6dfda72c7d6b62b7dd483c54e86c047c5d7b028b709743501f3d8"
+            "relation": "public.catalog_publication_decisions",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_publication_admit()",
+            "deferred": true,
+            "sha256": "37da5a424d676691080ef15ab67192a238649db3ba28e75377b28b1e229c5d93"
           },
           {
             "name": "catalog_heads_issued",
-            "table": "public.catalog_publication_heads",
-            "sha256": "820a9db4b7bf89faf12437377eaa462c170b179ec1eb315bd67a7fb9bda110e2"
+            "relation": "public.catalog_publication_heads",
+            "events": [
+              "INSERT",
+              "UPDATE",
+              "DELETE"
+            ],
+            "function": "public.catalog_publication_admit()",
+            "deferred": true,
+            "sha256": "35de4052614900e6fe8251849cab81197dbc233eb89481a14afdab0f61d95593"
           },
           {
             "name": "catalog_pointer_capabilities_consumed",
-            "table": "public.catalog_publication_pointer_capabilities",
-            "sha256": "3e5df60138aeae5c0289cddedeeeb8ac27da7006ad06e12a512dfa6af865e1d8"
+            "relation": "public.catalog_publication_pointer_capabilities",
+            "events": [
+              "INSERT",
+              "UPDATE"
+            ],
+            "function": "public.catalog_publication_admit()",
+            "deferred": true,
+            "sha256": "4430bf12d365ab7ef2faa1ce25dbc32afb3bf093f71473d745e83fd9cef27453"
           }
         ]
       }
@@ -8148,7 +8189,7 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "d99980e0ee7ea452f75d3850bbbe5ab7928ba787b25efb8a7378a65d464cf4a8",
+      "sha256": "6d03eefdb809f502cbf4b383c4cb541dfa8a0d6692aa6bba0bbc10da6f2a25b1",
       "functions": [
         {
           "signature": "public.catalog_publication_pointer_fence()",

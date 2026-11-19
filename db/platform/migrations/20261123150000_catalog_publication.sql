@@ -804,15 +804,9 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_admit() FROM PUBLIC;
 
-CREATE CONSTRAINT TRIGGER catalog_publications_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publications
- DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_sku_revisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_sku_revisions
- DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_sku_admit();
-CREATE CONSTRAINT TRIGGER catalog_receipts_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_operator_receipts
- DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_decisions
- DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_heads_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_heads
- DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_pointer_capabilities_consumed AFTER INSERT OR UPDATE ON public.catalog_publication_pointer_capabilities
- DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
+CREATE CONSTRAINT TRIGGER catalog_publications_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publications DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
+CREATE CONSTRAINT TRIGGER catalog_sku_revisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_sku_revisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_sku_admit();
+CREATE CONSTRAINT TRIGGER catalog_receipts_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_operator_receipts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
+CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_decisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
+CREATE CONSTRAINT TRIGGER catalog_heads_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_heads DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
+CREATE CONSTRAINT TRIGGER catalog_pointer_capabilities_consumed AFTER INSERT OR UPDATE ON public.catalog_publication_pointer_capabilities DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();

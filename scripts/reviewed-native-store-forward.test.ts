@@ -1176,6 +1176,17 @@ function triggerForward(statement = triggerBefore, extra = "", configure?: (slot
 }
 
 describe("closed created row triggers on prefix tables", () => {
+  it("refuses conditional prefix function drops for ordinary and deferred triggers", () => {
+    const deferred = triggerBefore.replace("CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra", "CREATE CONSTRAINT TRIGGER fixture_trigger_guard AFTER INSERT")
+      .replace("FOR EACH ROW", "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW");
+    const refusal = new Error("reviewed native store unsupported preceding function DDL");
+    for (const history of ["DROP FUNCTION IF EXISTS public.fixture_retired_guard();", "DROP FUNCTION IF EXISTS public.other(), public.fixture_existing(uuid);"]) {
+      for (const statement of [triggerBefore, deferred]) expect(() => triggerForward(statement, "", slot => {
+        if (statement === deferred) slot.createdTriggers = [{ name: "fixture_trigger_guard", relation: "public.fixture_parameters",
+          events: ["INSERT"], function: "public.fixture_trigger_guard()", sha256: sqlSha256(deferred), deferred: true }];
+      }, history)).toThrow(refusal);
+    }
+  });
   it("admits both guarded existing-table trigger shapes with PUBLIC and conditional revokes", () => {
     const revokes = ["anon", "authenticated", "service_role"].map(role => block(role, "REVOKE ALL", "public.fixture_trigger_guard()")).join("\n");
     expect(() => triggerForward(triggerBefore, `${triggerAfter}\n${revokes}`, slot => {
@@ -1185,7 +1196,6 @@ describe("closed created row triggers on prefix tables", () => {
   it.each([
     ["WHEN", triggerBefore.replace("FOR EACH ROW EXECUTE", "FOR EACH ROW WHEN (true) EXECUTE")],
     ["FOR EACH STATEMENT", triggerBefore.replace("FOR EACH ROW", "FOR EACH STATEMENT")],
-    ["CONSTRAINT TRIGGER", triggerBefore.replace("CREATE TRIGGER", "CREATE CONSTRAINT TRIGGER")],
     ["INSTEAD OF", triggerBefore.replace("BEFORE", "INSTEAD OF")],
     ["REFERENCING", triggerBefore.replace("FOR EACH ROW", "REFERENCING NEW TABLE AS new_rows FOR EACH ROW")],
     ["TRUNCATE event", triggerBefore.replace("INSERT OR DELETE OR UPDATE OF id, extra", "TRUNCATE")],

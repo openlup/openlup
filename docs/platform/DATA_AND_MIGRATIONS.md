@@ -2473,28 +2473,33 @@ new view inventory, ownership and owner-only privileges.
 
 <a id="declare-a-reviewed-trigger"></a>
 
-**Declare a reviewed trigger.** Choose a public table and a zero-argument
-public function declared in the prefix or earlier in the forward. Keep both
-installed. Choose a name unused on that table and unique within the slot.
-Use identifiers of at most 63 bytes. Pin the name, table and exact statement
-hash in `createdTriggers`.
+**Declare a deferred trigger.** Add its name, public relation, events,
+zero-argument public function, `deferred: true` and statement hash to
+`createdTriggers` in the same PR. Use one or more events in the order
+`INSERT`, `UPDATE`, `DELETE`. Use identifiers of at most 63 bytes.
 
-```sql
-CREATE CONSTRAINT TRIGGER example_guard
-  AFTER INSERT OR UPDATE OR DELETE ON public.example_items
-  DEFERRABLE INITIALLY DEFERRED
-  FOR EACH ROW EXECUTE FUNCTION public.example_guard();
+```json
+{
+  "name": "example_guard",
+  "relation": "public.example_items",
+  "events": ["INSERT", "UPDATE"],
+  "function": "public.example_guard()",
+  "deferred": true,
+  "sha256": "9331c59ff1708220da4c99634c53ccade813038aadfa9f183baf00ffd9eea51a"
+}
 ```
 
-Join one or more distinct events with `OR`. Omit `WHEN`, `FROM`, `REFERENCING`,
-`OR REPLACE` and `IF NOT EXISTS`. Use `EXECUTE FUNCTION` in place of
-`EXECUTE PROCEDURE`. Use invoker mode and `RETURNS trigger` or
-`RETURNS pg_catalog.trigger`. Leave a prefix function unchanged. For a new
-function, pin its search path, revoke PUBLIC and grant no EXECUTE.
+Add the statement exactly as rendered, including the semicolon.
 
-The installed proof checks the exact pinned statement, the table and function
-bindings, the stored trigger name, the events and the linked deferred constraint.
-Keep other trigger DDL off the pinned relation and name in this forward.
+```sql
+CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.example_guard();
+```
+
+Use a function returning `trigger` in invoker mode. Follow the standard
+function pin and PUBLIC revoke rules for a new function. Keep other DDL
+for the trigger, its linked constraint and its function out of the forward.
+The verifier admits the full forward before execution and checks the installed
+trigger and its linked constraint before commit.
 
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
 a same-slot function with explicit `SECURITY INVOKER`. They also allow `UPDATE OF`.
