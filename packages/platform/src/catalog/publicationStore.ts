@@ -246,7 +246,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const result = checkedReceipt(row.result);
     require(result.productId === row.scope_id && result.commandKey === row.command_key && result.fingerprint === row.fingerprint
       && result.actorId === row.actor_id && result.head.publicationId === row.publication_id, "catalog_publication_receipt_invalid", "dependency_unavailable");
-    const publications = await tuple(db, `SELECT p.revision,p.digest,d.digest AS document_digest,p.previous_id,previous.revision AS previous_revision,previous_document.digest AS previous_document_digest,
+    const publications = await tuple(db, `SELECT p.revision,p.digest,d.digest AS document_digest,p.document_revision_id,p.previous_id,previous.revision AS previous_revision,previous_document.digest AS previous_document_digest,
       p.command_key,p.actor_id,(SELECT count(*)::integer FROM public.catalog_operator_receipts WHERE publication_id=p.id) AS receipt_count,
       (SELECT coalesce(jsonb_agg(jsonb_build_object(
           'productId',p.product_id,'variantId',r.sku_id,'sku',r.sku_code,
@@ -269,7 +269,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const canonicalState = publications[0]!.canonical_state;
     require(typeof canonicalState === "string", "catalog_publication_receipt_invalid", "dependency_unavailable");
     const manifest = catalogPublicationManifestSchema.safeParse(JSON.parse(canonicalState as string));
-    require(manifest.success && manifest.data.product.id === result.productId && publicationJson(manifest.data) === canonicalState
+    require(manifest.success && manifest.data.product.id === result.productId
+      && manifest.data.product.document?.id === publications[0]!.document_revision_id
+      && manifest.data.product.document?.digest === publications[0]!.document_digest && publicationJson(manifest.data) === canonicalState
       && publicationDigest(manifest.data) === result.publicationDigest, "catalog_publication_receipt_invalid", "dependency_unavailable");
     const references = manifest.data!.skus;
     await retainedSkuIndex(db, result.productId, result.head.revision, references);

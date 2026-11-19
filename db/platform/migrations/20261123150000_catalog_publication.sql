@@ -216,6 +216,9 @@ BEGIN
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
   END IF;
+  IF body->'product'->'document'->>'id' IS DISTINCT FROM NEW.document_revision_id::text THEN
+   RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514';
+  END IF;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
   IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text
    OR body->>'code' IS DISTINCT FROM NEW.sku_code THEN

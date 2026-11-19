@@ -624,6 +624,7 @@ it.each(["W39_V5-1794_predicate_precedence_boundary", "terminal history uses its
         if (!stored) throw new Error("Unknown history receipt");
         const { result } = stored;
         return { rows: [{ revision: result.head.revision, digest: result.publicationDigest, document_digest: documentDigest,
+          document_revision_id: product.document!.id,
           previous_id: result.previousHead?.publicationId ?? null, previous_revision: result.previousHead?.revision ?? null,
           previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt,
           command_key: result.commandKey, actor_id: result.actorId, receipt_count: 1, recorded_changes: result.changes,

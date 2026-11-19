@@ -3907,6 +3907,44 @@ it("publication refuses a duplicate GTIN from a concurrent Read Committed legacy
   }
 });
 
+it.each(["SQL admission", "history, replay and recovery"] as const)("refuses a manifest document revision that differs from its publication foreign key at %s", async boundary => {
+  const data = await draft(), first = await commit(data.publication), alternateId = randomUUID();
+  const { row } = (await db.query("SELECT to_jsonb(p) AS row FROM public.catalog_publications p WHERE id=$1", [first.head.publicationId])).rows[0];
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`INSERT INTO public.catalog_product_document_revisions
+      (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
+      SELECT $1,product_id,revision_no+1,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text
+      FROM public.catalog_product_document_revisions WHERE id=$2`, [alternateId, row.document_revision_id]);
+    const manifest = JSON.parse(row.canonical_state);
+    manifest.product.document = { ...manifest.product.document, id: alternateId, revisionNo: 2 };
+    const canonical = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(canonical).digest("hex");
+    if (boundary === "SQL admission") {
+      const candidate = { ...row, id: randomUUID(), previous_id: row.id, revision: 2, command_key: randomUUID(),
+        candidate_ref: randomUUID(), canonical_state: canonical, digest };
+      await expect(client.query("INSERT INTO public.catalog_publications SELECT (jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb)).*",
+        [JSON.stringify(candidate)])).rejects.toMatchObject({ code: "23514", message: "catalog_publication_manifest_invalid" });
+      return;
+    }
+    await client.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+    await client.query("ALTER TABLE public.catalog_operator_receipts DISABLE TRIGGER catalog_operator_receipts_immutable");
+    await client.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1", [row.id, canonical, digest]);
+    await client.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE publication_id=$1",
+      [row.id, canonicalCatalogDraftJson({ ...first, publicationDigest: digest })]);
+    const target = createPostgresCatalogPublication({ ...dependencies(), transactions: {
+      run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION")
+        ? Promise.resolve({ rows: [] }) : client.query(sql, values) }),
+    } });
+    const capability = (await target.authorize(null))!;
+    const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" };
+    expect(await target.reads.history(data.productId, null))
+      .toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+    expect(await target.publish(data.publication, capability)).toEqual(refusal);
+    expect(await target.receipt({ productId: data.productId, commandKey: first.commandKey }, capability)).toEqual(refusal);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
 it.each(["SQL admission", "readback, replay and recovery"] as const)("rejects omission of an unchanged issued SKU at %s", async boundary => {
   const data = await draft(), first = await commit(data.publication);
   const second = await commit(await incrementalSku(data, first.head, 1));
