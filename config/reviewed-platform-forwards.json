@@ -5748,6 +5748,34 @@
           {
             "signature": "public.catalog_frozen_wire_valid_v3(jsonb,text)",
             "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_lifecycle_utf16_v3(text)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_lifecycle_roster_version_v3(uuid,jsonb)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_renewal_integer_v3(jsonb,bigint,bigint)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_renewal_keys_v3(jsonb,text[],text[])",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_renewal_lines_v3(jsonb,boolean)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_renewal_ref_v3(jsonb,boolean)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_renewal_instant_v3(jsonb,boolean)",
+            "searchPath": "pg_catalog, public"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8093,17 +8121,17 @@
     },
     {
       "path": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-      "sha256": "c7973f34f67b03beaef8d38421fb09a0c4661cc7f1f4cf0804da7ccf934137e6",
+      "sha256": "688740b486344296eba2e16d26101e9cb9d040b1c5e4a9add5e8d5570214ae8a",
       "functions": [
         {
           "signature": "public.catalog_draft_apply(text,text,text)",
           "beforeSha256": "554ddda70f3e7b7eba6d23d839404887dd1842ee7c71df6b70e66082df71857c",
-          "afterSha256": "38680a8e29e510338d686f6c17d611f31eee2eecef4b14f29d13fb434e63e81e"
+          "afterSha256": "fe26e09a46f9e8aa87ef3b908daf8a684b046051bdcce751ba66c2903f4af939"
         },
         {
           "signature": "public.catalog_publication_record_admit()",
           "beforeSha256": "1c6a332c29e549abedb32488548373d531ca2c7619d932442755d4fe1b017cce",
-          "afterSha256": "6a4db8288416eba9292bb001343ba5c8385ec15877b8708ccd43e30babc90be9"
+          "afterSha256": "3b5b110536ff13bafeb57b043e127194feca2e6dc339528546a00c248cb6e8c0"
         },
         {
           "signature": "public.catalog_lifecycle_write_fence()",
@@ -8143,7 +8171,7 @@
         {
           "signature": "public.catalog_lifecycle_facts_valid_v3(jsonb,text,uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "c595d434cfed5120bcbd55f3691167a42f0eb153af5ce33b4ce0d12dae98e408"
+          "afterSha256": "725855663f4d5dbd24b59d72a0721bac2ac9a3bc2eb4283c3442553f5a0b6237"
         },
         {
           "signature": "public.catalog_lifecycle_roster_valid_v3(uuid,jsonb)",
@@ -8158,7 +8186,7 @@
         {
           "signature": "public.catalog_lifecycle_head_admit_v3()",
           "beforeSha256": null,
-          "afterSha256": "3a950cd16df1ba6adf647e82f7308f87e083c326102405c9322592f849c1d827"
+          "afterSha256": "1a6a5d3d1ff62493e8ef369772899ad4601c1764a84ab685aa4db34e2c871755"
         },
         {
           "signature": "public.catalog_retained_basket_codes_v2(jsonb)",
@@ -8198,7 +8226,7 @@
         {
           "signature": "public.catalog_lifecycle_canonical_v3(jsonb,boolean,integer)",
           "beforeSha256": null,
-          "afterSha256": "35908cab674b5a5b5683d42d71d30ef2387a6a09f32ac7b32497d0303c64e4f1"
+          "afterSha256": "222d75dbaadd5327a70c3f6a5ab125b20b02f5249b7923292c0b94d59efd230d"
         },
         {
           "signature": "public.catalog_lifecycle_wire_valid_v3(text,text)",
@@ -8238,7 +8266,42 @@
         {
           "signature": "public.catalog_frozen_wire_valid_v3(jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "972833d4353557f03d46b4dec6651d6b40d290132a3dc42ce5e5f74df650af60"
+          "afterSha256": "b94764153784f4e2d43228629e9f8ae74f7b9f87f50631e079630fc86193184a"
+        },
+        {
+          "signature": "public.catalog_lifecycle_utf16_v3(text)",
+          "beforeSha256": null,
+          "afterSha256": "c9cba11c95ed772d28872df1af7bcccda415af5e2e5beaefba2a1e2112d6a17e"
+        },
+        {
+          "signature": "public.catalog_lifecycle_roster_version_v3(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "43dbef66c336fc8f4296a1cd7b11840ed91fdab94ed7fccaa9b99a6cf240d3d9"
+        },
+        {
+          "signature": "public.catalog_renewal_integer_v3(jsonb,bigint,bigint)",
+          "beforeSha256": null,
+          "afterSha256": "d09032d401ef5914fb47b2e2b7c4f9214ead2cc8425d20a8beebdc1e5c651227"
+        },
+        {
+          "signature": "public.catalog_renewal_keys_v3(jsonb,text[],text[])",
+          "beforeSha256": null,
+          "afterSha256": "72244f3aa7385c82f937ad8ef7e3b387e25e55ee1119c5f4ced114662480ab37"
+        },
+        {
+          "signature": "public.catalog_renewal_lines_v3(jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "c0302921fb4a6b720bc427908f5fa5925ee66193f594769ec6a8457cde307df2"
+        },
+        {
+          "signature": "public.catalog_renewal_ref_v3(jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "9d5fa7aa4843122a3bcddb1326ed6c0fb419f817281d06ce1ab16a52359360d3"
+        },
+        {
+          "signature": "public.catalog_renewal_instant_v3(jsonb,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "e7688fcc623c41da77b6330163ea63cc18083b9dd0c60aa4b5c6c3ae667b1f00"
         }
       ]
     }

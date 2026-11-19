@@ -40,7 +40,8 @@ function acceptance(value: unknown, parse: CatalogRenewalReferenceParser | undef
     || nativeRenewalCanonicalJson(lines) !== nativeRenewalCanonicalJson(envelope.lines)) throw new Error("subscription_catalog_acceptance_invalid");
   return { schemaVersion: 2, lines };
 }
-const catalogBindingsSchema = z.array(z.object({ skuId: z.uuid(), skuRevisionId: z.uuid() }).strict());
+const catalogBindingId = z.guid().refine(value => value === value.toLowerCase());
+const catalogBindingsSchema = z.array(z.object({ skuId: catalogBindingId, skuRevisionId: catalogBindingId }).strict());
 function assertCatalogBindings(value: unknown, accepted: CatalogAcceptanceV2) {
   const bindings = catalogBindingsSchema.safeParse(value ?? []);
   if (!bindings.success || bindings.data.some(binding => !accepted.lines.some(line =>
@@ -53,7 +54,8 @@ function validate(snapshot: RenewalFrozenSnapshot, parse?: CatalogRenewalReferen
     snapshotSchema.parse({ ...old, frozenRevision: "native.purchase-renewal.v2" });
     const acceptedCodes = new Set(captured.lines.map(line => line.skuCode));
     const codes = snapshot.orderSnapshot.lines.map(line => line.sku);
-    if (new Set(codes).size !== codes.length || acceptedCodes.size !== codes.length || codes.some(code => !acceptedCodes.has(code))) {
+    if (new Set(codes).size !== codes.length || acceptedCodes.size !== codes.length || codes.some(code => !acceptedCodes.has(code))
+      || snapshot.orderSnapshot.lines.some(line => line.quantity > 2_147_483_647)) {
       throw new Error("subscription_catalog_acceptance_line_mismatch");
     }
   } else snapshotSchema.parse(snapshot);

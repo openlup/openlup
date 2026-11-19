@@ -80,8 +80,7 @@ BEGIN
    FROM (SELECT key,public.catalog_lifecycle_canonical_v3(value,p_renewal,p_depth+1) AS wire,
     CASE WHEN NOT p_renewal AND key ~ '^(0|[1-9][0-9]{0,9})$' THEN
      CASE WHEN key::bigint<4294967295 THEN key::bigint END END AS array_index,
-    ARRAY(SELECT CASE WHEN scalar>65535 THEN scalar-10240 WHEN scalar>=57344 THEN scalar+1046528 ELSE scalar END
-     FROM (SELECT ascii(ch) AS scalar,n FROM regexp_split_to_table(key,'') WITH ORDINALITY c(ch,n)) characters ORDER BY n) AS utf16
+    public.catalog_lifecycle_utf16_v3(key) AS utf16
     FROM jsonb_each(p_value)) fields;
  ELSIF kind='number' THEN
   IF p_renewal THEN
@@ -125,6 +124,14 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS 
 $$;
 REVOKE ALL ON FUNCTION public.catalog_lifecycle_reference_valid_v3(text,integer) FROM PUBLIC;
 
+-- Native text ordering uses the same UTF-16 code units as the catalogue codecs.
+CREATE FUNCTION public.catalog_lifecycle_utf16_v3(p_value text) RETURNS integer[]
+LANGUAGE sql IMMUTABLE STRICT SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT ARRAY(SELECT CASE WHEN scalar>65535 THEN scalar-10240 WHEN scalar>=57344 THEN scalar+1046528 ELSE scalar END
+  FROM (SELECT ascii(ch) AS scalar,n FROM regexp_split_to_table(p_value,'') WITH ORDINALITY c(ch,n)) characters ORDER BY n)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_lifecycle_utf16_v3(text) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_lifecycle_quantity_valid_v3(p_value jsonb) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
  SELECT coalesce(jsonb_typeof(p_value)='object'
@@ -140,7 +147,7 @@ REVOKE ALL ON FUNCTION public.catalog_lifecycle_quantity_valid_v3(jsonb) FROM PU
 -- Standalone stored-fact checks are shared by admission and retained readers.
 CREATE FUNCTION public.catalog_lifecycle_facts_valid_v3(p_facts jsonb, p_kind text, p_id uuid, p_product_id uuid) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE state text; membership jsonb; previous text; source jsonb; entry jsonb;
+DECLARE state text; membership jsonb; previous integer[]; sort_key integer[]; source jsonb; entry jsonb; gtin text;
  uuid_shape constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 BEGIN
  IF jsonb_typeof(p_facts) IS DISTINCT FROM 'object' OR p_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
@@ -148,7 +155,7 @@ BEGIN
  state := p_facts->>'lifecycleState';
  IF state IS NULL OR state NOT IN ('active','draft','withdrawn','archived')
   OR p_facts->>'status' IS DISTINCT FROM (CASE WHEN state='withdrawn' THEN 'active' ELSE state END)
-  OR jsonb_typeof(p_facts->'attributes') IS DISTINCT FROM 'object'
+  OR (p_facts ? 'attributes' AND jsonb_typeof(p_facts->'attributes') IS DISTINCT FROM 'object')
   OR jsonb_typeof(p_facts->'source') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
  source := p_facts->'source';
  IF source - ARRAY['draftId','revision','commandKey','fingerprint'] <> '{}'::jsonb
@@ -157,6 +164,13 @@ BEGIN
   OR jsonb_typeof(source->'commandKey') IS DISTINCT FROM 'string' OR NOT public.catalog_lifecycle_reference_valid_v3(source->>'commandKey',240)
   OR jsonb_typeof(source->'fingerprint') IS DISTINCT FROM 'string' OR source->>'fingerprint' !~ '^[a-f0-9]{64}$' THEN RETURN false; END IF;
  IF (source->>'revision')::bigint>2147483647 THEN RETURN false; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_each(p_facts->'attributes') a
+  CROSS JOIN LATERAL jsonb_array_elements(CASE jsonb_typeof(a.value) WHEN 'array' THEN a.value ELSE jsonb_build_array(a.value) END) scalar(value)
+  WHERE CASE jsonb_typeof(scalar.value)
+   WHEN 'string' THEN false WHEN 'boolean' THEN false
+   WHEN 'object' THEN NOT public.catalog_lifecycle_quantity_valid_v3(scalar.value)
+    AND EXISTS(SELECT 1 FROM jsonb_each(scalar.value) field WHERE jsonb_typeof(field.value)<>'string')
+   ELSE true END) THEN RETURN false; END IF;
  IF p_kind='product' THEN
   IF jsonb_typeof(p_facts->'axes') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
   IF jsonb_array_length(p_facts->'axes')>16 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_facts->'axes') a
@@ -180,7 +194,8 @@ BEGIN
   OR NOT (p_facts ?& ARRAY['code','title','minQuantity','isAddon','sellableStandalone','sellableInSubscription','netContent','grossMass','options','facts','identifiers','assetRefs','logisticsRef','memberships','optionDigest'])
   OR p_facts - ARRAY['schemaVersion','lifecycleState','id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription','netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source','optionDigest','demandPolicyRef'] <> '{}'::jsonb
   OR jsonb_typeof(p_facts->'code') IS DISTINCT FROM 'string' OR p_facts->>'code' !~ '^[A-Za-z0-9._:-]{1,160}$'
-  OR jsonb_typeof(p_facts->'title') IS DISTINCT FROM 'string' OR length(p_facts->>'title') NOT BETWEEN 1 AND 500
+  OR jsonb_typeof(p_facts->'title') IS DISTINCT FROM 'string' OR p_facts->>'title'=''
+  OR char_length(p_facts->>'title')+(SELECT count(*) FROM regexp_split_to_table(p_facts->>'title','') ch WHERE octet_length(ch)=4)>500
   OR jsonb_typeof(p_facts->'minQuantity') IS DISTINCT FROM 'number' OR p_facts->>'minQuantity' !~ '^[1-9][0-9]{0,9}$'
   OR jsonb_typeof(p_facts->'isAddon') IS DISTINCT FROM 'boolean'
   OR jsonb_typeof(p_facts->'sellableStandalone') IS DISTINCT FROM 'boolean'
@@ -215,22 +230,33 @@ BEGIN
   IF jsonb_typeof(entry) IS DISTINCT FROM 'object'
    OR NOT (entry ?& ARRAY['scheme','issuer','value','packagingLevel','quantity','isPrimary','label','sourceRef'])
    OR entry - ARRAY['scheme','issuer','value','packagingLevel','quantity','isPrimary','label','sourceRef'] <> '{}'::jsonb
-   OR jsonb_typeof(entry->'scheme') IS DISTINCT FROM 'string' OR jsonb_typeof(entry->'issuer') IS DISTINCT FROM 'string'
-   OR jsonb_typeof(entry->'value') IS DISTINCT FROM 'string' OR length(entry->>'value') NOT BETWEEN 1 AND 128
+   OR jsonb_typeof(entry->'scheme') IS DISTINCT FROM 'string' OR NOT public.catalog_lifecycle_reference_valid_v3(entry->>'scheme',240)
+   OR jsonb_typeof(entry->'issuer') IS DISTINCT FROM 'string' OR NOT public.catalog_lifecycle_reference_valid_v3(entry->>'issuer',240)
+   OR jsonb_typeof(entry->'value') IS DISTINCT FROM 'string' OR entry->>'value'=''
+   OR char_length(entry->>'value')+(SELECT count(*) FROM regexp_split_to_table(entry->>'value','') ch WHERE octet_length(ch)=4)>128
    OR coalesce(entry->>'packagingLevel','') NOT IN ('unit','case')
    OR jsonb_typeof(entry->'quantity') IS DISTINCT FROM 'number' OR entry->>'quantity' !~ '^[1-9][0-9]{0,5}$'
    OR jsonb_typeof(entry->'isPrimary') IS DISTINCT FROM 'boolean'
-   OR jsonb_typeof(entry->'label') NOT IN ('null','string') OR jsonb_typeof(entry->'sourceRef') NOT IN ('null','string') THEN RETURN false; END IF;
+   OR (entry->'label'<>'null'::jsonb AND (jsonb_typeof(entry->'label')<>'string' OR NOT public.catalog_lifecycle_reference_valid_v3(entry->>'label',500)))
+   OR (entry->'sourceRef'<>'null'::jsonb AND (jsonb_typeof(entry->'sourceRef')<>'string' OR NOT public.catalog_lifecycle_reference_valid_v3(entry->>'sourceRef',240))) THEN RETURN false; END IF;
   IF ((entry->>'packagingLevel'='unit') IS DISTINCT FROM (entry->'quantity'='1'::jsonb))
    OR (entry->'isPrimary'='true'::jsonb AND (entry->>'scheme'<>'gs1:gtin' OR entry->>'packagingLevel'<>'unit')) THEN RETURN false; END IF;
+  IF entry->>'scheme'='gs1:gtin' THEN
+   gtin:=entry->>'value';
+   IF gtin !~ '^([0-9]{8}|[0-9]{12,14})$' THEN RETURN false; END IF;
+   IF (SELECT sum(substring(gtin,i,1)::integer*(1+2*((length(gtin)-i)%2)))
+     FROM generate_series(1,length(gtin)) i) % 10 <> 0 THEN RETURN false; END IF;
+  END IF;
  END LOOP;
  IF (SELECT count(*) FROM jsonb_array_elements(p_facts->'identifiers') identifier WHERE identifier->'isPrimary'='true'::jsonb)>1 THEN RETURN false; END IF;
  FOR membership IN SELECT value FROM jsonb_array_elements(p_facts->'memberships') LOOP
   IF jsonb_typeof(membership) IS DISTINCT FROM 'object' OR membership - ARRAY['offerVersion','admitted'] <> '{}'::jsonb
-   OR jsonb_typeof(membership->'offerVersion') IS DISTINCT FROM 'string' OR length(membership->>'offerVersion') NOT BETWEEN 1 AND 240
-   OR membership->>'offerVersion'<>btrim(membership->>'offerVersion')
-   OR jsonb_typeof(membership->'admitted') IS DISTINCT FROM 'boolean' OR previous COLLATE "C">=membership->>'offerVersion' COLLATE "C" THEN RETURN false; END IF;
-  previous := membership->>'offerVersion';
+   OR jsonb_typeof(membership->'offerVersion') IS DISTINCT FROM 'string'
+   OR NOT public.catalog_lifecycle_reference_valid_v3(membership->>'offerVersion',240)
+   OR jsonb_typeof(membership->'admitted') IS DISTINCT FROM 'boolean' THEN RETURN false; END IF;
+  sort_key:=public.catalog_lifecycle_utf16_v3(membership->>'offerVersion');
+  IF previous>=sort_key THEN RETURN false; END IF;
+  previous:=sort_key;
  END LOOP;
  RETURN true;
 END;
@@ -274,6 +300,17 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 $$;
 REVOKE ALL ON FUNCTION public.catalog_lifecycle_roster_resolved_v3(uuid,jsonb) FROM PUBLIC;
 
+-- A predecessor manifest may be inserted before its own revisions exist, but
+-- every revision already present must use the same stored dialect.
+CREATE FUNCTION public.catalog_lifecycle_roster_version_v3(p_product_id uuid,p_manifest jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_manifest->'skus') entry
+  JOIN public.catalog_sku_revisions r ON r.id=CASE WHEN entry->>'revisionId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+   THEN (entry->>'revisionId')::uuid END AND r.product_id=p_product_id
+  WHERE (r.full_facts::jsonb ? 'schemaVersion') IS DISTINCT FROM (p_manifest->'schemaVersion'='3'::jsonb));
+$$;
+REVOKE ALL ON FUNCTION public.catalog_lifecycle_roster_version_v3(uuid,jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_lifecycle_head_admit_v3() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE manifest jsonb; source public.catalog_publications%ROWTYPE;
@@ -286,7 +323,7 @@ BEGIN
    OR NOT public.catalog_lifecycle_roster_resolved_v3(NEW.product_id,manifest) THEN
    RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
   END IF;
- ELSIF manifest->'product' ? 'schemaVersion' THEN
+ ELSIF manifest->'product' ? 'schemaVersion' OR NOT public.catalog_lifecycle_roster_version_v3(NEW.product_id,manifest) THEN
   RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
  END IF;
  RETURN NEW;
@@ -671,6 +708,9 @@ DECLARE
   receipt public.catalog_draft_command_receipts%ROWTYPE; reserved public.catalog_draft_sku_reservations%ROWTYPE;
   d uuid; product uuid; sku uuid; key text; action text; expected integer; next_revision integer;
   actor text; state text; code_value text; inputs jsonb; content jsonb; claim jsonb; allowed text[]; valid_v4 boolean;
+  trim_space constant text := chr(9)||chr(10)||chr(11)||chr(12)||chr(13)||chr(32)||chr(160)||chr(5760)||
+    chr(8192)||chr(8193)||chr(8194)||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||
+    chr(8200)||chr(8201)||chr(8202)||chr(8232)||chr(8233)||chr(8239)||chr(8287)||chr(12288)||chr(65279);
 BEGIN
   actor := p_actor_id; IF actor IS NULL OR actor <> btrim(actor) OR length(actor) NOT BETWEEN 1 AND 240 THEN RAISE EXCEPTION 'catalog_draft_actor_required' USING ERRCODE='42501'; END IF;
   IF p_canonical_command IS NULL OR octet_length(p_canonical_command) NOT BETWEEN 2 AND 1048576
@@ -700,6 +740,10 @@ BEGIN
     END IF;
     IF public.catalog_draft_record(d,receipt.revision)->>'actorId' <> actor THEN RETURN jsonb_build_object('outcome','unauthorized','reason','operator_mismatch'); END IF;
     RETURN jsonb_build_object('outcome','replayed','record',public.catalog_draft_record(d, receipt.revision));
+  END IF;
+  IF c->'schemaVersion'='4'::jsonb AND (key<>btrim(key,trim_space)
+   OR char_length(key)+(SELECT count(*) FROM regexp_split_to_table(key,'') ch WHERE octet_length(ch)=4)>240) THEN
+    RETURN jsonb_build_object('outcome','validation_issue','reason','command_invalid');
   END IF;
   SELECT * INTO h FROM public.catalog_draft_heads WHERE draft_id = d FOR UPDATE;
   IF (action = 'create' AND (FOUND OR expected <> 0)) OR (action <> 'create' AND (NOT FOUND OR expected <> h.revision)) THEN
@@ -820,11 +864,9 @@ BEGIN
         <<v4_grammar>>
         DECLARE
           op jsonb; child jsonb; evidence jsonb; asset jsonb; previous text; verb text; ref_text text;
+          previous_asset integer[]; asset_key integer[];
           uuid_shape constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
           code_shape constant text := '^[A-Za-z0-9._:-]{1,160}$';
-          trim_space constant text := chr(9)||chr(10)||chr(11)||chr(12)||chr(13)||chr(32)||chr(160)||chr(5760)||
-            chr(8192)||chr(8193)||chr(8194)||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||
-            chr(8200)||chr(8201)||chr(8202)||chr(8232)||chr(8233)||chr(8239)||chr(8287)||chr(12288)||chr(65279);
         BEGIN
           FOR op IN SELECT value FROM jsonb_array_elements(inputs->'operations') LOOP
            verb := op->>'op';
@@ -869,19 +911,33 @@ BEGIN
             OR jsonb_typeof(evidence->'revisionDigest') IS DISTINCT FROM 'string' OR evidence->>'revisionDigest' !~ '^[a-f0-9]{64}$'
             OR jsonb_typeof(evidence->'assetRefs') IS DISTINCT FROM 'array' THEN EXIT v4_grammar; END IF;
            IF jsonb_array_length(evidence->'assetRefs')>32 THEN EXIT v4_grammar; END IF;
-           previous := NULL;
+           previous_asset := NULL;
            FOR asset IN SELECT value FROM jsonb_array_elements(evidence->'assetRefs') LOOP
-            IF jsonb_typeof(asset) IS DISTINCT FROM 'string'
-             OR previous COLLATE "C">=asset#>>'{}' COLLATE "C" THEN EXIT v4_grammar; END IF;
-            previous := asset#>>'{}';
+            IF jsonb_typeof(asset) IS DISTINCT FROM 'string' THEN EXIT v4_grammar; END IF;
+            -- The invoker draft path uses built-ins only, with the same UTF-16
+            -- order as the catalogue's canonical and retained-fact checks.
+            SELECT ARRAY(SELECT CASE WHEN scalar>65535 THEN scalar-10240 WHEN scalar>=57344 THEN scalar+1046528 ELSE scalar END
+             FROM (SELECT ascii(ch) AS scalar,n FROM regexp_split_to_table(asset#>>'{}','') WITH ORDINALITY c(ch,n)) units ORDER BY n) INTO asset_key;
+            IF previous_asset>=asset_key THEN EXIT v4_grammar; END IF;
+            previous_asset := asset_key;
            END LOOP;
           END LOOP;
+          IF EXISTS(SELECT 1 FROM jsonb_array_elements(p->'skus') a
+            WHERE (a ? 'demandPolicyRef' AND jsonb_typeof(a->'demandPolicyRef') IS DISTINCT FROM 'string')
+               OR (a ? 'logisticsRef' AND jsonb_typeof(a->'logisticsRef') IS DISTINCT FROM 'string')
+               OR (a ? 'assetRefs' AND CASE WHEN jsonb_typeof(a->'assetRefs')='array'
+                 THEN jsonb_array_length(a->'assetRefs')>32 OR EXISTS(
+                   SELECT 1 FROM jsonb_array_elements(a->'assetRefs') r WHERE jsonb_typeof(r)<>'string')
+                 ELSE true END)) THEN EXIT v4_grammar; END IF;
           -- The draft wire bounds references in UTF-16 and uses JavaScript trim.
           FOR ref_text IN
             SELECT e->>'commandKey' FROM jsonb_array_elements(inputs#>'{evidence,drafts}') e
             UNION ALL SELECT e->>'mediaRef' FROM jsonb_array_elements(inputs#>'{evidence,media}') e
             UNION ALL SELECT a#>>'{}' FROM jsonb_array_elements(inputs#>'{evidence,media}') e,
               LATERAL jsonb_array_elements(e->'assetRefs') a
+            UNION ALL SELECT a->>'demandPolicyRef' FROM jsonb_array_elements(p->'skus') a WHERE a ? 'demandPolicyRef'
+            UNION ALL SELECT a->>'logisticsRef' FROM jsonb_array_elements(p->'skus') a WHERE a ? 'logisticsRef'
+            UNION ALL SELECT r#>>'{}' FROM jsonb_array_elements(p->'skus') a, LATERAL jsonb_array_elements(a->'assetRefs') r
           LOOP
             IF ref_text='' OR ref_text<>btrim(ref_text,trim_space)
              OR char_length(ref_text)+(SELECT count(*) FROM regexp_split_to_table(ref_text,'') ch WHERE octet_length(ch)=4)>240
@@ -913,8 +969,6 @@ BEGIN
       END IF;
       IF c->'schemaVersion' IN ('2'::jsonb, '3'::jsonb, '4'::jsonb) THEN
         IF EXISTS (SELECT FROM jsonb_object_keys(s) k WHERE k NOT IN ('id','productId','code','options','netContent','identifiers','assetRefs','grossMass','logisticsRef','attributes','priceOperations') AND NOT (c->'schemaVersion'='4'::jsonb AND k='demandPolicyRef'))
-          OR (s ? 'demandPolicyRef' AND (jsonb_typeof(s->'demandPolicyRef') IS DISTINCT FROM 'string'
-            OR length(s->>'demandPolicyRef') NOT BETWEEN 1 AND 240 OR s->>'demandPolicyRef' <> btrim(s->>'demandPolicyRef')))
           OR (s ? 'attributes' AND jsonb_typeof(s->'attributes') IS DISTINCT FROM 'object')
           OR (s ? 'priceOperations' AND jsonb_typeof(s->'priceOperations') IS DISTINCT FROM 'array') THEN
           RETURN jsonb_build_object('outcome','validation_issue','reason','payload_invalid');
@@ -1008,6 +1062,9 @@ BEGIN
   IF (body->'schemaVersion' IS NULL OR body->'schemaVersion' NOT IN ('2'::jsonb,'3'::jsonb)) OR body->'product'->>'id' IS DISTINCT FROM NEW.product_id::text
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array'
    OR (body->'product' ? 'schemaVersion') IS DISTINCT FROM (body->'schemaVersion'='3'::jsonb) THEN
+   RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
+  END IF;
+  IF body->'schemaVersion'='2'::jsonb AND NOT public.catalog_lifecycle_roster_version_v3(NEW.product_id,body) THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
   END IF;
   IF body->'schemaVersion'='3'::jsonb THEN
@@ -1113,19 +1170,127 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_acceptance_assert_v2(jsonb) FROM PUBLIC;
 
+CREATE FUNCTION public.catalog_renewal_integer_v3(p_value jsonb,p_min bigint,p_max bigint DEFAULT 9007199254740991) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT CASE WHEN jsonb_typeof(p_value)='number' THEN p_value::numeric BETWEEN p_min AND p_max
+  AND trunc(p_value::numeric)=p_value::numeric ELSE false END
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_integer_v3(jsonb,bigint,bigint) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_keys_v3(p_value jsonb,p_required text[],p_optional text[] DEFAULT ARRAY[]::text[]) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT coalesce(jsonb_typeof(p_value)='object' AND p_value ?& p_required AND p_value-(p_required||p_optional)='{}'::jsonb,false)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_keys_v3(jsonb,text[],text[]) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_lines_v3(p_lines jsonb,p_sequential boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+ RETURN jsonb_array_length(p_lines) BETWEEN 1 AND 100 AND NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(p_lines) WITH ORDINALITY l(body,ordinal)
+  WHERE NOT public.catalog_renewal_keys_v3(l.body,ARRAY['lineOrdinal','sku','quantity','unitAmountMinor'])
+   OR NOT public.catalog_renewal_integer_v3(l.body->'lineOrdinal',1)
+   OR NOT public.catalog_renewal_integer_v3(l.body->'quantity',1)
+   OR NOT public.catalog_renewal_integer_v3(l.body->'unitAmountMinor',0)
+   OR jsonb_typeof(l.body->'sku') IS DISTINCT FROM 'string' OR l.body->>'sku'=''
+   OR (p_sequential AND l.body->'lineOrdinal' IS DISTINCT FROM to_jsonb(l.ordinal)));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_lines_v3(jsonb,boolean) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_ref_v3(p_value jsonb,p_nullable boolean DEFAULT false) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT coalesce((jsonb_typeof(p_value)='string' AND p_value<>'""'::jsonb)
+  OR (p_nullable AND p_value='null'::jsonb),false)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_ref_v3(jsonb,boolean) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_renewal_instant_v3(p_value jsonb,p_nonnegative boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE spelling text:=p_value#>>'{}'; instant timestamptz;
+BEGIN
+ IF jsonb_typeof(p_value) IS DISTINCT FROM 'string' OR spelling !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' THEN RETURN false; END IF;
+ instant:=spelling::timestamptz;
+ RETURN to_char(instant AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')=spelling
+  AND (NOT p_nonnegative OR instant>='1970-01-01T00:00:00Z'::timestamptz);
+EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN RETURN false;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_renewal_instant_v3(jsonb,boolean) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_frozen_wire_valid_v3(p_wire jsonb,p_fingerprint text) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE fields constant text[]:=ARRAY['contractVersion','frozenRevision','frozenFingerprint','catalogAcceptance','subscriptionId','clientId',
- 'scheduledAt','cycleNumber','cycle','retryAttempt','externalAttemptSequence','templateSnapshot','pricingSnapshot','orderSnapshot',
- 'lines','currency','totalAmountMinor','stockSourceKey','settlementChannelKey','authorizationRef','payerAccountRef','unattendedChargeAuthorizedAt'];
- wire text;
+DECLARE cycle jsonb:=p_wire->'cycle'; template jsonb:=p_wire->'templateSnapshot'; pricing jsonb:=p_wire->'pricingSnapshot';
+ orders jsonb:=p_wire->'orderSnapshot'; lines jsonb:=p_wire->'lines'; marker jsonb:=orders->'shippingQuoteRef';
+ terms jsonb:=pricing->'shippingTerms'; acquisition jsonb:=pricing->'acquisition'; subtotal numeric; discount numeric; shipping numeric; wire text;
+ format_uuid constant text := '^([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$';
 BEGIN
- IF NOT (p_wire ?& fields) OR p_wire-fields<>'{}'::jsonb
-  OR p_wire->>'contractVersion' IS DISTINCT FROM 'platform.subscription.renewal.v1'
-  OR p_wire->>'frozenFingerprint' IS DISTINCT FROM p_fingerprint
-  OR p_wire->'cycleNumber' IS DISTINCT FROM p_wire#>'{cycle,nativeRenewalCounter}'
-  OR p_wire->'currency' IS DISTINCT FROM p_wire#>'{pricingSnapshot,currency}'
-  OR p_wire->'totalAmountMinor' IS DISTINCT FROM p_wire#>'{pricingSnapshot,totalAmountMinor}' THEN RETURN false; END IF;
+ IF NOT public.catalog_renewal_keys_v3(p_wire,ARRAY['contractVersion','frozenRevision','frozenFingerprint','catalogAcceptance','subscriptionId','clientId',
+  'scheduledAt','cycleNumber','cycle','retryAttempt','externalAttemptSequence','templateSnapshot','pricingSnapshot','orderSnapshot',
+  'lines','currency','totalAmountMinor','stockSourceKey','settlementChannelKey','authorizationRef','payerAccountRef','unattendedChargeAuthorizedAt'])
+  OR p_wire->'contractVersion' IS DISTINCT FROM '"platform.subscription.renewal.v1"'::jsonb
+  OR p_wire->'frozenRevision' IS DISTINCT FROM '"native.purchase-renewal.v3"'::jsonb
+  OR p_wire->'frozenFingerprint' IS DISTINCT FROM to_jsonb(p_fingerprint)
+  OR p_fingerprint IS NULL OR p_fingerprint !~ '^[a-f0-9]{64}$'
+  OR p_wire->>'subscriptionId' !~* format_uuid OR p_wire->>'clientId' !~* format_uuid
+  OR jsonb_typeof(p_wire->'subscriptionId') IS DISTINCT FROM 'string' OR jsonb_typeof(p_wire->'clientId') IS DISTINCT FROM 'string'
+  OR NOT public.catalog_renewal_instant_v3(p_wire->'scheduledAt',true)
+  OR NOT public.catalog_renewal_instant_v3(p_wire->'unattendedChargeAuthorizedAt')
+  OR p_wire->'retryAttempt' IS DISTINCT FROM '0'::jsonb OR p_wire->'externalAttemptSequence' IS DISTINCT FROM '0'::jsonb
+  OR NOT public.catalog_renewal_ref_v3(p_wire->'stockSourceKey') OR NOT public.catalog_renewal_ref_v3(p_wire->'settlementChannelKey')
+  OR NOT public.catalog_renewal_ref_v3(p_wire->'authorizationRef') OR NOT public.catalog_renewal_ref_v3(p_wire->'payerAccountRef',true)
+  OR NOT public.catalog_renewal_keys_v3(cycle,ARRAY['status','logicalCycleNumber','nativeRenewalCounter','activationCycleId','evidenceRef'])
+  OR cycle->'status' IS DISTINCT FROM '"correlated"'::jsonb
+  OR NOT public.catalog_renewal_integer_v3(cycle->'logicalCycleNumber',1)
+  OR NOT public.catalog_renewal_integer_v3(cycle->'nativeRenewalCounter',1)
+  OR jsonb_typeof(cycle->'activationCycleId') IS DISTINCT FROM 'string' OR cycle->>'activationCycleId' !~* format_uuid
+  OR NOT public.catalog_renewal_ref_v3(cycle->'evidenceRef') OR p_wire->'cycleNumber' IS DISTINCT FROM cycle->'nativeRenewalCounter'
+  OR NOT public.catalog_renewal_keys_v3(template,ARRAY['templateId','version','cadenceDays','lines'])
+  OR NOT public.catalog_renewal_ref_v3(template->'templateId')
+  OR NOT public.catalog_renewal_integer_v3(template->'version',1) OR NOT public.catalog_renewal_integer_v3(template->'cadenceDays',1)
+  OR NOT public.catalog_renewal_keys_v3(orders,ARRAY['shippingAddressRef','shippingQuoteRef','acquisitionRef','lines'])
+  OR NOT public.catalog_renewal_ref_v3(orders->'shippingAddressRef',true) OR NOT public.catalog_renewal_ref_v3(orders->'acquisitionRef',true)
+  OR NOT public.catalog_renewal_lines_v3(lines) OR lines IS DISTINCT FROM template->'lines' OR lines IS DISTINCT FROM orders->'lines'
+  OR NOT public.catalog_renewal_keys_v3(pricing,ARRAY['currency','totalAmountMinor','shippingAmountMinor','productSubtotalAmountMinor','discountAmountMinor','agreementPolicy','proration'],
+   ARRAY['shippingTerms','linePricing','acquisition'])
+  OR jsonb_typeof(pricing->'currency') IS DISTINCT FROM 'string' OR pricing->>'currency' !~ '^[A-Z]{3}$'
+  OR pricing->'agreementPolicy' IS DISTINCT FROM '"lock_until_edit"'::jsonb OR pricing->'proration' IS DISTINCT FROM '"none"'::jsonb
+  OR p_wire->'currency' IS DISTINCT FROM pricing->'currency' OR p_wire->'totalAmountMinor' IS DISTINCT FROM pricing->'totalAmountMinor'
+  OR NOT public.catalog_renewal_integer_v3(pricing->'totalAmountMinor',1) OR NOT public.catalog_renewal_integer_v3(pricing->'shippingAmountMinor',0)
+  OR NOT public.catalog_renewal_integer_v3(pricing->'productSubtotalAmountMinor',0) OR NOT public.catalog_renewal_integer_v3(pricing->'discountAmountMinor',0)
+ THEN RETURN false; END IF;
+ SELECT sum((l->>'quantity')::numeric*(l->>'unitAmountMinor')::numeric) INTO subtotal FROM jsonb_array_elements(lines) l;
+ discount:=(pricing->>'discountAmountMinor')::numeric; shipping:=(pricing->>'shippingAmountMinor')::numeric;
+ IF discount>subtotal OR subtotal<>(pricing->>'productSubtotalAmountMinor')::numeric
+  OR subtotal-discount+shipping<>(pricing->>'totalAmountMinor')::numeric THEN RETURN false; END IF;
+ IF terms IS NOT NULL THEN
+  IF NOT public.catalog_renewal_keys_v3(terms,ARRAY['version','currency','flatMinor','freeThresholdMinor'])
+   OR terms->'version' IS DISTINCT FROM '"shipping-threshold.v1"'::jsonb OR terms->'currency' IS DISTINCT FROM pricing->'currency'
+   OR NOT public.catalog_renewal_integer_v3(terms->'flatMinor',0,2147483647)
+   OR NOT public.catalog_renewal_integer_v3(terms->'freeThresholdMinor',0,2147483647) THEN RETURN false; END IF;
+  IF shipping<>(CASE WHEN subtotal-discount<(terms->>'freeThresholdMinor')::numeric
+    THEN (terms->>'flatMinor')::numeric ELSE 0 END) THEN RETURN false; END IF;
+ END IF;
+ IF terms IS NOT NULL OR shipping>0 THEN
+  IF NOT public.catalog_renewal_keys_v3(marker,ARRAY['kind','shippingAmountMinor','terms'])
+   OR marker->'kind' IS DISTINCT FROM '"retained_shipping"'::jsonb
+   OR marker->'shippingAmountMinor' IS DISTINCT FROM pricing->'shippingAmountMinor'
+   OR marker->'terms' IS DISTINCT FROM coalesce(terms,'null'::jsonb) THEN RETURN false; END IF;
+ ELSIF NOT public.catalog_renewal_ref_v3(marker,true) AND marker IS DISTINCT FROM '{"kind":"zero_shipping","shippingAmountMinor":0}'::jsonb THEN RETURN false;
+ END IF;
+ IF acquisition IS NOT NULL AND (NOT public.catalog_renewal_keys_v3(acquisition,ARRAY['reasonCode','discountMinor','basisTemplateVersion'])
+  OR acquisition->'reasonCode' IS DISTINCT FROM '"starter_pack_delivery_2"'::jsonb
+  OR NOT public.catalog_renewal_integer_v3(acquisition->'discountMinor',0)
+  OR NOT public.catalog_renewal_integer_v3(acquisition->'basisTemplateVersion',1)) THEN RETURN false; END IF;
+ IF pricing ? 'linePricing' THEN
+  IF jsonb_typeof(pricing->'linePricing') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(pricing->'linePricing') l
+   WHERE NOT public.catalog_renewal_keys_v3(l,ARRAY['sku','quantity','unitAmountMinor','isAddon','quoteLine'])
+    OR NOT public.catalog_renewal_ref_v3(l->'sku') OR NOT public.catalog_renewal_integer_v3(l->'quantity',1)
+    OR NOT public.catalog_renewal_integer_v3(l->'unitAmountMinor',0) OR jsonb_typeof(l->'isAddon') IS DISTINCT FROM 'boolean'
+    OR jsonb_typeof(l->'quoteLine') IS DISTINCT FROM 'object') THEN RETURN false; END IF;
+ END IF;
  wire:=public.catalog_lifecycle_canonical_v3(p_wire-'frozenFingerprint',true,0);
  RETURN wire IS NOT NULL AND encode(sha256(convert_to(wire,'UTF8')),'hex')=p_fingerprint;
 END;
