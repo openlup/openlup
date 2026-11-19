@@ -281,4 +281,34 @@ describe("createPostgresDataGateway", () => {
     expect(client.released).toBe(true);
     expect(end).not.toHaveBeenCalled();
   });
+
+  it("leaves ownedPoolPromise unset on synchronous poolFactory throws while preserving 1.x async rejection on close()", async () => {
+    const { pool } = stubPool();
+    let syncAttempts = 0;
+    const syncLane = createPostgresRoleFreeTransactionLane(
+      { connectionString: "postgres://x" },
+      {
+        poolFactory: () => {
+          syncAttempts += 1;
+          if (syncAttempts === 1) throw new Error("transient sync init failure");
+          return pool;
+        },
+      },
+    );
+    await expect(syncLane.run(async () => "nope")).rejects.toThrow("transient sync init failure");
+    await expect(syncLane.close()).resolves.toBeUndefined();
+    await expect(syncLane.run(async () => "recovered")).resolves.toBe("recovered");
+    expect(syncAttempts).toBe(2);
+
+    const asyncLane = createPostgresRoleFreeTransactionLane(
+      { connectionString: "postgres://x" },
+      {
+        poolFactory: async () => {
+          throw new Error("synthetic async unavailable");
+        },
+      },
+    );
+    await expect(asyncLane.run(async () => "nope")).rejects.toThrow("synthetic async unavailable");
+    await expect(asyncLane.close()).rejects.toThrow("synthetic async unavailable");
+  });
 });

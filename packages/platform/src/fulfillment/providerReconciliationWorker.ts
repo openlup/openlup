@@ -132,10 +132,12 @@ export async function reconcileFulfillmentObservations(input: {
         : await input.localPersistence.latestStatusOccurredAt(ref.fulfillmentRef);
       if (latest && occurredAt && Date.parse(occurredAt) < Date.parse(latest)) {
         result.stale += 1;
-        const handedOverAt = rowState !== undefined
-          ? (rowState?.handedOverAt ?? null)
-          : await input.localPersistence.readHandedOverAt(ref.fulfillmentRef);
-        if (!offTrack && input.lifecycle.issueAccountingInvoice && handedOverAt) await invoice(ref.fulfillmentRef);
+        if (!offTrack && input.lifecycle.issueAccountingInvoice) {
+          const handedOverAt = rowState !== undefined
+            ? (rowState?.handedOverAt ?? null)
+            : await input.localPersistence.readHandedOverAt(ref.fulfillmentRef);
+          if (handedOverAt) await invoice(ref.fulfillmentRef);
+        }
         continue;
       }
       // The normalized fact carries the same nullable occurrence used by dedupe.
@@ -150,10 +152,12 @@ export async function reconcileFulfillmentObservations(input: {
         const exception = await input.lifecycle.recordProviderException(ref, observation);
         if (exception.replayed) result.replayed += 1;
         result.exceptions += exception.replayed ? 0 : 1;
-        const handedOverAt = rowState !== undefined
-          ? (rowState?.handedOverAt ?? null)
-          : await input.localPersistence.readHandedOverAt(ref.fulfillmentRef);
-        if (input.lifecycle.issueAccountingInvoice && handedOverAt) await invoice(ref.fulfillmentRef);
+        if (input.lifecycle.issueAccountingInvoice) {
+          const handedOverAt = rowState !== undefined
+            ? (rowState?.handedOverAt ?? null)
+            : await input.localPersistence.readHandedOverAt(ref.fulfillmentRef);
+          if (handedOverAt) await invoice(ref.fulfillmentRef);
+        }
         continue;
       }
       const trackingRefs = [];

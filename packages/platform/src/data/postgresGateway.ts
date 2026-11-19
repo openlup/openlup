@@ -177,8 +177,10 @@ function createPooledPostgresTransactions(
     // rather than racing to build two. Promise.resolve normalizes the factory's Pool | Promise<Pool>.
     if (!ownedPoolPromise) {
       const factory = options.poolFactory ?? defaultPoolFactory;
-      ownedPoolPromise = Promise.resolve()
-        .then(() => factory(env))
+      // Call factory(env) synchronously (matching 1.x behavior) so a synchronous throw leaves
+      // ownedPoolPromise unset for retry and clean close(), while an async rejection remains
+      // observable on close() as required by the 1.x gateway/cold-consumer contract.
+      ownedPoolPromise = Promise.resolve(factory(env))
         .then((pool) => attachPgErrorListener(pool, "postgres-gateway", options.onPoolError));
     }
     return ownedPoolPromise;

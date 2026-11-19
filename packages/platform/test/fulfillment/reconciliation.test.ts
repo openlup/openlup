@@ -170,3 +170,42 @@ it("uses single readLocalState per row when supplied and never carries state acr
   // Exactly 1 readLocalState call per row (fresh read on row 2 sees post-mutation latestOccurredAt -> stale).
   expect(readLocalStateCalls).toEqual(["fulfillment-a", "fulfillment-a"]);
 });
+
+it("short-circuits fallback readHandedOverAt when off-track or issueAccountingInvoice is absent", async () => {
+  const staleOffTrack = fixture("cancelled");
+  staleOffTrack.input.localPersistence.latestStatusOccurredAt = async () => "2030-10-22T00:00:00.000Z";
+  staleOffTrack.input.localPersistence.readHandedOverAt = async () => { throw new Error("must not read handedOverAt when off-track"); };
+  staleOffTrack.input.readPage = async () => [{
+    kind: "found",
+    externalRef: "external-a",
+    createdAt: null,
+    updatedAt: "2030-10-21T12:00:00.000Z",
+    observation: observation("in_transit", "2030-10-21T12:00:00.000Z"),
+  }];
+  expect(await run(staleOffTrack.input)).toMatchObject({ ok: true, stale: 1, offTrackSkips: 1, failures: 0 });
+
+  const staleNoInvoice = fixture("in_transit");
+  staleNoInvoice.input.lifecycle.issueAccountingInvoice = undefined;
+  staleNoInvoice.input.localPersistence.latestStatusOccurredAt = async () => "2030-10-22T00:00:00.000Z";
+  staleNoInvoice.input.localPersistence.readHandedOverAt = async () => { throw new Error("must not read handedOverAt without invoicing"); };
+  staleNoInvoice.input.readPage = async () => [{
+    kind: "found",
+    externalRef: "external-a",
+    createdAt: null,
+    updatedAt: "2030-10-21T12:00:00.000Z",
+    observation: observation("in_transit", "2030-10-21T12:00:00.000Z"),
+  }];
+  expect(await run(staleNoInvoice.input)).toMatchObject({ ok: true, stale: 1, failures: 0 });
+
+  const exceptionNoInvoice = fixture("in_transit");
+  exceptionNoInvoice.input.lifecycle.issueAccountingInvoice = undefined;
+  exceptionNoInvoice.input.localPersistence.readHandedOverAt = async () => { throw new Error("must not read handedOverAt on exception without invoicing"); };
+  exceptionNoInvoice.input.readPage = async () => [{
+    kind: "found",
+    externalRef: "external-a",
+    createdAt: null,
+    updatedAt: "2030-10-21T12:00:00.000Z",
+    observation: observation("exception", "2030-10-21T12:00:00.000Z"),
+  }];
+  expect(await run(exceptionNoInvoice.input)).toMatchObject({ ok: true, exceptions: 1, failures: 0 });
+});

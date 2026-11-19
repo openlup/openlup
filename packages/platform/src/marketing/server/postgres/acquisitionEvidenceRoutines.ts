@@ -98,7 +98,7 @@ export function createPostgresAcquisitionEvidencePort(env: Env, options: Options
     async close() {
       const pending = ownedPoolPromise;
       ownedPoolPromise = null;
-      if (pending) await (await pending).end();
+      if (pending) await pending.then((resolved) => resolved.end(), () => undefined);
     },
   };
 }
