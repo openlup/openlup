@@ -569,7 +569,12 @@ it.for([
   { path: "package",mode: "subscription",regionCode: "QG" }, { path: "exact",mode: "subscription",regionCode: "QH" },
   { path: "sized",mode: "subscription",regionCode: "QJ" }, { path: "opt-in",mode: "subscription",regionCode: "QK" },
   { path: "addon",mode: "subscription",regionCode: "QL" },
-] as const)("LC6-D-118 configured quote read fixes the $path head at pricing time in $mode", async ({ path,mode,regionCode },context) => {
+  { path: "sized",mode: "subscription",regionCode: "QM",missingHead: true,control: false },
+  { path: "sized",mode: "subscription",regionCode: "QN",missingHead: true,control: true },
+  { path: "opt-in",mode: "subscription",regionCode: "QO",missingHead: true,control: false },
+  { path: "opt-in",mode: "subscription",regionCode: "QP",missingHead: true,control: true },
+] as const)("LC6-D-118 configured quote read fixes the $path head at pricing time in $mode ($regionCode)", async (row,context) => {
+  const { path,mode,regionCode } = row;
   const present = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
   if (!present) { context.skip("Membership page comes from the predecessor installation"); return; }
   const addon = path === "addon", f = await fixture(packs[0],addon ? { sku: { isAddon: true } } : {});
@@ -630,8 +635,9 @@ it.for([
     return;
   }
   const actor = { actorId: account.actor,clientId: account.client };
-  let publishAfterPricing = false;
+  let publishAfterPricing = false, quoteCalls = 0;
   const quotePort = { async createServerAuthoritativeQuote(input: Parameters<typeof engine.createServerAuthoritativeQuote>[0]) {
+    quoteCalls++;
     const current = await engine.createServerAuthoritativeQuote(input);
     if (publishAfterPricing && input.lines[0]?.quantity === quantity) {
       publishAfterPricing = false;
@@ -694,6 +700,30 @@ it.for([
   }
   const old = await preview();
   expect(old.quoteHash).toMatch(/^[a-f0-9]{64}$/u);
+  if ("missingHead" in row) {
+    const original = (await pool.query("DELETE FROM public.catalog_publication_heads WHERE product_id=$1 RETURNING *", [f.product])).rows[0];
+    expect(original).toBeDefined();
+    const before = await snapshot(), priorCalls = quoteCalls;
+    const restore = row.control ? await hook("public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz)",
+      "DECLARE s public.subscriptions; q jsonb;","",body => body.replace(/ PERFORM public\.catalog_admission_accept\([\s\S]+?;/u,"")) : undefined;
+    try {
+      const refused = await tracked(apply(old.quoteHash!));
+      if (row.control) {
+        expect(refused).toMatchObject({ ok: false });
+        if (!refused.ok) expect(refused.error).not.toMatchObject({ message: "customer_self_service_invalid_catalog_head" });
+        expect(quoteCalls).toBeGreaterThan(priorCalls);
+      } else {
+        expect(refused).toMatchObject({ ok: false,error: { code: "55000",message: "customer_self_service_invalid_catalog_head" } });
+        if (!refused.ok) expect(mapSizedEditError(refused.error,"apply")).toMatchObject({ status: 409,code: "CONFLICT",reason: "customer_self_service_invalid_catalog_head" });
+        expect(quoteCalls).toBe(priorCalls);
+      }
+      expect(await snapshot()).toEqual(before);
+    } finally {
+      await restore?.();
+      await pool.query("INSERT INTO public.catalog_publication_heads SELECT * FROM jsonb_populate_record(NULL::public.catalog_publication_heads,$1::jsonb)", [original]);
+    }
+    return;
+  }
   publishAfterPricing = true;
   const ledgers = () => pool.query("SELECT quote_hash FROM public.subscription_quote_previews WHERE subscription_id=$1 ORDER BY id", [account.subscription]);
   const before = await ledgers();

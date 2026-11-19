@@ -2297,6 +2297,30 @@ BEGIN
 END;
 $$;
 
+-- A preview check may run in a savepoint before the host requotes. The caller
+-- releases that savepoint's locks before acquiring any other commerce locks.
+CREATE FUNCTION public.catalog_admission_check_sized_preview(p_actor_id uuid,p_client_id uuid,p_subscription_id uuid,
+ p_action text,p_hash text,p_version integer,p_key text,p_opt_in boolean,p_now timestamptz)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE s public.subscriptions; q jsonb;
+BEGIN
+ SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id AND client_id=p_client_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
+ PERFORM public.subscription_lifecycle_assert_unlocked_cycle(s.id,s.next_cycle_at);
+ PERFORM 1 FROM public.subscription_renewal_terms WHERE subscription_id=s.id AND currency_code=s.currency_code FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_renewal_terms_missing' USING ERRCODE='22023'; END IF;
+ q:=public.subscription_quote_preview_take(p_actor_id,p_client_id,s.id,p_action,p_hash,p_version,p_key,p_now);
+ IF q->>'actor_id' IS DISTINCT FROM p_actor_id::text THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
+ PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
+ PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
+ PERFORM public.catalog_admission_accept(q#>'{quote_snapshot,lines}',q#>'{quote_snapshot,catalogAdmission}','subscription',
+   jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN p_opt_in THEN 'sized.v1' ELSE s.configured_offer_version END,
+    'lane','sized','sizedCommand',true,'optIn',coalesce(p_opt_in,false)),'account');
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz) TO service_role'; END IF; END; $$;
+
 CREATE OR REPLACE FUNCTION public.subscription_sized_edit_apply(
  p_actor_id uuid,p_client_id uuid,p_key text,p_subscription_id uuid,p_payload jsonb,p_now timestamptz
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$

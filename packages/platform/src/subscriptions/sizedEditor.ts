@@ -100,6 +100,20 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
     if (request.expectedTemplateVersion !== undefined && request.expectedTemplateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
     return quoteSizedEdit({ db, context, request, point, host: options, policy });
   }
+  async function checkAcceptedPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, key: string, request: SizedEditRequest, version: number) {
+    await db.query("SAVEPOINT sized_catalog_preview");
+    try {
+      await db.query(`SELECT public.catalog_admission_check_sized_preview(
+        $1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::text,$8::boolean,$9::timestamptz)`,
+      [actor.actorId, actor.clientId, request.subscriptionId, request.action, request.acceptedQuoteHash, version, key, isSizedOptIn(request), options.now()]);
+    } catch (error) {
+      if (!(typeof error === "object" && error !== null && "code" in error && error.code === "42883")) throw error;
+    } finally {
+      // The final apply takes the guard again after the host's owned facts.
+      await db.query("ROLLBACK TO SAVEPOINT sized_catalog_preview");
+      await db.query("RELEASE SAVEPOINT sized_catalog_preview");
+    }
+  }
   function blocked(row: Record<string, unknown>, request: SizedEditRequest): SizedEditPreview {
     const next = row.next_cycle_at instanceof Date ? row.next_cycle_at.toISOString() : row.next_cycle_at == null ? null : String(row.next_cycle_at);
     const cutoff = next ? new Date(Date.parse(next) - Number(row.edit_window_hours) * 3_600_000).toISOString() : null;
@@ -160,12 +174,22 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE", [parsed.subscriptionId, actor.clientId]);
         assertRequestLimits(parsed);
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
-        const request = normalizeSizedEdit(parsed, context, policy), priced = await quote(db, context, request, "apply");
-        if (request.acceptedQuoteHash !== priced.quoteHash &&
-          !await hasBoundPackageEditQuote(db, actor, request.subscriptionId, request.action, priced.expectedTemplateVersion, request.acceptedQuoteHash)) {
+        const request = normalizeSizedEdit(parsed, context, policy);
+        const addon = ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action);
+        const admissionInstalled = !addon && request.acceptedQuoteHash !== undefined
+          && (await db.query(`SELECT to_regprocedure('public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz)') IS NOT NULL AS installed`)).rows[0]?.installed === true;
+        const bound = admissionInstalled && await hasBoundPackageEditQuote(db, actor, request.subscriptionId, request.action, context.templateVersion, request.acceptedQuoteHash);
+        const guarded = !addon && bound && request.expectedTemplateVersion === context.templateVersion;
+        if (guarded) await checkAcceptedPreview(db, actor, key, request, context.templateVersion);
+        const priced = await quote(db, context, request, "apply").catch(async error => {
+          // A later publication may move after the preflight releases its locks.
+          if (guarded) await checkAcceptedPreview(db, actor, key, request, context.templateVersion);
+          throw error;
+        });
+        if (request.acceptedQuoteHash !== priced.quoteHash && !bound && (admissionInstalled ||
+          !await hasBoundPackageEditQuote(db, actor, request.subscriptionId, request.action, priced.expectedTemplateVersion, request.acceptedQuoteHash))) {
           throw new Error("subscription_reprice_quote_not_accepted");
         }
-        const addon = ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action);
         if (!addon) await options.assertCurrentFacts(db, context, priced.subjectFacts, priced.optInFacts, priced.catalogFacts);
         const { subscriptionId: _id, ...raw } = request;
         const payload = { ...raw, request: raw, lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,
