@@ -2205,12 +2205,14 @@ it.each(lanes.flatMap(lane => (["subscription_renewal_terms","subscription_event
   } finally { await db.query("ROLLBACK"); db.release(); }
 });
 
-async function numberedCycle(db: PoolClient, f: Fixture, cycle: number, status: "planned" | "cancelled") {
+async function numberedCycle(db: SubscriptionQueryExecutor, f: Pick<Fixture, "subscription" | "at">, cycle: number, status: "planned" | "cancelled" | "paid") {
   const operation = randomUUID(), identity = `subscription:${f.subscription}:cycle:${cycle}`, fingerprint = digest(identity);
+  const paid = status === "paid";
   await db.query(`INSERT INTO public.subscription_renewal_operations(id,subscription_id,scheduled_at,cycle_number,
-    identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at)
-    VALUES($1,$2,$3::timestamptz+make_interval(days=>$4::integer),$4,$5,$6,'{}','reserved',$1,'fixture',clock_timestamp(),clock_timestamp()+interval '1 hour')`,
-    [operation,f.subscription,f.at,cycle,identity,fingerprint]);
+    identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at,terminal_outcome,terminal_at)
+    VALUES($1,$2,$3::timestamptz+make_interval(days=>$4::integer),$4,$5,$6,'{}',$7,$1,'fixture',clock_timestamp(),clock_timestamp()+interval '1 hour',
+    CASE WHEN $7='succeeded' THEN 'succeeded' END,CASE WHEN $7='succeeded' THEN $3::timestamptz+make_interval(days=>$4::integer) END)`,
+    [operation,f.subscription,f.at,cycle,identity,fingerprint,paid ? "succeeded" : "reserved"]);
   await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
     VALUES($1,$2::timestamptz+make_interval(days=>$3::integer),$4,$5,$6)`, [f.subscription,f.at,cycle,status,operation,fingerprint]);
 }
@@ -3239,9 +3241,18 @@ it.for(["exact frozen phase", "different attachment marker"] as const)(
       const missing = { ...evidence };
       Reflect.deleteProperty(missing,"phaseReference");
       const before = await snapshot();
-      await expect(createPostgresNativeCheckoutPersistence(runtime).createOrderDraft(
-        { idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: missing },
-      )).rejects.toMatchObject({ code: "22023",message: "catalog_graduation_reference_invalid" });
+      const { draft } = purchaseInput(f), rawDraft = { ...draft,context: quote.quote.context,lines: quote.quote.lines };
+      const args = [key,{ ...quote,catalogAdmission: missing },rawDraft,f.client];
+      await expect(rpc(runtime,"commerce_create_order_draft_with_outbox",args))
+        .rejects.toMatchObject({ code: "22023",message: "catalog_graduation_reference_invalid" });
+      const restore = await hook("public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)","DECLARE governed jsonb;","",body => {
+        const requirement = "IF p_purpose='order' AND p_evidence->'phaseReference'\n";
+        expect(body.split(requirement)).toHaveLength(2);
+        return body.replace(requirement,"IF p_purpose='order' AND p_evidence ? 'phaseReference' AND p_evidence->'phaseReference'\n");
+      });
+      const control = await session();
+      try { await expect(rpc(control,"commerce_create_order_draft_with_outbox",args)).resolves.toHaveProperty("orderDraft.orderId"); }
+      finally { await control.query("ROLLBACK"); control.release(); await restore(); }
       expect(await snapshot()).toEqual(before);
     }
     const { orderDraft } = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence });
@@ -3280,7 +3291,7 @@ it.for(["exact frozen phase", "different attachment marker"] as const)(
     expect(liveRevision).not.toBe(next.reference.skuRevisionId);
     const rebuilt = { ...next.reference,skuRevisionId: liveRevision,publicationHead: newHead };
     await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
-    await pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) SELECT id,started_at+interval '1 day','paid' FROM public.subscriptions WHERE id=$1", [id]);
+    await numberedCycle(pool,{ subscription: id,at: f.at },1,"paid");
     const dueAt = (await pool.query(`UPDATE public.subscriptions SET next_cycle_at=started_at+interval '2 days' WHERE id=$1
       RETURNING to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`, [id])).rows[0].at;
     await pool.query("UPDATE public.subscription_renewal_terms SET next_cycle_number=2 WHERE subscription_id=$1", [id]);
