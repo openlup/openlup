@@ -1405,7 +1405,7 @@ reconstructs the preview; `compareCandidate` additionally checks the caller's
 complete expected head and digest. Required readiness issues and unavailable
 price validation block publication; a publisher must reconstruct and refuse all
 issues inside its own transaction. A draft actor or service credential cannot
-construct `VerifiedCatalogPublisher`.
+construct `VerifiedCatalogPublisher`. This change supplies no publisher or binding.
 
 `createPostgresCatalogPublication` is an unbound native publisher. Its contracts,
 compiler and shared price writer are `@experimental`. Status and outcome unions

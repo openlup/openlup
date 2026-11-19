@@ -9,7 +9,7 @@ readers arrive, net content must be positive integer grams in 1..2,147,483,647.
 Fractional, zero, negative and out-of-range net content refuses with
 `catalog_publication_integral_grams_required`. Gross mass uses exact scaled storage,
 including fractional grams. Publication compares supplied gross mass with
-net content without rounding, including during structural preparation. No compatibility value is replaced with zero or made nullable.
+net content without rounding. No compatibility value is replaced with zero or made nullable.
 
 Publication preserves active-and-eligible primary admission, status-independent
 physical identity uniqueness, retained source-head currentness and head-before-drift
@@ -21,8 +21,7 @@ Withdrawal-only publication skips unrelated commercial and global readiness.
 Compensation reapplies explicit product and SKU effects with unchanged retained
 values, while unaddressed projection drift still refuses and rolls back.
 Changed complete facts retain compatible attribute, axis, gross-mass and asset
-updates without refreshing unrelated fields. Candidate preparation reports staged,
-pending, unknown and blocked evidence. Creation binds the name to the sealed
+updates without refreshing unrelated fields. Creation binds the name to the sealed
 document. The draft compiler represents authored absence with an empty
 presentation object. The ordered null effect still clears the live presentation.
 Positive eligibility generates required product and SKU promotions before sealing.

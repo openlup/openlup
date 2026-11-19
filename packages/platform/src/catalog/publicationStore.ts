@@ -1,4 +1,3 @@
-import { parseCatalogCandidateReference } from "./candidate.js";
 import { createCatalogPriceSetupTransactionWriter, CatalogPriceSetupTransactionError } from "../pricing/index.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PgQueryExecutor } from "../data/index.js";
@@ -28,7 +27,17 @@ const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 && !value.includes("\0") && !/[\uD800-\uDFFF]/u.test(value));
-const referenceSchema = z.string().refine(value => parseCatalogCandidateReference(value) !== null);
+const referencePattern = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u;
+function decodeCandidateReference(value: string) {
+  if (typeof value !== "string" || value.length > 200) return null;
+  const match = referencePattern.exec(value);
+  if (!match || !id.safeParse(match[1]).success || !revision.safeParse(Number(match[2])).success) return null;
+  const draftId = match[1]!, draftRevision = Number(match[2]);
+  if (match[3] === "unpublished") return { draftId, draftRevision, head: null };
+  if (!id.safeParse(match[4]).success || !revision.safeParse(Number(match[5])).success) return null;
+  return { draftId, draftRevision, head: { publicationId: match[4]!, revision: Number(match[5]) } };
+}
+const referenceSchema = z.string().refine(value => decodeCandidateReference(value) !== null);
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
 const commandSchema = z.object({ schemaVersion: z.literal(2).optional(), commandKey: key, productId: id,
   candidateRef: referenceSchema, candidateDigest: digest, expectedHead: headSchema.nullable(),
@@ -278,7 +287,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       WHERE source.draft_id=$1::uuid AND source.revision=$2::integer) AS receipted`, [draftId, draftRevision]));
   }
   async function candidate(db: PgQueryExecutor, reference: string, expectedDigest: string, productId: string) {
-    const parsed = parseCatalogCandidateReference(reference);
+    const parsed = decodeCandidateReference(reference);
     if (!parsed) return publicationRefuse("candidate_invalid");
     let expectedHead: CatalogHeadRef | null = null;
     if (parsed.head) {

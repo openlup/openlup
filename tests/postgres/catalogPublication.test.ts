@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { compileCatalogPublicationDraft, createCatalogCandidateService, createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
+import { compileCatalogPublicationDraft, createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
@@ -3325,7 +3325,6 @@ it.each([
   ["compensation", "en", true],
   ["revise then archive", "pl", false],
   ["compensation then archive", "en", false],
-  ["preview", "pl", false],
 ] as const)("route ownership is checked before later publication work for %s/%s: child price %s", async (kind, locale, price) => inPriceDatabase(async () => {
   const other = await draft(), otherPayload = structuredClone(other.payload), path = `/occupied-${other.productId}`;
   otherPayload.product.sharedContent.presentation = { routePath: { [locale]: path } };
@@ -3359,21 +3358,6 @@ it.each([
     const ready = !rows[0]!.conflict;
     return { ready, reasons: ready ? [] : ["duplicate_route"] };
   };
-  const deps = dependencies();
-  if (kind === "preview") {
-    const service = createCatalogCandidateService({ registry, publicationRules: deps.rules,
-      readDraft: async (draftId, revision) => (await db.query("SELECT public.catalog_draft_record($1,$2) AS record", [draftId, revision ?? 3])).rows[0].record,
-      installedDefinitionDigest: async () => catalogDefinitionDigest(definition), resolveHead: async () => null,
-      currentHead: async () => ({ outcome: "unpublished" }),
-      presentationReadiness: productId => check(db, productId),
-    });
-    const query = { draftId: data.draftId, draftRevision: 3, expectedHead: null };
-    const first = await service.prepareCandidate(query);
-    expect(first.preparation?.structural).toMatchObject({ outcome: "blocked-input", issues: [{ code: "duplicate_route" }] });
-    expect(await service.validate(first.candidateRef)).toEqual(first);
-    expect(await service.compareCandidate({ ...first, expectedHead: null })).toEqual(first);
-    return;
-  }
   let childApply = 0, checks = 0;
   const target = createPostgresCatalogPublication({ ...dependencies(sql => {
     if (sql.startsWith("SELECT public.catalog_price_setup_apply_in_transaction")) childApply++;
@@ -3987,69 +3971,6 @@ it.each(["SQL admission", "readback, replay and recovery"] as const)("rejects om
     expect(await target.receipt({ productId: data.productId, commandKey: third.commandKey }, capability)).toEqual(refusal);
   } finally { await client.query("ROLLBACK"); client.release(); }
 });
-
-it.each([
-  ["retained gross only", "catalog_publication_gross_mass_required"],
-  ["unverified media digest", "catalog_publication_media_readiness_unproven"],
-  ["verified media digest", "committed"],
-  ["retained primary and SKU roster", "committed"],
-] as const)("facade and writer agree on %s", async (mode, expected) => inPriceDatabase(async () => {
-  const data = await priceDraft(), initial = realPriceAuthority(), initialActor = (await initial.authorize(null))!;
-  const first = await commit(data.publication, initial, initialActor), payload = structuredClone(data.payload);
-  const content = payload.product.sharedContent, sku = payload.skus[0], skuCode = sku.code!;
-  delete sku.priceOperations;
-  const activation = mode !== "retained primary and SKU roster";
-  const media = mode.endsWith("media digest");
-  const claims = media ? [{ skuCode, mediaRef: "example:bound-media", assetRefs: ["panel"],
-    revisionDigest: mode === "verified media digest" ? first.publicationDigest : "a".repeat(64) }] : [];
-  content.presentation = media ? { mediaRef: "example:bound-media" } : { label: "Next presentation" };
-  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation }];
-  if (activation) payload.publication.operations.push({ op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false });
-  else {
-    payload.skus = [];
-    delete payload.product.primarySkuId;
-    Object.assign(content, { publicationSkus: [], offerMemberships: [], requestedModes: [] });
-  }
-  if (mode === "retained gross only") delete sku.grossMass;
-  if (media) { sku.assetRefs = ["panel"]; payload.publication.evidence.media = claims; }
-  const command = await save(payload, data.draftId, 2, first.head);
-  const page = await initial.readbackV2(first.head);
-  if (page.outcome !== "page") throw new Error(JSON.stringify(page));
-  const originalRecord = (await db.query("SELECT public.catalog_draft_record($1,1) AS record", [data.draftId])).rows[0].record;
-  const document = (originalRecord.payload as CatalogDraftPayloadV3).publication.operations.find(op => op.op === "register_document_revision");
-  if (!document) throw new Error("Missing fixture document");
-  type MediaClaim = Parameters<CatalogPublicationDependencies<null>["verifyMedia"]>[1];
-  const checks: MediaClaim[] = [], assessments: (readonly MediaClaim[])[] = [];
-  const check = async (claim: MediaClaim) => { checks.push(claim); return claim.revisionDigest === first.publicationDigest; };
-  const target = realPriceAuthority(undefined, undefined, (_db, claim) => check(claim));
-  const capability = (await target.authorize(null))!, hooks = dependencies();
-  const facade = createCatalogCandidateService({ registry, publicationRules: hooks.rules,
-    readDraft: async (draftId, revision) => (await db.query("SELECT public.catalog_draft_record($1,$2) AS record", [draftId, revision ?? 3])).rows[0].record,
-    installedDefinitionDigest: async () => catalogDefinitionDigest(definition), resolveHead: async () => first.head,
-    currentHead: productId => initial.reads.current(productId), presentationReadiness: async () => ({ ready: true, reasons: [] }),
-    readPublicationState: async () => ({ product: page.product, skus: page.items.map(item => item.facts), retainedSources: [],
-      documents: [{ reference: page.product.document!, canonicalText: document.canonicalText,
-        provenance: { draftId: data.draftId, draftRevision: 1, draftCommandKey: originalRecord.commandKey, draftFingerprint: originalRecord.fingerprint } }] }),
-    verifyMedia: claim => check(claim),
-    assessActivation: async (_state, _head, verifiedMedia) => { assessments.push(verifiedMedia); return { ready: true, reasons: [] }; },
-  });
-  const preview = await facade.prepareCandidate({ draftId: data.draftId, draftRevision: 3, expectedHead: first.head });
-  for (const result of [preview, await facade.validate(preview.candidateRef), await facade.compareCandidate({ ...preview, expectedHead: first.head })]) {
-    expect(result.candidateDigest).toBe(command.candidateDigest);
-    if (expected === "committed") expect(result.preparation).toMatchObject({
-      structural: { outcome: "staged" }, activation: { outcome: activation ? "ready" : "pending" },
-    });
-    else expect(result.preparation?.activation).toMatchObject({
-      outcome: "blocked-input", issues: expect.arrayContaining([expect.objectContaining({ code: expected })]),
-    });
-  }
-  await approve(command, target, capability);
-  const published = await target.publish(command, capability);
-  if (expected === "committed") expect(published.outcome).toBe("committed");
-  else expect(published).toEqual({ outcome: "validation_issue", reason: expected });
-  expect(checks).toEqual(media ? Array.from({ length: 4 }, () => claims[0]) : []);
-  expect(assessments).toEqual(mode === "verified media digest" ? [claims, claims, claims] : []);
-}));
 
 it("publication binds an omitted SKU to its newest authored issuance without rewriting SKU facts", async () => inPriceDatabase(async () => {
   const target = realPriceAuthority(), capability = (await target.authorize(null))!;

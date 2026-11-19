@@ -396,17 +396,9 @@ before replay. `decision` persists alternating approve/revoke decisions against
 the exact candidate reference and digest. Publication requires approval; a later
 revocation leaves the publication and its original replay receipt intact.
 
-The candidate facade reconstructs sealed v3 inputs at the requested head. Its
-structural report distinguishes staged input, a confirmed refusal and unknown
-evidence. The activation report carries per-channel pending issues and uses
-current installed evidence before marking an enabling candidate ready. A
-retained SKU or primary can satisfy an omitted roster field. Activation still
-requires authored gross mass and independent verification of the exact sealed
-media claim. The host's
-presentation adapter checks route ownership during preparation and immediately
-before each presentation write. A route conflict refuses before any later
-catalogue effect or child price application. A matching
-sealed registration can stage a new document before it exists in the live rows.
+Facade additions are deferred to LC2-P. The released facade is kept per D6.
+The publisher checks route ownership immediately before each presentation write.
+A route conflict refuses before any later catalogue effect or child price application.
 
 The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
