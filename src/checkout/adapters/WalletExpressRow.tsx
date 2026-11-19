@@ -111,6 +111,7 @@ export function WalletExpressRow({ data, checkoutMode, onSettled, returnPath, kn
 
 function WalletExpressInner({ data, checkoutMode, onSettled, returnPath, knownCompositionSlugs, coveredCheckout }: WalletExpressRowProps) {
   const { t, i18n } = useTranslation("checkout");
+  const language = i18n.language;
   const approvedGuidance = coveredCheckout === true && typeof i18n.getResource(i18n.resolvedLanguage ?? i18n.language, "checkout", "recoveryGuidance.messages.c09") === "string";
   const stripe = useStripe();
   const elements = useElements();
@@ -128,7 +129,7 @@ function WalletExpressInner({ data, checkoutMode, onSettled, returnPath, knownCo
   const startWalletOrder = useWalletOrderMint(
     data,
     checkoutQuoteExpectation,
-    i18n.language === "en" ? "en" : "pl",
+    language === "en" || language === "pl" ? language : undefined,
     knownCompositionSlugs,
   );
   useEffect(() => {

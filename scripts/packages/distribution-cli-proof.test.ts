@@ -7,7 +7,8 @@ import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  reconcileReminderInstallationTest, reminderInstallationTest, starterOptionalCatalogueFiles, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  reconcileLifecycleCustomization, reconcileReminderInstallationTest, reminderInstallationTest, starterLifecycle,
+  starterOptionalCatalogueFiles, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -20,6 +21,31 @@ function fixture() {
   write("node_modules/@openlup/core/package.json", { version: "0.40.0" });
   return { directory, write };
 }
+
+it("prints a bounded installation hint after the existing refusal and preserves unhinted stderr bytes", () => {
+  const { directory, write } = fixture();
+  write("package.json", { type: "module" });
+  write(starterLifecycle, readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"));
+  write("browser-groups.mjs", "export const browserJourneyGroups = [];");
+  write("host/healthcheck.ts", "export const applicationHealthcheck = () => undefined;");
+  write("owned/store.config.ts", "export const selectConfiguration = () => ({});");
+  const message = "checkout_recovery_schedule_change_blocked_open_episodes (2 blocking orders)";
+  for (const [fields, expected] of [
+    [{ hint: "  Retry after\n those orders\tclose.  " }, "Retry after those orders close.\n"],
+    [{ hint: " ", cause: { hint: "Use the owner role." } }, "Use the owner role.\n"],
+    [{ hint: "a".repeat(260) }, "a".repeat(240) + "\n"],
+    [{}, ""],
+  ] as const) {
+    write("installation/install.ts", `export const bootstrapDemonstration = () => undefined;
+      export async function installDemonstration() {
+        throw Object.assign(new Error(${JSON.stringify(message)}), ${JSON.stringify(fields)});
+      }`);
+    const result = spawnSync(process.execPath, [starterLifecycle, "install"], { cwd: directory, encoding: "utf8" });
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(message + "\n" + expected);
+  }
+});
 
 it("selects the greatest numeric stable tagged release visible in the complete npm set", () => {
   const tags = ["0.9.0", "0.10.0", "0.40.1", "0.41.0", "0.41.1-rc.1", "0.42.0"].reverse().map(version => `a refs/tags/openlup-core-v${version}`).join("\n");
@@ -227,19 +253,29 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   const localTest = customized ? reconcileReminderInstallationTest(app, from.files[reminderInstallationTest]!, () => {
     const refusal = run(); expect(refusal.status).toBe(1); return JSON.parse(refusal.stdout);
   }) : undefined;
-  const checkInstallationTests = () => {
+  const localLifecycle = customized ? reconcileLifecycleCustomization(app, from.files[starterLifecycle]!, () => {
+    const before = starterUpgradeSnapshot(app, from.version);
+    const refusal = run();
+    expect(refusal.status).toBe(1);
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
+    expect(existsSync(join(app, marketPath))).toBe(false);
+    return JSON.parse(refusal.stdout);
+  }) : undefined;
+  const checkUpgradedFiles = () => {
     expect(read(reminderInstallationTest)).toBe(to.files[reminderInstallationTest]);
+    expect(read(starterLifecycle)).toBe(to.files[starterLifecycle]);
     if (localTest) expect(read(localTest.path)).toBe(localTest.bytes);
+    if (localLifecycle) expect(readFileSync(join(app, localLifecycle.path))).toEqual(localLifecycle.bytes);
   };
   const replay = () => {
     const result = run();
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout).applied).toEqual([]);
-    checkInstallationTests();
+    checkUpgradedFiles();
   };
   const result = run(); expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, reminderInstallationTest]));
-  checkInstallationTests();
+  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, reminderInstallationTest, starterLifecycle]));
+  checkUpgradedFiles();
   replay();
   // Expected bytes come from the target inventory, including contracts that
   // have no runtime refusal. The customized expectation adds each local edit.
@@ -257,6 +293,12 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(readFileSync(join(app, path)).equals(expected), `owned bytes after upgrade: ${path}`).toBe(true);
   }
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
+  if (localLifecycle) {
+    const launch = spawnSync(process.execPath, [localLifecycle.path, "ownership"], { cwd: app, encoding: "utf8" });
+    expect(launch.status, launch.stderr).toBe(0);
+    expect(launch.stderr).toBe("Adopter lifecycle customization\n");
+    expect(JSON.parse(launch.stdout)).toEqual(targetOwnership);
+  }
   // The full upgraded-starter suite runs in the pre-publication proof (#783);
   // here, run only the owned-contract tests so the root shard stays bounded.
   const contracts = [
@@ -339,6 +381,7 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     "owned/new.mjs": "export default true;",
     "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`,
     [reminderInstallationTest]: "import 'node:test';",
+    [starterLifecycle]: readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"),
     "browser/dev-loop.proof.ts": "import 'node:assert/strict';",
     ".gitignore": "node_modules/\npackage-lock.json\n",
   };
@@ -357,8 +400,9 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
   expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
   expect(evidence.upgrade.managedConflict).toEqual({ path: "test/candidate.test.mjs", action: "create" });
-  expect(evidence.upgrade.phases).toHaveLength(missing ? 8 : 9);
+  expect(evidence.upgrade.phases).toHaveLength(missing ? 9 : 10);
   expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });
+  expect(evidence.upgrade.phases).toContainEqual({ name: "lifecycle-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
   if (!missing) for (const mode of ["candidate", "released"]) {
     const path = receipt + ".applications/1/input/package-lock.json", lock = JSON.parse(readFileSync(path, "utf8")); cpSync(join(packs, packages[0]!.filename), join(directory, "foreign.tgz"));

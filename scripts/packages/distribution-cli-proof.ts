@@ -235,12 +235,31 @@ function reconcileManagedCustomization(
   return { path, bytes };
 }
 
+export const starterLifecycle = "lifecycle.mjs";
+
+export function reconcileLifecycleCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
+  const managed = join(app, starterLifecycle);
+  const addition = 'process.stderr.write("Adopter lifecycle customization\\n");\n';
+  const customized = addition + predecessor;
+  writeFileSync(managed, customized);
+  assertUpgradeConflict(applyRefused(), starterLifecycle);
+  const current = readFileSync(managed, "utf8");
+  assert.equal(current, customized, "refused upgrade changed the managed lifecycle");
+
+  const path = "owned/lifecycle-launcher.mjs";
+  const bytes = Buffer.from(current.slice(0, addition.length) + 'await import(new URL("../lifecycle.mjs", import.meta.url));\n');
+  writeFileSync(join(app, path), bytes, { flag: "wx" });
+  writeFileSync(managed, predecessor);
+  return { path, bytes };
+}
+
 type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
   evidence: { planSha256?: string; customizations?: Record<string, string>;
     managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
 
 function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
+  const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
@@ -259,7 +278,6 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     }
   });
   phase("customize-owned", () => {
-    const ownership = JSON.parse(readFileSync(join(app, "ownership.json"), "utf8"));
     for (const [path, before, after] of [
       ["owned/store.config.ts", "#3d6657", "#663d57"],
       ["owned/fragments.ts", "offer-intro", "adopter-offer-intro"],
@@ -288,13 +306,15 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     file.path === reminderInstallationTest && file.action === "replace");
   const editorReplacement = changed.find((file: { path: string; action: string }) =>
     file.path === starterEditorPorts && file.action === "replace");
+  const lifecycleReplaced = changed.some((file: { path: string; action: string }) =>
+    file.path === starterLifecycle && file.action === "replace");
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
-  const paths = new Set([...Object.keys(from.files), ...Object.keys(to.files)]);
+  const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned]);
   const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
   const applyRefused = () => {
     const before = readFiles();
     const report = run("apply", 1);
-    assert.deepEqual(readFiles(), before, "conflict wrote managed files");
+    assert.deepEqual(readFiles(), before, "conflict wrote application files");
     return report;
   };
   phase("managed-conflict", () => {
@@ -311,6 +331,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     writeFileSync(join(app, conflict), "adopter-managed-divergence");
     assertUpgradeConflict(applyRefused(), conflict);
     if (original) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));
+  });
+  if (lifecycleReplaced) phase("lifecycle-reconciliation", () => {
+    const local = reconcileLifecycleCustomization(app, from.files[starterLifecycle]!, applyRefused);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
   });
   if (reminderTestReplaced) phase("reminder-test-reconciliation", () => {
     const local = reconcileReminderInstallationTest(app, from.files[reminderInstallationTest]!, () => {
@@ -344,6 +370,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.equal(readFileSync(join(app, reminderInstallationTest), "utf8"), to.files[reminderInstallationTest]);
     if (editorReplacement)
       assert.equal(readFileSync(join(app, starterEditorPorts), "utf8"), to.files[starterEditorPorts]);
+    if (lifecycleReplaced)
+      assert.equal(readFileSync(join(app, starterLifecycle), "utf8"), to.files[starterLifecycle]);
   };
   phase("resume", () => {
     const resumed = run("apply");

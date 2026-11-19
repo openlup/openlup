@@ -1,3 +1,4 @@
+import { LEGACY_CHECKOUT_INTENT_POLICY } from "#legacy-checkout-intent-policy";
 import {
   configuratorIntentSchema,
   CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION,
@@ -34,7 +35,7 @@ export function buildCheckoutIntent(
   data: ConfiguratorFormData,
   options: {
     idempotencyKey: string;
-    locale?: "pl" | "en";
+    locale?: ConfiguratorIntent["locale"];
     subscriptionCheckoutEnabled?: boolean;
     deliverySelectionEnabled?: boolean;
     dhlOnlyDeliveryEnabled?: boolean;
@@ -55,9 +56,8 @@ export function buildCheckoutIntent(
   );
   if (recognisedComposition.length === 0) return null;
 
-  const ageBand = data.dogAge as ConfiguratorIntent["petProfile"]["ageBand"];
-  const weightKg = Number(data.dogWeightKg.replace(",", ".").trim());
-  if (!Number.isFinite(weightKg) || weightKg <= 0) return null;
+  const profile = LEGACY_CHECKOUT_INTENT_POLICY.mapProfile(data);
+  if (!profile) return null;
   if (!isCheckoutableRecommendation(data.recommendationSnapshot)) return null;
 
   const baselineRecommendation = data.recommendationSnapshot;
@@ -104,10 +104,6 @@ export function buildCheckoutIntent(
   // nothing in the system remembers to give them.
   if (data.offerMode === "starter" && !starterOffer) return null;
 
-  const allergenSlugs = data.hasAllergies
-    ? (data.allergens as ConfiguratorIntent["petProfile"]["allergenSlugs"])
-    : [];
-
   // A release gate may make subscription checkout temporarily unavailable, but
   // it must never reinterpret the customer's explicit subscription choice as a
   // one-time purchase. Fail closed and let the caller surface the unavailable
@@ -141,7 +137,7 @@ export function buildCheckoutIntent(
     version: CONFIGURATOR_INTENT_VERSION,
     cadencePolicyVersion: CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION,
     idempotencyKey: options.idempotencyKey,
-    locale: options.locale ?? "pl",
+    locale: options.locale ?? LEGACY_CHECKOUT_INTENT_POLICY.defaultLocale,
     mode,
     // Customer quantity overrides never rewrite the explicit cadence.
     cadenceDays: mode === "subscription" ? data.lengthDays : null,
@@ -151,17 +147,7 @@ export function buildCheckoutIntent(
       kind: "unit_count" as const,
       value: selectedVariants.reduce((sum, line) => sum + line.qty, 0),
     },
-    petProfile: {
-      petId: data.accountPetId,
-      name: data.dogName.trim(),
-      ageBand,
-      breed: data.dogBreed.trim(),
-      weightKg,
-      activityLevel: data.activityLevel as ConfiguratorIntent["petProfile"]["activityLevel"],
-      bcs: data.bcs as ConfiguratorIntent["petProfile"]["bcs"],
-      allergenSlugs,
-      dailyKcalOverride: recommendation.dailyKcal,
-    },
+    petProfile: { ...profile, dailyKcalOverride: recommendation.dailyKcal },
     contact: {
       firstName: data.firstName.trim(),
       lastName: data.lastName.trim(),
@@ -172,7 +158,7 @@ export function buildCheckoutIntent(
       street: data.street.trim(),
       postalCode: data.postalCode.trim(),
       city: data.city.trim(),
-      country: "PL" as const,
+      country: LEGACY_CHECKOUT_INTENT_POLICY.shippingCountry,
     },
     selectedDelivery,
     selectedFlavorSlugs,
