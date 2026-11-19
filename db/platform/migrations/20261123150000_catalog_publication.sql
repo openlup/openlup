@@ -711,10 +711,17 @@ BEGIN
        'id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,'schemaId',d.schema_id,
        'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest)
      AND (prior.document_revision_id=d.id OR EXISTS (
-       SELECT 1 FROM jsonb_array_elements(
-         (origin.payload #> '{publication,operations}') || (authored #> '{publication,operations}')) operation
+       SELECT 1 FROM (VALUES (origin.payload,d.provenance),
+        (authored,jsonb_build_object('draftId',product #> '{source,draftId}','draftRevision',product #> '{source,revision}',
+          'draftCommandKey',product #> '{source,commandKey}','draftFingerprint',product #> '{source,fingerprint}'))) registration(payload,claim)
+       CROSS JOIN LATERAL jsonb_array_elements(registration.payload #> '{publication,operations}') operation
        WHERE operation->>'op'='register_document_revision'
+        AND operation->'productSlug'=registration.payload #> '{product,slug}'
         AND operation->'revisionId'=to_jsonb(d.id) AND operation->'revisionNo'=to_jsonb(d.revision_no)
+        AND (CASE
+         WHEN operation->'provenance'='{"source":"current_draft"}'::jsonb THEN registration.claim
+         WHEN operation #>> '{provenance,source}'='retained_draft' THEN (operation->'provenance') - 'source'
+        END) IS NOT DISTINCT FROM d.provenance
         AND operation->'documentRef'=to_jsonb(d.document_ref) AND operation->'sourceRef'=to_jsonb(d.source_ref)
         AND operation->'digest'=to_jsonb(d.digest)
         AND (operation->>'canonicalText')::jsonb=d.document_payload

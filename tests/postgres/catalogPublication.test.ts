@@ -53,6 +53,34 @@ it.each([
   })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_document_invalid" });
 });
 
+it("binds registration provenance to its own receipted draft", async () => {
+  const data = fixture();
+  const unrelatedDraft = randomUUID();
+  let staged = false;
+  const refused = await transaction(pool, async db => {
+    const issue = await graph(db, data);
+    const { rows: [revision] } = await db.query(
+      "SELECT payload FROM public.catalog_draft_revisions WHERE draft_id=$1 AND revision=1", [data.draftId],
+    );
+    const payload = { ...revision.payload, publication: { ...revision.payload.publication, operations: [] } };
+    const source = { ...issue.source, draftId: unrelatedDraft, fingerprint: hash(json(payload)) };
+    // A product has one head. The retained revision can still claim this product.
+    await db.query("INSERT INTO public.catalog_draft_heads(draft_id,product_id,revision,status) VALUES($1,$2,1,'open')",
+      [unrelatedDraft, randomUUID()]);
+    await db.query("INSERT INTO public.catalog_draft_revisions(draft_id,revision,product_id,status,payload,command_key,fingerprint,actor_id) VALUES($1,1,$2,'open',$3,$4,$5,'test-fixture')",
+      [unrelatedDraft, data.productId, json(payload), source.commandKey, source.fingerprint]);
+    await db.query("INSERT INTO public.catalog_draft_command_receipts(draft_id,command_key,fingerprint,revision) VALUES($1,$2,$3,1)",
+      [unrelatedDraft, source.commandKey, source.fingerprint]);
+    await documentRow(db, { ...issue, source });
+    await insertGraph(db, issue, { existingDocument: true });
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  expect(catalogPublicationAdmissionRefusal(refused)).toMatchObject({ reason: "publication_content_changed" });
+  expect((await pool.query("SELECT id FROM public.catalog_products WHERE id=$1", [data.productId])).rows).toEqual([]);
+  expect((await pool.query("SELECT draft_id FROM public.catalog_draft_heads WHERE draft_id=ANY($1::uuid[])", [[data.draftId, unrelatedDraft]])).rows).toEqual([]);
+});
+
 it.each([
   ["receipt", { receipt: "omit" }, "catalog_publication_receipt_invalid"],
   ["receipt timestamp", { receipt: "timestamp" }, "catalog_publication_receipt_invalid"],
