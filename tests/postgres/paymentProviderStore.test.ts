@@ -52,7 +52,8 @@ const result = (f: { intent: string }, key: string, status: "failed" | "expired"
   idempotencyKey: key, paymentIntentId: f.intent, paymentEventId: event, resultStatus: status, occurredAt: AT, failureReason: status === "succeeded" ? null : "declined" });
 async function event(f: { intent: string }, a: string | null, type: "payment.failed" | "payment.succeeded" = "payment.failed", amount: number | null = 0) {
   return webhook().ingestPaymentEvent({ provider: "card_rail", providerEventId: `event:${randomUUID()}`, providerPaymentId: a ? `pi_${a}` : "unmatched",
-    eventType: type, paymentIntentId: f.intent, amountMinor: amount, currency: "XXX", occurredAt: AT, rawPayload: { kind: type } });
+    eventType: type, paymentIntentId: f.intent, amountMinor: amount, currency: "XXX", occurredAt: AT, rawPayload: { kind: type },
+    ...(type === "payment.succeeded" && amount && amount > 0 ? { capturedAmountBasis: "provider_capture_v1" as const } : {}) });
 }
 async function business(f: { order: string; intent: string; subscription: string | null; cycle: string | null }) {
   return (await env.owner.query(`SELECT jsonb_build_array(
@@ -163,8 +164,6 @@ it.each(["cancelled", "skipped"] as const)("retains %s cycle finality for late s
   await env.owner.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [f.order]);
   await env.owner.query("UPDATE public.commerce_settlement_intents SET status='cancelled' WHERE id=$1", [f.intent]);
   const before = await business(f), success = await event(f, a.paymentAttemptId, "payment.succeeded", 100);
-  await expect(result(f, `late-success:${f.intent}`, "succeeded", success.paymentEventId)).rejects.toThrow("payment_control_result_terminal_intent");
-  expect(await business(f)).toEqual(before);
   for (const status of ["failed", "expired"] as const) {
     const key = `late:${status}:${f.intent}`, e = await event(f, a.paymentAttemptId);
     expect(await result(f, key, status, e.paymentEventId)).toMatchObject({ kind: "ignored_failure_terminalized_cycle", replayed: false });
@@ -174,6 +173,19 @@ it.each(["cancelled", "skipped"] as const)("retains %s cycle finality for late s
     expect(await result(f, key, status, e.paymentEventId)).toMatchObject({ kind: "ignored_failure_terminalized_cycle", replayed: true });
     expect(await business(f)).toEqual(before);
   }
+  const lateKey = `late-success:${f.intent}`;
+  expect(await result(f, lateKey, "succeeded", success.paymentEventId))
+    .toMatchObject({ kind: "ignored_success_requiring_review", replayed: false });
+  expect(await result(f, lateKey, "succeeded", success.paymentEventId))
+    .toMatchObject({ kind: "ignored_success_requiring_review", replayed: true });
+  const reviewed = await call(env.runtime, "payment_provider_attempt_read", [f.intent, a.paymentAttemptId]);
+  expect(reviewed).toMatchObject({ captureReviewRequired: true });
+  const delayed = await event(f, a.paymentAttemptId);
+  expect(await result(f, `post-review-failure:${f.intent}`, "failed", delayed.paymentEventId))
+    .toMatchObject({ kind: "ignored_failure_protected_state" });
+  expect(await call(env.runtime, "payment_provider_attempt_read", [f.intent, a.paymentAttemptId]))
+    .toMatchObject({ paymentAttempt: reviewed.paymentAttempt, captureReviewRequired: true });
+  expect(await business(f)).toEqual(before);
 });
 
 it("keeps legacy intents and settled history without fabricating provider attempts or payment identities", async () => {
@@ -219,11 +231,15 @@ it("keeps provider tables private and exposes bounded readback through the servi
   for (const table of ["payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence", "payment_provider_receipts", "payment_provider_transitions"]) {
     expect((await env.owner.query("SELECT relrowsecurity AS rls FROM pg_class WHERE oid=$1::regclass", [`public.${table}`])).rows[0].rls).toBe(true);
   }
-  const signature = "public.payment_provider_retry_failure_recorded(uuid,text,text)";
-  for (const role of ["anon", "authenticated", "service_role"]) {
+  const serviceLookups = ["public.payment_provider_retry_failure_recorded(uuid,text,text)",
+    "public.payment_provider_capture_requires_review(uuid)"];
+  for (const signature of serviceLookups) for (const role of ["anon", "authenticated", "service_role"]) {
     expect((await env.owner.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows[0].allowed).toBe(role === "service_role");
   }
   expect(await call(env.runtime, "payment_provider_retry_failure_recorded", [f.intent, "unrecorded", a.paymentAttemptId])).toBe(false);
+  await expect(env.runtime.query("SELECT status FROM public.payment_provider_states WHERE id=$1", [f.intent]))
+    .rejects.toMatchObject({ code: "42501" });
+  expect(await call(env.runtime, "payment_provider_capture_requires_review", [f.intent])).toBe(false);
 });
 
 it("fences compensation, reminders, abandonment and recovery on in-flight or durably successful provider evidence", async () => {

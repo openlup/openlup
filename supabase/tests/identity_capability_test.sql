@@ -44,7 +44,7 @@ RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claims','{"sub":"b9190000-0000-4000-8000-000000000004","role":"authenticated"}',true);
 SELECT throws_ok($q$INSERT INTO public.clients(email,auth_user_id,acquisition_source,lifecycle_stage) VALUES ('identity-link-denied-authenticated@example.invalid','b9190000-0000-4000-8000-000000000004','identity_reconcile','customer')$q$,'42501',NULL,'authenticated cannot create a client');
-WITH c AS (UPDATE public.clients SET auth_user_id='b9190000-0000-4000-8000-000000000004' WHERE id='b9191000-0000-4000-8000-000000000003' AND auth_user_id IS NULL RETURNING auth_user_id) SELECT is(count(*)::integer,0,'authenticated cannot link a foreign client through RLS') FROM c;
+SELECT throws_ok($q$UPDATE public.clients SET auth_user_id='b9190000-0000-4000-8000-000000000004' WHERE id='b9191000-0000-4000-8000-000000000003' AND auth_user_id IS NULL RETURNING auth_user_id$q$,'42501',NULL,'authenticated cannot write the service-owned link column');
 RESET ROLE;
 
 SELECT is((SELECT auth_user_id::text FROM public.clients WHERE id='b9191000-0000-4000-8000-000000000001'),'b9190000-0000-4000-8000-000000000001','owner observes the newly linked principal');

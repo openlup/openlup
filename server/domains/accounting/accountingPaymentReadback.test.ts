@@ -7,6 +7,7 @@ const claim = {
   payment: {
     provider: "stripe",
     providerPaymentId: "pi_1",
+    amountCents: 2990,
   },
 } as ClaimedAccountingInvoiceIssue;
 
@@ -47,6 +48,24 @@ describe("accounting provider payment readback", () => {
       providerCurrency: null,
       providerEvidence: { provider: "stripe", providerPaymentId: "pi_1", unavailableReason: reason },
     });
+  });
+
+  it.each([
+    { configuredAmountMinor: 2990, expectedStatus: "succeeded", expectedReason: undefined },
+    { configuredAmountMinor: 2991, expectedStatus: "unknown", expectedReason: "provider_configured_amount_mismatch" },
+  ])("uses the claimed settlement amount to compare configured money ($configuredAmountMinor)", async ({
+    configuredAmountMinor, expectedStatus, expectedReason,
+  }) => {
+    const readPayment = vi.fn(async () => ({
+      status: "succeeded" as const, providerStatus: "succeeded", amountMinor: null, configuredAmountMinor, currency: "XTS",
+    }));
+    const result = await readAccountingPaymentProviderEvidence(claim, { [claim.payment.provider]: { readPayment } });
+    expect(result).toMatchObject({
+      providerStatus: expectedStatus,
+      providerAmountCents: null,
+      providerEvidence: { amountAvailable: false, configuredComparisonAmountCents: configuredAmountMinor },
+    });
+    expect(result.providerEvidence.unavailableReason).toBe(expectedReason);
   });
 
   it("keeps incomplete succeeded readback explicit instead of inventing agreement", async () => {

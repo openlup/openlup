@@ -1,3 +1,4 @@
+import { paidMajorToMinor } from "./tpayTransactionPayload.js";
 import type {
   PaymentMethodLifecycleEvent,
   PaymentMethodLifecycleEventKind,
@@ -131,7 +132,9 @@ function normalizeTransactionWebhook(payload: Record<string, string>): Normalize
   // (caught live 2026-07-13 via a production payment-link). Classify
   // case-insensitively; keep the raw value in raw_payload for observability.
   const status = rawStatus.toLowerCase();
-  const amountMinor = amountToMinor(payload.tr_paid || payload.tr_amount);
+  const amountMinor = status === "true"
+    ? paidMajorToMinor(payload.tr_paid) ?? undefined
+    : amountToMinor(payload.tr_paid || payload.tr_amount);
   const paymentIntentId = parseUuid(payload.tr_crc);
   return {
     event: {

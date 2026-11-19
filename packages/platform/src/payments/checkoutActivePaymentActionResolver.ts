@@ -1,6 +1,6 @@
 import type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutActionReadProvider, PaymentRecoveryAction } from "./contracts/repair.js";
 import type { PaymentVerifyReadPort, VerifiableAttemptSnapshot } from "./contracts/reconciliation.js";
-import { toClaimedAttemptShape } from "./paymentVerifyNowService.js";
+import { sameCanonicalAttempt, toClaimedAttemptShape } from "./paymentVerifyNowService.js";
 
 const LIVE_INTENT_STATUSES = new Set(["requires_action", "processing"]);
 const LIVE_ATTEMPT_STATUSES = new Set(["sent_to_provider", "requires_action", "processing"]);
@@ -63,6 +63,7 @@ function matchesAuthority(
 
 function isLive(snapshot: VerifiableAttemptSnapshot | null): snapshot is VerifiableAttemptSnapshot {
   return Boolean(snapshot)
+    && !snapshot?.captureReviewRequired
     && LIVE_INTENT_STATUSES.has(snapshot?.intentStatus ?? "")
     && LIVE_ATTEMPT_STATUSES.has(snapshot?.attemptStatus ?? "");
 }
@@ -73,25 +74,4 @@ function actionMatchesRail(
   railHandoffKinds: (rail: string) => readonly ("redirect" | "client-confirmed")[],
 ): boolean {
   return action.provider === rail && railHandoffKinds(rail).includes(action.kind);
-}
-
-function sameCanonicalAttempt(
-  before: VerifiableAttemptSnapshot,
-  after: VerifiableAttemptSnapshot | null,
-): after is VerifiableAttemptSnapshot {
-  return Boolean(after)
-    && after?.orderId === before.orderId
-    && after.orderClientId === before.orderClientId
-    && after.paymentIntentId === before.paymentIntentId
-    && after.paymentAttemptId === before.paymentAttemptId
-    && after.paymentId === before.paymentId
-    && after.provider === before.provider
-    && after.providerAttemptId === before.providerAttemptId
-    && after.providerSessionId === before.providerSessionId
-    && after.intentProviderPaymentId === before.intentProviderPaymentId
-    && after.intentStatus === before.intentStatus
-    && after.attemptStatus === before.attemptStatus
-    && after.amountMinor === before.amountMinor
-    && after.currency.toUpperCase() === before.currency.toUpperCase()
-    && after.localUpdatedAt === before.localUpdatedAt;
 }

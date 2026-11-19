@@ -78,6 +78,31 @@ Keep only explicitly redacted diagnostics. See the
 [execution contract](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/src/payments/contracts/adapter.ts)
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.
 
+For a new settlement, the native PostgreSQL payment owner requires durable
+evidence of the captured amount and currency for the active attempt. Custom provider
+adapters set `capturedAmountBasis: "provider_capture_v1"` on verified success
+webhooks and authenticated readbacks only when the amount comes from the
+provider's collected-money field. Keep this attestation outside the webhook
+fingerprint and deploy the updated adapter with the migration. Completed
+receipts retain their replay response. A verified delivery whose normalized
+money changed can acknowledge the original completed webhook receipt when its
+historical fingerprint matches. This lookup leaves payment and fulfillment state
+untouched. Hosts with an operational event recorder receive a diagnostic for
+review. Reconcile pending historical events through an authenticated readback
+before applying a new settlement.
+
+When the order is cancelled or expired, the same owner retains a verified late
+capture for manual review. Authorized verification and recovery report
+`manual_review`, and the reconciliation worker stops claiming the attempt
+once the decision is recorded.
+The review leaves the order closed and prevents payment-success hooks from
+running. Read the attempt through the native PostgreSQL rail to inspect its
+`captureReviewRequired` flag.
+
+Invoice comparison distinguishes an observed zero from a missing captured
+amount. A configured amount can identify a mismatch when a capture readback is
+missing. An equal configured amount leaves the capture readback unavailable.
+
 0.42.0 added `createPostgresProviderPaymentRail` in
 `@openlup/platform/payments` and `createPostgresProviderRenewalBinding` in
 `@openlup/platform/subscriptions`. With the complete native catalogue, an

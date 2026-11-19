@@ -593,6 +593,7 @@ describe("stripe sandbox payment execution adapter", () => {
       data: {
         object: {
           id: "pi_123",
+          amount: 5990,
           amount_received: 4990,
           currency: "eur",
           status: "succeeded",

@@ -1,3 +1,4 @@
+import { capturedAmountMinor } from "./intentMapper.js";
 import { stripeWebhookPayload } from "./stripeFailureEvidence.js";
 import { stripeRefundEvidence } from "./stripeRefundEvidence.js";
 import { expiryInstantFromMonthYear, type PaymentMethodLifecycleEvent, type PaymentMethodLifecycleEventKind, type PaymentMethodReplacementFacts } from "@openlup/core/payment";
@@ -57,18 +58,11 @@ export function normalizeStripeWebhookEvent(
 
   const canonicalEventType = mapStripeEventType(eventType, object);
   const providerPaymentId = resolveLinkagePaymentId(eventType, object);
-  // Payment-control compares this against the intent's `amount_cents` (the order
-  // total) as a tamper guard, so we want the PaymentIntent's authorized `amount`,
-  // not `amount_received`. On a declined/canceled PI Stripe reports
-  // `amount_received: 0` while `amount` still holds the full total — and `??`
-  // does NOT treat `0` as nullish, so reading `amount_received` first yielded a
-  // `0` that tripped the amount-mismatch guard and left every failed event
-  // unreconciled (intent stuck `processing`, inventory holds leaked). Prefer
-  // `amount`; fall back to `amount_received` only when `amount` is absent.
-  const amountMinor =
-    readOptionalNumber(object, "amount") ??
-    readOptionalNumber(object, "amount_received") ??
-    null;
+  // A success can follow partial capture. The requested amount still describes
+  // refusals and other events that keep their existing evidence semantics.
+  const amountMinor = canonicalEventType === "payment.succeeded"
+    ? capturedAmountMinor(object.amount_received)
+    : readOptionalNumber(object, "amount") ?? readOptionalNumber(object, "amount_received") ?? null;
   const currency = readOptionalString(object, "currency")?.toUpperCase() ?? null;
   const occurredAt = readOccurredAt(rawPayload);
   const reusableMethod = extractReusableMethod(canonicalEventType, object);

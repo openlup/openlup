@@ -13,12 +13,13 @@ function fixture(event: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAnd
   const verify = vi.fn(async (_input: typeof input) => { trace.push("verify"); return event; });
   const ingest = vi.fn(async (_event: Parameters<Parameters<typeof createVerifiedPaymentIngress>[0]["paymentControlPort"]["ingestPaymentEvent"]>[0]) => { trace.push("ingest"); return { paymentEventId: "event-local",
     paymentIntentId: "intent-original", paymentAttemptId: "attempt-original" as string | null, replayed: false, occurredAt: AT }; });
-  const apply = vi.fn(async (_value: unknown) => { trace.push("apply"); return { replayed: false }; });
+  const apply = vi.fn(async (_value: unknown): Promise<{ replayed: boolean; kind?: string }> => { trace.push("apply"); return { replayed: false }; });
   const hook = vi.fn(async (_value: unknown) => { trace.push("hook"); });
+  const upsertFromWebhook = vi.fn(async () => ({ replayed: false }));
   const close = vi.fn(async (_value: unknown) => { trace.push("close"); return { updated: true }; });
   const ingress = createVerifiedPaymentIngress({ provider: "provider-a", verifyPort: { verifyAndNormalize: verify },
-    paymentControlPort: { ingestPaymentEvent: ingest, applyPaymentResult: apply, markSetupEventProcessed: close }, afterProcessed: hook });
-  return { trace, verify, ingest, apply, hook, close, receive: ingress.receive };
+    paymentControlPort: { ingestPaymentEvent: ingest, applyPaymentResult: apply, markSetupEventProcessed: close }, methodRefPort: { upsertFromWebhook }, afterProcessed: hook });
+  return { trace, verify, ingest, apply, hook, close, upsertFromWebhook, receive: ingress.receive };
 }
 
 describe("verified ingress public witnesses", () => {
@@ -36,6 +37,21 @@ describe("verified ingress public witnesses", () => {
       expect((await refusal.receive(input)).status).toBe(reason === "unsupported-event" ? 200 : 400);
       expect(refusal.ingest).not.toHaveBeenCalled();
     }
+  });
+  it.each([
+    ["succeeded", "ignored_success_requiring_review", "result_manual_review"],
+    ["failed", "ignored_failure_protected_state", "result_protected_state"],
+  ] as const)("acknowledges protected %s without running callbacks on delivery or replay", async (outcome, kind, skipped) => {
+    const f = fixture({ ...evidence, outcome });
+    f.apply.mockResolvedValueOnce({ replayed: false, kind }).mockResolvedValueOnce({ replayed: true, kind });
+    for (const replayed of [false, true]) {
+      expect(await f.receive(input)).toMatchObject({ status: 200, data: {
+        paymentEventId: "event-local", acknowledged: true, skipped, replayed,
+      } });
+    }
+    expect(f.ingest).toHaveBeenCalledTimes(2);
+    expect(f.hook).not.toHaveBeenCalled();
+    expect(f.upsertFromWebhook).not.toHaveBeenCalled();
   });
   it("withholds acknowledgement and hooks while ingest is unresolved and reports its failure", async () => {
     const f = fixture(); let release!: () => void, entered!: () => void;

@@ -14,7 +14,7 @@ describe("subscription reference API", () => {
       items: [{ sku: "NORTHSTAR-REFILL-001", title: "Refill", unitPrice: { amountMinor: 1490, currency: "USD" }, permittedPurchaseModes: ["subscription"] }],
     };
     const checkout = { version: "commerce.reference_checkout.v1", orderId: crypto.randomUUID(), clientId: crypto.randomUUID(), paymentIntentId: crypto.randomUUID(), paymentAttemptId: crypto.randomUUID(), paymentStatus: "succeeded", paymentAttemptStatus: "succeeded", replayed: false, total: { amountMinor: 1490, currency: "USD" } };
-    const fetcher = vi.fn().mockResolvedValueOnce(response(catalog)).mockResolvedValueOnce(response(checkout));
+    const fetcher = vi.fn().mockResolvedValueOnce(response(catalog)).mockImplementation(async () => response(checkout));
     vi.stubGlobal("fetch", fetcher);
     expect((await loadReferenceItems()).items[0]?.sku).toBe("NORTHSTAR-REFILL-001");
     const request = { command: {
@@ -30,6 +30,10 @@ describe("subscription reference API", () => {
     expect(fetcher.mock.calls.map(([path]) => path)).toEqual(["/api/bff/catalog/items", "/api/bff/commerce/checkouts"]);
     expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual(request);
     expect(fetcher.mock.calls[1]?.[1]?.headers.get("content-type")).toBe("application/json");
+    expect(fetcher.mock.calls[1]?.[1]?.headers.has("authorization")).toBe(false);
+    await createReferenceSubscription(request, "synthetic-session");
+    expect(fetcher.mock.calls[2]?.[1]?.headers.get("authorization")).toBe("Bearer synthetic-session");
+    expect(JSON.parse(String(fetcher.mock.calls[2]?.[1]?.body))).toEqual(request);
   });
 
 });

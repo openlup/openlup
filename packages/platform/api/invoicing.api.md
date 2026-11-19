@@ -1778,6 +1778,8 @@ type PaymentEvidence = {
 export declare function readInvoicePaymentEvidence(payment: {
     provider: string;
     providerPaymentId: string | null;
+    /** Canonical claim amount for comparison when the captured amount is unavailable. */
+    amountCents?: number;
 }, provider: {
     readPayment(input: {
         providerPaymentId: string;
@@ -1786,6 +1788,7 @@ export declare function readInvoicePaymentEvidence(payment: {
         providerStatus: string;
         amountMinor: number | null;
         currency: string | null;
+        configuredAmountMinor?: number;
     }>;
 } | undefined): Promise<PaymentEvidence>;
 export {};

@@ -41,6 +41,8 @@ export function projectVerifiedEvidence(
         providerPaymentId: evidence.providerPaymentRef, paymentAttemptId: evidence.attemptRef,
         amountMinor: evidence.money?.amountMinor ?? null, currency: evidence.money?.currency ?? null,
         refundKind,
+        ...(evidence.outcome === "succeeded" && evidence.capturedAmountBasis === "provider_capture_v1"
+          ? { capturedAmountBasis: evidence.capturedAmountBasis } : {}),
         ...(evidence.reusableMethod && methodOwner ? { reusableMethod: { ...evidence.reusableMethod, ...methodOwner } } : {}),
       };
     }
