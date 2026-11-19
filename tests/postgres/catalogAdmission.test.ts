@@ -3199,6 +3199,15 @@ it.for(["exact frozen phase", "different attachment marker"] as const)(
     const key = randomUUID(), evidence = await port.captureCatalogAdmission(quote,f.admission.heads);
     const phaseProof = { schemaVersion: 2,lines: [next.reference] };
     expect(evidence).toMatchObject({ phaseReference: { schemaVersion: 1,phase: "graduation",proof: phaseProof } });
+    if (scenario === "exact frozen phase") {
+      const missing = { ...evidence };
+      Reflect.deleteProperty(missing,"phaseReference");
+      const before = await snapshot();
+      await expect(createPostgresNativeCheckoutPersistence(runtime).createOrderDraft(
+        { idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: missing },
+      )).rejects.toMatchObject({ code: "22023",message: "catalog_graduation_reference_invalid" });
+      expect(await snapshot()).toEqual(before);
+    }
     const { orderDraft } = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence });
     const order = orderDraft.orderId.replace(/^order_/u,""), intent = await rpc(pool,"commerce_open_settlement_intent",[`open:${key}`,order,"sandbox",1234,"XXX",{},f.at]);
     await rpc(pool,"subscription_declare_provisional_activation",[`declare:${key}`,order,28,f.at]);
@@ -3219,9 +3228,13 @@ it.for(["exact frozen phase", "different attachment marker"] as const)(
       return;
     }
     expect(await writer.complete(order)).toMatchObject({ subscriptionId: id,replayed: false });
-    const publisher = await pool.connect(), revision = await changedDocument(next);
+    const publisher = await pool.connect(), revisedValue = structuredClone(next.value);
+    const membership = { skuCode: next.code,offerVersion: "example:later",admitted: false };
+    revisedValue.product.sharedContent = { ...revisedValue.product.sharedContent,catalogAction: "revise",offerMemberships: [membership] };
+    revisedValue.publication.operations = [{ op: "set_offer_membership",...membership }];
     let newHead: CatalogHeadRef;
     try {
+      const revision = await candidate(publisher,revisedValue,next.draft,1,next.head);
       const result = await publishOn(publisher,revision.publication);
       if (result.outcome !== "committed") throw new Error(JSON.stringify(result));
       newHead = result.receipt.head;
@@ -3232,7 +3245,7 @@ it.for(["exact frozen phase", "different attachment marker"] as const)(
     const rebuilt = { ...next.reference,skuRevisionId: liveRevision,publicationHead: newHead };
     await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
     await pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) SELECT id,started_at+interval '1 day','paid' FROM public.subscriptions WHERE id=$1", [id]);
-    const dueAt = (await pool.query(`UPDATE public.subscriptions SET next_cycle_at=date_trunc('second',clock_timestamp())-interval '1 second' WHERE id=$1
+    const dueAt = (await pool.query(`UPDATE public.subscriptions SET next_cycle_at=started_at+interval '2 days' WHERE id=$1
       RETURNING to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`, [id])).rows[0].at;
     await pool.query("UPDATE public.subscription_renewal_terms SET next_cycle_number=2 WHERE subscription_id=$1", [id]);
     const binding = { subscriptionId: id,offerVersion: "sized.v1",lane: "sized",scopeSkuIds: [next.sku],

@@ -774,10 +774,9 @@ BEGIN
  END IF;
  PERFORM public.catalog_admission_assert_current(p_evidence->'heads',p_evidence->'skuRevisions',p_mode,
   offer||jsonb_build_object('clearSelection',scope='[]'::jsonb),p_evidence->'priceContextVersions',p_purpose);
- IF p_purpose='order' AND p_evidence ? 'phaseReference' AND (
-   jsonb_typeof(p_evidence->'phaseReference') IS DISTINCT FROM 'object'
-   OR p_evidence->'phaseReference' IS DISTINCT FROM public.catalog_admission_capture_graduation(p_binding->'quoteSnapshot')
- ) THEN RAISE EXCEPTION 'catalog_graduation_reference_invalid' USING ERRCODE='22023'; END IF;
+ IF p_purpose='order' AND p_evidence->'phaseReference'
+   IS DISTINCT FROM public.catalog_admission_capture_graduation(p_binding->'quoteSnapshot')
+ THEN RAISE EXCEPTION 'catalog_graduation_reference_invalid' USING ERRCODE='22023'; END IF;
  binding_refusal:=CASE WHEN p_purpose='order' THEN 'commerce_order_draft_offer_membership_refused' ELSE 'customer_self_service_invalid_offer_membership' END;
  SELECT coalesce(jsonb_agg(jsonb_build_object('skuId',(l#>>'{reference,skuId}')::uuid,'quantity',l->'quantity') ORDER BY (l#>>'{reference,skuId}')::uuid),'[]')
   INTO selected FROM jsonb_array_elements(p_evidence->'skuRevisions') l;
