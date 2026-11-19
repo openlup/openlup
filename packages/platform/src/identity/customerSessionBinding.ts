@@ -1,4 +1,3 @@
-import type { Pool } from "pg";
 import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
 import { createHash, randomBytes } from "node:crypto";
 import { createCustomerSessionIssuer } from "./customerSessionIssuer.js";
@@ -15,6 +14,7 @@ import type { PostgresDataGatewayOptions } from "../data/index.js";
 import { resolveBundleId } from "../kernel/index.js";
 
 type Env = Record<string, string | undefined>;
+type BorrowedPostgresPool = NonNullable<PostgresDataGatewayOptions["pool"]>;
 
 const defaultChallengeStores = new Map<string, PostgresCustomerChallengeStore>();
 
@@ -59,7 +59,7 @@ export type PostgresCustomerSessionBindingOptions = {
   now?: () => Date;
 } & (
   | { store: CustomerChallengeStore; pool?: undefined; connectionString?: undefined; poolFactory?: undefined }
-  | { pool: Pool; store?: undefined; connectionString?: undefined; poolFactory?: undefined }
+  | { pool: BorrowedPostgresPool; store?: undefined; connectionString?: undefined; poolFactory?: undefined }
   | { connectionString: string; poolFactory?: PostgresDataGatewayOptions["poolFactory"]; store?: undefined; pool?: undefined }
 );
 
@@ -120,8 +120,8 @@ export function createPostgresCustomerSessionBinding(
 
   if ("pool" in options && options.pool) {
     const borrowedPool = options.pool;
-    // Borrowed pool: keep a single store instance and never invoke store.close() / pool.end().
-    const store = createPostgresCustomerChallengeStore({ connectionString: "" }, { poolFactory: () => borrowedPool });
+    // Borrowed pool: keep a single store instance and never invoke pool.end().
+    const store = createPostgresCustomerChallengeStore({ connectionString: "" }, { pool: borrowedPool });
     return buildCustomerSessionBinding({
       getStore: () => store,
       closeStore: async () => {},
@@ -155,7 +155,7 @@ export function resolveCustomerSessionBinding(
   env: Env,
   options: {
     store?: CustomerChallengeStore;
-    pool?: Pool;
+    pool?: BorrowedPostgresPool;
     createStore?: (connectionString: string) => CustomerChallengeStore & { close(): Promise<void> };
     delivery?: CustomerChallengeDeliveryPort;
     issuer?: CustomerSessionIssuerPort;

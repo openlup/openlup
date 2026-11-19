@@ -231,7 +231,6 @@ export function createEnvAdvisoryLock(
     if (closed) return Promise.reject(new Error("advisory_lock_closed"));
     if (!pending) {
       let resolvedClient: AdvisoryLockQuerier | null = null;
-      let attempt!: Promise<AdvisoryLockQuerier>;
       const retireIfIdle = () => {
         if (resolvedClient && pending === attempt && state.reservedCount() === 0) {
           const client = resolvedClient;
@@ -243,7 +242,7 @@ export function createEnvAdvisoryLock(
       const connecting = connect === connectDedicatedClient
         ? connectDedicatedClient(connectionString, options.onClientError, retireIfIdle)
         : connect(connectionString).then((client) => attachAdvisoryClientErrorListener(client, options.onClientError, retireIfIdle));
-      attempt = connecting.then((client) => {
+      const attempt = connecting.then((client) => {
         resolvedClient = client;
         const emitter = client as { on?: (event: string, listener: (...args: unknown[]) => void) => unknown };
         if (typeof emitter.on === "function") {

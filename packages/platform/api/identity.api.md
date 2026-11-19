@@ -1462,11 +1462,11 @@ export declare function createCustomerPreferencePrivacyContributor(): PersonalDa
 ## dist/identity/customerSessionBinding.d.ts
 
 ```ts
-import type { Pool } from "pg";
 import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
 import type { CustomerChallengeDeliveryPort, CustomerChallengeStore, CustomerSessionIssuerPort } from "./ports.js";
 import type { PostgresDataGatewayOptions } from "../data/index.js";
 type Env = Record<string, string | undefined>;
+type BorrowedPostgresPool = NonNullable<PostgresDataGatewayOptions["pool"]>;
 export type CapturedCustomerChallenge = {
     readonly email: string;
     readonly token: string;
@@ -1499,7 +1499,7 @@ export type PostgresCustomerSessionBindingOptions = {
     connectionString?: undefined;
     poolFactory?: undefined;
 } | {
-    pool: Pool;
+    pool: BorrowedPostgresPool;
     store?: undefined;
     connectionString?: undefined;
     poolFactory?: undefined;
@@ -1515,7 +1515,7 @@ export declare function createPostgresCustomerSessionBinding(options: PostgresCu
 };
 export declare function resolveCustomerSessionBinding(env: Env, options?: {
     store?: CustomerChallengeStore;
-    pool?: Pool;
+    pool?: BorrowedPostgresPool;
     createStore?: (connectionString: string) => CustomerChallengeStore & {
         close(): Promise<void>;
     };
