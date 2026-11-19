@@ -31,12 +31,17 @@ interface Fixture {
   cataloguePublication: true;
 }
 
-function transactions(pool: pg.Pool): CatalogPublicationTransactions {
+function transactions(pool: pg.Pool, verifiedPrincipal?: () => string | null): CatalogPublicationTransactions {
   return {
     async run(work) {
       const db = await pool.connect();
       try {
         await db.query('BEGIN');
+        const principal = verifiedPrincipal?.();
+        if (principal) {
+          const claims = pg.escapeLiteral(JSON.stringify({ sub: principal, role: 'authenticated' }));
+          await db.query(`SET LOCAL request.jwt.claims TO ${claims}`);
+        }
         const value = await work(db);
         await db.query('COMMIT');
         return value;
@@ -70,7 +75,8 @@ test('installed catalogue publication, purchase, renewal and successor consent',
     if (!pack || !scope) throw new Error('starter_catalogue_registration_invalid');
     const definition = types.resolve(expected.type);
     if (!definition) throw new Error('starter_catalogue_g1_type_required');
-    const binding = await bindRegisteredCatalogue(registration, transactions(owner));
+    let verifiedOperator: string | null = null;
+    const binding = await bindRegisteredCatalogue(registration, transactions(owner, () => verifiedOperator));
     const profiles = createCatalogSubscriptionProfileBinding({
       profiles: pack.subscriptionProfileDefinitions ?? [], policies: binding.profilePolicies ?? [],
     });
@@ -118,7 +124,6 @@ test('installed catalogue publication, purchase, renewal and successor consent',
       expect(await catalogueCounts()).toEqual(emptyCatalogue);
     });
 
-    let verifiedOperator: string | null = null;
     const authorizeHuman = async (principal: string | null) => {
       const membership = principal && principal === verifiedOperator ? await operators.findMembership(principal) : null;
       return membership?.role === 'admin' && membership.membershipState === 'active'
@@ -199,7 +204,7 @@ test('installed catalogue publication, purchase, renewal and successor consent',
       },
     });
     async function preparePublication(draftId: string, payload: CatalogDraftPayloadV4 | CatalogDraftPayloadV5,
-      draftRevision: number, expectedHead: CatalogHeadRef | null, variantRevision: number, state: 'active' | 'withdrawn') {
+      draftRevision: number, expectedHead: CatalogHeadRef | null, variantRevision: number, state: 'active' | 'withdrawn' | null) {
       const saved = await draftHandler.execute({ schemaVersion: payload.schemaVersion, draftId,
         action: draftRevision === 0 ? 'create' : 'revise', commandKey: randomUUID(), expectedRevision: draftRevision, payload }, verifiedOperator);
       expect(saved).toMatchObject({ outcome: 'committed', record: { revision: draftRevision + 1 } });
@@ -208,7 +213,7 @@ test('installed catalogue publication, purchase, renewal and successor consent',
       const actor = await publisher.authorize(verifiedOperator);
       if (!actor) throw new Error('starter_catalogue_g1_verified_operator_required');
       const command = { productId, commandKey: randomUUID(), candidateRef, candidateDigest, expectedHead,
-        changes: [{ variantId: payload.skus[0]!.id, expectedRevision: variantRevision, state }] };
+        changes: state === null ? [] : [{ variantId: payload.skus[0]!.id, expectedRevision: variantRevision, state }] };
       expect(await publisher.decision({ schemaVersion: 2, action: 'approve', productId, commandKey: randomUUID(),
         candidateRef, candidateDigest, reason: 'Approve the exact sandbox fixture' }, actor)).toMatchObject({ outcome: 'committed' });
       return { command, actor };
@@ -222,7 +227,8 @@ test('installed catalogue publication, purchase, renewal and successor consent',
         expect(await publisher.publish(command, {} as typeof actor)).toEqual({ outcome: 'unauthorized', reason: 'publisher_not_authorized' });
         expect(await catalogueCounts()).toEqual(before);
         const result = await publisher.publish(command, actor);
-        expect(result).toMatchObject({ outcome: 'committed' });
+        if ('reason' in result) expect(await catalogueCounts()).toEqual(before);
+        expect(result.outcome, 'reason' in result ? result.reason : draft.skuCode).toBe('committed');
         if (!('receipt' in result)) throw new Error('starter_catalogue_g1_publication_required');
         expect(await publisher.publish(command, actor)).toEqual({ outcome: 'replayed', receipt: result.receipt });
         expect(await publisher.receipt({ productId: command.productId, commandKey: command.commandKey }, actor))
@@ -403,7 +409,7 @@ test('installed catalogue publication, purchase, renewal and successor consent',
         op: 'set_product_lifecycle' as const, productSlug: withdrawal.product.slug!, expectedState: 'withdrawn' as const,
         state: 'archived' as const, children: [{ skuCode: expected.capsules.sku, expectedState: 'withdrawn' as const }],
       }] } };
-      const archiveAttempt = await preparePublication(capsule.draftId, archive, 3, result.receipt.head, 2, 'withdrawn');
+      const archiveAttempt = await preparePublication(capsule.draftId, archive, 3, result.receipt.head, 2, null);
       expect(await publisher.publish(archiveAttempt.command, archiveAttempt.actor)).toMatchObject({
         reason: 'catalog_archive_refuses_outstanding_obligations',
       });
