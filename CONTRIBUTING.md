@@ -166,6 +166,13 @@ Start from the question you need to answer during implementation:
 - **See what each CI or local diagnostic proves:** use the [diagnostic table](docs/platform/DEVELOPMENT_AND_RELEASE.md#what-each-diagnostic-proves).
 - **Follow the worktree, preflight, review and queue sequence:** use [Deliver a change](#deliver-a-change).
 
+| Change | Contributor files |
+| --- | --- |
+| Edit existing behavior | Edit the owning source and its nearest behavior tests. Update reader guidance if the public contract changes. |
+| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern. |
+| Change an exported contract or add a migration | Follow the owning [package checks](#package-policy-and-release-checks) or [migration workflow](docs/platform/DATA_AND_MIGRATIONS.md) to regenerate affected files. |
+| Prepare a release or change repository controls | See [release and repository controls](docs/platform/DEVELOPMENT_AND_RELEASE.md). These are maintainer tasks. |
+
 Release tooling shares one coherent-set version rule: `0.N.P` with N at least
 1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1, without leading zeros or a
 prerelease. Patch sets compare API snapshots with the latest earlier patch in

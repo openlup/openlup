@@ -1,4 +1,5 @@
-import { Pool, type PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { attachPgErrorListener } from "./pgErrorListener.js";
 
 import { ACQUISITION_NEWSLETTER_VERSION, ACQUISITION_SURVEY_VERSION, acquisitionNewsletterConsentResponseSchema, acquisitionSurveyListResponseSchema, acquisitionSurveySubmitResponseSchema } from "../../acquisitionEvidenceSchemas.js";
 import type {
@@ -13,15 +14,38 @@ const LIST = "SELECT public.acquisition_survey_operator_list_v1($1::uuid,$2::tex
 const CONSENT = "SELECT public.acquisition_newsletter_consent_v1($1::text,$2::text,$3::text,$4::text,$5::text,$6::boolean,$7::timestamptz,$8::timestamptz) AS response";
 
 type Env = { connectionString: string };
-type Options = { poolFactory?: (env: Env) => Pool | Promise<Pool> };
+type Options = {
+  pool?: Pool;
+  poolFactory?: (env: Env) => Pool | Promise<Pool>;
+  /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+  onPoolError?: (error: Error) => void;
+};
 type Row = Record<string, unknown>;
 
 export function createPostgresAcquisitionEvidencePort(env: Env, options: Options = {}): AcquisitionEvidencePort {
-  if (!env.connectionString.trim()) throw new Error("acquisition_evidence_database_url_required");
-  let poolPromise: Promise<Pool> | null = null;
-  const pool = () => poolPromise ??= Promise.resolve(
-    options.poolFactory ? options.poolFactory(env) : new Pool({ connectionString: env.connectionString }),
-  );
+  if (options.pool && options.poolFactory) {
+    throw new Error("postgres_pool_and_factory_mutually_exclusive");
+  }
+  if (!options.pool && !env.connectionString.trim()) {
+    throw new Error("acquisition_evidence_database_url_required");
+  }
+  const borrowedPool = options.pool ?? null;
+  let ownedPoolPromise: Promise<Pool> | null = null;
+  const pool = async (): Promise<Pool> => {
+    if (borrowedPool) return borrowedPool;
+    if (!ownedPoolPromise) {
+      ownedPoolPromise = Promise.resolve()
+        .then(() => (options.poolFactory ? options.poolFactory(env) : defaultPoolFactory(env)))
+        .then(
+          (resolved) => attachPgErrorListener(resolved, "acquisition-evidence", options.onPoolError),
+          (error) => {
+            ownedPoolPromise = null;
+            throw error;
+          },
+        );
+    }
+    return ownedPoolPromise;
+  };
   const call = async (sql: string, values: unknown[]): Promise<Row | null> => withRole(
     await pool(),
     async (client) => object(object((await client.query(sql, values)).rows[0])?.response),
@@ -71,7 +95,11 @@ export function createPostgresAcquisitionEvidencePort(env: Env, options: Options
         return parsed.success ? { ok: true, value: parsed.data } : fail("unavailable");
       } catch (error) { return databaseFailure(error); }
     },
-    async close() { if (poolPromise) await (await poolPromise).end(); },
+    async close() {
+      const pending = ownedPoolPromise;
+      ownedPoolPromise = null;
+      if (pending) await pending.then((resolved) => resolved.end(), () => undefined);
+    },
   };
 }
 
@@ -92,7 +120,23 @@ function outcomeFailure(outcome: unknown): AcquisitionEvidenceFailure | null {
   return "unavailable";
 }
 function databaseFailure<T>(error: unknown): AcquisitionEvidenceResult<T> {
+  if (error instanceof Error && error.message.startsWith("OPENLUP_E_PEER_MISSING:")) throw error;
   return fail(object(error)?.code === "22023" ? "invalid" : "unavailable");
+}
+
+async function defaultPoolFactory(env: Env): Promise<Pool> {
+  const pg = await import("pg").catch(peerMissing);
+  const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
+  return new PoolCtor({ connectionString: env.connectionString });
+}
+
+function peerMissing(cause: unknown): never {
+  if (cause instanceof Error && "code" in cause
+    && (cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND")
+    && /^Cannot find (?:package|module) ['"]pg['"]/.test(cause.message)) {
+    throw new Error("OPENLUP_E_PEER_MISSING: pg is required by the Postgres acquisition evidence port; install it alongside @openlup/platform", { cause });
+  }
+  throw cause;
 }
 function fail<T>(kind: AcquisitionEvidenceFailure): AcquisitionEvidenceResult<T> {
   return { ok: false, error: { kind } };

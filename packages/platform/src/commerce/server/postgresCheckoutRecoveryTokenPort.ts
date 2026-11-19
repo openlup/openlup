@@ -31,7 +31,8 @@ export function createPostgresCheckoutRecoveryTokenPort(
   async function run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T> {
     try {
       return await executor.run(async gateway => {
-        const db = gateway as PgQueryExecutor;
+        if (!isPgQueryExecutor(gateway)) throw new Error("checkout_recovery_executor_invalid");
+        const db = gateway;
         await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
         const privilege = (await db.query(
           "SELECT pg_catalog.pg_has_role(current_user, 'service_role', 'USAGE') AS allowed",
@@ -121,6 +122,15 @@ const errors = new Set([
   "checkout_recovery_service_required", "checkout_recovery_order_not_recoverable",
   "checkout_recovery_hash_conflict", "checkout_recovery_response_invalid",
 ]);
+
+function isPgQueryExecutor(value: unknown): value is PgQueryExecutor {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && "query" in value
+    && typeof (value as { query?: unknown }).query === "function",
+  );
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("checkout_recovery_response_invalid");

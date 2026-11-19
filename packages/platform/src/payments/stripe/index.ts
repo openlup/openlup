@@ -9,7 +9,7 @@ import type {
 import { createStripeSandboxPaymentExecutionAdapter, type StripeSandboxClient } from "./stripeSandboxPaymentExecutionAdapter.js";
 import { createStripePaymentReconciliationProvider, type StripePaymentIntentReader } from "./stripePaymentReconciliationProvider.js";
 import { normalizeStripeWebhookEvent } from "./stripeWebhookNormalizer.js";
-import { verifyStripeSignature } from "./webhookSignature.js";
+import { parseStripeSignatureHeader, verifyStripeSignature } from "./webhookSignature.js";
 import { declineCodeHints } from "./declineFailureHints.js";
 import type { PaymentExecutionResult } from "./donorContracts.js";
 
@@ -136,15 +136,14 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
       async verifyAndNormalize(input) {
         const header = Object.entries(input.headers).find(([key]) => key.toLowerCase() === "stripe-signature")?.[1];
         if (typeof header !== "string") return refusal("signature");
-        const parts = Object.fromEntries(header.split(",").map(part => part.split("=")).filter(([key, value]) => key && value));
-        const timestamp = Number(parts.t);
+        const parsed = parseStripeSignatureHeader(header);
         const current = now();
-        if (!parts.t || !parts.v1 || !Number.isFinite(timestamp) || !Number.isFinite(current)) return refusal("signature");
+        if (!parsed || !Number.isFinite(current)) return refusal("signature");
         // The preserved verifier supplies HMAC and comparison; this layer owns configurable freshness.
-        if (Math.abs(current - timestamp) > tolerance) return refusal("stale");
+        if (Math.abs(current - parsed.timestampSec) > tolerance) return refusal("stale");
         const rawBody = Buffer.from(input.rawBody).toString("utf8");
         if (!Buffer.from(rawBody).equals(Buffer.from(input.rawBody))) return refusal("malformed");
-        if (!verifyStripeSignature({ rawBody, signatureHeader: header, endpointSecret: secrets, now: () => timestamp })) return refusal("signature");
+        if (!verifyStripeSignature({ rawBody, signatureHeader: header, endpointSecret: secrets, now: () => parsed.timestampSec })) return refusal("signature");
         try {
           const raw: unknown = JSON.parse(rawBody);
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) return refusal("malformed");

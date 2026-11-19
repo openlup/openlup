@@ -162,9 +162,11 @@ it.each(["contact", "principal"] as const)("customer challenge operations refuse
     expect(statements.filter(sql => sql === "BEGIN")).toHaveLength(2);
     expect(statements.filter(sql => sql === "COMMIT")).toHaveLength(2);
     for (const transaction of statements.join(";").split("BEGIN;").slice(1)) {
-      const lockIndex = transaction.indexOf("LOCK TABLE public.customer_identity_challenges IN EXCLUSIVE MODE");
+      const lockIndex = transaction.indexOf("LOCK TABLE public.customer_identity_challenges IN ROW EXCLUSIVE MODE");
       expect(lockIndex).toBeGreaterThanOrEqual(0);
       expect(lockIndex).toBeLessThan(transaction.indexOf("JOIN public.identity_privacy_erasures"));
+      expect(transaction).not.toContain("LOCK TABLE public.customer_identity_challenges IN EXCLUSIVE MODE");
+      expect(transaction).not.toContain("LOCK TABLE public.customer_identity_challenges IN SHARE MODE");
     }
   } finally { await store.close(); }
 });

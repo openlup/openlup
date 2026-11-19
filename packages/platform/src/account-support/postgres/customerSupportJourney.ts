@@ -18,8 +18,12 @@ import {
 } from "../operatorAuthority.js";
 import { leadAbsorption } from "../operatorAuthority.js";
 import { CustomerSupportOperatorInactiveError } from "../operatorAuthority.js";
-import { createPostgresRoleFreeTransactionLane as createPostgresCustomerRecoveryTransactionLane, type PostgresDataGatewayEnv } from "../../data/index.js";
-import type { PgQueryExecutor } from "../../data/index.js";
+import {
+  createPostgresRoleFreeTransactionLane as createPostgresCustomerRecoveryTransactionLane,
+  type PgQueryExecutor,
+  type PostgresDataGatewayEnv,
+  type PostgresDataGatewayOptions,
+} from "../../data/index.js";
 
 const RECOVERY_TTL_MS = 24 * 60 * 60 * 1_000;
 const REFUSALS = new Set<CustomerRecoveryRefusalCode>(["subject_not_found", "case_not_found",
@@ -44,6 +48,10 @@ export interface PostgresCustomerSupportJourneyEnv extends PostgresDataGatewayEn
 }
 
 export interface PostgresCustomerSupportJourneyOptions {
+  /** Borrowed pg.Pool; caller retains lifecycle ownership (`close()` is a no-op). Mutually exclusive with `poolFactory`. */
+  pool?: PostgresDataGatewayOptions["pool"];
+  /** Injection seam for owned pg.Pool construction. Mutually exclusive with `pool`. */
+  poolFactory?: PostgresDataGatewayOptions["poolFactory"];
   createLane?: (env: PostgresDataGatewayEnv) => PostgresCustomerSupportJourneyLane;
   now?: () => number;
   createOpaqueToken?: () => string;
@@ -59,10 +67,17 @@ export interface PostgresCustomerSupportJourneyOptions {
 export function createPostgresCustomerSupportJourneyPort(env: PostgresCustomerSupportJourneyEnv, options: PostgresCustomerSupportJourneyOptions = {}): CloseableCustomerSupportJourneyPort {
   const connectionString = env.connectionString.trim();
   const operatorId = env.operatorId.trim();
-  if (!connectionString) throw new Error("customer_support_database_url_required");
+  if (options.pool && options.poolFactory) throw new Error("postgres_pool_and_factory_mutually_exclusive");
+  if (!options.pool && !connectionString) throw new Error("customer_support_database_url_required");
   if (!operatorId) throw new Error("customer_support_operator_required");
 
-  const lane = (options.createLane ?? ((value) => createPostgresCustomerRecoveryTransactionLane(value)))({ connectionString }) as PostgresCustomerSupportJourneyLane;
+  const lane: PostgresCustomerSupportJourneyLane = (
+    options.createLane
+    ?? ((value) => createPostgresCustomerRecoveryTransactionLane<PgQueryExecutor>(value, {
+      pool: options.pool,
+      poolFactory: options.poolFactory,
+    }))
+  )({ connectionString });
   const now = options.now ?? Date.now;
   const createOpaqueToken = options.createOpaqueToken ?? (() => randomBytes(32).toString("base64url"));
 

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import {
   createPostgresMigrationRunner,
@@ -444,5 +445,50 @@ describe("PostgreSQL migration runner", () => {
       .toEqual({ connectionString: "  postgres://localhost/reference  " });
     expect(resolvePostgresMigrationRunnerEnv({})).toEqual({ connectionString: "" });
     expect(resolvePostgresMigrationRunnerEnv({ DATABASE_URL: "" })).toEqual({ connectionString: "" });
+  });
+
+  it("attaches a single non-throwing idle pool error listener on migration pools", async () => {
+    const s = scenario({ rows: expectedRows() });
+    const emitterPool = Object.assign(new EventEmitter(), { connect: s.connect });
+    const seen: Error[] = [];
+    const runner = s.makeRunner({
+      poolFactory: () => emitterPool as unknown as import("pg").Pool,
+      onPoolError: (error) => {
+        seen.push(error);
+        throw new Error("sink boom");
+      },
+    });
+    await runner.status();
+    await runner.status();
+    expect(emitterPool.listenerCount("error")).toBe(1);
+    const idleError = new Error("idle disconnect");
+    expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+    expect(seen).toEqual([idleError]);
+  });
+
+  it("refuses mutually exclusive pool and poolFactory options and skips DATABASE_URL check when pool is borrowed", async () => {
+    const end = vi.fn(async () => {});
+    const pool = {
+      connect: vi.fn(async () => {
+        throw new Error("pool_connect_sentinel");
+      }),
+      end,
+    } as unknown as import("pg").Pool;
+    const source = {
+      readMigrations: () => ({ migrations: [], errors: ["catalog_probe_reached"] }),
+      readManifest: () => null,
+      evaluate: () => [],
+    };
+    expect(() => createPostgresMigrationRunner(
+      { connectionString: "" },
+      { lockName: "test", source, catalogProjectionPayload: async () => "{}", pool, poolFactory: () => pool },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+
+    const runner = createPostgresMigrationRunner(
+      { connectionString: "" },
+      { lockName: "test", source, catalogProjectionPayload: async () => "{}", pool },
+    );
+    await expect(runner.status()).rejects.toThrow("platform migration catalog rejected");
+    expect(end).not.toHaveBeenCalled();
   });
 });
