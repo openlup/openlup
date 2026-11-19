@@ -9642,6 +9642,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/apiContractScoping.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
