@@ -200,6 +200,7 @@ it.each([
   ["unknown route, missing effect", "blocked-input", "pending", "catalog_publication_identifier_effect_missing"],
   ["retained route collision", "blocked-input", "pending", "duplicate_route"],
   ["activation missing media", "staged", "unknown", "media_readiness_unknown"],
+  ["activation with retained assets", "staged", "blocked-input", "media_reference_missing"],
   ["mismatched media claim", "staged", "pending", "media_readiness_mismatch"],
   ["new SKU without membership", "staged", "pending", "offer_membership_missing"],
 ] as const)("preparation preserves independent evidence through each facade method: %s", async (mode, structural, activation, code) => {
@@ -211,18 +212,20 @@ it.each([
     if (presentation.op === "set_product_presentation") presentation.presentation = content.presentation;
     sku.assetRefs = ["actual"];
   }
+  if (mode === "activation with retained assets") sku.assetRefs = ["retained"];
   if (mode === "mismatched media claim")
     payload.publication.evidence.media = [{ skuCode: sku.code!, mediaRef: "example:media", assetRefs: ["different"], revisionDigest: "b".repeat(64) }];
   if (mode === "unknown route, missing effect")
     payload.publication.operations = payload.publication.operations.filter(op => op.op !== "create_identifier");
-  const prior = mode === "retained route collision" || mode === "activation missing media" ? compileCatalogPublication(fixture) : null;
+  const prior = mode === "retained route collision" || mode.startsWith("activation") ? compileCatalogPublication(fixture) : null;
   const head = prior ? { publicationId: listId, revision: 1, documentDigest: prior.product.document!.digest } : null;
   if (prior) {
     content.catalogAction = "revise";
     sku.logisticsRef = "example:logistics";
     payload.publication.operations = [{ op: "set_sku_metadata", skuCode: sku.code!, logisticsRef: sku.logisticsRef }];
   }
-  if (mode === "activation missing media") {
+  if (mode.startsWith("activation")) {
+    if (mode === "activation with retained assets") delete sku.assetRefs;
     sku.grossMass = sku.netContent;
     content.requestedModes[0].modes = ["one_time"];
     content.offerMemberships = [{ skuCode: sku.code!, offerVersion: "example:offer", admitted: true }];

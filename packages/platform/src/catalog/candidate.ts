@@ -113,6 +113,13 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
     const activating = new Set(payload.publication.operations.flatMap(op => op.op === "set_eligibility"
       && (op.sellableStandalone || op.sellableInSubscription) ? [op.skuCode] : []));
     const mediaIssues: CatalogDraftIssue[] = [];
+    const compiledSkus = new Map(compiled?.skus.map(sku => [sku.code, sku]));
+    const claims = new Map(payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
+    const mediaRef = presentation?.mediaRef;
+    function mediaIssue(code: string, assets: readonly string[], path: string) {
+      const media = catalogPublicationMediaIssue(mediaRef, compiledSkus.get(code)?.assetRefs ?? assets, claims.get(code));
+      return media ? { path: media === "media_reference_missing" ? "product.sharedContent.presentation.mediaRef" : `${path}.assetRefs`, code: media } : null;
+    }
     const pending = payload.skus.flatMap((sku, index) => {
       if (!sku.code) return [];
       const path = `skus.${index}`, issues: (CatalogDraftIssue & { channel?: "one_time" | "subscription" })[] = [];
@@ -126,15 +133,18 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): {
         issues.push({ path: "product.sharedContent.offerMemberships", code: "offer_membership_missing" });
       if (!modes) issues.push({ path: "product.sharedContent.requestedModes", code: "requested_modes_missing" });
       for (const channel of modes ?? []) issues.push({ path: `${path}.priceOperations`, code: "activation_not_assessed", channel });
-      const media = catalogPublicationMediaIssue(presentation?.mediaRef, sku.assetRefs ?? [],
-        payload.publication.evidence.media?.find(claim => claim.skuCode === sku.code));
-      if (media) {
-        const issue = { path: media === "media_reference_missing" ? "product.sharedContent.presentation.mediaRef" : `${path}.assetRefs`, code: media };
+      const issue = mediaIssue(sku.code, sku.assetRefs ?? [], path);
+      if (issue) {
         issues.push(issue);
         if (activating.has(sku.code)) mediaIssues.push(issue);
       }
       return issues;
     });
+    const authoredSkuCodes = new Set(payload.skus.map(sku => sku.code));
+    for (const code of activating) if (!authoredSkuCodes.has(code) && compiledSkus.has(code)) {
+      const issue = mediaIssue(code, [], "publication.operations");
+      if (issue) mediaIssues.push(issue);
+    }
     activation.issues = pending;
     if (activating.size > 0) {
       let verdict: Awaited<ReturnType<NonNullable<CatalogCandidateDeps["assessActivation"]>>> | undefined;
