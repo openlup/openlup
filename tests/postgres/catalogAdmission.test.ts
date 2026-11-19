@@ -7,7 +7,7 @@ import { canonicalCatalogDraftJson, type CatalogDraftPayloadV4, type CatalogPubl
   type CatalogAdmissionInput, type CatalogAcceptedReferenceV2 } from "@openlup/platform/catalog/contracts";
 import { createPostgresProviderPaymentControlPort, createPostgresPaymentWebhookControlPort } from "@openlup/platform/payments";
 import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore, createPostgresStockWaitStore } from "@openlup/platform/subscriptions";
-import { createPostgresAcquisitionCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
+import { createPostgresAcquisitionCheckoutPersistence, createPostgresNativeCheckoutPersistence } from "@openlup/platform/commerce/server/native-checkout";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
 import { canonicalCatalogPriceSetupCommand, createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
@@ -377,6 +377,46 @@ it.each(["one_time","subscription"] as const)("LC6-D-080 and LC6-D-153 checkout 
   try { expect((await publishOn(publisher,next.publication)).outcome).toBe("committed"); } finally { publisher.release(); }
   expect(await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client }))
     .toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
+});
+
+it.for(["one_time","subscription"] as const)("LC6-D-034/D-105/D-108 binds capture to the exact mixed checkout and checks every line in %s", async (mode,test) => {
+  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!installed) { test.skip("Membership page comes from the predecessor installation"); return; }
+  const governed = await fixture(packs[0]), legacy = await legacyFixture();
+  const sized = governedCheckoutQuote(governed,mode,"sized.v1",{ basis: "synthetic" });
+  const { catalogFacts: _facts,...unbound } = governedCheckoutQuote(legacy,mode).quote.lines[0];
+  const basket: import("@openlup/platform/pricing").CreateQuoteResponse["quote"]["lines"] = sized.quote.lines;
+  basket.push(unbound);
+  Object.assign(sized.quote,{ subtotalGross: money(2468),totalGross: money(2468),netTotal: money(2468) });
+  let allowLegacy = false, stockChecks = 0;
+  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never,
+    availability: { async getAvailability({ items }) {
+      stockChecks++;
+      expect(items.map(({ sku,checkoutMode,requestedQuantity }) => [sku,checkoutMode,requestedQuantity]))
+        .toEqual([[governed.code,mode,2],[legacy.code,mode,2]]);
+      return items.filter(item => allowLegacy || item.sku !== legacy.code).map(item => ({ sku: item.sku,productSlug: item.productSlug,
+        variantId: item.variantId,visibleInConfigurator: true,sellableNow: 2,status: "available",reasonCode: "synthetic",source: "fixture" }));
+    } } });
+  const classic = structuredClone(sized);
+  classic.quote.context.offerVersion = "classic";
+  const classicCapture = await port.captureCatalogAdmission(classic,governed.admission.heads);
+  const draft = (quoteSnapshot: typeof sized, catalogAdmission: object | null) => port.createOrderDraft({ idempotencyKey: randomUUID(),quoteSnapshot },
+    { clientId: governed.client,catalogAdmission });
+  const before = await snapshot();
+  await expect(draft(sized,classicCapture)).rejects.toThrow("catalog_admission_checkout_capture_mismatch");
+  await expect(port.captureCatalogAdmission(sized,governed.admission.heads)).rejects.toThrow("catalog_admission_sized_stock_unavailable");
+  allowLegacy = true;
+  const accepted = await port.captureCatalogAdmission(sized,governed.admission.heads);
+  const other = structuredClone(sized);
+  other.quote.context.mode = mode === "subscription" ? "one_time" : "subscription";
+  await expect(draft(other,accepted)).rejects.toThrow("catalog_admission_checkout_capture_mismatch");
+  const earlier = structuredClone(sized);
+  earlier.quote.lines[0].catalogFacts.atTime = new Date(Date.parse(governed.at)-1000).toISOString();
+  await expect(draft(earlier,accepted)).rejects.toThrow("catalog_admission_checkout_capture_mismatch");
+  expect(await snapshot()).toEqual(before);
+  expect(await draft(sized,accepted)).toMatchObject({ orderDraft: { replayed: false } });
+  expect(stockChecks).toBe(2);
 });
 
 it.for((["one_time","subscription"] as const).flatMap(mode =>
@@ -2947,7 +2987,9 @@ async function acquisitionCase({ offerVersion,result,offerInput }: {
     expect(accepted.orderDraft.quoteSnapshot.catalogAdmission).toEqual(opaqueEvidence);
     order = accepted.orderDraft.orderId.replace(/^order_/u,"");
   } else {
-    const accepted = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: { ...f.admission,purpose: "order" } });
+    // The raw writer is the C04 fixture entry. H stock coverage uses a capture above.
+    const accepted = await (offerVersion === "sized.v1" ? createPostgresNativeCheckoutPersistence(actorDb) : port)
+      .createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: { ...f.admission,purpose: "order",offerEvidence: { offerVersion } } });
     expect(accepted.orderDraft.quoteSnapshot).toEqual(quote);
     order = accepted.orderDraft.orderId.replace(/^order_/u,"");
   }

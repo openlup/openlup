@@ -151,7 +151,6 @@ export interface NativeAcquisitionCheckoutOptions {
 interface CheckoutStockSelection {
   offerEvidence: { offerVersion: string };
   mode: "one_time" | "subscription";
-  skuRevisions: readonly { reference: { skuId: string; skuCode: string }; quantity: number }[];
 }
 
 /** @experimental */
@@ -160,7 +159,8 @@ interface CheckoutQuoteHead {
   head: { publicationId: string; revision: number; documentDigest: string };
 }
 
-async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evidence: CheckoutStockSelection,
+async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], mode: CheckoutStockSelection["mode"],
+  variants: ReadonlyMap<string, string>,
   availability: CommerceOfferAvailabilityPort | undefined) {
   const refusal = "catalog_admission_sized_stock_unavailable";
   const context = quote.context as Record<string, unknown> | undefined;
@@ -168,12 +168,10 @@ async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evi
     throw new Error("catalog_admission_sized_offer_binding_required");
   }
   if (!availability) throw new Error(refusal);
-  const linesBySku = new Map(quote.lines.map(line => [line.sku, line]));
-  const items = evidence.skuRevisions.map(({ reference, quantity }) => {
-    const line = linesBySku.get(reference.skuCode);
-    if (!line || line.quantity !== quantity) throw new Error(refusal);
-    return { sku: line.sku, productSlug: line.productSlug, variantId: reference.skuId, requestedQuantity: quantity,
-      checkoutMode: evidence.mode };
+  const items = quote.lines.map(line => {
+    const variantId = variants.get(line.sku);
+    if (!variantId) throw new Error(refusal);
+    return { sku: line.sku, productSlug: line.productSlug, variantId, requestedQuantity: line.quantity, checkoutMode: mode };
   });
   const results = await availability.getAvailability({ items });
   const stockByVariant = new Map(results.map(stock => [stock.variantId, stock]));
@@ -188,6 +186,7 @@ async function assertSizedCheckoutStock(quote: CreateQuoteResponse["quote"], evi
 /** Server-produced quotes only. Owns one READ COMMITTED transaction through draft
  * commit; host authorization and quote acceptance precede this boundary. */
 export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisitionCheckoutPool, options: NativeAcquisitionCheckoutOptions) {
+  const capturedQuotes = new WeakMap<object, { quote: string; evidence: string }>();
   return {
     /** Reads offer membership and price evidence for a server-produced quote in one snapshot.
      * Governed quotes supply the product heads observed by their trusted quote reader.
@@ -197,6 +196,7 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
       const snapshot = createQuoteResponseSchema.parse(quoteSnapshot);
       const db = await pool.connect();
       let evidence: CheckoutStockSelection | null;
+      let variants = new Map<string, string>();
       try {
         await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
         const result = await db.query(
@@ -204,12 +204,18 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
           [JSON.stringify(snapshot.quote.lines), snapshot.quote.context?.mode ?? "one_time", JSON.stringify({ quoteSnapshot: snapshot, quoteTimeHeads })],
         );
         evidence = (result.rows[0]?.evidence ?? null) as CheckoutStockSelection | null;
+        if (evidence?.offerEvidence.offerVersion === "sized.v1") {
+          const rows = (await db.query("SELECT id,sku FROM public.catalog_skus WHERE sku=ANY($1::text[])",
+            [snapshot.quote.lines.map(line => line.sku)])).rows;
+          variants = new Map(rows.map(row => [String(row.sku), String(row.id)]));
+        }
         await db.query("COMMIT");
       } catch (error) { await db.query("ROLLBACK"); throw error; }
       finally { db.release(); }
       if (evidence?.offerEvidence.offerVersion === "sized.v1") {
-        await assertSizedCheckoutStock(snapshot.quote, evidence, options.availability);
+        await assertSizedCheckoutStock(snapshot.quote, evidence.mode, variants, options.availability);
       }
+      if (evidence) capturedQuotes.set(evidence, { quote: JSON.stringify(snapshot), evidence: JSON.stringify(evidence) });
       return evidence;
     },
     async createOrderDraft(request: NativeCheckoutDraftRequest, identity?: NativeCheckoutAdmissionIdentity) {
@@ -223,6 +229,13 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
           FROM public.commerce_order_draft_receipts r JOIN public.commerce_orders o ON o.id=r.order_id
           WHERE r.idempotency_key=$1`, [key])).rows[0];
         const context = request.quoteSnapshot.quote.context as Record<string, unknown> | undefined;
+        const evidence = identity?.catalogAdmission;
+        const capture = evidence == null ? undefined : capturedQuotes.get(evidence);
+        if (!replay && ((evidence != null && context?.offerVersion === "sized.v1" && !capture)
+          || (capture && (capture.quote !== JSON.stringify(createQuoteResponseSchema.parse(request.quoteSnapshot))
+            || capture.evidence !== JSON.stringify(evidence))))) {
+          throw new Error("catalog_admission_checkout_capture_mismatch");
+        }
         const policies = request.quoteSnapshot.quote.lines.filter(line => line.catalogFacts?.version === "catalog_facts_v2");
         const policyOwner = !replay && identity?.catalogAdmission != null && policies.length > 0;
         if (policyOwner && !policies.every(isAuthoritativeSubscriptionPolicyQuoteLine)) {

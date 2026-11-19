@@ -745,6 +745,8 @@ BEGIN
   IF jsonb_typeof(p_binding#>'{quoteSnapshot,quote,lines}') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
   IF p_binding#>'{quoteSnapshot,quote,context,mode}' IS DISTINCT FROM to_jsonb(p_mode)
+   OR p_evidence->>'mode' IS DISTINCT FROM p_mode
+   OR p_evidence#>>'{offerEvidence,offerVersion}' IS DISTINCT FROM offer->>'offerVersion'
    OR (SELECT jsonb_agg(jsonb_build_array(l->'sku',l->'quantity') ORDER BY ord)
        FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(l,ord))
       IS DISTINCT FROM (SELECT jsonb_agg(jsonb_build_array(l->'sku',l->'quantity') ORDER BY ord)
