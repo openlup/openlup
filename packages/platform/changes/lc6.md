@@ -29,8 +29,9 @@ Hosts discovering governed sized candidates supply a repeatable-read
 portion of the host's candidate roster.
 The quote catalogue reader's experimental `governedOffer` option returns
 publication stamps for the verified roster. The strict quote port places the
-stamps in server-only provenance. Native admission verifies them against the
-selected publications before recording acceptance.
+stamps in server-only provenance. Configured readers and accepting writers
+check the live SKU roster against the sealed publication for each consulted
+product. Admission verifies the quote stamps before recording acceptance.
 Governed edit previews return a token for their recorded evidence. Repeating a
 preview records a separate token, including when the quoted totals stay equal.
 The publisher retains its nonblocking busy refusal.

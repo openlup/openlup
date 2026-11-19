@@ -120,57 +120,18 @@ RETURNS boolean LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_keeps_price(uuid,uuid,integer,boolean) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_admission_assert_current(
- p_heads jsonb,p_sku_revisions jsonb,p_mode text,p_offer_evidence jsonb,p_price_context_versions jsonb,p_purpose text
-) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE selection jsonb; reference jsonb; expected jsonb; price_context jsonb;
- sku public.catalog_skus; product public.catalog_products; publication public.catalog_publications;
- subscription public.subscriptions; retained jsonb; baseline jsonb; scope_demand jsonb; demand jsonb;
- fresh boolean; product_id uuid; fresh_ids uuid[] := '{}'; retained_ids uuid[] := '{}'; agreed_price_ids uuid[] := '{}';
- retained_prices jsonb; prices jsonb; scoped_skus uuid[]; price_key record;
- consulted uuid[]; manifest jsonb; document_digest text; actual_heads jsonb:='{}';
- moved text; missing text; refused text;
+-- Use one canonical live-state check for acceptance and governed readers.
+-- The caller owns publication ordering and snapshot selection.
+CREATE FUNCTION public.catalog_admission_verified_heads(p_products uuid[],p_sized_command boolean)
+RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+DECLARE product_id uuid; product public.catalog_products; publication public.catalog_publications;
+ manifest jsonb; document_digest text; actual_heads jsonb:='{}';
 BEGIN
- IF p_purpose='order' THEN
-  moved:='commerce_order_draft_catalog_head_moved'; missing:='commerce_order_draft_catalog_anchor_missing'; refused:='commerce_order_draft_offer_membership_refused';
- ELSIF p_purpose='account' THEN
-  moved:='customer_self_service_stale_edit_catalog_head'; missing:='customer_self_service_invalid_catalog_anchor'; refused:='customer_self_service_invalid_offer_membership';
- ELSE RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
- PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0));
- -- Accepting writers supply the scope resolved from their owned lines. A direct
- -- assertion checks its named heads before a selection can widen their scope.
- consulted:='{}';
- IF p_offer_evidence->'scopeSkuIds' IS NULL AND jsonb_typeof(p_heads)='array' THEN
-  SELECT coalesce(array_agg(DISTINCT p.id ORDER BY p.id),'{}') INTO consulted
-   FROM public.catalog_products p JOIN jsonb_array_elements(p_heads) h
-    ON p.id=CASE WHEN pg_input_is_valid(h->>'productId','uuid') THEN (h->>'productId')::uuid END
-   WHERE p.publication_facts->'schemaVersion'='3'::jsonb;
- END IF;
- IF cardinality(consulted)=0 THEN
-  SELECT coalesce(array_agg(DISTINCT s.product_id ORDER BY s.product_id),'{}') INTO consulted
-  FROM public.catalog_skus s JOIN jsonb_array_elements(CASE
-     WHEN jsonb_typeof(p_offer_evidence->'scopeSkuIds')='array' THEN p_offer_evidence->'scopeSkuIds'
-     WHEN jsonb_typeof(p_sku_revisions)='array' THEN
-       (SELECT jsonb_agg(v#>'{reference,skuId}') FROM jsonb_array_elements(p_sku_revisions) v)
-     ELSE '[]'::jsonb END) v
-    ON s.id=CASE WHEN pg_input_is_valid(v#>>'{}','uuid') THEN (v#>>'{}')::uuid END;
- END IF;
- FOREACH product_id IN ARRAY consulted LOOP
-  PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-lineage:'||product_id::text,0));
- END LOOP;
- PERFORM h.product_id FROM public.catalog_publication_heads h WHERE h.product_id=ANY(consulted)
-  ORDER BY h.product_id FOR SHARE;
- PERFORM p.id FROM public.catalog_products p WHERE p.id=ANY(consulted) ORDER BY p.id FOR SHARE;
- -- Mixed sized edits retain the existing sellability read for legacy lines.
- -- Acquire those SKU rows in the same order, before any price guard.
- PERFORM s.id FROM public.catalog_skus s WHERE s.product_id=ANY(consulted) OR
-  (p_offer_evidence->>'lane'='sized' AND (p_offer_evidence->'legacySkuIds') ? s.id::text)
-  ORDER BY s.id FOR SHARE;
- FOREACH product_id IN ARRAY consulted LOOP
+ FOREACH product_id IN ARRAY p_products LOOP
   SELECT * INTO product FROM public.catalog_products WHERE id=product_id;
   SELECT p.* INTO publication FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id
    WHERE h.product_id=product.id;
-  IF publication.id IS NULL AND p_purpose='account' AND p_offer_evidence->'sizedCommand'='true'::jsonb THEN
+  IF publication.id IS NULL AND p_sized_command THEN
    RAISE EXCEPTION 'customer_self_service_invalid_catalog_head' USING ERRCODE='55000'; END IF;
   SELECT digest INTO document_digest FROM public.catalog_product_document_revisions WHERE id=publication.document_revision_id;
   manifest:=publication.canonical_state::jsonb;
@@ -216,6 +177,58 @@ BEGIN
   actual_heads:=actual_heads||jsonb_build_object(product.id::text,jsonb_build_object('publicationId',publication.id,
    'revision',publication.revision,'documentDigest',document_digest));
  END LOOP;
+ RETURN actual_heads;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_verified_heads(uuid[],boolean) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_admission_assert_current(
+ p_heads jsonb,p_sku_revisions jsonb,p_mode text,p_offer_evidence jsonb,p_price_context_versions jsonb,p_purpose text
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE selection jsonb; reference jsonb; expected jsonb; price_context jsonb;
+ sku public.catalog_skus; product public.catalog_products; publication public.catalog_publications;
+ subscription public.subscriptions; retained jsonb; baseline jsonb; scope_demand jsonb; demand jsonb;
+ fresh boolean; product_id uuid; fresh_ids uuid[] := '{}'; retained_ids uuid[] := '{}'; agreed_price_ids uuid[] := '{}';
+ retained_prices jsonb; prices jsonb; scoped_skus uuid[]; price_key record;
+ consulted uuid[]; actual_heads jsonb;
+ moved text; missing text; refused text;
+BEGIN
+ IF p_purpose='order' THEN
+  moved:='commerce_order_draft_catalog_head_moved'; missing:='commerce_order_draft_catalog_anchor_missing'; refused:='commerce_order_draft_offer_membership_refused';
+ ELSIF p_purpose='account' THEN
+  moved:='customer_self_service_stale_edit_catalog_head'; missing:='customer_self_service_invalid_catalog_anchor'; refused:='customer_self_service_invalid_offer_membership';
+ ELSE RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
+ PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0));
+ -- Accepting writers supply the scope resolved from their owned lines. A direct
+ -- assertion checks its named heads before a selection can widen their scope.
+ consulted:='{}';
+ IF p_offer_evidence->'scopeSkuIds' IS NULL AND jsonb_typeof(p_heads)='array' THEN
+  SELECT coalesce(array_agg(DISTINCT p.id ORDER BY p.id),'{}') INTO consulted
+   FROM public.catalog_products p JOIN jsonb_array_elements(p_heads) h
+    ON p.id=CASE WHEN pg_input_is_valid(h->>'productId','uuid') THEN (h->>'productId')::uuid END
+   WHERE p.publication_facts->'schemaVersion'='3'::jsonb;
+ END IF;
+ IF cardinality(consulted)=0 THEN
+  SELECT coalesce(array_agg(DISTINCT s.product_id ORDER BY s.product_id),'{}') INTO consulted
+  FROM public.catalog_skus s JOIN jsonb_array_elements(CASE
+     WHEN jsonb_typeof(p_offer_evidence->'scopeSkuIds')='array' THEN p_offer_evidence->'scopeSkuIds'
+     WHEN jsonb_typeof(p_sku_revisions)='array' THEN
+       (SELECT jsonb_agg(v#>'{reference,skuId}') FROM jsonb_array_elements(p_sku_revisions) v)
+     ELSE '[]'::jsonb END) v
+    ON s.id=CASE WHEN pg_input_is_valid(v#>>'{}','uuid') THEN (v#>>'{}')::uuid END;
+ END IF;
+ FOREACH product_id IN ARRAY consulted LOOP
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-lineage:'||product_id::text,0));
+ END LOOP;
+ PERFORM h.product_id FROM public.catalog_publication_heads h WHERE h.product_id=ANY(consulted)
+  ORDER BY h.product_id FOR SHARE;
+ PERFORM p.id FROM public.catalog_products p WHERE p.id=ANY(consulted) ORDER BY p.id FOR SHARE;
+ -- Mixed sized edits retain the existing sellability read for legacy lines.
+ -- Acquire those SKU rows in the same order, before any price guard.
+ PERFORM s.id FROM public.catalog_skus s WHERE s.product_id=ANY(consulted) OR
+  (p_offer_evidence->>'lane'='sized' AND (p_offer_evidence->'legacySkuIds') ? s.id::text)
+  ORDER BY s.id FOR SHARE;
+ actual_heads:=public.catalog_admission_verified_heads(consulted,p_purpose='account' AND p_offer_evidence->'sizedCommand'='true'::jsonb);
  IF p_purpose='account' AND pg_input_is_valid(p_offer_evidence->>'subscriptionId','uuid') THEN
   SELECT * INTO subscription FROM public.subscriptions WHERE id=(p_offer_evidence->>'subscriptionId')::uuid;
   IF subscription.id IS NOT NULL AND p_offer_evidence->>'lane'='sized' AND p_offer_evidence->'optIn' IS DISTINCT FROM 'true'::jsonb THEN
@@ -413,7 +426,7 @@ CREATE FUNCTION public.catalog_admission_members(offer_version text,p_mode text,
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE page jsonb; item jsonb; sku_id uuid; cursor_id uuid; head_digest text; page_limit constant integer:=100;
  maximum_members integer:=CASE WHEN offer_version='sized.v1' THEN 1000 ELSE 500 END;
- seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}'; projected jsonb;
+ seen_ids uuid[]:='{}'; seen_codes text[]:='{}'; members jsonb:='{}'; projected jsonb; heads jsonb;
 BEGIN
  IF cardinality(scope)=0 THEN RETURN members; END IF;
  IF to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NULL THEN
@@ -457,6 +470,10 @@ BEGIN
  JOIN public.catalog_publications p ON p.id::text=m#>>'{head,publicationId}' AND p.product_id=r.product_id;
  IF (SELECT count(*) FROM jsonb_object_keys(projected))<>(SELECT count(*) FROM jsonb_object_keys(members)) THEN
   RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+ heads:=public.catalog_admission_verified_heads(ARRAY(
+  SELECT DISTINCT (m->>'productId')::uuid FROM jsonb_each(projected) member(k,m) ORDER BY 1),false);
+ IF EXISTS(SELECT 1 FROM jsonb_each(projected) member(k,m) WHERE m->'head' IS DISTINCT FROM heads->(m->>'productId')) THEN
+  RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
  RETURN projected;
 END;
 $$;
