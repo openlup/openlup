@@ -2437,9 +2437,9 @@ new view inventory, ownership and owner-only privileges.
 
 <a id="declare-a-reviewed-trigger"></a>
 
-**Declare a deferred trigger.** In the same PR, add the `createdTriggers` entry
-below. Use a public table and zero-argument public function, identifiers up to 63
-bytes, and one or more events in `INSERT`, `UPDATE`, `DELETE` order.
+**Declare a deferred trigger.** Add the `createdTriggers` entry and the exact SQL
+below, including its semicolon, in the same PR. Use identifiers up to 63 bytes
+and events in `INSERT`, `UPDATE`, `DELETE` order.
 
 ```json
 {
@@ -2452,15 +2452,13 @@ bytes, and one or more events in `INSERT`, `UPDATE`, `DELETE` order.
 }
 ```
 
-Add the statement exactly as rendered, including the semicolon.
-
 ```sql
 CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.example_guard();
 ```
 
-Use an invoker function returning `trigger`. Pin a new function and revoke
-PUBLIC access. Keep other trigger DDL off the pinned relation in this forward.
-Leave its linked constraint and function intact.
+Use a zero-argument public invoker returning `trigger`. Pin a new function and
+revoke PUBLIC access. You may reuse an unchanged invoker from the prefix.
+Keep other trigger DDL off the pinned relation and leave the linked constraint intact.
 
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
 a same-slot function with explicit `SECURITY INVOKER`, a pinned `search_path`

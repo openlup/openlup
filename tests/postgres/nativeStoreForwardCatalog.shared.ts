@@ -1278,7 +1278,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; refusal?: string; companions?: Partial<NativeStoreSlot> };
   const cases: Fixture[] = [
     ...subset.map(events => ({ label: events.join(" OR "), pins: [deferredPin({ events })] })),
-    { label: "63-byte name", pins: [deferredPin({ name: long })] },
+    ...[long, "if"].map(name => ({ label: name === "if" ? "IF name" : "63-byte name", pins: [deferredPin({ name })] })),
     { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
     { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: `createdTriggers entry ${pin.name}: relation must be a public relation with an identifier of at most 63 bytes` },
     { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: functionRule },
@@ -1291,7 +1291,9 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     { label: "replacement of another overload", pins: [overload], sql: REPLACE_PART + "\n" + renderNativeDeferredTrigger(overload), prefixFunction: true,
       setup: TRIGGER_FUNCTION.replace("cat_created_guard", "cat_replaced"), companions: { replacedFunctions: [{ signature, searchPath: "pg_catalog, pg_temp",
         beforeSha256: nativeStoreFunctionDefinitions(Buffer.from(SYNTHETIC_BASE), [signature], true).get(signature)! }] } },
-    { label: "missing terminator", pins: [pin], sql: statement.slice(0, -1), refusal: mismatch },
+    { label: "duplicate registry entry", pins: [pin, pin], sql: statement, refusal: `createdTriggers entry ${pin.name} is listed twice; delete the duplicate entry` },
+    { label: "missing deferred flag", pins: [Object.fromEntries(Object.entries(pin).filter(([key]) => key !== "deferred")) as NativeDeferredTrigger], sql: statement, refusal: `createdTriggers entry ${pin.name}: deferred must be true` },
+    ...["", " -- unfinished declaration"].map(tail => ({ label: tail ? "missing terminator before a comment" : "missing terminator", pins: [pin], sql: statement.slice(0, -1) + tail, refusal: mismatch })),
     { label: "extra terminator", pins: [pin], sql: statement + ";", refusal: mismatch },
     { label: "disjoint pins with a shared null-path invoker", pins: [pin, deferredPin({ name: "cat_deferred_other", relation: "public.cat_parameters" })] },
     { label: "renamed prefix table", pins: [renamed], setup: "ALTER TABLE public.cat_existing_table RENAME TO cat_renamed;", prefixFunction: true },
@@ -1312,11 +1314,15 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       ["ALTER TRIGGER", "ALTER TRIGGER cat_deferred_guard ON public.cat_existing_table RENAME TO different;"],
       ["DISABLE TRIGGER", "ALTER TABLE ONLY public.cat_existing_table DISABLE TRIGGER ALL;"],
       ["COMMENT ON TRIGGER", "COMMENT ON TRIGGER cat_deferred_guard ON public.cat_existing_table IS 'note';"],
+      ["COMMENT ON FUNCTION", "COMMENT ON FUNCTION public.cat_created_guard IS 'note';"],
+      ...["cat_existing_table_pkey", "unrelated"].map(name => ["RENAME CONSTRAINT", `ALTER TABLE public.cat_existing_table RENAME CONSTRAINT ${name} TO cat_deferred_guard;`, `rename constraint ${name}`]),
+      ["DROP FUNCTION", "DROP FUNCTION public.cat_created_guard;"],
+      ["GRANT EXECUTE", guarded("authenticated", "GRANT EXECUTE ON FUNCTION", "public.cat_created_guard() TO authenticated;")],
       ["CREATE OR REPLACE FUNCTION", TRIGGER_FUNCTION.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")],
       ["DROP CONSTRAINT", "ALTER TABLE public.cat_existing_table DROP CONSTRAINT cat_deferred_guard;"],
       ["CREATE TRIGGER", TRIGGER_BEFORE],
       ["CREATE OR REPLACE TRIGGER", TRIGGER_BEFORE.replace("CREATE TRIGGER", "CREATE OR REPLACE TRIGGER")],
-    ].map(([clause, ddl]) => ({ label: clause!, pins: [pin], sql: statement + ddl, refusal: `remove ${clause} from this forward` })),
+    ].map(([clause, ddl, label]) => ({ label: label ?? clause!, pins: [pin], sql: statement + ddl, refusal: `remove ${clause} from this forward` })),
     { label: "linked constraint truncation", pins: [deferredPin({ name: long })], sql: renderNativeDeferredTrigger(deferredPin({ name: long }))
       + `ALTER TABLE public.cat_existing_table DROP CONSTRAINT "${long}a";`, refusal: "remove DROP CONSTRAINT from this forward" },
     { label: "duplicate guarded revoke", pins: [pin], sql: statement + guarded("authenticated", "REVOKE ALL ON FUNCTION", "public.cat_created_guard() FROM authenticated;").repeat(2),
@@ -1330,11 +1336,10 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       const error = new Error(refusal);
       const unopened = { connect: () => { throw new Error("opened a connection before admission"); } } as unknown as Pool;
       expect(() => assertNativeStoreForward(...fixture)).toThrow(error);
-      await expect(verifyForward(unopened, ...fixture, true, setup)).rejects.toThrow(error);
-    } else {
-      expect(() => assertNativeStoreForward(...fixture)).not.toThrow();
-      await verifyForward(pool, ...fixture, false, setup);
+      return expect(verifyForward(unopened, ...fixture, true, setup)).rejects.toThrow(error);
     }
+    expect(() => assertNativeStoreForward(...fixture)).not.toThrow();
+    await verifyForward(pool, ...fixture, false, setup);
   });
   it("counts every successor constraint except the verified trigger link", async () => {
     const sql = successorCreate + deferredFunction + renderNativeDeferredTrigger(successor)
