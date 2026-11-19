@@ -452,6 +452,62 @@ it.for((["one_time","subscription"] as const).flatMap(mode =>
   },
 );
 
+it.for([
+  { regionCode: "PQ",base: 1490,discount: 1000,quantum: 10,expected: 1340 },
+  { regionCode: "PR",base: 1499,discount: 500,quantum: 10,expected: 1420 },
+])("LC6-D-118 the strict quote owner admits policy corpus $base/$discount and refuses caller money", async (row,test) => {
+  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!installed) { test.skip("Membership page comes from the predecessor installation"); return; }
+  const f = await fixture(packs[0]), price = f.admission.priceContextVersions[0];
+  await pool.query("UPDATE public.price_lists SET region_code=$2 WHERE id=$1", [price.priceListId,row.regionCode]);
+  await pool.query("UPDATE public.price_entries SET mode='one_time',unit_price_minor=$2 WHERE id=$1", [price.entryId,row.base]);
+  await pool.query(`INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,
+    effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+    SELECT $1,1,$2,$3,'XXX','D2C',t,$4,$5,'FLOOR_TO_QUANTUM',public.catalog_price_setup_policy_digest(
+     $1,1,$2,$3,'XXX','D2C',t,NULL,$4,$5,'FLOOR_TO_QUANTUM') FROM (SELECT $6::timestamptz-interval '1 day' AS t) clock`,
+  [randomUUID(),price.priceListId,row.regionCode,row.discount,row.quantum,f.at]);
+  const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
+  const catalog = createPostgresCommerceQuoteCatalogReadPort(runtime,{ async verifyDocument(document,envelope) {
+    expect(digest(canonicalCatalogDraftJson(document))).toBe(envelope.documentRevision.digest);
+  },governedOffer: { offerVersion: "classic",mode: "subscription",async withSnapshot(work) {
+    const db = await runtime.connect();
+    try { await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); return await work(db); }
+    finally { await db.query("ROLLBACK"); db.release(); }
+  } } });
+  const engine = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: catalog,isStrictD1Quote: true,
+    commercePriceAuthorityPort: createPostgresCommercePriceAuthorityPort(runtime),taxProfile: tax,supportedTaxProfiles: [tax],
+    regionCode: row.regionCode,currency: "XXX",now: () => f.at,hasPromotionCodePort: false,
+    resolveAutomaticQuotePromotions: async () => ({ discounts: [],codeRejections: [] }),
+    applyPromotionCodesV2: async () => ({ discounts: [],codeRejections: [],codeRejectionDetails: [] }),
+    lineContext: () => ({}),quoteContext: input => () => ({ mode: input.mode,cadenceDays: input.cadenceDays,promoCodes: input.promoCodes }) });
+  const quoteSnapshot = await engine.createServerAuthoritativeQuote({ mode: "subscription",cadenceDays: 28,promoCodes: [],lines: [{ sku: f.code,quantity: 2 }] });
+  expect(quoteSnapshot.quote.lines[0]).toMatchObject({ unitPriceGross: money(row.expected),catalogFacts: {
+    version: "catalog_facts_v2",basePriceEntryId: price.entryId,baseUnitAmountMinor: row.base,resolvedUnitAmountMinor: row.expected } });
+  const checkout = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: row.regionCode,isAcquisitionDiscount: () => false,
+    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
+  const evidence = await checkout.captureCatalogAdmission(quoteSnapshot), request = { idempotencyKey: randomUUID(),quoteSnapshot };
+  const identity = { clientId: f.client,catalogAdmission: evidence }, before = await snapshot();
+  await expect(checkout.createOrderDraft(structuredClone(request),identity)).rejects.toThrow("catalog_admission_quote_authority_required");
+  const raw = purchaseInput(f), { quote } = quoteSnapshot;
+  const rawQuote = { ...quoteSnapshot,catalogAdmission: { ...evidence,policyOwnerRegion: row.regionCode } };
+  const draft = { ...raw.draft,lines: quote.lines,context: quote.context,
+    totals: { ...raw.draft.totals,subtotalGross: quote.subtotalGross,totalGross: quote.totalGross,netTotal: quote.netTotal } };
+  for (const routine of ["commerce_create_order_draft_with_outbox","commerce_create_promoted_order_draft_with_outbox"]) {
+    await expect(rpc(runtime,routine,[randomUUID(),rawQuote,draft,f.client])).rejects.toMatchObject({ code: "22023",message: "catalog_admission_quote_authority_required" });
+  }
+  const forgery = { ...quote.lines[0],unitPriceGross: money(row.expected + row.quantum),lineSubtotalGross: money(2 * (row.expected + row.quantum)) };
+  const forgedTotal = forgery.lineSubtotalGross;
+  await expect(rpc(runtime,"catalog_admission_create_policy_draft",[randomUUID(),rawQuote,
+    { ...draft,lines: [forgery],totals: { ...draft.totals,totalGross: forgedTotal,subtotalGross: forgedTotal,netTotal: forgedTotal } },
+    f.client,row.regionCode])).rejects.toMatchObject({ code: "22023",message: "commerce_order_draft_catalog_price_changed" });
+  expect(await snapshot()).toEqual(before);
+  const accepted = await checkout.createOrderDraft(request,identity);
+  const order = accepted.orderDraft.orderId.replace(/^order_/u,"");
+  expect((await pool.query("SELECT unit_amount_minor::integer AS unit,line_amount_minor::integer AS total FROM public.commerce_order_items WHERE order_id=$1", [order])).rows)
+    .toEqual([{ unit: row.expected,total: 2 * row.expected }]);
+  expect(await checkout.createOrderDraft(structuredClone(request),{ clientId: f.client })).toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
+});
+
 it.for(["one_time","subscription"] as const)("LC6-D-118 checkout cannot replace its quote-time head: %s", async (mode,context) => {
   const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
   if (!installed) { context.skip("Membership page comes from the predecessor installation"); return; }
@@ -1063,7 +1119,11 @@ describe.each(membershipPages)("LC6-D-091 and LC6-D-097 $name", row => {
     // Keep the installed page's digest and its final real rows. Prefix sorted
     // protocol rows to exercise continuation without publishing hundreds of SKUs.
     const extension = row.pages === 0 ? `
-    page:=jsonb_set(page,'{nextCursor}',page#>'{items,-1,skuId}');` : `
+    SELECT value INTO item FROM jsonb_array_elements(page->'items')
+     WHERE (value->>'skuId')::uuid=ANY(scope);
+    IF item IS NOT NULL THEN
+     page:=page||jsonb_build_object('items',jsonb_build_array(item),'nextCursor',item->'skuId');
+    END IF;` : `
     IF cardinality(seen_ids)<${row.pages * 100} THEN
      page:=page||jsonb_build_object('items',(
       SELECT jsonb_agg(jsonb_build_object('skuId','00000000-0000-0000-0000-'||lpad(n::text,12,'0'),
@@ -2415,7 +2475,8 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           }
           for (const failure of memberReadFailures.filter(row => "predicate" in row)) {
             const restore = await changedMembershipPage(failure,true);
-            try { expect((await editor.candidates(actor,f.subscription)).catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort()); }
+            const refuses = () => expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ message: failure.candidateMessage });
+            try { await expect(refuses()).rejects.toMatchObject({ name: "AssertionError" }); }
             finally { await restore(); }
           }
         }
@@ -2882,6 +2943,11 @@ it.each(authorityPaths)("LC6-D-073 closed price validity discriminator via %s", 
     const validity = " AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())\n   AND to_jsonb(p)=price_context->'entry';";
     expect(body.split(validity)).toHaveLength(2);
     const withoutValidity = body.replace(validity,"\n   AND to_jsonb(p)=price_context->'entry';");
+    if (path === "assertion" || path === "port") {
+      const winner = "IF p_purpose='order' AND p_offer_evidence->'scopeSkuIds' IS NULL AND NOT (price_context ? 'base' OR price_context ? 'policy')";
+      expect(withoutValidity.split(winner)).toHaveLength(2);
+      return withoutValidity.replace(winner,"IF false");
+    }
     if (path !== "legacy") return withoutValidity;
     // Legacy independently resolves its winning price through the same row policy.
     const winner = / {2}IF p_offer_evidence->>'lane'='legacy' AND \(public\.catalog_admission_legacy_price[\s\S]*?END IF;/u;
@@ -3322,63 +3388,6 @@ it.for(["exact frozen phase", "different attachment marker"] as const)(
   },
 );
 
-it.for([
-  { regionCode: "PQ",base: 1490,discount: 1000,quantum: 10,expected: 1340 },
-  { regionCode: "PR",base: 1499,discount: 500,quantum: 10,expected: 1420 },
-])("LC6-D-118 the strict quote owner admits policy corpus $base/$discount and refuses caller money", async (row,test) => {
-  const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
-  if (!installed) { test.skip("Membership page comes from the predecessor installation"); return; }
-  const f = await fixture(packs[0]), price = f.admission.priceContextVersions[0];
-  await pool.query("UPDATE public.price_lists SET region_code=$2 WHERE id=$1", [price.priceListId,row.regionCode]);
-  await pool.query("UPDATE public.price_entries SET mode='one_time',unit_price_minor=$2 WHERE id=$1", [price.entryId,row.base]);
-  await pool.query(`INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,
-    effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
-    SELECT $1,1,$2,$3,'XXX','D2C',t,$4,$5,'FLOOR_TO_QUANTUM',public.catalog_price_setup_policy_digest(
-     $1,1,$2,$3,'XXX','D2C',t,NULL,$4,$5,'FLOOR_TO_QUANTUM') FROM (SELECT $6::timestamptz-interval '1 day' AS t) clock`,
-  [randomUUID(),price.priceListId,row.regionCode,row.discount,row.quantum,f.at]);
-  const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
-  const catalog = createPostgresCommerceQuoteCatalogReadPort(runtime,{ async verifyDocument(document,envelope) {
-    expect(digest(canonicalCatalogDraftJson(document))).toBe(envelope.documentRevision.digest);
-  },governedOffer: { offerVersion: "classic",mode: "subscription",async withSnapshot(work) {
-    const db = await runtime.connect();
-    try { await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); return await work(db); }
-    finally { await db.query("ROLLBACK"); db.release(); }
-  } } });
-  const engine = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: catalog,isStrictD1Quote: true,
-    commercePriceAuthorityPort: createPostgresCommercePriceAuthorityPort(runtime),taxProfile: tax,supportedTaxProfiles: [tax],
-    regionCode: row.regionCode,currency: "XXX",now: () => f.at,hasPromotionCodePort: false,
-    resolveAutomaticQuotePromotions: async () => ({ discounts: [],codeRejections: [] }),
-    applyPromotionCodesV2: async () => ({ discounts: [],codeRejections: [],codeRejectionDetails: [] }),
-    lineContext: () => ({}),quoteContext: input => () => ({ mode: input.mode,cadenceDays: input.cadenceDays,promoCodes: input.promoCodes }) });
-  const quoteSnapshot = await engine.createServerAuthoritativeQuote({ mode: "subscription",cadenceDays: 28,promoCodes: [],lines: [{ sku: f.code,quantity: 2 }] });
-  expect(quoteSnapshot.quote.lines[0]).toMatchObject({ unitPriceGross: money(row.expected),catalogFacts: {
-    version: "catalog_facts_v2",basePriceEntryId: price.entryId,baseUnitAmountMinor: row.base,resolvedUnitAmountMinor: row.expected } });
-  const checkout = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: row.regionCode,isAcquisitionDiscount: () => false,
-    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
-  const evidence = await checkout.captureCatalogAdmission(quoteSnapshot), request = { idempotencyKey: randomUUID(),quoteSnapshot };
-  const identity = { clientId: f.client,catalogAdmission: evidence }, before = await snapshot();
-  await expect(checkout.createOrderDraft(structuredClone(request),identity)).rejects.toThrow("catalog_admission_quote_authority_required");
-  const raw = purchaseInput(f), { quote } = quoteSnapshot;
-  const rawQuote = { ...quoteSnapshot,catalogAdmission: { ...evidence,policyOwnerRegion: row.regionCode } };
-  const draft = { ...raw.draft,lines: quote.lines,context: quote.context,
-    totals: { ...raw.draft.totals,subtotalGross: quote.subtotalGross,totalGross: quote.totalGross,netTotal: quote.netTotal } };
-  for (const routine of ["commerce_create_order_draft_with_outbox","commerce_create_promoted_order_draft_with_outbox"]) {
-    await expect(rpc(runtime,routine,[randomUUID(),rawQuote,draft,f.client])).rejects.toMatchObject({ code: "22023",message: "catalog_admission_quote_authority_required" });
-  }
-  const forgery = { ...quote.lines[0],unitPriceGross: money(row.expected + row.quantum),lineSubtotalGross: money(2 * (row.expected + row.quantum)) };
-  const forgedTotal = forgery.lineSubtotalGross;
-  await expect(rpc(runtime,"catalog_admission_create_policy_draft",[randomUUID(),rawQuote,
-    { ...draft,lines: [forgery],totals: { ...draft.totals,totalGross: forgedTotal,subtotalGross: forgedTotal,netTotal: forgedTotal } },
-    f.client,row.regionCode])).rejects.toMatchObject({ code: "22023",message: "commerce_order_draft_catalog_price_changed" });
-  expect(await snapshot()).toEqual(before);
-  const accepted = await checkout.createOrderDraft(request,identity);
-  const order = accepted.orderDraft.orderId.replace(/^order_/u,"");
-  expect((await pool.query("SELECT unit_amount_minor::integer AS unit,line_amount_minor::integer AS total FROM public.commerce_order_items WHERE order_id=$1", [order])).rows)
-    .toEqual([{ unit: row.expected,total: 2 * row.expected }]);
-  expect(await checkout.createOrderDraft(structuredClone(request),{ clientId: f.client })).toEqual({ ...accepted,orderDraft: { ...accepted.orderDraft,replayed: true } });
-});
-
-
 it.each((["missing","null"] as const).flatMap(offerInput => [false,true].map(control => ({ offerInput,control }))))(
   "LC6-D-040 acquisition defaults $offerInput configured offer, control=$control", async ({ offerInput,control }) => {
     const run = () => acquisitionCase({ offerVersion: "classic",result: "bound",offerInput });
@@ -3389,7 +3398,10 @@ it.each((["missing","null"] as const).flatMap(offerInput => [false,true].map(con
       expect(body.split(fallback)).toHaveLength(2);
       return body.replace(fallback,"THEN RETURN 'sized.v1';");
     });
-    try { await expect(run()).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" }); }
+    const f = await fixture(packs[0]), purchase = purchaseInput(f);
+    if (offerInput === "missing") Reflect.deleteProperty(purchase.draft.context,"offerVersion");
+    else purchase.draft.context.offerVersion = null;
+    try { await expect(rpc(runtime,"commerce_create_order_draft_with_outbox",purchase.args)).rejects.toMatchObject({ code: "22023",message: orderRefused }); }
     finally { await restore(); }
   },
 );
