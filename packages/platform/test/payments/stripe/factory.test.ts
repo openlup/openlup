@@ -208,6 +208,27 @@ describe("opt-in payment factory", () => {
     expect(await adapter.verifyPort.verifyAndNormalize({ ...input, receivedAt: "2026-10-22T00:00:00Z" })).toEqual(first);
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.payment_failed", {}, { created: undefined })))).not.toEqual(first);
   });
+  it("accepts rolling multi-v1 Stripe-Signature headers during secret rotation and enforces staleness", async () => {
+    const { adapter } = subject();
+    const base = signed(event("payment_intent.succeeded"));
+    const sigHeader = base.headers["Stripe-Signature"]!;
+    const rotated = {
+      ...base,
+      headers: { "Stripe-Signature": `${sigHeader},v1=${"0".repeat(64)}` },
+    };
+    expect(await adapter.verifyPort.verifyAndNormalize(rotated)).toMatchObject({
+      kind: "money",
+      outcome: "succeeded",
+      providerPaymentRef: "pi_fixture",
+    });
+
+    const staleBase = signed(event("payment_intent.succeeded"), timestamp - 400);
+    const staleRotated = {
+      ...staleBase,
+      headers: { "Stripe-Signature": `${staleBase.headers["Stripe-Signature"]!},v1=${"0".repeat(64)}` },
+    };
+    expect(await adapter.verifyPort.verifyAndNormalize(staleRotated)).toEqual({ kind: "refusal", reason: "stale" });
+  });
   it("preserves active checkout versus recovery read semantics and exact input references", async () => {
     const { adapter } = subject({ id: "pi_fixture", status: "requires_payment_method", amount: 2599, currency: "eur", client_secret: "transient_fixture" });
     const input = { identity: { provider: "stripe", providerPaymentRef: "pi_fixture", intentRef: "intent-a", attemptRef: "attempt-a" }, expectedMoney: request.money, purpose: "active_checkout" as const };
