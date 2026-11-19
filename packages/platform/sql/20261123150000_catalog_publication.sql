@@ -51,6 +51,16 @@ CREATE TABLE public.catalog_sku_revisions (
 );
 ALTER TABLE public.catalog_publications ADD CONSTRAINT catalog_publications_primary_sku_revision_fk
  FOREIGN KEY(primary_sku_revision_id) REFERENCES public.catalog_sku_revisions(id) DEFERRABLE INITIALLY DEFERRED;
+CREATE FUNCTION public.catalog_publication_receipt_input(p_result text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ IF jsonb_typeof(p_result::jsonb)='object' THEN RETURN p_result; END IF;
+ RAISE EXCEPTION 'catalog_publication_receipt_input_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_input_invalid';
+EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
+ RAISE EXCEPTION 'catalog_publication_receipt_input_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_input_invalid';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_receipt_input(text) FROM PUBLIC;
 CREATE TABLE public.catalog_operator_receipts (
  kind text NOT NULL CHECK (kind IN ('publish','approve','revoke')),
  scope_id uuid NOT NULL,
@@ -59,8 +69,7 @@ CREATE TABLE public.catalog_operator_receipts (
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  publication_id uuid UNIQUE CONSTRAINT catalog_operator_receipts_issue_fk REFERENCES public.catalog_publications(id) DEFERRABLE INITIALLY DEFERRED,
  -- Store the writer's canonical receipt body. The longest response wrapper is committed.
- result text NOT NULL CHECK (jsonb_typeof(CAST(result AS jsonb)) = 'object'
-   AND octet_length(result) BETWEEN 2 AND 8388574),
+ result text NOT NULL CONSTRAINT catalog_publication_receipt_input_invalid CHECK (octet_length(result) BETWEEN 2 AND 8388574),
  PRIMARY KEY(kind,scope_id,command_key), UNIQUE(scope_id,command_key)
 );
 CREATE TABLE public.catalog_publication_decisions (
@@ -236,23 +245,25 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_assert_head(uuid,boolean) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_publication_assert_receipt(p_product uuid, p_key text) RETURNS void
+CREATE FUNCTION public.catalog_publication_assert_receipt(p_product uuid, p_key text) RETURNS text
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE receipt public.catalog_operator_receipts%ROWTYPE; decision public.catalog_publication_decisions%ROWTYPE;
- issue public.catalog_publications%ROWTYPE; body jsonb; expected jsonb;
+ issue public.catalog_publications%ROWTYPE; expected jsonb; checked_result text;
 BEGIN
  SELECT * INTO receipt FROM public.catalog_operator_receipts WHERE scope_id=p_product AND command_key=p_key;
  IF NOT FOUND THEN
   RAISE EXCEPTION 'catalog_publication_receipt_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_invalid';
  END IF;
+ -- A companion event can run before the receipt event. All callers check the
+ -- original bytes here before using them, regardless of insert order.
+ checked_result := public.catalog_publication_receipt_input(receipt.result);
  IF receipt.kind='publish' THEN
   SELECT * INTO issue FROM public.catalog_publications WHERE product_id=p_product AND command_key=p_key;
   -- The publication event checks the full body against the owned issuance rows.
   IF FOUND AND issue.id=receipt.publication_id AND issue.actor_id=receipt.actor_id AND issue.command_fingerprint=receipt.fingerprint
    AND NOT EXISTS (SELECT 1 FROM public.catalog_publication_decisions a WHERE a.product_id=p_product AND a.command_key=p_key)
-   THEN RETURN; END IF;
+   THEN RETURN checked_result; END IF;
  ELSE
-  body := receipt.result::jsonb;
   SELECT * INTO decision FROM public.catalog_publication_decisions WHERE product_id=p_product AND command_key=p_key;
   IF FOUND AND receipt.publication_id IS NULL AND decision.action=receipt.kind AND decision.actor_id=receipt.actor_id
    AND decision.fingerprint=receipt.fingerprint AND decision.candidate_reference_digest=encode(sha256(convert_to(
@@ -260,9 +271,9 @@ BEGIN
    expected := jsonb_build_object('schemaVersion',2,'action',decision.action,'productId',p_product,'commandKey',p_key,
       'candidateRef',decision.candidate_ref,'candidateDigest',decision.candidate_digest,'reason',decision.reason);
    IF decision.fingerprint=encode(sha256(convert_to(public.catalog_publication_canonical(jsonb_build_array(expected,decision.actor_id),0),'UTF8')),'hex')
-    AND body=expected || jsonb_build_object('actorId',decision.actor_id,'fingerprint',decision.fingerprint,
-      'decidedAt',to_char(decision.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
-    AND receipt.result=public.catalog_publication_canonical(body,0) THEN RETURN; END IF;
+    AND checked_result=public.catalog_publication_canonical(expected || jsonb_build_object(
+      'actorId',decision.actor_id,'fingerprint',decision.fingerprint,
+      'decidedAt',to_char(decision.decided_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),0) THEN RETURN checked_result; END IF;
   END IF;
  END IF;
  RAISE EXCEPTION 'catalog_publication_receipt_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_invalid';
@@ -490,7 +501,7 @@ REVOKE ALL ON FUNCTION public.catalog_publication_sku_facts(public.catalog_sku_r
 CREATE FUNCTION public.catalog_publication_assert_issued(p_product uuid, p_issue uuid) RETURNS void
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE issue public.catalog_publications%ROWTYPE; prior public.catalog_publications%ROWTYPE;
- receipt public.catalog_operator_receipts%ROWTYPE;
+ receipt_result text;
  doc_reference jsonb; doc_valid boolean; authored jsonb; manifest jsonb; product jsonb;
  head jsonb; previous_head jsonb; roster jsonb; changes jsonb; issue_count integer;
  invalid_change boolean; distinct_codes integer; expected_receipt jsonb; content_problem text; oversized_page boolean;
@@ -669,12 +680,11 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_page_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_page_invalid';
  END IF;
 
- PERFORM public.catalog_publication_assert_receipt(p_product,issue.command_key);
- SELECT * INTO STRICT receipt FROM public.catalog_operator_receipts WHERE scope_id=p_product AND command_key=issue.command_key;
+ receipt_result := public.catalog_publication_assert_receipt(p_product,issue.command_key);
  expected_receipt := jsonb_build_object('schemaVersion',2,'productId',p_product,'commandKey',issue.command_key,
    'fingerprint',issue.command_fingerprint,'actorId',issue.actor_id,'head',head,'previousHead',previous_head,
    'publicationDigest',issue.digest,'committedAt',to_char(issue.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'changes',changes);
- IF receipt.kind<>'publish' OR receipt.result<>public.catalog_publication_canonical(expected_receipt,0) THEN
+ IF receipt_result<>public.catalog_publication_canonical(expected_receipt,0) THEN
   RAISE EXCEPTION 'catalog_publication_receipt_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_invalid';
  END IF;
  IF EXISTS (SELECT 1 FROM public.catalog_publication_heads WHERE product_id=p_product AND publication_id=p_issue) THEN
