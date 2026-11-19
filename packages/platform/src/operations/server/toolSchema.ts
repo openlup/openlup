@@ -7,12 +7,12 @@ export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input
 }
 
 const schemaObject = () => z.record(z.string(), z.json()).nullable().optional();
-const settingDescriptorSchema = z.strictObject({
+/** @experimental Describe the data written to and loaded from the settings catalogue. */
+export const settingDescriptorSchema = z.strictObject({
   key: z.string().min(1),
   domain: z.string(),
   kind: z.enum(["installed", "code", "callback", "cap", "invariant"]),
   goal: z.string(),
-  searchTerms: z.string().optional(),
   schemaVersion: z.literal(1),
   schema: schemaObject(),
   previewSchema: schemaObject(),
@@ -50,8 +50,6 @@ export function settingRefusalSchema(codes: readonly string[]) {
 }
 
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
-export const settingsToolOutputSchema = Object.assign(
-  (result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown> =>
-    ({ type: "object", ...toolInputSchema(z.union([result, z.strictObject({ refusal })]), "output") }),
-  { descriptor: settingDescriptorSchema },
-);
+export function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown> {
+  return { type: "object", ...toolInputSchema(z.union([result, z.strictObject({ refusal })]), "output") };
+}

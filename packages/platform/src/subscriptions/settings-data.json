@@ -1,7 +1,6 @@
 [
   {
     "key": "subscriber_winback_policy",
-    "searchTerms": "cancelled subscriber outreach, retention messaging, reactivation window",
     "domain": "subscriptions",
     "kind": "installed",
     "goal": "Find the cancellation age window for subscriber winback messages.",
@@ -17,7 +16,6 @@
   },
   {
     "key": "subscriptionCreation.editWindowHours",
-    "searchTerms": "edit cutoff, change deadline, activation window",
     "domain": "subscriptions",
     "kind": "code",
     "goal": "Set how many hours before a renewal customers can edit a newly created subscription.",

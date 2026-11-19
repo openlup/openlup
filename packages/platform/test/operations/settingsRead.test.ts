@@ -150,6 +150,9 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   for (const [tool, request] of [
     [list, settingsListRequest], [show, showRequest],
   ] as const) {
+    const { inputSchema, outputSchema } = tool;
+    expect(tool.inputSchema).toBe(inputSchema);
+    expect(tool.outputSchema).toBe(outputSchema);
     expect(tool.annotations).toEqual({ readOnlyHint: true });
     expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
   }

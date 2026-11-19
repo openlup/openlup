@@ -1,7 +1,6 @@
 [
   {
     "key": "checkout_recovery_reminders",
-    "searchTerms": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
     "domain": "commerce",
     "kind": "installed",
     "goal": "Find when checkout recovery and abandoned cart reminders are sent.",

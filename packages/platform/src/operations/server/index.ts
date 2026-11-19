@@ -11,4 +11,4 @@ export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export { explainSetting, invalidSettingsCommand, listSettings, settingsReadTools, showSetting, type SettingReader } from "./settingsRead.js";
-export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
+export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
