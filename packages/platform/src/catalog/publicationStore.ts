@@ -1010,18 +1010,17 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
         const row = observedRow(rows);
         require(row.publication_id === input.publicationId, readInvalid, "dependency_unavailable");
         require(id.safeParse(row.document_id).success, readInvalid, "dependency_unavailable");
-        require(row.document_id === input.documentRevisionId, "retained_revision_unavailable", "unsupported");
         const head = { publicationId: row.publication_id as string, revision: row.revision as number, documentDigest: row.digest as string };
         const manifest = catalogPublicationManifestSchema.parse(JSON.parse(row.canonical_state as string));
         require(publicationJson(manifest) === row.canonical_state && publicationDigest(manifest) === row.manifest_digest
-          && manifest.product.id === input.productId && equal(manifest.product.document, { id: input.documentRevisionId, productId: input.productId,
+          && manifest.product.id === input.productId && equal(manifest.product.document, { id: row.document_id, productId: input.productId,
             revisionNo: row.revision_no, schemaId: row.schema_id, documentRef: row.document_ref, sourceRef: row.source_ref, digest: row.digest })
           && typeof row.canonical_text === "string" && createHash("sha256").update(row.canonical_text).digest("hex") === row.digest,
         "catalog_publication_manifest_invalid", "dependency_unavailable");
-        const reference = manifest.skus.find(reference => reference.skuId === input.skuId && reference.revisionId === input.skuRevisionId);
-        require(reference, "retained_revision_unavailable", "unsupported");
         verifyPredecessor(row.revision, row.previous_id, row.previous_revision);
         const indexed = await retainedSkuIndex(db, input.productId, row.revision as number, manifest.skus);
+        const reference = manifest.skus.find(reference => reference.skuId === input.skuId && reference.revisionId === input.skuRevisionId);
+        require(reference && row.document_id === input.documentRevisionId, "retained_revision_unavailable", "unsupported");
         require(reference!.digest === row.sku_digest && reference!.revision === row.sku_revision && typeof row.full_facts === "string", readInvalid, "dependency_unavailable");
         const sku = catalogPublishedSkuSchema.parse(JSON.parse(row.full_facts as string));
         require(sku.code === indexed.get(input.skuRevisionId)?.sku_code, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
