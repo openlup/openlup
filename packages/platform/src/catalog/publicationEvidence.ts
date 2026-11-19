@@ -1,7 +1,7 @@
 import type { CatalogDraftPublicationStoredRecord, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
-import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
 import type { PublicationDraftRecord, PublicationLifecycleState } from "./publicationIntent.js";
 import type { CatalogRulesContext } from "./catalogPublicationRules.js";
 import { z } from "./validation.js";

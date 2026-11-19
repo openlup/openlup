@@ -1,6 +1,6 @@
-import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
-import type { RulesIdentifier, RulesProduct, RulesSku } from "./publicationRuleFacts.js";
-import type { CatalogDocumentRevisionRef } from "./foundation.js";
+import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contracts/draftV3.js";
+import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
+import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 
 /** @experimental */
 export const CATALOG_PUBLICATION_LIMITS = { skuBytes: 2_097_152, manifestBytes: 16_777_216,

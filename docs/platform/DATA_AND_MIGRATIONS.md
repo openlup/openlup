@@ -3401,6 +3401,22 @@ its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
 refusal recovery. Uncaptured refusals rotate on the existing renewal operation
 `updated_at` selection stamp, so recovery failures before case creation cannot
 keep occupying a bounded page. Captured waits retain their case selection stamp.
+The later `20261123150000` forward gives fresh cycles and expired claims
+alternating opportunities in the normal due page. Selection still filters
+active leases, terminal operations and stock-wait cases before the page limit.
+The returned rows retain their existing shape and chronological order. A
+singleton page uses the oldest ready candidate. An expired claim remains
+bound to its existing attempt and is eligible for recovery.
+
+Run the local selector benchmark with
+`OPENLUP_BENCH_NATIVE_RENEWAL_DUE=1 OPENLUP_BENCH_EXPLAIN=1 npm run test:hosted -- nativeRenewalDueFairness.test.ts`.
+It installs the Native schema and runs warm PostgreSQL plans with a synthetic
+backlog split evenly between older expired claims and fresh cycles. In a
+50-row page, the historical selector returned zero fresh cycles and the new
+selector returned 25. Local medians were 2.8 and 12.0 ms at 10,000 cycles and
+23.5 and 79.4 ms at 100,000 cycles. These timings measure selection in
+PostgreSQL. Full-worker drain rates and provider times require a separate run.
+
 The seam subtracts hard commitments and active subscription demand through the
 native horizon installed via `inventory_renewal_protection` (default 14 days)
 from new-purchase availability. The managed ATP contract remains fixed at 14 days.

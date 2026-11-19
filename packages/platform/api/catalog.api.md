@@ -4217,13 +4217,56 @@ export type { CatalogQuantity, CatalogOptionValue, CatalogDraftIssue, CatalogPro
 /** Definitions are installed by composition, never supplied as executable draft data. */
 export declare function createCatalogProductTypeRegistry(definitions: readonly CatalogProductTypeInput[]): CatalogProductTypeRegistry;
 ```
+## dist/catalog/publicationContracts.d.ts
+
+```ts
+import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contracts/draftV3.js";
+import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
+import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
+/** @experimental */
+export declare const CATALOG_PUBLICATION_LIMITS: {
+    readonly skuBytes: 2097152;
+    readonly manifestBytes: 16777216;
+    readonly receiptBytes: 8388608;
+    readonly historyBytes: 16777216;
+    readonly pageBytes: 8388608;
+    readonly pageItems: 100;
+};
+/** @internal */
+export type CatalogPublishedIdentifier = RulesIdentifier;
+/** @experimental */
+export type CatalogPublishedContent = Pick<CatalogDraftSharedContentV3, "schemaVersion" | "catalogAction" | "presentation" | "offerMemberships" | "requestedModes" | "publicationSkus">;
+/** @internal */
+export interface CatalogPublishedProduct extends RulesProduct {
+    document: CatalogDocumentRevisionRef | null;
+    source: CatalogDraftClaimV3;
+    content: CatalogPublishedContent;
+}
+/** @internal */
+export interface CatalogPublishedSku extends RulesSku {
+    source: CatalogDraftClaimV3;
+}
+/** @experimental */
+export interface CatalogSkuRevisionRef {
+    skuId: string;
+    revisionId: string;
+    revision: number;
+    digest: string;
+}
+/** @experimental */
+export interface CatalogPublicationManifestV2 {
+    schemaVersion: 2;
+    product: CatalogPublishedProduct;
+    skus: CatalogSkuRevisionRef[];
+}
+```
 ## dist/catalog/publicationEvidence.d.ts
 
 ```ts
 import type { CatalogDraftPublicationStoredRecord, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
-import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
 import type { PublicationDraftRecord, PublicationLifecycleState } from "./publicationIntent.js";
 import type { CatalogRulesContext } from "./catalogPublicationRules.js";
 import { z } from "./validation.js";

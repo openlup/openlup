@@ -126,7 +126,21 @@ Exact path-to-owner mappings live in [`config/doc-routing.json`](../../config/do
 and [SOURCE_MAP.md](SOURCE_MAP.md). The entries below record only the unique
 responsibility splits and boundary limits across shared surfaces:
 
-- **Source-release contract and catalogue updates:** derives stable posture for the canonical activation identity and retains development-preview, unstable posture for local fixtures. Historical `openlup-source-preview/N` tag names remain unchanged identifiers; the contract snapshot binds the selected tree through the preparation generator, descendant releases preserve repository and evidence-class identity, and the validator admits the transition from historical preview to stable posture. Author exact publication-catalogue rows for moved tests and new package sources (there is no catalogue discovery generator; validated regular non-executable `packages/{core,outbox,platform}/changes/*.md` fragments are the sole pattern admission without rows). Policy and inventory checks derive live source-release bindings, validate authored fields and structure, and report a stale committed snapshot without failure; refresh that snapshot only in a reviewed release-preparation change with the source-release preparation CLI (`release` paths require strict equality against target Git objects).
+- **Source-release contract and catalogue updates:** derives stable posture for
+  the canonical activation identity and retains development-preview, unstable
+  posture for local fixtures. Historical `openlup-source-preview/N` tag names remain
+  unchanged identifiers. The contract snapshot binds the selected tree through
+  the preparation generator, descendant releases preserve repository and
+  evidence-class identity, and the validator admits the transition from historic
+  preview to stable posture. Author exact publication-catalogue rows for moved
+  tests and new package sources. Validated, regular, non-executable package
+  changelog fragments and reader guide Markdown follow
+  [the two pattern admissions](../../CONTRIBUTING.md#package-policy-and-release-checks).
+  Policy and inventory checks derive live source-release bindings, validate
+  authored fields and structure, and report a stale committed snapshot without
+  failure. Refresh that snapshot only in a reviewed release-preparation change
+  with the source-release preparation CLI. Release paths require strict
+  equality against target Git objects.
 - **Distribution evidence ([distribution evidence](DISTRIBUTION_EVIDENCE.md)):**
   its projection section owns class grouping, exact input fingerprints and the
   refusal to treat partial outcomes as complete. The publication catalogue

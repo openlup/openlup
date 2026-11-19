@@ -10,7 +10,7 @@ const scriptSource = join(platformDir, "scripts/api-contract.ts");
 
 function createFixture(
   files: Record<string, string>,
-  subpaths: Record<string, { entrypoint: string; snapshot: string }>,
+  subpaths: Record<string, { entrypoint: string; snapshot: string; maturity?: "stable" | "experimental" | "testing" }>,
 ): { dir: string; cleanup: () => void; run: (...args: string[]) => ReturnType<typeof spawnSync> } {
   const base = join(root, ".context/scratch/platform-api-scoping");
   mkdirSync(base, { recursive: true });
@@ -25,6 +25,7 @@ function createFixture(
   const packageSurface: Record<string, unknown> = {};
   for (const [subpath, contract] of Object.entries(subpaths)) {
     const jsEntry = `./${contract.entrypoint.replace(/\.d\.ts$/, ".js")}`;
+    const maturity = contract.maturity ?? "stable";
     exportsField[subpath] = {
       types: `./${contract.entrypoint}`,
       import: jsEntry,
@@ -32,8 +33,8 @@ function createFixture(
     };
     packageSurface[subpath] = {
       role: "capability",
-      maturity: "stable",
-      compatibilityPolicy: "stable",
+      maturity,
+      compatibilityPolicy: maturity,
       entrypoint: contract.entrypoint,
       snapshot: contract.snapshot,
     };
@@ -42,7 +43,11 @@ function createFixture(
   write("package.json", JSON.stringify({ name: "@openlup/platform-fixture", type: "module", exports: exportsField }, null, 2));
   write("release-gates.json", JSON.stringify({
     kind: "rail",
-    compatibilityPolicies: { stable: "Stable API fixture policy." },
+    compatibilityPolicies: {
+      stable: "Stable API fixture policy.",
+      experimental: "Experimental API fixture policy.",
+      testing: "Testing API fixture policy.",
+    },
     packageSurface,
   }, null, 2));
 
@@ -66,7 +71,7 @@ function createFixture(
 }
 
 describe("platform api-contract subpath scoping", () => {
-  it("stops pure imports at sibling and nested declared subpath boundaries while keeping local and unowned helpers", () => {
+  it("stops pure imports at stable sibling and nested subpath boundaries while keeping local and unowned helpers", () => {
     const fixture = createFixture(
       {
         "dist/shared/internal.d.ts": "export type SharedInternal = string;\n",
@@ -104,6 +109,69 @@ describe("platform api-contract subpath scoping", () => {
       const check = fixture.run();
       expect(check.stderr).toBe("");
       expect(check.status).toBe(0);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it.each(["experimental", "testing"] as const)("retains stable pure imports from a %s sibling", (maturity) => {
+    const fixture = createFixture(
+      {
+        "dist/contracts/index.d.ts": "export interface Input { id: string; }\n",
+        "dist/consumer/index.d.ts": "import type { Input } from '../contracts/index.js';\nexport declare function accept(input: Input): void;\n",
+      },
+      {
+        "./contracts": { entrypoint: "dist/contracts/index.d.ts", snapshot: "api/contracts.api.md", maturity },
+        "./consumer": { entrypoint: "dist/consumer/index.d.ts", snapshot: "api/consumer.api.md" },
+      },
+    );
+    try {
+      const result = fixture.run("--update");
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      expect(readFileSync(join(fixture.dir, "api/consumer.api.md"), "utf8")).toContain("## dist/contracts/index.d.ts");
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses declarations omitted from all snapshots and names the missing files and fix", () => {
+    const fixture = createFixture(
+      {
+        "dist/contracts/index.d.ts": "export type PublicInput = string;\n",
+        "dist/contracts/detail.d.ts": "export type Detail = string;\n",
+        "dist/contracts/private.d.ts": "import type { Detail } from './detail.js';\nexport type Input = Detail;\n",
+        "dist/consumer/index.d.ts": "import type { Input } from '../contracts/private.js';\nexport declare function accept(input: Input): void;\n",
+      },
+      {
+        "./contracts": { entrypoint: "dist/contracts/index.d.ts", snapshot: "api/contracts.api.md" },
+        "./consumer": { entrypoint: "dist/consumer/index.d.ts", snapshot: "api/consumer.api.md" },
+      },
+    );
+    try {
+      const result = fixture.run("--update");
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("API snapshots omit declarations: dist/contracts/detail.d.ts, dist/contracts/private.d.ts; make each missing declaration reachable from its owning subpath entrypoint or move it to a shared directory outside declared subpath roots");
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it("refuses duplicate entrypoint directories and names the directory, subpaths and fix", () => {
+    const fixture = createFixture(
+      {
+        "dist/shared/a.d.ts": "export type A = string;\n",
+        "dist/shared/b.d.ts": "export type B = string;\n",
+      },
+      {
+        "./a": { entrypoint: "dist/shared/a.d.ts", snapshot: "api/a.api.md" },
+        "./b": { entrypoint: "dist/shared/b.d.ts", snapshot: "api/b.api.md" },
+      },
+    );
+    try {
+      const result = fixture.run("--update");
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("duplicate declaration entrypoint directory dist/shared for ./a and ./b; give each subpath its own entrypoint directory");
     } finally {
       fixture.cleanup();
     }

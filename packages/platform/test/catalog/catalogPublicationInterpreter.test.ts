@@ -4,7 +4,7 @@ import { createCatalogCandidateService, type CatalogCandidateDeps } from "../../
 import { createCatalogCandidateServiceWithPublication } from "../../src/catalog/candidateService.js";
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
-import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/contracts/publication.js";
+import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/publicationContracts.js";
 import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, publicationDigest, publicationJson } from "../../src/catalog/publicationCodec.js";
 import { loadCatalogPublicationRules } from "../../src/catalog/publicationRules.js";
 import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";

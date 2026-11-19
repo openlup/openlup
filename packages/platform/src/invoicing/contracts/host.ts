@@ -59,7 +59,7 @@ export interface InvoiceHostPorts {
   /** Authenticate and authorize ownership before reading artifacts. Safe projection
    * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
    * Found is a complete owned projection; incomplete reads return unknown.
-   * Carrier: donor document history + customer download ticket owner/lineage.
+   * Carrier: prior document history and customer download ticket ownership and lineage.
    */
   accountHistory: {
     read(input: { readonly accountRef: string; readonly orderId: string }): Promise<

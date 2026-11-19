@@ -5,9 +5,9 @@ import { catalogPublicationContentSchema } from "./draftV3Schemas.js";
 import { catalogDraftSkuV2Schema } from "./draftV2Schemas.js";
 import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
 import { catalogProductTypeRefSchema, catalogQuantitySchema, catalogOptionValueSchema, catalogDimensionKeySchema } from "./productTypeSchemas.js";
-import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./contracts/publication.js";
+import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
-import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
+import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { CatalogPublicationError, publicationIssue, publicationRefuse } from "./publicationError.js";
 
 export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes): string => {

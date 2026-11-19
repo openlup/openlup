@@ -106,6 +106,25 @@ query values and simulator return context. It uses the package's real
 checks; matching fields alone never establish trusted no-charge evidence.
 The neutral `payments` and `payments/contracts` exports are unchanged.
 
+## Payment reconciliation composition
+
+The [managed cron](../../api/cron/payment-provider-reconciliation.ts) claims a
+job lease and runs provider readback through its RPC adapter. It scans paid
+activation gaps and records the job result after readback. Its Native
+PostgreSQL branch runs the captured activation-gap binding before constructing
+a managed gateway or provider registry. A Native host that needs provider
+readback can explicitly compose the package's reconciliation worker and the
+reconciliation port from its PostgreSQL payment rail.
+
+The [composition witness](../../api/cron/payment-provider-reconciliation.parity.test.ts)
+pins the claim order, nonterminal observation payload and terminal replay
+key through both adapters. The managed host derives the lease key and
+records completion in its job ledger. For a successful terminal result, the
+Native worker requires the collected amount, its currency and the capture proof
+basis. The Native SQL adapter also passes its host-selected recovery options.
+Keep these contracts when sharing code. The worker result, status kinds, read
+purpose and silence-lookup types come from `@openlup/platform/payments/contracts`.
+
 ## Opt-in fulfillment example
 
 The Node `@openlup/platform/fulfillment/omnipack` entry exposes only

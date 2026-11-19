@@ -1208,6 +1208,53 @@ export declare const PAYMENT_MIGRATIONS: readonly [{
     readonly url: URL;
 }];
 ```
+## dist/payments/testing/index.d.ts
+
+```ts
+/** @experimental Development-preview, offline payment adapter test kit. */
+export { runPaymentAdapterConformance } from "../adapterConformance.js";
+export { createScriptedPaymentFake, ScriptedPaymentTransportError } from "./scriptedFake.js";
+export type { ScriptedPaymentOutcome } from "./scriptedFake.js";
+export type { PaymentAdapterSafetyScenarios, PaymentAdapterTestSubject, PaymentTransportScenario, PaymentTransportFixture, PaymentWebhookFixture } from "../paymentTestingScenarios.js";
+```
+## dist/payments/testing/scriptedFake.d.ts
+
+```ts
+/** Synthetic transport outcomes; no provider SDK, network, timer or retry. */
+export type ScriptedPaymentOutcome<T> = {
+    kind: "success";
+    value: T;
+} | {
+    kind: "provider-5xx";
+    response?: T;
+} | {
+    kind: "timeout-before-dispatch";
+} | {
+    kind: "timeout-after-dispatch";
+} | {
+    kind: "redelivery-409";
+    response?: T;
+};
+export declare class ScriptedPaymentTransportError extends Error {
+    readonly kind: Exclude<ScriptedPaymentOutcome<never>["kind"], "success">;
+    readonly status: number | undefined;
+    readonly dispatched: boolean;
+    constructor(kind: Exclude<ScriptedPaymentOutcome<never>["kind"], "success">);
+}
+/** Per-call FIFO extracted from adapter test clients. Arguments/secrets are never recorded.
+ * HTTP bindings may supply a response for 5xx/409; SDK bindings receive an error.
+ * Dispatch observations describe the script only, never production no-charge evidence.
+ */
+export declare function createScriptedPaymentFake<Calls extends Record<string, unknown>>(): {
+    calls: readonly {
+        call: keyof Calls;
+        kind: ScriptedPaymentOutcome<unknown>["kind"];
+    }[];
+    enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedPaymentOutcome<Calls[K]>[]): void;
+    invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
+    assertDrained(): void;
+};
+```
 ## dist/payments/verifiedIngress.d.ts
 
 ```ts

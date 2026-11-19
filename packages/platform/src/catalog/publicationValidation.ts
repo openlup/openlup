@@ -8,8 +8,8 @@ import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, parseCatalogQuanti
 import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/draftV3.js";
-import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
-import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse } from "./publicationError.js";
 import { assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, publicationContent,
   publicationDigest, publicationJson, publicationReadinessVerdict } from "./publicationCodec.js";

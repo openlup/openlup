@@ -534,6 +534,10 @@
       "class": "public-output"
     },
     {
+      "path": "api/cron/payment-provider-reconciliation.parity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "api/cron/payment-provider-reconciliation.test.ts",
       "class": "public-output"
     },
@@ -1498,6 +1502,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -1668,6 +1676,10 @@
     {
       "path": "docs/platform/communications-conformance.mjs",
       "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/history/managed-query-baseline-2026-11-19.md",
+      "class": "public-output"
     },
     {
       "path": "docs/platform/history/neutral-store-limits-2026-11-13.md",
@@ -4922,6 +4934,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123150000_subscription_renewal_due_fairness.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5398,10 +5414,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/catalog/contracts/publication.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/catalog/contracts/publicationRuleFacts.ts",
       "class": "public-output"
     },
@@ -5487,6 +5499,10 @@
     },
     {
       "path": "packages/platform/src/catalog/publicationCodec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationContracts.ts",
       "class": "public-output"
     },
     {
@@ -30074,6 +30090,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/benchmarks/managedQueries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/benchmarks/managedQueryData.sql",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/bundleEffectiveParity.test.ts",
       "class": "public-output"
     },
@@ -30718,6 +30742,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nativeRenewalDueFairness.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts",
       "class": "public-output"
     },
@@ -31091,6 +31119,10 @@
     },
     {
       "path": "tests/postgres/subscriptionPublicRenewal.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionPublicRenewal.worker.mjs",
       "class": "public-output"
     },
     {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Script } from "node:vm";
-import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
+import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
 import type { CatalogProductTypeInput, CatalogProductTypeRef } from "./contracts/productTypes.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
