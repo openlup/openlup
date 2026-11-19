@@ -8053,7 +8053,7 @@
   "managedExactForwards": [
     {
       "path": "supabase/migrations/20261123144000_checkout_account_ownership.sql",
-      "sha256": "08c5de52e983c71dfa5f7383ca6446fcbaa8899a315736b71b3c46be6905e23b",
+      "sha256": "d0e8869e104c9c6037b414d2751d9998ff9d7e4745a5e3c874b30cf218f60a05",
       "prefixSha256": "4e96d9529854d90134a0c7c5f6aba95824066927d91b0a58c979a58eb6d2967a"
     }
   ]
