@@ -1070,8 +1070,15 @@ complete native catalogue. The existing horizon reader now calls
 `public.inventory_renewal_protection_validate(jsonb)`. The validator returns
 the normalized policy with the original revision string and an integer horizon,
 or raises `inventory_renewal_protection_policy_invalid` (SQLSTATE `22023`).
-The migration owner can call the validator directly. The existing horizon and
-stock reads keep their privileges and the absent-row 14-day fallback.
+The migration owner and `service_role` can call the validator directly.
+The qualified runtime logins inherit execution through `service_role`.
+The existing horizon and stock reads keep their privileges and the absent-row
+14-day fallback.
+
+For custom runtime roles with a direct horizon-reader grant,
+`EXECUTE` on the pure validator is optional for ATP. Grant it for connected
+settings validation or preview. The validator reads no table, and direct calls
+without its grant raise SQLSTATE `42501`.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 

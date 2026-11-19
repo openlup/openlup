@@ -7947,7 +7947,7 @@
     },
     {
       "path": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-      "sha256": "d7aad9a18709b2221f9fa93f9f58825e07d3bad264dcc454d7b614680ebb8e35",
+      "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481",
       "functions": [
         {
           "signature": "public.inventory_renewal_protection_days()",

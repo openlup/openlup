@@ -20,6 +20,7 @@ import { composeNativeBindings } from "../../examples/neutral-store/host/native-
 import { sizedHostPorts } from "../../examples/neutral-store/host/editor-ports.ts";
 import { applyDemoSeed } from "../../examples/neutral-store/installation/install.ts";
 import { createOriginPolicy } from "../../examples/neutral-store/host/origin-policy.ts";
+import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 const corpus = JSON.parse(readFileSync(
   new URL("../../packages/platform/test/inventory/inventory_renewal_protection.json", import.meta.url), "utf8",
@@ -176,6 +177,84 @@ it("malformed installed policy always names the error, including empty demand an
   }
 });
 
+async function expectValidatorAccess(runtime: Pool) {
+  const sql = "SELECT public.inventory_renewal_protection_validate($1::jsonb) AS result";
+  const valid = '{"revision":"fixture","renewalProtectionDays":14.0}';
+  expect((await runtime.query(sql, [valid])).rows).toEqual([{ result: { revision: "fixture", renewalProtectionDays: 14 } }]);
+  await expect(runtime.query(sql, ['{"revision":"fixture","renewalProtectionDays":0}']))
+    .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
+  expect((await runtime.query(`SELECT rolname FROM pg_catalog.pg_roles
+    WHERE has_function_privilege(oid, 'public.inventory_renewal_protection_validate(jsonb)', 'EXECUTE')
+    <> has_function_privilege(oid, 'public.inventory_renewal_protection_days()', 'EXECUTE')`)).rows).toEqual([]);
+
+  const client = await runtime.connect();
+  try {
+    await client.query("SET ROLE anon");
+    await expect(client.query(sql, [valid]))
+      .rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_validate" });
+  } finally {
+    try { await client.query("RESET ROLE"); } finally { client.release(); }
+  }
+}
+
+it.each(["legacy", "separate", "admin-managed", "admin-operator"] as const)(
+  "matches horizon reader permissions for the %s runtime", async profile => {
+    const fixture = await installAccountMutations(profile);
+    try { await expectValidatorAccess(fixture.runtime); }
+    finally { await fixture.close(); }
+  }, postgresSetupTimeoutMs,
+);
+
+it("revokes default validator execution grants for anon and authenticated", async () => {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // Replay the unlanded forward as its owner with browser-role defaults in place.
+    await client.query(`DROP FUNCTION public.inventory_renewal_protection_validate(jsonb);
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated`);
+    await client.query(readFileSync("db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql", "utf8"));
+    for (const role of ["anon", "authenticated"]) {
+      await client.query(`SET LOCAL ROLE ${role}; SAVEPOINT validator_call`);
+      await expect(client.query("SELECT public.inventory_renewal_protection_validate($1::jsonb)", [
+        '{"revision":"fixture","renewalProtectionDays":14}',
+      ])).rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_validate" });
+      await client.query("ROLLBACK TO SAVEPOINT validator_call; RESET ROLE");
+    }
+  } finally {
+    try { await client.query("ROLLBACK"); } finally { client.release(); }
+  }
+});
+
+it("a custom runtime needs a direct validator grant only for direct calls", async () => {
+  const client = await db.connect();
+  const proposed = '{"revision":"proposed","renewalProtectionDays":14.0}';
+  try {
+    await client.query("BEGIN");
+    await installRenewalStockProtectionPolicy(client, { revision: "installed", renewalProtectionDays: 21 });
+    await client.query(`CREATE ROLE inventory_preview_runtime NOLOGIN;
+      GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO inventory_preview_runtime;
+      SET LOCAL ROLE inventory_preview_runtime;
+      SAVEPOINT horizon_only`);
+    expect((await client.query(`SELECT pg_has_role(current_user, 'service_role', 'MEMBER') AS member,
+      has_table_privilege(current_user, 'public.commerce_settings', 'SELECT') AS reads_settings`)).rows)
+      .toEqual([{ member: false, reads_settings: false }]);
+    await expect(client.query("SELECT public.inventory_renewal_protection_validate($1::jsonb)", [proposed]))
+      .rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_validate" });
+    await client.query("ROLLBACK TO SAVEPOINT horizon_only");
+    expect((await client.query("SELECT public.inventory_renewal_protection_days() AS days")).rows)
+      .toEqual([{ days: 21 }]);
+
+    await client.query(`RESET ROLE;
+      GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO inventory_preview_runtime;
+      SET LOCAL ROLE inventory_preview_runtime`);
+    expect((await client.query(`SELECT public.inventory_renewal_protection_days() AS days,
+      public.inventory_renewal_protection_validate($1::jsonb) AS policy`, [proposed])).rows)
+      .toEqual([{ days: 21, policy: { revision: "proposed", renewalProtectionDays: 14 } }]);
+  } finally {
+    try { await client.query("ROLLBACK"); } finally { client.release(); }
+  }
+});
+
 it("restricted native startup refuses drift before serving or writing, with installer-only policy writes", async () => {
   const config = structuredClone(Object.values(configurations)[0]!);
   // Deliberately avoid assuming a built-in configuration ID.
@@ -196,16 +275,14 @@ it("restricted native startup refuses drift before serving or writing, with inst
       .toMatchObject({ availableQuantity: 61 });
     expect((await createPostgresStockAvailability(runtime, { sourceKey: source, now: () => asOf }).readInstalled([sku])).get(sku))
       .toMatchObject({ availableForNewPurchases: 61 });
-    // The F2a grant can land before or after this preview consumer.
-    const { allowed } = (await runtime.query(`SELECT has_function_privilege(
-      'public.inventory_renewal_protection_validate(jsonb)', 'EXECUTE') AS allowed`)).rows[0]!;
+    await expectValidatorAccess(runtime);
     const key = "inventory_renewal_protection";
     const preview = await previewSetting({ key, proposed: config.inventory.renewalProtection }, {
       [key]: (proposed, input) => previewRenewalStockProtection(key, proposed, { ...input, db: runtime, sourceKey: source }),
     });
     expect(preview).toMatchObject({ validation: {
       typescript: { state: "valid" },
-      postgres: allowed ? { state: "valid" } : { state: "unavailable", remediation: { action: expect.any(String) } },
+      postgres: { state: "valid", value: config.inventory.renewalProtection },
     } });
     await expect(installRenewalStockProtectionPolicy(runtime, config.inventory.renewalProtection)).rejects.toMatchObject({ code: "42501" });
     await installCheckoutRecoveryReminderSchedule(db, config.checkoutRecoveryReminders);
@@ -225,6 +302,11 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
     (SELECT jsonb_agg(l ORDER BY reservation_id, sku) FROM public.fulfillment_inventory_reservation_lines l) AS reservation_lines,
     (SELECT jsonb_agg(s ORDER BY source_key, sku) FROM public.fulfillment_stock_current s) AS stock`)).rows;
   const before = await state();
+  const url = new URL(resource!.connectionString);
+  url.username = installation.runtimeLogin;
+  url.password = "synthetic-runtime";
+  url.searchParams.set("options", "-c default_transaction_read_only=on");
+  const runtime = new Pool({ connectionString: url.toString() });
   const instant = new Date(asOf).toISOString();
   const calls: string[] = [];
   const tool = settingsReadTools.find(candidate => candidate.name === "settings__preview")!;
@@ -238,8 +320,7 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
       [key]: (candidate, input) => previewRenewalStockProtection(key, candidate, {
         ...input, sourceKey: source,
         db: { async connect() {
-          // Use the migration owner until the F2a runtime validator grant is installed.
-          const client = await db.connect();
+          const client = await runtime.connect();
           return {
             query(sql, params) { calls.push(sql); return client.query(sql, params); },
             release: error => client.release(error),
@@ -254,8 +335,9 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
     const result = await mcp.callTool({ name: tool.name, arguments: { key, proposed, skus: selected, asOf: instant } });
     return result.structuredContent;
   };
-  await server.connect(serverTransport);
   try {
+    expect((await runtime.query("SELECT session_user AS role")).rows).toEqual([{ role: installation.runtimeLogin }]);
+    await server.connect(serverTransport);
     await mcp.connect(clientTransport);
     expect((await mcp.listTools()).tools[0]?.annotations?.readOnlyHint).toBe(true);
     for (const selected of [[sku], skus]) {
@@ -279,8 +361,6 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
         "ROLLBACK",
       ]);
       if (selected.length === 1) {
-        const url = new URL(resource!.connectionString);
-        url.searchParams.set("options", "-c default_transaction_read_only=on");
         const args = ["run", "--silent", "settings", "--", "preview", key, JSON.stringify(proposed),
           "--database-url", url.toString(), "--sku", sku, "--as-of", instant];
         const options = { cwd: fileURLToPath(new URL("../../examples/neutral-store/", import.meta.url)), encoding: "utf8" } as const;
@@ -294,8 +374,12 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
       }
     }
   } finally {
-    await mcp.close();
-    await server.close();
+    try {
+      await mcp.close();
+      await server.close();
+    } finally {
+      await runtime.end();
+    }
   }
   expect(await state()).toEqual(before);
 });
