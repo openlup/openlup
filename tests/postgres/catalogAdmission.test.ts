@@ -806,7 +806,7 @@ it.for([false,true])("LC6-D-072 legacy quote preserves the exact winning price, 
   await pool.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
     VALUES($1,$2,'subscription',617,statement_timestamp()-interval '1 minute')`, [entry.priceListId,f.sku]);
   const restore = control ? await hook(catalogAssertionSignature,"DECLARE selection jsonb;","",body => {
-    const winner = /  IF p_offer_evidence->>'lane'='legacy' AND \(public\.catalog_admission_legacy_price[\s\S]*?END IF;/u;
+    const winner = / {2}IF p_offer_evidence->>'lane'='legacy' AND \(public\.catalog_admission_legacy_price[\s\S]*?END IF;/u;
     expect(body.match(winner)).not.toBeNull();
     return body.replace(winner,"");
   }) : undefined;
@@ -2638,7 +2638,7 @@ it.each(authorityPaths)("LC6-D-073 closed price validity discriminator via %s", 
     const withoutValidity = body.replace(validity,"\n   AND to_jsonb(p)=price_context->'entry';");
     if (path !== "legacy") return withoutValidity;
     // Legacy independently resolves its winning price through the same row policy.
-    const winner = /  IF p_offer_evidence->>'lane'='legacy' AND \(public\.catalog_admission_legacy_price[\s\S]*?END IF;/u;
+    const winner = / {2}IF p_offer_evidence->>'lane'='legacy' AND \(public\.catalog_admission_legacy_price[\s\S]*?END IF;/u;
     expect(withoutValidity.match(winner)).not.toBeNull();
     return withoutValidity.replace(winner,"");
   });
