@@ -10,7 +10,7 @@ import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts"
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
 import { assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
-import { admissionRuleFiles, capabilityHint } from "./sql-admit.ts";
+import { admissionRuleFiles } from "./sql-admit.ts";
 
 const CLI = resolve("scripts/sql-admit.ts");
 const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -87,18 +87,18 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
 type Case = { name: string; exit: number; refusal?: string; hint?: string; queue?: "not run"; build: (f: Fixture) => { base: string; head: string }; also?: (f: Fixture, base: string, head: string, fork: string) => void };
 const cases: Case[] = [
   { name: "an admitted native forward with its slot, pin and manifest row", exit: 0, build: (f) => { stageNativeForward(f); return { base: f.base, head: f.commit() }; } },
-  ...[false, true].map((drift): Case => {
+  ...["exact", "drift", "conflict"].map((scenario): Case => {
     const name = "fixture_deferred", relation = "public.fixture_row", signature = "public.fixture_deferred()";
     const canonical = `CREATE CONSTRAINT TRIGGER ${name} AFTER UPDATE OR DELETE ON ${relation} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${signature};`;
-    return { name: drift ? "a deferred trigger differing from its structured entry" : "a pinned deferred trigger", exit: drift ? 1 : 0,
-      ...(drift ? { refusal: `deferred trigger ${name} does not match its registry entry; write exactly: ${canonical}`, hint: "#declare-a-reviewed-trigger" } : {}),
-      build: (f) => {
-        const statement = drift ? canonical.replace("UPDATE OR DELETE", "UPDATE, DELETE") : canonical;
+    const refusal = scenario === "drift" ? `deferred trigger ${name} does not match its registry entry; write exactly: ${canonical}` : scenario === "conflict" ? "remove CREATE OR REPLACE TRIGGER from this forward" : undefined;
+    return { name: `a pinned deferred trigger with ${scenario} SQL`, exit: refusal ? 1 : 0, refusal, hint: scenario === "drift" ? "#declare-a-reviewed-trigger" : undefined, build: (f) => {
+        const statement = scenario === "drift" ? canonical.replace("UPDATE OR DELETE", "UPDATE, DELETE") : canonical;
         const entry = slot(nativePath);
         const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`;
         entry.createdFunctions = [{ signature, searchPath: null }];
         entry.createdTriggers = [{ name, relation, events: ["UPDATE", "DELETE"], function: signature, deferred: true, sha256: sqlSha256(statement) }];
-        stageNativeForward(f, `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n${statement}\n`, entry,
+        const companion = scenario === "conflict" ? `CREATE OR REPLACE TRIGGER other BEFORE INSERT ON ${relation} FOR EACH ROW EXECUTE FUNCTION ${signature};` : "";
+        stageNativeForward(f, `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n${statement}\n${companion}`, entry,
           [{ signature, beforeSha256: null, afterSha256: sqlSha256(definition) }]);
         return { base: f.base, head: f.commit() };
       } };
@@ -148,8 +148,8 @@ describe("sql:admit", () => {
     if (refusal === undefined) expect(reported.every(([status]) => status === "PASS")).toBe(true);
     else {
       expect(reported.filter(([status]) => status === "REFUSED").map(([, message]) => message)).toEqual(expect.arrayContaining([expect.stringContaining(refusal)]));
-      expect(result.stdout).toContain(`capability needed: ${capabilityHint(refusal)}`);
-      expect(capabilityHint(refusal)).toContain(hint);
+      if (hint) expect(result.stdout).toMatch(new RegExp(`capability needed:[^\\n]+${hint}`, "u"));
+      else expect(result.stdout).not.toContain("capability needed:");
     }
   }, 20_000);
 

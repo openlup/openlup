@@ -2499,10 +2499,8 @@ new view inventory, ownership and owner-only privileges.
 
 <a id="declare-a-reviewed-trigger"></a>
 
-**Declare a deferred trigger.** Add its name, public relation, events,
-zero-argument public function, `deferred: true` and statement hash to
-`createdTriggers` in the same PR. Use one or more events in the order
-`INSERT`, `UPDATE`, `DELETE`. Use identifiers of at most 63 bytes.
+**Declare a deferred trigger.** Add the `createdTriggers` entry and exact SQL in
+the same PR. Use 63-byte identifiers at most and `INSERT`, `UPDATE`, `DELETE` order.
 
 ```json
 {
@@ -2515,20 +2513,17 @@ zero-argument public function, `deferred: true` and statement hash to
 }
 ```
 
-Add the statement exactly as rendered, including the semicolon.
-
 ```sql
 CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.example_guard();
 ```
 
-Use a function returning `trigger` in invoker mode. Follow the standard
-function pin and PUBLIC revoke rules for a new function. Keep other DDL
-for the trigger, its linked constraint and its function out of the forward.
-The verifier admits the full forward before execution and checks the installed
-trigger and its linked constraint before commit.
+Use a public zero-argument invoker returning `trigger`. Reserve the pinned names
+for declarations, new functions and their PUBLIC revokes. Pins may share a
+relation. Reuse prefix invokers without a revoke and keep other trigger DDL off it.
 
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
-a same-slot function with explicit `SECURITY INVOKER`. They also allow `UPDATE OF`.
+a same-slot function with explicit `SECURITY INVOKER`, a pinned `search_path`
+and an owner-only ACL. Ordinary triggers also allow `UPDATE OF`.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
