@@ -2,9 +2,9 @@ import { captureConnectedNativeStore, type ConnectedNativeStoreCapture } from ".
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { installSubscriptionConsumer } from "../helpers/installSubscriptionConsumer.js";
-import { execFile } from "node:child_process";
+import { execFile, fork } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { copyFileSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -190,6 +190,45 @@ export async function freshRetryReadback(operationId: string, when: string) {
     const results=await driver.run(argv[3],500);console.log(JSON.stringify({results,executions,reads}));await p.end();`;
   const { stdout } = await exec(process.execPath, ["--input-type=module", "-e", child, runtimeUrl, operationId, when], { cwd: scratch });
   return JSON.parse(stdout);
+}
+
+export const normalRenewalWorkerPopulation = "g7-normal-process";
+
+export async function withNormalRenewalWorker<T>(
+  input: { when: string; workerId: string; holdAfterDispatch?: boolean },
+  inspect: (message: unknown, pid: number | undefined) => Promise<T>,
+): Promise<{ value: T; signal: NodeJS.Signals | null }> {
+  const entry = resolve(scratch, "normal-renewal-worker.mjs");
+  copyFileSync(new URL("./subscriptionPublicRenewal.worker.mjs", import.meta.url), entry);
+  const child = fork(entry, [], { cwd: scratch, execArgv: [], stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const message = await new Promise<unknown>((resolve, reject) => {
+      child.once("message", message => {
+        if (message && typeof message === "object" && "error" in message) reject(new Error(String(message.error)));
+        else resolve(message);
+      });
+      child.once("error", reject);
+      child.once("close", (code, signal) => reject(new Error(`normal renewal worker exited before reporting (${code ?? signal})`)));
+      deadline = setTimeout(() => {
+        reject(new Error("normal renewal worker did not finish"));
+        child.kill("SIGKILL");
+      }, 12_000);
+      child.send({ ...input, runtimeUrl, methodRef: facts.methodRef, population: normalRenewalWorkerPopulation }, error => { if (error) reject(error); });
+    });
+    const value = await inspect(message, child.pid);
+    if (input.holdAfterDispatch) expect(child.kill("SIGKILL")).toBe(true);
+    const exit = await exited;
+    expect(exit).toEqual(input.holdAfterDispatch ? { code: null, signal: "SIGKILL" } : { code: 0, signal: null });
+    return { value, signal: exit.signal };
+  } finally {
+    clearTimeout(deadline);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await exited;
+  }
 }
 
 export async function captureStore(db: Pool, sourceId: string, limits = { maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 }) {

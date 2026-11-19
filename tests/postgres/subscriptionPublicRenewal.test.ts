@@ -4,7 +4,7 @@ import { connectedNativeStoreTables } from "../../server/adapters/postgres/conne
 import { randomUUID } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { allPublicRows } from "./subscriptionStockWaitCases.js";
-import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, restartDatabase, freshRetryReadback, rpc, runtime, settlement, stock, transaction } from "./subscriptionPublicRenewalFixture.js";
+import { api, active, purchase, admin, at, composition, payments, destinations, inventory, captureStore, withRestoredStore, days, deps, executor, facts, fulfillment, later, now, retire, restartDatabase, freshRetryReadback, normalRenewalWorkerPopulation, rpc, runtime, settlement, stock, transaction, withNormalRenewalWorker } from "./subscriptionPublicRenewalFixture.js";
 import type { NativeRetryDriverOptions, NativeRenewalPurchaseFacts } from "@openlup/platform/subscriptions";
 import type { RenewalReadback } from "@openlup/platform/subscriptions/contracts";
 
@@ -91,6 +91,59 @@ it("waits for stock and resumes the same frozen obligation through the installed
   expect(await b.realizationAdmitted(operation.orderId!)).toMatchObject({ state: "resumed" });
   expect((await runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].status).toBe("active");
 });
+
+it("resumes an acknowledged normal renewal after a worker is killed without dispatching again", async () => {
+  const { subscriptionId } = await active();
+  const operations = () => admin.query(`SELECT id, identity_key, state, operation_fingerprint, external_attempt_ref, scheduled_at,
+    claimed_by, claim_generation, lease_expires_at FROM public.subscription_renewal_operations WHERE subscription_id=$1`, [subscriptionId]);
+  const afterLease = (at: Date) => new Date(at.getTime() + 1).toISOString();
+  const { value: first, signal } = await withNormalRenewalWorker({ when: now, workerId: "before-crash", holdAfterDispatch: true }, async (message, pid) => {
+    const { rows } = await operations();
+    expect(rows).toEqual([expect.objectContaining({ state: "attempt_prepared", claimed_by: "before-crash", claim_generation: "1",
+      external_attempt_ref: expect.stringContaining("sandbox-renewal:") })]);
+    expect(message).toMatchObject({ stage: "acknowledged", executions: 1, reads: 0, externalAttemptRef: rows[0].external_attempt_ref });
+    await withNormalRenewalWorker({ when: now, workerId: "contender" }, async (contending, otherPid) => {
+      expect(otherPid).not.toBe(pid);
+      expect(contending).toEqual({ stage: "complete", result: null, executions: 0, reads: 0 });
+    });
+    return { operation: rows[0], pid };
+  });
+  expect(signal).toBe("SIGKILL");
+  const { operation } = first;
+  // The child exit and the database's release of its advisory lock are asynchronous.
+  await transaction(async db => {
+    await db.query("SET LOCAL statement_timeout='5s'");
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [normalRenewalWorkerPopulation]);
+  });
+
+  const { value: reclaimed } = await withNormalRenewalWorker({ when: afterLease(operation.lease_expires_at), workerId: "after-crash" }, async (message, pid) => {
+    expect(pid).not.toBe(first.pid);
+    expect(message).toMatchObject({ stage: "complete", result: { retries: [], renewals: [{ operationId: operation.id, status: "awaiting_provider" }] }, executions: 0, reads: 1 });
+    const { rows } = await operations();
+    expect(rows).toEqual([expect.objectContaining({ ...operation, claimed_by: "after-crash", claim_generation: "2", lease_expires_at: expect.any(Date) })]);
+    return rows[0];
+  });
+
+  const when = afterLease(reclaimed.lease_expires_at);
+  await api.createPostgresSandboxRenewalRail(executor, { scenario: "ambiguous" }).observe({ operationId: operation.id,
+    fingerprint: operation.operation_fingerprint, externalAttemptRef: operation.external_attempt_ref, outcome: "succeeded", occurredAt: when });
+  const completed = await withNormalRenewalWorker({ when, workerId: "after-observation" }, async message => {
+    expect(message).toMatchObject({ stage: "complete", result: { retries: [], renewals: [{ operationId: operation.id, status: "succeeded" }] }, executions: 0, reads: 1 });
+    const { rows } = await operations();
+    return rows;
+  });
+  expect(completed.value).toEqual([expect.objectContaining({ ...operation, state: "succeeded",
+    claimed_by: "after-observation", claim_generation: "3", lease_expires_at: expect.any(Date) })]);
+  expect((await admin.query(`SELECT event_key, outcome FROM public.subscription_renewal_outcomes
+    WHERE renewal_operation_id=$1 ORDER BY event_key`, [operation.id])).rows).toEqual([
+    { event_key: `sandbox-observation:${operation.id}`, outcome: "succeeded" },
+    { event_key: `${operation.identity_key}:provider-success:${operation.external_attempt_ref}`, outcome: "succeeded" },
+  ]);
+  expect((await admin.query(`SELECT count(*)::int AS paid FROM public.subscription_cycles WHERE subscription_id=$1 AND status='paid'`, [subscriptionId])).rows)
+    .toEqual([{ paid: 2 }]);
+  expect((await admin.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows)
+    .toEqual([{ next_cycle_at: new Date(days(operation.scheduled_at.toISOString(), facts.cadenceDays)) }]);
+}, 30_000);
 
 async function parcel(orderId: string) {
   // Parcel facts use the bounded writer and the installation's synthetic port.
