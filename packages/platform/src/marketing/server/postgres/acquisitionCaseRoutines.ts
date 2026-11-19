@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { Pool, type PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { attachPgErrorListener } from "./pgErrorListener.js";
 
 import { ACQUISITION_CASE_CONTRACT_VERSION, acquisitionCaseListResponseSchema, acquisitionCaseProjectionSchema } from "../../acquisitionCaseSchemas.js";
@@ -24,6 +24,7 @@ const ACTIVE_COUNT = "SELECT public.acquisition_case_active_count_v1() AS respon
 
 type Env = { connectionString: string };
 type Options = {
+  pool?: Pool;
   poolFactory?: (env: Env) => Pool | Promise<Pool>;
   /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
   onPoolError?: (error: Error) => void;
@@ -34,21 +35,28 @@ export function createPostgresAcquisitionCasePort(
   env: Env,
   options: Options = {},
 ): AcquisitionCasePort {
-  if (!env.connectionString.trim()) throw new Error("acquisition_case_database_url_required");
-  let poolPromise: Promise<Pool> | null = null;
-  const pool = () => {
-    if (!poolPromise) {
-      poolPromise = Promise.resolve()
-        .then(() => (options.poolFactory ? options.poolFactory(env) : new Pool({ connectionString: env.connectionString })))
+  if (options.pool && options.poolFactory) {
+    throw new Error("postgres_pool_and_factory_mutually_exclusive");
+  }
+  if (!options.pool && !env.connectionString.trim()) {
+    throw new Error("acquisition_case_database_url_required");
+  }
+  const borrowedPool = options.pool ?? null;
+  let ownedPoolPromise: Promise<Pool> | null = null;
+  const pool = async (): Promise<Pool> => {
+    if (borrowedPool) return borrowedPool;
+    if (!ownedPoolPromise) {
+      ownedPoolPromise = Promise.resolve()
+        .then(() => (options.poolFactory ? options.poolFactory(env) : defaultPoolFactory(env)))
         .then(
           (resolved) => attachPgErrorListener(resolved, "acquisition-case", options.onPoolError),
           (error) => {
-            poolPromise = null;
+            ownedPoolPromise = null;
             throw error;
           },
         );
     }
-    return poolPromise;
+    return ownedPoolPromise;
   };
 
   const call = async (sql: string, values: unknown[]): Promise<unknown> =>
@@ -153,7 +161,9 @@ export function createPostgresAcquisitionCasePort(
     },
 
     async close() {
-      if (poolPromise) await (await poolPromise).end();
+      const pending = ownedPoolPromise;
+      ownedPoolPromise = null;
+      if (pending) await (await pending).end();
     },
   };
 }
@@ -196,7 +206,23 @@ function outcomeFailure(outcome: unknown): AcquisitionCaseFailureKind {
 }
 
 function databaseFailure(error: unknown): AcquisitionCaseResult<never> {
+  if (error instanceof Error && error.message.startsWith("OPENLUP_E_PEER_MISSING:")) throw error;
   return failure(object(error)?.code === "22023" ? "invalid" : "unavailable");
+}
+
+async function defaultPoolFactory(env: Env): Promise<Pool> {
+  const pg = await import("pg").catch(peerMissing);
+  const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
+  return new PoolCtor({ connectionString: env.connectionString });
+}
+
+function peerMissing(cause: unknown): never {
+  if (cause instanceof Error && "code" in cause
+    && (cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND")
+    && /^Cannot find (?:package|module) ['"]pg['"]/.test(cause.message)) {
+    throw new Error("OPENLUP_E_PEER_MISSING: pg is required by the Postgres acquisition case port; install it alongside @openlup/platform", { cause });
+  }
+  throw cause;
 }
 
 function failure<T>(kind: AcquisitionCaseFailureKind): AcquisitionCaseResult<T> {

@@ -43,8 +43,8 @@ interface CachedBundleDataPort {
 }
 
 export interface DataBindingDependencies {
-  /** The supabase-js `createClient` used by every supabase gateway these bindings build. */
-  createSupabaseClient: SupabaseCreateClient;
+  /** The supabase-js `createClient` used by every supabase gateway these bindings build; optional for direct-PostgreSQL hosts. */
+  createSupabaseClient?: SupabaseCreateClient;
   /** Builds the direct-PostgreSQL gateway; defaults to `createPostgresDataGateway`. */
   createPostgresGateway?: (env: PostgresDataGatewayEnv) => DataGatewayPort;
 }
@@ -63,7 +63,7 @@ export interface DataBindings {
 }
 
 /** Create one set of data bindings; the bundle data port cache belongs to this set. */
-export function createDataBindings(deps: DataBindingDependencies): DataBindings {
+export function createDataBindings(deps: DataBindingDependencies = {}): DataBindings {
   let cachedBundleDataPort: CachedBundleDataPort | null = null;
   const createPostgresGateway = deps.createPostgresGateway ?? ((env: PostgresDataGatewayEnv) => createPostgresDataGateway(env));
 
@@ -74,7 +74,13 @@ export function createDataBindings(deps: DataBindingDependencies): DataBindings 
     requestOptions: DataPortBindingOptions = {},
   ): DataGatewayPort | null {
     switch (dataKind) {
-      case "supabase":
+      case "supabase": {
+        const createClientImpl = requestOptions.createClientImpl ?? deps.createSupabaseClient;
+        if (!createClientImpl) {
+          throw new Error(
+            "OPENLUP_E_DATA_BINDING_SUPABASE_CLIENT_REQUIRED: createSupabaseClient is required when binding the supabase data port",
+          );
+        }
         // Construct from env with empty-string fallbacks; the actual supabase client is created
         // lazily when asActor/asService runs work, so the slot binds even before secrets are present
         // (same as the blob/transactional/analytics slots — keeps composeBundle({}) non-null).
@@ -86,7 +92,8 @@ export function createDataBindings(deps: DataBindingDependencies): DataBindings 
             env.SUPABASE_ANON_KEY ??
             "",
           serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY ?? "",
-        }, { ...requestOptions, createClientImpl: requestOptions.createClientImpl ?? deps.createSupabaseClient });
+        }, { ...requestOptions, createClientImpl });
+      }
       case "postgres":
         // Direct-PG gateway (pg.Pool, tx-per-request RLS via SET LOCAL). Pure factory — no pool
         // until asActor/asService runs work, so the slot binds even before DATABASE_URL is present

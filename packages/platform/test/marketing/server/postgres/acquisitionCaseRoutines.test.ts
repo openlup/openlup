@@ -203,6 +203,28 @@ describe("createPostgresAcquisitionCasePort", () => {
     expect(() => emitterPool.emit("error", idleError)).not.toThrow();
     expect(seen).toEqual([idleError]);
   });
+
+  it("accepts a borrowed pool without calling end() and rethrows OPENLUP_E_PEER_MISSING", async () => {
+    const stub = stubPool([5]);
+    const end = vi.fn(async () => {});
+    const borrowed = Object.assign(stub.pool, { end });
+    const port = createPostgresAcquisitionCasePort({ connectionString: "" }, { pool: borrowed });
+    await expect(port.activeCount("public_tester_application")).resolves.toEqual({ ok: true, value: 5 });
+    await port.close();
+    expect(end).not.toHaveBeenCalled();
+
+    expect(() => createPostgresAcquisitionCasePort(
+      { connectionString: "postgres://local" },
+      { pool: borrowed, poolFactory: () => borrowed },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+
+    const missingPeerPort = createPostgresAcquisitionCasePort(
+      { connectionString: "postgres://local" },
+      { poolFactory: () => { throw new Error("OPENLUP_E_PEER_MISSING: pg is required"); } },
+    );
+    await expect(missingPeerPort.activeCount("public_tester_application"))
+      .rejects.toThrow("OPENLUP_E_PEER_MISSING: pg is required");
+  });
 });
 
 const ACTIVE_COUNT_QUERY = "SELECT public.acquisition_case_active_count_v1() AS response";

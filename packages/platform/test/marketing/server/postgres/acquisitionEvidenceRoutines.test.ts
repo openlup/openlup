@@ -81,4 +81,31 @@ describe("postgres acquisition evidence adapter", () => {
     expect(() => emitterPool.emit("error", idleError)).not.toThrow();
     expect(seen).toEqual([idleError]);
   });
+
+  it("accepts a borrowed pool without calling end() and rethrows OPENLUP_E_PEER_MISSING", async () => {
+    const stub = stubPool([{ rows: [evidence], totalCount: 1 }]);
+    const port = createPostgresAcquisitionEvidencePort({ connectionString: "" }, { pool: stub.pool });
+    await expect(port.listSurveys({
+      view: "acquisition_survey_v1",
+      actorReference: "9f576216-011a-4f67-8404-3f28f7f624d5",
+      limit: 10,
+    })).resolves.toMatchObject({ ok: true, value: { totalCount: 1 } });
+    await port.close();
+    expect(stub.end).not.toHaveBeenCalled();
+
+    expect(() => createPostgresAcquisitionEvidencePort(
+      { connectionString: "postgres://local" },
+      { pool: stub.pool, poolFactory: () => stub.pool },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+
+    const missingPeerPort = createPostgresAcquisitionEvidencePort(
+      { connectionString: "postgres://local" },
+      { poolFactory: () => { throw new Error("OPENLUP_E_PEER_MISSING: pg is required"); } },
+    );
+    await expect(missingPeerPort.listSurveys({
+      view: "acquisition_survey_v1",
+      actorReference: "9f576216-011a-4f67-8404-3f28f7f624d5",
+      limit: 10,
+    })).rejects.toThrow("OPENLUP_E_PEER_MISSING: pg is required");
+  });
 });

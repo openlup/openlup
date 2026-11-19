@@ -53,6 +53,8 @@ export interface PostgresMigrationRunnerOptions {
   catalogProjectionPayload: (client: PoolClient) => Promise<string>;
   /** Catalogue root; defaults to process.cwd(). */
   root?: string;
+  /** Borrowed pg.Pool; caller retains lifecycle ownership. Mutually exclusive with `poolFactory`. */
+  pool?: Pool;
   poolFactory?: (env: PostgresMigrationRunnerEnv) => Pool | Promise<Pool>;
   /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
   onPoolError?: (error: Error) => void;
@@ -165,19 +167,33 @@ export function createPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
   options: PostgresMigrationRunnerOptions,
 ): MigrationRunnerPort {
+  if (options.pool && options.poolFactory) {
+    throw new Error("postgres_pool_and_factory_mutually_exclusive");
+  }
   const root = options.root ?? process.cwd();
-  let pool: Pool | null = null;
+  const borrowedPool = options.pool ?? null;
+  let ownedPoolPromise: Promise<Pool> | null = null;
 
   async function getPool(): Promise<Pool> {
-    if (pool) return pool;
-    const factory = options.poolFactory ?? defaultPoolFactory;
-    pool = attachPgErrorListener(await factory(env), "migration-runner", options.onPoolError);
-    return pool;
+    if (borrowedPool) return borrowedPool;
+    if (!ownedPoolPromise) {
+      const factory = options.poolFactory ?? defaultPoolFactory;
+      ownedPoolPromise = Promise.resolve()
+        .then(() => factory(env))
+        .then(
+          (resolved) => attachPgErrorListener(resolved, "migration-runner", options.onPoolError),
+          (error) => {
+            ownedPoolPromise = null;
+            throw error;
+          },
+        );
+    }
+    return ownedPoolPromise;
   }
 
   return {
     async status(): Promise<{ pending: string[]; applied: string[] }> {
-      assertConnectionString(env);
+      if (!borrowedPool) assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
         const assertSession = options.source.assertSession;
@@ -193,7 +209,7 @@ export function createPostgresMigrationRunner(
     },
 
     async apply(opts?: { dryRun?: boolean }): Promise<{ applied: string[] }> {
-      assertConnectionString(env);
+      if (!borrowedPool) assertConnectionString(env);
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
         const assertSession = options.source.assertSession;

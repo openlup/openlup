@@ -7,9 +7,13 @@ import {
   createPostgresDataGateway,
   createPostgresGatewayTypeOverrides,
   createPostgresRoleFreeTransactionLane,
+  createPostgresTransactionRunner,
   postgresTimestampTzToRfc3339,
   resolvePostgresDataGatewayEnv,
-} from "../../src/data/postgresGateway.js";
+  type PgQueryExecutor,
+  type PostgresRoleFreeTransactionLane,
+  type SqlExecutor,
+} from "../../src/data/index.js";
 
 interface RecordedClient {
   queries: Array<{ text: string; values?: unknown[] }>;
@@ -221,5 +225,60 @@ describe("createPostgresDataGateway", () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it("supports non-owning borrowed pool on role-free lane and gateway without calling pool.end()", async () => {
+    const end = vi.fn(async () => {});
+    const { pool, client } = stubPool();
+    const borrowed = Object.assign(pool, { end });
+
+    const lane = createPostgresRoleFreeTransactionLane<import("../../src/data/index.js").PgGatewayClient>(
+      { connectionString: "" },
+      { pool: borrowed },
+    );
+    const untypedLane: PostgresRoleFreeTransactionLane = createPostgresRoleFreeTransactionLane(
+      { connectionString: "" },
+      { pool: borrowed },
+    );
+    expect(typeof untypedLane.run).toBe("function");
+
+    await lane.run(async (db) => {
+      const asSql: SqlExecutor = db;
+      const asPg: PgQueryExecutor = db;
+      await asSql.query("SELECT 1", ["a"]);
+      await asPg.query("SELECT 2", ["b"]);
+    });
+    await lane.close();
+    expect(end).not.toHaveBeenCalled();
+    expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "SELECT 1", "SELECT 2", "COMMIT"]);
+    expect(client.released).toBe(true);
+
+    expect(() => createPostgresRoleFreeTransactionLane(
+      { connectionString: "postgres://x" },
+      { pool: borrowed, poolFactory: () => borrowed },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+  });
+
+  it("wraps a borrowed pool in createPostgresTransactionRunner with commit, rollback and non-owning semantics", async () => {
+    const end = vi.fn(async () => {});
+    const { pool, client } = stubPool();
+    const borrowed = Object.assign(pool, { end });
+    const runner = createPostgresTransactionRunner(borrowed);
+
+    await expect(runner.withTransaction(async (db) => {
+      await db.query("SELECT 42", [1]);
+      return "ok";
+    })).resolves.toBe("ok");
+    expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "SELECT 42", "COMMIT"]);
+    expect(client.released).toBe(true);
+
+    client.queries.length = 0;
+    client.released = false;
+    await expect(runner.withTransaction(async () => {
+      throw new Error("tx boom");
+    })).rejects.toThrow("tx boom");
+    expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "ROLLBACK"]);
+    expect(client.released).toBe(true);
+    expect(end).not.toHaveBeenCalled();
   });
 });

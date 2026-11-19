@@ -98,6 +98,8 @@ export interface PostgresMigrationRunnerOptions {
     catalogProjectionPayload: (client: PoolClient) => Promise<string>;
     /** Catalogue root; defaults to process.cwd(). */
     root?: string;
+    /** Borrowed pg.Pool; caller retains lifecycle ownership. Mutually exclusive with `poolFactory`. */
+    pool?: Pool;
     poolFactory?: (env: PostgresMigrationRunnerEnv) => Pool | Promise<Pool>;
     /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
     onPoolError?: (error: Error) => void;

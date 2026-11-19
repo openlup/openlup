@@ -1,10 +1,10 @@
 import type { CustomerChallengeStore } from "./ports.js";
 import {
   createPostgresRoleFreeTransactionLane,
+  type PgQueryExecutor,
   type PostgresDataGatewayEnv,
   type PostgresDataGatewayOptions,
 } from "../data/index.js";
-import type { PgQueryExecutor } from "../data/index.js";
 
 export type PostgresCustomerChallengeStore = CustomerChallengeStore & {
   close(): Promise<void>;
@@ -15,11 +15,10 @@ export function createPostgresCustomerChallengeStore(
   env: PostgresDataGatewayEnv,
   options: PostgresDataGatewayOptions = {},
 ): PostgresCustomerChallengeStore {
-  const lane = createPostgresRoleFreeTransactionLane(env, options);
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
   return {
     async issue(input) {
-      return lane.run(async (executor) => {
-        const db = executor as PgQueryExecutor;
+      return lane.run(async (db) => {
         // ROW EXCLUSIVE is mutually compatible with concurrent logins (INSERT/UPDATE
         // acquire ROW EXCLUSIVE with zero lock-upgrade deadlock) while conflicting
         // with GDPR erasure's EXCLUSIVE lock. Receipt reads use ACCESS SHARE,
@@ -38,8 +37,7 @@ export function createPostgresCustomerChallengeStore(
       });
     },
     async redeem(input) {
-      return lane.run(async (executor) => {
-        const db = executor as PgQueryExecutor;
+      return lane.run(async (db) => {
         // ROW EXCLUSIVE is mutually compatible with concurrent logins (INSERT/UPDATE
         // acquire ROW EXCLUSIVE with zero lock-upgrade deadlock) while conflicting
         // with GDPR erasure's EXCLUSIVE lock. Receipt reads use ACCESS SHARE,
@@ -64,8 +62,8 @@ export function createPostgresCustomerChallengeStore(
     },
     async pruneChallenges({ limit }) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error("customer_prune_limit_invalid");
-      return lane.run(async executor => {
-        const deleted = await (executor as PgQueryExecutor).query(`WITH batch AS (SELECT id FROM public.customer_identity_challenges
+      return lane.run(async db => {
+        const deleted = await db.query(`WITH batch AS (SELECT id FROM public.customer_identity_challenges
           WHERE expires_at < clock_timestamp() - interval '24 hours' ORDER BY expires_at, id LIMIT $1 FOR UPDATE SKIP LOCKED)
           DELETE FROM public.customer_identity_challenges c USING batch WHERE c.id = batch.id RETURNING c.id`, [limit]);
         return { deleted: deleted.rows.length };

@@ -553,12 +553,13 @@ export type { AcquisitionCaseFailureKind, AcquisitionCaseResult, AcquisitionCase
 ## dist/marketing/server/postgres/acquisitionCaseRoutines.d.ts
 
 ```ts
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import type { AcquisitionCasePort } from "../acquisitionCasePorts.js";
 type Env = {
     connectionString: string;
 };
 type Options = {
+    pool?: Pool;
     poolFactory?: (env: Env) => Pool | Promise<Pool>;
     /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
     onPoolError?: (error: Error) => void;
@@ -569,12 +570,13 @@ export {};
 ## dist/marketing/server/postgres/acquisitionEvidenceRoutines.d.ts
 
 ```ts
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import type { AcquisitionEvidencePort } from "../../contracts/index.js";
 type Env = {
     connectionString: string;
 };
 type Options = {
+    pool?: Pool;
     poolFactory?: (env: Env) => Pool | Promise<Pool>;
     /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
     onPoolError?: (error: Error) => void;
@@ -593,12 +595,13 @@ export { createPostgresPartnerAcquisitionPort } from "./partnerAcquisitionRoutin
 ## dist/marketing/server/postgres/partnerAcquisitionRoutines.d.ts
 
 ```ts
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import type { PartnerAcquisitionPort } from "../../contracts/partnerAcquisition.js";
 type Env = {
     connectionString: string;
 };
 type Options = {
+    pool?: Pool;
     poolFactory?: (env: Env) => Pool | Promise<Pool>;
     /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
     onPoolError?: (error: Error) => void;

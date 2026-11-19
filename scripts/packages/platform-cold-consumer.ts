@@ -1349,11 +1349,15 @@ assert.equal(await createManagedLinkStore(structuralClient).findAccountByPrincip
 
 export function proveAdapterRefusals(consumer: string): void {
   consumerNode(consumer, adapterOperations + `
-// This selected entry retains its original static driver import.
-await assert.rejects(import("@openlup/platform/marketing/server/postgres"),
-  error => error.code === "ERR_MODULE_NOT_FOUND" && /Cannot find package 'pg'/.test(error.message));
+const marketingPostgres = await import("@openlup/platform/marketing/server/postgres");
 const blob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid" });
+const marketingChecks = [
+  ["pg", () => marketingPostgres.createPostgresAcquisitionCasePort({ connectionString: "postgresql://unused.invalid/consumer" }).activeCount("public_tester_application")],
+  ["pg", () => marketingPostgres.createPostgresAcquisitionEvidencePort({ connectionString: "postgresql://unused.invalid/consumer" }).listSurveys({ actorReference: "11111111-1111-4111-8111-111111111111", limit: 1 })],
+  ["pg", () => marketingPostgres.createPostgresPartnerAcquisitionPort({ connectionString: "postgresql://unused.invalid/consumer" }).list({ actorRef: "11111111-1111-4111-8111-111111111111", limit: 1 })],
+];
 const checks = [["@aws-sdk/client-s3", () => blob.upload("probe", Buffer.from("probe"))],
+  ...marketingChecks,
   ...Object.values(postgresOperations("postgresql://unused.invalid/consumer")).map(operation => ["pg", operation])];
 for (const [peer, operation] of checks) {
   await assert.rejects(operation, error => error.message.startsWith("OPENLUP_E_PEER_MISSING: " + peer + " is required by ") && Boolean(error.cause));
