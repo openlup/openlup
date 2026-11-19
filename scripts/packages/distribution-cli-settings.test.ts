@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
+  reconcileEditorCustomization, starterEditorPorts, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -87,23 +88,32 @@ it.each([false, true])("upgrades the preview CLI while preserving the reconciled
 
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
-  const editor = "host/editor-ports.ts";
-  const ownership = { managed: ["package.json", "ownership.json", editor], owned: ["AGENTS.md"], generated: [] };
-  const guide = customized ? "# App guide\n\nLocal workflow.\n" : "# App guide\n";
+  const editor = starterEditorPorts;
+  const catalogue = "host/editor-catalogue.ts"; // A replacement ordered before the editor conflict.
+  const ownership = { managed: ["package.json", "ownership.json", catalogue, editor], owned: ["AGENTS.md"], generated: [] };
   write("ownership.json", ownership); candidate("ownership.json", ownership);
+  write(catalogue, "export const revision = 1;");
+  candidate(catalogue, "export const revision = 2;");
   write(editor, "const method = 'readPort.read';");
   candidate(editor, "const method = 'readInstalled';");
-  write("AGENTS.md", guide);
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   write("from.json", from); write("to.json", to);
-  const apply = () => spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
-    "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
-  const first = apply();
-  expect(first.status, first.stderr).toBe(0);
-  expect(JSON.parse(first.stdout).applied).toEqual([editor]);
-  const replay = apply();
-  expect(replay.status, replay.stderr).toBe(0);
-  expect(JSON.parse(replay.stdout).applied).toEqual([]);
+  const run = (command: "plan" | "apply", status = 0) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", command, "--root", app,
+      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  const local = customized ? reconcileEditorCustomization(app, from.files[editor]!, () => {
+    const before = starterUpgradeSnapshot(app, from.version);
+    const report = run("apply", 1);
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
+    return report;
+  }) : undefined;
+  if (local) expect(run("plan").plan.conflicts).toEqual([]);
+  expect(run("apply").applied).toEqual([catalogue, editor]);
+  expect(readFileSync(join(app, editor), "utf8")).toBe(to.files[editor]);
+  expect(run("apply").applied).toEqual([]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide);
+  if (local) expect(readFileSync(join(app, local.path))).toEqual(local.bytes);
 });

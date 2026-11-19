@@ -199,6 +199,24 @@ ${current.slice(predecessor.length)}`;
   return { path, bytes, name };
 }
 
+export const starterEditorPorts = "host/editor-ports.ts";
+
+export function reconcileEditorCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
+  const managed = join(app, starterEditorPorts);
+  const customized = Buffer.from(predecessor + "\nexport const localEditorNote = 'Adopter editor customization';\n");
+  writeFileSync(managed, customized);
+  assertUpgradeConflict(applyRefused(), starterEditorPorts);
+  const current = readFileSync(managed);
+  assert.deepEqual(current, customized, "refused upgrade changed the managed editor");
+
+  const path = "owned/editor-customization.ts";
+  const bytes = current.subarray(Buffer.byteLength(predecessor));
+  mkdirSync(dirname(join(app, path)), { recursive: true });
+  writeFileSync(join(app, path), bytes, { flag: "wx" });
+  writeFileSync(managed, predecessor);
+  return { path, bytes };
+}
+
 type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
   evidence: { planSha256?: string; customizations?: Record<string, string>;
     managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
@@ -249,15 +267,30 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   assert(changed.length > 0, "upgrade_pair_has_no_replacements");
   const reminderTestReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === reminderInstallationTest && file.action === "replace");
-  const { path: conflict, action } = changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
+  const editorReplacement = changed.find((file: { path: string; action: string }) =>
+    file.path === starterEditorPorts && file.action === "replace");
+  const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
   phase("managed-conflict", () => {
     pair.evidence.managedConflict = { path: conflict, action };
+    const paths = new Set([...Object.keys(from.files), ...Object.keys(to.files)]);
+    const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
+    const applyRefused = () => {
+      const before = readFiles();
+      const report = run("apply", 1);
+      assert.deepEqual(readFiles(), before, "conflict wrote managed files");
+      return report;
+    };
+    if (editorReplacement) {
+      const local = reconcileEditorCustomization(app, from.files[starterEditorPorts]!, applyRefused);
+      owned[local.path] = local.bytes;
+      pair.evidence.customizations![local.path] = hash(local.bytes);
+      assert.deepEqual(run("plan"), plan);
+      return;
+    }
     const original = existsSync(join(app, conflict)) ? readFileSync(join(app, conflict)) : null;
     mkdirSync(dirname(join(app, conflict)), { recursive: true });
     writeFileSync(join(app, conflict), "adopter-managed-divergence");
-    const before = starterUpgradeSnapshot(app, pair.fromVersion);
-    assertUpgradeConflict(run("apply", 1), conflict);
-    assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), before, "conflict wrote managed files");
+    assertUpgradeConflict(applyRefused(), conflict);
     if (original) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));
   });
   if (reminderTestReplaced) phase("reminder-test-reconciliation", () => {
@@ -278,15 +311,13 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assert.equal(readFileSync(join(app, changed[0].path), "utf8"), to.files[changed[0].path]);
     assert.throws(() => assertCompleteStarter(app, to), /incomplete_application_upgrade/);
   });
-  const editorPath = "host/editor-ports.ts";
-  const editorReplaced = changed.some((file: { path: string; action: string }) => file.path === editorPath && file.action === "replace");
   const checkUpgradeFiles = () => {
     for (const [path, bytes] of Object.entries(owned))
       assert.deepEqual(readFileSync(join(app, path)), bytes, `owned customization changed: ${path}`);
     if (reminderTestReplaced)
       assert.equal(readFileSync(join(app, reminderInstallationTest), "utf8"), to.files[reminderInstallationTest]);
-    if (editorReplaced)
-      assert.equal(readFileSync(join(app, editorPath), "utf8"), to.files[editorPath]);
+    if (editorReplacement)
+      assert.equal(readFileSync(join(app, starterEditorPorts), "utf8"), to.files[starterEditorPorts]);
   };
   phase("resume", () => {
     const resumed = run("apply");
