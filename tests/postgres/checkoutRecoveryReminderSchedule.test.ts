@@ -17,11 +17,16 @@ import { createOriginPolicy } from '../../examples/neutral-store/host/origin-pol
 
 const path = 'db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql';
 const guardPath = 'db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql';
+const episodePath = 'db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql';
+const cartHelper = 'public.commerce_enqueue_abandoned_cart_reminder_episodes';
+const cartHelperSignature = `${cartHelper}(integer)`;
 const signatures = ['public.commerce_enqueue_abandoned_cart_reminders(integer)', 'public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)'];
 const installation = { generation: 'qualified-v2', roleMode: 'installer-managed', migrationLogin: 'postgres',
   bootstrapLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;
 let resource: PostgresContainer | undefined, db: Pool;
 let defaults: CheckoutRecoveryReminderSchedule;
+let installedCartProducer: string;
+const cartProducerDefinition = async () => (await db.query('SELECT pg_get_functiondef($1::regprocedure) AS definition', [signatures[0]])).rows[0].definition;
 const attributes = async () => (await db.query(`SELECT oid::regprocedure::text AS signature,proowner,proacl,prolang,provolatile,prosecdef,proconfig,prorettype,proargtypes
   FROM pg_proc WHERE oid=ANY($1::regprocedure[]) ORDER BY signature`, [signatures])).rows;
 const events = async () => (await db.query(`SELECT aggregate_id,event_type,idempotency_key,payload,metadata FROM public.outbox_events
@@ -50,6 +55,7 @@ beforeAll(async () => {
   db = new Pool({ connectionString: resource.connectionString, options: qualifiedPostgresStartupOptions(installation) });
   await db.query("CREATE ROLE starter_runtime LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-runtime'; CREATE ROLE starter_restore LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS");
   await createPostgresMigrationRunner({ connectionString: resource.connectionString }, { installation, poolFactory: () => db }).apply();
+  installedCartProducer = await cartProducerDefinition();
   // Exact current preimages from the selected prefix, independent of the new implementation.
   const sources = ['db/platform/migrations/20260818120000_checkout_recovery_lifecycle.sql', 'db/platform/migrations/20261110100000_checkout_recovery_waves.sql'];
   const declarations = sources.map((source, i) => sqlStatements(readFileSync(source, 'utf8')).find(sql => sql.startsWith(`CREATE FUNCTION ${signatures[i]!.split('(')[0]}(${i ? 'p_limit integer,p_policy' : 'p_limit integer DEFAULT'}`))!);
@@ -65,7 +71,12 @@ beforeAll(async () => {
     await db.query(sql.replace(signatures[i]!.split('(')[0]!, `public.r0_before_${i ? 'checkout' : 'abandoned'}`));
   }
   expect(await attributes()).toEqual(before);
-  for (const sql of sqlStatements(readFileSync(guardPath, 'utf8'))) if (sql.startsWith('CREATE OR REPLACE FUNCTION')) await db.query(sql);
+  // Exercise CF-R0's original producer and guard contracts on the installed schema.
+  for (const sql of sqlStatements(readFileSync(guardPath, 'utf8'))) {
+    if (sql.startsWith('CREATE OR REPLACE FUNCTION') || sql.startsWith('CREATE FUNCTION public.commerce_checkout_recovery_schedule_change_guard(')) {
+      await db.query(sql.replace(/^CREATE FUNCTION/u, 'CREATE OR REPLACE FUNCTION'));
+    }
+  }
   expect(await attributes()).toEqual(before);
   defaults = await readCheckoutRecoveryReminderSchedule(db);
 }, postgresSetupTimeoutMs);
@@ -174,33 +185,80 @@ it('names malformed installed data and rolls back before either producer writes'
     await expect(readCheckoutRecoveryReminderSchedule(db)).rejects.toThrow('checkout_recovery_reminder_schedule_invalid');
   }
 });
-it('a separate runtime needs only the extra validator EXECUTE and no settings SELECT', async () => {
+it('tells a separate cart runtime which grant to apply before it can enqueue and pin a wave', async () => {
   await db.query('CREATE ROLE schedule_runtime NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
-  // This is the complete preexisting invoker-producer privilege set; no policy-table access.
+  // This fixture grants the old entry-point and relation privileges. It initially withholds both helper grants.
   await db.query(`GRANT USAGE ON SCHEMA public TO schedule_runtime;
     GRANT SELECT ON public.commerce_orders,public.clients,public.customer_communication_preferences,public.commerce_order_draft_receipts,
       public.commerce_settlement_intents,public.outbox_events TO schedule_runtime;
     GRANT INSERT ON public.outbox_events TO schedule_runtime;
     GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminders(integer),
       public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz) TO schedule_runtime`);
+  const id = await order(2, true);
+  const pins = () => db.query('SELECT kind FROM public.commerce_reminder_episodes WHERE order_id=$1', [id]);
+  const hint = `GRANT EXECUTE ON FUNCTION ${cartHelperSignature} TO schedule_runtime;`;
+  const previousCartProducer = await cartProducerDefinition();
   const runtime = await db.connect();
   try {
+    // Use the installed CF-R1 producer here. The historical witnesses use CF-R0.
+    await db.query(installedCartProducer);
     await runtime.query('SET ROLE schedule_runtime');
-    await expect(runtime.query('SELECT public.commerce_enqueue_abandoned_cart_reminders(1)')).rejects.toMatchObject({ code: '42501' });
+    const enqueueCart = () => runtime.query('SELECT public.commerce_enqueue_abandoned_cart_reminders(1) AS result');
+    const before = await events();
+    await expect(enqueueCart()).rejects.toMatchObject({ code: '42501', message: 'checkout_recovery_cart_runtime_grant_required', hint });
+    expect(await events()).toEqual(before);
+    expect((await pins()).rows).toEqual([]);
+    await db.query(hint);
+    expect((await enqueueCart()).rows[0].result).toEqual({ enqueued_1h: 1, enqueued_24h: 0, enqueued_72h: 0 });
+    expect((await events()).find(event => event.aggregate_id === id)?.idempotency_key).toBe(`abandoned_1h:${id}`);
+    expect((await pins()).rows).toEqual([{ kind: 'abandoned_cart' }]);
     await runtime.query('RESET ROLE');
     await db.query('GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() TO schedule_runtime');
     await runtime.query('SET ROLE schedule_runtime');
     expect((await runtime.query('SELECT public.commerce_checkout_recovery_reminder_schedule() AS result')).rows[0].result).toEqual(defaults);
     await expect(runtime.query('SELECT * FROM public.commerce_settings')).rejects.toMatchObject({ code: '42501' });
-    await runtime.query('SELECT public.commerce_enqueue_abandoned_cart_reminders(1)');
     await runtime.query("SELECT public.commerce_enqueue_checkout_recovery_reminders(1,'{}',now())");
     await expect(installCheckoutRecoveryReminderSchedule(runtime, defaults)).rejects.toMatchObject({ code: '42501' });
     await runtime.query('RESET ROLE');
+    await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id]);
     await installCheckoutRecoveryReminderSchedule(db, { ...defaults, revision: 'restricted-48', abandonedCart: [{ stage: 'last', afterHours: 48 }] });
     await runtime.query('SET ROLE schedule_runtime');
     expect((await runtime.query('SELECT public.commerce_checkout_recovery_reminder_schedule() AS result')).rows[0].result.revision).toBe('restricted-48');
     await runtime.query('SELECT public.commerce_enqueue_abandoned_cart_reminders(1)');
-  } finally { await runtime.query('RESET ROLE'); runtime.release(); }
+  } finally {
+    try { await runtime.query('RESET ROLE'); } finally { runtime.release(); }
+    await db.query(previousCartProducer);
+  }
+});
+it('revokes cart helper execution from both browser roles under managed default grants', async () => {
+  const defaultGrant = sqlStatements(readFileSync('tests/postgres/managed-compat/supabase.sql', 'utf8'))
+    .find(sql => sql.startsWith('ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS '))!;
+  const statements = sqlStatements(readFileSync(episodePath, 'utf8'));
+  const create = statements.find(sql => sql.startsWith(`CREATE FUNCTION ${cartHelper}(`))!;
+  const privileges = statements.filter(sql => /^(REVOKE|DO)\b/u.test(sql) && sql.includes(`FUNCTION ${cartHelperSignature}`));
+  const owner = await db.connect();
+  try {
+    await owner.query('BEGIN');
+    // Recreate the exact helper in the installed schema using the managed default ACL.
+    await owner.query(defaultGrant);
+    await owner.query(`DROP FUNCTION ${cartHelperSignature}`);
+    await owner.query(create);
+    const browserRoles = ['anon', 'authenticated'];
+    const grants = await owner.query(`SELECT r.rolname FROM pg_proc p
+      CROSS JOIN LATERAL aclexplode(p.proacl) acl JOIN pg_roles r ON r.oid=acl.grantee
+      WHERE p.oid=$1::regprocedure AND r.rolname=ANY($2::name[]) AND acl.privilege_type='EXECUTE' ORDER BY r.rolname`,
+    [cartHelperSignature, browserRoles]);
+    expect(grants.rows.map(row => row.rolname)).toEqual(browserRoles);
+    for (const sql of privileges) await owner.query(sql);
+    for (const role of browserRoles) {
+      await owner.query('SAVEPOINT call_helper');
+      await owner.query(`SET LOCAL ROLE ${role}`);
+      await expect(owner.query(`SELECT ${cartHelper}(1)`)).rejects.toMatchObject({
+        code: '42501', message: 'permission denied for function commerce_enqueue_abandoned_cart_reminder_episodes',
+      });
+      await owner.query('ROLLBACK TO SAVEPOINT call_helper');
+    }
+  } finally { await owner.query('ROLLBACK'); owner.release(); }
 });
 it('startup reads only and refuses revision/hour/stage drift for an arbitrary configuration id', async () => {
   const config = structuredClone(Object.values(configurations)[0]!); config.id = 'schedule-startup-fixture';
