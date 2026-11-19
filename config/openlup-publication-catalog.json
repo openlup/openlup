@@ -8342,7 +8342,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/operations/toolSchema.ts",
+      "path": "packages/platform/src/operations/server/toolSchema.ts",
       "class": "public-output"
     },
     {

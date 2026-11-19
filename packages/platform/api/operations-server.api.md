@@ -1366,7 +1366,6 @@ export * from "./alertPagingPolicy.js";
 export * from "./alertThrottlePolicy.js";
 export * from "./errors.js";
 export * from "./clients.js";
-export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 ```
 ## dist/operations/schemas.d.ts
 
@@ -1617,6 +1616,7 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
+export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 ```
 ## dist/operations/server/migrations.d.ts
@@ -1859,7 +1859,7 @@ export declare const settingsReadTools: readonly [{
 }];
 export {};
 ```
-## dist/operations/toolSchema.d.ts
+## dist/operations/server/toolSchema.d.ts
 
 ```ts
 import { z, type ZodType } from "zod";

@@ -1,5 +1,5 @@
 import type { ZodType } from "zod";
-import { toolInputSchema } from "@openlup/platform/operations";
+import { toolInputSchema } from "@openlup/platform/operations/server";
 import type { BffClient } from "./bffClient.js";
 
 export { toolInputSchema };

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { settingRefusalSchema, settingsToolOutputSchema } from "../index.js";
+import { settingRefusalSchema, settingsToolOutputSchema } from "./toolSchema.js";
 
 export const settingsVersion = 1;
 const packageData = (name: string): unknown =>

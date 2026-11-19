@@ -10,4 +10,5 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
+export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";

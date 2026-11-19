@@ -1,5 +1,5 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
-import { settingsToolOutputSchema, toolInputSchema } from "../index.js";
+import { settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 import { loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
 import { z } from "zod";
 

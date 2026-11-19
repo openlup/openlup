@@ -1,5 +1,5 @@
 import { z, type ZodType } from "zod";
-import type { SettingDescriptor } from "./contracts/settings.js";
+import type { SettingDescriptor } from "../contracts/settings.js";
 
 /** Project a tool contract as inline Draft 7 JSON Schema. */
 export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input"): Record<string, unknown> {

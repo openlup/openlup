@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { toolInputSchema } from "../../src/operations/index.js";
+import { toolInputSchema } from "../../src/operations/server/index.js";
 import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
 import { explainSetting, listSettings, previewSetting, settingsPreviewRequest, settingsReadTools, showSetting, type SettingPreviewer } from "../../src/operations/server/settingsRead.js";

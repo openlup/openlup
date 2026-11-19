@@ -3,9 +3,8 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operations/contracts";
-import { settingsToolOutputSchema, settingRefusalSchema } from "@openlup/platform/operations";
+import { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "@openlup/platform/operations/server";
 import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
-import { toolInputSchema } from "../mcp/_core/toolFromContract.ts";
 
 type SourceDescriptor = Omit<SettingDescriptor, "schema" | "previewSchema"> & {
   schema?: ZodType | SettingDescriptor["schema"];
