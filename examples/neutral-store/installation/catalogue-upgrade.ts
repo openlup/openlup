@@ -11,6 +11,7 @@ const predecessorFiles: Readonly<Record<string, readonly string[]>> = {
     'bfa73a7f127aa3bef285c0e1dba159794afcb6ece1ad62b0cc28a2e444842da9',
     '8421b0d2dd07ca03e26d89aa7ef017efc75a51e351d6115fd1bdd1ab38881939',
     'bb6a846ea1d463c5e487a9e1e63d85f0b1fa55d9ddcfe0a661aa66cab5f92eb6',
+    '828c6b609246ad374d54391982afaf4d84d67df46a45ec10928b1473887b195a',
   ],
   'copy.ts': ['2bb92cdb674151dc1dbef385a1844a471c75e13660b799b55b12948f4efbc29b'],
 };

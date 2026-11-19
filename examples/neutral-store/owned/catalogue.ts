@@ -1,6 +1,6 @@
 import { canonicalCatalogDraftJson, type CatalogProductTypeInput, type CatalogPublicationTransactions } from '@openlup/platform/catalog';
 import { defineCatalogPack } from '@openlup/platform/catalog/contracts';
-import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
+import { createStarterCatalogueRegistry, type StarterCatalogueRegistration } from '../host/catalogue-registry.ts';
 import { configurations, defaultConfigurationId } from './store.config.ts';
 import type { StarterCatalogueSelection } from '../host/catalogue-selection.ts';
 import type { StarterCatalogueOptions } from '../host/catalogue-binding.ts';
@@ -30,42 +30,65 @@ const demonstrationPack = defineCatalogPack({
   capabilities: { publish: false }, types: [legacyType, draftType], taxClasses: [],
 });
 
-const demo = configurations.supplements!;
-const supplementConfiguration: StoreConfig = {
-  ...demo,
-  id: 'supplements-pack',
-  offer: { ...demo.offer, subscriptionDiscountBps: 0 },
-  quote: { ...demo.quote, acquisition: {
-    ...demo.quote.acquisition,
-    // Both acquisition steps use the smallest engine-supported rate, which rounds to zero on this fixture.
-    initialDiscountBps: 1,
-    delivery2DiscountBps: 1,
-  } },
+const supplementConfigurationId = 'supplements-pack';
+let supplementConfiguration: StoreConfig | undefined;
+const supplementRegistration: StarterCatalogueRegistration = {
+  configurationId: supplementConfigurationId,
+  get configuration() {
+    if (supplementConfiguration) return supplementConfiguration;
+    const demo = configurations.supplements;
+    if (!demo) throw new Error('starter_catalogue_registration_invalid');
+    supplementConfiguration = {
+      ...demo,
+      id: supplementConfigurationId,
+      offer: { ...demo.offer, subscriptionDiscountBps: 0 },
+      quote: { ...demo.quote, acquisition: {
+        ...demo.quote.acquisition,
+        // Both acquisition steps use the smallest engine-supported rate, which rounds to zero on this fixture.
+        initialDiscountBps: 1,
+        delivery2DiscountBps: 1,
+      } },
+    };
+    return supplementConfiguration;
+  },
+  pack: supplements,
+  draftType: itemType,
+  offerVersion,
+  explicitOnly: true,
 };
 
 export const starterCatalogue = createStarterCatalogueRegistry([
   { get configuration() { return configurations.supplements!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
   { get configuration() { return configurations.coffee!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },
-  { configuration: supplementConfiguration, pack: supplements, draftType: itemType, offerVersion, explicitOnly: true },
+  ...(Object.hasOwn(configurations, 'supplements') ? [supplementRegistration] : []),
 ], defaultConfigurationId);
 
 const priceListFor = (config: StoreConfig) => demoIdentifier(config, 'price-list', config.market.currency);
-const supplementSelection = starterCatalogue.select(supplementConfiguration.id);
+
+function requireSupplementSelection(selection: StarterCatalogueSelection) {
+  if (selection.pack !== supplements || selection.configuration.id !== supplementConfigurationId
+    || selection !== starterCatalogue.select(supplementConfigurationId)) {
+    throw new Error('starter_catalogue_registration_invalid');
+  }
+}
 
 /** Build the recipe for the explicit application configuration selected by the host. */
 export function supplementsCatalogueFor(selection: StarterCatalogueSelection) {
-  if (selection !== supplementSelection) throw new Error('starter_catalogue_registration_invalid');
+  requireSupplementSelection(selection);
   return supplementsCatalogue(priceListFor(selection.configuration));
 }
 
 export const catalogueConformance = {
-  packs: [{ pack: supplementSelection.pack, ...supplementsFixtures(priceListFor(supplementSelection.configuration)).fixtures }],
+  get packs() {
+    const selection = starterCatalogue.select(supplementConfigurationId);
+    return [{ pack: selection.pack, ...supplementsFixtures(priceListFor(selection.configuration)).fixtures }];
+  },
   requiredChecks,
 };
 
 /** The explicit fixture selection uses the host's verified runtime transaction. */
 export function bindCatalogue(selection: StarterCatalogueSelection, transactions: CatalogPublicationTransactions): StarterCatalogueOptions {
-  if (selection !== supplementSelection) throw new Error('starter_catalogue_registration_invalid');
+  requireSupplementSelection(selection);
   return {
     registration: selection,
     readEnabled: () => true,
