@@ -39,7 +39,9 @@ Order evidence reconciles accepted quotes, item quantities and retained
 references. Separate ordinals for the same SKU contribute to the same quantity.
 The deferred order check validates acceptance against the completed item ledger,
 including when the order header was written first. Governed renewal admission
-checks the frozen wire before the native reader replays it.
+checks the frozen wire before the native reader replays it, including the
+native integer bounds for item quantities and ordinals. Publication and head
+checks resolve complete immutable rosters at the end of the transaction.
 
 Native transfer retains authoritative lifecycle and acceptance bytes through
 existing row inventories and restores revisions before subscription bindings.

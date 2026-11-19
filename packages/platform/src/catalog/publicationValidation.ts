@@ -214,7 +214,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   const documents = input.documents.map(document => structuredClone(document));
   const sources = [input.record, ...input.retainedSources];
   const created = new Set<string>(), identities = new Set<string>();
-  const incoming = new Map(payload.skus.map(sku => [sku.code, sku]));
+  const incoming = new Map<string | undefined, CatalogDraftPayloadV4["skus"][number]>(payload.skus.map(sku => [sku.code, sku] as const));
   const gtins = new Set(input.skus.flatMap(sku => sku.identifiers.filter(identifier => identifier.scheme === "gs1:gtin").map(identifier => identifier.value.padStart(14, "0"))));
   need(input.record.productId === payload.product.id && input.record.status === "open" && input.record.payload.schemaVersion >= 3, "catalog_publication_source_invalid");
   if (product) need(product.id === payload.product.id && product.slug === slug && equal(product.type, payload.product.type), "catalog_publication_product_identity_conflict");
@@ -393,7 +393,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     if (draft && !created.has(sku.code)) {
       need(draft.id === sku.id && draft.productId === sku.productId && equal(draft.netContent, sku.netContent)
         && equal(draft.options, sku.options), "sku_identity_change_requires_new_sku");
-      const policy = (draft as CatalogDraftPayloadV4["skus"][number]).demandPolicyRef;
+      const policy = draft.demandPolicyRef;
       const overlay = { attributes: draft.attributes ?? sku.attributes, grossMass: draft.grossMass ?? sku.grossMass, assetRefs: draft.assetRefs ?? sku.assetRefs };
       if (withdrawalOnly) need(equal(overlay, { attributes: sku.attributes, grossMass: sku.grossMass, assetRefs: sku.assetRefs })
         && (policy === undefined || "schemaVersion" in sku && policy === sku.demandPolicyRef)

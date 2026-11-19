@@ -1,5 +1,6 @@
 import { createNativeCatalogRenewalCodecV2, createPostgresRenewalSettlementPort, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { createHash, randomUUID } from "node:crypto";
+import { catalogPublicationStateSchema, catalogSkuStateSchema } from "../../packages/platform/src/catalog/publicationValidation.js";
 import { graduateNativeRenewal } from "../../packages/platform/src/subscriptions/nativeRenewalTerms.js";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
@@ -1036,6 +1037,8 @@ async function seedInvalidRetainedSku(reference: CatalogAcceptedReferenceV2, fau
     ? { skuId: entry.skuId, revisionId: skuRevisionId, revision, digest: skuDigest } : entry);
   const canonical = (fault === "noncanonical retained manifest" ? " " : "") + canonicalCatalogDraftJson(manifest);
   const digest = createHash("sha256").update(canonical).digest("hex");
+  await db.query("SET CONSTRAINTS catalog_publications_roster_final IMMEDIATE");
+  await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_roster_final");
   if (fault === "noncanonical retained manifest")
     await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_record_admit");
   await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
@@ -1043,6 +1046,8 @@ async function seedInvalidRetainedSku(reference: CatalogAcceptedReferenceV2, fau
     FROM public.catalog_publications WHERE id=$5`, [publicationId,`synthetic:stored:${publicationId}`,canonical,digest,prior.id]);
   if (fault === "noncanonical retained manifest")
     await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_record_admit");
+  await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_roster_final");
+  await db.query("SET CONSTRAINTS catalog_publications_roster_final DEFERRED");
   // Inject a coherent digest and manifest around one unsupported retained record.
   await db.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_record_admit");
   await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,$4,$5,$6,$7)",
@@ -1055,6 +1060,7 @@ it("LC5-PRE obligation authority rejects a noncanonical current manifest even wi
   const f = await seed(), standing = await standingActive(f);
   expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
   const { publicationHead } = await seedInvalidRetainedSku(standing.accepted, "noncanonical retained manifest");
+  await db.query("SET CONSTRAINTS catalog_publication_heads_lifecycle_admit IMMEDIATE");
   await db.query("ALTER TABLE public.catalog_publication_heads DISABLE TRIGGER catalog_publication_heads_lifecycle_admit");
   await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1",
     [f.product,publicationHead.publicationId,publicationHead.revision]);
@@ -1180,6 +1186,8 @@ it.each([
   ["LC5-A-003", "live identity"],
   ["LC5-PRE-L1B-2", "legacy envelope with governed product"],
   ["LC5-PRE2-A-2", "legacy envelope with legacy product and governed roster"],
+  ["LC5-C3-A2", "missing SKU attributes"],
+  ["LC5-C3-B6", "empty shared content"],
   ["LC5-PRE-L1A-3", "noncanonical manifest"],
   ["LC5-PRE-L1B-3", "noncanonical sku"],
   ["LC5-PRE-L1B-3", "scalar option"],
@@ -1204,9 +1212,10 @@ it.each([
     return;
   }
   await db.query("SAVEPOINT authority_mutation");
-  if (defect === "manifest version" || defect === "product projection" || defect.startsWith("legacy envelope") || defect === "noncanonical manifest") {
+  if (defect === "manifest version" || defect === "product projection" || defect.startsWith("legacy envelope") || defect === "noncanonical manifest" || defect === "empty shared content") {
     const manifest = JSON.parse(publication.canonical_state);
     if (defect === "manifest version") manifest.product.schemaVersion = 2;
+    if (defect === "empty shared content") manifest.product.content = {};
     if (defect === "product projection") manifest.product.status = "draft";
     if (defect.startsWith("legacy envelope")) manifest.schemaVersion = 2;
     if (defect === "legacy envelope with legacy product and governed roster") {
@@ -1215,12 +1224,17 @@ it.each([
       delete manifest.product.definitionDigest;
     }
     const text = (defect === "noncanonical manifest" ? " " : "") + canonicalCatalogDraftJson(manifest);
-    await expect(db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+    const insert = db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
       SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id FROM public.catalog_publications WHERE id=$5`,
-    [randomUUID(),"synthetic:authority",text,createHash("sha256").update(text).digest("hex"),publication.id]))
-      .rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
+    [randomUUID(),"synthetic:authority",text,createHash("sha256").update(text).digest("hex"),publication.id]);
+    if (defect === "legacy envelope with legacy product and governed roster") {
+      await insert;
+      await expect(db.query("SET CONSTRAINTS catalog_publications_roster_final IMMEDIATE"))
+        .rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
+    } else await expect(insert).rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
   } else {
     if (defect === "sku version") facts.schemaVersion = 99;
+    if (defect === "missing SKU attributes") delete facts.attributes;
     if (defect === "duplicate membership") facts.memberships = [{ offerVersion: "example:offer@1", admitted: true }, { offerVersion: "example:offer@1", admitted: false }];
     if (defect === "scalar option") facts.options = { finish: "matte" };
     if (defect === "empty logistics") facts.logisticsRef = "";
@@ -1244,16 +1258,104 @@ it("LC5-PRE2 mixed-version head refuses an already retained predecessor envelope
   delete manifest.product.lifecycleState;
   delete manifest.product.definitionDigest;
   const bytes = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(bytes).digest("hex");
-  await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_record_admit");
+  await db.query("SAVEPOINT mixed_head");
   await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
     SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
     FROM public.catalog_publications WHERE id=$5`,[id,`synthetic:${id}`,bytes,digest,standing.head.publicationId]);
-  await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_record_admit");
-  await db.query("SAVEPOINT mixed_head");
-  await expect(db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=3 WHERE product_id=$1",[f.product,id]))
+  await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=3 WHERE product_id=$1",[f.product,id]);
+  await expect(db.query("SET CONSTRAINTS catalog_publication_heads_lifecycle_admit IMMEDIATE"))
     .rejects.toMatchObject({ code: "23514", message: "catalog_publication_state_invalid" });
   await db.query("ROLLBACK TO SAVEPOINT mixed_head");
   expect(await authority.reads.current(f.product)).toMatchObject({ outcome: "found",head: standing.head });
+});
+
+it.each([
+  "v2 early head", "v3 late head and reuse", "missing at publication", "missing at head", "mixed early", "mixed late never head",
+] as const)("LC5-C3 stored roster commits the complete dialect: %s", async path => {
+  const f = await seed(), standing = await standingActive(f);
+  const previous = standing.head.publicationId, pending = randomUUID();
+  const prior = (await db.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [previous])).rows[0].canonical_state;
+  const original = JSON.parse(prior);
+  const priorFacts = JSON.parse((await db.query("SELECT full_facts FROM public.catalog_sku_revisions WHERE id=$1", [standing.accepted.skuRevisionId])).rows[0].full_facts);
+  async function emit(publicationId: string, predecessor: string, version: 2 | 3, reference: unknown) {
+    const manifest = structuredClone(original);
+    manifest.schemaVersion = version;
+    if (version === 2) for (const field of ["schemaVersion","lifecycleState","definitionDigest"]) delete manifest.product[field];
+    manifest.skus = [reference];
+    expect(catalogPublicationStateSchema.safeParse(manifest).success).toBe(true);
+    const wire = canonicalCatalogDraftJson(manifest);
+    await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+      SELECT $1,product_id,revision+1,id,draft_id,draft_revision,$2,candidate_digest,document_revision_id,$3,$4,actor_id
+      FROM public.catalog_publications WHERE id=$5`, [publicationId,`example:${publicationId}`,wire,createHash("sha256").update(wire).digest("hex"),predecessor]);
+  }
+  const facts = structuredClone(priorFacts);
+  if (path === "v2 early head") for (const field of ["schemaVersion","lifecycleState","optionDigest"]) delete facts[field];
+  const wire = canonicalCatalogDraftJson(facts);
+  const reference = { skuId: f.sku, revisionId: randomUUID(), revision: 3, digest: createHash("sha256").update(wire).digest("hex") };
+  const head = { ...standing.head, publicationId: pending, revision: 3 };
+  const setHead = async (id: string, revision: number) => {
+    await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [f.product,id,revision]);
+  };
+  const addRevision = async (publication: string) => {
+    expect(catalogSkuStateSchema.safeParse(facts).success).toBe(true);
+    await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,3,$4,$5,$6)",
+      [reference.revisionId,f.sku,f.product,publication,wire,reference.digest]);
+  };
+
+  await db.query("SAVEPOINT final_roster");
+  if (path === "v2 early head") {
+    await emit(pending,previous,2,reference);
+    await setHead(pending,3);
+    await addRevision(pending);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    expect(await authority.readbackV2(head)).toMatchObject({ outcome: "page", items: [{ facts, reference }] });
+    expect(await authority.reads.readback(head)).toMatchObject({ outcome: "found", head });
+  } else if (path === "v3 late head and reuse") {
+    await emit(pending,previous,3,reference);
+    await addRevision(pending);
+    await setHead(pending,3);
+    const next = randomUUID();
+    await emit(next,pending,3,reference);
+    await setHead(next,4);
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    expect(await authority.readbackV3({ ...head, publicationId: next, revision: 4 }))
+      .toMatchObject({ outcome: "page", items: [{ facts, reference }] });
+    expect(await authority.reads.readback(head)).toMatchObject({ outcome: "found", head });
+  } else {
+    if (path === "mixed early") await emit(pending,previous,2,original.skus[0]);
+    else if (path === "mixed late never head") {
+      await emit(pending,previous,2,reference);
+      const later = randomUUID();
+      await emit(later,pending,3,reference);
+      await addRevision(later);
+      await setHead(later,4);
+    } else {
+      await emit(pending,previous,3,reference);
+      if (path === "missing at head") await setHead(pending,3);
+    }
+    const trigger = path === "missing at head" ? "catalog_publication_heads_lifecycle_admit" : "catalog_publications_roster_final";
+    await expect(db.query(`SET CONSTRAINTS ${trigger} IMMEDIATE`)).rejects.toMatchObject({ code: "23514",
+      message: path.startsWith("mixed") ? "catalog_publication_state_invalid" : "catalog_publication_sku_revision_invalid" });
+    await db.query("ROLLBACK TO SAVEPOINT final_roster");
+    expect((await db.query("SELECT id FROM public.catalog_publications WHERE id=$1", [pending])).rows).toEqual([]);
+    expect(await authority.reads.current(f.product)).toMatchObject({ outcome: "found", head: standing.head });
+  }
+});
+
+it.each([null,"example:warehouse",17] as const)("LC5-C3 draft metadata SQL and codec agree on %j", async logisticsRef => {
+  const { payload } = input();
+  payload.publication.operations.push({ op: "set_sku_metadata", skuCode: "ARTICLE", logisticsRef: logisticsRef as string | null });
+  const command = { schemaVersion: 4, action: "create", draftId, commandKey: "draft:metadata-wire", expectedRevision: 0, payload };
+  const valid = typeof logisticsRef !== "number", wire = canonicalCatalogDraftJson(command), digest = createHash("sha256").update(wire).digest("hex");
+  const apply = async () => (await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [wire,digest])).rows[0].result;
+  expect(catalogDraftCommandV4Schema.safeParse(command).success).toBe(valid);
+  expect(await apply()).toMatchObject({ outcome: valid ? "committed" : "validation_issue" });
+  expect(await apply()).toMatchObject({ outcome: valid ? "replayed" : "validation_issue" });
+  const state = (await db.query(`SELECT
+    (SELECT count(*) FROM public.catalog_draft_heads WHERE draft_id=$1) AS head,
+    (SELECT count(*) FROM public.catalog_draft_sku_reservations WHERE draft_id=$1) AS reservations,
+    (SELECT count(*) FROM public.catalog_draft_command_receipts WHERE draft_id=$1) AS receipts`, [draftId])).rows[0];
+  expect(state).toEqual(valid ? { head: "1", reservations: "1", receipts: "1" } : { head: "0", reservations: "0", receipts: "0" });
 });
 
 it.each([
@@ -1311,6 +1413,9 @@ it.each(["empty logistics", "scalar option", "noncanonical sibling", "tabbed mem
   await expect.soft(db.query("SELECT public.catalog_accepted_reference_assert_v2($1::jsonb)", [JSON.stringify(tuple)]))
     .rejects.toMatchObject({ code: "22023", message: "catalog_accepted_reference_mismatch" });
   await db.query("ROLLBACK TO SAVEPOINT invalid_sibling");
+  // Read a deliberately bad pre-guard row through the live-head boundary.
+  // Clear the valid fixture's deferred head events before disabling its guard.
+  await db.query("SET CONSTRAINTS catalog_publication_heads_lifecycle_admit IMMEDIATE");
   await db.query("ALTER TABLE public.catalog_publication_heads DISABLE TRIGGER catalog_publication_heads_lifecycle_admit");
   await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=3 WHERE product_id=$1", [f.product,output]);
   await db.query("ALTER TABLE public.catalog_publication_heads ENABLE TRIGGER catalog_publication_heads_lifecycle_admit");
@@ -1680,7 +1785,7 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
   await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,3,0,617,'XXX')", [f.subscription,f.sku]);
   const acceptance = { schemaVersion: 2, lines: [retained] };
   await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [f.subscription,JSON.stringify(acceptance)]);
-  await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,3,617)", [f.subscription,f.code]);
+  await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2147483647,$2,3,617)", [f.subscription,f.code]);
   const preparationTerms = graduationFacts(1,f.code);
   preparationTerms.renewalTerms.starterPack.delivery2 = { discountBps: 500, discountMinor: 100, basisSubtotalMinor: 1851 };
   await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,clock_timestamp())",
@@ -1702,10 +1807,12 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
   expect(snapshot.pricingSnapshot).toMatchObject({ totalAmountMinor: 1900, discountAmountMinor: 100, shippingAmountMinor: 149 });
   const wire = codec.encode(snapshot);
   for (const fault of ["different nested basket", "different accepted roster", "wrong fingerprint", "missing fingerprint", "extra key",
-    "rehashed total", "rehashed agreement policy", "rehashed nested key", "rehashed cycle counter", "rehashed shipping terms"] as const) {
+    "rehashed total", "rehashed agreement policy", "rehashed nested key", "rehashed cycle counter", "rehashed shipping terms",
+    "rehashed int4 ordinal overflow"] as const) {
     const changed = structuredClone(wire) as Record<string, unknown> & {
-      frozenFingerprint?: string; lines: { sku: string }[]; templateSnapshot: { lines: { sku: string }[] };
-      orderSnapshot: { lines: { sku: string }[]; shippingQuoteRef: unknown };
+      frozenFingerprint?: string; lines: { sku: string; lineOrdinal: number }[];
+      templateSnapshot: { lines: { sku: string; lineOrdinal: number }[] };
+      orderSnapshot: { lines: { sku: string; lineOrdinal: number }[]; shippingQuoteRef: unknown };
       pricingSnapshot: Record<string, unknown>; cycle: Record<string, unknown>;
     };
     const wrongLines = fault === "different nested basket" || fault === "different accepted roster";
@@ -1730,6 +1837,9 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
       changed.pricingSnapshot.shippingTerms = terms;
       changed.orderSnapshot.shippingQuoteRef = { kind: "retained_shipping", shippingAmountMinor: 149, terms };
     }
+    if (fault === "rehashed int4 ordinal overflow") {
+      for (const lines of [changed.lines, changed.templateSnapshot.lines, changed.orderSnapshot.lines]) lines[0]!.lineOrdinal = 2_147_483_648;
+    }
     let claimHash = codec.fingerprint(snapshot);
     if (fault.startsWith("rehashed")) {
       delete changed.frozenFingerprint;
@@ -1742,7 +1852,7 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
       VALUES($1,$2,1,$3,$4,$5::jsonb,$6,'synthetic',clock_timestamp(),clock_timestamp()+interval '1 minute')`,
     [f.subscription,due.scheduledAt,codec.identity(snapshot),claimHash,JSON.stringify(changed),randomUUID()])
       .then(() => ({ admitted: true }), (error: unknown) => error);
-    expect.soft(refusal,fault).toMatchObject({ code: "22023", message: wrongLines ? "catalog_acceptance_line_mismatch" : "catalog_acceptance_snapshot_mismatch" });
+    expect.soft(refusal,fault).toMatchObject({ code: "22023", message: wrongLines || fault === "rehashed int4 ordinal overflow" ? "catalog_acceptance_line_mismatch" : "catalog_acceptance_snapshot_mismatch" });
     await db.query("ROLLBACK TO SAVEPOINT governed_basket");
   }
   await bind(previousRevision);
@@ -1752,6 +1862,8 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
   await db.query("ROLLBACK TO SAVEPOINT catalog_refreeze");
   await bind(retained.skuRevisionId);
   expect.soft(await builder.buildCycleSnapshots(due)).toEqual(snapshot);
+  expect(snapshot.orderSnapshot.lines[0]!.lineOrdinal).toBe(2_147_483_647);
+  expect(codec.decode(codec.encode(snapshot))).toEqual(snapshot);
   const claim = await builder.claimDue({ snapshot, workerId: "synthetic", now });
   const boundSnapshot = codec.withDestination!(snapshot,destination);
   const rows = (await db.query("SELECT cycle_snapshot,catalog_acceptance FROM public.subscription_renewal_operations WHERE id=$1", [claim.operationId])).rows;

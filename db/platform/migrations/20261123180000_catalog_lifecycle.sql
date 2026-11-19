@@ -144,18 +144,68 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS 
 $$;
 REVOKE ALL ON FUNCTION public.catalog_lifecycle_quantity_valid_v3(jsonb) FROM PUBLIC;
 
+-- Shared content is the same closed wire in a draft and in published facts.
+CREATE FUNCTION public.catalog_publication_content_valid_v3(p_content jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE collection text; item jsonb; required text[];
+BEGIN
+ IF jsonb_typeof(p_content) IS DISTINCT FROM 'object' OR p_content->'schemaVersion' IS DISTINCT FROM '1'::jsonb
+  OR coalesce(p_content->>'catalogAction','') NOT IN ('create','revise')
+  OR jsonb_typeof(p_content->'presentation') IS DISTINCT FROM 'object'
+  OR (p_content ? 'document' AND jsonb_typeof(p_content->'document') IS DISTINCT FROM 'object')
+  OR p_content-ARRAY['schemaVersion','catalogAction','presentation','document','offerMemberships','requestedModes','publicationSkus']<>'{}'::jsonb
+ THEN RETURN false; END IF;
+ FOREACH collection IN ARRAY ARRAY['offerMemberships','requestedModes','publicationSkus'] LOOP
+  IF jsonb_typeof(p_content->collection) IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+  IF jsonb_array_length(p_content->collection)>10000
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_content->collection) row GROUP BY row->>'skuCode' HAVING count(*)>1)
+  THEN RETURN false; END IF;
+  required:=CASE collection WHEN 'offerMemberships' THEN ARRAY['skuCode','offerVersion','admitted']
+   WHEN 'requestedModes' THEN ARRAY['skuCode','modes'] ELSE ARRAY['skuCode','title','minQuantity','isAddon','facts'] END;
+  FOR item IN SELECT value FROM jsonb_array_elements(p_content->collection) LOOP
+   IF jsonb_typeof(item) IS DISTINCT FROM 'object' OR NOT (item ?& required) OR item-required<>'{}'::jsonb
+    OR jsonb_typeof(item->'skuCode') IS DISTINCT FROM 'string' OR item->>'skuCode' !~ '^[A-Za-z0-9._:-]{1,160}$'
+   THEN RETURN false; END IF;
+   CASE collection
+    WHEN 'offerMemberships' THEN
+     IF jsonb_typeof(item->'admitted') IS DISTINCT FROM 'boolean'
+      OR jsonb_typeof(item->'offerVersion') IS DISTINCT FROM 'string'
+      OR NOT public.catalog_lifecycle_reference_valid_v3(item->>'offerVersion',240) THEN RETURN false; END IF;
+    WHEN 'requestedModes' THEN
+     IF jsonb_typeof(item->'modes') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+     IF jsonb_array_length(item->'modes')>2 OR EXISTS(SELECT 1 FROM jsonb_array_elements(item->'modes') mode
+       WHERE mode NOT IN ('"one_time"'::jsonb,'"subscription"'::jsonb))
+      OR EXISTS(SELECT 1 FROM jsonb_array_elements(item->'modes') mode GROUP BY mode HAVING count(*)>1)
+     THEN RETURN false; END IF;
+    ELSE
+     IF jsonb_typeof(item->'title') IS DISTINCT FROM 'string' OR NOT public.catalog_lifecycle_reference_valid_v3(item->>'title',500)
+      OR NOT public.catalog_renewal_integer_v3(item->'minQuantity',1,2147483647)
+      OR jsonb_typeof(item->'isAddon') IS DISTINCT FROM 'boolean' OR jsonb_typeof(item->'facts') IS DISTINCT FROM 'object'
+     THEN RETURN false; END IF;
+   END CASE;
+  END LOOP;
+ END LOOP;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_content_valid_v3(jsonb) FROM PUBLIC;
+
 -- Standalone stored-fact checks are shared by admission and retained readers.
 CREATE FUNCTION public.catalog_lifecycle_facts_valid_v3(p_facts jsonb, p_kind text, p_id uuid, p_product_id uuid) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE state text; membership jsonb; previous integer[]; sort_key integer[]; source jsonb; entry jsonb; gtin text;
+ governed boolean:=p_facts ? 'schemaVersion'; type_version jsonb;
  uuid_shape constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 BEGIN
- IF jsonb_typeof(p_facts) IS DISTINCT FROM 'object' OR p_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
+ IF jsonb_typeof(p_facts) IS DISTINCT FROM 'object'
   OR p_facts->'id' IS DISTINCT FROM to_jsonb(p_id) THEN RETURN false; END IF;
- state := p_facts->>'lifecycleState';
- IF state IS NULL OR state NOT IN ('active','draft','withdrawn','archived')
-  OR p_facts->>'status' IS DISTINCT FROM (CASE WHEN state='withdrawn' THEN 'active' ELSE state END)
-  OR (p_facts ? 'attributes' AND jsonb_typeof(p_facts->'attributes') IS DISTINCT FROM 'object')
+ state:=p_facts->>'status';
+ IF state IS NULL OR state NOT IN ('active','draft','archived')
+  OR (governed AND (p_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
+    OR coalesce(p_facts->>'lifecycleState','') NOT IN ('active','draft','withdrawn','archived')
+    OR state IS DISTINCT FROM CASE WHEN p_facts->>'lifecycleState'='withdrawn' THEN 'active' ELSE p_facts->>'lifecycleState' END))
+  OR (NOT governed AND p_facts ?| ARRAY['lifecycleState','definitionDigest','optionDigest','demandPolicyRef'])
+  OR jsonb_typeof(p_facts->'attributes') IS DISTINCT FROM 'object'
   OR jsonb_typeof(p_facts->'source') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
  source := p_facts->'source';
  IF source - ARRAY['draftId','revision','commandKey','fingerprint'] <> '{}'::jsonb
@@ -172,26 +222,31 @@ BEGIN
     AND EXISTS(SELECT 1 FROM jsonb_each(scalar.value) field WHERE jsonb_typeof(field.value)<>'string')
    ELSE true END) THEN RETURN false; END IF;
  IF p_kind='product' THEN
+  type_version:=p_facts#>'{type,version}';
   IF jsonb_typeof(p_facts->'axes') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
   IF jsonb_array_length(p_facts->'axes')>16 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_facts->'axes') a
    WHERE jsonb_typeof(a)<>'string' OR a#>>'{}' !~ '^[a-z][a-z0-9_-]{0,63}$')
    OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_facts->'axes') a GROUP BY a HAVING count(*)>1) THEN RETURN false; END IF;
-  RETURN coalesce(p_facts ?& ARRAY['slug','name','type','axes','primarySkuId','document','presentation','content','definitionDigest']
+  RETURN coalesce(p_facts ?& ARRAY['slug','name','type','axes','primarySkuId','document','presentation','content']
    AND p_facts - ARRAY['schemaVersion','lifecycleState','id','slug','name','status','type','axes','attributes','primarySkuId','document','presentation','source','content','definitionDigest']='{}'::jsonb
-   AND jsonb_typeof(p_facts->'slug')='string' AND p_facts->>'slug' ~ '^[a-z0-9][a-z0-9_-]{0,63}$'
-   AND jsonb_typeof(p_facts->'name')='string' AND length(p_facts->>'name') BETWEEN 1 AND 500
+   AND jsonb_typeof(p_facts->'slug')='string' AND p_facts->>'slug'<>''
+   AND (NOT governed OR p_facts->>'slug' ~ '^[a-z0-9][a-z0-9_-]{0,63}$')
+   AND jsonb_typeof(p_facts->'name')='string' AND length(p_facts->>'name')>=1
+   AND char_length(p_facts->>'name')+(SELECT count(*) FROM regexp_split_to_table(p_facts->>'name','') ch WHERE octet_length(ch)=4)<=500
    AND jsonb_typeof(p_facts->'type')='object' AND (p_facts->'type') - ARRAY['key','version']='{}'::jsonb
    AND jsonb_typeof(p_facts#>'{type,key}')='string' AND length(p_facts#>>'{type,key}')<=120
    AND p_facts#>>'{type,key}' ~ '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$'
-   AND jsonb_typeof(p_facts#>'{type,version}')='number' AND p_facts#>>'{type,version}' ~ '^[1-9][0-9]{0,9}$'
+   AND public.catalog_renewal_integer_v3(type_version,1,2147483647)
    AND jsonb_typeof(p_facts->'primarySkuId')='string' AND p_facts->>'primarySkuId' ~ uuid_shape
    AND jsonb_typeof(p_facts->'document')='object' AND p_facts#>'{document,productId}'=to_jsonb(p_id)
-   AND jsonb_typeof(p_facts->'content')='object'
+   AND p_facts#>>'{document,id}' ~ uuid_shape
+   AND public.catalog_publication_content_valid_v3(p_facts->'content')
    AND jsonb_typeof(p_facts->'presentation') IN ('null','object')
-   AND jsonb_typeof(p_facts->'definitionDigest')='string' AND p_facts->>'definitionDigest' ~ '^[a-f0-9]{64}$', false);
+   AND (NOT governed OR (jsonb_typeof(p_facts->'definitionDigest')='string'
+    AND p_facts->>'definitionDigest' ~ '^[a-f0-9]{64}$')),false);
  END IF;
  IF p_facts->'productId' IS DISTINCT FROM to_jsonb(p_product_id)
-  OR NOT (p_facts ?& ARRAY['code','title','minQuantity','isAddon','sellableStandalone','sellableInSubscription','netContent','grossMass','options','facts','identifiers','assetRefs','logisticsRef','memberships','optionDigest'])
+  OR NOT (p_facts ?& ARRAY['code','title','minQuantity','isAddon','sellableStandalone','sellableInSubscription','netContent','grossMass','options','facts','identifiers','assetRefs','logisticsRef','memberships'])
   OR p_facts - ARRAY['schemaVersion','lifecycleState','id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription','netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source','optionDigest','demandPolicyRef'] <> '{}'::jsonb
   OR jsonb_typeof(p_facts->'code') IS DISTINCT FROM 'string' OR p_facts->>'code' !~ '^[A-Za-z0-9._:-]{1,160}$'
   OR jsonb_typeof(p_facts->'title') IS DISTINCT FROM 'string' OR p_facts->>'title'=''
@@ -200,8 +255,9 @@ BEGIN
   OR jsonb_typeof(p_facts->'isAddon') IS DISTINCT FROM 'boolean'
   OR jsonb_typeof(p_facts->'sellableStandalone') IS DISTINCT FROM 'boolean'
   OR jsonb_typeof(p_facts->'sellableInSubscription') IS DISTINCT FROM 'boolean'
-  OR (state<>'active' AND (p_facts->'sellableStandalone'='true'::jsonb OR p_facts->'sellableInSubscription'='true'::jsonb))
-  OR jsonb_typeof(p_facts->'optionDigest') IS DISTINCT FROM 'string' OR p_facts->>'optionDigest' !~ '^[a-f0-9]{64}$'
+  OR (governed AND (jsonb_typeof(p_facts->'optionDigest') IS DISTINCT FROM 'string'
+   OR p_facts->>'optionDigest' !~ '^[a-f0-9]{64}$' OR (p_facts->>'lifecycleState'<>'active'
+    AND (p_facts->'sellableStandalone'='true'::jsonb OR p_facts->'sellableInSubscription'='true'::jsonb))))
   OR NOT public.catalog_lifecycle_quantity_valid_v3(p_facts->'netContent')
   OR (p_facts->'grossMass'<>'null'::jsonb AND NOT public.catalog_lifecycle_quantity_valid_v3(p_facts->'grossMass'))
   OR jsonb_typeof(p_facts->'options') IS DISTINCT FROM 'object'
@@ -267,8 +323,9 @@ CREATE FUNCTION public.catalog_lifecycle_roster_valid_v3(p_product_id uuid,p_man
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE entries jsonb; entry jsonb; prev text; primary_seen boolean := false;
 BEGIN
- IF p_manifest->'schemaVersion' IS DISTINCT FROM '3'::jsonb
+ IF p_manifest->'schemaVersion' IS NULL OR p_manifest->'schemaVersion' NOT IN ('2'::jsonb,'3'::jsonb)
   OR p_manifest - ARRAY['schemaVersion','product','skus'] <> '{}'::jsonb
+  OR (p_manifest->'product' ? 'schemaVersion') IS DISTINCT FROM (p_manifest->'schemaVersion'='3'::jsonb)
   OR NOT public.catalog_lifecycle_facts_valid_v3(p_manifest->'product','product',p_product_id,p_product_id)
   OR jsonb_typeof(p_manifest->'skus') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
  entries := p_manifest->'skus';
@@ -288,50 +345,73 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_lifecycle_roster_valid_v3(uuid,jsonb) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_lifecycle_roster_resolved_v3(p_product_id uuid,p_manifest jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
- SELECT count(*)=jsonb_array_length(p_manifest->'skus')
-  AND count(DISTINCT r.full_facts::jsonb->>'code')=count(*)
-  AND coalesce(bool_and(public.catalog_lifecycle_facts_valid_v3(r.full_facts::jsonb,'sku',r.sku_id,r.product_id)
-   AND public.catalog_lifecycle_wire_valid_v3(r.full_facts,r.digest)),false)
- FROM jsonb_array_elements(p_manifest->'skus') entry
- JOIN public.catalog_sku_revisions r ON r.id=(entry->>'revisionId')::uuid AND r.sku_id::text=entry->>'skuId'
-  AND to_jsonb(r.revision)=entry->'revision' AND r.digest=entry->>'digest' AND r.product_id=p_product_id;
-$$;
-REVOKE ALL ON FUNCTION public.catalog_lifecycle_roster_resolved_v3(uuid,jsonb) FROM PUBLIC;
+CREATE FUNCTION public.catalog_publication_roster_resolved(p_product_id uuid,p_manifest jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE entry jsonb; stored public.catalog_sku_revisions; facts jsonb; doc public.catalog_product_document_revisions;
+ version jsonb:=p_manifest->'schemaVersion'; sku_codes text[]:=ARRAY[]::text[];
+BEGIN
+ IF NOT public.catalog_lifecycle_roster_valid_v3(p_product_id,p_manifest) THEN RETURN false; END IF;
+ SELECT * INTO doc FROM public.catalog_product_document_revisions d
+ WHERE d.id=(p_manifest#>>'{product,document,id}')::uuid AND d.product_id=p_product_id;
+ IF NOT FOUND OR doc.canonical_text IS NULL
+  OR doc.digest<>encode(sha256(convert_to(doc.canonical_text,'UTF8')),'hex')
+  OR p_manifest#>'{product,document}' IS DISTINCT FROM jsonb_build_object('id',doc.id,'productId',doc.product_id,
+    'revisionNo',doc.revision_no,'schemaId',doc.schema_id,'documentRef',doc.document_ref,'sourceRef',doc.source_ref,'digest',doc.digest)
+ THEN RETURN false; END IF;
 
--- A predecessor manifest may be inserted before its own revisions exist, but
--- every revision already present must use the same stored dialect.
-CREATE FUNCTION public.catalog_lifecycle_roster_version_v3(p_product_id uuid,p_manifest jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
- SELECT NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_manifest->'skus') entry
-  JOIN public.catalog_sku_revisions r ON r.id=CASE WHEN entry->>'revisionId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-   THEN (entry->>'revisionId')::uuid END AND r.product_id=p_product_id
-  WHERE (r.full_facts::jsonb ? 'schemaVersion') IS DISTINCT FROM (p_manifest->'schemaVersion'='3'::jsonb));
+ FOR entry IN SELECT value FROM jsonb_array_elements(p_manifest->'skus') LOOP
+  SELECT * INTO stored FROM public.catalog_sku_revisions r WHERE r.id=(entry->>'revisionId')::uuid;
+  IF NOT FOUND OR stored.product_id<>p_product_id OR to_jsonb(stored.sku_id) IS DISTINCT FROM entry->'skuId'
+   OR to_jsonb(stored.revision) IS DISTINCT FROM entry->'revision' OR stored.digest IS DISTINCT FROM entry->>'digest'
+   OR NOT public.catalog_lifecycle_wire_valid_v3(stored.full_facts,stored.digest) THEN RETURN false; END IF;
+  facts:=stored.full_facts::jsonb;
+  IF (facts ? 'schemaVersion') IS DISTINCT FROM (version='3'::jsonb)
+   OR NOT public.catalog_lifecycle_facts_valid_v3(facts,'sku',stored.sku_id,p_product_id) THEN RETURN false; END IF;
+  IF version='3'::jsonb THEN sku_codes:=array_append(sku_codes,facts->>'code'); END IF;
+ END LOOP;
+ RETURN version='2'::jsonb OR cardinality(sku_codes)=(SELECT count(DISTINCT code) FROM unnest(sku_codes) code);
+END;
 $$;
-REVOKE ALL ON FUNCTION public.catalog_lifecycle_roster_version_v3(uuid,jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_roster_resolved(uuid,jsonb) FROM PUBLIC;
+
+-- The new publication itself must remain usable even if it never becomes head.
+-- Publication and SKU revision rows are immutable once this transaction commits.
+CREATE FUNCTION public.catalog_publication_assert_roster_final() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE source public.catalog_publications; manifest jsonb;
+BEGIN
+ SELECT * INTO source FROM public.catalog_publications WHERE id=NEW.id;
+ manifest:=source.canonical_state::jsonb;
+ IF NOT FOUND OR NOT public.catalog_publication_roster_resolved(source.product_id,manifest) THEN
+  IF manifest->'schemaVersion'='2'::jsonb THEN RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
+ END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_assert_roster_final() FROM PUBLIC;
+CREATE CONSTRAINT TRIGGER catalog_publications_roster_final AFTER INSERT ON public.catalog_publications
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_assert_roster_final();
 
 CREATE FUNCTION public.catalog_lifecycle_head_admit_v3() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE manifest jsonb; source public.catalog_publications%ROWTYPE;
+DECLARE manifest jsonb; source public.catalog_publications;
 BEGIN
- SELECT * INTO source FROM public.catalog_publications WHERE id=NEW.publication_id AND product_id=NEW.product_id AND revision=NEW.revision;
+ SELECT p.* INTO source FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id
+ WHERE h.product_id=NEW.product_id;
+ IF NOT FOUND THEN RETURN NULL; END IF;
  manifest:=source.canonical_state::jsonb;
- IF manifest->'schemaVersion'='3'::jsonb THEN
-  IF NOT public.catalog_lifecycle_wire_valid_v3(source.canonical_state,source.digest)
-   OR NOT public.catalog_lifecycle_roster_valid_v3(NEW.product_id,manifest)
-   OR NOT public.catalog_lifecycle_roster_resolved_v3(NEW.product_id,manifest) THEN
-   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
-  END IF;
- ELSIF manifest->'product' ? 'schemaVersion' OR NOT public.catalog_lifecycle_roster_version_v3(NEW.product_id,manifest) THEN
-  RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
+ IF NOT public.catalog_lifecycle_wire_valid_v3(source.canonical_state,source.digest)
+  OR NOT public.catalog_publication_roster_resolved(source.product_id,manifest) THEN
+  IF manifest->'schemaVersion'='2'::jsonb THEN RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
  END IF;
- RETURN NEW;
+ RETURN NULL;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_lifecycle_head_admit_v3() FROM PUBLIC;
-CREATE TRIGGER catalog_publication_heads_lifecycle_admit BEFORE INSERT OR UPDATE ON public.catalog_publication_heads
- FOR EACH ROW EXECUTE FUNCTION public.catalog_lifecycle_head_admit_v3();
+CREATE CONSTRAINT TRIGGER catalog_publication_heads_lifecycle_admit AFTER INSERT OR UPDATE ON public.catalog_publication_heads
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_lifecycle_head_admit_v3();
 
 -- Resolve retained lines once. Supported historic flat baskets remain readable;
 -- a native versioned carrier must also agree with its nested line copies.
@@ -534,8 +614,8 @@ BEGIN
  RETURN jsonb_array_length(p_lines) BETWEEN 1 AND 100 AND NOT EXISTS(
   SELECT 1 FROM jsonb_array_elements(p_lines) WITH ORDINALITY l(body,ordinal)
   WHERE NOT public.catalog_renewal_keys_v3(l.body,ARRAY['lineOrdinal','sku','quantity','unitAmountMinor'])
-   OR NOT public.catalog_renewal_integer_v3(l.body->'lineOrdinal',1)
-   OR NOT public.catalog_renewal_integer_v3(l.body->'quantity',1)
+   OR NOT public.catalog_renewal_integer_v3(l.body->'lineOrdinal',1,2147483647)
+   OR NOT public.catalog_renewal_integer_v3(l.body->'quantity',1,2147483647)
    OR NOT public.catalog_renewal_integer_v3(l.body->'unitAmountMinor',0)
    OR jsonb_typeof(l.body->'sku') IS DISTINCT FROM 'string' OR l.body->>'sku'=''
    OR (p_sequential AND l.body->'lineOrdinal' IS DISTINCT FROM to_jsonb(l.ordinal)));
@@ -717,8 +797,7 @@ BEGIN
  SELECT p.canonical_state::jsonb INTO manifest FROM public.catalog_publications p
   JOIN public.catalog_publication_heads h ON h.publication_id=p.id AND h.product_id=p.product_id AND h.revision=p.revision
   WHERE p.product_id=sku.product_id AND public.catalog_lifecycle_wire_valid_v3(p.canonical_state,p.digest);
- IF NOT public.catalog_lifecycle_roster_valid_v3(sku.product_id,manifest)
-  OR NOT public.catalog_lifecycle_roster_resolved_v3(sku.product_id,manifest)
+ IF NOT public.catalog_publication_roster_resolved(sku.product_id,manifest)
   OR NOT EXISTS(SELECT 1 FROM public.catalog_products p WHERE p.id=sku.product_id
     AND p.publication_facts=manifest->'product' AND p.status=manifest#>>'{product,status}'
     AND p.slug=manifest#>>'{product,slug}' AND p.name=manifest#>>'{product,name}'
@@ -995,6 +1074,7 @@ BEGIN
       IF inputs->>'kind' IS NULL OR inputs->>'kind' NOT IN ('release','compensation')
         OR jsonb_typeof(inputs->'operations') IS DISTINCT FROM 'array' OR jsonb_typeof(inputs->'evidence') IS DISTINCT FROM 'object'
         OR EXISTS (SELECT FROM jsonb_object_keys(inputs) k WHERE k NOT IN ('kind','operations','evidence'))
+        OR (c->'schemaVersion'='4'::jsonb AND NOT public.catalog_publication_content_valid_v3(content))
         OR content->'schemaVersion' IS DISTINCT FROM '1'::jsonb OR content->>'catalogAction' IS NULL
         OR content->>'catalogAction' NOT IN ('create','revise') OR jsonb_typeof(content->'presentation') IS DISTINCT FROM 'object'
         OR jsonb_typeof(content->'offerMemberships') IS DISTINCT FROM 'array'
@@ -1072,7 +1152,7 @@ BEGIN
         valid_v4 := false;
         <<v4_grammar>>
         DECLARE
-          op jsonb; child jsonb; evidence jsonb; asset jsonb; previous text; verb text; ref_text text;
+          op jsonb; child jsonb; evidence jsonb; asset jsonb; previous text; verb text; ref_text text; logistics jsonb;
           previous_asset integer[]; asset_key integer[];
           uuid_shape constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
           code_shape constant text := '^[A-Za-z0-9._:-]{1,160}$';
@@ -1133,7 +1213,6 @@ BEGIN
           END LOOP;
           IF EXISTS(SELECT 1 FROM jsonb_array_elements(p->'skus') a
             WHERE (a ? 'demandPolicyRef' AND jsonb_typeof(a->'demandPolicyRef') IS DISTINCT FROM 'string')
-               OR (a ? 'logisticsRef' AND jsonb_typeof(a->'logisticsRef') IS DISTINCT FROM 'string')
                OR (a ? 'assetRefs' AND CASE WHEN jsonb_typeof(a->'assetRefs')='array'
                  THEN jsonb_array_length(a->'assetRefs')>32 OR EXISTS(
                    SELECT 1 FROM jsonb_array_elements(a->'assetRefs') r WHERE jsonb_typeof(r)<>'string')
@@ -1145,12 +1224,19 @@ BEGIN
             UNION ALL SELECT a#>>'{}' FROM jsonb_array_elements(inputs#>'{evidence,media}') e,
               LATERAL jsonb_array_elements(e->'assetRefs') a
             UNION ALL SELECT a->>'demandPolicyRef' FROM jsonb_array_elements(p->'skus') a WHERE a ? 'demandPolicyRef'
-            UNION ALL SELECT a->>'logisticsRef' FROM jsonb_array_elements(p->'skus') a WHERE a ? 'logisticsRef'
             UNION ALL SELECT r#>>'{}' FROM jsonb_array_elements(p->'skus') a, LATERAL jsonb_array_elements(a->'assetRefs') r
           LOOP
             IF ref_text='' OR ref_text<>btrim(ref_text,trim_space)
              OR char_length(ref_text)+(SELECT count(*) FROM regexp_split_to_table(ref_text,'') ch WHERE octet_length(ch)=4)>240
             THEN EXIT v4_grammar; END IF;
+          END LOOP;
+          FOR logistics IN
+            SELECT a->'logisticsRef' FROM jsonb_array_elements(p->'skus') a WHERE a ? 'logisticsRef'
+            UNION ALL SELECT o->'logisticsRef' FROM jsonb_array_elements(inputs->'operations') o
+             WHERE o->>'op'='set_sku_metadata' AND o->'logisticsRef'<>'null'::jsonb
+          LOOP
+            IF jsonb_typeof(logistics) IS DISTINCT FROM 'string'
+             OR NOT public.catalog_lifecycle_reference_valid_v3(logistics#>>'{}',240) THEN EXIT v4_grammar; END IF;
           END LOOP;
           valid_v4 := true;
         END v4_grammar;
@@ -1273,10 +1359,7 @@ BEGIN
    OR (body->'product' ? 'schemaVersion') IS DISTINCT FROM (body->'schemaVersion'='3'::jsonb) THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
   END IF;
-  IF body->'schemaVersion'='2'::jsonb AND NOT public.catalog_lifecycle_roster_version_v3(NEW.product_id,body) THEN
-   RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
-  END IF;
-  IF body->'schemaVersion'='3'::jsonb THEN
+  IF body->'schemaVersion' IN ('2'::jsonb,'3'::jsonb) THEN
    IF NOT public.catalog_lifecycle_wire_valid_v3(canonical,expected)
     OR NOT public.catalog_lifecycle_roster_valid_v3(NEW.product_id,body)
     OR body#>'{product,document}' IS DISTINCT FROM (
@@ -1347,8 +1430,7 @@ BEGIN
  manifest:=publication.canonical_state::jsonb; facts:=revision.full_facts::jsonb;
  SELECT digest INTO document_digest FROM public.catalog_product_document_revisions WHERE id=publication.document_revision_id AND product_id=publication.product_id;
  IF NOT public.catalog_lifecycle_wire_valid_v3(publication.canonical_state,publication.digest)
-  OR NOT public.catalog_lifecycle_roster_valid_v3(publication.product_id,manifest)
-  OR NOT public.catalog_lifecycle_roster_resolved_v3(publication.product_id,manifest)
+  OR NOT public.catalog_publication_roster_resolved(publication.product_id,manifest)
   OR p_reference->'publicationHead' IS DISTINCT FROM jsonb_build_object('publicationId',publication.id,'revision',publication.revision,'documentDigest',document_digest)
   OR facts->>'id' IS DISTINCT FROM p_reference->>'skuId' OR facts->>'code' IS DISTINCT FROM p_reference->>'skuCode'
   OR manifest->'product'->'type' IS DISTINCT FROM p_reference->'typeRef'
@@ -1647,3 +1729,8 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalo
   AND entry.valid_from<=statement_timestamp() AND (entry.valid_to IS NULL OR entry.valid_to>statement_timestamp())
 $$;
 REVOKE ALL ON FUNCTION public.catalog_price_setup_sale_ready(uuid,uuid) FROM PUBLIC;
+
+-- Draft writes use the same pure wire checks under the existing runtime role.
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN
+ EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_publication_content_valid_v3(jsonb), public.catalog_lifecycle_reference_valid_v3(text,integer), public.catalog_renewal_integer_v3(jsonb,bigint,bigint) TO service_role';
+END IF; END; $$;

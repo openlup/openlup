@@ -138,6 +138,8 @@ function failure(error: unknown): CatalogPublicationFailure {
   const code = error && typeof error === "object" && "code" in error ? error.code : null;
   if (code === "55P03" || code === "40P01") return { outcome: "conflict", reason: "catalog_publication_busy" };
   if (code === "23505") return { outcome: "conflict", reason: "catalog_publication_identity_conflict" };
+  if (code === "23514" && error instanceof Error && ["catalog_publication_state_invalid", "catalog_publication_sku_revision_invalid"].includes(error.message))
+    return { outcome: "validation_issue", reason: error.message };
   if (code === "42501") return { outcome: "unauthorized", reason: "publisher_not_authorized" };
   return { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
 }
@@ -199,6 +201,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const head = { publicationId: publication.id, revision: publication.revision, documentDigest: document!.reference.digest };
     require(!historical || equal(head, historical), "head_conflict", "conflict");
     checkHead(head);
+    if (manifest.schemaVersion === 3) await checkRetainedRoster(db, productId, manifest);
     const revisions = row.revisions as Record<string, unknown>[], seen = new Set<string>();
     const skus = manifest.skus.map(reference => {
       const stored = revisions.find(stored => stored.id === reference.revisionId && stored.sku_id === reference.skuId && stored.revision === reference.revision);
@@ -863,8 +866,14 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     async publish(command, capability) { const result = await publish(command, capability);
       return "receipt" in result ? { outcome: result.outcome, receipt: legacyReceipt(result.receipt) } : legacyFailure(result); },
   };
-  async function checkRetainedGovernedRoster(db: PgQueryExecutor, productId: string, manifest: unknown) {
-    const rows = await tuple(db, "SELECT public.catalog_lifecycle_roster_resolved_v3($1::uuid,$2::jsonb) AS valid", [productId, publicationJson(manifest)]);
+  async function checkRetainedRoster(db: PgQueryExecutor, productId: string, manifest: { schemaVersion: 2 | 3 }) {
+    // LC2-only installations retain their v2 reader while upgrading the native
+    // store. The v3 dialect itself requires the lifecycle forward.
+    if (manifest.schemaVersion === 2) {
+      const installed = await tuple(db, "SELECT to_regprocedure('public.catalog_publication_roster_resolved(uuid,jsonb)') IS NOT NULL AS installed");
+      if (installed[0]?.installed !== true) return;
+    }
+    const rows = await tuple(db, "SELECT public.catalog_publication_roster_resolved($1::uuid,$2::jsonb) AS valid", [productId, publicationJson(manifest)]);
     require(rows.length === 1 && rows[0]?.valid === true, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
   }
   async function readbackFull(head: CatalogHeadRef, cursor: string | null, expectedVersion: 2 | 3) {
@@ -885,7 +894,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           && typeof row.canonical_text === "string"
           && createHash("sha256").update(row.canonical_text).digest("hex") === row.document_digest,
         "catalog_publication_manifest_invalid", "dependency_unavailable");
-        if (expectedVersion === 3) await checkRetainedGovernedRoster(db, manifest.product.id, manifest);
+        await checkRetainedRoster(db, manifest.product.id, manifest);
         const productId = manifest.product.id, pointer = decodeCursor(cursor, productId, "facts"), offset = pointer?.before ?? 0;
         require(!pointer || pointer.highWater === head.revision, "catalog_publication_cursor_invalid");
         require(offset <= manifest.skus.length, "catalog_publication_cursor_invalid");
@@ -959,7 +968,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
             revisionNo: row.revision_no, schemaId: row.schema_id, documentRef: row.document_ref, sourceRef: row.source_ref, digest: row.digest })
           && typeof row.canonical_text === "string" && createHash("sha256").update(row.canonical_text).digest("hex") === row.digest,
         "catalog_publication_manifest_invalid", "dependency_unavailable");
-        if (manifest.schemaVersion === 3) await checkRetainedGovernedRoster(db, manifest.product.id, manifest);
+        await checkRetainedRoster(db, manifest.product.id, manifest);
         const reference = manifest.skus.find(reference => reference.skuId === input.skuId && reference.revisionId === input.skuRevisionId
           && reference.digest === row.sku_digest && reference.revision === row.sku_revision);
         require(reference, "retained_revision_unavailable", "unsupported");

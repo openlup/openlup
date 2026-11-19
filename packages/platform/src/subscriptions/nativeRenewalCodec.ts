@@ -56,7 +56,7 @@ function validate(snapshot: RenewalFrozenSnapshot, parse?: CatalogRenewalReferen
     const acceptedCodes = new Set(captured.lines.map(line => line.skuCode));
     const codes = snapshot.orderSnapshot.lines.map(line => line.sku);
     if (new Set(codes).size !== codes.length || acceptedCodes.size !== codes.length || codes.some(code => !acceptedCodes.has(code))
-      || snapshot.orderSnapshot.lines.some(line => line.quantity > 2_147_483_647)) {
+      || snapshot.orderSnapshot.lines.some(line => line.quantity > 2_147_483_647 || line.lineOrdinal > 2_147_483_647)) {
       throw new Error("subscription_catalog_acceptance_line_mismatch");
     }
   } else snapshotSchema.parse(snapshot);

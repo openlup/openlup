@@ -635,10 +635,10 @@
     },
     {
       "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-      "sha256": "e31e5fef1c75f26a7ebb40e0ee9c7dcd13960b4db3b53e044da03de328a6d588"
+      "sha256": "134aaa7cd28084758ddafc8e6d1a9b2f3e317f4c05cf6e34529decf96201e75c"
     }
   ],
-  "objectInventorySha256": "82c694cae23f898f2a5cf99897dd7da50c1f3d6eccfdac1b1c7e509c545f49bd",
+  "objectInventorySha256": "387f3ad4a6c311ac799a2e96346ae0601b685a4fe6678271e18d6d8da70a8c67",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1295,15 +1295,15 @@
       },
       {
         "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-        "sha256": "e31e5fef1c75f26a7ebb40e0ee9c7dcd13960b4db3b53e044da03de328a6d588"
+        "sha256": "134aaa7cd28084758ddafc8e6d1a9b2f3e317f4c05cf6e34529decf96201e75c"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "7318bfba84b7e970dd83171321103fdc80ad22dd61709051b7d16182eedd0c4b"
+        "withRestore": "06ad8d720d85a4baaeb12b878e55a2f27c1f36f188d62d81f086f6f2aabfa763"
       },
       "separateMigrator": {
-        "withRestore": "c20e184ba5e915a3df212645739492ac6bd52f4a9e8fd6e601dee40e12d42ad3"
+        "withRestore": "5ca7ea8233f58dab8cbe5e60ee9564a2fc8cfce08376ac3630cc17e7cdfb07e4"
       }
     }
   },
@@ -1959,12 +1959,12 @@
       },
       {
         "file": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-        "sha256": "e31e5fef1c75f26a7ebb40e0ee9c7dcd13960b4db3b53e044da03de328a6d588"
+        "sha256": "134aaa7cd28084758ddafc8e6d1a9b2f3e317f4c05cf6e34529decf96201e75c"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "d667140567124d82b46941581ba90a3048ba0153d5b8cd7c3af813c200464ed6",
-      "operatorProvisioned": "64ff1d94accca729479d1537e3749084e095dd0e1e4938c37d03f8506df7d049"
+      "installerManaged": "6a6f55b90339fee536efb84648ae3ac6906ff1b5b7104259c4e0d4695481e908",
+      "operatorProvisioned": "d6c112a9206877dee0452d21fed076c3a5df7470c06be23c0245a3530ff47b46"
     }
   }
 }
