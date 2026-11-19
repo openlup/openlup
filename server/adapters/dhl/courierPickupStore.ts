@@ -92,16 +92,19 @@ export async function reconcileShippedTesters(
   testers: CourierPickupTester[],
   timestamp: string,
   sendEmail?: (id: string, slug: string, source: string) => Promise<unknown>,
-  source: string = CARRIER_PERSISTENCE.bookingEmailSource,
 ): Promise<string[]> {
   const failed: string[] = [];
   for (const tester of testers) {
     if (tester.status === "shipped") continue;
-    const { error } = await client.from("testers")
+    const { error, data } = await client.from("testers")
       .update({ status: "shipped", status_updated_at: timestamp })
-      .eq("id", tester.id);
-    if (error) { failed.push(tester.id); continue; }
-    try { await sendEmail?.(tester.id, "shipped", source); }
+      .eq("id", tester.id).eq("status", "packing")
+      .eq("tracking_number", tester.tracking_number)
+      .eq(CARRIER_PERSISTENCE.shipmentDispatchId, tester[CARRIER_PERSISTENCE.shipmentDispatchId])
+      .eq(CARRIER_PERSISTENCE.shipmentDate, tester[CARRIER_PERSISTENCE.shipmentDate])
+      .select("id").maybeSingle();
+    if (error || data?.id !== tester.id) { failed.push(tester.id); continue; }
+    try { await sendEmail?.(tester.id, "shipped", CARRIER_PERSISTENCE.bookingEmailSource); }
     catch { /* best effort */ }
   }
   return failed;
@@ -134,12 +137,13 @@ export function validateCarrierPickupTesters(testers: CourierPickupTester[], ids
     : null;
 }
 
-export function validateCarrierPickupWindow(date: string, from: string, to: string, timestamp: string): string | null {
+export function validateCarrierPickupWindow(date: string, from: string, to: string, timestamp?: string): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Nieprawidłowa data odbioru ${CARRIER_DISPLAY_NAME}`;
   if (!/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to)) {
     return `Nieprawidłowe okno godzinowe odbioru ${CARRIER_DISPLAY_NAME}`;
   }
   if (from >= to) return `Godzina odbioru ${CARRIER_DISPLAY_NAME} musi mieć początek przed końcem`;
+  if (timestamp === undefined) return null;
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: WARSAW_TIME_ZONE,
     year: "numeric",
@@ -257,7 +261,7 @@ export async function recordCourierPickupShipments(client: Client, pickupId: str
   if (error) throw pickupStoreUnavailable();
 }
 
-export async function recordCourierPickup(client: Client, pickupId: string, previous: "pending" | "indeterminate", input: {
+export async function recordCourierPickup(client: Client, pickupId: string, input: {
   status: Exclude<PickupStatus, "pending">;
   courierOrderId?: string;
   operatorMessage?: string;
@@ -273,7 +277,7 @@ export async function recordCourierPickup(client: Client, pickupId: string, prev
       retryable: input.retryable ?? null,
       support_code: input.supportCode ?? null,
       raw_response_excerpt: input.rawResponse?.slice(0, 2000) ?? null,
-    }).eq("id", pickupId).eq("status", previous).select("id").maybeSingle();
+    }).eq("id", pickupId).eq("status", "pending").select("id").maybeSingle();
     return !error && data?.id === pickupId;
   } catch {
     // The database may have applied the update. Never infer a safe retry.
