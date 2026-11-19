@@ -10,6 +10,7 @@ import type { CommerceRecommendationSnapshot } from "@/domains/commerce/recommen
 
 import type { LegacyCheckoutIntentPolicy } from "@/checkout/composer/legacyCheckoutIntentPolicy";
 import { buildCheckoutIntent } from "./buildCheckoutIntent";
+import { startStripeWalletCheckout } from "@/checkout/adapters/stripeWalletCheckout";
 import { defaultConfiguratorFormData, type ConfiguratorFormData } from "@/checkout/composer/configuratorFormStore";
 
 /**
@@ -30,6 +31,11 @@ const KNOWN_COMPOSITION_SLUGS = ["lamb", "venison", "beef", "turkey", "salmon", 
 const FIXTURE_ENERGY_POLICY_VERSION = "commerce.energy_policy.fediaf_2025_dog_mer.v3";
 
 const deployment = vi.hoisted(() => ({ policy: null as LegacyCheckoutIntentPolicy | null }));
+const submitWalletCheckout = vi.hoisted(() => vi.fn());
+vi.mock("@/domains/commerce/commerceClient", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/domains/commerce/commerceClient")>()),
+  submitCheckout: submitWalletCheckout,
+}));
 
 vi.mock("#legacy-checkout-intent-policy", async (importOriginal) => {
   const reference = await importOriginal<typeof import("#legacy-checkout-intent-policy")>();
@@ -110,6 +116,34 @@ describe("buildCheckoutIntent", () => {
       expect(buildCheckoutIntent(form, options)).toBeNull();
     } finally {
       deployment.policy = null;
+    }
+  });
+
+  it("submits the adopter fallback through the wallet adapter when no supported locale was provided", async () => {
+    const { LEGACY_CHECKOUT_INTENT_POLICY: reference } =
+      await vi.importActual<typeof import("#legacy-checkout-intent-policy")>("#legacy-checkout-intent-policy");
+    deployment.policy = { ...reference, defaultLocale: "en" };
+    submitWalletCheckout.mockResolvedValue({ status: "paid", orderRef: "wallet-fallback" });
+    try {
+      const form = completeForm({ checkoutQuoteExpectation: { totalGross: { amountMinor: 12900, currency: "XTS" } } });
+      const context = {
+        knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS,
+        subscriptionCheckoutEnabled: true,
+        deliverySelectionEnabled: true,
+        dhlOnlyDeliveryEnabled: true,
+      };
+      await expect(startStripeWalletCheckout(form, context)).resolves.toEqual({ kind: "paid", orderRef: "wallet-fallback" });
+      expect(submitWalletCheckout.mock.calls[0]?.[0].intent.locale).toBe("en");
+
+      await startStripeWalletCheckout(form, { ...context, locale: "pl" });
+      expect(submitWalletCheckout.mock.calls[1]?.[0].intent.locale).toBe("pl");
+
+      deployment.policy = null;
+      await startStripeWalletCheckout(form, context);
+      expect(submitWalletCheckout.mock.calls[2]?.[0].intent.locale).toBe(reference.defaultLocale);
+    } finally {
+      deployment.policy = null;
+      submitWalletCheckout.mockReset();
     }
   });
 

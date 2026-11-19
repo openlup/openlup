@@ -22,8 +22,9 @@ The legacy configurator's card and wallet submission share the same
 [`#legacy-checkout-intent-policy` binding](../../src/checkout/composer/legacyCheckoutIntentPolicy.ts).
 A deployment that uses this source flow can point that package import at its own
 module exporting `LEGACY_CHECKOUT_INTENT_POLICY`. The binding supplies the fallback
-locale, the shipping country and the profile mapping from the form. An explicit
-locale from the caller takes precedence. The existing
+locale, the shipping country and the profile mapping from the form. A supported
+locale from the caller takes precedence. The wallet uses the binding's fallback
+when the display language is absent or outside the legacy intent contract. The existing
 [legacy intent validator](../../src/domains/commerce/configuratorIntentContracts.ts)
 still governs accepted locales, domestic addresses and the required profile shape.
 A mapping can return `null` when the form cannot supply a profile. The resolved

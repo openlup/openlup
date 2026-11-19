@@ -152,6 +152,21 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("WalletExpressRow", () => {
+  it.each([
+    ["pl", "pl"],
+    ["en", "en"],
+    ["zz", undefined],
+  ])("passes checkout locale %s through only when the legacy contract supports it", async (language, locale) => {
+    mockStart.mockResolvedValue({ kind: "quote_unavailable" });
+    const i18n = walletI18n.cloneInstance();
+    await i18n.changeLanguage(language);
+    renderWithProviders(<I18nextProvider i18n={i18n}>{row()}</I18nextProvider>);
+
+    fireEvent.click(screen.getByText("wallet-confirm"));
+    await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+    expect(mockStart.mock.calls[0]?.[1].locale).toBe(locale);
+  });
+
   it("surfaces a failed Stripe load and retry mounts Elements with a fresh promise", () => {
     const rejectedAttempt = Promise.resolve({ id: "timed-out-attempt" });
     mockStripeLoaderState = {
