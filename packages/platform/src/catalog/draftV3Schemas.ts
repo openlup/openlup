@@ -1,3 +1,4 @@
+import type { CatalogPublishedContent } from "./contracts/publication.js";
 import { z } from "./validation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDraftSummarySchema, catalogDraftRefusalSchema } from "./draftSchemas.js";
@@ -21,19 +22,23 @@ const json: z.ZodType<CatalogPublicationJson> = z.json();
 const facts: z.ZodType<CatalogPublicationFacts> = z.record(z.string(), json);
 const skuFacts = z.object({ skuCode: code, title: text, minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), facts }).strict();
 const membership = z.object({ skuCode: code, offerVersion: reference, admitted: z.boolean() }).strict();
-/** @experimental */
-export const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3> = z.object({
-  schemaVersion: z.literal(1), catalogAction: z.enum(["create", "revise"]), document: facts.optional(), presentation: facts,
+const sharedContentShape = {
+  schemaVersion: z.literal(1), catalogAction: z.enum(["create", "revise"]), presentation: facts,
   offerMemberships: z.array(membership).max(10_000),
   requestedModes: z.array(z.object({ skuCode: code, modes: z.array(z.enum(["one_time", "subscription"])).max(2)
     .refine(values => new Set(values).size === values.length) }).strict()).max(10_000),
   publicationSkus: z.array(skuFacts).max(10_000),
-}).strict().superRefine((content, context) => {
+};
+function uniqueSkuIntents(content: Omit<CatalogDraftSharedContentV3, "document">, context: z.RefinementCtx) {
   for (const key of ["offerMemberships", "requestedModes", "publicationSkus"] as const) {
     const codes = content[key].map(row => row.skuCode);
     if (new Set(codes).size !== codes.length) context.addIssue({ code: "custom", path: [key], message: "SKU intents must be unique" });
   }
-});
+}
+export const catalogPublicationContentSchema: z.ZodType<CatalogPublishedContent> = z.object(sharedContentShape).strict().superRefine(uniqueSkuIntents);
+/** @experimental */
+export const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3> =
+  z.object({ ...sharedContentShape, document: facts.optional() }).strict().superRefine(uniqueSkuIntents);
 /** @experimental */
 export const catalogDraftProvenanceV3Schema: z.ZodType<CatalogDraftProvenanceV3> = z.discriminatedUnion("source", [
   z.object({ source: z.literal("current_draft") }).strict(),
@@ -104,15 +109,26 @@ export function catalogDraftV3ValidationPayload(payload: CatalogDraftPayloadV3) 
   const { publication: _publication, ...base } = payload;
   return { ...base, schemaVersion: 2 as const };
 }
+function draftPayloadV3Schema(content: z.ZodType<CatalogDraftSharedContentV3>): z.ZodType<CatalogDraftPayloadV3> {
+  return z.object({
+    schemaVersion: z.literal(3), product: catalogDraftProductV2Schema.extend({ sharedContent: content }).strict(),
+    skus: z.array(catalogDraftSkuV2Schema).max(10_000), publication: catalogDraftPublicationInputsV3Schema,
+  }).strict().superRefine((payload, context) => {
+    try { canonicalCatalogDraftJson(payload); } catch { context.addIssue({ code: "custom", message: "payload must be bounded safe JSON" }); }
+    const base = catalogDraftPayloadV2Schema.safeParse(catalogDraftV3ValidationPayload(payload));
+    if (!base.success) for (const issue of base.error.issues) context.addIssue({ code: "custom", path: issue.path, message: issue.message });
+  });
+}
 /** @experimental */
-export const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3> = z.object({
-  schemaVersion: z.literal(3), product: catalogDraftProductV2Schema.extend({ sharedContent: catalogDraftSharedContentV3Schema }).strict(),
-  skus: z.array(catalogDraftSkuV2Schema).max(10_000), publication: catalogDraftPublicationInputsV3Schema,
-}).strict().superRefine((payload, context) => {
-  try { canonicalCatalogDraftJson(payload); } catch { context.addIssue({ code: "custom", message: "payload must be bounded safe JSON" }); }
-  const base = catalogDraftPayloadV2Schema.safeParse(catalogDraftV3ValidationPayload(payload));
-  if (!base.success) for (const issue of base.error.issues) context.addIssue({ code: "custom", path: issue.path, message: issue.message });
-});
+export const catalogDraftPayloadV3Schema = draftPayloadV3Schema(catalogDraftSharedContentV3Schema);
+
+// The released draft codec owns its wire shape. Publication checks the neutral
+// envelope and retains the opaque legacy value for the installed rules.
+export const catalogPublicationDraftPayloadSchema = draftPayloadV3Schema(
+  z.object({ ...sharedContentShape, document: z.custom<CatalogPublicationFacts>().optional() }).strict().superRefine(uniqueSkuIntents),
+);
+export const catalogPublicationDraftRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogPublicationDraftPayloadSchema }).strict()
+  .refine(record => record.productId === record.payload.product.id, "record product must own payload");
 /** @experimental */
 export const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3> = z.object({
   schemaVersion: z.literal(3), action: z.enum(["create", "revise", "abandon", "resume"]),

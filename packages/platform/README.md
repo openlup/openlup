@@ -1391,10 +1391,33 @@ checks the installed definition digest. The digest covers the parsed canonical
 payload, installed definition evidence and that complete expected head. No
 candidate table or cache is needed across process restarts. `validate(candidateRef)`
 reconstructs the preview; `compareCandidate` additionally checks the caller's
-complete expected head and digest. Required readiness issues and unavailable
-price validation block publication; a publisher must reconstruct and refuse all
-issues inside its own transaction. A draft actor or service credential cannot
-construct `VerifiedCatalogPublisher`. This change supplies no publisher or binding.
+complete expected head and digest. For v3, the experimental `publication` dependency on `CatalogCandidateDeps`
+lets all three methods report the same preparation phases. Supply a read of the
+exact retained snapshot and draft command receipts through `readEvidence`. A
+fresh candidate and any explicitly claimed draft must match their current open
+heads. Retained sources are ordered from newest to oldest and retain their
+original receipt facts. Only the current authored SKU can supply a media claim.
+Route observations run for each non-null presentation prefix. A later clear
+preserves the result of an earlier route check.
+
+Load the trusted, self-contained rules bundle with
+`loadCatalogPublicationRules(validatorRef, bytes)` from `@openlup/platform/catalog`.
+Export `CatalogPublicationRulesModule` as `module.exports` in the compiled JavaScript.
+Include all rule code and configuration in the bundle. It runs deterministically
+with language intrinsics and receives JSON values through its rule hooks. The
+loader verifies SHA-256 before evaluating the byte snapshot, and the interpreter
+checks the handle against the installed type definition. Changing the executable
+requires a new installed type version and validator reference.
+
+Structural preparation reports `staged`, `blocked-input` or `unknown`. Activation
+can also be `pending` or `ready`. A ready result requires the applicable read
+proofs and a positive activation verdict. Definite refusals take precedence over
+unknown evidence. Existing wiring reports unavailable v3 evidence through
+`issues` and `preparation`. The published product codec carries only named
+neutral fields and a document revision reference. The authored document stays
+with the draft and the installed rules. A draft actor or service credential
+cannot construct `VerifiedCatalogPublisher`. Preparation performs read operations
+only.
 
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,

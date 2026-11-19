@@ -68,6 +68,7 @@ describe("self-contained catalogue preview", () => {
   it("catalog_candidate_reference_is_self_contained", async () => {
     const f = setup(), query = { draftId, draftRevision: 1, expectedHead: null };
     const first = await f.service.prepareCandidate(query);
+    expect(first.candidateDigest).toBe("b62f8c7506313005d28915d062a149c79fa924ea993767508577a43bf0b594c7");
     expect(first.candidateRef).toBe(`v1:${draftId}@1/unpublished`);
     expect(await createCatalogCandidateService({ ...f.deps }).validate(first.candidateRef)).toEqual(first);
     expect(await f.service.compareCandidate({ ...first, expectedHead: null })).toEqual(first);
@@ -76,11 +77,13 @@ describe("self-contained catalogue preview", () => {
     const secondPayload = payload(); secondPayload.skus[0].priceOperations![0].unitPriceMinor = 1300;
     f.setPayload(secondPayload); f.setRevision(2);
     const second = await f.service.prepareCandidate({ ...query, draftRevision: 2 });
+    expect(second.candidateDigest).toBe("d60dc4495e094bef721c8fd88ab40b8fa5dacf031a88275047bd2f76a1abc4d4");
     expect(second.candidateDigest).not.toBe(first.candidateDigest);
     await expect(f.service.validate(first.candidateRef)).rejects.toMatchObject({ code: "candidate_invalid" });
     const head = { publicationId: listId, revision: 1, documentDigest: "c".repeat(64) };
     f.setHead(head);
     const headed = await f.service.prepareCandidate({ ...query, draftRevision: 2, expectedHead: head });
+    expect(headed.candidateDigest).toBe("6310994ecf37d79b9250dacba36922eaf2da317d285c6a81083ed591ce42bc0a");
     expect(headed.candidateRef).toBe(`v1:${draftId}@2/${listId}@1`);
     expect(headed.candidateDigest).not.toBe(second.candidateDigest);
     expect(await createCatalogCandidateService({ ...f.deps }).validate(headed.candidateRef)).toEqual(headed);
