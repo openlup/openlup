@@ -5682,11 +5682,27 @@
             "searchPath": "pg_catalog, public"
           },
           {
-            "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
+            "signature": "public.catalog_publication_quantity_valid(jsonb)",
             "searchPath": "pg_catalog, public"
           },
           {
-            "signature": "public.catalog_publication_quantity_valid(jsonb)",
+            "signature": "public.catalog_publication_text_valid(jsonb,integer,boolean)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_publication_attributes_valid(jsonb)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_publication_content_problem(jsonb)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_publication_sku_facts(public.catalog_sku_revisions)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
             "searchPath": "pg_catalog, public"
           },
           {
@@ -8085,7 +8101,7 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "00b9c91ea706ca0633653a643de62dece8439647473fa63e1329d504a18d492c",
+      "sha256": "3d87b3083cf99c31d626ad586065c8da02661a9b8e8d956669fa2e7e6af90e5d",
       "functions": [
         {
           "signature": "public.catalog_publication_pointer_fence()",
@@ -8123,24 +8139,44 @@
           "afterSha256": "1887f30df36f3825fd3d1d4d8bc7278e7c352a586f8a4d90fc495d3d4c3e2e71"
         },
         {
-          "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
-          "beforeSha256": null,
-          "afterSha256": "654a1f01a41385c5b3a32a52da69705cfa4664117a16967cf961ad39f0d2d073"
-        },
-        {
           "signature": "public.catalog_publication_quantity_valid(jsonb)",
           "beforeSha256": null,
           "afterSha256": "62426b6cc849ad27bb85dd580d864fdabe034fdd2dcd254848314f724bc57b59"
         },
         {
+          "signature": "public.catalog_publication_text_valid(jsonb,integer,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "f1b952a67c4c8de0ea902af1c6439119ae65bf6d926956ed4084d2f13120594e"
+        },
+        {
+          "signature": "public.catalog_publication_attributes_valid(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "6973613e3cfa5fda74fac0962857ff030954de5afe77182b2f40c1ea401d2c1d"
+        },
+        {
+          "signature": "public.catalog_publication_content_problem(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "49f7a9d6d2a2d7a1c0c0af1f98f65757ace1d08bcab30849828984b10538a594"
+        },
+        {
+          "signature": "public.catalog_publication_sku_facts(public.catalog_sku_revisions)",
+          "beforeSha256": null,
+          "afterSha256": "63aeef62358e9f64f8da6c47b3d95acddf45821b3606bb3707a73277cac5ed4f"
+        },
+        {
+          "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "5c6ec3de7d1f9b4657cfa86ad6c6ba7b52eb51550dea858733b272ec25fdc738"
+        },
+        {
           "signature": "public.catalog_publication_sku_admit()",
           "beforeSha256": null,
-          "afterSha256": "ffa083bd4b2828173dfddf76ae2c9cb11eefa868b43b47d67878257e29958c66"
+          "afterSha256": "b932a20e15963298cc7500b0c3262d645193b6c4ccc4d2cd892b7c9fb2abb713"
         },
         {
           "signature": "public.catalog_publication_admit()",
           "beforeSha256": null,
-          "afterSha256": "5736ab1ef17564fc498f94fc99398969a1c1c773981d9f6ef4408dc9dd7c02cc"
+          "afterSha256": "1c34bed5a6ae18b6d4a8ae1e2656a607f5b70bdf0da7f8d48416e08de5cc00d8"
         }
       ]
     }

@@ -288,13 +288,172 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_assert_approval(public.catalog_publications) FROM PUBLIC;
 
+CREATE FUNCTION public.catalog_publication_quantity_valid(p_value jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT jsonb_typeof(p_value)='object'
+   AND p_value ?& ARRAY['dimension','unscaled','scale','unit']
+   AND p_value - ARRAY['dimension','unscaled','scale','unit']='{}'::jsonb
+   AND p_value->>'dimension' IN ('mass','volume','count')
+   AND jsonb_typeof(p_value->'unscaled')='string' AND p_value->>'unscaled' ~ '^[1-9][0-9]{0,39}$'
+   AND jsonb_typeof(p_value->'scale')='number' AND p_value->>'scale' ~ '^([0-9]|1[0-2])$'
+   AND jsonb_typeof(p_value->'unit')='string' AND length(p_value->>'unit')<=120
+   AND p_value->>'unit' ~ '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$'
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_quantity_valid(jsonb) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_text_valid(p_value jsonb, p_max integer, p_trim boolean) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT jsonb_typeof(p_value)='string' AND length(value)+regexp_count(value,U&'[\+010000-\+10FFFF]') BETWEEN 1 AND p_max
+  AND (NOT p_trim OR value !~ U&'^[\0009-\000d\0020\00a0\1680\2000-\200a\2028\2029\202f\205f\3000\feff]|[\0009-\000d\0020\00a0\1680\2000-\200a\2028\2029\202f\205f\3000\feff]$')
+ FROM (SELECT p_value #>> '{}' AS value) plain
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_text_valid(jsonb,integer,boolean) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_attributes_valid(p_values jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT CASE WHEN jsonb_typeof(p_values)='object' THEN NOT EXISTS (
+   SELECT 1 FROM jsonb_each(p_values) attribute CROSS JOIN LATERAL
+    jsonb_array_elements(CASE WHEN jsonb_typeof(attribute.value)='array' THEN attribute.value ELSE jsonb_build_array(attribute.value) END) item(value)
+   WHERE CASE jsonb_typeof(item.value)
+    WHEN 'string' THEN false
+    WHEN 'boolean' THEN false
+    WHEN 'object' THEN public.catalog_publication_quantity_valid(item.value) IS DISTINCT FROM true
+       AND EXISTS (SELECT 1 FROM jsonb_each(item.value) field WHERE jsonb_typeof(field.value)<>'string')
+    ELSE true END
+ ) ELSE false END
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_attributes_valid(jsonb) FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_content_problem(p_content jsonb) RETURNS text
+LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE field text; items jsonb;
+BEGIN
+ FOREACH field IN ARRAY ARRAY['offerMemberships','requestedModes','publicationSkus'] LOOP
+  items := p_content->field;
+  IF jsonb_array_length(items)>10000
+   OR EXISTS (SELECT 1 FROM jsonb_array_elements(items) item GROUP BY item->>'skuCode' HAVING count(*)>1)
+   OR EXISTS (
+    SELECT 1 FROM jsonb_array_elements(items) item
+    WHERE (jsonb_typeof(item)='object' AND jsonb_typeof(item->'skuCode')='string'
+      AND item->>'skuCode' ~ '^[A-Za-z0-9._:-]{1,160}$'
+      AND CASE field
+       WHEN 'offerMemberships' THEN item - ARRAY['skuCode','offerVersion','admitted']='{}'::jsonb
+         AND public.catalog_publication_text_valid(item->'offerVersion',240,true)
+         AND jsonb_typeof(item->'admitted')='boolean'
+       WHEN 'requestedModes' THEN item - ARRAY['skuCode','modes']='{}'::jsonb AND
+         CASE WHEN jsonb_typeof(item->'modes')='array' THEN jsonb_array_length(item->'modes')<=2
+          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(item->'modes') mode
+            WHERE mode NOT IN ('"one_time"'::jsonb,'"subscription"'::jsonb))
+          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(item->'modes') mode GROUP BY mode HAVING count(*)>1)
+         ELSE false END
+       WHEN 'publicationSkus' THEN item - ARRAY['skuCode','title','minQuantity','isAddon','facts']='{}'::jsonb
+         AND public.catalog_publication_text_valid(item->'title',500,true)
+         AND CASE WHEN jsonb_typeof(item->'minQuantity')='number' AND item->>'minQuantity' ~ '^[1-9][0-9]{0,9}$'
+           THEN (item->>'minQuantity')::numeric<=2147483647 ELSE false END
+         AND jsonb_typeof(item->'isAddon')='boolean' AND jsonb_typeof(item->'facts')='object'
+      END) IS DISTINCT FROM true
+   ) THEN RETURN field; END IF;
+ END LOOP;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_content_problem(jsonb) FROM PUBLIC;
+
+-- Validate each new SKU once before the issue compares its post-state. This
+-- preserves field-specific refusals when the publication event fires first.
+CREATE FUNCTION public.catalog_publication_sku_facts(p_sku public.catalog_sku_revisions) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE body jsonb;
+BEGIN
+ body := p_sku.full_facts::jsonb;
+ IF jsonb_typeof(body) IS DISTINCT FROM 'object'
+   OR NOT (body ?& ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
+     'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'])
+   OR body - ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
+     'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'] <> '{}'::jsonb
+   OR body->'id' IS DISTINCT FROM to_jsonb(p_sku.sku_id) OR body->'productId' IS DISTINCT FROM to_jsonb(p_sku.product_id)
+   OR body->'code' IS DISTINCT FROM to_jsonb(p_sku.sku_code) OR p_sku.sku_code !~ '^[A-Za-z0-9._:-]+$'
+   OR body->>'status' NOT IN ('draft','active','archived') OR body->>'status' IS NULL
+   OR jsonb_typeof(body->'minQuantity') IS DISTINCT FROM 'number' OR body->>'minQuantity' !~ '^[1-9][0-9]{0,9}$'
+   OR (body->>'minQuantity')::numeric>2147483647
+   OR jsonb_typeof(body->'isAddon') IS DISTINCT FROM 'boolean'
+   OR jsonb_typeof(body->'sellableStandalone') IS DISTINCT FROM 'boolean'
+   OR jsonb_typeof(body->'sellableInSubscription') IS DISTINCT FROM 'boolean'
+   OR public.catalog_publication_quantity_valid(body->'netContent') IS DISTINCT FROM true
+   OR (body->'grossMass'<>'null'::jsonb AND public.catalog_publication_quantity_valid(body->'grossMass') IS DISTINCT FROM true)
+   OR jsonb_typeof(body->'options') IS DISTINCT FROM 'object'
+   OR jsonb_typeof(body->'facts') IS DISTINCT FROM 'object'
+   OR jsonb_typeof(body->'identifiers') IS DISTINCT FROM 'array'
+   OR jsonb_typeof(body->'assetRefs') IS DISTINCT FROM 'array'
+   OR jsonb_typeof(body->'logisticsRef') NOT IN ('string','null')
+   OR jsonb_typeof(body->'memberships') IS DISTINCT FROM 'array'
+   OR public.catalog_publication_canonical(body,3)<>p_sku.full_facts
+   OR encode(sha256(convert_to(p_sku.full_facts,'UTF8')),'hex')<>p_sku.digest THEN
+  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
+ END IF;
+ IF EXISTS (SELECT 1 FROM jsonb_each(body->'options') AS option WHERE
+     option.key !~ '^[a-z][a-z0-9_-]{0,63}$' OR option.key IN ('constructor','prototype')
+     OR jsonb_typeof(option.value)<>'object' OR NOT (option.value ?& ARRAY['kind','value'])
+     OR option.value - ARRAY['kind','value']<>'{}'::jsonb
+     OR CASE option.value->>'kind'
+       WHEN 'choice' THEN public.catalog_publication_text_valid(option.value->'value',120,false) IS DISTINCT FROM true
+       WHEN 'boolean' THEN jsonb_typeof(option.value->'value')<>'boolean'
+       WHEN 'quantity' THEN public.catalog_publication_quantity_valid(option.value->'value') IS DISTINCT FROM true
+       ELSE true END)
+  OR jsonb_array_length(body->'assetRefs')>32
+  OR EXISTS (SELECT 1 FROM jsonb_array_elements(body->'assetRefs') AS item WHERE
+    public.catalog_publication_text_valid(item,240,true) IS DISTINCT FROM true)
+  OR EXISTS (SELECT 1 FROM (SELECT entry,lag(entry->>'offerVersion') OVER (ORDER BY ordinality) AS previous_offer
+     FROM jsonb_array_elements(body->'memberships') WITH ORDINALITY AS ref(entry,ordinality)) m
+    WHERE jsonb_typeof(entry)<>'object' OR NOT (entry ?& ARRAY['offerVersion','admitted'])
+     OR entry - ARRAY['offerVersion','admitted']<>'{}'::jsonb
+     OR public.catalog_publication_text_valid(entry->'offerVersion',240,true) IS DISTINCT FROM true OR jsonb_typeof(entry->'admitted')<>'boolean'
+     OR previous_offer COLLATE "C">=entry->>'offerVersion' COLLATE "C")
+  OR EXISTS (SELECT 1 FROM jsonb_array_elements(body->'identifiers') AS item
+    WHERE jsonb_typeof(item)<>'object' OR NOT (item ?& ARRAY['scheme','issuer','value','packagingLevel','quantity','isPrimary','label','sourceRef'])
+     OR item - ARRAY['scheme','issuer','value','packagingLevel','quantity','isPrimary','label','sourceRef']<>'{}'::jsonb
+     OR public.catalog_publication_text_valid(item->'scheme',240,true) IS DISTINCT FROM true
+     OR public.catalog_publication_text_valid(item->'issuer',240,true) IS DISTINCT FROM true
+     OR public.catalog_publication_text_valid(item->'value',128,false) IS DISTINCT FROM true
+     OR jsonb_typeof(item->'packagingLevel')<>'string' OR item->>'packagingLevel' NOT IN ('unit','case')
+     OR jsonb_typeof(item->'quantity')<>'number' OR item->>'quantity' !~ '^[1-9][0-9]{0,5}$'
+     OR (item->>'packagingLevel'='unit') IS DISTINCT FROM (item->>'quantity'='1')
+     OR jsonb_typeof(item->'isPrimary')<>'boolean'
+     OR (item->'isPrimary'='true'::jsonb AND (item->>'scheme'<>'gs1:gtin' OR item->>'packagingLevel'<>'unit'))
+     OR (item->'label'<>'null'::jsonb AND public.catalog_publication_text_valid(item->'label',500,true) IS DISTINCT FROM true)
+     OR (item->'sourceRef'<>'null'::jsonb AND public.catalog_publication_text_valid(item->'sourceRef',240,true) IS DISTINCT FROM true))
+  OR (SELECT count(*) FROM jsonb_array_elements(body->'identifiers') AS item WHERE item->'isPrimary'='true'::jsonb)>1
+  OR (body->'logisticsRef'<>'null'::jsonb AND public.catalog_publication_text_valid(body->'logisticsRef',500,true) IS DISTINCT FROM true)
+  OR public.catalog_publication_text_valid(body #> '{source,commandKey}',240,true) IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
+ END IF;
+ IF public.catalog_publication_text_valid(body->'title',500,false) IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'catalog_publication_sku_title_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_title_invalid';
+ END IF;
+ IF NOT public.catalog_publication_attributes_valid(body->'attributes') THEN
+  RAISE EXCEPTION 'catalog_publication_attributes_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_attributes_invalid';
+ END IF;
+ IF EXISTS (SELECT 1 FROM jsonb_array_elements(body->'identifiers') item WHERE item->>'scheme'='gs1:gtin'
+   AND CASE WHEN item->>'value' ~ '^([0-9]{8}|[0-9]{12,14})$' THEN
+     (SELECT sum(substr(item->>'value',length(item->>'value')-position,1)::integer * CASE WHEN position%2=0 THEN 1 ELSE 3 END)
+      FROM generate_series(0,length(item->>'value')-1) position) % 10 <> 0
+    ELSE true END) THEN
+  RAISE EXCEPTION 'catalog_publication_gtin_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gtin_invalid';
+ END IF;
+ RETURN body;
+EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
+ RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_sku_facts(public.catalog_sku_revisions) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_publication_assert_issued(p_product uuid, p_issue uuid) RETURNS void
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE issue public.catalog_publications%ROWTYPE; prior public.catalog_publications%ROWTYPE;
  receipt public.catalog_operator_receipts%ROWTYPE;
  doc_reference jsonb; doc_valid boolean; authored jsonb; manifest jsonb; product jsonb;
  head jsonb; previous_head jsonb; roster jsonb; changes jsonb; issue_count integer;
- invalid_change boolean; distinct_codes integer; expected_receipt jsonb;
+ invalid_change boolean; distinct_codes integer; expected_receipt jsonb; content_problem text; oversized_page boolean;
 BEGIN
  SELECT * INTO issue FROM public.catalog_publications WHERE product_id=p_product AND id=p_issue;
  IF NOT FOUND THEN
@@ -322,11 +481,13 @@ BEGIN
    OR product - ARRAY['id','slug','name','status','type','axes','attributes','primarySkuId','document','presentation','source','content'] <> '{}'::jsonb
    OR product->'id' IS DISTINCT FROM to_jsonb(p_product)
    OR jsonb_typeof(product->'slug') IS DISTINCT FROM 'string' OR product->>'slug'=''
-   OR jsonb_typeof(product->'name') IS DISTINCT FROM 'string' OR length(product->>'name') NOT BETWEEN 1 AND 500
+   OR jsonb_typeof(product->'type') IS DISTINCT FROM 'object'
+   OR (product->'type') - ARRAY['key','version'] <> '{}'::jsonb
+   OR jsonb_typeof(product #> '{type,version}') IS DISTINCT FROM 'number'
+   OR jsonb_typeof(product #> '{type,key}') IS DISTINCT FROM 'string' OR length(product #>> '{type,key}')>120
+   OR product #>> '{type,key}' !~ '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$'
+   OR public.catalog_publication_text_valid(product->'name',500,false) IS DISTINCT FROM true
    OR product->>'status' NOT IN ('draft','active','archived') OR product->>'status' IS NULL
-   OR jsonb_typeof(product->'axes') IS DISTINCT FROM 'array'
-   OR jsonb_typeof(product->'attributes') IS DISTINCT FROM 'object'
-   OR jsonb_typeof(product->'presentation') NOT IN ('object','null')
    OR jsonb_typeof(product->'content') IS DISTINCT FROM 'object'
    OR NOT ((product->'content') ?& ARRAY['schemaVersion','catalogAction','presentation','offerMemberships','requestedModes','publicationSkus'])
    OR (product->'content') - ARRAY['schemaVersion','catalogAction','presentation','offerMemberships','requestedModes','publicationSkus'] <> '{}'::jsonb
@@ -339,6 +500,27 @@ BEGIN
    OR issue.canonical_state<>public.catalog_publication_canonical(manifest,0)
    OR issue.digest<>encode(sha256(convert_to(issue.canonical_state,'UTF8')),'hex') THEN
   RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_manifest_invalid';
+ END IF;
+
+ IF (CASE WHEN jsonb_typeof(product->'axes')='array' THEN jsonb_array_length(product->'axes')>16
+   OR EXISTS (SELECT 1 FROM jsonb_array_elements(product->'axes') axis GROUP BY axis HAVING count(*)>1)
+   OR EXISTS (SELECT 1 FROM jsonb_array_elements(product->'axes') axis WHERE jsonb_typeof(axis)<>'string'
+      OR axis #>> '{}' !~ '^[a-z][a-z0-9_-]{0,63}$' OR axis #>> '{}' IN ('constructor','prototype'))
+   ELSE true END) THEN
+  RAISE EXCEPTION 'catalog_publication_axes_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_axes_invalid';
+ END IF;
+ IF NOT public.catalog_publication_attributes_valid(product->'attributes') THEN
+  RAISE EXCEPTION 'catalog_publication_attributes_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_attributes_invalid';
+ END IF;
+ content_problem := public.catalog_publication_content_problem(product->'content');
+ IF jsonb_typeof(product->'presentation') NOT IN ('object','null') THEN
+  content_problem := 'presentation';
+ END IF;
+ IF content_problem IS NOT NULL THEN
+  RAISE EXCEPTION 'catalog_publication_content_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_content_invalid', COLUMN=content_problem;
+ END IF;
+ IF public.catalog_publication_text_valid(product #> '{source,commandKey}',240,true) IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
  END IF;
 
  authored := public.catalog_publication_candidate_source(p_product,issue.candidate_ref,issue.candidate_digest);
@@ -376,7 +558,10 @@ BEGIN
  INTO doc_reference,doc_valid
  FROM public.catalog_product_document_revisions d WHERE d.product_id=p_product AND d.id=issue.document_revision_id;
  IF doc_valid IS DISTINCT FROM true OR doc_reference IS DISTINCT FROM product->'document'
-   OR doc_reference IS DISTINCT FROM authored #> '{product,documentRevision}' THEN
+   OR doc_reference IS DISTINCT FROM authored #> '{product,documentRevision}'
+   OR public.catalog_publication_text_valid(doc_reference->'schemaId',240,true) IS DISTINCT FROM true
+   OR public.catalog_publication_text_valid(doc_reference->'documentRef',240,true) IS DISTINCT FROM true
+   OR public.catalog_publication_text_valid(doc_reference->'sourceRef',240,true) IS DISTINCT FROM true THEN
   RAISE EXCEPTION 'catalog_publication_document_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_document_invalid';
  END IF;
 
@@ -388,11 +573,12 @@ BEGIN
  WITH previous_skus AS MATERIALIZED (
   SELECT value AS reference FROM jsonb_array_elements(coalesce(prior.canonical_state::jsonb->'skus','[]'::jsonb))
  ), issued AS MATERIALIZED (
-  SELECT r.id,r.sku_id,r.sku_code,r.revision,r.digest,r.issue_ordinal,r.full_facts::jsonb->>'status' AS status, r.full_facts::jsonb->'source' AS source
+  SELECT r.id,r.sku_id,r.sku_code,r.revision,r.digest,r.issue_ordinal,
+    public.catalog_publication_sku_facts(r) AS facts
   FROM public.catalog_sku_revisions r WHERE r.publication_id=p_issue AND r.product_id=p_product
  ), merged AS (
   SELECT coalesce(new.sku_id::text,old.reference->>'skuId') AS sku_id,new.id AS issued_id,
-   new.revision,new.sku_code,new.status,new.issue_ordinal,new.source,
+   new.revision,new.sku_code,new.facts->>'status' AS status,new.issue_ordinal,new.facts->'source' AS source,
    old.reference AS previous_reference,
    CASE WHEN new.id IS NULL THEN old.reference ELSE
     jsonb_build_object('skuId',new.sku_id,'revisionId',new.id,'revision',new.revision,'digest',new.digest) END AS reference
@@ -422,6 +608,27 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
  END IF;
 
+ -- Budget a page containing only the item at each offset. The other fields
+ -- are fixed, including the exact unpadded base64url continuation length.
+ WITH base AS MATERIALIZED (
+  SELECT octet_length(public.catalog_publication_canonical(jsonb_build_object('outcome','page','schemaVersion',2,
+   'head',head,'product',product,'items','[]'::jsonb,'nextCursor',NULL),0)) AS bytes
+ )
+ SELECT EXISTS (
+  SELECT 1 FROM jsonb_array_elements(roster) WITH ORDINALITY member(reference,position)
+  JOIN public.catalog_sku_revisions r ON r.id=(member.reference->>'revisionId')::uuid
+  CROSS JOIN base
+  WHERE base.bytes + octet_length(r.full_facts)
+    + octet_length(public.catalog_publication_canonical(member.reference,0)) + length('{"facts":,"reference":}')
+    + CASE WHEN member.position=jsonb_array_length(roster) THEN 0 ELSE
+      (4 * octet_length(public.catalog_publication_canonical(jsonb_build_object('schemaVersion',1,
+         'kind','facts','productId',p_product,'highWater',issue.revision,'before',member.position),0)) + 2) / 3 - 2 END
+    > 8388608
+ ) INTO oversized_page;
+ IF oversized_page THEN
+  RAISE EXCEPTION 'catalog_publication_page_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_page_invalid';
+ END IF;
+
  PERFORM public.catalog_publication_assert_receipt(p_product,issue.command_key);
  SELECT * INTO STRICT receipt FROM public.catalog_operator_receipts WHERE scope_id=p_product AND command_key=issue.command_key;
  expected_receipt := jsonb_build_object('schemaVersion',2,'productId',p_product,'commandKey',issue.command_key,
@@ -430,114 +637,25 @@ BEGIN
  IF receipt.kind<>'publish' OR receipt.result<>public.catalog_publication_canonical(expected_receipt,0) THEN
   RAISE EXCEPTION 'catalog_publication_receipt_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_invalid';
  END IF;
+
 EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
  RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_manifest_invalid';
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_assert_issued(uuid,uuid) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_publication_quantity_valid(p_value jsonb) RETURNS boolean
-LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
- SELECT jsonb_typeof(p_value)='object'
-   AND p_value ?& ARRAY['dimension','unscaled','scale','unit']
-   AND p_value - ARRAY['dimension','unscaled','scale','unit']='{}'::jsonb
-   AND p_value->>'dimension' IN ('mass','volume','count')
-   AND jsonb_typeof(p_value->'unscaled')='string' AND p_value->>'unscaled' ~ '^[1-9][0-9]{0,39}$'
-   AND jsonb_typeof(p_value->'scale')='number' AND p_value->>'scale' ~ '^([0-9]|1[0-2])$'
-   AND jsonb_typeof(p_value->'unit')='string' AND length(p_value->>'unit')<=120
-   AND p_value->>'unit' ~ '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$'
-$$;
-REVOKE ALL ON FUNCTION public.catalog_publication_quantity_valid(jsonb) FROM PUBLIC;
-
 CREATE FUNCTION public.catalog_publication_sku_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE body jsonb;
 BEGIN
  IF TG_OP <> 'INSERT' THEN
   RAISE EXCEPTION 'catalog_publication_record_immutable' USING ERRCODE='23514',
     CONSTRAINT='catalog_publication_record_immutable';
  END IF;
- body := NEW.full_facts::jsonb;
- IF jsonb_typeof(body) IS DISTINCT FROM 'object'
-   OR NOT (body ?& ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
-     'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'])
-   OR body - ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
-     'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'] <> '{}'::jsonb
-   OR body->'id' IS DISTINCT FROM to_jsonb(NEW.sku_id) OR body->'productId' IS DISTINCT FROM to_jsonb(NEW.product_id)
-   OR body->'code' IS DISTINCT FROM to_jsonb(NEW.sku_code) OR NEW.sku_code !~ '^[A-Za-z0-9._:-]+$'
-   OR body->>'status' NOT IN ('draft','active','archived') OR body->>'status' IS NULL
-   OR jsonb_typeof(body->'title') IS DISTINCT FROM 'string' OR length(body->>'title') NOT BETWEEN 1 AND 500
-   OR jsonb_typeof(body->'minQuantity') IS DISTINCT FROM 'number' OR body->>'minQuantity' !~ '^[1-9][0-9]{0,9}$'
-   OR (body->>'minQuantity')::numeric>2147483647
-   OR jsonb_typeof(body->'isAddon') IS DISTINCT FROM 'boolean'
-   OR jsonb_typeof(body->'sellableStandalone') IS DISTINCT FROM 'boolean'
-   OR jsonb_typeof(body->'sellableInSubscription') IS DISTINCT FROM 'boolean'
-   OR public.catalog_publication_quantity_valid(body->'netContent') IS DISTINCT FROM true
-   OR (body->'grossMass'<>'null'::jsonb AND public.catalog_publication_quantity_valid(body->'grossMass') IS DISTINCT FROM true)
-   OR jsonb_typeof(body->'options') IS DISTINCT FROM 'object'
-   OR jsonb_typeof(body->'attributes') IS DISTINCT FROM 'object'
-   OR jsonb_typeof(body->'facts') IS DISTINCT FROM 'object'
-   OR jsonb_typeof(body->'identifiers') IS DISTINCT FROM 'array'
-   OR jsonb_typeof(body->'assetRefs') IS DISTINCT FROM 'array'
-   OR jsonb_typeof(body->'logisticsRef') NOT IN ('string','null')
-   OR jsonb_typeof(body->'memberships') IS DISTINCT FROM 'array'
-   OR public.catalog_publication_canonical(body,0)<>NEW.full_facts
-   OR encode(sha256(convert_to(NEW.full_facts,'UTF8')),'hex')<>NEW.digest THEN
-  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
- END IF;
- IF EXISTS (SELECT 1 FROM jsonb_each(body->'options') AS option WHERE
-     length(option.key)>64 OR option.key !~ '^[a-z][a-z0-9_-]*$'
-     OR jsonb_typeof(option.value)<>'object' OR NOT (option.value ?& ARRAY['kind','value'])
-     OR option.value - ARRAY['kind','value']<>'{}'::jsonb
-     OR CASE option.value->>'kind'
-       WHEN 'choice' THEN jsonb_typeof(option.value->'value')<>'string' OR length(option.value->>'value') NOT BETWEEN 1 AND 120
-       WHEN 'boolean' THEN jsonb_typeof(option.value->'value')<>'boolean'
-       WHEN 'quantity' THEN public.catalog_publication_quantity_valid(option.value->'value') IS DISTINCT FROM true
-       ELSE true END)
-  OR jsonb_array_length(body->'assetRefs')>32
-  OR EXISTS (SELECT 1 FROM jsonb_array_elements(body->'assetRefs') AS item WHERE
-    jsonb_typeof(item)<>'string' OR length(item #>> '{}') NOT BETWEEN 1 AND 240 OR btrim(item #>> '{}')<>item #>> '{}')
-  OR EXISTS (SELECT 1 FROM (SELECT entry,lag(entry->>'offerVersion') OVER (ORDER BY ordinality) AS previous_offer
-     FROM jsonb_array_elements(body->'memberships') WITH ORDINALITY AS ref(entry,ordinality)) m
-    WHERE jsonb_typeof(entry)<>'object' OR NOT (entry ?& ARRAY['offerVersion','admitted'])
-     OR entry - ARRAY['offerVersion','admitted']<>'{}'::jsonb
-     OR jsonb_typeof(entry->'offerVersion')<>'string' OR length(entry->>'offerVersion') NOT BETWEEN 1 AND 240
-     OR btrim(entry->>'offerVersion')<>entry->>'offerVersion' OR jsonb_typeof(entry->'admitted')<>'boolean'
-     OR previous_offer COLLATE "C">=entry->>'offerVersion' COLLATE "C")
-  OR EXISTS (SELECT 1 FROM jsonb_array_elements(body->'identifiers') AS item
-    WHERE jsonb_typeof(item)<>'object' OR NOT (item ?& ARRAY['scheme','issuer','value','packagingLevel','quantity','isPrimary','label','sourceRef'])
-     OR item - ARRAY['scheme','issuer','value','packagingLevel','quantity','isPrimary','label','sourceRef']<>'{}'::jsonb
-     OR jsonb_typeof(item->'scheme')<>'string' OR length(item->>'scheme') NOT BETWEEN 1 AND 240 OR btrim(item->>'scheme')<>item->>'scheme'
-     OR jsonb_typeof(item->'issuer')<>'string' OR length(item->>'issuer') NOT BETWEEN 1 AND 240 OR btrim(item->>'issuer')<>item->>'issuer'
-     OR jsonb_typeof(item->'value')<>'string' OR length(item->>'value') NOT BETWEEN 1 AND 128
-     OR jsonb_typeof(item->'packagingLevel')<>'string' OR item->>'packagingLevel' NOT IN ('unit','case')
-     OR jsonb_typeof(item->'quantity')<>'number' OR item->>'quantity' !~ '^[1-9][0-9]{0,5}$'
-     OR (item->>'packagingLevel'='unit') IS DISTINCT FROM (item->>'quantity'='1')
-     OR jsonb_typeof(item->'isPrimary')<>'boolean'
-     OR (item->'isPrimary'='true'::jsonb AND (item->>'scheme'<>'gs1:gtin' OR item->>'packagingLevel'<>'unit'))
-     OR jsonb_typeof(item->'label') NOT IN ('string','null') OR length(item->>'label') NOT BETWEEN 1 AND 500
-     OR btrim(item->>'label')<>item->>'label'
-     OR jsonb_typeof(item->'sourceRef') NOT IN ('string','null') OR length(item->>'sourceRef') NOT BETWEEN 1 AND 240
-     OR btrim(item->>'sourceRef')<>item->>'sourceRef')
-  OR (SELECT count(*) FROM jsonb_array_elements(body->'identifiers') AS item WHERE item->'isPrimary'='true'::jsonb)>1
-  OR length(body->>'logisticsRef') NOT BETWEEN 1 AND 500 OR btrim(body->>'logisticsRef')<>body->>'logisticsRef' THEN
-  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
- END IF;
  IF NOT EXISTS (SELECT 1 FROM public.catalog_publications p WHERE p.product_id=NEW.product_id AND p.id=NEW.publication_id
     AND p.issued_count>=NEW.issue_ordinal) THEN
   RAISE EXCEPTION 'catalog_publication_issue_sealed' USING ERRCODE='23514', CONSTRAINT='catalog_publication_issue_sealed';
  END IF;
- IF NOT EXISTS (
-    SELECT 1 FROM public.catalog_draft_revisions d JOIN public.catalog_draft_command_receipts r
-     ON (d.draft_id,d.command_key,d.revision,d.fingerprint)=(r.draft_id,r.command_key,r.revision,r.fingerprint)
-    WHERE d.draft_id=(body #>> '{source,draftId}')::uuid AND d.revision=(body #>> '{source,revision}')::integer
-     AND d.product_id=NEW.product_id AND d.status='open'
-     AND body->'source'=jsonb_build_object('draftId',d.draft_id,'revision',d.revision,'commandKey',d.command_key,'fingerprint',d.fingerprint)) THEN
-  RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
- END IF;
- RETURN NEW;
-EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
- RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
+ RETURN NULL;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_sku_admit() FROM PUBLIC;
@@ -555,7 +673,6 @@ BEGIN
   -- Use the existing draft head as the write conflict point for issuance and decisions.
   UPDATE public.catalog_draft_heads SET revision=revision WHERE draft_id=NEW.draft_id;
   PERFORM public.catalog_publication_assert_issued(NEW.product_id,NEW.id);
-  PERFORM public.catalog_publication_assert_head(NEW.product_id,true);
  WHEN 'catalog_operator_receipts' THEN
   PERFORM public.catalog_publication_assert_receipt(NEW.scope_id,NEW.command_key);
  WHEN 'catalog_publication_decisions' THEN

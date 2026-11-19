@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { CATALOG_PUBLICATION_LIMITS, catalogPublicationManifestSchema, catalogPublishedSkuSchema } from "../../server/adapters/postgres/catalogPublicationWire.js";
 import { actorId, hash, json, installPublicationActors, transaction, fixture, graph, insertGraph, decisionRow,
   decisionReceipt, documentRow, skuRow } from "./catalogPublicationFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -447,6 +448,101 @@ it("cannot issue against an approval snapshot taken before a concurrent revocati
     publisher.release();
   }
 });
+
+it.each([
+  ["unknown product field", { extraField: true }, "publication_details_invalid"],
+  ["axes", { axes: ["Size"] }, "publication_axes_invalid"],
+  ["attribute type", { attributes: { capacity: 5 } }, "publication_attributes_invalid"],
+] as const)("refuses %s in both the product decoder and admission", async (_label, change, reason) => {
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue, { rawState: text => {
+      const manifest = JSON.parse(text);
+      Object.assign(manifest.product, change);
+      const parsed = catalogPublicationManifestSchema.safeParse(manifest);
+      expect(parsed.success).toBe(false);
+      return json(manifest);
+    } });
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason });
+});
+
+it.each([
+  ["unsupported purchase mode", { requestedModes: [{ skuCode: "item", modes: ["weekly"] }] }, "one-time purchase or subscription"],
+  ["duplicate SKU intents", { offerMemberships: Array(2).fill({ skuCode: "item", offerVersion: "example:offer", admitted: true }) }, "once per SKU"],
+  ["unknown SKU intent field", { publicationSkus: [{ skuCode: "item", title: "Item", minQuantity: 1, isAddon: false, facts: {}, extra: true }] }, "title, order minimum"],
+] as const)("refuses %s in both content decoding and admission", async (_label, change, repair) => {
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue, { rawState: text => {
+      const manifest = JSON.parse(text);
+      Object.assign(manifest.product.content, change);
+      expect(catalogPublicationManifestSchema.safeParse(manifest).success).toBe(false);
+      return json(manifest);
+    } });
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_content_invalid", message: expect.stringContaining(repair) });
+});
+
+it.each([
+  ["invalid GTIN", { identifiers: [{ scheme: "gs1:gtin", issuer: "example:issuer", value: "96385075",
+    packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null }] }, "publication_gtin_invalid"],
+  ["251 two-unit title characters", { title: "🎈".repeat(251) }, "publication_sku_title_invalid"],
+] as const)("refuses %s in both the SKU decoder and admission", async (_label, change, reason) => {
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue, { rawFacts: text => {
+      const facts = { ...JSON.parse(text), ...change };
+      expect(catalogPublishedSkuSchema.safeParse(facts).success).toBe(false);
+      return json(facts);
+    } });
+  }).catch(error => error);
+  expect(error).toMatchObject({ code: "23514" });
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason });
+});
+
+it("admits the same typed presentation, valid GTIN, axes and SKU intents the reader decodes", async () => {
+  const head = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    issue.product.axes = ["size"];
+    issue.product.attributes = { capacity: [true, "medium"], name: { en: "Item" } };
+    issue.product.content.presentation = { title: "🎈".repeat(250), routePath: { "en-US": "/item" }, advertisedWeightsG: [100] };
+    issue.product.content.requestedModes = [{ skuCode: issue.facts.code, modes: ["one_time", "subscription"] }];
+    issue.facts.identifiers = [{ scheme: "gs1:gtin", issuer: "example:issuer", value: "96385074", packagingLevel: "unit",
+      quantity: 1, isPrimary: true, label: null, sourceRef: null }];
+    await insertGraph(db, issue);
+    return issue.head;
+  });
+  expect(await publicationReader().readbackV2(head)).toMatchObject({ outcome: "page", items: [{ facts: { identifiers: [{ value: "96385074" }] } }] });
+});
+
+it.each([0, 1])("checks the real singleton page byte boundary with %i extra bytes", async extra => {
+  let head: Awaited<ReturnType<typeof graph>>["head"] | undefined;
+  const result = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    head = issue.head;
+    const facts = Object.fromEntries(Array.from({ length: 4096 }, (_, number) => [`note${number}`, ""]));
+    issue.product.content.publicationSkus = [{ skuCode: issue.facts.code, title: "Item", isAddon: false, minQuantity: 1, facts }];
+    const reference = { skuId: issue.skuId, revisionId: issue.skuRevisionId, revision: 1, digest: hash(json(issue.facts)) };
+    const base = Buffer.byteLength(json({ outcome: "page", schemaVersion: 2, head, product: issue.product,
+      items: [{ reference, facts: issue.facts }], nextCursor: null }));
+    let remaining = CATALOG_PUBLICATION_LIMITS.pageBytes - base + extra;
+    for (const key of Object.keys(facts)) {
+      const count = Math.min(2048, remaining);
+      facts[key] = "x".repeat(count);
+      remaining -= count;
+    }
+    expect(remaining).toBe(0);
+    await insertGraph(db, issue);
+  }).catch(error => error);
+  if (extra) expect(catalogPublicationAdmissionRefusal(result)).toMatchObject({ reason: "publication_details_too_large" });
+  else {
+    expect(result).toBeUndefined();
+    const page = await publicationReader().readbackV2(head!);
+    expect(page.outcome).toBe("page");
+    expect(Buffer.byteLength(json(page))).toBe(CATALOG_PUBLICATION_LIMITS.pageBytes);
+  }
+}, 60_000);
 
 function publicationReader() {
   return createPostgresCatalogPublicationReads({

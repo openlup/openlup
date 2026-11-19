@@ -108,23 +108,26 @@ const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
-const ref = z.string().min(1).max(240).refine(value => value.trim() === value);
+// Match the publication wire's UTF-16 limit even when Zod counts Unicode code points.
+const text = (max: number, min = 1) => z.string().min(min).refine(value => value.length <= max);
+const ref = text(240).refine(value => value.trim() === value);
 const facts = z.record(z.string(), z.json());
 const attribute = z.union([z.string(), z.boolean(), catalogQuantitySchema,
   z.object({ namespace: catalogNamespacedKeySchema, id: z.string().min(1).max(120) }).strict(), z.record(z.string(), z.string())]);
 const attributes = z.record(z.string(), z.union([attribute, z.array(attribute)]));
 const claimSchema = z.object({ draftId: id, revision, commandKey: ref, fingerprint: digest }).strict();
-const identifierSchema = z.object({ scheme: ref, issuer: ref, value: z.string().min(1).max(128), packagingLevel: z.enum(["unit", "case"]),
-  quantity: z.number().int().min(1).max(999_999), isPrimary: z.boolean(), label: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(), sourceRef: ref.nullable() }).strict()
+const identifierSchema = z.object({ scheme: ref, issuer: ref, value: text(128), packagingLevel: z.enum(["unit", "case"]),
+  quantity: z.number().int().min(1).max(999_999), isPrimary: z.boolean(), label: text(500).refine(value => value.trim() === value).nullable(), sourceRef: ref.nullable() }).strict()
   .refine(value => value.packagingLevel === "unit" ? value.quantity === 1 : value.quantity >= 2)
   .refine(value => !value.isPrimary || value.scheme === "gs1:gtin" && value.packagingLevel === "unit")
   .refine(value => value.scheme !== "gs1:gtin" || isValidGtin(value.value));
 export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.object({
-  id, productId: id, code, title: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
+  id, productId: id, code, title: text(500), status: z.enum(["draft", "active", "archived"]),
   minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
-  netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
+  netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema.refine(value =>
+    value.kind !== "choice" || value.value.length <= 120)),
   attributes, facts, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32),
-  logisticsRef: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(),
+  logisticsRef: text(500).refine(value => value.trim() === value).nullable(),
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict().superRefine((sku, context) => {
   if (!sku.memberships.every((row, index) => index === 0 || comparePublicationText(sku.memberships[index - 1]!.offerVersion, row.offerVersion) < 0)
@@ -136,7 +139,7 @@ const catalogPublishedContentSchema = z.object({
   offerMemberships: z.array(z.object({ skuCode: code, offerVersion: ref, admitted: z.boolean() }).strict()).max(10_000),
   requestedModes: z.array(z.object({ skuCode: code, modes: z.array(z.enum(["one_time", "subscription"])).max(2)
     .refine(modes => new Set(modes).size === modes.length) }).strict()).max(10_000),
-  publicationSkus: z.array(z.object({ skuCode: code, title: z.string().min(1).max(500).refine(text => text.trim() === text),
+  publicationSkus: z.array(z.object({ skuCode: code, title: text(500).refine(text => text.trim() === text),
     minQuantity: revision, isAddon: z.boolean(), facts }).strict()).max(10_000),
 }).strict().superRefine((content, context) => {
   for (const key of ["offerMemberships", "requestedModes", "publicationSkus"] as const) {
@@ -146,9 +149,9 @@ const catalogPublishedContentSchema = z.object({
 });
 
 export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
-  id, slug: z.string().min(1), name: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
+  id, slug: z.string().min(1), name: text(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
-  document: catalogDocumentRevisionRefSchema.nullable(), presentation: facts.nullable(), source: claimSchema,
+  document: catalogDocumentRevisionRefSchema.extend({ schemaId: ref, documentRef: ref, sourceRef: ref }).nullable(), presentation: facts.nullable(), source: claimSchema,
   content: catalogPublishedContentSchema,
 }).strict() as z.ZodType<CatalogPublishedProduct>;
 export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2> = z.object({

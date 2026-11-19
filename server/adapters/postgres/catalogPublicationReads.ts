@@ -35,6 +35,12 @@ const receiptSchema: z.ZodType<CatalogPublicationReceiptV2> = z.object({ schemaV
   actorId: id, previousHead: headSchema.nullable(), head: headSchema, publicationDigest: digest, committedAt: instant, changes: z.array(observation) }).strict();
 const sqlRefusals = {
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
+  catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
+  catalog_publication_attributes_invalid: ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."],
+  catalog_publication_content_invalid: ["publication_content_invalid", "Product content is invalid. Review the presentation fields and SKU settings."],
+  catalog_publication_sku_title_invalid: ["publication_sku_title_invalid", "A SKU title is missing or too long. Enter a shorter title."],
+  catalog_publication_gtin_invalid: ["publication_gtin_invalid", "A SKU barcode has an invalid GTIN. Check its digits and try again."],
+  catalog_publication_page_invalid: ["publication_details_too_large", "The product and one SKU exceed the publication size limit. Reduce product or SKU details and prepare it again."],
   catalog_publication_manifest_invalid: ["publication_details_invalid", "The publication contains invalid product details. Review the product and prepare it again."],
   catalog_publication_head_invalid: ["publication_changed", "The current publication changed. Reload the product and try again."],
   catalog_publication_lineage_invalid: ["publication_version_invalid", "The selected previous publication is unavailable. Reload the product and select its current publication."],
@@ -72,7 +78,17 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
   const name = error.code === "23503" ? deferredForeignKeys.get(error.constraint)
     : error.code === "23514" ? error.constraint : undefined;
   const refusal = name && Object.hasOwn(sqlRefusals, name) ? sqlRefusals[name as AdmissionDiagnostic] : undefined;
-  return refusal ? { outcome: "validation_issue", reason: refusal[0], message: refusal[1] } : null;
+  if (!refusal) return null;
+  const contentFixes = {
+    presentation: "Use the supported product presentation fields and review their values.",
+    offerMemberships: "Set an offer and admission status once per SKU.",
+    requestedModes: "Choose one-time purchase or subscription once per SKU.",
+    publicationSkus: "Set a title, order minimum, and valid facts once per SKU.",
+  };
+  const field = "column" in error && typeof error.column === "string" ? error.column : "";
+  const message = name === "catalog_publication_content_invalid" && Object.hasOwn(contentFixes, field)
+    ? contentFixes[field as keyof typeof contentFixes] : refusal[1];
+  return { outcome: "validation_issue", reason: refusal[0], message };
 }
 
 function failure(error: unknown): CatalogPublicationFailure {
@@ -360,6 +376,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         const sizes = new Map(rows.map(row => [row.id, row.bytes]));
         requireCondition(rows.length === wanted.length && sizes.size === wanted.length, "catalog_publication_sku_revision_invalid");
         const selected: CatalogSkuRevisionRef[] = [];
+        const emptyPageBytes = Buffer.byteLength(publicationJson({ outcome: "page", schemaVersion: 2, head, product, items: [], nextCursor: null }));
         let itemBytes = 0;
         let nextCursor: string | null = null;
         for (const [index, reference] of wanted.entries()) {
@@ -367,7 +384,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
           requireCondition(typeof bytes === "number" && bytes >= 2 && bytes <= limits.skuBytes, "catalog_publication_sku_revision_invalid");
           const continuation = offset + index + 1 < skus.length
             ? encodeCursor({ kind: "facts", productId: product.id, highWater: head.revision, before: offset + index + 1 }) : null;
-          const base = Buffer.byteLength(publicationJson({ outcome: "page", schemaVersion: 2, head, product, items: [], nextCursor: continuation }));
+          const base = emptyPageBytes + (continuation === null ? 0 : continuation.length - 2);
           const itemSize = Buffer.byteLength(publicationJson({ reference, facts: null })) - 4 + bytes + (index === 0 ? 0 : 1);
           if (base + itemBytes + itemSize > limits.pageBytes) {
             requireCondition(selected.length, "catalog_publication_readback_item_too_large");
