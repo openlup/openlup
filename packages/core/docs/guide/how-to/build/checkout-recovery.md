@@ -156,8 +156,10 @@ A schedule containing only `last` has no predecessor requirement. Enqueue result
 counter names remain the legacy names, counted by stage.
 
 After the reminder guard migration, creating a wave consumes that stage for the
-order even if you later change its configured hour. Checkout waves written
-before stage labels were added use the historical first and last hour mapping.
+order even if you later change its configured hour. A wave created under a
+custom schedule still consumes its recorded stage after the schedule row is removed.
+Checkout waves written before stage labels were added use the historical first
+and last hour mapping.
 An unlabeled wave at any other hour consumes both stages. With an installed
 schedule, a compacted checkout wave consumes both stages because retention
 removed its stage label. With no installed schedule, compacted checkout waves

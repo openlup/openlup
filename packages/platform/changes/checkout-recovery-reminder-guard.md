@@ -1,1 +1,1 @@
-- Create each checkout-recovery and abandoned-cart reminder stage at most once per order. Schedule installation refuses changes while pending orders with existing waves are still in their reminder windows.
+- Create each checkout-recovery and abandoned-cart reminder stage at most once per order. Schedule installation refuses changes for pending checkout orders with a wave regardless of age, and for pending abandoned carts with a wave, a valid draft receipt and no settlement intent.

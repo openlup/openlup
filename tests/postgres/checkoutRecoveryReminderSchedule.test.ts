@@ -335,6 +335,29 @@ it.each([
   }
 });
 
+it('CF-R0: removing a prior custom schedule does not enqueue another first wave for either producer', async () => {
+  const schedule = { ...checkoutSchedule(2, 20), abandonedCart: [
+    { stage: 'first', afterHours: 2 }, ...defaults.abandonedCart.slice(1),
+  ] } satisfies CheckoutRecoveryReminderSchedule;
+  await installCheckoutRecoveryReminderSchedule(db, schedule);
+  const id = await order(3, true);
+  await db.query("SELECT public.r0_before_abandoned(1), public.r0_before_checkout(1,'{}',now())");
+  const before = (await events()).filter(row => row.aggregate_id === id);
+  expect(before.map(row => [row.idempotency_key, row.payload.stage])).toEqual([
+    [`checkout_recovery:2h:${id}`, 'first'], [`abandoned_2h:${id}`, 'first'],
+  ]);
+  const removed = await db.query("DELETE FROM public.commerce_settings WHERE key='checkout_recovery_reminders'");
+  expect(removed.rowCount).toBe(1);
+
+  const { rows } = await db.query(`SELECT public.commerce_enqueue_abandoned_cart_reminders(1) AS abandoned,
+    public.commerce_enqueue_checkout_recovery_reminders(1,'{}',now()) AS checkout`);
+  expect(rows).toEqual([{
+    abandoned: { enqueued_1h: 0, enqueued_24h: 0, enqueued_72h: 0 },
+    checkout: { enqueued_1h: 0, enqueued_20h: 0 },
+  }]);
+  expect((await events()).filter(row => row.aggregate_id === id)).toEqual(before);
+});
+
 it('CF-R0 (6): an old pending checkout wave blocks regardless of order age', async () => {
   await installCheckoutRecoveryReminderSchedule(db, defaults);
   const id = await order(30);
