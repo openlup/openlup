@@ -1471,8 +1471,7 @@ server quote.
 Governed sized candidate discovery uses the configured offer's membership page
 and verifies the host facts against the member's SKU and document. Supply the
 experimental `withCandidateSnapshot` transaction on the sized editor for a
-repeatable-read candidate scope. The existing transaction continues to serve
-editor writes.
+repeatable-read candidate scope.
 
 Governed draft acceptance freezes the configured offer and proof on the draft.
 Captured-payment activation applies the binding and first renewal attachment
@@ -1769,6 +1768,8 @@ purchase mode. Its `withSnapshot` callback runs on one repeatable-read connectio
 The reader joins the installed membership page to exact envelopes and verified
 documents, then returns the consulted product head and SKU revision per item.
 The governed sized offer defaults to a 1,000-item ceiling.
+The strict quote port carries those publication stamps in private line
+provenance for native admission.
 
 The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under

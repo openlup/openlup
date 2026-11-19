@@ -40,6 +40,7 @@ export function createCatalogFactsProvenance(input: {
     return catalogFactsProvenanceSchema.parse({
       version: CATALOG_FACTS_POLICY_PROVENANCE_VERSION,
       skuId: input.item.skuId,
+      ...(input.item.publication ? { publication: input.item.publication } : {}),
       documentRevisionId: input.item.documentRevision.id,
       documentDigest: input.item.documentRevision.digest,
       basePriceEntryId: input.base.priceEntryId,
@@ -56,6 +57,7 @@ export function createCatalogFactsProvenance(input: {
   return catalogFactsProvenanceSchema.parse({
     version: CATALOG_FACTS_PROVENANCE_VERSION,
     skuId: input.item.skuId,
+    ...(input.item.publication ? { publication: input.item.publication } : {}),
     documentRevisionId: input.item.documentRevision.id,
     documentDigest: input.item.documentRevision.digest,
     resolvedPriceEntryId: input.resolved.priceEntryId,

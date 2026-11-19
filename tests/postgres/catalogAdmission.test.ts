@@ -14,6 +14,7 @@ import { canonicalCatalogPriceSetupCommand, createDbBackedCommerceQuotePort } fr
 import { createPostgresPackageEditor, createPostgresSizedEditor, createPostgresPurchaseRenewalWriter, type SizedEditorOptions, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import { catalogAcceptedReferenceV2Schema } from "@openlup/platform/catalog";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { createPostgresCommercePriceAuthorityPort } from "../../server/adapters/postgres/pricingResolver.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -102,7 +103,7 @@ async function candidate(db: PoolClient, value: CatalogDraftPayloadV4, draft: st
     commandKey: `approve:${revision}`, candidateRef, candidateDigest, reason: "Exact synthetic candidate" }, actor)).toMatchObject({ outcome: "committed" });
   return { authority, actor, publication };
 }
-async function fixture(pack: string, standing: { product?: Record<string, unknown>; sku?: Record<string, unknown> } = {}) {
+async function fixture(pack: string, standing: { product?: Record<string, unknown>; sku?: Record<string, unknown>; sibling?: boolean } = {}) {
   const product = randomUUID(), sku = randomUUID(), draft = randomUUID(), client = randomUUID(), subscription = randomUUID(), actor = randomUUID();
   const value = payload(product,sku,pack), db = await pool.connect();
   try {
@@ -118,14 +119,30 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
     manifest.product = { ...manifest.product, lifecycleState: "active", status: "active", ...standing.product };
     const publication = randomUUID(), revision = randomUUID(), fullFacts = canonicalCatalogDraftJson(facts), factsDigest = digest(fullFacts);
     manifest.skus = [{ ...ref, revisionId: revision, revision: 2, digest: factsDigest }];
+    const sibling = standing.sibling ? { id: randomUUID(), revision: randomUUID() } : null;
+    const siblingFacts = sibling ? { ...facts, id: sibling.id, code: `ARTICLE-${sibling.id}`, status: "draft",
+      lifecycleState: "draft", isAddon: false, sellableStandalone: false, sellableInSubscription: false, memberships: [] } : null;
+    const siblingText = siblingFacts ? canonicalCatalogDraftJson(siblingFacts) : null;
+    if (sibling && siblingText) {
+      manifest.skus.push({ ...ref,skuId: sibling.id,revisionId: sibling.revision,revision: 1,digest: digest(siblingText) });
+      manifest.skus.sort((a: { skuId: string }, b: { skuId: string }) => a.skuId.localeCompare(b.skuId));
+    }
     const canonical = canonicalCatalogDraftJson(manifest), hash = digest(canonical);
     await db.query("INSERT INTO public.catalog_lifecycle_write_capabilities VALUES(pg_current_xact_id(),$1,$2)", [product,hash]);
     await db.query("UPDATE public.catalog_products SET status=$3,publication_facts=$2::jsonb WHERE id=$1", [product,manifest.product,manifest.product.status]);
-    await db.query("UPDATE public.catalog_skus SET status=$3,sellable_standalone=$4,sellable_in_subscription=$5,publication_facts=$2::jsonb WHERE id=$1",
-      [sku,facts,facts.status,facts.sellableStandalone,facts.sellableInSubscription]);
+    await db.query("UPDATE public.catalog_skus SET status=$3,sellable_standalone=$4,sellable_in_subscription=$5,is_addon=$6,publication_facts=$2::jsonb WHERE id=$1",
+      [sku,facts,facts.status,facts.sellableStandalone,facts.sellableInSubscription,facts.isAddon]);
     await db.query("INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id) VALUES($1,$2,2,$3,$4,1,$5,$6,$7,$8,$6,$9)",
       [publication,product,old.id,draft,`standing:${publication}`,hash,old.document_revision_id,canonical,administrator]);
     await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,2,$4,$5,$6)", [revision,sku,product,publication,fullFacts,factsDigest]);
+    if (sibling && siblingFacts && siblingText) {
+      await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,min_order_qty,is_addon,sellable_standalone,
+        sellable_in_subscription,net_weight_g,publication_facts,net_content_dimension,net_content_unscaled,net_content_scale,net_content_unit)
+        SELECT $2,product_id,$3,title,'draft',min_order_qty,false,false,false,net_weight_g,$4,net_content_dimension,
+         net_content_unscaled,net_content_scale,net_content_unit FROM public.catalog_skus WHERE id=$1`, [sku,sibling.id,siblingFacts.code,siblingFacts]);
+      await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,1,$4,$5,$6)",
+        [sibling.revision,sibling.id,product,publication,siblingText,digest(siblingText)]);
+    }
     await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=2 WHERE product_id=$1", [product,publication]);
     await db.query("DELETE FROM public.catalog_lifecycle_write_capabilities WHERE product_id=$1", [product]);
     const head: CatalogHeadRef = { ...published.receipt.head, publicationId: publication, revision: 2 };
@@ -146,7 +163,7 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
     await db.query("COMMIT");
     const admission: CatalogAdmissionInput = { heads: [{ productId: product, head }], skuRevisions: [{ reference, quantity: 2 }], mode: "subscription",
       offerEvidence: { offerVersion: "classic" }, priceContextVersions: [{ skuId: sku,priceListId: priceList,entryId: entry,entry: price }], purpose: "account" };
-    return { product,sku,draft,client,subscription,actor,value,head,reference,admission,at,anchor,code: facts.code as string };
+    return { product,sku,draft,client,subscription,actor,value,head,reference,admission,at,anchor,sibling: sibling?.id,code: facts.code as string };
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -195,6 +212,7 @@ async function edit(f: Fixture, lane: Lane = "classic", deriveEvidence = false) 
     const price = f.admission.priceContextVersions[0];
     Object.assign(line.quoteLine,{ catalogFacts: {
       version: "catalog_facts_v1",skuId: f.sku,documentRevisionId: f.value.product.documentRevision!.id,
+      publication: { productId: f.product,skuRevisionId: f.reference.skuRevisionId,head: f.head },
       documentDigest: f.head.documentDigest,basePriceEntryId: price.entryId,resolvedPriceEntryId: price.entryId,
       mode: "subscription",atTime: f.at,currency: "XXX",baseUnitAmountMinor: 617,resolvedUnitAmountMinor: 617,resolvedLineAmountMinor: 1234,
     } });
@@ -419,6 +437,53 @@ it.for(["one_time","subscription"] as const)("LC6-D-094 and LC6-D-118 configured
     publication: { productId: f.product,skuRevisionId: f.reference.skuRevisionId,head: f.head },
   })]);
   expect(verifier).toEqual([f.sku]);
+});
+
+it.for(["one_time","subscription"] as const)("LC6-D-118 configured quote read fixes the checkout head at pricing time: %s", async (mode,context) => {
+  const present = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+  if (!present) { context.skip("Membership page comes from the predecessor installation"); return; }
+  const f = await fixture(packs[0]), price = f.admission.priceContextVersions[0];
+  const regionCode = mode === "one_time" ? "QR" : "QT";
+  await pool.query("UPDATE public.price_lists SET region_code=$2 WHERE id=$1", [price.priceListId,regionCode]);
+  await pool.query("UPDATE public.price_entries SET mode='one_time',unit_price_minor=$2 WHERE id=$1", [price.entryId,mode === "one_time" ? 617 : 700]);
+  if (mode === "subscription") await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'subscription',617,$3::timestamptz-interval '1 day')",
+    [price.priceListId,f.sku,f.at]);
+  const options = {
+    async verifyDocument(document: unknown, envelope: { documentRevision: { digest: string } }) {
+      expect(digest(canonicalCatalogDraftJson(document))).toBe(envelope.documentRevision.digest);
+    },
+    governedOffer: { offerVersion: "classic",mode,
+      async withSnapshot<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) {
+        const db = await runtime.connect();
+        try { await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"); const result = await work(db); await db.query("COMMIT"); return result; }
+        catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+      },
+    },
+  };
+  const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
+  const engine = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: createPostgresCommerceQuoteCatalogReadPort(runtime,options),
+    isStrictD1Quote: true,commercePriceAuthorityPort: createPostgresCommercePriceAuthorityPort(runtime),
+    taxProfile: tax,supportedTaxProfiles: [tax],regionCode,currency: "XXX",now: () => f.at,hasPromotionCodePort: false,
+    resolveAutomaticQuotePromotions: async () => ({ discounts: [],codeRejections: [] }),
+    applyPromotionCodesV2: async () => ({ discounts: [],codeRejections: [],codeRejectionDetails: [] }),
+    lineContext: () => ({}),quoteContext: input => () => ({ mode: input.mode,cadenceDays: input.cadenceDays,promoCodes: input.promoCodes,offerVersion: "classic" }),
+  });
+  const priced = await engine.createServerAuthoritativeQuote({ mode,cadenceDays: 28,promoCodes: [],lines: [{ sku: f.code,quantity: 2 }] });
+  expect(priced.quote.lines[0].catalogFacts).toMatchObject({
+    publication: { productId: f.product,skuRevisionId: f.reference.skuRevisionId,head: f.head },
+  });
+  const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode,isAcquisitionDiscount: () => false,
+    financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never });
+  await expect(port.captureCatalogAdmission(priced)).resolves.toMatchObject({ heads: f.admission.heads,mode });
+  const change = structuredClone(f.value), member = { skuCode: f.code,offerVersion: "example:added",admitted: false };
+  change.product.sharedContent = { ...change.product.sharedContent,catalogAction: "revise",offerMemberships: [member] };
+  change.publication.operations = [{ op: "set_offer_membership",...member }];
+  const writer = await pool.connect();
+  try {
+    const next = await candidate(writer,change,f.draft,1,f.head), result = await next.authority.publish(next.publication,next.actor);
+    expect(result).toMatchObject({ outcome: "committed",receipt: { head: { revision: f.head.revision+1,documentDigest: f.head.documentDigest } } });
+  } finally { writer.release(); }
+  await expect(port.captureCatalogAdmission(priced)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
 });
 
 it.each(lanes)("LC6-D-105, LC6-D-108, LC6-D-132 and LC6-D-133 trusted preview evidence in %s", async lane => {
@@ -1957,11 +2022,12 @@ it.each(["classic","exact","sized"] as const)("LC6-D-157 accepted head precedes 
   expect(await snapshot()).toEqual(before);
 });
 
-const authorityPaths = ["assertion", "port", "plain-one-time", "plain-subscription", "promoted-one-time", "promoted-subscription", ...lanes] as const;
+const authorityPaths = ["assertion", "port", "plain-one-time", "plain-subscription", "promoted-one-time", "promoted-subscription", ...lanes,"addon","ordinary-sized"] as const;
 const authorityCases = [
   { rule: "LC6-D-007 unreadable before malformed", change: "unreadable", code: "55000" },
   { rule: "LC6-D-008 sealed SKU drift", change: "sku-drift", code: "55000" },
   { rule: "LC6-D-008 relational add-on drift", change: "projection-drift", code: "55000" },
+  { rule: "LC6-D-008 unselected sibling role drift", change: "sibling-role-drift", code: "55000" },
   { rule: "LC6-D-008 relational net-weight drift", change: "weight-drift", code: "55000" },
   { rule: "LC6-D-009 exact anchor keys", change: "extra-anchor-key", code: "22023" },
   { rule: "LC6-D-009 malformed digest", change: "invalid-digest", code: "22023" },
@@ -1970,15 +2036,63 @@ const authorityCases = [
   { rule: "LC6-D-015 invalid SKU UUID", change: "invalid-sku", code: "22023" },
   { rule: "LC6-D-016 fractional quantity", change: "fractional-quantity", code: "22023" },
   { rule: "LC6-D-019 duplicate memberships", change: "duplicate-memberships", code: "55000" },
+  { rule: "LC6-D-017 duplicate offer includes one denied membership", change: "duplicate-offer-membership", code: "55000" },
   { rule: "LC6-D-020 a different offer cannot grant admission", change: "other-offer", code: "55000" },
   { rule: "LC6-D-021 the selected membership must admit", change: "not-admitted", code: "55000" },
+  { rule: "LC6-D-022 inactive SKU", change: "inactive-sku", code: "55000" },
+  { rule: "LC6-D-023 inactive product", change: "inactive-product", code: "55000" },
+  { rule: "LC6-D-024 unsellable standalone", change: "no-standalone", code: "55000" },
+  { rule: "LC6-D-025 unsellable subscription", change: "no-subscription", code: "55000" },
   { rule: "LC6-D-141 surplus head", change: "surplus", code: "22023" },
+  { rule: "LC6-D-027 exact eligible edit", change: "eligible", code: null },
 ] as const;
-async function authorityCase({ path,change,code }: (typeof authorityCases)[number] & { path: (typeof authorityPaths)[number] }) {
-  const actualOffer = path === "sized" ? "sized.v1" : "classic", otherOffer = path === "sized" ? "classic" : "sized.v1";
-  const memberships = change === "duplicate-memberships" ? [actualOffer,actualOffer] : change === "other-offer" ? [otherOffer] : [actualOffer];
-  const membershipRefusal = change === "duplicate-memberships" || change === "other-offer" || change === "not-admitted";
-  const standing = membershipRefusal ? { sku: { memberships: memberships.map(offerVersion => ({ offerVersion,admitted: change !== "not-admitted" })) } } : {};
+async function authoritySizedPath(f: Fixture, path: "addon" | "ordinary-sized", input: CatalogAdmissionInput) {
+  const base = await fixture(packs[1]), setup = await pool.connect(), addon = path === "addon";
+  try {
+    expect(await (await edit(base,"sized")).invoke(setup)).toMatchObject({ status: "applied",templateVersion: 2 });
+    const lease = base.admission.priceContextVersions[0].priceListId;
+    const updated = (await setup.query(
+      "UPDATE public.price_entries SET price_list_id=$2 WHERE id=$1 RETURNING to_jsonb(price_entries) AS entry",
+      [f.admission.priceContextVersions[0].entryId,lease])).rows[0].entry;
+    Object.assign(input.priceContextVersions[0],{ priceListId: lease,entry: updated });
+    const lineId = (await setup.query("SELECT id FROM public.subscription_lines WHERE subscription_id=$1", [base.subscription])).rows[0].id;
+    const target = { variantId: f.sku,qty: 2,isAddon: addon,quoteLine: {
+      sku: f.code,quantity: 2,unitPriceGross: money(617),lineSubtotalGross: money(1234),
+    } };
+    const retained = { ...target,variantId: base.sku,lineId,isAddon: false,quoteLine: { ...target.quoteLine,sku: base.code } };
+    const lines = addon ? [retained,target] : [target];
+    if (addon && Array.isArray(input.skuRevisions)) {
+      input.skuRevisions = [...input.skuRevisions,...base.admission.skuRevisions];
+    }
+    const action = addon ? "add_addon" : "resize_bundle", hash = digest(randomUUID()), key = randomUUID();
+    const compositionConstraint = { kind: "unit_count",value: 2,dailyNeed: 1 }, cadenceDays = 28;
+    const request = addon ? { action,variantId: f.sku,qty: 2 } : { action,cadenceDays,compositionConstraint,
+      resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: 2 }] } } };
+    const evidence = { lines,cadenceDays,compositionConstraint,catalogAdmission: input,subjectFacts: { revision: 1 },optInFacts: null };
+    const before = money(1234), after = money(addon ? 2468 : 1234);
+    await rpc(setup,"subscription_quote_preview_record",[base.actor,base.client,base.subscription,action,hash,2,
+      (await setup.query("SELECT $1::timestamptz+interval '1 hour' AS at", [f.at])).rows[0].at,request,evidence,
+      { currentRecurringPrice: before,newRecurringPrice: after,delta: money(after.amountMinor-before.amountMinor) },f.at]);
+    const payload = { ...evidence,...request,request: { ...request,expectedTemplateVersion: 2,acceptedQuoteHash: hash },
+      expectedTemplateVersion: 2,acceptedQuoteHash: hash };
+    const args = [base.actor,base.client,key,base.subscription,...(addon ? [action] : []),payload,f.at];
+    return { invoke: (db: PoolClient) => rpc(db,addon ? "subscription_line_edit_apply" : "subscription_sized_edit_apply",args) };
+  } finally { setup.release(); }
+}
+
+async function authorityCase({ path,change,code,control }: (typeof authorityCases)[number] & { path: (typeof authorityPaths)[number]; control?: () => Promise<() => Promise<void>> }) {
+  const sized = path === "sized" || path === "ordinary-sized" || path === "addon";
+  const actualOffer = sized ? "sized.v1" : "classic", otherOffer = sized ? "classic" : "sized.v1";
+  const duplicateMembership = change === "duplicate-memberships" || change === "duplicate-offer-membership";
+  const memberships = duplicateMembership ? [actualOffer,actualOffer] : change === "other-offer" ? [otherOffer] : [actualOffer];
+  const membershipRefusal = duplicateMembership || change === "other-offer" || change === "not-admitted";
+  const standing = { sku: { ...(membershipRefusal ? { memberships: memberships.map((offerVersion,index) => ({
+    offerVersion,admitted: change !== "not-admitted" && (change !== "duplicate-offer-membership" || index === 0),
+  })) } : {}),
+    ...(path === "addon" ? { isAddon: true } : {}),...(change === "inactive-sku" ? { status: "draft" } : {}),
+    ...(change === "no-standalone" ? { sellableStandalone: false } : {}),
+    ...(change === "no-subscription" ? { sellableInSubscription: false } : {}) },
+    product: change === "inactive-product" ? { status: "draft" } : undefined,sibling: change === "sibling-role-drift" };
   const f = await fixture(packs[0],standing), input = structuredClone(f.admission);
   const purchase = path.startsWith("plain") || path.startsWith("promoted"), account = !purchase && path !== "assertion" && path !== "port";
   if (!account) input.purpose = "order";
@@ -1987,8 +2101,9 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
   const refused = account ? "customer_self_service_invalid_offer_membership" : orderRefused;
   const unreadable = "catalog_propagation_head_unreadable";
   let message = missing;
-  if (change === "unreadable" || change === "sku-drift" || change === "projection-drift" || change === "weight-drift") message = unreadable;
-  if (change === "unreadable" || change === "extra-anchor-key" || change === "projection-drift" || change === "weight-drift") Object.assign(input.heads[0].head,{ extra: true });
+  if (change === "unreadable" || change === "sku-drift" || change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift") message = unreadable;
+  if (change === "unreadable" && (path === "sized" || path === "ordinary-sized")) message = "customer_self_service_invalid_catalog_head";
+  if (change === "unreadable" || change === "extra-anchor-key" || change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift") Object.assign(input.heads[0].head,{ extra: true });
   if (change === "stale") {
     input.heads = structuredClone(input.heads);
     input.heads[0].head.revision = 99;
@@ -1999,10 +2114,13 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
   if (change === "null-selection") { Object.assign(input,{ skuRevisions: null }); message = refused; }
   if (change === "invalid-sku") { input.skuRevisions[0].reference.skuId = "unknown"; message = refused; }
   if (change === "fractional-quantity") { input.skuRevisions[0].quantity = 1.5; message = refused; }
-  if (membershipRefusal) message = refused;
+  if (membershipRefusal || change === "inactive-sku" || change === "inactive-product" ||
+    change === "no-standalone" || change === "no-subscription") message = refused;
+  if (change === "no-standalone") input.mode = "one_time";
   if (change === "surplus") input.heads = [...input.heads,{ productId: randomUUID(),head: f.head }];
-  const command = account ? await edit({ ...f,admission: input },path as Lane) : undefined;
-  const before = await snapshot(), db = await session();
+  const command = path === "addon" || path === "ordinary-sized" ? await authoritySizedPath(f,path,input)
+    : account ? await edit({ ...f,admission: input },path as Lane) : undefined;
+  const before = await snapshot(), restore = control ? await control() : undefined, db = await session();
   try {
     if (change === "unreadable") await db.query("DELETE FROM public.catalog_publication_heads WHERE product_id=$1", [f.product]);
     if (change === "sku-drift") await scopedFacts(db,f,"catalog_skus",{ memberships: [{ offerVersion: actualOffer,admitted: false }] });
@@ -2010,13 +2128,17 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
       await scopedFacts(db,f,"catalog_skus",{});
       await db.query("UPDATE public.catalog_skus SET is_addon=NOT is_addon WHERE id=$1", [f.sku]);
     }
+    if (change === "sibling-role-drift") {
+      await db.query("UPDATE public.catalog_skus SET is_addon=true WHERE id=$1", [f.sibling]);
+    }
     if (change === "weight-drift") {
       await scopedFacts(db,f,"catalog_skus",{});
       await db.query("UPDATE public.catalog_skus SET net_weight_g=net_weight_g+1 WHERE id=$1", [f.sku]);
     }
     if (command) {
       await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: f.actor,role: "authenticated" })]);
-      await expect(command.invoke(db)).rejects.toMatchObject({ code,message });
+      if (change === "eligible") await expect(command.invoke(db)).resolves.toMatchObject({ status: "applied",templateVersion: 3 });
+      else await expect(command.invoke(db)).rejects.toMatchObject({ code,message });
     } else if (purchase) {
       const p = purchaseInput(f), mode = path.endsWith("one-time") ? "one_time" : "subscription";
       p.quote.catalogAdmission = { ...input,purpose: "order",mode };
@@ -2029,11 +2151,50 @@ async function authorityCase({ path,change,code }: (typeof authorityCases)[numbe
       await expect(rpc(db,"catalog_admission_assert_current",[JSON.stringify(input.heads),JSON.stringify(input.skuRevisions),input.mode,input.offerEvidence,
         JSON.stringify(input.priceContextVersions),"order"])).rejects.toMatchObject({ code,message });
     }
-  } finally { await db.query("ROLLBACK"); db.release(); }
+  } finally { await db.query("ROLLBACK"); db.release(); await restore?.(); }
   expect(await snapshot()).toEqual(before);
 }
 
-it.each(authorityPaths.flatMap(path => authorityCases.map(row => ({ ...row,path }))))("$rule via $path", authorityCase);
+function authorityApplies(path: (typeof authorityPaths)[number], row: (typeof authorityCases)[number]) {
+  if (row.change === "eligible") return path === "ordinary-sized" || path === "addon";
+  if (row.change === "no-standalone") return ["assertion","port","plain-one-time","promoted-one-time"].includes(path);
+  if (row.change === "no-subscription") return !path.endsWith("one-time");
+  return true;
+}
+it.each(authorityPaths.flatMap(path => authorityCases.filter(row => authorityApplies(path,row)).map(row => ({ ...row,path }))))("$rule via $path", authorityCase);
+
+const authoritativeWriters = {
+  "plain-one-time": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+  "plain-subscription": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+  "promoted-one-time": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+  "promoted-subscription": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
+  legacy: "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+  classic: "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+  exact: "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+  addon: "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+  sized: "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+  "ordinary-sized": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
+} as const;
+it.each(Object.entries(authoritativeWriters))("removing the shared assertion call fails admission on %s", async (path,signature) => {
+  const row = authorityCases.find(value => value.change === "stale")!;
+  const control = () => {
+    if (path.startsWith("promoted")) {
+      // The promoted routine and its plain delegate both route through this call.
+      return hook("public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)", "DECLARE governed jsonb;", "", body => {
+        const call = /PERFORM public.catalog_admission_assert_current\([\s\S]*?;/u;
+        expect(body.match(call)).not.toBeNull();
+        return body.replace(call,"");
+      });
+    }
+    return hook(signature,"v_catalog_acceptance jsonb;","",body => {
+      const call = /v_catalog_acceptance:=public\.catalog_admission_accept\([\s\S]*?;/u;
+      expect(body.match(call)).not.toBeNull();
+      return body.replace(call,"v_catalog_acceptance:=NULL;");
+    });
+  };
+  await expect(authorityCase({ ...row,path: path as keyof typeof authoritativeWriters,control }))
+    .rejects.toMatchObject({ name: "AssertionError" });
+});
 
 it.each(["assertion", "port"].flatMap(path => ["absent SKU", "foreign stale scope"].map(change => ({ path,change }))))(
   "LC6-D-012 and LC6-D-019 $change via $path", async ({ path,change }) => {
@@ -2094,12 +2255,15 @@ it.each([false,true].flatMap(promoted => ["one_time","subscription"].flatMap(mod
 it.each([
   { change: "sku-drift",predicate: "OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb",replacement: "" },
   { change: "projection-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
+  { change: "sibling-role-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
   { change: "weight-drift",predicate: "OR sk.net_weight_g::numeric IS DISTINCT FROM",replacement: "OR false AND sk.net_weight_g::numeric IS DISTINCT FROM" },
   { change: "extra-anchor-key",predicate: "OR (h->'head')-ARRAY['publicationId','revision','documentDigest']<>'{}'::jsonb",replacement: "" },
   { change: "invalid-digest",predicate: "OR NOT coalesce(h#>>'{head,documentDigest}' ~ '^[0-9a-f]{64}$',false)",replacement: "" },
-  { change: "duplicate-memberships",predicate: "AND m->'admitted'='true'::jsonb)<>1",replacement: "AND m->'admitted'='true'::jsonb)<1" },
-  { change: "other-offer",predicate: "m->>'offerVersion'=p_offer_evidence->>'offerVersion' AND ",replacement: "" },
-  { change: "not-admitted",predicate: "AND m->'admitted'='true'::jsonb)<>1",replacement: ")<>1" },
+  { change: "duplicate-memberships",predicate: "HAVING count(*)=1 AND bool_or",replacement: "HAVING count(*)>=1 AND bool_or" },
+  { change: "duplicate-offer-membership",predicate: "HAVING count(*)=1 AND bool_or",replacement: "HAVING count(*)>=1 AND bool_or" },
+  { change: "other-offer",predicate: "WHERE m->>'offerVersion'=p_offer_evidence->>'offerVersion'",replacement: "" },
+  { change: "not-admitted",predicate: "AND bool_or(m->'admitted'='true'::jsonb)",replacement: "" },
+  { change: "unreadable",predicate: "RAISE EXCEPTION 'customer_self_service_invalid_catalog_head'",replacement: "RAISE EXCEPTION 'catalog_propagation_head_unreadable'" },
   { change: "stale",predicate: "IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_heads) h WHERE h->'head' IS DISTINCT FROM actual_heads->(h->>'productId')) THEN\n  RAISE EXCEPTION '%',moved USING ERRCODE='40001'; END IF;",replacement: "" },
   { change: "null-selection",predicate: "IF jsonb_typeof(p_sku_revisions) IS DISTINCT FROM 'array' THEN\n  RAISE EXCEPTION '%',refused USING ERRCODE='22023'; END IF;",replacement: "" },
   { change: "invalid-sku",predicate: "OR NOT coalesce(pg_input_is_valid(s#>>'{reference,skuId}','uuid'),false)",replacement: "" },
@@ -2112,7 +2276,8 @@ it.each([
       expect(body.split(predicate)).toHaveLength(2);
       return body.replace(predicate,replacement);
     });
-    const paths = change === "projection-drift" || change === "weight-drift" ? authorityPaths : ["plain-subscription"] as const;
+    const paths = change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift" || change === "duplicate-offer-membership"
+      ? authorityPaths : change === "unreadable" ? ["sized","ordinary-sized"] as const : ["plain-subscription"] as const;
     for (const path of paths) await expect(authorityCase({ ...row,path })).rejects.toMatchObject({ name: "AssertionError" });
   } finally { await restore(); }
 });

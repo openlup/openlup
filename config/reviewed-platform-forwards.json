@@ -5798,6 +5798,11 @@
             "signature": "public.subscription_sized_edit_context(uuid,uuid,boolean)",
             "beforeSha256": "a277688c5d9af19823b9d11e19d88158d46bd65a57c249c165543ac3aaf7ce2d",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.subscription_quote_variant_qty_lines(jsonb)",
+            "beforeSha256": "297b27ce747a88d107263bba447b8fbe8d125168ca272ee6307c63ef5aa4980e",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "createdFunctions": [
@@ -5855,6 +5860,10 @@
           },
           {
             "signature": "public.catalog_admission_candidate_members(uuid[],text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_quote_line_projection(jsonb)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -8226,7 +8235,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "c521f7cd83c540231f50d4a3cb721592b0384e48356c8ce507a2cc33ca4ad1f0",
+      "sha256": "96d39df55a162d71985ee2dbdbb87dd4a361cd1a3134563b0fc227520ba2b0ca",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8251,12 +8260,12 @@
         {
           "signature": "public.subscription_line_edit_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "dec08b8b37dfcc2768473651a9f97c71b47e6a197e341c435d68c836f8b5dc47",
-          "afterSha256": "ffc80fc372fed3a8445d4cba6075af1869a71491f9612b11387bb97adf88608a"
+          "afterSha256": "2b59d8f5e977d3a84eb3b81a7941fe6515d96dc64c1b373a9c3684514f7383c2"
         },
         {
           "signature": "public.subscription_sized_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
           "beforeSha256": "ab9b88623f7f2c742ed70cc06a3664952bba444148404fa645b00d6b1f904837",
-          "afterSha256": "a3272a57d142cba84d0edfdb7a9f7192a5c01df048e0af48c1bd0c43adbb7609"
+          "afterSha256": "100d21212d05df5c5008bebb9f4dd68081c3cec3f2e1ed3d9464795b08ab360f"
         },
         {
           "signature": "public.subscription_quote_preview_record(uuid,uuid,uuid,text,text,integer,timestamptz,jsonb,jsonb,jsonb,timestamptz)",
@@ -8294,6 +8303,11 @@
           "afterSha256": "10b293e28afc27fbe06035a82e1ef0e68daba50062d1993b009214db8ea9c633"
         },
         {
+          "signature": "public.subscription_quote_variant_qty_lines(jsonb)",
+          "beforeSha256": "297b27ce747a88d107263bba447b8fbe8d125168ca272ee6307c63ef5aa4980e",
+          "afterSha256": "4af42f8fd893e5e0ab6d63645227ff37c730e521d658af0ecaad7b5363f2de41"
+        },
+        {
           "signature": "public.catalog_admission_sized_baseline(uuid)",
           "beforeSha256": null,
           "afterSha256": "d0b6ee6b7e78fa71e0987009891044334079e50d4de45da85e5a251e84907155"
@@ -8301,17 +8315,17 @@
         {
           "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "ab177cada0ac08ea7aca9bbee9fde6bd9897f925596e3070f474bdbb0807881e"
+          "afterSha256": "88b35c11026513fbc582765c90f138a62936e6c416419787627afa25e8c3b5ce"
         },
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "4fd547c049b519e55d5513c3c948801febda486a57015b0b0d202c542643ff53"
+          "afterSha256": "aadeaa492aa105ba549a3c532ad51130b349c237ea78fc3d9e68a83747382c19"
         },
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "5ced758135b26b1bc076a81828a8c5d491586fb438bd619680bd6f13e7d20043"
+          "afterSha256": "22e93b1d49e8a6ab7484d972b141a29de6a32c3eb6c1e4db207ca05f0ea4505d"
         },
         {
           "signature": "public.catalog_admission_frozen_order(uuid)",
@@ -8362,6 +8376,11 @@
           "signature": "public.catalog_admission_candidate_members(uuid[],text)",
           "beforeSha256": null,
           "afterSha256": "53fdde05258462c1450ca9e3ab2926e0225b50b48c02c9e5a7df2b6767231e16"
+        },
+        {
+          "signature": "public.catalog_admission_quote_line_projection(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "811a4400c4306f323574066b774a0f2101ae01af9f08593ffd336ba70c11b083"
         }
       ]
     }

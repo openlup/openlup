@@ -25,8 +25,9 @@ Hosts discovering governed sized candidates supply a repeatable-read
 `withCandidateSnapshot`. The shared membership scan qualifies the governed
 portion of the host's candidate roster.
 The quote catalogue reader's experimental `governedOffer` option returns
-publication stamps for the verified roster. The host can retain the stamps
-for the quote's selected product heads.
+publication stamps for the verified roster. The strict quote port places the
+stamps in server-only provenance. Native admission verifies them against the
+selected publications before recording acceptance.
 Governed edit previews return a token for their recorded evidence. Repeating a
 preview records a separate token, including when the quoted totals stay equal.
 The publisher retains its nonblocking busy refusal.

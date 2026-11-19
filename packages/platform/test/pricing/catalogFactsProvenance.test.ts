@@ -107,6 +107,23 @@ describe("catalog facts provenance", () => {
     });
     expect(publicQuote.quote.lines[0]).not.toHaveProperty("catalogFacts");
   });
+
+  it.each([false, true])("preserves the consulted publication on private quote facts, policy-derived=%s", usePolicy => {
+    const publication = {
+      productId: "33333333-3333-4333-8333-333333333333",
+      skuRevisionId: "44444444-4444-4444-8444-444444444444",
+      head: { publicationId: "55555555-5555-4555-8555-555555555555", revision: 2, documentDigest: "a".repeat(64) },
+    };
+    const response = quoteResponse();
+    response.quote.lines[0]!.catalogFacts = catalogFactsForQuoteLine(
+      true, { ...strictItem(), publication }, { priceEntryId: "base-entry", unitPriceMinor: 1490 },
+      { priceEntryId: "base-entry", unitPriceMinor: 1490 }, "subscription",
+      "2026-06-05T10:00:00.000Z", TEST_CURRENCY, 1490, 1490, 1490,
+      usePolicy ? { policyRevisionId: "66666666-6666-4666-8666-666666666666", policyDigest: "b".repeat(64) } : undefined,
+    );
+    expect(response.quote.lines[0]!.catalogFacts).toMatchObject({ publication });
+    expect(projectPublicQuoteSnapshot(response).quote.lines[0]).not.toHaveProperty("catalogFacts");
+  });
 });
 
 function strictItem(): CommerceQuoteCatalogItem & { usagePer100Units: number } {

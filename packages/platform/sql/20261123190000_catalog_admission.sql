@@ -189,6 +189,8 @@ BEGIN
   SELECT * INTO product FROM public.catalog_products WHERE id=product_id;
   SELECT p.* INTO publication FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id
    WHERE h.product_id=product.id;
+  IF publication.id IS NULL AND p_purpose='account' AND p_offer_evidence->'sizedCommand'='true'::jsonb THEN
+   RAISE EXCEPTION 'customer_self_service_invalid_catalog_head' USING ERRCODE='55000'; END IF;
   SELECT digest INTO document_digest FROM public.catalog_product_document_revisions WHERE id=publication.document_revision_id;
   manifest:=publication.canonical_state::jsonb;
   IF publication.id IS NULL OR document_digest IS NULL OR manifest->'schemaVersion' IS DISTINCT FROM '3'::jsonb
@@ -303,8 +305,9 @@ BEGIN
     OR sku.publication_facts->>'lifecycleState' IS DISTINCT FROM 'active' OR product.publication_facts->>'lifecycleState' IS DISTINCT FROM 'active'
     OR sku.status<>'active' OR product.status<>'active'
     OR (p_mode='one_time' AND NOT sku.sellable_standalone) OR (p_mode='subscription' AND NOT sku.sellable_in_subscription)
-    OR (SELECT count(*) FROM jsonb_array_elements(sku.publication_facts->'memberships') m
-      WHERE m->>'offerVersion'=p_offer_evidence->>'offerVersion' AND m->'admitted'='true'::jsonb)<>1 THEN
+    OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(sku.publication_facts->'memberships') m
+      WHERE m->>'offerVersion'=p_offer_evidence->>'offerVersion'
+      HAVING count(*)=1 AND bool_or(m->'admitted'='true'::jsonb)) THEN
     RAISE EXCEPTION '%',refused USING ERRCODE='55000'; END IF;
   END IF;
  END LOOP;
@@ -505,6 +508,13 @@ BEGIN
     OR requested->>'documentRevisionId' IS DISTINCT FROM member#>>'{document,id}'
    OR requested->>'documentDigest' IS DISTINCT FROM member#>>'{head,documentDigest}') THEN
    RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
+  IF requested->'publication' IS NOT NULL AND NOT keep_price AND requested->'publication' IS DISTINCT FROM
+   jsonb_build_object('productId',member->'productId','skuRevisionId',member->'skuRevisionId','head',member->'head') THEN
+   RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
+  IF requested->'publication' IS NULL AND NOT keep_price AND (
+   (p_purpose='order' AND p_binding->'quoteTimeHeads' IS NULL) OR
+   (p_purpose='account' AND p_binding->>'lane'<>'legacy')
+  ) THEN RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
   reference:=jsonb_build_object('schemaVersion',2,'skuId',line->'skuId','skuCode',member->'skuCode',
    'skuRevisionId',member->'skuRevisionId','publicationHead',member->'head','typeRef',product_facts->'type',
    'definitionDigest',product_facts->'definitionDigest','optionDigest',sku_facts->'optionDigest','netContent',sku_facts->'netContent');
@@ -530,7 +540,7 @@ BEGIN
    retained_prices:=retained_prices||jsonb_build_array(jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price)));
   END IF;
  END LOOP;
- IF p_purpose='order' THEN
+ IF p_purpose='order' AND p_binding->'quoteTimeHeads' IS NOT NULL THEN
   IF jsonb_typeof(p_binding->'quoteTimeHeads') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
   IF jsonb_array_length(p_binding->'quoteTimeHeads') NOT BETWEEN 1 AND 100
@@ -596,6 +606,16 @@ BEGIN
        FROM jsonb_array_elements(p_binding#>'{quoteSnapshot,quote,lines}') WITH ORDINALITY x(l,ord)) THEN
    RAISE EXCEPTION '%',binding_refusal USING ERRCODE='22023'; END IF;
  END IF;
+ IF EXISTS(
+  SELECT 1 FROM jsonb_array_elements(CASE WHEN p_purpose='order' THEN p_binding#>'{quoteSnapshot,quote,lines}' ELSE p_lines END) l
+  JOIN public.catalog_skus sku ON CASE WHEN p_purpose='order' THEN sku.sku=l->>'sku' ELSE sku.id=(l->>'variantId')::uuid END
+  CROSS JOIN LATERAL (SELECT coalesce(l#>'{quoteLine,catalogFacts,publication}',l#>'{catalogFacts,publication}') AS stamp) quoted
+  JOIN jsonb_array_elements(p_evidence->'priceContextVersions') c ON c->>'skuId'=sku.id::text
+  JOIN jsonb_array_elements(p_evidence->'skuRevisions') choice ON choice#>>'{reference,skuId}'=sku.id::text
+  WHERE quoted.stamp IS NOT NULL AND quoted.stamp IS DISTINCT FROM
+   jsonb_build_object('productId',sku.product_id,'skuRevisionId',choice#>'{reference,skuRevisionId}','head',choice#>'{reference,publicationHead}')
+ ) THEN RAISE EXCEPTION '%',CASE WHEN p_purpose='order' THEN 'commerce_order_draft_catalog_head_moved'
+    ELSE 'customer_self_service_stale_edit_catalog_head' END USING ERRCODE='40001'; END IF;
  IF EXISTS(
   SELECT 1 FROM jsonb_array_elements(CASE WHEN p_purpose='order' THEN p_binding#>'{quoteSnapshot,quote,lines}' ELSE p_lines END) l
   JOIN public.catalog_skus sku ON CASE WHEN p_purpose='order' THEN sku.sku=l->>'sku' ELSE sku.id=(l->>'variantId')::uuid END
@@ -1116,6 +1136,26 @@ REVOKE ALL ON FUNCTION public.catalog_admission_edit_lane(text,text,boolean) FRO
 
 -- Only runtime callers can check a token against its owned preview. The check
 -- takes no preview row lock; the writer still owns lock order and acceptance.
+-- Keep the predecessor's normalization for its existing price provenance.
+-- The optional publication stamp is compared separately from observation time.
+CREATE FUNCTION public.catalog_admission_quote_line_projection(p_line jsonb)
+RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT CASE WHEN jsonb_typeof(p_line#>'{catalogFacts,publication}')='object'
+     AND observed#>'{catalogFacts,validObservationTime}'='true'::jsonb THEN
+   jsonb_set(observed,'{catalogFacts,value,publication}',p_line#>'{catalogFacts,publication}')
+  ELSE public.subscription_quote_line_projection(p_line) END
+ FROM (SELECT public.subscription_quote_line_projection(p_line#-'{catalogFacts,publication}') AS observed) value
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_quote_line_projection(jsonb) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION public.subscription_quote_variant_qty_lines(p_lines jsonb)
+ RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT CASE WHEN jsonb_typeof(p_lines)='array' THEN COALESCE((SELECT jsonb_agg(
+  jsonb_build_object('variantId',v->>'variantId','qty',CASE WHEN COALESCE(v->>'qty','') ~ '^-?[0-9]+$'
+   THEN (v->>'qty')::integer ELSE NULL END,'quoteLine',public.catalog_admission_quote_line_projection(COALESCE(v->'quoteLine','{}'::jsonb))) ORDER BY ord)
+  FROM jsonb_array_elements(p_lines) WITH ORDINALITY x(v,ord)),'[]'::jsonb) ELSE NULL END;
+$$;
+
 CREATE FUNCTION public.catalog_admission_preview_bound(p_actor_id uuid,p_client_id uuid,p_subscription_id uuid,
  p_action text,p_hash text,p_version integer) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -1920,9 +1960,9 @@ BEGIN
   IF jsonb_typeof(lines) IS DISTINCT FROM 'array' OR jsonb_array_length(lines)=0 THEN
    RAISE EXCEPTION 'subscription_edit_invalid_lines' USING ERRCODE='22023'; END IF;
   PERFORM public.subscription_quote_assert_jsonb_equal(
-   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.subscription_quote_line_projection(v->'quoteLine')) ORDER BY ord)
+   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.catalog_admission_quote_line_projection(v->'quoteLine')) ORDER BY ord)
     FROM jsonb_array_elements(lines) WITH ORDINALITY x(v,ord)),
-   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.subscription_quote_line_projection(v->'quoteLine')) ORDER BY ord)
+   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.catalog_admission_quote_line_projection(v->'quoteLine')) ORDER BY ord)
     FROM jsonb_array_elements(q#>'{quote_snapshot,lines}') WITH ORDINALITY x(v,ord)));
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'cadenceDays',q#>'{quote_snapshot,cadenceDays}');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'compositionConstraint',q#>'{quote_snapshot,compositionConstraint}');
@@ -2104,13 +2144,13 @@ BEGIN
   PERFORM 1 FROM public.subscription_lines WHERE subscription_id=s.id ORDER BY id FOR UPDATE;
   PERFORM 1 FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id ORDER BY line_ordinal FOR UPDATE;
   v_catalog_acceptance:=public.catalog_admission_accept(q#>'{quote_snapshot,lines}',q#>'{quote_snapshot,catalogAdmission}','subscription',
-    jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN coalesce(opt_in,false) THEN 'sized.v1' ELSE s.configured_offer_version END,'lane','sized','optIn',coalesce(opt_in,false)),'account');
+    jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN coalesce(opt_in,false) THEN 'sized.v1' ELSE s.configured_offer_version END,'lane','sized','sizedCommand',true,'optIn',coalesce(opt_in,false)),'account');
   PERFORM public.subscription_quote_assert_jsonb_equal(request-ARRAY['expectedTemplateVersion','acceptedQuoteHash'],
    (q->'request_payload')-ARRAY['expectedTemplateVersion','acceptedQuoteHash']);
   PERFORM public.subscription_quote_assert_jsonb_equal(
-   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.subscription_quote_line_projection(v->'quoteLine')) ORDER BY ord)
+   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.catalog_admission_quote_line_projection(v->'quoteLine')) ORDER BY ord)
     FROM jsonb_array_elements(lines) WITH ORDINALITY x(v,ord)),
-   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.subscription_quote_line_projection(v->'quoteLine')) ORDER BY ord)
+   (SELECT jsonb_agg((v-'quoteLine')||jsonb_build_object('quoteLine',public.catalog_admission_quote_line_projection(v->'quoteLine')) ORDER BY ord)
     FROM jsonb_array_elements(q#>'{quote_snapshot,lines}') WITH ORDINALITY x(v,ord)));
   PERFORM public.subscription_quote_assert_jsonb_equal(constraint_value,q#>'{quote_snapshot,compositionConstraint}');
   PERFORM public.subscription_quote_assert_jsonb_equal(p_payload->'cadenceDays',q#>'{quote_snapshot,cadenceDays}');

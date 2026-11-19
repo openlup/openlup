@@ -1,8 +1,19 @@
 import { z } from "zod";
 
 import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./contracts/provenance.js";
+import type { CommerceQuoteCatalogPublication } from "./commerceQuoteCatalogReadPort.js";
+
+const publicationSchema: z.ZodType<CommerceQuoteCatalogPublication, CommerceQuoteCatalogPublication> = z.object({
+  productId: z.uuid(), skuRevisionId: z.uuid(),
+  head: z.object({
+    publicationId: z.uuid(), revision: z.number().int().positive().max(2_147_483_647),
+    documentDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+  }).strict(),
+}).strict();
+
 const catalogFactsFields = {
   skuId: z.string().uuid(),
+  publication: publicationSchema.optional(),
   documentRevisionId: z.string().uuid(),
   documentDigest: z.string().regex(/^[a-f0-9]{64}$/iu),
   basePriceEntryId: z.string().trim().min(1).max(120),

@@ -1,3 +1,5 @@
+import type { CommerceQuoteCatalogPublication } from "../commerceQuoteCatalogReadPort.js";
+
 export const CATALOG_FACTS_PROVENANCE_VERSION = "catalog_facts_v1" as const;
 export const CATALOG_FACTS_POLICY_PROVENANCE_VERSION = "catalog_facts_v2" as const;
 
@@ -11,6 +13,10 @@ interface CatalogFactsFields {
   resolvedUnitAmountMinor: number;
   resolvedLineAmountMinor: number;
   baseUnitAmountMinor: number;
+  /** Governed publication evidence carries the exact facts the quote consulted.
+   * @experimental
+   */
+  publication?: CommerceQuoteCatalogPublication;
 }
 
 export type CatalogFactsProvenance = CatalogFactsFields & (
