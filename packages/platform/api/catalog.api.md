@@ -1106,7 +1106,7 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogPublishedProduct } from "./contracts/publication.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogDraftMediaClaimV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
@@ -1158,10 +1158,12 @@ export interface CatalogCandidateDeps {
         reasons: readonly string[];
     }>;
     /** @experimental Supplies current evidence for an explicit enabling phase. */
-    assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef) => Promise<{
+    assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef, verifiedMedia: readonly CatalogDraftMediaClaimV3[]) => Promise<{
         ready: boolean;
         reasons: readonly string[];
     } | null>;
+    /** @experimental Independently verifies the sealed claim, including its revision digest. */
+    verifyMedia?: (claim: CatalogDraftMediaClaimV3, head: CatalogHeadRef) => Promise<boolean>;
 }
 /** No candidate state: each call reconstructs every digest input through the supplied readers.
  * @experimental
@@ -4585,8 +4587,15 @@ export interface CatalogPublicationRules {
         admitted: boolean;
     }): boolean;
     canonicalizeDocument(document: unknown): string;
-    /** Decodes stored document bytes using the installed document rules. */
-    decodeDocument(canonicalText: string): unknown;
+    /** Validates stored bytes and returns only their identity, canonicality and value digest. */
+    inspectDocument(canonicalText: string): {
+        schemaId: string;
+        documentRef: string;
+        productSlug: string;
+        revisionNo: number;
+        canonicallyEncoded: boolean;
+        contentDigest: string;
+    };
     /** Reads identity using the installed document's schema. */
     identifyDocument(document: unknown): {
         schemaId: string;
@@ -4600,7 +4609,7 @@ export interface CatalogPublicationRules {
         code: string;
         netGrams: string;
     }): boolean;
-    deriveSkuFacts(document: unknown, sku: CatalogPublishedSku): CatalogPublicationFacts;
+    deriveSkuFacts(canonicalText: string, sku: CatalogPublishedSku): CatalogPublicationFacts;
     classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
         beforeProduct: CatalogPublishedProduct;
         afterProduct: CatalogPublishedProduct;
@@ -4645,6 +4654,10 @@ export declare function assertCatalogPublicationPreparation(payload: CatalogDraf
  * @experimental
  */
 export declare function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void;
+export declare function unresolvedPublicationDraftIssues<T extends {
+    code: string;
+}>(issues: readonly T[], retained: Pick<CatalogPublicationCompileInput, "product" | "skus">): T[];
+export declare function verifyCatalogPublicationMedia(claim: NonNullable<CatalogDraftPayloadV3["publication"]["evidence"]["media"]>[number], verify: () => Promise<unknown>): Promise<void>;
 /** @experimental */
 export declare function catalogPublicationAffected(payload: CatalogDraftPayloadV3): {
     structural: (code: string) => boolean;
@@ -5096,7 +5109,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "994e3b6f16e5a103a88468af12a4c69e28f80ace90798cba97f3f7624ea6f82a";
+        readonly sha256: "35b4d3bddc9dc25cf6ba8147726bf4645b197aed45b131e855150bce4ce79ebc";
         readonly url: URL;
     }
 ];
