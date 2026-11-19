@@ -22,10 +22,11 @@ type ProviderRenewalWebhookIngest = (input: ProviderRenewalWebhook & {
 }) => Promise<{ paymentEventId: string; paymentIntentId: string | null; paymentAttemptId: string | null }>;
 type ProviderRenewalWebhookControl = {
   ingestPaymentEvent?: ProviderRenewalWebhookIngest;
-  applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }>;
+  applyPaymentResult?(input: ProviderRenewalResultInput): Promise<{ replayed: boolean; kind?: string }>;
 };
 type ProviderRenewalWebhook = { providerEventId: string; providerPaymentId: string; rawPayload: Record<string, unknown> };
 type ProviderRenewalAttempt = { orderId: string; settlementStatus: string; amountMinor: number; currency: string;
+  captureReviewRequired?: boolean;
   requestPayload: Record<string, unknown>; responsePayload: Record<string, unknown>;
   paymentAttempt: { id: string; paymentId: string; provider: string; status: string; providerAttemptId: string | null; idempotencyKey?: string } };
 export interface ProviderRenewalPaymentPorts {
@@ -33,7 +34,7 @@ export interface ProviderRenewalPaymentPorts {
   control: {
     createIntent(input: { idempotencyKey: string; targetKind: "subscription_cycle"; orderId: string; subscriptionId: string;
       subscriptionCycleId: string; amountMinor: number; currency: string; metadata: Record<string, unknown>; channelKey: string; at: string }): Promise<{ id: string }>;
-    applyPaymentResult(input: ProviderRenewalResultInput): Promise<{ replayed: boolean }>;
+    applyPaymentResult(input: ProviderRenewalResultInput): Promise<{ replayed: boolean; kind?: string }>;
   };
   controlFor(executor: SubscriptionQueryExecutor): ProviderRenewalPaymentPorts["control"];
   readAttempt(intentId: string, attemptId?: string | null): Promise<ProviderRenewalAttempt | null>;
@@ -48,7 +49,7 @@ export interface ProviderRenewalPaymentPorts {
     }>;
   adapter: { readbackPort: { readPayment(input: { identity: { provider: string; intentRef: string; attemptRef: string; providerPaymentRef: string };
     expectedMoney: { amountMinor: number; currency: string }; purpose: "recovery" }): Promise<
-      { kind: "succeeded" | "failed" | "pending"; observedMoney: { amountMinor: number; currency: string }; providerOccurredAt: string | null }
+      { kind: "succeeded" | "failed" | "pending"; observedMoney: { amountMinor: number; currency: string }; providerOccurredAt: string | null; capturedAmountBasis?: "provider_capture_v1" }
       | { kind: "unknown" | "unsupported" | "absent" }> } };
   reconciliation: {
     recordEvidence(input: { idempotencyKey: string; provider: string; providerPaymentId: string | null; paymentIntentId: string;
@@ -185,13 +186,14 @@ export function createPostgresProviderRenewalBinding(input: {
       return observe(request.settlementIntentId, request.externalAttemptRef, false);
     },
   };
-  async function observe(intent: string, remote: string | null, retry: boolean): Promise<RenewalPaymentEvidence> {
+  async function observe(intent: string, remote: string | null, retry: boolean): ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]> {
     const { row, frozen, cycle } = await operation(intent), attempt = await payments.readAttempt(intent);
     if (!attempt || attempt.paymentAttempt.provider !== payments.provider) throw new Error("payment_control_result_active_attempt_not_found");
     const a = attempt.paymentAttempt, checkedAt = nativeInstant(input.now());
     const empty: RenewalPaymentEvidence = { operationId: String(row.id), requestFingerprint: String(row.operation_fingerprint),
       status: "unknown", disposition: "ambiguous", eventKey: "", verifiedEvidenceRef: "", externalAttemptRef: remote,
       occurredAt: null, observedAt: checkedAt, firstRecordedAt: checkedAt, amountMinor: null, currency: null, reason: null };
+    if (attempt.captureReviewRequired) return { ...empty, reason: "provider_capture_manual_review" };
     if (a.status === "requires_action") {
       if (remote && a.providerAttemptId && a.providerAttemptId !== remote) throw new Error("subscription_renewal_provider_attempt_conflict");
       const executionKey = a.idempotencyKey, providerKey = attempt.requestPayload.providerIdempotencyKey;
@@ -246,8 +248,8 @@ export function createPostgresProviderRenewalBinding(input: {
         occurredAt: String(facts.occurredAt), firstRecordedAt: String(facts.firstRecordedAt), reason: String(facts.reason),
         amountMinor: attempt.amountMinor, currency: attempt.currency };
     }
-    if (!remote) return empty;
-    if (a.providerAttemptId && a.providerAttemptId !== remote) throw new Error("subscription_renewal_provider_attempt_conflict");
+    if (!remote || !a.providerAttemptId) return empty;
+    if (a.providerAttemptId !== remote) throw new Error("subscription_renewal_provider_attempt_conflict");
     const observed = await payments.adapter.readbackPort.readPayment({ identity: { provider: payments.provider,
       intentRef: intent, attemptRef: a.id, providerPaymentRef: remote },
     expectedMoney: { amountMinor: attempt.amountMinor, currency: attempt.currency }, purpose: "recovery" });
@@ -255,19 +257,31 @@ export function createPostgresProviderRenewalBinding(input: {
     if (observed.observedMoney.amountMinor !== attempt.amountMinor || observed.observedMoney.currency !== attempt.currency) throw new Error("subscription_renewal_provider_money_mismatch");
     // A provider time remains nullable. Neither the clock nor checkedAt repairs it.
     const occurredAt = observed.providerOccurredAt ? nativeInstant(observed.providerOccurredAt) : null;
-    const payload = { observedMoney: observed.observedMoney, providerOccurredAt: occurredAt };
-    const key = `provider-read:${a.id}:${createHash("sha256").update(JSON.stringify({ checkedAt, ...payload, status: observed.kind })).digest("hex")}`;
+    // Retain the historical lookup key for exact completed readback replay.
+    const historicalPayload = { observedMoney: observed.observedMoney, providerOccurredAt: occurredAt };
+    const key = `provider-read:${a.id}:${createHash("sha256").update(JSON.stringify({ checkedAt, ...historicalPayload, status: observed.kind })).digest("hex")}`;
+    const payload = { ...historicalPayload, ...(observed.kind === "succeeded" && observed.capturedAmountBasis
+      ? { capturedAmountBasis: observed.capturedAmountBasis } : {}) };
     const recorded = await payments.reconciliation.recordEvidence({ idempotencyKey: key, provider: payments.provider,
       providerPaymentId: remote, paymentIntentId: intent, paymentAttemptId: a.id, localStatus: a.status,
-      providerStatus: observed.kind, correctionStatus: "observed", checkedAt, payload });
+      providerStatus: observed.kind, correctionStatus: "observed", checkedAt, payload: historicalPayload });
     if (!recorded.reconciliationId) throw new Error("payment_reconciliation_evidence_readback_invalid");
     if (!occurredAt) return { ...empty, status: observed.kind, verifiedEvidenceRef: recorded.reconciliationId,
       eventKey: key, amountMinor: observed.observedMoney.amountMinor, currency: observed.observedMoney.currency };
-    if ((!retry || observed.kind === "failed") && observed.kind !== "pending") await payments.reconciliation.applyTerminalResult({
-      idempotencyKey: `${key}:apply`, expectedOrderId: String(row.order_id), expectedPaymentIntentId: intent,
-      expectedPaymentAttemptId: a.id, expectedPaymentId: a.paymentId, provider: payments.provider, providerPaymentId: remote,
-      localStatus: a.status, providerStatus: observed.kind, resultStatus: observed.kind, occurredAt,
-      failureReason: observed.kind === "failed" ? "provider_failed" : null, checkedAt, payload });
+    if (observed.kind === "succeeded" && observed.capturedAmountBasis !== "provider_capture_v1") return empty;
+    if (observed.kind !== "pending") {
+      await payments.reconciliation.applyTerminalResult({
+        idempotencyKey: `${key}:apply`, expectedOrderId: String(row.order_id), expectedPaymentIntentId: intent,
+        expectedPaymentAttemptId: a.id, expectedPaymentId: a.paymentId, provider: payments.provider, providerPaymentId: remote,
+        localStatus: a.status, providerStatus: observed.kind, resultStatus: observed.kind, occurredAt,
+        failureReason: observed.kind === "failed" ? "provider_failed" : null, checkedAt, payload,
+      });
+      if (observed.kind === "succeeded") {
+        const current = await payments.readAttempt(intent);
+        if (current?.captureReviewRequired) return { ...empty, reason: "provider_capture_manual_review" };
+        if (current?.settlementStatus !== "settled") return empty;
+      }
+    }
     if (retry && observed.kind === "failed") return observe(intent, remote, true);
     return { ...empty, status: observed.kind, disposition: "observed", eventKey: `${key}:recovery`,
       verifiedEvidenceRef: recorded.reconciliationId, occurredAt, amountMinor: observed.observedMoney.amountMinor,
@@ -330,44 +344,28 @@ export function createPostgresProviderRenewalBinding(input: {
       if (!ingested || ingested.paymentEventId !== request.paymentEventId || ingested.paymentIntentId !== request.paymentIntentId) {
         throw new Error("payment_event_receipt_unavailable");
       }
-      // Ingest owns immutable event attribution. A later finalized matching
-      // handle cannot resolve its null link. Let the result owner refuse it
-      // before attempt-specific bookkeeping and let ingress ACK that refusal.
       if (ingested.paymentAttemptId === null) return control.applyPaymentResult!(request);
-      const attempt = await payments.readAttempt(request.paymentIntentId, null);
-      if (!attempt || ingested.paymentAttemptId !== attempt.paymentAttempt.id) return control.applyPaymentResult!(request);
-      const a = attempt.paymentAttempt;
-      const receipt = subscriptionRecord((await db.query("SELECT public.commerce_checkout_payment_guidance_snapshot($1::uuid,$2::uuid,NULL::uuid) AS response",
-        [op.order_id, request.paymentIntentId])).rows[0]?.response);
-      if (receipt.historyComplete !== true) throw new Error("payment_event_receipt_unavailable");
-      const history = receipt.attempts as { id: string; evidence: Record<string, unknown>[] }[];
-      const durable = history?.find(row => row.id === a.id)?.evidence.find(value =>
-        subscriptionRecord(value.openlupEvidence).providerEventId === event.providerEventId);
-      const firstRecordedAt = durable && subscriptionRecord(durable.openlupReceipt).recordedAt;
-      if (typeof firstRecordedAt !== "string") throw new Error("payment_event_receipt_unavailable");
+      const active = await payments.readAttempt(request.paymentIntentId);
+      if (ingested.paymentAttemptId !== active?.paymentAttempt.id) return control.applyPaymentResult!(request);
       return input.withTransaction(async tx => {
-        const retry = createPostgresRetryStore(tx), obligation = await retry.read(String(op.id));
-        if (obligation && obligation.state !== "recovered") {
-          // The retry store owns positive truth before the provider status is
-          // projected. Both commit together with one settlement and recovery.
-          const preparation = (await tx.query(`SELECT r.receipt_key FROM public.subscription_retry_receipts r
-            JOIN public.subscription_retry_obligations o ON o.id=r.obligation_id WHERE o.renewal_operation_id=$1::uuid
-            AND r.kind='prepare' AND r.attempt_sequence=o.attempt_sequence`, [op.id])).rows[0];
-          if (obligation.state === "prepared" && !preparation) throw new Error("subscription_retry_prepared_receipt_missing");
-          const normalized = subscriptionRecord(durable!.openlupEvidence);
-          const sourceEvidence = { sourceKind: "accepted_event", sourceReference: request.paymentEventId, observedStatus: "succeeded",
-            observedAt: nativeInstant(request.occurredAt), payloadFingerprint: normalized.fingerprint, attemptRef: a.id };
-          await retry.recordRecovery(String(op.id), `${request.idempotencyKey}:truth`, {
-            ...sourceEvidence,
-            ...(preparation ? { prepareKey: String(preparation.receipt_key) } : {}), evidenceKey: `provider:${request.paymentEventId}`,
-            occurredAt: nativeInstant(request.occurredAt), firstRecordedAt: nativeInstant(firstRecordedAt),
-            externalRef: event.providerPaymentId, amountMinor: attempt.amountMinor, currency: attempt.currency, template: input.truth.recoveryTemplateSlug,
+        // The payment owner locks the aggregate and projects retry recovery and
+        // provider state from the same durable capture in this transaction.
+        const applied = await payments.controlFor(tx).applyPaymentResult(request);
+        if (applied.kind === "ignored_success_requiring_review") return { replayed: applied.replayed, kind: applied.kind };
+        const state = (await tx.query(`SELECT op.state,op.operation_fingerprint,obligation.id AS retry_id
+          FROM public.subscription_renewal_operations op
+          LEFT JOIN public.subscription_retry_obligations obligation ON obligation.renewal_operation_id=op.id
+          WHERE op.id=$1::uuid`, [op.id])).rows[0];
+        if (state?.state === "attempt_prepared" && state.retry_id == null) {
+          const truth = (await tx.query(`SELECT ingest_idempotency_key,occurred_at::text AS occurred_at
+            FROM public.payment_truth_events WHERE settlement_intent_id=$1::uuid AND outcome='captured'
+            AND state='settled' ORDER BY created_at,id LIMIT 1`, [request.paymentIntentId])).rows[0];
+          if (truth) await input.settlement(tx).recordTerminalOutcome({
+            operationId: String(op.id), operationFingerprint: String(state.operation_fingerprint),
+            eventKey: String(truth.ingest_idempotency_key), outcome: "succeeded",
+            externalRef: event.providerPaymentId, occurredAt: String(truth.occurred_at),
           });
         }
-        const applied = await payments.controlFor(tx).applyPaymentResult(request);
-        if (!obligation && op.state === "attempt_prepared") await input.settlement(tx).recordTerminalOutcome({
-          operationId: String(op.id), operationFingerprint: String(op.operation_fingerprint), eventKey: `${request.idempotencyKey}:truth`,
-          outcome: "succeeded", externalRef: event.providerPaymentId, occurredAt: request.occurredAt });
         return { replayed: applied.replayed };
       });
     } };

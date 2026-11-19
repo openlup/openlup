@@ -32,7 +32,14 @@ CREATE TEMP TABLE proof_fixture(name text PRIMARY KEY,f jsonb);
 INSERT INTO proof_fixture VALUES('capture',pg_temp.reconciliation_fixture('stripe')),
  ('delta',pg_temp.reconciliation_fixture('tpay')),('renewal',pg_temp.reconciliation_fixture('stripe',true)),
  ('prepared',pg_temp.reconciliation_fixture('stripe',true,false)),('interactive',pg_temp.reconciliation_fixture('tpay',false,false));
-SELECT pg_temp.provider_apply('capture:'||(f->>'order'),(f->>'intent')::uuid,NULL,'succeeded','2026-11-13T12:00:00Z',NULL)
+CREATE FUNCTION pg_temp.provider_capture(f jsonb,k text,p_at timestamptz) RETURNS jsonb LANGUAGE sql AS $$
+ SELECT pg_temp.provider_apply(k,(f->>'intent')::uuid,
+   (public.payment_provider_event_ingest(f->>'provider',k,'payment.succeeded','charge_'||(f->>'attempt'),
+     (f->>'intent')::uuid,(f->>'attempt')::uuid,12999,'XXX',true,
+     jsonb_build_object('__paymentTruth',jsonb_build_object('fingerprint',repeat('a',64),'capturedAmountBasis','provider_capture_v1')))#>>'{paymentEvent,id}')::uuid,
+   'succeeded',p_at,NULL);
+$$;
+SELECT pg_temp.provider_capture(f,'capture:'||(f->>'order'),'2026-11-13T12:00:00Z')
  FROM proof_fixture WHERE name IN ('capture','delta','renewal');
 
 CREATE FUNCTION pg_temp.refund_input(f jsonb,k text,amount integer) RETURNS jsonb LANGUAGE sql AS $$

@@ -71,7 +71,7 @@ export function createTpayConformanceFixture() {
       const paid = ("tr_paid" in patch ? patch.tr_paid : amount) as string | undefined;
       const original = ("tr_amount" in patch ? patch.tr_amount : amount) as string | undefined;
       const reportedCurrency = ("tr_currency" in patch ? patch.tr_currency : money.currency) as string | undefined;
-      const minor = Math.round(Number(paid || original) * 100);
+      const minor = Math.round(Number(outcome === "succeeded" ? paid : paid || original) * 100);
       const observedMoney = Number.isSafeInteger(minor) && minor > 0 ? { amountMinor: minor, currency: reportedCurrency ?? "PLN" } : null;
       const input = { rawBody: Buffer.from(rawBody), headers: { "x-jws-signature": certificate.signature(rawBody, undefined, timestamp) }, receivedAt: occurredAt };
       const normalized: Omit<VerifiedPaymentEvidence, "fingerprint" | "providerAuditPayload"> = {
@@ -82,6 +82,7 @@ export function createTpayConformanceFixture() {
       };
       const expected: VerifiedPaymentEvidence = { ...normalized,
         fingerprint: createHash("sha256").update(JSON.stringify(normalized)).digest("hex"),
+        ...(outcome === "succeeded" && observedMoney ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
         providerAuditPayload: { provider: "tpay", eventKind: "transaction", transactionTitle: fixture.title,
           hiddenDescription: fixture.intentRef, transactionAmount: original ?? null, paidAmount: paid ?? null, currency: reportedCurrency ?? null, status, testMode: null },
       };

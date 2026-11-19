@@ -29,7 +29,7 @@ export type PaymentVerifyRequest = z.infer<typeof paymentVerifyRequestSchema>;
 
 export function createCommercePaymentVerifyHandler(deps: {
   readPort: PaymentVerifyReadPort;
-  applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+  applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
   providers: Partial<Record<string, PaymentProviderReconciliationProvider>>;
   mutationsEnabled: () => boolean;
   now?: () => Date;

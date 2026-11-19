@@ -1,3 +1,4 @@
+import { capturedAmountMinor } from "./intentMapper.js";
 import { failureEvidencePayload } from "./paymentFailureEvidence.js";
 import type {
   ProviderReconciliationStatus,
@@ -73,6 +74,9 @@ export function createStripePaymentReconciliationProvider(
     async readPayment(input) {
       const intent = await client.retrievePaymentIntent(input.providerPaymentId);
       const status = normalizeStripeIntent(intent);
+      if (status.status === "succeeded" && intent.id !== input.providerPaymentId) {
+        throw new Error("stripe_readback_payment_identity_mismatch");
+      }
       // Same rule as the recovery read above, on the rail the buyer's own
       // "check it now" travels: an intent no issuer has been asked about is
       // unsettled, not refused. Only `active_checkout` gets this reading, so
@@ -106,12 +110,18 @@ export function createStripePaymentReconciliationProvider(
 
 export function normalizeStripeIntent(intent: StripeIntentLike): ProviderReconciliationStatus {
   const status = normalizeStripeStatus(intent.status);
+  const configuredAmountMinor = intent.amount;
+  const collectedAmount = intent.amount_received === 0 ? 0 : capturedAmountMinor(intent.amount_received);
+  const amountMinor = status === "succeeded" ? collectedAmount : readAmountMinor(intent);
   return {
     status,
+    ...(status === "succeeded" && amountMinor === null && typeof configuredAmountMinor === "number"
+      && Number.isSafeInteger(configuredAmountMinor) && configuredAmountMinor >= 0 ? { configuredAmountMinor } : {}),
+    ...(status === "succeeded" && amountMinor !== null && amountMinor > 0 ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerStatus: intent.status,
     occurredAt: null,
     failureReason: failureReason(intent),
-    amountMinor: readAmountMinor(intent),
+    amountMinor,
     currency: typeof intent.currency === "string" ? intent.currency.toUpperCase() : null,
     rawPayload: {
       provider: "stripe",
@@ -250,9 +260,6 @@ function readAmountMinor(intent: StripeIntentLike): number | null {
   // legitimately returns 0 while `amount` still holds the configured amount.
   // Comparing that zero to the local order created a false mismatch and made
   // reconciliation 502-loop on an ordinary failed payment.
-  if (intent.status === "succeeded" && typeof intent.amount_received === "number" && Number.isFinite(intent.amount_received)) {
-    return intent.amount_received;
-  }
   if (typeof intent.amount === "number" && Number.isFinite(intent.amount)) {
     return intent.amount;
   }

@@ -138,7 +138,7 @@ describe("runPaymentProviderReconciliationWorker", () => {
 
     const result = await runPaymentProviderReconciliationWorker({
       port,
-      providers: { stripe: provider(status("failed", "requires_action")) },
+      providers: { stripe: provider(status("failed", "requires_action", { amountMinor: null, currency: null })) },
       now: NOW,
     });
 
@@ -192,12 +192,18 @@ describe("runPaymentProviderReconciliationWorker", () => {
     expect(result).toMatchObject({ ok: true, corrected: 1, succeeded: 1, replayed: 0 });
   });
 
-  it("records provider amount drift as manual review without failing the scheduler", async () => {
+  it.each([
+    [{ amountMinor: 1300 }, "provider_amount_mismatch"],
+    [{ amountMinor: null }, "provider_amount_missing"],
+    [{ amountMinor: 0 }, "provider_amount_mismatch"],
+    [{ currency: null }, "provider_currency_missing"],
+    [{ currency: " " }, "provider_currency_missing"],
+  ] as const)("records incomplete or mismatched success money %j for manual review", async (money, reason) => {
     const attempt = claimedAttempt({ amountMinor: 1200 });
     const port = fakePort([attempt]);
     const result = await runPaymentProviderReconciliationWorker({
       port,
-      providers: { stripe: provider(status("succeeded", "succeeded", { amountMinor: 1300 })) },
+      providers: { stripe: provider(status("succeeded", "succeeded", money)) },
       now: NOW,
     });
 
@@ -211,7 +217,7 @@ describe("runPaymentProviderReconciliationWorker", () => {
     expect(port.applyTerminalResult).not.toHaveBeenCalled();
     expect(port.recordEvidence).toHaveBeenCalledWith(expect.objectContaining({
       correctionStatus: "failed",
-      payload: expect.objectContaining({ failureReason: "provider_amount_mismatch" }),
+      payload: expect.objectContaining({ failureReason: reason }),
     }));
   });
 

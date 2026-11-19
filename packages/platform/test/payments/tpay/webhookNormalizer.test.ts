@@ -26,6 +26,13 @@ describe("Tpay webhook normalizer", () => {
     },
   );
 
+  it.each([undefined, "", "0.00", "49.901"])("leaves success money unknown when tr_paid is %s", trPaid => {
+    const form = new URLSearchParams({ tr_id: "TR-missing-paid", tr_status: "TRUE", tr_amount: "49.90" });
+    if (trPaid !== undefined) form.set("tr_paid", trPaid);
+    const normalized = normalizeTpayWebhook(form.toString());
+    expect(normalized.event).toMatchObject({ event_type: "payment.succeeded", amount_minor: undefined });
+  });
+
   it("normalizes transaction settlement payloads and removes payer/token fields", () => {
     const normalized = normalizeTpayWebhook(
       new URLSearchParams({
@@ -33,7 +40,7 @@ describe("Tpay webhook normalizer", () => {
         tr_id: "TR-123",
         tr_date: "2026-06-09",
         tr_crc: "11111111-1111-4111-8111-111111111111",
-        tr_amount: "49.90",
+        tr_amount: "59.90",
         tr_paid: "49.90",
         tr_desc: "order_123",
         tr_status: "true",
@@ -54,7 +61,7 @@ describe("Tpay webhook normalizer", () => {
         eventKind: "transaction",
         transactionTitle: "TR-123",
         hiddenDescription: "11111111-1111-4111-8111-111111111111",
-        transactionAmount: "49.90",
+        transactionAmount: "59.90",
         paidAmount: "49.90",
         // This payload carries no `tr_currency`, and the record says so. It used to say
         // "PLN" - a value the provider never sent, invented by a `??` default.

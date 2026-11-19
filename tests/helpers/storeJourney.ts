@@ -126,8 +126,11 @@ export type JourneyDraft = Awaited<ReturnType<typeof draftStoreJourney>>;
 /** Activation deliberately leaves its real durable attachment duty for the next worker. */
 export async function captureAndActivateJourney(store: JourneyInstallation, draft: JourneyDraft) {
   const simulator = createPostgresSandboxPaymentSimulator(store.runtime, paymentOptions);
-  expect(await captureSandboxPurchase(simulator, { settlementIntentId: draft.settlementIntentId, key: draft.key, at: journeyPaidAt }))
-    .toMatchObject({ status: 200 });
+  const captureInput = { settlementIntentId: draft.settlementIntentId, key: draft.key, at: journeyPaidAt };
+  const captured = await captureSandboxPurchase(simulator, captureInput);
+  expect(captured).toMatchObject({ status: 200, data: { replayed: false, paymentEventId: expect.any(String) } });
+  expect(await captureSandboxPurchase(simulator, captureInput))
+    .toMatchObject({ status: 200, data: { ...captured.data, replayed: true } });
   const attempt = await simulator.readAttempt({ settlementIntentId: draft.settlementIntentId });
   expect(attempt).toMatchObject({ settlementIntentId: draft.settlementIntentId, state: "captured", latestObservation: { outcome: "captured" } });
   const settlement = (await store.runtime.query("SELECT coalesce(external_ref,id::text) AS captured_reference FROM public.commerce_settlement_intents WHERE id=$1", [draft.settlementIntentId])).rows[0];

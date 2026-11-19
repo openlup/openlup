@@ -144,7 +144,10 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
         }
         if (evidence.status === "succeeded" && evidence.amountMinor === snapshot.pricingSnapshot.totalAmountMinor
           && evidence.currency === snapshot.pricingSnapshot.currency) {
-          const recovered = await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
+          // Provider-owned recovery can already have committed with the
+          // payment result, including when a verified webhook won the race.
+          const current = await store.read(operationId);
+          const recovered = current?.state === "recovered" ? current : await store.recordRecovery(operationId, evidence.eventKey, { ...evidence.sourceEvidence, ...(evidence.sourceEvidence ? { observedAt: nativeInstant(evidence.sourceEvidence.observedAt) } : {}), prepareKey, evidenceKey: evidence.verifiedEvidenceRef,
             occurredAt: nativeInstant(evidence.occurredAt), firstRecordedAt: nativeInstant(evidence.firstRecordedAt), externalRef: evidence.externalAttemptRef,
             amountMinor: evidence.amountMinor, currency: evidence.currency, template: options.recoveredTemplate });
           results.push({ operationId, status: recovered.disposition === "paid" ? "succeeded" : "error" });

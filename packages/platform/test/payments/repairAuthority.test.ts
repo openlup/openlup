@@ -32,6 +32,36 @@ describe("public repair authority", () => {
     expect(await f.recovery.resolve({ orderId: snapshot.orderId, paymentIntentId: snapshot.paymentIntentId })).toEqual({ kind: "paid" });
     expect(f.providerRead).toHaveBeenCalledTimes(1);
   });
+  it("keeps checkout in review when the provider observed capture but SQL did not settle it", async () => {
+    const f = fixture();
+    const input = { orderId: snapshot.orderId, paymentIntentId: snapshot.paymentIntentId };
+    f.providerRead.mockResolvedValue({ ...f.reading, clientAction: null,
+      status: { ...f.reading.status, status: "succeeded", capturedAmountBasis: "provider_capture_v1" } });
+    f.apply.mockResolvedValue({ correctionStatus: "ignored", replayed: false,
+      paymentResult: { kind: "ignored_success_requiring_review" } });
+    const readCaptureReview = vi.fn(async () => false);
+    const recovery = createCheckoutRecoveryPaymentResolver({ ...f.deps, applyPort: { ...f.deps.applyPort, readCaptureReview } });
+    expect(await recovery.resolve(input)).toEqual({ kind: "manual_review" });
+    expect(f.apply).toHaveBeenCalledTimes(1);
+    expect(readCaptureReview).toHaveBeenCalledExactlyOnceWith({ ...input, paymentAttemptId: snapshot.paymentAttemptId });
+    f.read.mockResolvedValue({ ...snapshot, intentStatus: "cancelled", attemptStatus: "failed", captureReviewRequired: true });
+    f.providerRead.mockClear();
+    expect(await recovery.resolve(input)).toEqual({ kind: "manual_review" });
+    expect(f.providerRead).not.toHaveBeenCalled();
+    expect(readCaptureReview).toHaveBeenCalledTimes(1);
+    expect(f.apply).toHaveBeenCalledTimes(1);
+  });
+  it("discards a provider handoff when stored review commits during the provider read", async () => {
+    const f = fixture();
+    f.providerRead.mockImplementation(async () => {
+      f.read.mockResolvedValue({ ...snapshot, captureReviewRequired: true, intentStatus: "cancelled", attemptStatus: "failed" });
+      return f.reading;
+    });
+    expect(await f.recovery.resolve({ orderId: snapshot.orderId, paymentIntentId: snapshot.paymentIntentId }))
+      .toEqual({ kind: "manual_review" });
+    expect(f.providerRead).toHaveBeenCalledTimes(1);
+    expect(f.apply).not.toHaveBeenCalled();
+  });
   it("binds the exact attempt, rail capability and second canonical read, failing closed on races or unknown", async () => {
     const f = fixture();
     expect(await f.active.readActiveAction({ ...authority, paymentAttemptId: "stale-attempt" })).toBeNull();
