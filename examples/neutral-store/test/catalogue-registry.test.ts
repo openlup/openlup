@@ -111,7 +111,14 @@ test('catalogue_transport_matrix RP2-D-002 projects the selected runtime pack an
     assert.deepEqual(selected.types.resolve(draft.product.type)?.validateContent(draft.product.sharedContent), []);
   }
 
-  const report = JSON.parse(execFileSync('npm', ['--silent', 'run', 'catalogue:check:source'], { cwd: app, encoding: 'utf8' }));
+  const pkg = dirname(fileURLToPath(import.meta.resolve('@openlup/platform/package.json')));
+  const bin = join(pkg, 'src/lifecycle/openlup.mjs');
+  const project = ['catalogue', 'project', '--trusted-packs', './owned/catalogue.ts', '--json'];
+  const { scripts } = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8'));
+  assert.equal(scripts['catalogue:check:source'], ['openlup', ...project].join(' '));
+  // The source extraction tests deliberately clear PATH. Use the same installed argv in that lane.
+  const args = process.env.npm_execpath ? [process.env.npm_execpath, '--silent', 'run', 'catalogue:check:source'] : [bin, ...project];
+  const report = JSON.parse(execFileSync(process.execPath, args, { cwd: app, encoding: 'utf8' }));
   assert.equal(report.formatVersion, 1);
   assert.equal(report.exitCode, 0);
   assert.deepEqual(report.findings, []);
@@ -127,8 +134,7 @@ test('catalogue_transport_matrix RP2-D-002 projects the selected runtime pack an
       requiredChecks,
     }));
     assert.deepEqual(subject, expected);
-    const pkg = dirname(fileURLToPath(import.meta.resolve('@openlup/platform/package.json')));
-    const inert = spawnSync(process.execPath, [join(pkg, 'src/lifecycle/openlup.mjs'),
+    const inert = spawnSync(process.execPath, [bin,
       'catalogue', 'check', '--packs', subjectPath, '--json'], { cwd: app, encoding: 'utf8' });
     assert.equal(inert.status, 2, inert.stdout);
     const { findings } = JSON.parse(inert.stdout);
