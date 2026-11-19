@@ -556,6 +556,16 @@ it.each([
   expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_changed" });
 });
 
+it.each([
+  ["escaped null product string", { rawState: (value: string) => value.replace('"Article"', '"\\u0000"') }, "publication_details_invalid"],
+  ["escaped null SKU string", { rawFacts: (value: string) => value.replace('"Article 1"', '"\\u0000"') }, "publication_revision_invalid"],
+  ["deeply nested product bytes", { rawState: (value: string) => `{"extra":${"[".repeat(30_000)}0${"]".repeat(30_000)},${value.slice(1)}` }, "publication_details_invalid"],
+  ["deeply nested SKU bytes", { rawFacts: (value: string) => `{"extra":${"[".repeat(30_000)}0${"]".repeat(30_000)},${value.slice(1)}` }, "publication_revision_invalid"],
+] as const)("returns a typed COMMIT refusal for %s", async (_label, options, reason) => {
+  const error = await transaction(pool, async db => insertGraph(db, await graph(db, fixture()), options)).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason });
+});
+
 function publicationReader() {
   return createPostgresCatalogPublicationReads({
     transactions: { run: work => transaction(pool, work) },

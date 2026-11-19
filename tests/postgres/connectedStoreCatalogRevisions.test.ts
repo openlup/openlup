@@ -156,6 +156,11 @@ it("restores reordered sealed history and recovers the original publication afte
     await insertGraph(db, second);
     return { first, second, receipt };
   });
+  await source.owner.query("UPDATE public.catalog_products SET name='Later draft name' WHERE id=$1", [data.productId]);
+  await expect(captureStoreJourney(source.owner, "catalog-publication-drift")).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  await source.owner.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, second.product.name]);
   const captured = await captureStoreJourney(source.owner, "catalog-publication-source");
   const tampered = structuredClone(captured);
   const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;
@@ -173,6 +178,19 @@ it("restores reordered sealed history and recovers the original publication afte
   const pristine = await journeyCensus(target.owner);
   await expect(restore(target.owner, tampered)).rejects.toMatchObject({
     code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  const malformed = structuredClone(captured);
+  const skuRows = malformed.owned.find(table => table.table === "catalog_sku_revisions")!;
+  const sku = JSON.parse(skuRows.rows[0]!) as { full_facts: string; digest: string };
+  sku.full_facts = sku.full_facts.replace(/"Article [12]"/, '"\\u0000"');
+  sku.digest = createHash("sha256").update(sku.full_facts).digest("hex");
+  skuRows.rows[0] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
+    jsonb_populate_record(NULL::public.catalog_sku_revisions,$1::jsonb) x`, [JSON.stringify(sku)])).rows[0]!.value;
+  rehash(malformed);
+  await expect(restore(target.owner, malformed)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_revision_invalid" },
   });
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 

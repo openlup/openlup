@@ -441,7 +441,7 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_gtin_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gtin_invalid';
  END IF;
  RETURN body;
-EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
+EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
  RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
 END;
 $$;
@@ -643,7 +643,7 @@ BEGIN
    RAISE EXCEPTION 'catalog_publication_live_drift' USING ERRCODE='23514', CONSTRAINT='catalog_publication_live_drift';
   END IF;
  END IF;
-EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
+EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
  RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_manifest_invalid';
 END;
 $$;
